@@ -59,6 +59,16 @@ export default class Button extends React.Component<ButtonProps, ButtonState> {
             </label>
           </form>
         </div>
+        <>
+          {window.api.getMods().map((mod, index) => (
+            <>
+              <div>{mod.name}</div>
+              <div></div>
+              <div></div>
+              <div></div>
+            </>
+          ))}
+        </>
       </div>
     );
   }

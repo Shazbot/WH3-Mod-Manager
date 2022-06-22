@@ -28,3 +28,9 @@
 
 import "./index.css";
 import "./app";
+
+setInterval(function () {
+  if (window.api) {
+    console.log(window.api.getMods());
+  }
+}, 100);
