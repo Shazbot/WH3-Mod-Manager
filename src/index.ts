@@ -35,14 +35,13 @@ const getDataMods = async (gameDir: string): Promise<Mod[]> => {
     data.split("\n").map((line) => {
       const found = line.match(re);
       if (found) {
-        // console.log(found[1]);
         vanillaPacks.push(found[1]);
       }
     });
 
     const files = await fs.readdir(dataPath, { withFileTypes: true });
 
-    files
+    const dataModsPromises = files
       .filter(
         (file) =>
           file.isFile() &&
@@ -68,6 +67,7 @@ const getDataMods = async (gameDir: string): Promise<Mod[]> => {
         dataPacks.push(mod);
       });
 
+    await Promise.allSettled(dataModsPromises);
     return dataPacks;
   });
 };

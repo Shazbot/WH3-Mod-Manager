@@ -138,7 +138,7 @@ export default function ModRow() {
             <span className="text-center w-full">Enabled</span>
           </Tooltip>
         </div>
-        <div className="flex grid-area-packName place-items-center pl-2" onClick={() => onPackSort()}>
+        <div className="flex grid-area-packName place-items-center pl-1" onClick={() => onPackSort()}>
           {(sortingType === SortingType.PackName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -148,7 +148,7 @@ export default function ModRow() {
           Pack
         </div>
 
-        <div className="flex grid-area-humanName place-items-center pl-2" onClick={() => onNameSort()}>
+        <div className="flex grid-area-humanName place-items-center pl-1" onClick={() => onNameSort()}>
           {(sortingType === SortingType.HumanName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -158,7 +158,7 @@ export default function ModRow() {
           Name
         </div>
         <div
-          className="flex grid-area-lastUpdated place-items-center pl-2"
+          className="flex grid-area-lastUpdated place-items-center pl-1"
           onClick={() => onLastUpdatedSort()}
         >
           {(sortingType === SortingType.LastUpdated && (
