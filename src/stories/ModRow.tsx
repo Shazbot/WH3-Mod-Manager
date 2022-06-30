@@ -122,9 +122,9 @@ export default function ModRow() {
 
   return (
     <div className="dark:text-slate-300">
-      <div className="grid grid-mods gap-2 pt-1.5 grida hover:bg-slate-300">
+      <div className="grid grid-mods pt-1.5 grida parent">
         <div
-          className="flex place-items-center grid-area-enabled"
+          className="flex place-items-center grid-area-enabled w-full justify-center"
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
         >
@@ -135,10 +135,10 @@ export default function ModRow() {
               (sortingType === SortingType.IsEnabledReverse && (
                 <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
               )) || <></>}
-            Enabled
+            <span className="text-center w-full">Enabled</span>
           </Tooltip>
         </div>
-        <div className="flex grid-area-packName place-items-center" onClick={() => onPackSort()}>
+        <div className="flex grid-area-packName place-items-center pl-2" onClick={() => onPackSort()}>
           {(sortingType === SortingType.PackName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -148,7 +148,7 @@ export default function ModRow() {
           Pack
         </div>
 
-        <div className="flex grid-area-humanName place-items-center" onClick={() => onNameSort()}>
+        <div className="flex grid-area-humanName place-items-center pl-2" onClick={() => onNameSort()}>
           {(sortingType === SortingType.HumanName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -157,7 +157,10 @@ export default function ModRow() {
             )) || <></>}
           Name
         </div>
-        <div className="flex grid-area-lastUpdated place-items-center" onClick={() => onLastUpdatedSort()}>
+        <div
+          className="flex grid-area-lastUpdated place-items-center pl-2"
+          onClick={() => onLastUpdatedSort()}
+        >
           {(sortingType === SortingType.LastUpdated && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -174,7 +177,7 @@ export default function ModRow() {
               (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
           )
           .map((mod, index) => (
-            <>
+            <div className="row hover:bg-slate-300">
               <div className="grid-area-enabled">
                 <form className="grid place-items-center h-full">
                   <input
@@ -197,9 +200,9 @@ export default function ModRow() {
                 <label htmlFor={mod.workshopId}>{mod.humanName}</label>
               </div>
               <div className="flex place-items-center grid-area-lastUpdated">
-                {formatDistanceToNow(mod.lastChanged) + " ago"}
+                <label htmlFor={mod.workshopId}>{formatDistanceToNow(mod.lastChanged) + " ago"}</label>
               </div>
-            </>
+            </div>
           ))}
       </div>
       <div className="fixed bottom-5 hidden">

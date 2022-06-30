@@ -189,8 +189,13 @@ const createWindow = (): void => {
 
   autoUpdater.setFeedURL({ url });
   setInterval(() => {
-    autoUpdater.checkForUpdates();
+    try {
+      autoUpdater.checkForUpdates();
+    } catch {}
   }, 60000);
+  try {
+    autoUpdater.checkForUpdates();
+  } catch {}
 
   autoUpdater.on("update-downloaded", (event, releaseNotes, releaseName) => {
     const dialogOpts = {

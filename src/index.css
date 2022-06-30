@@ -21,18 +21,37 @@ body {
 
 .grid-mods {
   //grid-template-areas: "enabled packName packName packName packName packName humanName humanName humanName humanName humanName";
-  grid-template-columns: 50px 1fr 1fr;
+  grid-template-columns: 80px 1fr 1fr;
 }
 
 @media (min-width: 1024px) {
   .grid-mods {
-    grid-template-columns: 50px 1fr 1fr 0.5fr;
+    grid-template-columns: 80px 1fr 1fr 0.5fr;
     //grid-template-areas: "enabled packName packName packName packName packName humanName humanName humanName humanName humanName lastUpdated lastUpdated lastUpdated lastUpdated";
   }
 }
 
+.row {
+  display: contents;
+}
+
+.row {
+  display: contents;
+}
+
+.row div {
+  padding: 0.25rem;
+}
+
+.row:hover div {
+  background-color: rgb(203 213 225);
+}
 .grid-area-enabled {
   //grid-area: enabled;
+}
+.grid-area-enabled div {
+  //grid-area: enabled;
+  //display: inline-block;
 }
 .grid-area-packName {
   //grid-area: packName;
