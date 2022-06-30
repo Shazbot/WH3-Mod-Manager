@@ -10,7 +10,7 @@
         "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron-forge-vscode-win.cmd"
       },
       // runtimeArgs will be passed directly to your Electron application
-      "runtimeArgs": ["foo", "bar"],
+      "runtimeArgs": [],
       "cwd": "${workspaceFolder}"
     }
   ]

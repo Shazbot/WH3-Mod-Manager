@@ -84,6 +84,7 @@
     "@storybook/manager-webpack5": "^6.5.9",
     "@storybook/react": "^6.5.9",
     "@storybook/testing-library": "^0.0.13",
+    "@types/nightmare": "^2.10.6",
     "@types/react": "^18.0.14",
     "@types/react-dom": "^18.0.5",
     "@types/winreg": "^1.2.31",
@@ -92,8 +93,10 @@
     "@vercel/webpack-asset-relocator-loader": "^1.7.0",
     "autoprefixer": "^10.4.7",
     "babel-loader": "^8.2.5",
+    "copy-webpack-plugin": "^11.0.0",
     "css-loader": "^6.7.1",
     "electron": "19.0.4",
+    "electron-devtools-installer": "^3.2.0",
     "eslint": "^8.18.0",
     "eslint-plugin-import": "^2.26.0",
     "eslint-plugin-storybook": "^0.5.12",
@@ -107,11 +110,21 @@
     "typescript": "~4.5.4"
   },
   "dependencies": {
+    "@heroicons/react": "^1.0.6",
     "@node-steam/vdf": "^2.2.0",
+    "@reduxjs/toolkit": "^1.8.2",
+    "classnames": "^2.3.1",
+    "electron-fetch": "^1.7.4",
+    "electron-is-dev": "^2.0.0",
     "electron-prebuilt-compile": "^8.2.0",
     "electron-squirrel-startup": "^1.0.0",
+    "flowbite": "^1.4.7",
+    "flowbite-react": "^0.0.27",
+    "nightmare": "^3.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-redux": "^8.0.2",
+    "react-select": "^5.3.2",
     "winreg": "^1.2.4"
   }
 }

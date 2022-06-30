@@ -8,3 +8,13 @@ body {
   max-width: 38rem;
   padding: 2rem;
 }
+
+.grida > * {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+[type="checkbox"]:focus,
+[type="radio"]:focus,
+[type="text"]:focus {
+  box-shadow: none;
+}
