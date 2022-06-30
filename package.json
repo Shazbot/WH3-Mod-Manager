@@ -1,8 +1,8 @@
 {
-  "name": "whmm",
-  "productName": "whmm",
+  "name": "wh3mm",
+  "productName": "wh3mm",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
@@ -22,11 +22,25 @@
   "config": {
     "forge": {
       "packagerConfig": {},
+      "publishers": [
+        {
+          "name": "@electron-forge/publisher-github",
+          "config": {
+            "repository": {
+              "owner": "Shazbot",
+              "name": "WH3-Mod-Manager"
+            }
+          }
+        }
+      ],
       "makers": [
+        {
+          "name": "@electron-forge/maker-zip"
+        },
         {
           "name": "@electron-forge/maker-squirrel",
           "config": {
-            "name": "whmm"
+            "name": "wh3mm"
           }
         },
         {
