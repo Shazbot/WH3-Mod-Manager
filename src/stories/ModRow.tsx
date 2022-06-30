@@ -5,6 +5,7 @@ import { toggleMod, enableAll, disableAll } from "../appSlice";
 import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
 import { ArrowNarrowDownIcon, ArrowNarrowUpIcon } from "@heroicons/react/solid";
+import { formatDistanceToNow } from "date-fns";
 
 enum SortingType {
   PackName,
@@ -13,6 +14,8 @@ enum SortingType {
   HumanNameReverse,
   IsEnabled,
   IsEnabledReverse,
+  LastUpdated,
+  LastUpdatedReverse,
 }
 
 export default function ModRow() {
@@ -54,6 +57,17 @@ export default function ModRow() {
         )
       );
       if (sortingType == SortingType.IsEnabledReverse) {
+        mods = mods.reverse();
+      }
+      break;
+    case SortingType.LastUpdated:
+    case SortingType.LastUpdatedReverse:
+      mods = useAppSelector((state) =>
+        [...state.app.currentPreset.mods].sort(
+          (firstMod, secondMod) => secondMod.lastChanged - firstMod.lastChanged
+        )
+      );
+      if (sortingType == SortingType.LastUpdatedReverse) {
         mods = mods.reverse();
       }
       break;
@@ -100,12 +114,17 @@ export default function ModRow() {
       return prevState === SortingType.HumanName ? SortingType.HumanNameReverse : SortingType.HumanName;
     });
   };
+  const onLastUpdatedSort = () => {
+    setSortingType((prevState) => {
+      return prevState === SortingType.LastUpdated ? SortingType.LastUpdatedReverse : SortingType.LastUpdated;
+    });
+  };
 
   return (
     <div className="dark:text-slate-300">
-      <div className="grid grid-cols-11 gap-2 ">
+      <div className="grid grid-mods gap-2 pt-1.5 grida hover:bg-slate-300">
         <div
-          className="flex place-items-center col-span-1"
+          className="flex place-items-center grid-area-enabled"
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
         >
@@ -119,7 +138,7 @@ export default function ModRow() {
             Enabled
           </Tooltip>
         </div>
-        <div className="flex col-span-5 place-items-center" onClick={() => onPackSort()}>
+        <div className="flex grid-area-packName place-items-center" onClick={() => onPackSort()}>
           {(sortingType === SortingType.PackName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -129,7 +148,7 @@ export default function ModRow() {
           Pack
         </div>
 
-        <div className="flex col-span-5 place-items-center" onClick={() => onNameSort()}>
+        <div className="flex grid-area-humanName place-items-center" onClick={() => onNameSort()}>
           {(sortingType === SortingType.HumanName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -138,8 +157,16 @@ export default function ModRow() {
             )) || <></>}
           Name
         </div>
-      </div>
-      <>
+        <div className="flex grid-area-lastUpdated place-items-center" onClick={() => onLastUpdatedSort()}>
+          {(sortingType === SortingType.LastUpdated && (
+            <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
+          )) ||
+            (sortingType === SortingType.LastUpdatedReverse && (
+              <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
+            )) || <></>}
+          Last Updated
+        </div>
+
         {mods
           .filter(
             (mod) =>
@@ -147,8 +174,8 @@ export default function ModRow() {
               (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
           )
           .map((mod, index) => (
-            <div className="grid grid-cols-11 gap-2 pt-1.5 grida hover:bg-slate-300" key={mod.name}>
-              <div className="col-span-1 ">
+            <>
+              <div className="grid-area-enabled">
                 <form className="grid place-items-center h-full">
                   <input
                     type="checkbox"
@@ -159,19 +186,22 @@ export default function ModRow() {
                   ></input>
                 </form>
               </div>
-              <div className="flex place-items-center col-span-5 w-min-[0px]">
+              <div className="flex place-items-center grid-area-packName w-min-[0px]">
                 <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId}>
                   <span className={classNames({ ["text-orange-500"]: mod.isInData })}>
                     {mod.name.replace(".pack", "")}
                   </span>
                 </label>
               </div>
-              <div className="flex place-items-center col-span-5">
+              <div className="flex place-items-center grid-area-humanName">
                 <label htmlFor={mod.workshopId}>{mod.humanName}</label>
               </div>
-            </div>
+              <div className="flex place-items-center grid-area-lastUpdated">
+                {formatDistanceToNow(mod.lastChanged) + " ago"}
+              </div>
+            </>
           ))}
-      </>
+      </div>
       <div className="fixed bottom-5 hidden">
         <Alert
           color="success"

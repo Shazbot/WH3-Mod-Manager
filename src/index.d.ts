@@ -34,6 +34,7 @@ declare global {
     isEnabled: boolean;
     modDirectory: string;
     isInData: boolean;
+    lastChanged: number;
   }
 
   interface ModData {

@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, autoUpdater, dialog } from "electron";
 import * as fs from "fs/promises";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
@@ -49,7 +49,11 @@ const getDataMods = async (gameDir: string): Promise<Mod[]> => {
           file.name.endsWith(".pack") &&
           !vanillaPacks.find((vanillaPack) => file.name.includes(vanillaPack))
       )
-      .map((file) => {
+      .map(async (file) => {
+        const lastChanged = await fs.stat(`${dataPath}\\${file.name}`).then((stats) => {
+          return stats.atimeMs;
+        });
+
         const mod: Mod = {
           humanName: "",
           name: file.name,
@@ -59,6 +63,7 @@ const getDataMods = async (gameDir: string): Promise<Mod[]> => {
           workshopId: file.name,
           isEnabled: false,
           isInData: true,
+          lastChanged,
         };
         dataPacks.push(mod);
       });
@@ -121,6 +126,11 @@ const getMods = (mainWindow: BrowserWindow) => {
                   const img = files.find((file) => file !== pack);
 
                   if (pack) {
+                    const lastChanged = await fs
+                      .stat(`${contentFolder}\\${file.name}\\${pack.name}`)
+                      .then((stats) => {
+                        return stats.atimeMs;
+                      });
                     // console.log(pack.name);
                     const packPath = `${contentFolder}\\${file.name}\\${pack.name}`;
                     const imgPath = `${contentFolder}\\${file.name}\\${img.name}`;
@@ -133,6 +143,7 @@ const getMods = (mainWindow: BrowserWindow) => {
                       workshopId: file.name,
                       isEnabled: false,
                       isInData: false,
+                      lastChanged,
                     };
                     return mod;
                   }
@@ -158,7 +169,7 @@ const createWindow = (): void => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     height: 800,
-    width: 1000,
+    width: 1024,
     autoHideMenuBar: true,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
@@ -172,6 +183,32 @@ const createWindow = (): void => {
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
+
+  const server = "https://hazel-neon-gamma.vercel.app";
+  const url = `${server}/update/${process.platform}/${app.getVersion()}`;
+
+  autoUpdater.setFeedURL({ url });
+  setInterval(() => {
+    autoUpdater.checkForUpdates();
+  }, 60000);
+
+  autoUpdater.on("update-downloaded", (event, releaseNotes, releaseName) => {
+    const dialogOpts = {
+      type: "info",
+      buttons: ["Restart", "Later"],
+      title: "Application Update",
+      message: process.platform === "win32" ? releaseNotes : releaseName,
+      detail: "A new version has been downloaded. Restart the application to apply the updates.",
+    };
+
+    dialog.showMessageBox(dialogOpts).then((returnValue) => {
+      if (returnValue.response === 0) autoUpdater.quitAndInstall();
+    });
+  });
+  autoUpdater.on("error", (message) => {
+    console.error("There was a problem updating the application");
+    console.error(message);
+  });
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
     console.log("GET ALL MOD DATA ENTERED");

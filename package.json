@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
@@ -128,6 +128,7 @@
     "@node-steam/vdf": "^2.2.0",
     "@reduxjs/toolkit": "^1.8.2",
     "classnames": "^2.3.1",
+    "date-fns": "^2.28.0",
     "electron-fetch": "^1.7.4",
     "electron-is-dev": "^2.0.0",
     "electron-prebuilt-compile": "^8.2.0",

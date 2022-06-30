@@ -18,3 +18,34 @@ body {
 [type="text"]:focus {
   box-shadow: none;
 }
+
+.grid-mods {
+  //grid-template-areas: "enabled packName packName packName packName packName humanName humanName humanName humanName humanName";
+  grid-template-columns: 50px 1fr 1fr;
+}
+
+@media (min-width: 1024px) {
+  .grid-mods {
+    grid-template-columns: 50px 1fr 1fr 0.5fr;
+    //grid-template-areas: "enabled packName packName packName packName packName humanName humanName humanName humanName humanName lastUpdated lastUpdated lastUpdated lastUpdated";
+  }
+}
+
+.grid-area-enabled {
+  //grid-area: enabled;
+}
+.grid-area-packName {
+  //grid-area: packName;
+}
+.grid-area-humanName {
+  //grid-area: humanName;
+}
+.grid-area-lastUpdated {
+  //grid-area: lastUpdated;
+}
+
+@media (max-width: 1024px) {
+  .grid-area-lastUpdated {
+    display: none;
+  }
+}
