@@ -339,7 +339,7 @@ app.on("activate", () => {
 
 ipcMain.on("writeUserScript", (event, mods: Mod[]) => {
   const appDataPath = app.getPath("userData");
-  const userScriptPath = `${appDataPath}\\my_mods.txt`;
+  const userScriptPath = `${appData.gamePath}\\my_mods.txt`;
 
   const enabledMods = mods
     .filter((mod) => mod.isEnabled)
@@ -353,9 +353,7 @@ ipcMain.on("writeUserScript", (event, mods: Mod[]) => {
 
   fs.writeFile(userScriptPath, text).then(() => {
     const batPath = `${appDataPath}\\game.bat`;
-    const batData = `start /d "${appData.gamePath
-      .split("\\\\")
-      .join("\\")}" Warhammer3.exe ${appDataPath}\\my_mods.txt;`;
+    const batData = `start /d "${appData.gamePath.split("\\\\").join("\\")}" Warhammer3.exe my_mods.txt;`;
     fs.writeFile(batPath, batData).then(() => {
       execFile(batPath);
     });

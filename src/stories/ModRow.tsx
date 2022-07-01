@@ -252,7 +252,7 @@ export default function ModRow() {
                   onDrop={(e) => onDrop(e)}
                 />
                 <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId}>
-                  <span className={classNames({ ["text-orange-500"]: mod.isInData })}>
+                  <span className={classNames("break-all", { ["text-orange-500"]: mod.isInData })}>
                     {mod.name.replace(".pack", "")}
                   </span>
                 </label>
