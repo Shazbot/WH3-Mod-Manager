@@ -14,6 +14,7 @@ window.api.fromAppConfig((event, appState: AppState) => {
 
 window.api.modsPopulated((event, mods: Mod[]) => {
   console.log("INVOKED: MODS POPULATED");
+  mods = mods.filter((mod) => mod !== undefined); // try to get rid of this check
   store.dispatch(setMods(mods));
   window.api.getAllModData(mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId));
 });

@@ -49,9 +49,14 @@ const getDataMods = async (gameDir: string): Promise<Mod[]> => {
           !vanillaPacks.find((vanillaPack) => file.name.includes(vanillaPack))
       )
       .map(async (file) => {
-        const lastChanged = await fs.stat(`${dataPath}\\${file.name}`).then((stats) => {
-          return stats.atimeMs;
-        });
+        let lastChanged = 0;
+        try {
+          lastChanged = await fs.stat(`${dataPath}\\${file.name}`).then((stats) => {
+            return stats.atimeMs;
+          });
+        } catch (err) {
+          console.log(`ERROR: ${err}`);
+        }
 
         const mod: Mod = {
           humanName: "",
@@ -68,6 +73,7 @@ const getDataMods = async (gameDir: string): Promise<Mod[]> => {
       });
 
     await Promise.allSettled(dataModsPromises);
+
     return dataPacks;
   });
 };
@@ -88,8 +94,8 @@ const readConfig = (mainWindow: BrowserWindow) => {
     .catch();
 };
 
-const mods: Mod[] = [];
 const getMods = (mainWindow: BrowserWindow) => {
+  const mods: Mod[] = [];
   regKey.values(async function (err, items: { name: string; value: string }[] /* array of RegistryItem */) {
     if (err) console.log("ERROR: " + err);
     else {
@@ -97,6 +103,7 @@ const getMods = (mainWindow: BrowserWindow) => {
       if (installPathObj) {
         const installPath = installPathObj.value;
         const libFoldersPath = `${installPath}\\steamapps\\libraryfolders.vdf`;
+        console.log(`Found libraryfolders.vdf at ${libFoldersPath}`);
 
         fs.readFile(libFoldersPath, "utf8").then((data) => {
           const object = VDF.parse(data).libraryfolders;
@@ -108,9 +115,16 @@ const getMods = (mainWindow: BrowserWindow) => {
           paths.find((path) => {
             const worshopFilePath = `${path}\\steamapps\\appmanifest_1142710.acf`;
             fs.readFile(worshopFilePath).then(async () => {
+              console.log(`Found appmanifest_1142710.acf at ${worshopFilePath}`);
+              mainWindow.webContents.send("handleLog", `Found appmanifest_1142710.acf at ${worshopFilePath}`);
               // console.log(worshopFilePath);
               const contentFolder = `${path}\\steamapps\\workshop\\content\\1142710`;
               appData.gamePath = `${path}\\steamapps\\common\\Total War WARHAMMER III`;
+
+              console.log(`Content folder is at ${contentFolder}`);
+              mainWindow.webContents.send("handleLog", `Content folder is at ${contentFolder}`);
+              console.log(`Game path is at ${appData.gamePath}`);
+              mainWindow.webContents.send("handleLog", `Game path is at ${appData.gamePath}`);
 
               const dataMods = await getDataMods(`${path}\\steamapps\\common\\Total War WARHAMMER III`);
               mods.push(...dataMods);
@@ -119,6 +133,9 @@ const getMods = (mainWindow: BrowserWindow) => {
               const newMods = files
                 .filter((file) => file.isDirectory())
                 .map(async (file) => {
+                  console.log(`Reading folder ${contentFolder}\\${file.name}`);
+                  mainWindow.webContents.send("handleLog", `Reading ${contentFolder}\\${file.name}`);
+
                   // console.log(`${contentFolder}\\${file.name}`);
                   const files = await fs.readdir(`${contentFolder}\\${file.name}`, { withFileTypes: true });
 
@@ -126,11 +143,24 @@ const getMods = (mainWindow: BrowserWindow) => {
                   const img = files.find((file) => file !== pack);
 
                   if (pack) {
-                    const lastChanged = await fs
-                      .stat(`${contentFolder}\\${file.name}\\${pack.name}`)
-                      .then((stats) => {
-                        return stats.atimeMs;
-                      });
+                    let lastChanged = 0;
+                    try {
+                      lastChanged = await fs
+                        .stat(`${contentFolder}\\${file.name}\\${pack.name}`)
+                        .then((stats) => {
+                          return stats.atimeMs;
+                        });
+                    } catch (err) {
+                      console.log(`ERROR: ${err}`);
+                      mainWindow.webContents.send("handleLog", `ERROR: ${err}`);
+                    }
+
+                    console.log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
+                    mainWindow.webContents.send(
+                      "handleLog",
+                      `Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`
+                    );
+
                     // console.log(pack.name);
                     const packPath = `${contentFolder}\\${file.name}\\${pack.name}`;
                     const imgPath = `${contentFolder}\\${file.name}\\${img.name}`;
@@ -150,8 +180,9 @@ const getMods = (mainWindow: BrowserWindow) => {
                 });
 
               const a = await Promise.allSettled(newMods);
-              a.forEach((result) => {
-                const mod = (result as PromiseFulfilledResult<Mod>).value;
+
+              (a.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).forEach((r) => {
+                const mod = r.value;
                 mods.push(mod);
               });
 
@@ -322,10 +353,9 @@ ipcMain.on("writeUserScript", (event, mods: Mod[]) => {
 
   fs.writeFile(userScriptPath, text).then(() => {
     const batPath = `${appDataPath}\\game.bat`;
-    const batData = `start /d "${appData.gamePath.replace(
-      "\\\\",
-      "\\"
-    )}" Warhammer3.exe ${appDataPath}\\my_mods.txt;`;
+    const batData = `start /d "${appData.gamePath
+      .split("\\\\")
+      .join("\\")}" Warhammer3.exe ${appDataPath}\\my_mods.txt;`;
     fs.writeFile(batPath, batData).then(() => {
       execFile(batPath);
     });

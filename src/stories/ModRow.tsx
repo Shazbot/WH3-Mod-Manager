@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { CSSProperties, useState } from "react";
 import "./../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { toggleMod, enableAll, disableAll } from "../appSlice";
@@ -6,6 +6,8 @@ import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
 import { ArrowNarrowDownIcon, ArrowNarrowUpIcon } from "@heroicons/react/solid";
 import { formatDistanceToNow } from "date-fns";
+import isDev from "electron-is-dev";
+import { NonceProvider } from "react-select";
 
 enum SortingType {
   PackName,
@@ -82,6 +84,14 @@ export default function ModRow() {
     );
   }
 
+  // duplicates happen when we hot-reload in dev
+  const modsWithoutDuplicates: Mod[] = [];
+  mods.forEach((mod) => {
+    if (!modsWithoutDuplicates.find((modNoDupes) => modNoDupes.name == mod.name))
+      modsWithoutDuplicates.push(mod);
+  });
+  mods = modsWithoutDuplicates;
+
   const onModToggled = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const target = event.target as HTMLInputElement;
     const value = target.type === "checkbox" ? target.checked : target.value;
@@ -118,6 +128,47 @@ export default function ModRow() {
     setSortingType((prevState) => {
       return prevState === SortingType.LastUpdated ? SortingType.LastUpdatedReverse : SortingType.LastUpdated;
     });
+  };
+
+  const handleStyle: CSSProperties = {
+    backgroundColor: "green",
+    width: "1rem",
+    height: "1rem",
+    //display: "inline-block",
+    marginRight: "0.75rem",
+    cursor: "move",
+    display: "none",
+  };
+
+  const onDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    console.log("DRAG START");
+    const t = e.target as HTMLDivElement;
+    t.classList.add("opacity-50");
+  };
+
+  const onDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    console.log("DRAG START");
+    const t = e.target as HTMLDivElement;
+    t.classList.add("opacity-100");
+  };
+
+  const onDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    console.log("onDragEnter");
+    const t = e.target as HTMLDivElement;
+    t.classList.add("opacity-50");
+  };
+  const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    console.log("onDragLeave");
+    const t = e.target as HTMLDivElement;
+    t.classList.add("opacity-100");
+  };
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    console.log("onDragOver");
+    e.preventDefault();
+    return false;
+  };
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    console.log("onDrop");
   };
 
   return (
@@ -177,7 +228,7 @@ export default function ModRow() {
               (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
           )
           .map((mod, index) => (
-            <div className="row hover:bg-slate-300">
+            <div className="row hover:bg-slate-300" key={mod.name}>
               <div className="grid-area-enabled">
                 <form className="grid place-items-center h-full">
                   <input
@@ -190,6 +241,16 @@ export default function ModRow() {
                 </form>
               </div>
               <div className="flex place-items-center grid-area-packName w-min-[0px]">
+                <div
+                  style={handleStyle}
+                  draggable="true"
+                  onDragEnd={(e) => onDragEnd(e)}
+                  onDragStart={(e) => onDragStart(e)}
+                  onDragEnter={(e) => onDragEnter(e)}
+                  onDragLeave={(e) => onDragLeave(e)}
+                  onDragOver={(e) => onDragOver(e)}
+                  onDrop={(e) => onDrop(e)}
+                />
                 <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId}>
                   <span className={classNames({ ["text-orange-500"]: mod.isInData })}>
                     {mod.name.replace(".pack", "")}

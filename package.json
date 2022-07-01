@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
@@ -36,12 +36,6 @@
       "makers": [
         {
           "name": "@electron-forge/maker-zip"
-        },
-        {
-          "name": "@electron-forge/maker-squirrel",
-          "config": {
-            "name": "wh3mm"
-          }
         },
         {
           "name": "@electron-forge/maker-zip",

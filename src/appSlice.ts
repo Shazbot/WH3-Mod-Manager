@@ -30,18 +30,19 @@ const appSlice = createSlice({
     },
     setModData: (state, action: PayloadAction<ModData>) => {
       const data = action.payload;
-      console.log(data);
       state.currentPreset.mods.find((mod) => mod.workshopId == data.workshopId).humanName = data.humanName;
     },
     setFromConfig: (state, action: PayloadAction<AppState>) => {
       const appState = action.payload;
-      appState.currentPreset.mods.map((mod) => {
-        const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
-        if (existingMod) {
-          existingMod.isEnabled = mod.isEnabled;
-          if (mod.humanName !== "") existingMod.humanName = mod.humanName;
-        }
-      });
+      appState.currentPreset.mods
+        .filter((mod) => mod !== undefined)
+        .map((mod) => {
+          const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
+          if (existingMod) {
+            existingMod.isEnabled = mod.isEnabled;
+            if (mod.humanName !== "") existingMod.humanName = mod.humanName;
+          }
+        });
     },
     addPreset: (state, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;
