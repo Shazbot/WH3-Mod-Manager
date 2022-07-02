@@ -43,6 +43,11 @@ const appSlice = createSlice({
             if (mod.humanName !== "") existingMod.humanName = mod.humanName;
           }
         });
+      appState.presets.forEach((preset) => {
+        if (!state.presets.find((existingPreset) => existingPreset.name === preset.name)) {
+          state.presets.push(preset);
+        }
+      });
     },
     addPreset: (state, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;
