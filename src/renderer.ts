@@ -20,7 +20,7 @@ window.api.modsPopulated((event, mods: Mod[]) => {
 });
 
 window.api.setModData((event, modData: ModData) => {
-  console.log("INVOKED: MOD DATA RECIEVED");
+  // console.log("INVOKED: MOD DATA RECIEVED");
   store.dispatch(setModData(modData));
 });
 

@@ -20,18 +20,30 @@ body {
 
 .grid-mods {
   //grid-template-areas: "enabled packName packName packName packName packName humanName humanName humanName humanName humanName";
-  grid-template-columns: 80px 1fr 1fr;
+  grid-template-columns: 57px 80px 1fr 1fr;
 }
 
 @media (min-width: 1024px) {
   .grid-mods {
-    grid-template-columns: 80px 1fr 1fr 0.5fr;
+    grid-template-columns: 57px 80px 1fr 1fr 0.5fr;
     //grid-template-areas: "enabled packName packName packName packName packName humanName humanName humanName humanName humanName lastUpdated lastUpdated lastUpdated lastUpdated";
   }
 }
 
-.row {
-  display: contents;
+.drop-ghost {
+  border: 3px dotted #666;
+  width: 100%;
+  height: 2rem;
+  grid-column: span 4 / span 4;
+}
+
+@media (min-width: 1024px) {
+  .drop-ghost {
+    border: 3px dotted #666;
+    width: 100%;
+    height: 2rem;
+    grid-column: span 5 / span 5;
+  }
 }
 
 .row {
@@ -42,9 +54,14 @@ body {
   padding: 0.25rem;
 }
 
-.row:hover div {
+.row-bg-color-manually > * {
   background-color: rgb(203 213 225);
 }
+
+body:not(.disable-row-hover) .row:hover div {
+  background-color: rgb(203 213 225);
+}
+
 .grid-area-enabled {
   //grid-area: enabled;
 }

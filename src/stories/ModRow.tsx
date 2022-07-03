@@ -1,13 +1,14 @@
 import React, { CSSProperties, useState } from "react";
 import "./../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { toggleMod, enableAll, disableAll } from "../appSlice";
+import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "../appSlice";
 import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
 import { ArrowNarrowDownIcon, ArrowNarrowUpIcon } from "@heroicons/react/solid";
 import { formatDistanceToNow } from "date-fns";
-import isDev from "electron-is-dev";
-import { NonceProvider } from "react-select";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faGripLines } from "@fortawesome/free-solid-svg-icons";
+import sortNamesWithLoadOrder from "../sortNamesWithLoadOrder";
 
 enum SortingType {
   PackName,
@@ -18,17 +19,32 @@ enum SortingType {
   IsEnabledReverse,
   LastUpdated,
   LastUpdatedReverse,
+  Ordered,
+  OrderedReverse,
 }
 
 export default function ModRow() {
   const dispatch = useAppDispatch();
   const filter = useAppSelector((state) => state.app.filter);
 
-  const [sortingType, setSortingType] = useState<SortingType>(SortingType.PackName);
+  const [sortingType, setSortingType] = useState<SortingType>(SortingType.Ordered);
 
   let mods: Mod[] = [];
 
+  const orderedMods = sortNamesWithLoadOrder(useAppSelector((state) => state.app.currentPreset.mods));
+
   switch (sortingType) {
+    case SortingType.Ordered:
+    case SortingType.OrderedReverse:
+      mods = useAppSelector((state) =>
+        [...state.app.currentPreset.mods].sort(
+          (firstMod, secondMod) => orderedMods.indexOf(firstMod) - orderedMods.indexOf(secondMod)
+        )
+      );
+      if (sortingType == SortingType.OrderedReverse) {
+        mods = mods.reverse();
+      }
+      break;
     case SortingType.PackName:
     case SortingType.PackNameReverse:
       mods = useAppSelector((state) =>
@@ -65,9 +81,12 @@ export default function ModRow() {
     case SortingType.LastUpdated:
     case SortingType.LastUpdatedReverse:
       mods = useAppSelector((state) =>
-        [...state.app.currentPreset.mods].sort(
-          (firstMod, secondMod) => secondMod.lastChanged - firstMod.lastChanged
-        )
+        [...state.app.currentPreset.mods].sort((firstMod, secondMod) => {
+          if (firstMod.lastChanged === undefined && secondMod.lastChanged === undefined) return 0;
+          if (firstMod.lastChanged === undefined) return 1;
+          if (secondMod.lastChanged === undefined) return -1;
+          return secondMod.lastChanged - firstMod.lastChanged;
+        })
       );
       if (sortingType == SortingType.LastUpdatedReverse) {
         mods = mods.reverse();
@@ -109,6 +128,15 @@ export default function ModRow() {
     }
   };
 
+  const onOrderRightClick = () => {
+    dispatch(resetModLoadOrder(mods.filter((mod) => mod.loadOrder !== undefined)));
+  };
+
+  const onOrderedSort = () => {
+    setSortingType((prevState) => {
+      return prevState === SortingType.Ordered ? SortingType.OrderedReverse : SortingType.Ordered;
+    });
+  };
   const onEnabledSort = () => {
     setSortingType((prevState) => {
       return prevState === SortingType.IsEnabled ? SortingType.IsEnabledReverse : SortingType.IsEnabled;
@@ -134,48 +162,170 @@ export default function ModRow() {
     backgroundColor: "green",
     width: "1rem",
     height: "1rem",
-    //display: "inline-block",
+    display: "inline-block",
     marginRight: "0.75rem",
     cursor: "move",
-    display: "none",
+    //display: "none",
+  };
+
+  const afterDrop = (originalId: string, droppedOnId: string) => {
+    // console.log(`dragged id with ${originalId}`);
+
+    // console.log(`DROPPED ONTO ${droppedOnId}`);
+    if (originalId === droppedOnId) return;
+
+    const droppedOnElement = document.getElementById(droppedOnId);
+    const index = [...droppedOnElement.parentElement.children].indexOf(droppedOnElement) - 6;
+    // console.log(`index is ${index}`);
+
+    const originalElement = document.getElementById(originalId);
+    const originalElementindex = [...originalElement.parentElement.children].indexOf(originalElement) - 6;
+
+    const loadOrder = index > originalElementindex ? index : index + 1;
+    const originalOrder = originalElementindex + (index > originalElementindex ? 2 : 1);
+
+    dispatch(setModLoadOrder({ modName: originalId, loadOrder, originalOrder }));
   };
 
   const onDragStart = (e: React.DragEvent<HTMLDivElement>) => {
-    console.log("DRAG START");
+    // console.log("DRAG START");
     const t = e.target as HTMLDivElement;
     t.classList.add("opacity-50");
+
+    e.dataTransfer.effectAllowed = "move";
+    // console.log(`setting data ${t.id}`);
+    e.dataTransfer.setData("text/plain", t.id.replace("drag-icon-", ""));
+
+    const body = document.getElementById("body");
+    body.classList.add("disable-row-hover");
+
+    console.log(t.id.replace("drag-icon-", ""));
+    const row = document.getElementById(t.id.replace("drag-icon-", ""));
+    row?.classList.add("row-bg-color-manually");
+    // e.stopPropagation();
   };
 
   const onDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
-    console.log("DRAG START");
+    // console.log("onDragEnd");
     const t = e.target as HTMLDivElement;
     t.classList.add("opacity-100");
+
+    const ghost = document.getElementById("drop-ghost");
+    if (ghost) {
+      ghost.parentElement.removeChild(ghost);
+    }
+
+    [...document.getElementsByClassName("row-bg-color-manually")].forEach((element) => {
+      element.classList.remove("row-bg-color-manually");
+    });
+
+    const body = document.getElementById("body");
+    body.classList.remove("disable-row-hover");
+    // e.stopPropagation();
   };
 
   const onDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    console.log("onDragEnter");
-    const t = e.target as HTMLDivElement;
+    // console.log("onDragEnter");
+    const t = e.currentTarget as HTMLDivElement;
+    // console.log(t.id);
     t.classList.add("opacity-50");
+
+    const ghost = document.getElementById("drop-ghost");
+    if (ghost) {
+      t.parentElement.removeChild(ghost);
+    }
+
+    const newE = document.createElement("div");
+    newE.id = "drop-ghost";
+    newE.dataset.rowId = t.id;
+    newE.classList.add("drop-ghost");
+
+    t.parentElement.insertBefore(newE, t);
+    newE.addEventListener("dragover", (e) => {
+      e.preventDefault();
+    });
+    newE.addEventListener("drop", (e) => {
+      e.preventDefault();
+      // console.log(`DROPPEND ON GHOST`);
+      const rowId = (e.currentTarget as HTMLElement).dataset.rowId;
+      // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
+      // console.log(`rowId is ${rowId}`);
+      afterDrop(e.dataTransfer.getData("text/plain"), rowId);
+    });
+    e.stopPropagation();
   };
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    console.log("onDragLeave");
+    // console.log("onDragLeave");
     const t = e.target as HTMLDivElement;
     t.classList.add("opacity-100");
+    // e.stopPropagation();
   };
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    console.log("onDragOver");
+    // console.log("onDragOver");
+    // e.stopPropagation();
     e.preventDefault();
-    return false;
+    // return false;
   };
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    console.log("onDrop");
+    // console.log("onDrop");
+    // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
+
+    const t = e.currentTarget as HTMLDivElement;
+    // console.log(`DROPPED ONTO ${t.id}`);
+
+    afterDrop(e.dataTransfer.getData("text/plain"), t.id);
+    // e.stopPropagation();
+  };
+
+  const onRowHoverStart = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
+    if (sortingType !== SortingType.Ordered) return;
+
+    const element = e.currentTarget as HTMLDivElement;
+    // console.log(`finding drag-icon-${element.id}`);
+    const dragIcon = document.getElementById(`drag-icon-${element.id}`);
+    // Array.from(element.parentElement.children).forEach((child) => {
+    //   if (child.id.startsWith("drag-icon")) {
+    dragIcon.classList.remove("hidden");
+
+    // dragIcon.classList.add("inline");
+    // }
+    // });
+  };
+
+  const onRowHoverEnd = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
+    const element = e.currentTarget as HTMLDivElement;
+    // console.log(`finding drag-icon-${element.id}`);
+    const dragIcon = document.getElementById(`drag-icon-${element.id}`);
+    // Array.from(element.parentElement.children).forEach((child) => {
+    //   if (child.id.startsWith("drag-icon")) {
+    // dragIcon.classList.remove("inline");
+    dragIcon.classList.add("hidden");
+  };
+
+  const onRemoveModOrder = (mod: Mod) => {
+    dispatch(resetModLoadOrder([mod]));
   };
 
   return (
     <div className="dark:text-slate-300">
       <div className="grid grid-mods pt-1.5 grida parent">
         <div
-          className="flex place-items-center grid-area-enabled w-full justify-center"
+          className="flex place-items-center grid-area-enabled w-full justify-center z-50"
+          onClick={() => onOrderedSort()}
+          onContextMenu={onOrderRightClick}
+        >
+          {(sortingType === SortingType.Ordered && (
+            <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
+          )) ||
+            (sortingType === SortingType.OrderedReverse && (
+              <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
+            )) || <></>}
+          <Tooltip content="Mods with lower order have priority, don't change unless you really know what you're doing, right click on mod to reset or here to reset all">
+            <span className="text-center w-full">Order</span>
+          </Tooltip>
+        </div>
+        <div
+          className="flex place-items-center grid-area-enabled w-full justify-center z-50"
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
         >
@@ -228,8 +378,34 @@ export default function ModRow() {
               (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
           )
           .map((mod, index) => (
-            <div className="row hover:bg-slate-300" key={mod.name}>
-              <div className="grid-area-enabled">
+            <div
+              className="row relative"
+              key={mod.name}
+              onMouseEnter={(e) => onRowHoverStart(e)}
+              onMouseLeave={(e) => onRowHoverEnd(e)}
+              onDrop={(e) => onDrop(e)}
+              onDragOver={(e) => onDragOver(e)}
+              onDragEnter={(e) => onDragEnter(e)}
+              onDragLeave={(e) => onDragLeave(e)}
+              id={mod.name}
+            >
+              <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
+                <span className={mod.loadOrder === undefined ? "" : "text-red-600 font-bold"}>
+                  {orderedMods.indexOf(mod) + 1}
+                </span>
+              </div>
+              <div
+                className="grid-area-enabled relative grid"
+                onDragEnd={(e) => onDragEnd(e)}
+                onDragStart={(e) => onDragStart(e)}
+              >
+                <div
+                  draggable="true"
+                  className="hidden absolute left-0 self-center"
+                  id={`drag-icon-${mod.name}`}
+                >
+                  <FontAwesomeIcon icon={faGripLines} />
+                </div>
                 <form className="grid place-items-center h-full">
                   <input
                     type="checkbox"
@@ -241,16 +417,8 @@ export default function ModRow() {
                 </form>
               </div>
               <div className="flex place-items-center grid-area-packName w-min-[0px]">
-                <div
-                  style={handleStyle}
-                  draggable="true"
-                  onDragEnd={(e) => onDragEnd(e)}
-                  onDragStart={(e) => onDragStart(e)}
-                  onDragEnter={(e) => onDragEnter(e)}
-                  onDragLeave={(e) => onDragLeave(e)}
-                  onDragOver={(e) => onDragOver(e)}
-                  onDrop={(e) => onDrop(e)}
-                />
+                {/* <div style={handleStyle} draggable="true" id={mod.name + "-square"} /> */}
+
                 <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId}>
                   <span className={classNames("break-all", { ["text-orange-500"]: mod.isInData })}>
                     {mod.name.replace(".pack", "")}
@@ -261,7 +429,9 @@ export default function ModRow() {
                 <label htmlFor={mod.workshopId}>{mod.humanName}</label>
               </div>
               <div className="flex place-items-center grid-area-lastUpdated">
-                <label htmlFor={mod.workshopId}>{formatDistanceToNow(mod.lastChanged) + " ago"}</label>
+                <label htmlFor={mod.workshopId}>
+                  {formatDistanceToNow(mod.lastChanged).replace("about ", "~") + " ago"}
+                </label>
               </div>
             </div>
           ))}

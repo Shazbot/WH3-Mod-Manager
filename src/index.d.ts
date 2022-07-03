@@ -34,13 +34,15 @@ declare global {
     isEnabled: boolean;
     modDirectory: string;
     isInData: boolean;
-    lastChanged: number;
+    lastChanged?: number;
+    loadOrder: number | undefined;
   }
 
   interface ModData {
     humanName: string;
     workshopId: string;
     reqModIds: string[];
+    lastChanged: number;
   }
 
   interface Preset {
@@ -58,6 +60,12 @@ declare global {
     presets: Preset[];
     lastSelectedPreset: Preset | null;
     filter: string;
+  }
+
+  interface ModLoadOrderPayload {
+    modName: string;
+    loadOrder: number;
+    originalOrder: number;
   }
 }
 
