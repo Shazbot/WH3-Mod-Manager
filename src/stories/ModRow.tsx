@@ -320,7 +320,10 @@ export default function ModRow() {
             (sortingType === SortingType.OrderedReverse && (
               <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
             )) || <></>}
-          <Tooltip content="Mods with lower order have priority, don't change unless you really know what you're doing, right click on mod to reset or here to reset all">
+          <Tooltip
+            placement="right"
+            content="Mods with lower order have priority, don't change unless you really know what you're doing, right click on mod to reset or here to reset all"
+          >
             <span className="text-center w-full">Order</span>
           </Tooltip>
         </div>
@@ -329,7 +332,7 @@ export default function ModRow() {
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
         >
-          <Tooltip content="Right click to enable or disable all mods">
+          <Tooltip placement="right" content="Right click to enable or disable all mods">
             {(sortingType === SortingType.IsEnabled && (
               <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
             )) ||

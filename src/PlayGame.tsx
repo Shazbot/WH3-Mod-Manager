@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { ActionMeta } from "react-select";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from "./appSlice";
+import { Tooltip } from "flowbite-react";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
@@ -61,7 +62,9 @@ export default function PlayGame() {
 
   return (
     <div>
-      Select or create preset:
+      <Tooltip placement="left" content="Create new preset by typing its name">
+        Select or create preset:
+      </Tooltip>
       <Creatable
         value={defaultOption}
         options={options}
