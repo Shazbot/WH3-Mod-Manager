@@ -13,6 +13,7 @@ const api: api = {
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
   getModData: (id) => ipcRenderer.invoke("getModData", id),
+  getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
   fromAppConfig: (callback) => ipcRenderer.on("fromAppConfig", callback),
   modsPopulated: (callback) => ipcRenderer.on("modsPopulated", callback),
   setModData: (callback) => ipcRenderer.on("setModData", callback),

@@ -16,6 +16,7 @@ declare global {
     readAppConfig: () => void;
     saveConfig: (appData: AppState) => void;
     getModData: (id: string) => Promise<{ id: string; name: string }>;
+    getUpdateData: () => Promise<ModUpdateExists>;
     modsPopulated: (
       callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void
     ) => Electron.IpcRenderer;
@@ -66,6 +67,11 @@ declare global {
     modName: string;
     loadOrder: number;
     originalOrder: number;
+  }
+
+  interface ModUpdateExists {
+    updateExists: boolean;
+    downloadURL?: string;
   }
 }
 

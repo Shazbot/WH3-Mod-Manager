@@ -1,15 +1,18 @@
 import Creatable from "react-select/creatable";
-import Select from "react-select";
-
-import React, { useState } from "react";
-import { ActionMeta } from "react-select";
+import Select, { ActionMeta } from "react-select";
+import React, { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from "./appSlice";
 import { Tooltip } from "flowbite-react";
+import { UpdateNotification } from "./UpdateNotification";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
   const filter = useAppSelector((state) => state.app.filter);
+
+  const [isUpdateCheckDone, setIsUpdateCheckDone] = useState<boolean>(false);
+  const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
+  const [downloadURL, setDownloadURL] = useState<string>("");
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
@@ -60,6 +63,29 @@ export default function PlayGame() {
     dispatch(setFilter(e.target.value));
   };
 
+  const getUpdateData = async () => {
+    try {
+      const appUpdateData: ModUpdateExists = await window.api.getUpdateData();
+      if (appUpdateData.updateExists) {
+        console.log("UPDATE EXITS");
+        setIsUpdateAvailable(true);
+        setDownloadURL(appUpdateData.downloadURL);
+
+        setTimeout(() => {
+          setIsUpdateAvailable(false);
+        }, 15000);
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  };
+  useEffect(() => {
+    if (!isUpdateCheckDone) {
+      setIsUpdateCheckDone(true);
+      getUpdateData();
+    }
+  });
+
   return (
     <div>
       <Tooltip placement="left" content="Create new preset by typing its name">
@@ -85,6 +111,9 @@ export default function PlayGame() {
       >
         Play
       </button>
+      <div className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}>
+        <UpdateNotification downloadURL={downloadURL}></UpdateNotification>
+      </div>
       <div className="mt-5">
         Filter:
         <input

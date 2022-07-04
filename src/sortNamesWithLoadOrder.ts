@@ -6,7 +6,7 @@ export default function (mods: Mod[]) {
     .sort((modF, modS) => modF.loadOrder - modS.loadOrder)
     .forEach((mod) => {
       if (mod.loadOrder) {
-        console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
+        // console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
         newMods.splice(newMods.indexOf(mod), 1);
         newMods.splice(mod.loadOrder - 1, 0, mod);
       }

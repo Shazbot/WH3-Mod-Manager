@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { app, autoUpdater, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
 import isDev from "electron-is-dev";
@@ -58,6 +58,11 @@ const createWindow = (): void => {
 
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
 
   // Open the DevTools.
   if (isDev) {
@@ -128,6 +133,32 @@ const createWindow = (): void => {
         return { id: workshopId, name: match[1] };
       })
       .catch();
+  });
+
+  ipcMain.removeHandler("getUpdateData");
+  ipcMain.handle("getUpdateData", async (event) => {
+    let modUpdatedExists = { updateExists: false } as ModUpdateExists;
+
+    // return { updateExists: true, downloadURL: "http://www.google.com" } as ModUpdateExists;
+    const isAvailable = await updateAvailable("Shazbot/WH3-Mod-Manager", version);
+    if (!isAvailable) return modUpdatedExists;
+
+    await fetch(`https://api.github.com/repos/Shazbot/WH3-Mod-Manager/releases/latest`)
+      .then((res) => res.json())
+      .then((body) => {
+        body.assets.forEach((asset: { content_type: string; browser_download_url: string }) => {
+          mainWindow.webContents.send("handleLog", asset.content_type == "application/x-zip-compressed");
+          if (asset.content_type === "application/x-zip-compressed") {
+            modUpdatedExists = {
+              updateExists: true,
+              downloadURL: asset.browser_download_url,
+            } as ModUpdateExists;
+          }
+        });
+      })
+      .catch();
+
+    return modUpdatedExists;
   });
 
   ipcMain.on("sendApiExists", async () => {

@@ -1,4 +1,4 @@
-import React, { CSSProperties, useState } from "react";
+import React, { useState } from "react";
 import "./../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "../appSlice";
@@ -7,7 +7,7 @@ import { Alert, Tooltip } from "flowbite-react";
 import { ArrowNarrowDownIcon, ArrowNarrowUpIcon } from "@heroicons/react/solid";
 import { formatDistanceToNow } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGripLines } from "@fortawesome/free-solid-svg-icons";
+import { faGripLines, faGrip } from "@fortawesome/free-solid-svg-icons";
 import sortNamesWithLoadOrder from "../sortNamesWithLoadOrder";
 
 enum SortingType {
@@ -158,31 +158,25 @@ export default function ModRow() {
     });
   };
 
-  const handleStyle: CSSProperties = {
-    backgroundColor: "green",
-    width: "1rem",
-    height: "1rem",
-    display: "inline-block",
-    marginRight: "0.75rem",
-    cursor: "move",
-    //display: "none",
-  };
-
   const afterDrop = (originalId: string, droppedOnId: string) => {
     // console.log(`dragged id with ${originalId}`);
-
     // console.log(`DROPPED ONTO ${droppedOnId}`);
+
     if (originalId === droppedOnId) return;
 
     const droppedOnElement = document.getElementById(droppedOnId);
     const index = [...droppedOnElement.parentElement.children].indexOf(droppedOnElement) - 6;
-    // console.log(`index is ${index}`);
 
     const originalElement = document.getElementById(originalId);
     const originalElementindex = [...originalElement.parentElement.children].indexOf(originalElement) - 6;
 
     const loadOrder = index > originalElementindex ? index : index + 1;
     const originalOrder = originalElementindex + (index > originalElementindex ? 2 : 1);
+
+    if (originalElementindex < index && index - originalElementindex < 3) return;
+
+    // console.log(originalElementindex);
+    // console.log(`index is ${index}`);
 
     dispatch(setModLoadOrder({ modName: originalId, loadOrder, originalOrder }));
   };
@@ -407,7 +401,7 @@ export default function ModRow() {
                   className="hidden absolute left-0 self-center"
                   id={`drag-icon-${mod.name}`}
                 >
-                  <FontAwesomeIcon icon={faGripLines} />
+                  <FontAwesomeIcon icon={faGrip} />
                 </div>
                 <form className="grid place-items-center h-full">
                   <input
@@ -420,8 +414,6 @@ export default function ModRow() {
                 </form>
               </div>
               <div className="flex place-items-center grid-area-packName w-min-[0px]">
-                {/* <div style={handleStyle} draggable="true" id={mod.name + "-square"} /> */}
-
                 <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId}>
                   <span className={classNames("break-all", { ["text-orange-500"]: mod.isInData })}>
                     {mod.name.replace(".pack", "")}
@@ -439,6 +431,7 @@ export default function ModRow() {
             </div>
           ))}
       </div>
+
       <div className="fixed bottom-5 hidden">
         <Alert
           color="success"
