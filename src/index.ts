@@ -200,13 +200,13 @@ ipcMain.on("writeUserScript", (event, mods: Mod[]) => {
   const appDataPath = app.getPath("userData");
   const userScriptPath = `${appData.gamePath}\\my_mods.txt`;
 
-  const enabledMods = mods.filter((mod) => mod.isEnabled);
-  const sortedMods = sortNamesWithLoadOrder(enabledMods);
+  const sortedMods = sortNamesWithLoadOrder(mods);
+  const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
 
-  const text = sortedMods
+  const text = enabledMods
     .filter((mod) => !mod.isInData)
     .map((mod) => `add_working_directory "${mod.modDirectory}";`)
-    .concat(sortedMods.map((mod) => `mod "${mod.name}";`))
+    .concat(enabledMods.map((mod) => `mod "${mod.name}";`))
     .join("\n");
 
   fs.writeFile(userScriptPath, text).then(() => {
