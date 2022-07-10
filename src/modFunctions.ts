@@ -78,7 +78,6 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
 
 const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise<Mod[]> => {
   const vanillaPacks: string[] = [];
-  const dataPacks: Mod[] = [];
 
   return fs.readFile(`${gameDir}\\data\\manifest.txt`, "utf8").then(async (data) => {
     const re = /([^\s]+)/;
@@ -97,7 +96,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
         (file) =>
           file.isFile() &&
           file.name.endsWith(".pack") &&
-          !vanillaPacks.find((vanillaPack) => file.name.includes(vanillaPack))
+          !vanillaPacks.find((vanillaPack) => file.name === vanillaPack)
       )
       .map(async (file) => {
         let lastChanged = undefined;
@@ -121,12 +120,15 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
           loadOrder: undefined,
           lastChanged,
         };
-        dataPacks.push(mod);
+        return mod;
       });
 
-    await Promise.allSettled(dataModsPromises);
+    const fulfilled = await Promise.allSettled(dataModsPromises);
 
-    return dataPacks;
+    return (fulfilled.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
+      const mod = r.value;
+      return mod;
+    });
   });
 };
 
@@ -134,12 +136,11 @@ export function getMods(cb: (mods: Mod[]) => void, log: (msg: string) => void) {
   const mods: Mod[] = [];
 
   const regKey = new Registry({
-    // new operator is optional
-    hive: Registry.HKLM, // open registry hive HKEY_CURRENT_USER
-    key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam", // key containing autostart programs
+    hive: Registry.HKLM,
+    key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
   });
 
-  regKey.values(async function (err, items: { name: string; value: string }[] /* array of RegistryItem */) {
+  regKey.values(async function (err, items: { name: string; value: string }[]) {
     if (err) log("ERROR: " + err);
     else {
       const installPathObj = items.find((x) => x.name === "InstallPath");

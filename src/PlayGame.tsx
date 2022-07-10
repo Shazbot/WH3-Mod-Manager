@@ -3,7 +3,7 @@ import Select, { ActionMeta } from "react-select";
 import React, { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from "./appSlice";
-import { Tooltip } from "flowbite-react";
+import { Button, Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
 
 export default function PlayGame() {
@@ -86,6 +86,13 @@ export default function PlayGame() {
     }
   });
 
+  const copyToData = () => {
+    window.api.copyToData();
+  };
+  const cleanData = () => {
+    window.api.cleanData();
+  };
+
   return (
     <div>
       <Tooltip placement="left" content="Create new preset by typing its name">
@@ -105,12 +112,14 @@ export default function PlayGame() {
         Delete preset:
         <Select options={options} onChange={onDeleteChange} value={null}></Select>
       </div>
+
       <button
         className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded fixed h-14 w-36 m-auto right-[5%] bottom-[5%]"
         onClick={() => playGameClicked()}
       >
         Play
       </button>
+
       <div className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}>
         <UpdateNotification downloadURL={downloadURL}></UpdateNotification>
       </div>
@@ -122,6 +131,23 @@ export default function PlayGame() {
           value={filter}
           className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
         ></input>
+      </div>
+
+      <div className="flex mt-8">
+        <button
+          className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+          onClick={() => copyToData()}
+        >
+          Copy to data
+        </button>
+      </div>
+      <div className="flex mt-2">
+        <button
+          className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+          onClick={() => cleanData()}
+        >
+          Clean data
+        </button>
       </div>
     </div>
   );

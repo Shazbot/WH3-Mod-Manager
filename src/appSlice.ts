@@ -25,7 +25,6 @@ const appSlice = createSlice({
     },
     setMods: (state, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
-      if (state.currentPreset.mods.length > 0) return;
       state.currentPreset.mods = mods;
 
       state.currentPreset.mods = state.currentPreset.mods.filter(

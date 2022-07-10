@@ -14,6 +14,8 @@ declare global {
     ) => Electron.IpcRenderer;
     sendApiExists: () => void;
     readAppConfig: () => void;
+    copyToData: () => void;
+    cleanData: () => void;
     saveConfig: (appData: AppState) => void;
     getModData: (id: string) => Promise<{ id: string; name: string }>;
     getUpdateData: () => Promise<ModUpdateExists>;

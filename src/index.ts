@@ -117,6 +117,55 @@ const createWindow = (): void => {
     getAllMods(mainWindow);
   });
 
+  ipcMain.on("copyToData", () => {
+    getMods(
+      async (mods) => {
+        const withoutDataMods = mods.filter((mod) => !mod.isInData);
+        const copyPromises = withoutDataMods.map((mod) => {
+          mainWindow.webContents.send(
+            "handleLog",
+            `COPYING ${mod.path} to ${appData.gamePath.split("\\\\").join("\\")}\\data\\${mod.name}`
+          );
+
+          return fs.copyFile(mod.path, `${appData.gamePath.split("\\\\").join("\\")}\\data\\${mod.name}`);
+        });
+
+        await Promise.allSettled(copyPromises);
+        getAllMods(mainWindow);
+      },
+      (msg) => {
+        mainWindow.webContents.send("handleLog", msg);
+        console.log(msg);
+      }
+    );
+  });
+
+  ipcMain.on("cleanData", () => {
+    getMods(
+      async (mods) => {
+        mods.forEach((mod) => {
+          if (mod.isInData) mainWindow.webContents.send("handleLog", `is in data ${mod.name}`);
+        });
+        const modsInBothPlaces = mods.filter(
+          (mod) =>
+            mod.isInData && mods.find((modSecond) => !modSecond.isInData && modSecond.name === mod.name)
+        );
+        const deletePromises = modsInBothPlaces.map((mod) => {
+          mainWindow.webContents.send("handleLog", `DELETING ${mod.path}`);
+
+          return fs.unlink(mod.path);
+        });
+
+        await Promise.allSettled(deletePromises);
+        getAllMods(mainWindow);
+      },
+      (msg) => {
+        mainWindow.webContents.send("handleLog", msg);
+        console.log(msg);
+      }
+    );
+  });
+
   ipcMain.on("saveConfig", (event, data: AppState) => {
     saveAppConfig(data);
   });
