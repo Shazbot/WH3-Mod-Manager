@@ -54,7 +54,7 @@ const createWindow = (): void => {
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
     },
-    title: "Warhammer 3 Mod Manager",
+    title: "WH 3 Mod Manager",
   });
 
   // and load the index.html of the app.
@@ -179,8 +179,8 @@ const createWindow = (): void => {
       enabledMods.find((mod) => mod.name === iterMod.name)
     );
     mainWindow.setTitle(
-      `Warhammer 3 Mod Manager: ${enabledMods.length} mods enabled` +
-        (hiddenAndEnabledMods.length > 0 ? `(${hiddenAndEnabledMods.length} of those is hidden)` : "")
+      `WH 3 Mod Manager: ${enabledMods.length} mods enabled` +
+        (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "")
     );
     saveAppConfig(data);
   });

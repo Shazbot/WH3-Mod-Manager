@@ -4,6 +4,7 @@ import { toggleAlwaysHiddenMods } from "./appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import selectStyle from "./styles/selectStyle";
+import { Tooltip } from "flowbite-react";
 
 export default function OptionsDrawer() {
   const dispatch = useAppDispatch();
@@ -70,24 +71,36 @@ export default function OptionsDrawer() {
 
           <h6>Content Mods Vs Data Mods</h6>
           <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-            Mods you've subscribed to reside in the workshop folder, but can also be loaded from the data
-            folder. Don't touch unless you know what you're doing.
+            Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from the
+            data folder. Don't touch unless you know what you're doing!
           </p>
 
           <div className="flex mt-2">
             <button
-              className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+              className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
               onClick={() => copyToData()}
             >
-              Copy to data
+              <Tooltip
+                placement="bottom"
+                content="Will copy all the mods from content into data. As a modder this can overwrite your mod in data with an
+                older version you have in content!"
+              >
+                <span className="uppercase">Copy to data</span>
+              </Tooltip>
             </button>
           </div>
-          <div className="flex mt-2">
+
+          <div className="flex mt-2 w-full">
             <button
-              className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+              className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
               onClick={() => cleanData()}
             >
-              Clean data
+              <Tooltip
+                placement="bottom"
+                content="Will remove mods in data if the mod already exists in content. As a modder this can remove a newer version of your mod in data!"
+              >
+                <span className="uppercase">Clean data</span>
+              </Tooltip>
             </button>
           </div>
 

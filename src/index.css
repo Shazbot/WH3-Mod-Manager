@@ -85,3 +85,7 @@ body:not(.disable-row-hover) .row:hover div {
     display: none;
   }
 }
+
+.make-tooltip-w-full > div:first-of-type {
+  width: 100%;
+}
