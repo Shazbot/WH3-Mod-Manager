@@ -6,6 +6,7 @@ import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from 
 import { Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
 import OptionsDrawer from "./OptionsDrawer";
+import selectStyle from "./styles/selectStyle";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
@@ -96,15 +97,16 @@ export default function PlayGame() {
         value={defaultOption}
         options={options}
         onChange={onChange}
+        styles={selectStyle}
         onCreateOption={(name) => newPresetMade(name)}
       ></Creatable>
       <div className="mt-5">
         Replace preset:
-        <Select options={options} onChange={onReplaceChange} value={null}></Select>
+        <Select options={options} styles={selectStyle} onChange={onReplaceChange} value={null}></Select>
       </div>
       <div className="mt-5">
         Delete preset:
-        <Select options={options} onChange={onDeleteChange} value={null}></Select>
+        <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
       </div>
 
       <button

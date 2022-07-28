@@ -9,7 +9,7 @@ function render() {
   const root = createRoot(document.getElementById("root"));
   root.render(
     <Provider store={store}>
-      <div className="grid grid-cols-12">
+      <div className="grid grid-cols-12 text-white">
         <div className="col-span-10">
           <ModRow />
         </div>

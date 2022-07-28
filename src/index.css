@@ -6,6 +6,7 @@ body {
   margin: auto;
   padding: 2rem 4rem;
   max-width: 100rem;
+  background-color: rgb(38, 38, 38);
 }
 
 .grida > * {
@@ -55,11 +56,11 @@ body {
 }
 
 .row-bg-color-manually > * {
-  background-color: rgb(203 213 225);
+  background-color: #4b5563;
 }
 
 body:not(.disable-row-hover) .row:hover div {
-  background-color: rgb(203 213 225);
+  background-color: #4b5563;
 }
 
 .grid-area-enabled {

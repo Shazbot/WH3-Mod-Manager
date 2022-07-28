@@ -3,6 +3,7 @@ import React from "react";
 import { toggleAlwaysHiddenMods } from "./appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "./hooks";
+import selectStyle from "./styles/selectStyle";
 
 export default function OptionsDrawer() {
   const dispatch = useAppDispatch();
@@ -96,7 +97,7 @@ export default function OptionsDrawer() {
           </p>
 
           <div>
-            <Select options={options} onChange={onDeleteChange} value={null}></Select>
+            <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
           </div>
         </div>
       </Drawer>

@@ -327,7 +327,7 @@ export default function ModRow() {
   const [positionY, setPositionY] = useState<number>(0);
 
   return (
-    <div className={`dark:text-slate-300`} id="rowsParent">
+    <div className={`dark:text-slate-100`} id="rowsParent">
       <FloatingOverlay
         onClick={() => onDropdownOverlayClick()}
         onContextMenu={() => onDropdownOverlayClick()}
