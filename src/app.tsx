@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import ModRow from "./stories/ModRow";
+import ModRow from "./ModRow";
 import store from "./store";
 import { Provider } from "react-redux";
 import PlayGame from "./PlayGame";

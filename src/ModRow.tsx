@@ -1,14 +1,16 @@
 import React, { useState } from "react";
-import "./../index.css";
-import { useAppDispatch, useAppSelector } from "../hooks";
-import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "../appSlice";
+import "./index.css";
+import { useAppDispatch, useAppSelector } from "./hooks";
+import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "./appSlice";
 import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
 import { ArrowNarrowDownIcon, ArrowNarrowUpIcon } from "@heroicons/react/solid";
 import { formatDistanceToNow } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGripLines, faGrip } from "@fortawesome/free-solid-svg-icons";
-import sortNamesWithLoadOrder from "../sortNamesWithLoadOrder";
+import { faGrip } from "@fortawesome/free-solid-svg-icons";
+import sortNamesWithLoadOrder from "./sortNamesWithLoadOrder";
+import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
+import ModDropdown from "./ModDropdown";
 
 enum SortingType {
   PackName,
@@ -26,8 +28,12 @@ enum SortingType {
 export default function ModRow() {
   const dispatch = useAppDispatch();
   const filter = useAppSelector((state) => state.app.filter);
+  const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
+  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
 
   const [sortingType, setSortingType] = useState<SortingType>(SortingType.Ordered);
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+  const [contextMenuMod, setContextMenuMod] = useState<Mod>();
 
   let mods: Mod[] = [];
 
@@ -113,8 +119,8 @@ export default function ModRow() {
 
   const onModToggled = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const target = event.target as HTMLInputElement;
-    const value = target.type === "checkbox" ? target.checked : target.value;
     const name = target.name;
+    // const value = target.type === "checkbox" ? target.checked : target.value;
     // console.log("%s %s", name, value);
     const mod = mods.find((mod) => mod.workshopId == name);
     dispatch(toggleMod(mod));
@@ -288,11 +294,7 @@ export default function ModRow() {
 
   const onRowHoverEnd = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
     const element = e.currentTarget as HTMLDivElement;
-    // console.log(`finding drag-icon-${element.id}`);
     const dragIcon = document.getElementById(`drag-icon-${element.id}`);
-    // Array.from(element.parentElement.children).forEach((child) => {
-    //   if (child.id.startsWith("drag-icon")) {
-    // dragIcon.classList.remove("inline");
     dragIcon.classList.add("hidden");
   };
 
@@ -300,11 +302,49 @@ export default function ModRow() {
     dispatch(resetModLoadOrder([mod]));
   };
 
+  const onModRightClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => {
+    if (isDropdownOpen) return;
+    setContextMenuMod(mod);
+
+    setPositionX(e.clientX);
+    setPositionY(e.clientY);
+
+    if (innerHeight - 120 < e.clientY) {
+      setPositionY(e.clientY - 120);
+    }
+
+    setIsDropdownOpen(true);
+
+    e.defaultPrevented = true;
+    e.stopPropagation();
+  };
+
+  const onDropdownOverlayClick = () => {
+    setIsDropdownOpen(false);
+  };
+
+  const [positionX, setPositionX] = useState<number>(0);
+  const [positionY, setPositionY] = useState<number>(0);
+
   return (
-    <div className="dark:text-slate-300">
-      <div className="grid grid-mods pt-1.5 grida parent">
+    <div className={`dark:text-slate-300`} id="rowsParent">
+      <FloatingOverlay
+        onClick={() => onDropdownOverlayClick()}
+        onContextMenu={() => onDropdownOverlayClick()}
+        className={`${isDropdownOpen ? "" : "hidden"} z-50 dark`}
+        id="modDropdownOverlay"
+      >
+        <ModDropdown
+          isOpen={isDropdownOpen}
+          positionX={positionX}
+          positionY={positionY}
+          mod={contextMenuMod}
+        ></ModDropdown>
+      </FloatingOverlay>
+      <div className="grid grid-mods pt-1.5 grida parent" id="modsGrid">
         <div
-          className="flex place-items-center grid-area-enabled w-full justify-center z-50"
+          id="sortHeader"
+          className="flex place-items-center grid-area-enabled w-full justify-center z-40"
           onClick={() => onOrderedSort()}
           onContextMenu={onOrderRightClick}
         >
@@ -322,7 +362,7 @@ export default function ModRow() {
           </Tooltip>
         </div>
         <div
-          className="flex place-items-center grid-area-enabled w-full justify-center z-50"
+          className="flex place-items-center grid-area-enabled w-full justify-center z-40"
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
         >
@@ -374,7 +414,8 @@ export default function ModRow() {
               mod.isInData ||
               (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
           )
-          .map((mod, index) => (
+          .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name))
+          .map((mod) => (
             <div
               className="row relative"
               key={mod.name}
@@ -398,33 +439,44 @@ export default function ModRow() {
               >
                 <div
                   draggable="true"
-                  className="hidden absolute left-0 self-center"
+                  className="hidden absolute left-0 self-center cursor-grab"
                   id={`drag-icon-${mod.name}`}
                 >
                   <FontAwesomeIcon icon={faGrip} />
                 </div>
                 <form className="grid place-items-center h-full">
                   <input
+                    style={
+                      alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name) && {
+                        color: "#6D28D9",
+                      }
+                    }
                     type="checkbox"
                     name={mod.workshopId}
-                    id={mod.workshopId}
+                    id={mod.workshopId + "enabled"}
                     checked={mod.isEnabled}
                     onChange={(event) => onModToggled(event)}
                   ></input>
                 </form>
               </div>
-              <div className="flex place-items-center grid-area-packName w-min-[0px]">
-                <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId}>
+              <div
+                className="flex place-items-center grid-area-packName w-min-[0px]"
+                onContextMenu={(e) => onModRightClick(e, mod)}
+              >
+                <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId + "enabled"}>
                   <span className={classNames("break-all", { ["text-orange-500"]: mod.isInData })}>
                     {mod.name.replace(".pack", "")}
                   </span>
                 </label>
               </div>
-              <div className="flex place-items-center grid-area-humanName">
-                <label htmlFor={mod.workshopId}>{mod.humanName}</label>
+              <div
+                className="flex place-items-center grid-area-humanName"
+                onContextMenu={(e) => onModRightClick(e, mod)}
+              >
+                <label htmlFor={mod.workshopId + "enabled"}>{mod.humanName}</label>
               </div>
               <div className="flex place-items-center grid-area-lastUpdated">
-                <label htmlFor={mod.workshopId}>
+                <label htmlFor={mod.workshopId + "enabled"}>
                   {formatDistanceToNow(mod.lastChanged).replace("about ", "~") + " ago"}
                 </label>
               </div>

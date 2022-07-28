@@ -63,6 +63,8 @@ declare global {
     presets: Preset[];
     lastSelectedPreset: Preset | null;
     filter: string;
+    alwaysEnabledMods: Mod[];
+    hiddenMods: Mod[];
   }
 
   interface ModLoadOrderPayload {

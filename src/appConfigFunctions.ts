@@ -10,7 +10,6 @@ export function saveAppConfig(data: AppState) {
     saveConfigTimeout.refresh();
   } else {
     saveConfigTimeout = setTimeout(() => {
-      console.log("WRITING CONFIG");
       const userData = app.getPath("userData");
       fs.writeFile(`${userData}\\config.json`, JSON.stringify(saveData));
     }, 250);

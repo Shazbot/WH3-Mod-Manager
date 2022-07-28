@@ -3,8 +3,9 @@ import Select, { ActionMeta } from "react-select";
 import React, { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from "./appSlice";
-import { Button, Tooltip } from "flowbite-react";
+import { Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
+import OptionsDrawer from "./OptionsDrawer";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
@@ -86,13 +87,6 @@ export default function PlayGame() {
     }
   });
 
-  const copyToData = () => {
-    window.api.copyToData();
-  };
-  const cleanData = () => {
-    window.api.cleanData();
-  };
-
   return (
     <div>
       <Tooltip placement="left" content="Create new preset by typing its name">
@@ -133,21 +127,8 @@ export default function PlayGame() {
         ></input>
       </div>
 
-      <div className="flex mt-8">
-        <button
-          className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-          onClick={() => copyToData()}
-        >
-          Copy to data
-        </button>
-      </div>
-      <div className="flex mt-2">
-        <button
-          className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight uppercase rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-          onClick={() => cleanData()}
-        >
-          Clean data
-        </button>
+      <div className="mt-6">
+        <OptionsDrawer />
       </div>
     </div>
   );

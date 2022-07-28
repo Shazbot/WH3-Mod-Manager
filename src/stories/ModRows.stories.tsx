@@ -1,7 +1,7 @@
 import React from "react";
 import { ComponentStory, ComponentMeta } from "@storybook/react";
 
-import ModRow from "./ModRow";
+import ModRow from "../ModRow";
 
 interface ButtonProps {
   /**

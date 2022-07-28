@@ -54,6 +54,7 @@ const createWindow = (): void => {
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
     },
+    title: "Warhammer 3 Mod Manager",
   });
 
   // and load the index.html of the app.
@@ -98,6 +99,10 @@ const createWindow = (): void => {
   autoUpdater.on("error", (message) => {
     console.error("There was a problem updating the application");
     console.error(message);
+  });
+
+  mainWindow.on("page-title-updated", (evt) => {
+    evt.preventDefault();
   });
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
@@ -167,6 +172,16 @@ const createWindow = (): void => {
   });
 
   ipcMain.on("saveConfig", (event, data: AppState) => {
+    const enabledMods = data.currentPreset.mods.filter(
+      (iterMod) => iterMod.isEnabled || data.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+    );
+    const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
+      enabledMods.find((mod) => mod.name === iterMod.name)
+    );
+    mainWindow.setTitle(
+      `Warhammer 3 Mod Manager: ${enabledMods.length} mods enabled` +
+        (hiddenAndEnabledMods.length > 0 ? `(${hiddenAndEnabledMods.length} of those is hidden)` : "")
+    );
     saveAppConfig(data);
   });
 
@@ -185,7 +200,7 @@ const createWindow = (): void => {
   });
 
   ipcMain.removeHandler("getUpdateData");
-  ipcMain.handle("getUpdateData", async (event) => {
+  ipcMain.handle("getUpdateData", async () => {
     let modUpdatedExists = { updateExists: false } as ModUpdateExists;
 
     // return { updateExists: true, downloadURL: "http://www.google.com" } as ModUpdateExists;
