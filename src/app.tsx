@@ -13,7 +13,7 @@ function render() {
         <div className="col-span-10">
           <ModRow />
         </div>
-        <div className="col-span-2 relative">
+        <div className="ml-3 col-span-2 relative">
           <PlayGame />
         </div>
       </div>
