@@ -86,6 +86,15 @@ export default function PlayGame() {
       setIsUpdateCheckDone(true);
       getUpdateData();
     }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "f") {
+        const filterInput = document.getElementById("filterInput");
+        filterInput?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
   });
 
   return (
@@ -122,6 +131,7 @@ export default function PlayGame() {
       <div className="mt-5">
         Filter:
         <input
+          id="filterInput"
           type="text"
           onChange={(e) => onFilterChange(e)}
           value={filter}
