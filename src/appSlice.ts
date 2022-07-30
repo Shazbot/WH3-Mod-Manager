@@ -175,6 +175,18 @@ const appSlice = createSlice({
         (iterMod) => !modsAlreadyHidden.find((mod) => mod.name === iterMod.name)
       );
       state.hiddenMods = state.hiddenMods.concat(modsToAdd);
+
+      // disable mods we just hid that aren't set to always enabled
+      state.hiddenMods
+        .map((iterMod) => {
+          if (!state.alwaysEnabledMods.find((mod) => iterMod.name === mod.name)) {
+            return iterMod;
+          }
+        })
+        .forEach((iterMod) => {
+          const mod = state.currentPreset.mods.find((mod) => iterMod.name === mod.name);
+          if (mod) mod.isEnabled = false;
+        });
     },
   },
 });

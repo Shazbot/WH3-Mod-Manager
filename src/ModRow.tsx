@@ -123,6 +123,12 @@ export default function ModRow() {
     // const value = target.type === "checkbox" ? target.checked : target.value;
     // console.log("%s %s", name, value);
     const mod = mods.find((mod) => mod.workshopId == name);
+
+    // if always enabled don't allow unchecking
+    if (alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name)) {
+      return;
+    }
+
     dispatch(toggleMod(mod));
   };
 
@@ -344,7 +350,7 @@ export default function ModRow() {
       <div className="grid grid-mods pt-1.5 grida parent" id="modsGrid">
         <div
           id="sortHeader"
-          className="flex place-items-center grid-area-enabled w-full justify-center z-40"
+          className="flex place-items-center grid-area-enabled w-full justify-center z-[11]"
           onClick={() => onOrderedSort()}
           onContextMenu={onOrderRightClick}
         >
@@ -362,7 +368,7 @@ export default function ModRow() {
           </Tooltip>
         </div>
         <div
-          className="flex place-items-center grid-area-enabled w-full justify-center z-40"
+          className="flex place-items-center grid-area-enabled w-full justify-center z-10"
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
         >
