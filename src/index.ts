@@ -51,19 +51,19 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
   }
 
   if (!watcher) {
-    const contentFolder = appData.contentFolder.replaceAll("\\", "/").replaceAll("//", "/"));
-    const dataFolder = appData.dataFolder.replaceAll("\\", "/").replaceAll("//", "/"));
+    const contentFolder = appData.contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
+    const dataFolder = appData.dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
     watcher = chokidar
       .watch([`${contentFolder}/**/*.pack`, `${dataFolder}/**/*.pack`], {
         ignoreInitial: true,
         awaitWriteFinish: true,
       })
       .on("add", (path) => {
-        console.log("MOD ADDED: "+path);
+        console.log("MOD ADDED: " + path);
         getAllMods(mainWindow);
       })
       .on("unlink", (path) => {
-        console.log("MOD REMOVED: "+path);
+        console.log("MOD REMOVED: " + path);
         getAllMods(mainWindow);
       });
   }
