@@ -29,7 +29,6 @@ export default function ModDropdown(props: ModDropdownProps) {
           left: props.positionX,
           top: props.positionY,
         }}
-        {...props}
       >
         <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
           {props.mod && !props.mod.isInData && (
