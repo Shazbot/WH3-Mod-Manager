@@ -37,7 +37,12 @@ export default function ModRow() {
 
   let mods: Mod[] = [];
 
-  const orderedMods = sortNamesWithLoadOrder(useAppSelector((state) => state.app.currentPreset.mods));
+  const modsToOrder = useAppSelector((state) => state.app.currentPreset.mods).filter((iterMod) => {
+    const isHidden = hiddenMods.find((mod) => mod.name === iterMod.name);
+    const isAlwaysEnabled = alwaysEnabledMods.find((mod) => iterMod.name === mod.name);
+    return !isHidden || (isHidden && isAlwaysEnabled);
+  });
+  const orderedMods = sortNamesWithLoadOrder(modsToOrder);
 
   switch (sortingType) {
     case SortingType.Ordered:

@@ -6,7 +6,7 @@
     "esModuleInterop": true,
     "noImplicitAny": true,
     "sourceMap": true,
-    "target": "ES6",
+    "target": "es2021",
     "baseUrl": ".",
     "outDir": "dist",
     "moduleResolution": "node",

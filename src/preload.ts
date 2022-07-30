@@ -1,9 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-
-const appData: AppData = {
-  presets: [],
-  gamePath: "",
-};
+import appData from "./appData";
 
 const api: api = {
   getAppData: () => appData,

@@ -125,6 +125,7 @@
     "@heroicons/react": "^1.0.6",
     "@node-steam/vdf": "^2.2.0",
     "@reduxjs/toolkit": "^1.8.2",
+    "chokidar": "^3.5.3",
     "classnames": "^2.3.1",
     "date-fns": "^2.28.0",
     "electron-fetch": "^1.7.4",

@@ -56,6 +56,8 @@ declare global {
   interface AppData {
     presets: Preset[];
     gamePath: string;
+    contentFolder: string | undefined;
+    dataFolder: string | undefined;
   }
 
   interface AppState {
@@ -78,8 +80,3 @@ declare global {
     downloadURL?: string;
   }
 }
-
-// declare const api: {
-//   getMods: () => Mod[];
-//   doThing: () => void;
-// };

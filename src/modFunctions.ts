@@ -7,7 +7,6 @@ import fetch from "electron-fetch";
 
 export function fetchModData(ids: string[], cb: (modData: ModData) => void, log: (msg: string) => void) {
   ids.forEach(async (workshopId) => {
-    // await new Promise((resolve) => setTimeout(resolve, index * 20));
     fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
       .then((res) => res.text())
       .then((body) => {
@@ -19,7 +18,6 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
         } catch (err) {
           log(err);
         }
-        // log(match[1]);
 
         let reqModIds: string[] = [];
         try {
@@ -132,103 +130,110 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
   });
 };
 
-export function getMods(cb: (mods: Mod[]) => void, log: (msg: string) => void) {
-  const mods: Mod[] = [];
-
+const getFolderPaths = async (log: (msg: string) => void) => {
   const regKey = new Registry({
     hive: Registry.HKLM,
     key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
   });
 
-  regKey.values(async function (err, items: { name: string; value: string }[]) {
-    if (err) log("ERROR: " + err);
-    else {
-      const installPathObj = items.find((x) => x.name === "InstallPath");
-      if (installPathObj) {
-        const installPath = installPathObj.value;
-        const libFoldersPath = `${installPath}\\steamapps\\libraryfolders.vdf`;
-        log(`Found libraryfolders.vdf at ${libFoldersPath}`);
+  const items = await regKeyValuesAsPromise(regKey);
+  const installPathObj = items.find((x) => x.name === "InstallPath");
+  if (!installPathObj) return;
 
-        fs.readFile(libFoldersPath, "utf8").then((data) => {
-          const object = VDF.parse(data).libraryfolders;
-          const paths = [];
-          for (const property in object) {
-            paths.push(object[property].path);
-          }
+  const installPath = installPathObj.value;
+  const libFoldersPath = `${installPath}\\steamapps\\libraryfolders.vdf`;
+  log(`Found libraryfolders.vdf at ${libFoldersPath}`);
 
-          paths.find((path) => {
-            const worshopFilePath = `${path}\\steamapps\\appmanifest_1142710.acf`;
-            fs.readFile(worshopFilePath).then(async () => {
-              log(`Found appmanifest_1142710.acf at ${worshopFilePath}`);
-              // log(worshopFilePath);
-              const contentFolder = `${path}\\steamapps\\workshop\\content\\1142710`;
-              appData.gamePath = `${path}\\steamapps\\common\\Total War WARHAMMER III`;
+  const data = await fs.readFile(libFoldersPath, "utf8");
+  const object = VDF.parse(data).libraryfolders;
+  const paths = [];
+  for (const property in object) {
+    paths.push(object[property].path);
+  }
 
-              log(`Content folder is at ${contentFolder}`);
-              log(`Game path is at ${appData.gamePath}`);
+  for (const path of paths) {
+    const worshopFilePath = `${path}\\steamapps\\appmanifest_1142710.acf`;
+    try {
+      await fs.readFile(worshopFilePath);
+      log(`Found appmanifest_1142710.acf at ${worshopFilePath}`);
+      // log(worshopFilePath);
+      const contentFolder = `${path}\\steamapps\\workshop\\content\\1142710`;
+      appData.contentFolder = contentFolder.replaceAll("\\\\", "\\");
+      appData.gamePath = `${path}\\steamapps\\common\\Total War WARHAMMER III`.replaceAll("\\\\", "\\");
+      appData.dataFolder = `${appData.gamePath}\\data`.replaceAll("\\\\", "\\");
 
-              const dataMods = await getDataMods(`${path}\\steamapps\\common\\Total War WARHAMMER III`, log);
-              mods.push(...dataMods);
+      log(`Content folder is at ${appData.contentFolder}`);
+      log(`Game path is at ${appData.gamePath}`);
+      // eslint-disable-next-line no-empty
+    } catch (err) {}
+  }
+};
 
-              const files = await fs.readdir(contentFolder, { withFileTypes: true });
-              const newMods = files
-                .filter((file) => file.isDirectory())
-                .map(async (file) => {
-                  // log(`Reading folder ${contentFolder}\\${file.name}`);
-
-                  const files = await fs.readdir(`${contentFolder}\\${file.name}`, { withFileTypes: true });
-
-                  const pack = files.find((file) => file.name.endsWith(".pack"));
-                  const img = files.find((file) => file !== pack);
-
-                  if (pack) {
-                    let lastChanged = undefined;
-                    try {
-                      lastChanged = await fs
-                        .stat(`${contentFolder}\\${file.name}\\${pack.name}`)
-                        .then((stats) => {
-                          return stats.mtimeMs;
-                        });
-                    } catch (err) {
-                      log(`ERROR: ${err}`);
-                    }
-
-                    // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
-                    // mainWindow.webContents.send(
-                    //   "handleLog",
-                    //   `Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`
-                    // );
-
-                    const packPath = `${contentFolder}\\${file.name}\\${pack.name}`;
-                    const imgPath = `${contentFolder}\\${file.name}\\${img.name}`;
-                    const mod: Mod = {
-                      humanName: "",
-                      name: pack.name,
-                      path: packPath,
-                      modDirectory: `${contentFolder}\\${file.name}`,
-                      imgPath: imgPath,
-                      workshopId: file.name,
-                      isEnabled: false,
-                      isInData: false,
-                      loadOrder: undefined,
-                      lastChanged,
-                    };
-                    return mod;
-                  }
-                });
-
-              const a = await Promise.allSettled(newMods);
-
-              (a.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).forEach((r) => {
-                const mod = r.value;
-                mods.push(mod);
-              });
-
-              cb(mods);
-            });
-          });
-        });
-      }
-    }
+const regKeyValuesAsPromise = (regKey: Registry.Registry): Promise<{ name: string; value: string }[]> => {
+  return new Promise((resolve, reject) => {
+    regKey.values(async function (err, items: { name: string; value: string }[]) {
+      if (err) reject("ERROR: " + err);
+      resolve(items);
+    });
   });
+};
+
+export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
+  const mods: Mod[] = [];
+
+  if (!appData.contentFolder) {
+    await getFolderPaths(log);
+  }
+  if (!appData.contentFolder) return;
+  const contentFolder = appData.contentFolder;
+
+  const dataMods = await getDataMods(appData.gamePath, log);
+  mods.push(...dataMods);
+
+  const files = await fs.readdir(contentFolder, { withFileTypes: true });
+  const newMods = files
+    .filter((file) => file.isDirectory())
+    .map(async (file) => {
+      // log(`Reading folder ${contentFolder}\\${file.name}`);
+      const files = await fs.readdir(`${contentFolder}\\${file.name}`, { withFileTypes: true });
+
+      const pack = files.find((file) => file.name.endsWith(".pack"));
+      const img = files.find((file) => file !== pack);
+
+      if (pack) {
+        let lastChanged = undefined;
+        try {
+          lastChanged = await fs.stat(`${contentFolder}\\${file.name}\\${pack.name}`).then((stats) => {
+            return stats.mtimeMs;
+          });
+        } catch (err) {
+          log(`ERROR: ${err}`);
+        }
+
+        // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
+        const packPath = `${contentFolder}\\${file.name}\\${pack.name}`;
+        const imgPath = `${contentFolder}\\${file.name}\\${img.name}`;
+        const mod: Mod = {
+          humanName: "",
+          name: pack.name,
+          path: packPath,
+          modDirectory: `${contentFolder}\\${file.name}`,
+          imgPath: imgPath,
+          workshopId: file.name,
+          isEnabled: false,
+          isInData: false,
+          loadOrder: undefined,
+          lastChanged,
+        };
+        return mod;
+      }
+    });
+
+  const settledMods = await Promise.allSettled(newMods);
+  (settledMods.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
+    const mod = r.value;
+    mods.push(mod);
+  });
+
+  return mods;
 }
