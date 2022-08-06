@@ -56,28 +56,11 @@ body {
 }
 
 .row-bg-color-manually > * {
-  background-color: #4b5563;
+  background-color: #525252;
 }
 
 body:not(.disable-row-hover) .row:hover div {
-  background-color: #4b5563;
-}
-
-.grid-area-enabled {
-  //grid-area: enabled;
-}
-.grid-area-enabled div {
-  //grid-area: enabled;
-  //display: inline-block;
-}
-.grid-area-packName {
-  //grid-area: packName;
-}
-.grid-area-humanName {
-  //grid-area: humanName;
-}
-.grid-area-lastUpdated {
-  //grid-area: lastUpdated;
+  background-color: #525252;
 }
 
 @media (max-width: 1024px) {
@@ -88,4 +71,9 @@ body:not(.disable-row-hover) .row:hover div {
 
 .make-tooltip-w-full > div:first-of-type {
   width: 100%;
+}
+
+.mod-row-header {
+  background-color: #404040;
+  padding: 0.5rem;
 }

@@ -182,9 +182,11 @@ export default function ModRow() {
     if (originalId === droppedOnId) return;
 
     const droppedOnElement = document.getElementById(droppedOnId);
+    if (!droppedOnElement) return;
     const index = [...droppedOnElement.parentElement.children].indexOf(droppedOnElement) - 6;
 
     const originalElement = document.getElementById(originalId);
+    if (!originalElement) return;
     const originalElementindex = [...originalElement.parentElement.children].indexOf(originalElement) - 6;
 
     const loadOrder = index > originalElementindex ? index : index + 1;
@@ -204,7 +206,7 @@ export default function ModRow() {
     t.classList.add("opacity-50");
 
     e.dataTransfer.effectAllowed = "move";
-    // console.log(`setting data ${t.id}`);
+    console.log(`setting data ${t.id}`);
     e.dataTransfer.setData("text/plain", t.id.replace("drag-icon-", ""));
 
     const body = document.getElementById("body");
@@ -236,9 +238,8 @@ export default function ModRow() {
   };
 
   const onDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    // console.log("onDragEnter");
+    if (e.dataTransfer.types.length > 1) return;
     const t = e.currentTarget as HTMLDivElement;
-    // console.log(t.id);
     t.classList.add("opacity-50");
 
     const ghost = document.getElementById("drop-ghost");
@@ -257,11 +258,12 @@ export default function ModRow() {
     });
     newE.addEventListener("drop", (e) => {
       e.preventDefault();
-      // console.log(`DROPPEND ON GHOST`);
+      const draggedId = e.dataTransfer.getData("text/plain");
+      if (draggedId === "") return;
       const rowId = (e.currentTarget as HTMLElement).dataset.rowId;
       // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
       // console.log(`rowId is ${rowId}`);
-      afterDrop(e.dataTransfer.getData("text/plain"), rowId);
+      afterDrop(draggedId, rowId);
     });
     e.stopPropagation();
   };
@@ -280,11 +282,13 @@ export default function ModRow() {
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     // console.log("onDrop");
     // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
+    const droppedId = e.dataTransfer.getData("text/plain");
+    if (droppedId === "") return;
 
     const t = e.currentTarget as HTMLDivElement;
     // console.log(`DROPPED ONTO ${t.id}`);
 
-    afterDrop(e.dataTransfer.getData("text/plain"), t.id);
+    afterDrop(droppedId, t.id);
     // e.stopPropagation();
   };
 
@@ -355,15 +359,15 @@ export default function ModRow() {
       <div className="grid grid-mods pt-1.5 grida parent" id="modsGrid">
         <div
           id="sortHeader"
-          className="flex place-items-center grid-area-enabled w-full justify-center z-[11]"
+          className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
           onClick={() => onOrderedSort()}
           onContextMenu={onOrderRightClick}
         >
           {(sortingType === SortingType.Ordered && (
-            <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
+            <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
           )) ||
             (sortingType === SortingType.OrderedReverse && (
-              <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
+              <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
             )) || <></>}
           <Tooltip
             placement="right"
@@ -373,21 +377,24 @@ export default function ModRow() {
           </Tooltip>
         </div>
         <div
-          className="flex place-items-center grid-area-enabled w-full justify-center z-10"
+          className="flex place-items-center w-full justify-center z-10 mod-row-header"
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
         >
+          {(sortingType === SortingType.IsEnabled && (
+            <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+          )) ||
+            (sortingType === SortingType.IsEnabledReverse && (
+              <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+            )) || <></>}
           <Tooltip placement="right" content="Right click to enable or disable all mods">
-            {(sortingType === SortingType.IsEnabled && (
-              <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
-            )) ||
-              (sortingType === SortingType.IsEnabledReverse && (
-                <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
-              )) || <></>}
             <span className="text-center w-full">Enabled</span>
           </Tooltip>
         </div>
-        <div className="flex grid-area-packName place-items-center pl-1" onClick={() => onPackSort()}>
+        <div
+          className="flex grid-area-packName place-items-center pl-1 mod-row-header"
+          onClick={() => onPackSort()}
+        >
           {(sortingType === SortingType.PackName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -397,7 +404,10 @@ export default function ModRow() {
           Pack
         </div>
 
-        <div className="flex grid-area-humanName place-items-center pl-1" onClick={() => onNameSort()}>
+        <div
+          className="flex grid-area-humanName place-items-center pl-1 mod-row-header"
+          onClick={() => onNameSort()}
+        >
           {(sortingType === SortingType.HumanName && (
             <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
           )) ||
@@ -407,7 +417,7 @@ export default function ModRow() {
           Name
         </div>
         <div
-          className="flex grid-area-lastUpdated place-items-center pl-1"
+          className="flex grid-area-lastUpdated place-items-center pl-1 mod-row-header rounded-tr-xl"
           onClick={() => onLastUpdatedSort()}
         >
           {(sortingType === SortingType.LastUpdated && (
@@ -444,7 +454,7 @@ export default function ModRow() {
                 </span>
               </div>
               <div
-                className="grid-area-enabled relative grid"
+                className="relative grid"
                 onDragEnd={(e) => onDragEnd(e)}
                 onDragStart={(e) => onDragStart(e)}
               >
@@ -471,7 +481,7 @@ export default function ModRow() {
                 </form>
               </div>
               <div
-                className="flex place-items-center grid-area-packName w-min-[0px]"
+                className="flex place-items-center w-min-[0px]"
                 onContextMenu={(e) => onModRightClick(e, mod)}
               >
                 <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId + "enabled"}>
@@ -480,10 +490,7 @@ export default function ModRow() {
                   </span>
                 </label>
               </div>
-              <div
-                className="flex place-items-center grid-area-humanName"
-                onContextMenu={(e) => onModRightClick(e, mod)}
-              >
+              <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
                 <label htmlFor={mod.workshopId + "enabled"}>{mod.humanName}</label>
               </div>
               <div className="flex place-items-center grid-area-lastUpdated">
