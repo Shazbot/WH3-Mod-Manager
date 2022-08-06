@@ -17,6 +17,14 @@ const selectStyle = {
     background: state.isFocused ? "#4b5563" : "#394250",
     color: "#f1f5f9",
   }),
+  singleValue: (base: any) => ({
+    ...base,
+    color: "#f1f5f9",
+  }),
+  input: (base: any) => ({
+    ...base,
+    color: "#f1f5f9",
+  }),
 };
 
 export default selectStyle;
