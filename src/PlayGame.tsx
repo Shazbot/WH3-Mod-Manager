@@ -7,14 +7,18 @@ import { Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
 import OptionsDrawer from "./OptionsDrawer";
 import selectStyle from "./styles/selectStyle";
+import SaveGames from "./SaveGames";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
   const filter = useAppSelector((state) => state.app.filter);
+  const saves = [...useAppSelector((state) => state.app.saves)];
+  saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
   const [isUpdateCheckDone, setIsUpdateCheckDone] = useState<boolean>(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
   const [downloadURL, setDownloadURL] = useState<string>("");
+  const [isShowingSavedGames, setIsShowingSavedGames] = useState<boolean>(false);
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
@@ -58,11 +62,15 @@ export default function PlayGame() {
     (lastSelectedPreset !== null &&
       options.filter((option) => option.value === lastSelectedPreset.name))[0] || null;
 
-  // console.log(lastSelectedPreset);
-  // console.log(defaultOption);
-
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setFilter(e.target.value));
+  };
+
+  const onContinueGameClicked = () => {
+    window.api.writeUserScript(mods, saves[0]?.name);
+  };
+  const onShowSavedGamesClicked = () => {
+    setIsShowingSavedGames(true);
   };
 
   const getUpdateData = async () => {
@@ -99,6 +107,7 @@ export default function PlayGame() {
 
   return (
     <div>
+      <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
       <Tooltip placement="left" content="Create new preset by typing its name">
         Select or create preset:
       </Tooltip>
@@ -118,12 +127,42 @@ export default function PlayGame() {
         <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
       </div>
 
-      <button
-        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded fixed h-14 w-36 m-auto right-[5%] bottom-[5%]"
-        onClick={() => playGameClicked()}
-      >
-        Play
-      </button>
+      <div className="fixed right-[5%] bottom-[4%]">
+        <button
+          className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto"
+          onClick={() => playGameClicked()}
+        >
+          Play
+        </button>
+
+        <div className="mt-2">
+          <button
+            className="bg-green-600 border-green-400 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded  h-7 w-36 m-auto "
+            onClick={() => onContinueGameClicked()}
+            disabled={saves.length < 1}
+          >
+            <span className="ml-[-25%]">Continue</span>
+          </button>
+          <button
+            type="submit"
+            className="absolute h-7 w-9 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-300 rounded-r-lg border border-green-300 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+            onClick={() => onShowSavedGamesClicked()}
+            disabled={saves.length < 1}
+          >
+            <svg
+              aria-hidden="true"
+              className="h-6 w-6"
+              fill="none"
+              stroke="currentColor"
+              overflow="visible"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
 
       <div className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}>
         <UpdateNotification downloadURL={downloadURL}></UpdateNotification>

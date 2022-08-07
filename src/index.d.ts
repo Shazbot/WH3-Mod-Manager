@@ -7,7 +7,7 @@ declare global {
 
   interface api {
     getAppData: () => AppData;
-    writeUserScript: (mods: Mod[]) => void;
+    writeUserScript: (mods: Mod[], saveName?: string) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, string) => void) => Electron.IpcRenderer;
     fromAppConfig: (
       callback: (event: Electron.IpcRendererEvent, appState: AppState) => void
@@ -26,6 +26,9 @@ declare global {
       callback: (event: Electron.IpcRendererEvent, modData: ModData) => void
     ) => Electron.IpcRenderer;
     getAllModData: (ids: string[]) => void;
+    savesPopulated: (
+      callback: (event: Electron.IpcRendererEvent, saves: GameSave[]) => void
+    ) => Electron.IpcRenderer;
   }
 
   interface Mod {
@@ -58,6 +61,7 @@ declare global {
     gamePath: string;
     contentFolder: string | undefined;
     dataFolder: string | undefined;
+    gameSaves: GameSave[];
   }
 
   interface AppState {
@@ -67,6 +71,7 @@ declare global {
     filter: string;
     alwaysEnabledMods: Mod[];
     hiddenMods: Mod[];
+    saves: GameSave[];
   }
 
   interface ModLoadOrderPayload {
@@ -78,5 +83,10 @@ declare global {
   interface ModUpdateExists {
     updateExists: boolean;
     downloadURL?: string;
+  }
+
+  interface GameSave {
+    name: string;
+    lastChanged: number;
   }
 }

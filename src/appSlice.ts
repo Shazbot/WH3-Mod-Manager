@@ -12,14 +12,15 @@ const appSlice = createSlice({
     filter: "",
     alwaysEnabledMods: [],
     hiddenMods: [],
+    saves: [],
   } as AppState,
   reducers: {
-    toggleMod: (state, action: PayloadAction<Mod>) => {
+    toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
       mod.isEnabled = !mod.isEnabled;
     },
-    enableAll: (state) => {
+    enableAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = true));
 
       const toEnable = state.currentPreset.mods.filter((iterMod) =>
@@ -35,7 +36,7 @@ const appSlice = createSlice({
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
     },
-    setMods: (state, action: PayloadAction<Mod[]>) => {
+    setMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
       state.currentPreset.mods = mods;
 
@@ -45,14 +46,14 @@ const appSlice = createSlice({
           (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
       );
     },
-    setModData: (state, action: PayloadAction<ModData>) => {
+    setModData: (state: AppState, action: PayloadAction<ModData>) => {
       const data = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == data.workshopId);
       if (!mod) return;
       mod.humanName = data.humanName;
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
-    setFromConfig: (state, action: PayloadAction<AppState>) => {
+    setFromConfig: (state: AppState, action: PayloadAction<AppState>) => {
       const fromConfigAppState = action.payload;
       fromConfigAppState.currentPreset.mods
         .filter((mod) => mod !== undefined)
@@ -77,13 +78,13 @@ const appSlice = createSlice({
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
     },
-    addPreset: (state, action: PayloadAction<Preset>) => {
+    addPreset: (state: AppState, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;
       if (state.presets.find((preset) => preset.name === newPreset.name)) return;
       state.presets.push(newPreset);
       state.lastSelectedPreset = newPreset;
     },
-    selectPreset: (state, action: PayloadAction<string>) => {
+    selectPreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
       const newPreset = state.presets.find((preset) => preset.name === name);
       if (!newPreset) return;
@@ -102,21 +103,21 @@ const appSlice = createSlice({
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
     },
-    deletePreset: (state, action: PayloadAction<string>) => {
+    deletePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
       state.presets = state.presets.filter((preset) => preset.name !== name);
       if (state.lastSelectedPreset.name == name) state.lastSelectedPreset = null;
     },
-    replacePreset: (state, action: PayloadAction<string>) => {
+    replacePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
       const preset = state.presets.find((preset) => preset.name === name);
       preset.mods = state.currentPreset.mods;
     },
-    setFilter: (state, action: PayloadAction<string>) => {
+    setFilter: (state: AppState, action: PayloadAction<string>) => {
       const filter = action.payload;
       state.filter = filter;
     },
-    setModLoadOrder: (state, action: PayloadAction<ModLoadOrderPayload>) => {
+    setModLoadOrder: (state: AppState, action: PayloadAction<ModLoadOrderPayload>) => {
       const payload = action.payload;
       const ourMod = state.currentPreset.mods.find((mod) => mod.name === payload.modName);
       const newLoadOrder = payload.loadOrder;
@@ -137,14 +138,14 @@ const appSlice = createSlice({
         });
       }
     },
-    resetModLoadOrder: (state, action: PayloadAction<Mod[]>) => {
+    resetModLoadOrder: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
       mods.forEach((mod) => {
         const stateMod = state.currentPreset.mods.find((stateMod) => stateMod.name === mod.name);
         if (stateMod) stateMod.loadOrder = undefined;
       });
     },
-    toggleAlwaysEnabledMods: (state, action: PayloadAction<Mod[]>) => {
+    toggleAlwaysEnabledMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
       const modsAlreadyInAlwaysEnabled = state.alwaysEnabledMods.filter((iterMod) =>
         mods.find((mod) => iterMod.name === mod.name)
@@ -163,7 +164,7 @@ const appSlice = createSlice({
       );
       modsToEnable.forEach((mod) => (mod.isEnabled = true));
     },
-    toggleAlwaysHiddenMods: (state, action: PayloadAction<Mod[]>) => {
+    toggleAlwaysHiddenMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
       const modsAlreadyHidden = state.hiddenMods.filter((iterMod) =>
         mods.find((mod) => iterMod.name === mod.name)
@@ -184,6 +185,10 @@ const appSlice = createSlice({
           if (mod) mod.isEnabled = false;
         });
     },
+    setSaves: (state: AppState, action: PayloadAction<GameSave[]>) => {
+      const saves = action.payload;
+      state.saves = saves;
+    },
   },
 });
 
@@ -203,6 +208,7 @@ export const {
   resetModLoadOrder,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
+  setSaves,
 } = appSlice.actions;
 
 export default appSlice.reducer;
