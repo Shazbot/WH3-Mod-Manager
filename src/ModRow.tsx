@@ -460,7 +460,7 @@ export default function ModRow() {
               >
                 <div
                   draggable="true"
-                  className="hidden absolute left-0 self-center cursor-grab"
+                  className="hidden absolute left-0 self-center cursor-grab first:p-0"
                   id={`drag-icon-${mod.name}`}
                 >
                   <FontAwesomeIcon icon={faGrip} />
