@@ -51,7 +51,7 @@ export default function ModDropdown(props: ModDropdownProps) {
               href="#"
               className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
             >
-              <Tooltip placement="top" content="Mod will always be enable, even when hidden.">
+              <Tooltip placement="top" content="Mod will always be enabled, even when hidden.">
                 Keep always enabled
               </Tooltip>
             </a>
