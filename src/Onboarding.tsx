@@ -23,8 +23,21 @@ export default function Onboarding() {
     },
     {
       target: "#createOrSelectPreset",
-      content:
-        "Type in this textbox to create a new preset, or use the dropdown button to select an older preset.",
+      content: (
+        <>
+          <p>
+            Type in this textbox to create a new preset, or use the dropdown button to select an older preset.
+          </p>
+          <p className="mt-2">
+            You can hold Shift while selecting a preset to create a union of selected mods between the
+            currently enabled mods and the mods enabled in the preset. (basically add a preset)
+          </p>
+          <p className="mt-2">
+            You can hold Ctrl while selecting a preset to uncheck any currently selected mods that are enabled
+            in that preset. (basically subtract a preset)
+          </p>
+        </>
+      ),
     },
     {
       target: "#replacePreset",
@@ -69,6 +82,10 @@ export default function Onboarding() {
           </p>
           <p className="mt-2">
             The grip is visible when hovering over a mod, and only when all the mods are sorted by order!
+          </p>
+          <p className="mt-2">
+            When a mod is manually reordered its order number will be colored red. You can right click on that
+            mod's order number to reset it.
           </p>
         </>
       ),
