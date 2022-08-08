@@ -108,27 +108,43 @@ export default function PlayGame() {
   return (
     <div>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
-      <Tooltip placement="left" content="Create new preset by typing its name">
-        Select or create preset:
-      </Tooltip>
-      <Creatable
-        value={defaultOption}
-        options={options}
-        onChange={onChange}
-        styles={selectStyle}
-        onCreateOption={(name) => newPresetMade(name)}
-      ></Creatable>
-      <div className="mt-5">
-        Replace preset:
-        <Select options={options} styles={selectStyle} onChange={onReplaceChange} value={null}></Select>
-      </div>
-      <div className="mt-5">
-        Delete preset:
-        <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+      <div id="presetSection">
+        <Tooltip placement="left" content="Create new preset by typing its name">
+          Select or create preset:
+        </Tooltip>
+        <Creatable
+          id="createOrSelectPreset"
+          value={defaultOption}
+          options={options}
+          onChange={onChange}
+          styles={selectStyle}
+          onCreateOption={(name) => newPresetMade(name)}
+        ></Creatable>
+        <div className="mt-5">
+          Replace preset:
+          <Select
+            id="replacePreset"
+            options={options}
+            styles={selectStyle}
+            onChange={onReplaceChange}
+            value={null}
+          ></Select>
+        </div>
+        <div className="mt-5">
+          Delete preset:
+          <Select
+            id="deletePreset"
+            options={options}
+            styles={selectStyle}
+            onChange={onDeleteChange}
+            value={null}
+          ></Select>
+        </div>
       </div>
 
       <div className="fixed right-[5%] bottom-[4%]">
         <button
+          id="playGame"
           className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto"
           onClick={() => playGameClicked()}
         >
@@ -137,15 +153,17 @@ export default function PlayGame() {
 
         <div className="mt-2">
           <button
-            className="bg-green-600 border-green-400 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded  h-7 w-36 m-auto "
+            id="continueGame"
+            className="bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded  h-7 w-36 m-auto "
             onClick={() => onContinueGameClicked()}
             disabled={saves.length < 1}
           >
             <span className="ml-[-25%]">Continue</span>
           </button>
           <button
+            id="showSaves"
             type="submit"
-            className="absolute h-7 w-9 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-300 rounded-r-lg border border-green-300 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+            className="absolute h-7 w-9 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
             onClick={() => onShowSavedGamesClicked()}
             disabled={saves.length < 1}
           >

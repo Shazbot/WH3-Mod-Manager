@@ -1,15 +1,20 @@
 import "./index.css";
 import "./app";
-import { setMods, setModData, setFromConfig, setSaves } from "./appSlice";
+import { setMods, setModData, setFromConfig, setSaves, setIsOnboardingToRun } from "./appSlice";
 import store from "./store";
 
 window.api.handleLog((event, str) => {
   console.log(str);
 });
 
-window.api.fromAppConfig((event, appState: AppState) => {
+window.api.fromAppConfig((event, appState: AppStateToSave) => {
   console.log("INVOKED: FROM API CONFIG");
   store.dispatch(setFromConfig(appState));
+});
+
+window.api.failedReadingConfig(() => {
+  console.log("INVOKED: FROM API CONFIG");
+  store.dispatch(setIsOnboardingToRun(true));
 });
 
 window.api.modsPopulated((event, mods: Mod[]) => {

@@ -13,6 +13,8 @@ const appSlice = createSlice({
     alwaysEnabledMods: [],
     hiddenMods: [],
     saves: [],
+    isOnboardingToRun: false,
+    wasOnboardingEverRun: false,
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -28,7 +30,7 @@ const appSlice = createSlice({
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
     },
-    disableAll: (state) => {
+    disableAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
       const toEnable = state.currentPreset.mods.filter((iterMod) =>
@@ -53,7 +55,7 @@ const appSlice = createSlice({
       mod.humanName = data.humanName;
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
-    setFromConfig: (state: AppState, action: PayloadAction<AppState>) => {
+    setFromConfig: (state: AppState, action: PayloadAction<AppStateToSave>) => {
       const fromConfigAppState = action.payload;
       fromConfigAppState.currentPreset.mods
         .filter((mod) => mod !== undefined)
@@ -77,6 +79,9 @@ const appSlice = createSlice({
         fromConfigAppState.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
+
+      state.wasOnboardingEverRun = fromConfigAppState.wasOnboardingEverRun;
+      if (!fromConfigAppState.wasOnboardingEverRun) state.isOnboardingToRun = true;
     },
     addPreset: (state: AppState, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;
@@ -189,6 +194,12 @@ const appSlice = createSlice({
       const saves = action.payload;
       state.saves = saves;
     },
+    setIsOnboardingToRun: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isOnboardingToRun = action.payload;
+    },
+    setWasOnboardingEverRun: (state: AppState, action: PayloadAction<boolean>) => {
+      state.wasOnboardingEverRun = action.payload;
+    },
   },
 });
 
@@ -209,6 +220,8 @@ export const {
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
   setSaves,
+  setIsOnboardingToRun,
+  setWasOnboardingEverRun,
 } = appSlice.actions;
 
 export default appSlice.reducer;

@@ -380,6 +380,7 @@ export default function ModRow() {
           className="flex place-items-center w-full justify-center z-10 mod-row-header"
           onClick={() => onEnabledSort()}
           onContextMenu={onEnabledRightClick}
+          id="enabledHeader"
         >
           {(sortingType === SortingType.IsEnabled && (
             <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>

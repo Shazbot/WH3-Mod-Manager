@@ -6,12 +6,12 @@ declare global {
   }
 
   interface api {
-    getAppData: () => AppData;
     writeUserScript: (mods: Mod[], saveName?: string) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, string) => void) => Electron.IpcRenderer;
     fromAppConfig: (
       callback: (event: Electron.IpcRendererEvent, appState: AppState) => void
     ) => Electron.IpcRenderer;
+    failedReadingConfig: (callback: (event: Electron.IpcRendererEvent) => void) => Electron.IpcRenderer;
     sendApiExists: () => void;
     readAppConfig: () => void;
     copyToData: () => void;
@@ -72,7 +72,14 @@ declare global {
     alwaysEnabledMods: Mod[];
     hiddenMods: Mod[];
     saves: GameSave[];
+    isOnboardingToRun: boolean;
+    wasOnboardingEverRun: boolean;
   }
+
+  type AppStateToSave = Pick<
+    AppState,
+    "currentPreset" | "alwaysEnabledMods" | "hiddenMods" | "wasOnboardingEverRun" | "presets"
+  >;
 
   interface ModLoadOrderPayload {
     modName: string;
