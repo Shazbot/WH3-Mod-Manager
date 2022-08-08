@@ -43,18 +43,27 @@ export default function PlayGame() {
     console.log(name);
   };
 
+  let isShiftDown = false;
+  let isControlDown = false;
+
   const onChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
-    console.log(newValue.label, newValue.value, actionMeta.action);
-    if (actionMeta.action === "select-option") dispatch(selectPreset(newValue.value));
+    console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
+    if (actionMeta.action !== "select-option") return;
+
+    let presetSelection = "unary" as PresetSelection;
+    if (isControlDown) presetSelection = "subtraction" as PresetSelection;
+    else if (isShiftDown) presetSelection = "addition" as PresetSelection;
+
+    dispatch(selectPreset([newValue.value, presetSelection]));
   };
 
   const onDeleteChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
-    console.log(newValue.label, newValue.value, actionMeta.action);
+    console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action === "select-option") dispatch(deletePreset(newValue.value));
   };
 
   const onReplaceChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
-    console.log(newValue.label, newValue.value, actionMeta.action);
+    console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action === "select-option") dispatch(replacePreset(newValue.value));
   };
 
@@ -100,9 +109,18 @@ export default function PlayGame() {
         const filterInput = document.getElementById("filterInput");
         filterInput?.focus();
       }
+
+      if (e.key === "Shift") isShiftDown = true;
+      if (e.key === "Control") isControlDown = true;
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift") isShiftDown = false;
+      if (e.key === "Control") isControlDown = false;
     };
 
     document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keyup", onKeyUp);
   });
 
   return (

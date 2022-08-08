@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { findAlwaysEnabledMods, findMod, withoutDataAndContentDuplicates } from "./modsHelpers";
 
 const appSlice = createSlice({
   name: "app",
@@ -89,24 +90,29 @@ const appSlice = createSlice({
       state.presets.push(newPreset);
       state.lastSelectedPreset = newPreset;
     },
-    selectPreset: (state: AppState, action: PayloadAction<string>) => {
-      const name = action.payload;
+    selectPreset: (state: AppState, action: PayloadAction<[string, PresetSelection]>) => {
+      const [name, presetSelection] = action.payload;
+
       const newPreset = state.presets.find((preset) => preset.name === name);
       if (!newPreset) return;
-      state.currentPreset = newPreset;
+
       state.lastSelectedPreset = newPreset;
 
-      state.currentPreset.mods = state.currentPreset.mods.filter(
-        (mod) =>
-          mod.isInData ||
-          (!mod.isInData &&
-            !state.currentPreset.mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
-      );
+      if (presetSelection === "unary") {
+        state.currentPreset = newPreset;
+        state.currentPreset.mods = withoutDataAndContentDuplicates(state.currentPreset.mods);
+      } else if (presetSelection === "addition" || presetSelection === "subtraction") {
+        newPreset.mods.forEach((mod) => {
+          if (mod.isEnabled) {
+            const modToChange = findMod(state.currentPreset.mods, mod);
+            if (modToChange) modToChange.isEnabled = presetSelection !== "subtraction";
+          }
+        });
+      }
 
-      const toEnable = state.currentPreset.mods.filter((iterMod) =>
-        state.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+      findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
+        (mod) => (mod.isEnabled = true)
       );
-      toEnable.forEach((mod) => (mod.isEnabled = true));
     },
     deletePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;

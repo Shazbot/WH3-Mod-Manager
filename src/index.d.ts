@@ -96,4 +96,6 @@ declare global {
     name: string;
     lastChanged: number;
   }
+
+  type PresetSelection = "unary" | "addition" | "subtraction";
 }
