@@ -26,7 +26,7 @@ export default function SaveGame(props: SaveGameProps) {
             {saves.map((save, i) => {
               return (
                 <React.Fragment key={save.name}>
-                  <div className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
+                  <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
                     {save.name}
                   </div>
                   <button

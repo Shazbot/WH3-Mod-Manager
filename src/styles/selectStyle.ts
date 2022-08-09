@@ -10,6 +10,7 @@ const selectStyle = {
   menu: (base: any) => ({
     ...base,
     background: "#394250",
+    border: "2px solid rgb(59 130 246)",
   }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   option: (base: any, state: any) => ({
