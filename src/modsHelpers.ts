@@ -13,3 +13,7 @@ export function findAlwaysEnabledMods(mods: Mod[], alwaysEnabledMods: Mod[]) {
 export function findMod(mods: Mod[], mod: Mod) {
   return mods.find((iterMod) => iterMod.name === mod.name);
 }
+
+export function isModAlwaysEnabled(mod: Mod, alwaysEnabledMods: Mod[]) {
+  return alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name);
+}

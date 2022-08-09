@@ -4,26 +4,15 @@ import { useAppDispatch, useAppSelector } from "./hooks";
 import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "./appSlice";
 import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
-import { ArrowNarrowDownIcon, ArrowNarrowUpIcon } from "@heroicons/react/solid";
 import { formatDistanceToNow } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGrip } from "@fortawesome/free-solid-svg-icons";
-import sortNamesWithLoadOrder from "./sortNamesWithLoadOrder";
+import { getFilteredMods, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
 import ModDropdown from "./ModDropdown";
-
-enum SortingType {
-  PackName,
-  PackNameReverse,
-  HumanName,
-  HumanNameReverse,
-  IsEnabled,
-  IsEnabledReverse,
-  LastUpdated,
-  LastUpdatedReverse,
-  Ordered,
-  OrderedReverse,
-}
+import { isModAlwaysEnabled } from "./modsHelpers";
+import * as modRowSorting from "./utility/modRowSorting";
+import { SortingType } from "./utility/modRowSorting";
 
 export default function ModRow() {
   const dispatch = useAppDispatch();
@@ -35,83 +24,19 @@ export default function ModRow() {
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
 
-  let mods: Mod[] = [];
+  const presetMods = useAppSelector((state) => state.app.currentPreset.mods);
 
-  const modsToOrder = useAppSelector((state) => state.app.currentPreset.mods).filter((iterMod) => {
+  const modsToOrder = presetMods.filter((iterMod) => {
     const isHidden = hiddenMods.find((mod) => mod.name === iterMod.name);
     const isAlwaysEnabled = alwaysEnabledMods.find((mod) => iterMod.name === mod.name);
     return !isHidden || (isHidden && isAlwaysEnabled);
   });
-  const orderedMods = sortNamesWithLoadOrder(modsToOrder);
+  const orderedMods = sortByNameAndLoadOrder(modsToOrder);
 
-  switch (sortingType) {
-    case SortingType.Ordered:
-    case SortingType.OrderedReverse:
-      mods = useAppSelector((state) =>
-        [...state.app.currentPreset.mods].sort(
-          (firstMod, secondMod) => orderedMods.indexOf(firstMod) - orderedMods.indexOf(secondMod)
-        )
-      );
-      if (sortingType == SortingType.OrderedReverse) {
-        mods = mods.reverse();
-      }
-      break;
-    case SortingType.PackName:
-    case SortingType.PackNameReverse:
-      mods = useAppSelector((state) =>
-        [...state.app.currentPreset.mods].sort((firstMod, secondMod) =>
-          firstMod.name.localeCompare(secondMod.name)
-        )
-      );
-      if (sortingType == SortingType.PackNameReverse) {
-        mods = mods.reverse();
-      }
-      break;
-    case SortingType.HumanName:
-    case SortingType.HumanNameReverse:
-      mods = useAppSelector((state) =>
-        [...state.app.currentPreset.mods].sort((firstMod, secondMod) =>
-          firstMod.humanName.localeCompare(secondMod.humanName)
-        )
-      );
-      if (sortingType == SortingType.HumanNameReverse) {
-        mods = mods.reverse();
-      }
-      break;
-    case SortingType.IsEnabled:
-    case SortingType.IsEnabledReverse:
-      mods = useAppSelector((state) =>
-        [...state.app.currentPreset.mods].sort((firstMod, secondMod) =>
-          firstMod.isEnabled == secondMod.isEnabled ? 0 : firstMod.isEnabled ? -1 : 1
-        )
-      );
-      if (sortingType == SortingType.IsEnabledReverse) {
-        mods = mods.reverse();
-      }
-      break;
-    case SortingType.LastUpdated:
-    case SortingType.LastUpdatedReverse:
-      mods = useAppSelector((state) =>
-        [...state.app.currentPreset.mods].sort((firstMod, secondMod) => {
-          if (firstMod.lastChanged === undefined && secondMod.lastChanged === undefined) return 0;
-          if (firstMod.lastChanged === undefined) return 1;
-          if (secondMod.lastChanged === undefined) return -1;
-          return secondMod.lastChanged - firstMod.lastChanged;
-        })
-      );
-      if (sortingType == SortingType.LastUpdatedReverse) {
-        mods = mods.reverse();
-      }
-      break;
-  }
+  let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType);
 
   if (filter !== "") {
-    const lowercaseFilter = filter.toLowerCase();
-    mods = mods.filter(
-      (mod) =>
-        mod.name.toLowerCase().includes(lowercaseFilter) ||
-        mod.humanName.toLowerCase().includes(lowercaseFilter)
-    );
+    mods = getFilteredMods(mods, filter.toLowerCase());
   }
 
   // duplicates happen when we hot-reload in dev
@@ -125,12 +50,10 @@ export default function ModRow() {
   const onModToggled = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const target = event.target as HTMLInputElement;
     const name = target.name;
-    // const value = target.type === "checkbox" ? target.checked : target.value;
-    // console.log("%s %s", name, value);
     const mod = mods.find((mod) => mod.workshopId == name);
 
     // if always enabled don't allow unchecking
-    if (alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name)) {
+    if (isModAlwaysEnabled(mod, alwaysEnabledMods)) {
       return;
     }
 
@@ -147,32 +70,6 @@ export default function ModRow() {
 
   const onOrderRightClick = () => {
     dispatch(resetModLoadOrder(mods.filter((mod) => mod.loadOrder !== undefined)));
-  };
-
-  const onOrderedSort = () => {
-    setSortingType((prevState) => {
-      return prevState === SortingType.Ordered ? SortingType.OrderedReverse : SortingType.Ordered;
-    });
-  };
-  const onEnabledSort = () => {
-    setSortingType((prevState) => {
-      return prevState === SortingType.IsEnabled ? SortingType.IsEnabledReverse : SortingType.IsEnabled;
-    });
-  };
-  const onPackSort = () => {
-    setSortingType((prevState) => {
-      return prevState === SortingType.PackName ? SortingType.PackNameReverse : SortingType.PackName;
-    });
-  };
-  const onNameSort = () => {
-    setSortingType((prevState) => {
-      return prevState === SortingType.HumanName ? SortingType.HumanNameReverse : SortingType.HumanName;
-    });
-  };
-  const onLastUpdatedSort = () => {
-    setSortingType((prevState) => {
-      return prevState === SortingType.LastUpdated ? SortingType.LastUpdatedReverse : SortingType.LastUpdated;
-    });
   };
 
   const afterDrop = (originalId: string, droppedOnId: string) => {
@@ -296,15 +193,8 @@ export default function ModRow() {
     if (sortingType !== SortingType.Ordered) return;
 
     const element = e.currentTarget as HTMLDivElement;
-    // console.log(`finding drag-icon-${element.id}`);
     const dragIcon = document.getElementById(`drag-icon-${element.id}`);
-    // Array.from(element.parentElement.children).forEach((child) => {
-    //   if (child.id.startsWith("drag-icon")) {
     dragIcon.classList.remove("hidden");
-
-    // dragIcon.classList.add("inline");
-    // }
-    // });
   };
 
   const onRowHoverEnd = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
@@ -360,15 +250,10 @@ export default function ModRow() {
         <div
           id="sortHeader"
           className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
-          onClick={() => onOrderedSort()}
+          onClick={() => modRowSorting.onOrderedSort(setSortingType)}
           onContextMenu={onOrderRightClick}
         >
-          {(sortingType === SortingType.Ordered && (
-            <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
-          )) ||
-            (sortingType === SortingType.OrderedReverse && (
-              <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
-            )) || <></>}
+          {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <Tooltip
             placement="right"
             content="Mods with lower order have priority, don't change unless you really know what you're doing, right click on mod to reset or here to reset all"
@@ -378,55 +263,35 @@ export default function ModRow() {
         </div>
         <div
           className="flex place-items-center w-full justify-center z-10 mod-row-header"
-          onClick={() => onEnabledSort()}
+          onClick={() => modRowSorting.onEnabledSort(setSortingType)}
           onContextMenu={onEnabledRightClick}
           id="enabledHeader"
         >
-          {(sortingType === SortingType.IsEnabled && (
-            <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
-          )) ||
-            (sortingType === SortingType.IsEnabledReverse && (
-              <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
-            )) || <></>}
+          {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <Tooltip placement="right" content="Right click to enable or disable all mods">
             <span className="text-center w-full">Enabled</span>
           </Tooltip>
         </div>
         <div
           className="flex grid-area-packName place-items-center pl-1 mod-row-header"
-          onClick={() => onPackSort()}
+          onClick={() => modRowSorting.onPackSort(setSortingType)}
         >
-          {(sortingType === SortingType.PackName && (
-            <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
-          )) ||
-            (sortingType === SortingType.PackNameReverse && (
-              <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
-            )) || <></>}
+          {modRowSorting.isPackNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           Pack
         </div>
 
         <div
           className="flex grid-area-humanName place-items-center pl-1 mod-row-header"
-          onClick={() => onNameSort()}
+          onClick={() => modRowSorting.onNameSort(setSortingType)}
         >
-          {(sortingType === SortingType.HumanName && (
-            <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
-          )) ||
-            (sortingType === SortingType.HumanNameReverse && (
-              <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
-            )) || <></>}
+          {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           Name
         </div>
         <div
           className="flex grid-area-lastUpdated place-items-center pl-1 mod-row-header rounded-tr-xl"
-          onClick={() => onLastUpdatedSort()}
+          onClick={() => modRowSorting.onLastUpdatedSort(setSortingType)}
         >
-          {(sortingType === SortingType.LastUpdated && (
-            <ArrowNarrowDownIcon className="inline h-4"></ArrowNarrowDownIcon>
-          )) ||
-            (sortingType === SortingType.LastUpdatedReverse && (
-              <ArrowNarrowUpIcon className="inline h-4"></ArrowNarrowUpIcon>
-            )) || <></>}
+          {modRowSorting.isLastUpdatedSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           Last Updated
         </div>
 

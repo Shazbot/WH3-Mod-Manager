@@ -6,7 +6,7 @@ import isDev from "electron-is-dev";
 import * as fs from "fs/promises";
 import { updateAvailable } from "gh-release-fetch";
 import { version } from "../package.json";
-import sortNamesWithLoadOrder from "./sortNamesWithLoadOrder";
+import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { readAppConfig, saveAppConfig } from "./appConfigFunctions";
 import { fetchModData, getMods } from "./modFunctions";
 import appData from "./appData";
@@ -279,7 +279,7 @@ ipcMain.on("writeUserScript", (event, mods: Mod[], saveName?: string) => {
   const appDataPath = app.getPath("userData");
   const userScriptPath = `${appData.gamePath}\\my_mods.txt`;
 
-  const sortedMods = sortNamesWithLoadOrder(mods);
+  const sortedMods = sortByNameAndLoadOrder(mods);
   const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
 
   const text = enabledMods
