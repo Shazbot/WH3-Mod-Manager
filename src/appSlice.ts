@@ -16,6 +16,9 @@ const appSlice = createSlice({
     saves: [],
     isOnboardingToRun: false,
     wasOnboardingEverRun: false,
+    isDev: false,
+    areThumbnailsEnabled: false,
+    isAuthorEnabled: false,
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -54,6 +57,7 @@ const appSlice = createSlice({
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == data.workshopId);
       if (!mod) return;
       mod.humanName = data.humanName;
+      mod.author = data.author;
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToSave>) => {
@@ -74,6 +78,8 @@ const appSlice = createSlice({
         }
       });
 
+      state.areThumbnailsEnabled = fromConfigAppState.areThumbnailsEnabled;
+      state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
       state.hiddenMods = fromConfigAppState.hiddenMods;
       state.alwaysEnabledMods = fromConfigAppState.alwaysEnabledMods;
       const toEnable = state.currentPreset.mods.filter((iterMod) =>
@@ -206,6 +212,15 @@ const appSlice = createSlice({
     setWasOnboardingEverRun: (state: AppState, action: PayloadAction<boolean>) => {
       state.wasOnboardingEverRun = action.payload;
     },
+    toggleAreThumbnailsEnabled: (state: AppState) => {
+      state.areThumbnailsEnabled = !state.areThumbnailsEnabled;
+    },
+    toggleIsAuthorEnabled: (state: AppState) => {
+      state.isAuthorEnabled = !state.isAuthorEnabled;
+    },
+    setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isDev = action.payload;
+    },
   },
 });
 
@@ -228,6 +243,9 @@ export const {
   setSaves,
   setIsOnboardingToRun,
   setWasOnboardingEverRun,
+  toggleIsAuthorEnabled,
+  toggleAreThumbnailsEnabled,
+  setIsDev,
 } = appSlice.actions;
 
 export default appSlice.reducer;

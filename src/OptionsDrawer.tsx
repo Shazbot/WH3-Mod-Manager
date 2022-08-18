@@ -1,6 +1,6 @@
 import Select, { ActionMeta } from "react-select";
 import React from "react";
-import { toggleAlwaysHiddenMods } from "./appSlice";
+import { toggleAlwaysHiddenMods, toggleAreThumbnailsEnabled, toggleIsAuthorEnabled } from "./appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import selectStyle from "./styles/selectStyle";
@@ -9,6 +9,8 @@ import { Tooltip } from "flowbite-react";
 export default function OptionsDrawer() {
   const dispatch = useAppDispatch();
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
+  const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
+  const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
 
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -69,7 +71,34 @@ export default function OptionsDrawer() {
             Other Options
           </h5>
 
-          <h6>Content Mods Vs Data Mods</h6>
+          <h6>Extra Columns</h6>
+          <div className="flex items-center ml-1">
+            <input
+              className="mt-1"
+              type="checkbox"
+              id="enable-thumbnails"
+              checked={areThumbnailsEnabled}
+              onChange={() => dispatch(toggleAreThumbnailsEnabled())}
+            ></input>
+            <label className="ml-2 mt-1" htmlFor="enable-thumbnails">
+              Mod Thumbnail Column
+            </label>
+          </div>
+
+          <div className="flex items-center ml-1">
+            <input
+              className="mt-1"
+              type="checkbox"
+              id="enable-mod-author"
+              checked={isAuthorEnabled}
+              onChange={() => dispatch(toggleIsAuthorEnabled())}
+            ></input>
+            <label className="ml-2 mt-1" htmlFor="enable-mod-author">
+              Mod Author Column
+            </label>
+          </div>
+
+          <h6 className="mt-8">Content Mods Vs Data Mods</h6>
           <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
             Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from the
             data folder. Don't touch unless you know what you're doing!

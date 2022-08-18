@@ -6,6 +6,7 @@ import {
   getModsSortedByHumanName,
   getModsSortedByEnabled,
   getModsSortedByLastUpdated,
+  getModsSortedByAuthor,
 } from "../modSortingHelpers";
 
 export enum SortingType {
@@ -19,6 +20,8 @@ export enum SortingType {
   LastUpdatedReverse,
   Ordered,
   OrderedReverse,
+  Author,
+  AuthorReverse,
 }
 
 export function isOrderSort(sortingType: SortingType) {
@@ -35,6 +38,9 @@ export function isHumanNameSort(sortingType: SortingType) {
 }
 export function isLastUpdatedSort(sortingType: SortingType) {
   return sortingType === SortingType.LastUpdated || sortingType === SortingType.LastUpdatedReverse;
+}
+export function isAuthorSort(sortingType: SortingType) {
+  return sortingType === SortingType.Author || sortingType === SortingType.AuthorReverse;
 }
 
 export function getSortingArrow(sortingType: SortingType) {
@@ -67,6 +73,12 @@ export function getSortingArrow(sortingType: SortingType) {
       <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
     )) ||
     (sortingType === SortingType.OrderedReverse && (
+      <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+    )) ||
+    (sortingType === SortingType.Author && (
+      <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+    )) ||
+    (sortingType === SortingType.AuthorReverse && (
       <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
     )) || <></>
   );
@@ -115,6 +127,14 @@ export function getSortedMods(presetMods: Mod[], orderedMods: Mod[], sortingType
         mods = mods.reverse();
       }
       break;
+    case SortingType.Author:
+    case SortingType.AuthorReverse:
+      mods = getModsSortedByAuthor(presetMods);
+
+      if (sortingType == SortingType.AuthorReverse) {
+        mods = mods.reverse();
+      }
+      break;
   }
   return mods;
 }
@@ -142,5 +162,10 @@ export const onNameSort = (setSortingType: React.Dispatch<React.SetStateAction<S
 export const onLastUpdatedSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
   setSortingType((prevState) => {
     return prevState === SortingType.LastUpdated ? SortingType.LastUpdatedReverse : SortingType.LastUpdated;
+  });
+};
+export const onAuthorSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
+  setSortingType((prevState) => {
+    return prevState === SortingType.Author ? SortingType.AuthorReverse : SortingType.Author;
   });
 };

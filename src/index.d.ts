@@ -7,6 +7,9 @@ declare global {
 
   interface api {
     writeUserScript: (mods: Mod[], saveName?: string) => void;
+    openFolderInExplorer: (path: string) => void;
+    openPack: (path: string) => void;
+    putPathInClipboard: (path: string) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, string) => void) => Electron.IpcRenderer;
     fromAppConfig: (
       callback: (event: Electron.IpcRendererEvent, appState: AppState) => void
@@ -17,7 +20,7 @@ declare global {
     copyToData: () => void;
     cleanData: () => void;
     saveConfig: (appData: AppState) => void;
-    getModData: (id: string) => Promise<{ id: string; name: string }>;
+    getModData: (id: string) => Promise<FetchedModData>;
     getUpdateData: () => Promise<ModUpdateExists>;
     modsPopulated: (
       callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void
@@ -29,6 +32,7 @@ declare global {
     savesPopulated: (
       callback: (event: Electron.IpcRendererEvent, saves: GameSave[]) => void
     ) => Electron.IpcRenderer;
+    setIsDev: (callback: (event: Electron.IpcRendererEvent, boolean) => void) => Electron.IpcRenderer;
   }
 
   interface Mod {
@@ -42,6 +46,7 @@ declare global {
     isInData: boolean;
     lastChanged?: number;
     loadOrder: number | undefined;
+    author: string;
   }
 
   interface ModData {
@@ -49,6 +54,13 @@ declare global {
     workshopId: string;
     reqModIds: string[];
     lastChanged: number;
+    author: string;
+  }
+
+  interface FetchedModData {
+    id: string;
+    name: string;
+    author: string;
   }
 
   interface Preset {
@@ -74,11 +86,20 @@ declare global {
     saves: GameSave[];
     isOnboardingToRun: boolean;
     wasOnboardingEverRun: boolean;
+    areThumbnailsEnabled: boolean;
+    isAuthorEnabled: boolean;
+    isDev: boolean;
   }
 
   type AppStateToSave = Pick<
     AppState,
-    "currentPreset" | "alwaysEnabledMods" | "hiddenMods" | "wasOnboardingEverRun" | "presets"
+    | "currentPreset"
+    | "alwaysEnabledMods"
+    | "hiddenMods"
+    | "wasOnboardingEverRun"
+    | "presets"
+    | "isAuthorEnabled"
+    | "areThumbnailsEnabled"
   >;
 
   interface ModLoadOrderPayload {

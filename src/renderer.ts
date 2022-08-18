@@ -1,10 +1,15 @@
 import "./index.css";
 import "./app";
-import { setMods, setModData, setFromConfig, setSaves, setIsOnboardingToRun } from "./appSlice";
+import { setMods, setModData, setFromConfig, setSaves, setIsOnboardingToRun, setIsDev } from "./appSlice";
 import store from "./store";
 
 window.api.handleLog((event, str) => {
   console.log(str);
+});
+
+window.api.setIsDev((event, isDev) => {
+  console.log("Setting is dev: " + isDev);
+  store.dispatch(setIsDev(isDev));
 });
 
 window.api.fromAppConfig((event, appState: AppStateToSave) => {

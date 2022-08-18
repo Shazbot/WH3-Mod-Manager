@@ -1,3 +1,4 @@
+import { shell } from "electron";
 import { Tooltip } from "flowbite-react";
 import React from "react";
 import { toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";
@@ -15,6 +16,16 @@ export default function ModDropdown(props: ModDropdownProps) {
 
   const onGoToWorkshopPageClick = () => {
     window.open(`https://steamcommunity.com/workshop/filedetails/?id=${props.mod.workshopId}`);
+  };
+
+  const openInExplorer = (mod: Mod) => {
+    window.api.openFolderInExplorer(mod.path);
+  };
+  const openInRPFM = (mod: Mod) => {
+    window.api.openPack(mod.path);
+  };
+  const putPathInClipboard = (mod: Mod) => {
+    window.api.putPathInClipboard(mod.path);
   };
 
   return (
@@ -68,6 +79,33 @@ export default function ModDropdown(props: ModDropdownProps) {
               >
                 Hide from list
               </Tooltip>
+            </a>
+          </li>
+          <li>
+            <a
+              onClick={() => openInExplorer(props.mod)}
+              href="#"
+              className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+            >
+              Show in explorer
+            </a>
+          </li>
+          <li>
+            <a
+              onClick={() => openInRPFM(props.mod)}
+              href="#"
+              className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+            >
+              Open in RPFM
+            </a>
+          </li>
+          <li>
+            <a
+              onClick={() => putPathInClipboard(props.mod)}
+              href="#"
+              className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+            >
+              Copy path to clipboard
             </a>
           </li>
         </ul>

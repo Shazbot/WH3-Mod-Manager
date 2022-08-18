@@ -19,6 +19,9 @@ export default function ModRow() {
   const filter = useAppSelector((state) => state.app.filter);
   const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
+  const isDev = useAppSelector((state) => state.app.isDev);
+  const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+  const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
 
   const [sortingType, setSortingType] = useState<SortingType>(SortingType.Ordered);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
@@ -36,7 +39,7 @@ export default function ModRow() {
   let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType);
 
   if (filter !== "") {
-    mods = getFilteredMods(mods, filter.toLowerCase());
+    mods = getFilteredMods(mods, filter.toLowerCase(), isAuthorEnabled);
   }
 
   // duplicates happen when we hot-reload in dev
@@ -80,19 +83,21 @@ export default function ModRow() {
 
     const droppedOnElement = document.getElementById(droppedOnId);
     if (!droppedOnElement) return;
-    const index = [...droppedOnElement.parentElement.children].indexOf(droppedOnElement) - 6;
+    const index = [...droppedOnElement.parentElement.children].indexOf(droppedOnElement) - 8;
 
     const originalElement = document.getElementById(originalId);
     if (!originalElement) return;
-    const originalElementindex = [...originalElement.parentElement.children].indexOf(originalElement) - 6;
+    const originalElementindex = [...originalElement.parentElement.children].indexOf(originalElement) - 8;
 
     const loadOrder = index > originalElementindex ? index : index + 1;
     const originalOrder = originalElementindex + (index > originalElementindex ? 2 : 1);
 
     if (originalElementindex < index && index - originalElementindex < 3) return;
 
-    // console.log(originalElementindex);
     // console.log(`index is ${index}`);
+    // console.log(`orig index is ${originalElementindex}`);
+    // console.log(`loadOrder is ${loadOrder}`);
+    // console.log(`originalOrder is ${originalOrder}`);
 
     dispatch(setModLoadOrder({ modName: originalId, loadOrder, originalOrder }));
   };
@@ -148,6 +153,7 @@ export default function ModRow() {
     newE.id = "drop-ghost";
     newE.dataset.rowId = t.id;
     newE.classList.add("drop-ghost");
+    newE.classList.add(getGhostClass());
 
     t.parentElement.insertBefore(newE, t);
     newE.addEventListener("dragover", (e) => {
@@ -231,6 +237,26 @@ export default function ModRow() {
   const [positionX, setPositionX] = useState<number>(0);
   const [positionY, setPositionY] = useState<number>(0);
 
+  const domParser = new DOMParser();
+  const decodeHTML = (encoded: string) => {
+    const doc = domParser.parseFromString(encoded, "text/html");
+    return doc.documentElement.textContent;
+  };
+
+  const getGridClass = () => {
+    if (isAuthorEnabled && areThumbnailsEnabled) return "grid-mods-thumbs-author";
+    if (isAuthorEnabled) return "grid-mods-author";
+    if (areThumbnailsEnabled) return "grid-mods-thumbs";
+    return "grid-mods";
+  };
+
+  const getGhostClass = () => {
+    if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-7";
+    if (isAuthorEnabled) return "grid-column-6";
+    if (areThumbnailsEnabled) return "grid-column-6";
+    return "grid-column-5";
+  };
+
   return (
     <div className={`dark:text-slate-100`} id="rowsParent">
       <FloatingOverlay
@@ -246,7 +272,7 @@ export default function ModRow() {
           mod={contextMenuMod}
         ></ModDropdown>
       </FloatingOverlay>
-      <div className="grid grid-mods pt-1.5 grida parent" id="modsGrid">
+      <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
         <div
           id="sortHeader"
           className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
@@ -273,6 +299,14 @@ export default function ModRow() {
           </Tooltip>
         </div>
         <div
+          className={
+            "flex grid-area-autohide place-items-center pl-1 mod-row-header " +
+            (areThumbnailsEnabled ? "" : "hidden")
+          }
+        >
+          Thumbnail
+        </div>
+        <div
           className="flex grid-area-packName place-items-center pl-1 mod-row-header"
           onClick={() => modRowSorting.onPackSort(setSortingType)}
         >
@@ -288,7 +322,17 @@ export default function ModRow() {
           Name
         </div>
         <div
-          className="flex grid-area-lastUpdated place-items-center pl-1 mod-row-header rounded-tr-xl"
+          className={
+            "flex grid-area-autohide place-items-center pl-1 mod-row-header " +
+            (isAuthorEnabled ? "" : "hidden")
+          }
+          onClick={() => modRowSorting.onAuthorSort(setSortingType)}
+        >
+          {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+          Author
+        </div>
+        <div
+          className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl"
           onClick={() => modRowSorting.onLastUpdatedSort(setSortingType)}
         >
           {modRowSorting.isLastUpdatedSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
@@ -347,6 +391,21 @@ export default function ModRow() {
                 </form>
               </div>
               <div
+                onContextMenu={(e) => onModRightClick(e, mod)}
+                className={
+                  "flex place-items-center grid-area-autohide " + (areThumbnailsEnabled ? "" : "hidden")
+                }
+              >
+                <label htmlFor={mod.workshopId + "enabled"}>
+                  <img
+                    className="max-w-[6rem] aspect-square"
+                    src={
+                      ((isDev || mod.imgPath === "") && require("./assets/modThumbnail.png")) || mod.imgPath
+                    }
+                  ></img>
+                </label>
+              </div>
+              <div
                 className="flex place-items-center w-min-[0px]"
                 onContextMenu={(e) => onModRightClick(e, mod)}
               >
@@ -357,9 +416,20 @@ export default function ModRow() {
                 </label>
               </div>
               <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
-                <label htmlFor={mod.workshopId + "enabled"}>{mod.humanName}</label>
+                <label htmlFor={mod.workshopId + "enabled"}>{decodeHTML(decodeHTML(mod.humanName))}</label>
               </div>
-              <div className="flex place-items-center grid-area-lastUpdated">
+              <div
+                onContextMenu={(e) => onModRightClick(e, mod)}
+                className={"flex place-items-center grid-area-autohide " + (isAuthorEnabled ? "" : "hidden")}
+              >
+                <label htmlFor={mod.workshopId + "enabled"}>
+                  <span className="break-all">{decodeHTML(decodeHTML(mod.author))}</span>
+                </label>
+              </div>
+              <div
+                className="flex place-items-center grid-area-autohide"
+                onContextMenu={(e) => onModRightClick(e, mod)}
+              >
                 <label htmlFor={mod.workshopId + "enabled"}>
                   {formatDistanceToNow(mod.lastChanged).replace("about ", "~") + " ago"}
                 </label>

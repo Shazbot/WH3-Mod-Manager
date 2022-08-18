@@ -19,6 +19,18 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           log(err);
         }
 
+        let author = "";
+        try {
+          const regexBreadcrumbs = /<div class="breadcrumbs">(.*?)<\/div>/s;
+          const breadcrumbs = body.match(regexBreadcrumbs)[1];
+          const match = breadcrumbs && breadcrumbs.match(/.*>(.+?)'s .*?<\/a>/);
+          if (match) {
+            author = match[1];
+          }
+        } catch (err) {
+          log(err);
+        }
+
         let reqModIds: string[] = [];
         try {
           const requiredItemsContainerInnerRegex = /id="RequiredItems"(.+?)<\/div>/s;
@@ -66,7 +78,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
         }
 
         if (humanName) {
-          const modData = { workshopId, humanName, reqModIds, lastChanged } as ModData;
+          const modData = { workshopId, humanName, author, reqModIds, lastChanged } as ModData;
           cb(modData);
         }
       })
@@ -117,6 +129,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
           isInData: true,
           loadOrder: undefined,
           lastChanged,
+          author: "",
         };
         return mod;
       });
@@ -214,6 +227,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
         const packPath = `${contentFolder}\\${file.name}\\${pack.name}`;
         const imgPath = `${contentFolder}\\${file.name}\\${img.name}`;
         const mod: Mod = {
+          author: "",
           humanName: "",
           name: pack.name,
           path: packPath,

@@ -11,6 +11,8 @@ export function saveAppConfig(data: AppState) {
     wasOnboardingEverRun: data.wasOnboardingEverRun,
     presets: data.presets,
     currentPreset: data.currentPreset,
+    isAuthorEnabled: data.isAuthorEnabled,
+    areThumbnailsEnabled: data.areThumbnailsEnabled,
   };
 
   saveData = toSave;

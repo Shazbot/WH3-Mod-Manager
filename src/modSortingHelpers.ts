@@ -37,6 +37,15 @@ export function getModsSortedByEnabled(mods: Mod[]) {
   });
 }
 
+export function getModsSortedByAuthor(mods: Mod[]) {
+  return [...mods].sort((firstMod, secondMod) => {
+    if (firstMod.author == secondMod.author) {
+      return firstMod.name.localeCompare(secondMod.name);
+    }
+    return firstMod.author.localeCompare(secondMod.author);
+  });
+}
+
 export function getModsSortedByLastUpdated(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
     if (firstMod.lastChanged === undefined && secondMod.lastChanged === undefined) return 0;
@@ -46,8 +55,11 @@ export function getModsSortedByLastUpdated(mods: Mod[]) {
   });
 }
 
-export function getFilteredMods(mods: Mod[], filter: string) {
+export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: boolean) {
   return mods.filter(
-    (mod) => mod.name.toLowerCase().includes(filter) || mod.humanName.toLowerCase().includes(filter)
+    (mod) =>
+      mod.name.toLowerCase().includes(filter) ||
+      mod.humanName.toLowerCase().includes(filter) ||
+      (doAuthorFiltering && mod.author.toLowerCase().includes(filter))
   );
 }
