@@ -1,6 +1,14 @@
 import "./index.css";
 import "./app";
-import { setMods, setModData, setFromConfig, setSaves, setIsOnboardingToRun, setIsDev } from "./appSlice";
+import {
+  setMods,
+  setModData,
+  setFromConfig,
+  setSaves,
+  setIsOnboardingToRun,
+  setIsDev,
+  setPackData,
+} from "./appSlice";
 import store from "./store";
 
 window.api.handleLog((event, str) => {
@@ -45,6 +53,11 @@ window.api.savesPopulated((event, saves: GameSave[]) => {
 window.api.setModData((event, modData: ModData) => {
   // console.log("INVOKED: MOD DATA RECIEVED");
   store.dispatch(setModData(modData));
+});
+
+window.api.setPackData((event, packData: PackData) => {
+  // console.log("INVOKED: MOD PACK DATA RECIEVED");
+  store.dispatch(setPackData(packData));
 });
 
 window.api.sendApiExists();

@@ -66,6 +66,13 @@ const appSlice = createSlice({
       if (mod.isDeleted) console.log(mod.name);
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
+    setPackData: (state: AppState, action: PayloadAction<PackData>) => {
+      const data = action.payload;
+      const mod = state.currentPreset.mods.find((mod) => mod.path == data.path);
+      mod.isMovie = data.isMovie;
+
+      if (data.isMovie) console.log(`${data.path} is movie!`);
+    },
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToSave>) => {
       const fromConfigAppState = action.payload;
       fromConfigAppState.currentPreset.mods
@@ -262,6 +269,7 @@ export const {
   toggleIsAuthorEnabled,
   toggleAreThumbnailsEnabled,
   setIsDev,
+  setPackData,
 } = appSlice.actions;
 
 export default appSlice.reducer;

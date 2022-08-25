@@ -27,6 +27,9 @@ declare global {
     setModData: (
       callback: (event: Electron.IpcRendererEvent, modData: ModData) => void
     ) => Electron.IpcRenderer;
+    setPackData: (
+      callback: (event: Electron.IpcRendererEvent, packData: PackData) => void
+    ) => Electron.IpcRenderer;
     getAllModData: (ids: string[]) => void;
     savesPopulated: (
       callback: (event: Electron.IpcRendererEvent, saves: GameSave[]) => void
@@ -47,6 +50,7 @@ declare global {
     loadOrder: number | undefined;
     author: string;
     isDeleted: boolean;
+    isMovie: boolean;
   }
 
   interface ModData {
@@ -56,6 +60,11 @@ declare global {
     lastChanged: number;
     author: string;
     isDeleted: boolean;
+  }
+
+  interface PackData {
+    path: string;
+    isMovie: boolean;
   }
 
   interface FetchedModData {
@@ -75,6 +84,7 @@ declare global {
     contentFolder: string | undefined;
     dataFolder: string | undefined;
     gameSaves: GameSave[];
+    saveSetupDone: boolean;
   }
 
   interface AppState {

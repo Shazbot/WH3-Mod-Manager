@@ -6,7 +6,7 @@ import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
 import { formatDistanceToNow } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGrip, faEraser } from "@fortawesome/free-solid-svg-icons";
+import { faGrip, faEraser, faCamera } from "@fortawesome/free-solid-svg-icons";
 import { getFilteredMods, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
 import ModDropdown from "./ModDropdown";
@@ -419,6 +419,21 @@ export default function ModRow() {
                       <Tooltip placement="bottom" content="Mod was deleted from the workshop.">
                         <span className="text-red-800">
                           <FontAwesomeIcon fill="red" icon={faEraser} />
+                        </span>
+                      </Tooltip>
+                    )}
+                    {mod.isMovie && (
+                      <Tooltip
+                        placement="bottom"
+                        content={
+                          <>
+                            <p>Mod is of a movie mod type. Always has high priority.</p>
+                            {mod.isMovie && <p>Always enabled if in WH3/data folder!</p>}
+                          </>
+                        }
+                      >
+                        <span className="text-red-800">
+                          <FontAwesomeIcon fill="red" icon={faCamera} />
                         </span>
                       </Tooltip>
                     )}

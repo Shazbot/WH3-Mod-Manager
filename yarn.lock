@@ -3038,6 +3038,13 @@
   resolved "https://registry.yarnpkg.com/@types/aria-query/-/aria-query-4.2.2.tgz#ed4e0ad92306a704f9fb132a0cfcf77486dbe2bc"
   integrity sha512-HnYpAE1Y6kRyKM/XkEuiRQhTHvkzMBurTHnpFLYLBGPIylZNPs9jJcuOOYWxPLJCSEtmZT0Y8rHDokKN7rRTig==
 
+"@types/binary-file@^0.2.0":
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/@types/binary-file/-/binary-file-0.2.0.tgz#9f3aea4a2de30f854545bec33b70e9684a6459c7"
+  integrity sha512-nzLAM4abxDMGDs3jWGfVUei0trGieyFwEFxN1joZCPafQGUrgAx5Yrc4Wa7Ia35OmSkd7lPL096QZSG4xy16sQ==
+  dependencies:
+    "@types/node" "*"
+
 "@types/body-parser@*":
   version "1.19.2"
   resolved "https://registry.yarnpkg.com/@types/body-parser/-/body-parser-1.19.2.tgz#aea2059e28b7658639081347ac4fab3de166e6f0"
@@ -5322,6 +5329,13 @@ binary-extensions@^2.0.0:
   resolved "https://registry.yarnpkg.com/binary-extensions/-/binary-extensions-2.2.0.tgz#75f502eeaf9ffde42fc98829645be4ea76bd9e2d"
   integrity sha512-jDctJ/IVQbZoJykoeHbhXpOlNBqGNcwXJKJog42E5HDPUwQTSdjCHdihjj0DlnheQ7blbT6dHOafNAiS8ooQKA==
 
+binary-file@^0.2.3:
+  version "0.2.3"
+  resolved "https://registry.yarnpkg.com/binary-file/-/binary-file-0.2.3.tgz#6291bb466e39e3a7124edd944e0cdbc5fc53f3d6"
+  integrity sha512-FOEFou3G9h/OkU7wcWS7zi60bZ3MSA5/elFP2oqpFwmsCb8Y+tDUKqvOEuOCznqNlgnU/YET8F1TzLHpqiFluQ==
+  dependencies:
+    denodeify "^1.2.1"
+
 bindings@^1.5.0:
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/bindings/-/bindings-1.5.0.tgz#10353c9e945334bc0511a6d90b38fbc7c9c504df"
@@ -7150,6 +7164,11 @@ delegates@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/delegates/-/delegates-1.0.0.tgz#84c6e159b81904fdca59a0ef44cd870d31250f9a"
   integrity sha512-bd2L678uiWATM6m5Z1VzNCErI3jiGzt6HGY8OVICs40JQq/HALfbyNJmp0UDakEY4pMMaN0Ly5om/B1VI/+xfQ==
+
+denodeify@^1.2.1:
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/denodeify/-/denodeify-1.2.1.tgz#3a36287f5034e699e7577901052c2e6c94251631"
+  integrity sha512-KNTihKNmQENUZeKu5fzfpzRqR5S2VMp4gl9RFHiWzj9DfvYQPMJ6XHKNaQxaGCXwPk6y9yme3aUoaiAe+KX+vg==
 
 depd@2.0.0:
   version "2.0.0"

@@ -4,4 +4,5 @@ export default {
   contentFolder: undefined,
   dataFolder: undefined,
   gameSaves: [],
+  saveSetupDone: false,
 } as AppData;

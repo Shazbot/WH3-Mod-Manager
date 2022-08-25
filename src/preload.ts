@@ -17,6 +17,7 @@ const api: api = {
   failedReadingConfig: (callback) => ipcRenderer.on("failedReadingConfig", callback),
   modsPopulated: (callback) => ipcRenderer.on("modsPopulated", callback),
   setModData: (callback) => ipcRenderer.on("setModData", callback),
+  setPackData: (callback) => ipcRenderer.on("setPackData", callback),
   getAllModData: (ids) => ipcRenderer.send("getAllModData", ids),
   savesPopulated: (callback) => ipcRenderer.on("savesPopulated", callback),
 };

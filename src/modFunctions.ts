@@ -139,6 +139,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
           lastChanged,
           author: "",
           isDeleted: false,
+          isMovie: false,
         };
         return mod;
       });
@@ -248,6 +249,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
           loadOrder: undefined,
           lastChanged,
           isDeleted: false,
+          isMovie: false,
         };
         return mod;
       }
