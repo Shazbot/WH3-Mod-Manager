@@ -56,8 +56,14 @@ const appSlice = createSlice({
       const data = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == data.workshopId);
       if (!mod) return;
-      mod.humanName = data.humanName;
-      mod.author = data.author;
+      if (data.isDeleted) {
+        mod.isDeleted = data.isDeleted;
+      } else {
+        mod.humanName = data.humanName;
+        mod.author = data.author;
+      }
+
+      if (mod.isDeleted) console.log(mod.name);
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToSave>) => {

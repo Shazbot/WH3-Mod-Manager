@@ -15,11 +15,19 @@ window.api.setIsDev((event, isDev) => {
 window.api.fromAppConfig((event, appState: AppStateToSave) => {
   console.log("INVOKED: FROM API CONFIG");
   store.dispatch(setFromConfig(appState));
+
+  store.subscribe(() => {
+    window.api.saveConfig(store.getState().app);
+  });
 });
 
 window.api.failedReadingConfig(() => {
   console.log("INVOKED: FROM API CONFIG");
   store.dispatch(setIsOnboardingToRun(true));
+
+  store.subscribe(() => {
+    window.api.saveConfig(store.getState().app);
+  });
 });
 
 window.api.modsPopulated((event, mods: Mod[]) => {
@@ -41,7 +49,3 @@ window.api.setModData((event, modData: ModData) => {
 
 window.api.sendApiExists();
 window.api.readAppConfig();
-
-store.subscribe(() => {
-  window.api.saveConfig(store.getState().app);
-});

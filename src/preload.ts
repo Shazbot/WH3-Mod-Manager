@@ -12,7 +12,6 @@ const api: api = {
   copyToData: () => ipcRenderer.send("copyToData"),
   cleanData: () => ipcRenderer.send("cleanData"),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
-  getModData: (id) => ipcRenderer.invoke("getModData", id),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
   fromAppConfig: (callback) => ipcRenderer.on("fromAppConfig", callback),
   failedReadingConfig: (callback) => ipcRenderer.on("failedReadingConfig", callback),

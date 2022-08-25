@@ -6,7 +6,7 @@ import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
 import { formatDistanceToNow } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGrip } from "@fortawesome/free-solid-svg-icons";
+import { faGrip, faEraser } from "@fortawesome/free-solid-svg-icons";
 import { getFilteredMods, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
 import ModDropdown from "./ModDropdown";
@@ -410,7 +410,18 @@ export default function ModRow() {
                 onContextMenu={(e) => onModRightClick(e, mod)}
               >
                 <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId + "enabled"}>
-                  <span className={classNames("break-all", { ["text-orange-500"]: mod.isInData })}>
+                  <span
+                    className={classNames("break-all", "flex", "items-center", {
+                      ["text-orange-500"]: mod.isInData,
+                    })}
+                  >
+                    {mod.isDeleted && (
+                      <Tooltip placement="bottom" content="Mod was deleted from the workshop.">
+                        <span className="text-red-800">
+                          <FontAwesomeIcon fill="red" icon={faEraser} />
+                        </span>
+                      </Tooltip>
+                    )}
                     {mod.name.replace(".pack", "")}
                   </span>
                 </label>

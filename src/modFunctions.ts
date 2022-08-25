@@ -10,13 +10,19 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
     fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
       .then((res) => res.text())
       .then((body) => {
+        let isDeleted = false;
         let humanName = undefined;
         try {
           const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
           const match = body.match(regexpSize);
           humanName = match[1];
         } catch (err) {
+          log(`failed for ${workshopId}`);
           log(err);
+
+          const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
+          const match = body.match(regexpDeleted);
+          if (match[0]) isDeleted = true;
         }
 
         let author = "";
@@ -28,6 +34,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
             author = match[1];
           }
         } catch (err) {
+          log(`failed for ${workshopId}`);
           log(err);
         }
 
@@ -41,6 +48,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
             reqModIds = [...requiredModsIds].map((matchAllResult) => matchAllResult[1]);
           }
         } catch (err) {
+          log(`failed for ${workshopId}`);
           log(err);
         }
 
@@ -77,8 +85,8 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           log(err);
         }
 
-        if (humanName) {
-          const modData = { workshopId, humanName, author, reqModIds, lastChanged } as ModData;
+        if (humanName || isDeleted) {
+          const modData = { workshopId, humanName, author, reqModIds, lastChanged, isDeleted } as ModData;
           cb(modData);
         }
       })
@@ -130,6 +138,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
           loadOrder: undefined,
           lastChanged,
           author: "",
+          isDeleted: false,
         };
         return mod;
       });
@@ -238,6 +247,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
           isInData: false,
           loadOrder: undefined,
           lastChanged,
+          isDeleted: false,
         };
         return mod;
       }

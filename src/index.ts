@@ -201,24 +201,6 @@ const createWindow = (): void => {
     saveAppConfig(data);
   });
 
-  ipcMain.removeHandler("getModData");
-  ipcMain.handle("getModData", async (event, workshopId) => {
-    if (isDev) return;
-
-    return fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
-      .then((res) => res.text())
-      .then((body) => {
-        const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
-        const match = body.match(regexpSize);
-
-        const regexpAuthor = /<div class="breadcrumbs">.*>(.+)'s .*<\/a>/;
-        const author = body.match(regexpAuthor)[1];
-
-        return { id: workshopId, name: match[1], author } as FetchedModData;
-      })
-      .catch();
-  });
-
   ipcMain.removeHandler("getUpdateData");
   ipcMain.handle("getUpdateData", async () => {
     let modUpdatedExists = { updateExists: false } as ModUpdateExists;

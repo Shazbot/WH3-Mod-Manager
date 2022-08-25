@@ -20,7 +20,6 @@ declare global {
     copyToData: () => void;
     cleanData: () => void;
     saveConfig: (appData: AppState) => void;
-    getModData: (id: string) => Promise<FetchedModData>;
     getUpdateData: () => Promise<ModUpdateExists>;
     modsPopulated: (
       callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void
@@ -47,6 +46,7 @@ declare global {
     lastChanged?: number;
     loadOrder: number | undefined;
     author: string;
+    isDeleted: boolean;
   }
 
   interface ModData {
@@ -55,6 +55,7 @@ declare global {
     reqModIds: string[];
     lastChanged: number;
     author: string;
+    isDeleted: boolean;
   }
 
   interface FetchedModData {
