@@ -110,9 +110,19 @@ const appSlice = createSlice({
 
       state.lastSelectedPreset = newPreset;
 
+      state.currentPreset.mods.forEach((mod) => {
+        mod.isEnabled = false;
+      });
+
       if (presetSelection === "unary") {
-        state.currentPreset = newPreset;
-        state.currentPreset.mods = withoutDataAndContentDuplicates(state.currentPreset.mods);
+        const newPresetMods = withoutDataAndContentDuplicates(newPreset.mods);
+
+        state.currentPreset.mods.forEach((mod) => {
+          const modToChange = findMod(newPresetMods, mod);
+          if (modToChange) {
+            mod.isEnabled = modToChange.isEnabled;
+          }
+        });
       } else if (presetSelection === "addition" || presetSelection === "subtraction") {
         newPreset.mods.forEach((mod) => {
           if (mod.isEnabled) {
