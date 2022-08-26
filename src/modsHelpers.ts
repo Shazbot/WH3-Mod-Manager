@@ -17,3 +17,26 @@ export function findMod(mods: Mod[], mod: Mod) {
 export function isModAlwaysEnabled(mod: Mod, alwaysEnabledMods: Mod[]) {
   return alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name);
 }
+
+export function adjustDuplicates(mods: Mod[]) {
+  mods
+    .filter((mod) => mod.loadOrder != null)
+    .sort((modF, modS) => modF.loadOrder - modS.loadOrder)
+    .forEach((mod) => {
+      const duplicateMod = mods
+        .filter((iterMod) => iterMod.name != mod.name)
+        .find((iterMod) => mod.loadOrder === iterMod.loadOrder);
+      if (duplicateMod) {
+        duplicateMod.loadOrder += 1;
+        return adjustDuplicates(mods);
+      }
+    });
+}
+
+export function printLoadOrders(mods: Mod[]) {
+  mods.forEach((mod) => {
+    if (mod.loadOrder) {
+      console.log(`${mod.name} has load order ${mod.loadOrder}`);
+    }
+  });
+}

@@ -1,5 +1,10 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { findAlwaysEnabledMods, findMod, withoutDataAndContentDuplicates } from "./modsHelpers";
+import {
+  adjustDuplicates,
+  findAlwaysEnabledMods,
+  findMod,
+  withoutDataAndContentDuplicates,
+} from "./modsHelpers";
 
 const appSlice = createSlice({
   name: "app",
@@ -63,7 +68,7 @@ const appSlice = createSlice({
         mod.author = data.author;
       }
 
-      if (mod.isDeleted) console.log(mod.name);
+      if (mod.isDeleted) console.log(mod.name + " is deleted!");
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
     setPackData: (state: AppState, action: PayloadAction<PackData>) => {
@@ -82,7 +87,7 @@ const appSlice = createSlice({
           if (existingMod) {
             existingMod.isEnabled = mod.isEnabled;
             if (mod.humanName !== "") existingMod.humanName = mod.humanName;
-            if (mod.loadOrder !== undefined) existingMod.loadOrder = mod.loadOrder;
+            if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
           }
         });
       fromConfigAppState.presets.forEach((preset) => {
@@ -172,11 +177,24 @@ const appSlice = createSlice({
             // console.log(`setting loadOredr to ${newLoadOrder}`);
             ourMod.loadOrder = newLoadOrder;
           } else if (mod.loadOrder) {
-            if (mod.loadOrder >= newLoadOrder && mod.loadOrder < originalLoadOrder) mod.loadOrder += 1;
-            else if (mod.loadOrder <= newLoadOrder && mod.loadOrder > originalLoadOrder) mod.loadOrder -= 1;
+            // if (mod.loadOrder > newLoadOrder && mod.loadOrder < originalLoadOrder) {
+            if (mod.loadOrder > newLoadOrder) {
+              // mod.loadOrder += 1;
+              // console.log(`${mod.name} load order is +1, ${mod.loadOrder}`);
+              // } else if (mod.loadOrder < newLoadOrder && mod.loadOrder > originalLoadOrder) {
+            } else if (mod.loadOrder < newLoadOrder) {
+              // mod.loadOrder -= 1;
+              // console.log(`${mod.name} load order is -1, ${mod.loadOrder}`);
+            } else if (mod.loadOrder == newLoadOrder) {
+              mod.loadOrder += 1;
+            }
           }
+
+          adjustDuplicates(state.currentPreset.mods);
         });
       }
+
+      // printLoadOrders(state.currentPreset.mods);
     },
     resetModLoadOrder: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;

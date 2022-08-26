@@ -75,24 +75,53 @@ export default function ModRow() {
     dispatch(resetModLoadOrder(mods.filter((mod) => mod.loadOrder !== undefined)));
   };
 
+  let currentDragTarget: Element;
+  let newE: HTMLDivElement;
+  let isBottomDrop = false;
+
   const afterDrop = (originalId: string, droppedOnId: string) => {
+    // console.log(`----DROPPED----`);
     // console.log(`dragged id with ${originalId}`);
     // console.log(`DROPPED ONTO ${droppedOnId}`);
 
-    if (originalId === droppedOnId) return;
-
     const droppedOnElement = document.getElementById(droppedOnId);
     if (!droppedOnElement) return;
-    const index = [...droppedOnElement.parentElement.children].indexOf(droppedOnElement) - 8;
+    const index =
+      [...droppedOnElement.parentElement.children]
+        .filter((ele) => ele.id !== "drop-ghost")
+        .indexOf(droppedOnElement) - 8;
 
     const originalElement = document.getElementById(originalId);
     if (!originalElement) return;
-    const originalElementindex = [...originalElement.parentElement.children].indexOf(originalElement) - 8;
+    const originalElementindex =
+      [...originalElement.parentElement.children]
+        .filter((ele) => ele.id !== "drop-ghost")
+        .indexOf(originalElement) - 8;
 
-    const loadOrder = index > originalElementindex ? index : index + 1;
-    const originalOrder = originalElementindex + (index > originalElementindex ? 2 : 1);
+    let loadOrder: number = null;
 
-    if (originalElementindex < index && index - originalElementindex < 3) return;
+    let prevElement: HTMLDivElement = droppedOnElement.previousElementSibling as HTMLDivElement;
+    if (prevElement.id === "drop-ghost") prevElement = prevElement.previousElementSibling as HTMLDivElement;
+    const prevElementOnLoadOrder = prevElement.dataset.loadOrder;
+    if (prevElementOnLoadOrder != null && prevElement.id !== originalId) {
+      loadOrder = Number(prevElementOnLoadOrder) + 1;
+      // console.log("PREV ELEMENT DROPPED load order is: " + prevElementOnLoadOrder);
+    }
+
+    const droppedOnLoadOrder = droppedOnElement.dataset.loadOrder;
+    if (
+      loadOrder == null &&
+      droppedOnLoadOrder != null &&
+      (prevElement.id !== originalId || Number(droppedOnLoadOrder) !== Number(prevElementOnLoadOrder) + 1)
+    ) {
+      loadOrder = Number(droppedOnLoadOrder);
+    }
+
+    if (loadOrder == null) {
+      loadOrder = index > originalElementindex ? index : index + 1;
+    }
+
+    const originalOrder = originalElementindex + (index > originalElementindex ? 1 : 0);
 
     // console.log(`index is ${index}`);
     // console.log(`orig index is ${originalElementindex}`);
@@ -105,16 +134,16 @@ export default function ModRow() {
   const onDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     // console.log("DRAG START");
     const t = e.target as HTMLDivElement;
-    t.classList.add("opacity-50");
+    // t.classList.add("opacity-50");
 
     e.dataTransfer.effectAllowed = "move";
-    console.log(`setting data ${t.id}`);
+    // console.log(`setting data ${t.id}`);
     e.dataTransfer.setData("text/plain", t.id.replace("drag-icon-", ""));
 
     const body = document.getElementById("body");
     body.classList.add("disable-row-hover");
 
-    console.log(t.id.replace("drag-icon-", ""));
+    // console.log(t.id.replace("drag-icon-", ""));
     const row = document.getElementById(t.id.replace("drag-icon-", ""));
     row?.classList.add("row-bg-color-manually");
     // e.stopPropagation();
@@ -123,7 +152,7 @@ export default function ModRow() {
   const onDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
     // console.log("onDragEnd");
     const t = e.target as HTMLDivElement;
-    t.classList.add("opacity-100");
+    // t.classList.add("opacity-100");
 
     const ghost = document.getElementById("drop-ghost");
     if (ghost) {
@@ -142,38 +171,49 @@ export default function ModRow() {
   const onDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.length > 1) return;
     const t = e.currentTarget as HTMLDivElement;
-    t.classList.add("opacity-50");
+    // t.classList.add("opacity-50");
+
+    if (currentDragTarget && t === currentDragTarget.parentElement) return;
 
     const ghost = document.getElementById("drop-ghost");
-    if (ghost) {
-      t.parentElement.removeChild(ghost);
+    if (!ghost) {
+      // ghost.parentElement.removeChild(ghost);
+      newE = document.createElement("div");
+      newE.id = "drop-ghost";
+      newE.dataset.rowId = t.id;
+      newE.classList.add("drop-ghost");
+      newE.classList.add(getGhostClass());
+      if (areThumbnailsEnabled) newE.classList.add("h-10");
+      else newE.classList.add("h-8");
+
+      newE.addEventListener("dragover", (e) => {
+        e.preventDefault();
+      });
+      newE.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const draggedId = e.dataTransfer.getData("text/plain");
+        if (draggedId === "") return;
+
+        const currentTarget = e.currentTarget as HTMLElement;
+        // console.log("dropped on ghost: " + currentTarget.id);
+        // console.log("isBottomDrop: " + isBottomDrop);
+
+        const rowId = currentTarget.nextElementSibling.id;
+        afterDrop(draggedId, rowId);
+      });
+    } else {
+      newE = ghost as HTMLDivElement;
     }
 
-    const newE = document.createElement("div");
-    newE.id = "drop-ghost";
-    newE.dataset.rowId = t.id;
-    newE.classList.add("drop-ghost");
-    newE.classList.add(getGhostClass());
+    // console.log("DRAG ENTER");
+    currentDragTarget = t.children[0];
 
-    t.parentElement.insertBefore(newE, t);
-    newE.addEventListener("dragover", (e) => {
-      e.preventDefault();
-    });
-    newE.addEventListener("drop", (e) => {
-      e.preventDefault();
-      const draggedId = e.dataTransfer.getData("text/plain");
-      if (draggedId === "") return;
-      const rowId = (e.currentTarget as HTMLElement).dataset.rowId;
-      // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
-      // console.log(`rowId is ${rowId}`);
-      afterDrop(draggedId, rowId);
-    });
     e.stopPropagation();
   };
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     // console.log("onDragLeave");
     const t = e.target as HTMLDivElement;
-    t.classList.add("opacity-100");
+    // t.classList.add("opacity-100");
     // e.stopPropagation();
   };
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -191,8 +231,63 @@ export default function ModRow() {
     const t = e.currentTarget as HTMLDivElement;
     // console.log(`DROPPED ONTO ${t.id}`);
 
-    afterDrop(droppedId, t.id);
+    if (droppedId === t.id) return;
+
+    // console.log("isBottomDrop: " + isBottomDrop);
+    const rowId = (isBottomDrop ? (t.nextElementSibling.nextElementSibling as HTMLElement) : t).id;
+
+    afterDrop(droppedId, rowId);
     // e.stopPropagation();
+  };
+  const onDrag = (e: React.DragEvent<HTMLDivElement>) => {
+    // console.log(e.currentTarget);
+
+    if (e.dataTransfer.types.length > 1) return;
+    const t = e.currentTarget as HTMLDivElement;
+
+    if (!currentDragTarget) {
+      console.log("CURRENT DRAG TARGET MISSING");
+      return;
+    }
+    // if (currentDragTarget.parentElement !== e.currentTarget) return;
+    // t.classList.add("opacity-50");
+
+    // const newE = document.getElementById("drop-ghost");
+    if (!newE) {
+      console.log("NEWE MISSING");
+      return;
+    }
+
+    // if (ghost) {
+    //   t.parentElement.removeChild(ghost);
+    // }
+
+    // console.log("DRAG ENTER");
+    // const tch = t.children[0];
+    // console.log(tch.innerHTML);
+    // console.log(tch.clientHeight);
+    // console.log(tch.getBoundingClientRect());
+    const boundingRect = currentDragTarget.getBoundingClientRect();
+    // console.log(e.clientX);
+    // console.log(e.clientY);
+    // const newE = document.createElement("div");
+    // newE.id = "drop-ghost";
+    // newE.dataset.rowId = t.id;
+    // newE.classList.add("drop-ghost");
+    // newE.classList.add(getGhostClass());
+
+    // if (e.clientY < boundingRect.top || e.clientY > boundingRect.bottom) return;
+    // console.log(currentDragTarget.id);
+    const parent = currentDragTarget.parentElement;
+    if (boundingRect.y + boundingRect.height / 2 > e.clientY) {
+      isBottomDrop = false;
+      parent.parentElement.insertBefore(newE, parent);
+      // console.log("inserting before");
+    } else {
+      isBottomDrop = true;
+      parent.parentElement.insertBefore(newE, parent.nextSibling);
+      // console.log("inserting after");
+    }
   };
 
   const onRowHoverStart = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
@@ -353,10 +448,12 @@ export default function ModRow() {
               onMouseEnter={(e) => onRowHoverStart(e)}
               onMouseLeave={(e) => onRowHoverEnd(e)}
               onDrop={(e) => onDrop(e)}
+              onDrag={(e) => onDrag(e)}
               onDragOver={(e) => onDragOver(e)}
               onDragEnter={(e) => onDragEnter(e)}
               onDragLeave={(e) => onDragLeave(e)}
               id={mod.name}
+              data-load-order={mod.loadOrder}
             >
               <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
                 <span className={mod.loadOrder === undefined ? "" : "text-red-600 font-bold"}>
@@ -427,8 +524,9 @@ export default function ModRow() {
                         placement="bottom"
                         content={
                           <>
-                            <p>Mod is of a movie mod type. Always has high priority.</p>
-                            {mod.isMovie && <p>Always enabled if in WH3/data folder!</p>}
+                            <p>Mod is of a movie mod type.</p>
+                            <p>Movie mods always have high priority!</p>
+                            {mod.isMovie && <p>Always enabled since it's located in the WH3/data folder!</p>}
                           </>
                         }
                       >
