@@ -18,6 +18,10 @@ export default function ModDropdown(props: ModDropdownProps) {
     window.open(`https://steamcommunity.com/workshop/filedetails/?id=${props.mod.workshopId}`);
   };
 
+  const onOpenInSteam = () => {
+    window.api.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${props.mod.workshopId}`);
+  };
+
   const openInExplorer = (mod: Mod) => {
     window.api.openFolderInExplorer(mod.path);
   };
@@ -43,18 +47,26 @@ export default function ModDropdown(props: ModDropdownProps) {
       >
         <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
           {props.mod && !props.mod.isInData && (
-            <li>
-              <a
-                href="#"
-                onClick={() => onGoToWorkshopPageClick()}
-                className={
-                  "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white" +
-                  ` disabled`
-                }
-              >
-                Go to workshop page
-              </a>
-            </li>
+            <>
+              <li>
+                <a
+                  href="#"
+                  onClick={() => onGoToWorkshopPageClick()}
+                  className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
+                >
+                  Go to workshop page
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#"
+                  onClick={() => onOpenInSteam()}
+                  className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
+                >
+                  Open in Steam
+                </a>
+              </li>
+            </>
           )}
           <li>
             <a

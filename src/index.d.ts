@@ -8,6 +8,7 @@ declare global {
   interface api {
     writeUserScript: (mods: Mod[], saveName?: string) => void;
     openFolderInExplorer: (path: string) => void;
+    openInSteam: (url: string) => void;
     openPack: (path: string) => void;
     putPathInClipboard: (path: string) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, string) => void) => Electron.IpcRenderer;

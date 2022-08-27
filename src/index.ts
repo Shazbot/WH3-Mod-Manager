@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, exec } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
@@ -285,6 +285,10 @@ app.on("activate", () => {
 
 ipcMain.on("openFolderInExplorer", (event, path: string) => {
   shell.showItemInFolder(path);
+});
+
+ipcMain.on("openInSteam", (event, url: string) => {
+  exec(`start steam://openurl/${url}`);
 });
 
 ipcMain.on("openPack", (event, path: string) => {
