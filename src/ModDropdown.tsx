@@ -1,4 +1,3 @@
-import { shell } from "electron";
 import { Tooltip } from "flowbite-react";
 import React from "react";
 import { toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";

@@ -134,7 +134,6 @@ export default function ModRow() {
   const onDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     // console.log("DRAG START");
     const t = e.target as HTMLDivElement;
-    // t.classList.add("opacity-50");
 
     e.dataTransfer.effectAllowed = "move";
     // console.log(`setting data ${t.id}`);
@@ -151,8 +150,6 @@ export default function ModRow() {
 
   const onDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
     // console.log("onDragEnd");
-    const t = e.target as HTMLDivElement;
-    // t.classList.add("opacity-100");
 
     const ghost = document.getElementById("drop-ghost");
     if (ghost) {
@@ -171,7 +168,6 @@ export default function ModRow() {
   const onDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.length > 1) return;
     const t = e.currentTarget as HTMLDivElement;
-    // t.classList.add("opacity-50");
 
     if (currentDragTarget && t === currentDragTarget.parentElement) return;
 
@@ -212,8 +208,6 @@ export default function ModRow() {
   };
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     // console.log("onDragLeave");
-    const t = e.target as HTMLDivElement;
-    // t.classList.add("opacity-100");
     // e.stopPropagation();
   };
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -243,14 +237,12 @@ export default function ModRow() {
     // console.log(e.currentTarget);
 
     if (e.dataTransfer.types.length > 1) return;
-    const t = e.currentTarget as HTMLDivElement;
 
     if (!currentDragTarget) {
       console.log("CURRENT DRAG TARGET MISSING");
       return;
     }
     // if (currentDragTarget.parentElement !== e.currentTarget) return;
-    // t.classList.add("opacity-50");
 
     // const newE = document.getElementById("drop-ghost");
     if (!newE) {
@@ -326,7 +318,11 @@ export default function ModRow() {
   };
 
   const onDropdownOverlayClick = () => {
+    const lastScrollTop = document.scrollingElement.scrollTop;
     setIsDropdownOpen(false);
+    setTimeout(() => {
+      document.scrollingElement.scrollTop = lastScrollTop;
+    }, 1);
   };
 
   const [positionX, setPositionX] = useState<number>(0);
@@ -353,7 +349,7 @@ export default function ModRow() {
   };
 
   return (
-    <div className={`dark:text-slate-100`} id="rowsParent">
+    <div className={`dark:text-slate-100 ` + (areThumbnailsEnabled ? "text-lg" : "")} id="rowsParent">
       <FloatingOverlay
         onClick={() => onDropdownOverlayClick()}
         onContextMenu={() => onDropdownOverlayClick()}
