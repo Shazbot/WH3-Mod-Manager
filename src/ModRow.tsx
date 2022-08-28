@@ -468,7 +468,11 @@ export default function ModRow() {
                 >
                   <FontAwesomeIcon icon={faGrip} />
                 </div>
-                <form className="grid place-items-center h-full">
+                <form
+                  className={
+                    "grid place-items-center h-full " + (areThumbnailsEnabled ? "bigger-checkbox" : "")
+                  }
+                >
                   <input
                     style={
                       alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name) && {

@@ -55,6 +55,14 @@ body {
   .grid-column-7 {
     grid-column: span 7 / span 7;
   }
+
+  .bigger-checkbox {
+    transform: scale(1.15) !important;
+  }
+}
+
+.bigger-checkbox {
+  transform: scale(1);
 }
 
 .drop-ghost {

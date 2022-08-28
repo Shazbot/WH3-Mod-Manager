@@ -318,6 +318,10 @@ ipcMain.on("writeUserScript", (event, mods: Mod[], saveName?: string) => {
       batData += ` game_startup_mode campaign_load "${saveName}" ;`;
     }
     batData += " my_mods.txt;";
+
+    mainWindow.webContents.send("handleLog", "starting game:");
+    mainWindow.webContents.send("handleLog", batData);
+
     fs.writeFile(batPath, batData).then(() => {
       execFile(batPath);
     });
