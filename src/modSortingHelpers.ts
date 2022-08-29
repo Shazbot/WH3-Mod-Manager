@@ -1,14 +1,16 @@
 export function sortByNameAndLoadOrder(mods: Mod[]) {
   const newMods = getModsSortedByName(mods);
   [...newMods]
-    .filter((mod) => !!mod.loadOrder)
+    .filter((mod) => mod.loadOrder != null)
     .sort((modF, modS) => modF.loadOrder - modS.loadOrder)
+    .map((mod) => {
+      // console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
+      newMods.splice(newMods.indexOf(mod), 1);
+      // newMods.splice(mod.loadOrder, 0, mod);
+      return mod;
+    })
     .forEach((mod) => {
-      if (mod.loadOrder) {
-        // console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
-        newMods.splice(newMods.indexOf(mod), 1);
-        newMods.splice(mod.loadOrder - 1, 0, mod);
-      }
+      newMods.splice(mod.loadOrder, 0, mod);
     });
   return newMods;
 }
