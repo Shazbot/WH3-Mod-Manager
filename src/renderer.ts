@@ -12,7 +12,7 @@ window.api.setIsDev((event, isDev) => {
   store.dispatch(setIsDev(isDev));
 });
 
-window.api.fromAppConfig((event, appState: AppStateToSave) => {
+window.api.fromAppConfig((event, appState: AppStateToWrite) => {
   console.log("INVOKED: FROM API CONFIG");
   store.dispatch(setFromConfig(appState));
 });

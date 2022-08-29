@@ -24,7 +24,7 @@ export default function PlayGame() {
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
 
   const playGameClicked = () => {
-    window.api.writeUserScript(mods);
+    window.api.startGame(mods);
   };
 
   type OptionType = {
@@ -76,7 +76,7 @@ export default function PlayGame() {
   };
 
   const onContinueGameClicked = () => {
-    window.api.writeUserScript(mods, saves[0]?.name);
+    window.api.startGame(mods, saves[0]?.name);
   };
   const onShowSavedGamesClicked = () => {
     setIsShowingSavedGames(true);

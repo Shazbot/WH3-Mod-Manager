@@ -60,7 +60,7 @@ const appSlice = createSlice({
       mod.author = data.author;
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
-    setFromConfig: (state: AppState, action: PayloadAction<AppStateToSave>) => {
+    setFromConfig: (state: AppState, action: PayloadAction<AppStateToWrite>) => {
       const fromConfigAppState = action.payload;
       fromConfigAppState.currentPreset.mods
         .filter((mod) => mod !== undefined)
