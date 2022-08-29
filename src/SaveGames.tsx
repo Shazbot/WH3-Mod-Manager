@@ -14,7 +14,7 @@ export default function SaveGame(props: SaveGameProps) {
     props.setIsOpen(!props.isOpen);
   };
   const onLoadClick = (name: string) => {
-    window.api.writeUserScript(mods, name);
+    window.api.startGame(mods, name);
   };
 
   return (

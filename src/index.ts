@@ -298,18 +298,42 @@ ipcMain.on("putPathInClipboard", (event, path: string) => {
   clipboard.writeText(path);
 });
 
-ipcMain.on("writeUserScript", (event, mods: Mod[], saveName?: string) => {
+ipcMain.on("startGame", async (event, mods: Mod[], saveName?: string) => {
   const appDataPath = app.getPath("userData");
   const userScriptPath = `${appData.gamePath}\\my_mods.txt`;
 
   const sortedMods = sortByNameAndLoadOrder(mods);
   const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
 
-  const text = enabledMods
-    .filter((mod) => !mod.isInData)
-    .map((mod) => `add_working_directory "${mod.modDirectory}";`)
-    .concat(enabledMods.map((mod) => `mod "${mod.name}";`))
-    .join("\n");
+  const dataMod: Mod = {
+    humanName: "",
+    name: "",
+    path: `${appData.dataFolder}\\data.pack`,
+    imgPath: "",
+    workshopId: "",
+    isEnabled: true,
+    modDirectory: `${appData.dataFolder}`,
+    isInData: true,
+    lastChanged: undefined,
+    loadOrder: undefined,
+    author: "",
+  };
+
+  await fs.mkdir(`${appDataPath}\\tempPacks`, { recursive: true });
+
+  // const data = await readPacks(enabledMods.map((mod) => mod.path));
+  const tempPackName = "!!!!out.pack";
+  const tempPackPath = `${appDataPath}\\tempPacks\\${tempPackName}`;
+  await writePack(tempPackPath, enabledMods.concat(dataMod));
+
+  const text =
+    enabledMods
+      .filter((mod) => !mod.isInData)
+      .map((mod) => `add_working_directory "${mod.modDirectory}";`)
+      .concat(enabledMods.map((mod) => `mod "${mod.name}";`))
+      .join("\n") +
+    `\nadd_working_directory "${appDataPath}\\tempPacks";` +
+    `\nmod "${tempPackName}";`;
 
   fs.writeFile(userScriptPath, text).then(() => {
     const batPath = `${appDataPath}\\game.bat`;

@@ -138,6 +138,7 @@
     "flowbite": "^1.4.7",
     "flowbite-react": "^0.0.27",
     "gh-release-fetch": "^3.0.2",
+    "just-clone": "^6.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-joyride": "^2.5.0",

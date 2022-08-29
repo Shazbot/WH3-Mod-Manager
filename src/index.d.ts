@@ -6,7 +6,7 @@ declare global {
   }
 
   interface api {
-    writeUserScript: (mods: Mod[], saveName?: string) => void;
+    startGame: (mods: Mod[], saveName?: string) => void;
     openFolderInExplorer: (path: string) => void;
     openInSteam: (url: string) => void;
     openPack: (path: string) => void;
@@ -103,7 +103,7 @@ declare global {
     isDev: boolean;
   }
 
-  type AppStateToSave = Pick<
+  type AppStateToWrite = Pick<
     AppState,
     | "currentPreset"
     | "alwaysEnabledMods"
