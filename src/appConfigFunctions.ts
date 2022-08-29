@@ -13,6 +13,7 @@ export function writeAppConfig(data: AppState) {
     currentPreset: data.currentPreset,
     isAuthorEnabled: data.isAuthorEnabled,
     areThumbnailsEnabled: data.areThumbnailsEnabled,
+    isMakeUnitsGeneralsEnabled: data.isMakeUnitsGeneralsEnabled,
   };
 
   dataToWrite = toWrite;

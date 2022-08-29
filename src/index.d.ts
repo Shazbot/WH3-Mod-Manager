@@ -6,7 +6,7 @@ declare global {
   }
 
   interface api {
-    startGame: (mods: Mod[], saveName?: string) => void;
+    startGame: (mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => void;
     openFolderInExplorer: (path: string) => void;
     openInSteam: (url: string) => void;
     openPack: (path: string) => void;
@@ -86,6 +86,7 @@ declare global {
     dataFolder: string | undefined;
     gameSaves: GameSave[];
     saveSetupDone: boolean;
+    isMakeUnitsGeneralsEnabled: boolean;
   }
 
   interface AppState {
@@ -101,6 +102,7 @@ declare global {
     areThumbnailsEnabled: boolean;
     isAuthorEnabled: boolean;
     isDev: boolean;
+    isMakeUnitsGeneralsEnabled: boolean;
   }
 
   type AppStateToWrite = Pick<
@@ -112,7 +114,10 @@ declare global {
     | "presets"
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
+    | "isMakeUnitsGeneralsEnabled"
   >;
+
+  type StartGameOptions = Pick<AppState, "isMakeUnitsGeneralsEnabled">;
 
   interface ModLoadOrderPayload {
     modName: string;

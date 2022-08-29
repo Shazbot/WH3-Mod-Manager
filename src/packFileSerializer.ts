@@ -101,97 +101,102 @@ async function parseType(
 }
 
 export const writePack = async (path: string, enabledMods: Mod[]) => {
-  const header = "PFH5";
-  const byteMask = 3;
-  const refFileCount = 0;
-  const pack_file_index_size = 0;
+  let outFile: BinaryFile;
+  try {
+    const header = "PFH5";
+    const byteMask = 3;
+    const refFileCount = 0;
+    const pack_file_index_size = 0;
 
-  const battlePermissions = packsData
-    .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
-    .map((packData) => packData.packedFiles)
-    .filter((packedFiles) =>
-      packedFiles.filter((packedFile) =>
-        packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\")
+    const battlePermissions = packsData
+      .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
+      .map((packData) => packData.packedFiles)
+      .filter((packedFiles) =>
+        packedFiles.filter((packedFile) =>
+          packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\")
+        )
       )
-    )
-    .reduce((previous, packedFile) => previous.concat(packedFile), []);
+      .reduce((previous, packedFile) => previous.concat(packedFile), []);
 
-  const battlePermissionsSchemaFields = battlePermissions.reduce(
-    (previous, packedFile) => previous.concat(packedFile.schemaFields),
-    []
-  );
-  const pack_files: PackedFile[] = [
-    {
-      name: `db\\units_custom_battle_permissions_tables\\pj_fimir_test`,
-      file_size: getDataSize(battlePermissionsSchemaFields) + 91,
-      start_pos: 0,
-      is_compressed: 0,
-      schemaFields: battlePermissionsSchemaFields,
-      version: undefined,
-      guid: undefined,
-    },
-  ];
+    const battlePermissionsSchemaFields = battlePermissions.reduce(
+      (previous, packedFile) => previous.concat(packedFile.schemaFields),
+      []
+    );
+    const pack_files: PackedFile[] = [
+      {
+        name: `db\\units_custom_battle_permissions_tables\\pj_fimir_test`,
+        file_size: getDataSize(battlePermissionsSchemaFields) + 91,
+        start_pos: 0,
+        is_compressed: 0,
+        schemaFields: battlePermissionsSchemaFields,
+        version: undefined,
+        guid: undefined,
+      },
+    ];
 
-  const outFile = new BinaryFile(path, "w", true);
-  await outFile.open();
-  await outFile.writeString(header);
-  await outFile.writeInt32(byteMask);
-  await outFile.writeInt32(refFileCount);
-  await outFile.writeInt32(pack_file_index_size);
+    outFile = new BinaryFile(path, "w", true);
+    await outFile.open();
+    await outFile.writeString(header);
+    await outFile.writeInt32(byteMask);
+    await outFile.writeInt32(refFileCount);
+    await outFile.writeInt32(pack_file_index_size);
 
-  //   await outFile.writeInt32(pack_files.length);
-  await outFile.writeInt32(1);
+    //   await outFile.writeInt32(pack_files.length);
+    await outFile.writeInt32(1);
 
-  const index_size = pack_files.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
-  await outFile.writeInt32(61);
-  await outFile.writeInt32(0x7fffffff); // header_buffer
+    const index_size = pack_files.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
+    await outFile.writeInt32(61);
+    await outFile.writeInt32(0x7fffffff); // header_buffer
 
-  for (const pack_file of pack_files) {
-    const { name, file_size, start_pos, is_compressed } = pack_file;
-    console.log("file size is " + file_size);
-    await outFile.writeInt32(file_size);
-    await outFile.writeInt8(is_compressed);
-    await outFile.writeString(name + "\0");
-  }
+    for (const pack_file of pack_files) {
+      const { name, file_size, start_pos, is_compressed } = pack_file;
+      console.log("file size is " + file_size);
+      await outFile.writeInt32(file_size);
+      await outFile.writeInt8(is_compressed);
+      await outFile.writeString(name + "\0");
+    }
 
-  const getGUID = () => {
-    const genRanHex = (size: number) =>
-      [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
-    return [genRanHex(8), genRanHex(4), genRanHex(4), genRanHex(4), genRanHex(12)].join("-");
-  };
+    const getGUID = () => {
+      const genRanHex = (size: number) =>
+        [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+      return [genRanHex(8), genRanHex(4), genRanHex(4), genRanHex(4), genRanHex(12)].join("-");
+    };
 
-  const guid = getGUID();
-  console.log("guid is " + guid);
+    const guid = getGUID();
+    console.log("guid is " + guid);
 
-  await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff])); // guid marker
-  await outFile.writeInt16(guid.length);
-  const twoByteGUID = guid
-    .split("")
-    .map((str) => str + "\0")
-    .join("");
-  console.log(twoByteGUID);
-  await outFile.write(Buffer.from(twoByteGUID, "utf-8"));
+    await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff])); // guid marker
+    await outFile.writeInt16(guid.length);
+    const twoByteGUID = guid
+      .split("")
+      .map((str) => str + "\0")
+      .join("");
+    console.log(twoByteGUID);
+    await outFile.write(Buffer.from(twoByteGUID, "utf-8"));
 
-  await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
-  await outFile.writeInt32(10); // db version
-  await outFile.writeInt8(1);
+    await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+    await outFile.writeInt32(10); // db version
+    await outFile.writeInt8(1);
 
-  for (const pack_file of pack_files) {
-    console.log("NUM OF FIELDS:");
-    console.log(pack_file.schemaFields.length / ver_schema.length);
-    await outFile.writeInt32(pack_file.schemaFields.length / ver_schema.length);
-    for (const field of pack_file.schemaFields) {
-      if (field.name === "general_unit") {
-        const newField = clone(field);
-        newField.fields[0].val = 1;
-        await writeField(outFile, newField);
-      } else {
-        await writeField(outFile, field);
+    for (const pack_file of pack_files) {
+      console.log("NUM OF FIELDS:");
+      console.log(pack_file.schemaFields.length / ver_schema.length);
+      await outFile.writeInt32(pack_file.schemaFields.length / ver_schema.length);
+      for (const field of pack_file.schemaFields) {
+        if (field.name === "general_unit") {
+          const newField = clone(field);
+          newField.fields[0].val = 1;
+          await writeField(outFile, newField);
+        } else {
+          await writeField(outFile, field);
+        }
       }
     }
+  } catch (e) {
+    console.log(e);
+  } finally {
+    await outFile.close();
   }
-
-  await outFile.close();
 };
 
 const writeField = async (file: BinaryFile, schemaField: SchemaField) => {
@@ -393,6 +398,7 @@ export const readPackData = async (mods: Mod[]) => {
     packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
   ).map((r) => r.value);
   packsData.splice(0, packsData.length, ...newPacksData);
-  // console.log("READ PACKS DONE");
+
+  console.log("READ PACKS DONE");
   // console.log("num packs: " + packsData.length);
 };

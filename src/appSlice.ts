@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import appData from "./appData";
 import {
   adjustDuplicates,
   findAlwaysEnabledMods,
@@ -24,6 +25,7 @@ const appSlice = createSlice({
     isDev: false,
     areThumbnailsEnabled: false,
     isAuthorEnabled: false,
+    isMakeUnitsGeneralsEnabled: false,
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -78,7 +80,7 @@ const appSlice = createSlice({
 
       if (data.isMovie) console.log(`${data.path} is movie!`);
     },
-    setFromConfig: (state: AppState, action: PayloadAction<AppStateToSave>) => {
+    setFromConfig: (state: AppState, action: PayloadAction<AppStateToWrite>) => {
       const fromConfigAppState = action.payload;
       fromConfigAppState.currentPreset.mods
         .filter((mod) => mod !== undefined)
@@ -100,6 +102,7 @@ const appSlice = createSlice({
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
       state.hiddenMods = fromConfigAppState.hiddenMods;
       state.alwaysEnabledMods = fromConfigAppState.alwaysEnabledMods;
+      state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
       const toEnable = state.currentPreset.mods.filter((iterMod) =>
         fromConfigAppState.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
       );
@@ -259,6 +262,9 @@ const appSlice = createSlice({
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
     },
+    toggleMakeUnitsGenerals: (state: AppState) => {
+      state.isMakeUnitsGeneralsEnabled = !state.isMakeUnitsGeneralsEnabled;
+    },
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
@@ -288,6 +294,7 @@ export const {
   toggleAreThumbnailsEnabled,
   setIsDev,
   setPackData,
+  toggleMakeUnitsGenerals,
 } = appSlice.actions;
 
 export default appSlice.reducer;

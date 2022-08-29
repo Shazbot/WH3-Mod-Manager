@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const api: api = {
-  startGame: (mods: Mod[], name?: string) => ipcRenderer.send("startGame", mods, name),
+  startGame: (mods: Mod[], startGameOptions: StartGameOptions, name?: string) =>
+    ipcRenderer.send("startGame", mods, startGameOptions, name),
   openFolderInExplorer: (path: string) => ipcRenderer.send("openFolderInExplorer", path),
   openInSteam: (url: string) => ipcRenderer.send("openInSteam", url),
   openPack: (path: string) => ipcRenderer.send("openPack", path),

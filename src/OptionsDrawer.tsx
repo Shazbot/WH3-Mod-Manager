@@ -1,6 +1,11 @@
 import Select, { ActionMeta } from "react-select";
 import React from "react";
-import { toggleAlwaysHiddenMods, toggleAreThumbnailsEnabled, toggleIsAuthorEnabled } from "./appSlice";
+import {
+  toggleAlwaysHiddenMods,
+  toggleAreThumbnailsEnabled,
+  toggleIsAuthorEnabled,
+  toggleMakeUnitsGenerals,
+} from "./appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import selectStyle from "./styles/selectStyle";
@@ -11,6 +16,7 @@ export default function OptionsDrawer() {
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+  const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
 
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -140,6 +146,20 @@ export default function OptionsDrawer() {
 
           <div>
             <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+          </div>
+
+          <h6 className="mt-10">For Modders</h6>
+          <div className="flex items-center ml-1">
+            <input
+              className="mt-1"
+              type="checkbox"
+              id="make-general-units"
+              checked={isMakeUnitsGeneralsEnabled}
+              onChange={() => dispatch(toggleMakeUnitsGenerals())}
+            ></input>
+            <label className="ml-2 mt-1" htmlFor="make-general-units">
+              Make all units custom battle generals
+            </label>
           </div>
         </div>
       </Drawer>
