@@ -1,17 +1,14 @@
 export function sortByNameAndLoadOrder(mods: Mod[]) {
-  const newMods = [...mods];
-  newMods.sort((firstMod, secondMod) => firstMod.name.localeCompare(secondMod.name));
+  const newMods = getModsSortedByName(mods);
   [...newMods]
-    .filter((mod) => mod.loadOrder != null)
+    .filter((mod) => !!mod.loadOrder)
     .sort((modF, modS) => modF.loadOrder - modS.loadOrder)
-    .map((mod) => {
-      // console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
-      newMods.splice(newMods.indexOf(mod), 1);
-      // newMods.splice(mod.loadOrder, 0, mod);
-      return mod;
-    })
     .forEach((mod) => {
-      newMods.splice(mod.loadOrder, 0, mod);
+      if (mod.loadOrder) {
+        // console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
+        newMods.splice(newMods.indexOf(mod), 1);
+        newMods.splice(mod.loadOrder - 1, 0, mod);
+      }
     });
   return newMods;
 }
@@ -22,8 +19,24 @@ export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
   );
 }
 
+function compareModNames(firstName: string, secondName: string): number {
+  const len = Math.max(firstName.length, secondName.length);
+  for (let i = 0; i < len; i++) {
+    if (i === firstName.length) return 1;
+    if (i === secondName.length) return -1;
+
+    const diff = firstName.charCodeAt(i) - secondName.charCodeAt(i);
+    if (diff === 0) continue;
+    return diff;
+  }
+
+  return 0;
+}
+
 export function getModsSortedByName(mods: Mod[]) {
-  return [...mods].sort((firstMod, secondMod) => firstMod.name.localeCompare(secondMod.name));
+  return [...mods].sort((firstMod, secondMod) => {
+    return compareModNames(firstMod.name, secondMod.name);
+  });
 }
 
 export function getModsSortedByHumanName(mods: Mod[]) {
@@ -33,7 +46,7 @@ export function getModsSortedByHumanName(mods: Mod[]) {
 export function getModsSortedByEnabled(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
     if (firstMod.isEnabled == secondMod.isEnabled) {
-      return firstMod.name.localeCompare(secondMod.name);
+      return compareModNames(firstMod.name, secondMod.name);
     }
     return firstMod.isEnabled ? -1 : 1;
   });
@@ -42,7 +55,7 @@ export function getModsSortedByEnabled(mods: Mod[]) {
 export function getModsSortedByAuthor(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
     if (firstMod.author == secondMod.author) {
-      return firstMod.name.localeCompare(secondMod.name);
+      return compareModNames(firstMod.name, secondMod.name);
     }
     return firstMod.author.localeCompare(secondMod.author);
   });
