@@ -376,6 +376,3 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
   await fs.writeFile(batPath, batData);
   execFile(batPath);
 });
-
-// execFile("K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\game.bat");
-// execFile("C:\\Windows\\System32\\notepad.exe", []);

@@ -1,12 +1,11 @@
-import { add, parse, getUnixTime, getTime } from "date-fns";
-
+import { parse, getTime } from "date-fns";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
 import * as fs from "fs/promises";
 import * as dumbfs from "fs";
 import appData from "./appData";
 import fetch from "electron-fetch";
-import { utcToZonedTime, format as fnsFormat, zonedTimeToUtc } from "date-fns-tz";
+import { zonedTimeToUtc } from "date-fns-tz";
 
 export function fetchModData(ids: string[], cb: (modData: ModData) => void, log: (msg: string) => void) {
   ids.forEach(async (workshopId) => {
