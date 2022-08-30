@@ -328,11 +328,11 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
 
     // console.log("DONE READING FILE");
 
-    const pack_file = pack_files.find((pack) =>
+    const battle_permissions = pack_files.filter((pack) =>
       pack.name.startsWith("db\\units_custom_battle_permissions_tables")
     );
 
-    if (pack_file) {
+    for (const pack_file of battle_permissions) {
       // console.log(pack_file);
 
       file.seek(pack_file.start_pos);
@@ -367,11 +367,11 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
           // if (name === 'general_unit') console.log("it's a general");
           // console.log("pos is " + outFile.tell());
           // console.log('i is ' + i);
-          const fieldValues = await parseType(file, type);
+          const fields = await parseType(file, type);
           pack_file.schemaFields.push({
             name,
             type,
-            fields: fieldValues,
+            fields,
           });
         }
       }
@@ -398,6 +398,35 @@ export const readPackData = async (mods: Mod[]) => {
     packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
   ).map((r) => r.value);
   packsData.splice(0, packsData.length, ...newPacksData);
+
+  // let num_conf = 0;
+  // console.time("1000files");
+  // for (let i = 0; i < packsData.length; i++) {
+  //   const pack = packsData[i];
+  //   for (let j = i + 1; j < packsData.length; j++) {
+  //     const packTwo = packsData[j];
+  //     // for (const pack of packsData) {
+  //     // for (const packTwo of packsData) {
+  //     if (pack === packTwo) continue;
+  //     if (pack.name === packTwo.name) continue;
+  //     if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
+
+  //     for (const packFile of pack.packedFiles) {
+  //       if (packFile.name === "settings.rpfm_reserved") continue;
+  //       for (const packTwoFile of packTwo.packedFiles) {
+  //         if (packTwoFile.name === "settings.rpfm_reserved") continue;
+  //         if (packFile.name === packTwoFile.name) {
+  //           // console.log("FOUND CONFLICT");
+  //           num_conf += 1;
+  //           // console.log(pack.name, packTwo.name, packFile.name);
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
+
+  // console.timeEnd("1000files");
+  // console.log("num conflicts: " + num_conf);
 
   console.log("READ PACKS DONE");
   // console.log("num packs: " + packsData.length);
