@@ -1,7 +1,7 @@
 import { Tooltip } from "flowbite-react";
 import React from "react";
 import { toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";
-import { useAppDispatch } from "./hooks";
+import { useAppDispatch, useAppSelector } from "./hooks";
 
 type ModDropdownProps = {
   isOpen: boolean;
@@ -12,6 +12,7 @@ type ModDropdownProps = {
 
 export default function ModDropdown(props: ModDropdownProps) {
   const dispatch = useAppDispatch();
+  const isDev = useAppSelector((state) => state.app.isDev);
 
   const onGoToWorkshopPageClick = () => {
     window.open(`https://steamcommunity.com/workshop/filedetails/?id=${props.mod.workshopId}`);
@@ -28,6 +29,8 @@ export default function ModDropdown(props: ModDropdownProps) {
     window.api.openPack(mod.path);
   };
   const putPathInClipboard = (mod: Mod) => {
+    if (isDev) console.log(mod);
+
     window.api.putPathInClipboard(mod.path);
   };
 
