@@ -68,7 +68,7 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
 
     const dataMod: Mod = {
       humanName: "",
-      name: "",
+      name: "data.pack",
       path: `${appData.dataFolder}\\data.pack`,
       imgPath: "",
       workshopId: "",
@@ -325,7 +325,7 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
 
   const dataMod: Mod = {
     humanName: "",
-    name: "",
+    name: "data.pack",
     path: `${appData.dataFolder}\\data.pack`,
     imgPath: "",
     workshopId: "",

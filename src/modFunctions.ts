@@ -1,9 +1,12 @@
-import { add, parse, getUnixTime } from "date-fns";
+import { add, parse, getUnixTime, getTime } from "date-fns";
+
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
 import * as fs from "fs/promises";
+import * as dumbfs from "fs";
 import appData from "./appData";
 import fetch from "electron-fetch";
+import { utcToZonedTime, format as fnsFormat, zonedTimeToUtc } from "date-fns-tz";
 
 export function fetchModData(ids: string[], cb: (modData: ModData) => void, log: (msg: string) => void) {
   ids.forEach(async (workshopId) => {
@@ -77,10 +80,11 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
 
           // log(`DATE: ${date}`);
           const format = dayFormat + " MMM " + (hasYear ? "yyyy " : "") + hourFormat + ":mma";
+          // log(`date: ` + date);
           // log(`FORMAT: ` + format);
-          const result = add(parse(date, format, new Date()), { hours: 2 });
+          const result = zonedTimeToUtc(parse(date, format, new Date()), "America/Phoenix");
           // log(result);
-          lastChanged = getUnixTime(result) * 1000;
+          lastChanged = getTime(result);
         } catch (err) {
           log(err);
         }
@@ -126,12 +130,20 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
           log(`ERROR: ${err}`);
         }
 
+        let doesThumbnailExist = false;
+        const thumbnailPath = `${dataPath}\\${file.name.replace(/\.pack$/, ".png")}`;
+        try {
+          await fs.access(thumbnailPath, dumbfs.constants.R_OK);
+          doesThumbnailExist = true;
+          // eslint-disable-next-line no-empty
+        } catch {}
+
         const mod: Mod = {
           humanName: "",
           name: file.name,
           path: `${dataPath}\\${file.name}`,
           modDirectory: dataPath,
-          imgPath: "",
+          imgPath: doesThumbnailExist ? thumbnailPath : "",
           workshopId: file.name,
           isEnabled: false,
           isInData: true,
