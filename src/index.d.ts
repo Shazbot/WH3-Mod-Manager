@@ -103,6 +103,8 @@ declare global {
     isAuthorEnabled: boolean;
     isDev: boolean;
     isMakeUnitsGeneralsEnabled: boolean;
+    isScriptLoggingEnabled: boolean;
+    isSkipIntroMoviesEnabled: boolean;
   }
 
   type AppStateToWrite = Pick<
@@ -115,9 +117,14 @@ declare global {
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
     | "isMakeUnitsGeneralsEnabled"
+    | "isScriptLoggingEnabled"
+    | "isSkipIntroMoviesEnabled"
   >;
 
-  type StartGameOptions = Pick<AppState, "isMakeUnitsGeneralsEnabled">;
+  type StartGameOptions = Pick<
+    AppState,
+    "isMakeUnitsGeneralsEnabled" | "isSkipIntroMoviesEnabled" | "isScriptLoggingEnabled"
+  >;
 
   interface ModLoadOrderPayload {
     modName: string;

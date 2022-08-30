@@ -14,6 +14,8 @@ export function writeAppConfig(data: AppState) {
     isAuthorEnabled: data.isAuthorEnabled,
     areThumbnailsEnabled: data.areThumbnailsEnabled,
     isMakeUnitsGeneralsEnabled: data.isMakeUnitsGeneralsEnabled,
+    isSkipIntroMoviesEnabled: data.isSkipIntroMoviesEnabled,
+    isScriptLoggingEnabled: data.isScriptLoggingEnabled,
   };
 
   dataToWrite = toWrite;

@@ -26,6 +26,8 @@ const appSlice = createSlice({
     areThumbnailsEnabled: false,
     isAuthorEnabled: false,
     isMakeUnitsGeneralsEnabled: false,
+    isScriptLoggingEnabled: false,
+    isSkipIntroMoviesEnabled: false,
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -103,6 +105,8 @@ const appSlice = createSlice({
       state.hiddenMods = fromConfigAppState.hiddenMods;
       state.alwaysEnabledMods = fromConfigAppState.alwaysEnabledMods;
       state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
+      state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
+      state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       const toEnable = state.currentPreset.mods.filter((iterMod) =>
         fromConfigAppState.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
       );
@@ -265,6 +269,12 @@ const appSlice = createSlice({
     toggleMakeUnitsGenerals: (state: AppState) => {
       state.isMakeUnitsGeneralsEnabled = !state.isMakeUnitsGeneralsEnabled;
     },
+    toggleIsScriptLoggingEnabled: (state: AppState) => {
+      state.isScriptLoggingEnabled = !state.isScriptLoggingEnabled;
+    },
+    toggleIsSkipIntroMoviesEnabled: (state: AppState) => {
+      state.isSkipIntroMoviesEnabled = !state.isSkipIntroMoviesEnabled;
+    },
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
@@ -295,6 +305,8 @@ export const {
   setIsDev,
   setPackData,
   toggleMakeUnitsGenerals,
+  toggleIsScriptLoggingEnabled,
+  toggleIsSkipIntroMoviesEnabled,
 } = appSlice.actions;
 
 export default appSlice.reducer;

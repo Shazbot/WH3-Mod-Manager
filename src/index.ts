@@ -340,13 +340,17 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
   };
 
   let extraEnabledMods = "";
-  if (startGameOptions.isMakeUnitsGeneralsEnabled) {
+  if (
+    startGameOptions.isMakeUnitsGeneralsEnabled ||
+    startGameOptions.isScriptLoggingEnabled ||
+    startGameOptions.isSkipIntroMoviesEnabled
+  ) {
     await fs.mkdir(`${appDataPath}\\tempPacks`, { recursive: true });
 
     // const data = await readPacks(enabledMods.map((mod) => mod.path));
     const tempPackName = "!!!!out.pack";
     const tempPackPath = `${appDataPath}\\tempPacks\\${tempPackName}`;
-    await writePack(tempPackPath, enabledMods.concat(dataMod));
+    await writePack(tempPackPath, enabledMods.concat(dataMod), startGameOptions);
 
     extraEnabledMods = `\nadd_working_directory "${appDataPath}\\tempPacks";` + `\nmod "${tempPackName}";`;
   }

@@ -10,16 +10,17 @@ export interface PackedFile {
 
 export interface SchemaField {
   name: string;
-  type: SCHEMA_FIELD_TYPE;
+  type: SCHEMA_FIELD_TYPE | "Buffer";
   fields: Field[];
 }
 
 export type SCHEMA_FIELD_TYPE = "Boolean" | "OptionalStringU8" | "StringU8";
-export type FIELD_TYPE = "Int16" | "Int8" | "UInt8" | "String";
+export type FIELD_TYPE = "Int16" | "Int8" | "UInt8" | "String" | "Buffer";
+export type FIELD_VALUE = number | string | Buffer | undefined;
 
 export interface Field {
   type: FIELD_TYPE;
-  val: number | string | undefined;
+  val: FIELD_VALUE;
 }
 
 export interface Pack {

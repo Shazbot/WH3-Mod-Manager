@@ -1,6 +1,16 @@
 import BinaryFile from "binary-file";
-import { Field, Pack, PackedFile, packsData, SchemaField, SCHEMA_FIELD_TYPE } from "./packFileDataManager";
+import {
+  Field,
+  FIELD_TYPE,
+  FIELD_VALUE,
+  Pack,
+  PackedFile,
+  packsData,
+  SchemaField,
+  SCHEMA_FIELD_TYPE,
+} from "./packFileDataManager";
 import clone from "just-clone";
+import { emptyMovie, introMoviePaths } from "./emptyMovie";
 
 const string_schema = `{
     "units_custom_battle_permissions_tables": {
@@ -22,7 +32,7 @@ const schema = JSON.parse(string_schema);
 const latest_version = Object.keys(schema.units_custom_battle_permissions_tables).sort()[0];
 const ver_schema = schema.units_custom_battle_permissions_tables[latest_version];
 
-function getTypeSize(type: string, val: string | number | undefined = null) {
+function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE = null) {
   switch (type) {
     case "Int8":
     case "UInt8":
@@ -100,7 +110,65 @@ async function parseType(
   }
 }
 
-export const writePack = async (path: string, enabledMods: Mod[]) => {
+const getGUID = () => {
+  const genRanHex = (size: number) =>
+    [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+  return [genRanHex(8), genRanHex(4), genRanHex(4), genRanHex(4), genRanHex(12)].join("-");
+};
+
+const createBattlePermissionsData = (pack_files: PackedFile[], enabledMods: Mod[]) => {
+  const battlePermissions = packsData
+    .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
+    .map((packData) => packData.packedFiles)
+    .filter((packedFiles) =>
+      packedFiles.filter((packedFile) =>
+        packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\")
+      )
+    )
+    .reduce((previous, packedFile) => previous.concat(packedFile), []);
+
+  const battlePermissionsSchemaFields = battlePermissions.reduce(
+    (previous, packedFile) => previous.concat(packedFile.schemaFields),
+    [] as SchemaField[]
+  );
+  pack_files.push({
+    name: `db\\units_custom_battle_permissions_tables\\pj_fimir_test`,
+    file_size: getDataSize(battlePermissionsSchemaFields) + 91,
+    start_pos: 0,
+    is_compressed: 0,
+    schemaFields: battlePermissionsSchemaFields,
+    version: 10,
+    guid: getGUID(),
+  });
+};
+
+const createIntroMoviesData = (pack_files: PackedFile[]) => {
+  for (const moviePath of introMoviePaths) {
+    pack_files.push({
+      name: moviePath,
+      file_size: emptyMovie.length,
+      start_pos: 0,
+      is_compressed: 0,
+      schemaFields: [{ name: "", type: "Buffer", fields: [{ type: "Buffer", val: emptyMovie }] }],
+      version: undefined,
+      guid: undefined,
+    } as PackedFile);
+  }
+};
+
+const createScriptLoggingData = (pack_files: PackedFile[]) => {
+  pack_files.push({
+    name: "script\\enable_console_logging",
+    file_size: 1,
+    start_pos: 0,
+    is_compressed: 0,
+    schemaFields: [{ name: "", type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from([0x00]) }] }],
+    version: undefined,
+    guid: undefined,
+  } as PackedFile);
+};
+
+export const writePack = async (path: string, enabledMods: Mod[], startGameOptions: StartGameOptions) => {
   let outFile: BinaryFile;
   try {
     const header = "PFH5";
@@ -108,31 +176,13 @@ export const writePack = async (path: string, enabledMods: Mod[]) => {
     const refFileCount = 0;
     const pack_file_index_size = 0;
 
-    const battlePermissions = packsData
-      .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
-      .map((packData) => packData.packedFiles)
-      .filter((packedFiles) =>
-        packedFiles.filter((packedFile) =>
-          packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\")
-        )
-      )
-      .reduce((previous, packedFile) => previous.concat(packedFile), []);
+    const pack_files: PackedFile[] = [];
 
-    const battlePermissionsSchemaFields = battlePermissions.reduce(
-      (previous, packedFile) => previous.concat(packedFile.schemaFields),
-      []
-    );
-    const pack_files: PackedFile[] = [
-      {
-        name: `db\\units_custom_battle_permissions_tables\\pj_fimir_test`,
-        file_size: getDataSize(battlePermissionsSchemaFields) + 91,
-        start_pos: 0,
-        is_compressed: 0,
-        schemaFields: battlePermissionsSchemaFields,
-        version: undefined,
-        guid: undefined,
-      },
-    ];
+    if (startGameOptions.isMakeUnitsGeneralsEnabled) createBattlePermissionsData(pack_files, enabledMods);
+    if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(pack_files);
+    if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(pack_files);
+
+    if (pack_files.length < 1) return;
 
     outFile = new BinaryFile(path, "w", true);
     await outFile.open();
@@ -141,11 +191,10 @@ export const writePack = async (path: string, enabledMods: Mod[]) => {
     await outFile.writeInt32(refFileCount);
     await outFile.writeInt32(pack_file_index_size);
 
-    //   await outFile.writeInt32(pack_files.length);
-    await outFile.writeInt32(1);
+    await outFile.writeInt32(pack_files.length);
 
     const index_size = pack_files.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
-    await outFile.writeInt32(61);
+    await outFile.writeInt32(index_size);
     await outFile.writeInt32(0x7fffffff); // header_buffer
 
     for (const pack_file of pack_files) {
@@ -156,32 +205,30 @@ export const writePack = async (path: string, enabledMods: Mod[]) => {
       await outFile.writeString(name + "\0");
     }
 
-    const getGUID = () => {
-      const genRanHex = (size: number) =>
-        [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
-      return [genRanHex(8), genRanHex(4), genRanHex(4), genRanHex(4), genRanHex(12)].join("-");
-    };
-
-    const guid = getGUID();
-    console.log("guid is " + guid);
-
-    await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff])); // guid marker
-    await outFile.writeInt16(guid.length);
-    const twoByteGUID = guid
-      .split("")
-      .map((str) => str + "\0")
-      .join("");
-    console.log(twoByteGUID);
-    await outFile.write(Buffer.from(twoByteGUID, "utf-8"));
-
-    await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
-    await outFile.writeInt32(10); // db version
-    await outFile.writeInt8(1);
-
     for (const pack_file of pack_files) {
-      console.log("NUM OF FIELDS:");
-      console.log(pack_file.schemaFields.length / ver_schema.length);
-      await outFile.writeInt32(pack_file.schemaFields.length / ver_schema.length);
+      if (pack_file.guid != null) {
+        const guid = pack_file.guid;
+        console.log("guid is " + guid);
+        await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff])); // guid marker
+        await outFile.writeInt16(guid.length);
+        const twoByteGUID = guid
+          .split("")
+          .map((str) => str + "\0")
+          .join("");
+        console.log(twoByteGUID);
+        await outFile.write(Buffer.from(twoByteGUID, "utf-8"));
+      }
+
+      if (pack_file.version != null) {
+        await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+        await outFile.writeInt32(10); // db version
+        await outFile.writeInt8(1);
+
+        console.log("NUM OF FIELDS:");
+        console.log(pack_file.schemaFields.length / ver_schema.length);
+        await outFile.writeInt32(pack_file.schemaFields.length / ver_schema.length);
+      }
+
       for (const field of pack_file.schemaFields) {
         if (field.name === "general_unit") {
           const newField = clone(field);
@@ -221,6 +268,11 @@ const writeField = async (file: BinaryFile, schemaField: SchemaField) => {
       case "UInt8":
         {
           await file.writeUInt8(field.val as number);
+        }
+        break;
+      case "Buffer":
+        {
+          await file.write(field.val as Buffer);
         }
         break;
     }

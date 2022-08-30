@@ -4,6 +4,8 @@ import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
   toggleIsAuthorEnabled,
+  toggleIsScriptLoggingEnabled,
+  toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
 } from "./appSlice";
 import Drawer from "./Drawer";
@@ -17,6 +19,8 @@ export default function OptionsDrawer() {
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
+  const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
+  const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
 
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -83,7 +87,7 @@ export default function OptionsDrawer() {
               className="mt-1"
               type="checkbox"
               id="enable-thumbnails"
-              checked={areThumbnailsEnabled}
+              checked={!!areThumbnailsEnabled}
               onChange={() => dispatch(toggleAreThumbnailsEnabled())}
             ></input>
             <label className="ml-2 mt-1" htmlFor="enable-thumbnails">
@@ -96,7 +100,7 @@ export default function OptionsDrawer() {
               className="mt-1"
               type="checkbox"
               id="enable-mod-author"
-              checked={isAuthorEnabled}
+              checked={!!isAuthorEnabled}
               onChange={() => dispatch(toggleIsAuthorEnabled())}
             ></input>
             <label className="ml-2 mt-1" htmlFor="enable-mod-author">
@@ -154,11 +158,35 @@ export default function OptionsDrawer() {
               className="mt-1"
               type="checkbox"
               id="make-general-units"
-              checked={isMakeUnitsGeneralsEnabled}
+              checked={!!isMakeUnitsGeneralsEnabled}
               onChange={() => dispatch(toggleMakeUnitsGenerals())}
             ></input>
             <label className="ml-2 mt-1" htmlFor="make-general-units">
               Make all units custom battle generals
+            </label>
+          </div>
+          <div className="flex items-center ml-1">
+            <input
+              className="mt-1"
+              type="checkbox"
+              id="toggle-script-logging"
+              checked={!!isScriptLoggingEnabled}
+              onChange={() => dispatch(toggleIsScriptLoggingEnabled())}
+            ></input>
+            <label className="ml-2 mt-1" htmlFor="toggle-script-logging">
+              Enable script logging
+            </label>
+          </div>
+          <div className="flex items-center ml-1">
+            <input
+              className="mt-1"
+              type="checkbox"
+              id="toggle-intro-movies"
+              checked={!!isSkipIntroMoviesEnabled}
+              onChange={() => dispatch(toggleIsSkipIntroMoviesEnabled())}
+            ></input>
+            <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
+              Skip intro movies
             </label>
           </div>
         </div>

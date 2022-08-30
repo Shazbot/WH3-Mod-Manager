@@ -12,6 +12,8 @@ import SaveGames from "./SaveGames";
 export default function PlayGame() {
   const dispatch = useAppDispatch();
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
+  const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
+  const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const filter = useAppSelector((state) => state.app.filter);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
@@ -25,7 +27,11 @@ export default function PlayGame() {
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
 
   const playGameClicked = () => {
-    window.api.startGame(mods, { isMakeUnitsGeneralsEnabled });
+    window.api.startGame(mods, {
+      isMakeUnitsGeneralsEnabled,
+      isSkipIntroMoviesEnabled,
+      isScriptLoggingEnabled,
+    });
   };
 
   type OptionType = {
@@ -77,7 +83,11 @@ export default function PlayGame() {
   };
 
   const onContinueGameClicked = () => {
-    window.api.startGame(mods, { isMakeUnitsGeneralsEnabled }, saves[0]?.name);
+    window.api.startGame(
+      mods,
+      { isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled },
+      saves[0]?.name
+    );
   };
   const onShowSavedGamesClicked = () => {
     setIsShowingSavedGames(true);
