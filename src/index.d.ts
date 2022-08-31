@@ -105,6 +105,7 @@ declare global {
     isMakeUnitsGeneralsEnabled: boolean;
     isScriptLoggingEnabled: boolean;
     isSkipIntroMoviesEnabled: boolean;
+    allMods: Mod[];
   }
 
   type AppStateToWrite = Pick<

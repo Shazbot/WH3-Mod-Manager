@@ -28,6 +28,7 @@ const appSlice = createSlice({
     isMakeUnitsGeneralsEnabled: false,
     isScriptLoggingEnabled: false,
     isSkipIntroMoviesEnabled: false,
+    allMods: [],
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -54,6 +55,7 @@ const appSlice = createSlice({
     setMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
       state.currentPreset.mods = mods;
+      state.allMods = mods;
 
       state.currentPreset.mods = state.currentPreset.mods.filter(
         (mod) =>
@@ -63,6 +65,19 @@ const appSlice = createSlice({
     },
     setModData: (state: AppState, action: PayloadAction<ModData>) => {
       const data = action.payload;
+
+      // if the same mod is also in data cover it as well
+      const contentMod = state.allMods.find((mod) => mod.workshopId == data.workshopId);
+      if (contentMod) {
+        const dataMod = state.currentPreset.mods.find(
+          (iterMod) => iterMod.isInData && iterMod.name == contentMod.name
+        );
+        if (dataMod) {
+          dataMod.humanName = data.humanName;
+          dataMod.author = data.author;
+        }
+      }
+
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == data.workshopId);
       if (!mod) return;
       if (data.isDeleted) {
