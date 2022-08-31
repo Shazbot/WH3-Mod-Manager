@@ -8,6 +8,8 @@ import { UpdateNotification } from "./UpdateNotification";
 import OptionsDrawer from "./OptionsDrawer";
 import selectStyle from "./styles/selectStyle";
 import SaveGames from "./SaveGames";
+import { faXmark } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
@@ -93,6 +95,10 @@ export default function PlayGame() {
     setIsShowingSavedGames(true);
   };
 
+  const clearFilter = () => {
+    dispatch(setFilter(""));
+  };
+
   const getUpdateData = async () => {
     try {
       const appUpdateData: ModUpdateExists = await window.api.getUpdateData();
@@ -139,7 +145,7 @@ export default function PlayGame() {
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
       <div id="presetSection">
         <Tooltip placement="left" content="Create new preset by typing its name">
-          Select or create preset:
+          <span className="text-slate-100">Select or create preset:</span>
         </Tooltip>
         <Creatable
           id="createOrSelectPreset"
@@ -150,7 +156,7 @@ export default function PlayGame() {
           onCreateOption={(name) => newPresetMade(name)}
         ></Creatable>
         <div className="mt-5">
-          Replace preset:
+          <span className="text-slate-100">Replace preset:</span>
           <Select
             id="replacePreset"
             options={options}
@@ -160,7 +166,7 @@ export default function PlayGame() {
           ></Select>
         </div>
         <div className="mt-5">
-          Delete preset:
+          <span className="text-slate-100">Delete preset:</span>
           <Select
             id="deletePreset"
             options={options}
@@ -214,15 +220,23 @@ export default function PlayGame() {
       <div className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}>
         <UpdateNotification downloadURL={downloadURL}></UpdateNotification>
       </div>
-      <div className="mt-5">
-        Filter:
-        <input
-          id="filterInput"
-          type="text"
-          onChange={(e) => onFilterChange(e)}
-          value={filter}
-          className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-        ></input>
+      <div className="mt-5 static">
+        <span className="text-slate-100">Filter:</span>
+        <span className="relative">
+          <input
+            id="filterInput"
+            type="text"
+            onChange={(e) => onFilterChange(e)}
+            value={filter}
+            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+          ></input>
+
+          <span className="absolute right-[0.65rem] top-8 text-gray-400">
+            <button onClick={() => clearFilter()}>
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          </span>
+        </span>
       </div>
 
       <div className="mt-6">
