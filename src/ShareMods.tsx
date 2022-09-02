@@ -87,8 +87,9 @@ export default function ShareMods(props: ShareModsProps) {
         <Modal.Header>Waiting For Mods To Download...</Modal.Header>
         <Modal.Body>
           <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-            There is a chance Steam won't download new mods while the mod manager is running. Close the
-            manager, wait for Steam to download the mods and import mods agains if this takes more than 1 min.
+            We're now subscribed to the mods, but there is a chance Steam won't download new mods while the
+            mod manager is running. Close the manager, wait for Steam to download the mods and import mods
+            agains if this takes more than 1 min.
           </p>
           <div className="text-center mt-8">
             <Spinner color="purple" size="xl" />
@@ -113,9 +114,9 @@ export default function ShareMods(props: ShareModsProps) {
                 clipboard, share that text with the other person.
               </p>
 
-              <div className="flex mt-4">
+              <div className="flex mt-4 justify-center">
                 <button
-                  className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out max-w-md m-auto w-[70%]"
+                  className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
                   onClick={() => exportModsToClipboard()}
                 >
                   <span className="uppercase">Export to clipboard</span>
@@ -138,10 +139,10 @@ export default function ShareMods(props: ShareModsProps) {
             onChange={(e) => onImportModsChanged(e.target.value)}
           ></textarea>
 
-          <div className="flex mt-4">
+          <div className="flex mt-4 justify-center">
             <button
               disabled={importModsText == null || importModsText === ""}
-              className="disabled:opacity-50 disabled:cursor-not-allowed make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out max-w-md m-auto w-[70%]"
+              className="disabled:opacity-50 disabled:cursor-not-allowed make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
               onClick={() => importMods()}
             >
               <span className="uppercase">Import</span>

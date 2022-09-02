@@ -97,12 +97,59 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
   });
 }
 
-const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise<Mod[]> => {
-  const vanillaPacks: string[] = [];
+async function getDataPath(log: (msg: string) => void): Promise<string> {
+  if (!appData.dataFolder) {
+    await getFolderPaths(log);
+  }
+  return appData.dataFolder;
+}
 
+export async function getDataMod(fileName: string, log: (msg: string) => void): Promise<Mod> {
+  const dataPath = await getDataPath(log);
+  if (!dataPath) return;
+
+  let lastChanged = undefined;
+  try {
+    lastChanged = await fs.stat(`${dataPath}\\${fileName}`).then((stats) => {
+      return stats.mtimeMs;
+    });
+  } catch (err) {
+    log(`ERROR: ${err}`);
+  }
+
+  let doesThumbnailExist = false;
+  const thumbnailPath = `${dataPath}\\${fileName.replace(/\.pack$/, ".png")}`;
+  try {
+    await fs.access(thumbnailPath, dumbfs.constants.R_OK);
+    doesThumbnailExist = true;
+    // eslint-disable-next-line no-empty
+  } catch {}
+
+  const mod: Mod = {
+    humanName: "",
+    name: fileName,
+    path: `${dataPath}\\${fileName}`,
+    modDirectory: dataPath,
+    imgPath: doesThumbnailExist ? thumbnailPath : "",
+    workshopId: fileName,
+    isEnabled: false,
+    isInData: true,
+    loadOrder: undefined,
+    lastChanged,
+    author: "",
+    isDeleted: false,
+    isMovie: false,
+  };
+  return mod;
+}
+
+const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise<Mod[]> => {
+  const dataPath = await getDataPath(log);
+  if (!dataPath) return;
+
+  const vanillaPacks: string[] = [];
   return fs.readFile(`${gameDir}\\data\\manifest.txt`, "utf8").then(async (data) => {
     const re = /([^\s]+)/;
-    const dataPath = `${gameDir}\\data`;
     data.split("\n").map((line) => {
       const found = line.match(re);
       if (found) {
@@ -120,39 +167,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
           !vanillaPacks.find((vanillaPack) => file.name === vanillaPack)
       )
       .map(async (file) => {
-        let lastChanged = undefined;
-        try {
-          lastChanged = await fs.stat(`${dataPath}\\${file.name}`).then((stats) => {
-            return stats.mtimeMs;
-          });
-        } catch (err) {
-          log(`ERROR: ${err}`);
-        }
-
-        let doesThumbnailExist = false;
-        const thumbnailPath = `${dataPath}\\${file.name.replace(/\.pack$/, ".png")}`;
-        try {
-          await fs.access(thumbnailPath, dumbfs.constants.R_OK);
-          doesThumbnailExist = true;
-          // eslint-disable-next-line no-empty
-        } catch {}
-
-        const mod: Mod = {
-          humanName: "",
-          name: file.name,
-          path: `${dataPath}\\${file.name}`,
-          modDirectory: dataPath,
-          imgPath: doesThumbnailExist ? thumbnailPath : "",
-          workshopId: file.name,
-          isEnabled: false,
-          isInData: true,
-          loadOrder: undefined,
-          lastChanged,
-          author: "",
-          isDeleted: false,
-          isMovie: false,
-        };
-        return mod;
+        return getDataMod(file.name, log);
       });
 
     const fulfilled = await Promise.allSettled(dataModsPromises);
@@ -212,6 +227,53 @@ const regKeyValuesAsPromise = (regKey: Registry.Registry): Promise<{ name: strin
   });
 };
 
+export async function getContentModInFolder(
+  contentSubFolderName: string,
+  log: (msg: string) => void
+): Promise<Mod> {
+  if (!appData.contentFolder) {
+    await getFolderPaths(log);
+  }
+  if (!appData.contentFolder) return;
+  const contentFolder = appData.contentFolder;
+
+  const files = await fs.readdir(`${contentFolder}\\${contentSubFolderName}`, { withFileTypes: true });
+
+  const pack = files.find((file) => file.name.endsWith(".pack"));
+  const img = files.find((file) => file.name.endsWith(".png"));
+
+  if (pack) {
+    let lastChanged = undefined;
+    try {
+      lastChanged = await fs.stat(`${contentFolder}\\${contentSubFolderName}\\${pack.name}`).then((stats) => {
+        return stats.mtimeMs;
+      });
+    } catch (err) {
+      log(`ERROR: ${err}`);
+    }
+
+    // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
+    const packPath = `${contentFolder}\\${contentSubFolderName}\\${pack.name}`;
+    const imgPath = `${contentFolder}\\${contentSubFolderName}\\${img.name}`;
+    const mod: Mod = {
+      author: "",
+      humanName: "",
+      name: pack.name,
+      path: packPath,
+      modDirectory: `${contentFolder}\\${contentSubFolderName}`,
+      imgPath: imgPath,
+      workshopId: contentSubFolderName,
+      isEnabled: false,
+      isInData: false,
+      loadOrder: undefined,
+      lastChanged,
+      isDeleted: false,
+      isMovie: false,
+    };
+    return mod;
+  }
+}
+
 export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const mods: Mod[] = [];
 
@@ -227,43 +289,9 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const files = await fs.readdir(contentFolder, { withFileTypes: true });
   const newMods = files
     .filter((file) => file.isDirectory())
-    .map(async (file) => {
+    .map(async (contentSubFolder) => {
       // log(`Reading folder ${contentFolder}\\${file.name}`);
-      const files = await fs.readdir(`${contentFolder}\\${file.name}`, { withFileTypes: true });
-
-      const pack = files.find((file) => file.name.endsWith(".pack"));
-      const img = files.find((file) => file !== pack);
-
-      if (pack) {
-        let lastChanged = undefined;
-        try {
-          lastChanged = await fs.stat(`${contentFolder}\\${file.name}\\${pack.name}`).then((stats) => {
-            return stats.mtimeMs;
-          });
-        } catch (err) {
-          log(`ERROR: ${err}`);
-        }
-
-        // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
-        const packPath = `${contentFolder}\\${file.name}\\${pack.name}`;
-        const imgPath = `${contentFolder}\\${file.name}\\${img.name}`;
-        const mod: Mod = {
-          author: "",
-          humanName: "",
-          name: pack.name,
-          path: packPath,
-          modDirectory: `${contentFolder}\\${file.name}`,
-          imgPath: imgPath,
-          workshopId: file.name,
-          isEnabled: false,
-          isInData: false,
-          loadOrder: undefined,
-          lastChanged,
-          isDeleted: false,
-          isMovie: false,
-        };
-        return mod;
-      }
+      return getContentModInFolder(contentSubFolder.name, log);
     });
 
   const settledMods = await Promise.allSettled(newMods);

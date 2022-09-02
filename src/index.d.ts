@@ -30,6 +30,10 @@ declare global {
     modsPopulated: (
       callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void
     ) => Electron.IpcRenderer;
+    addMod: (callback: (event: Electron.IpcRendererEvent, mod: Mod) => void) => Electron.IpcRenderer;
+    removeMod: (
+      callback: (event: Electron.IpcRendererEvent, modPath: string) => void
+    ) => Electron.IpcRenderer;
     setModData: (
       callback: (event: Electron.IpcRendererEvent, modData: ModData) => void
     ) => Electron.IpcRenderer;

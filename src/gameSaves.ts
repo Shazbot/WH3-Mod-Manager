@@ -22,7 +22,9 @@ export const getSaveFiles = async () => {
         lastChanged = await fs.stat(path.join(folderPath, saveFile.name)).then((stats) => {
           return stats.mtimeMs;
         });
-      } catch {}
+      } catch (e) {
+        console.log(e);
+      }
       saves.push({ name: saveFile.name, lastChanged });
     }
   }
@@ -38,7 +40,9 @@ const addNewSave = async function (savePath: string) {
       lastChanged = await fs.stat(savePath).then((stats) => {
         return stats.mtimeMs;
       });
-    } catch {}
+    } catch (e) {
+      console.log(e);
+    }
     saves.push({ name: basename, lastChanged });
   }
 };

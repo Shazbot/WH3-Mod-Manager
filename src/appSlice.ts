@@ -69,6 +69,27 @@ const appSlice = createSlice({
           (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
       );
     },
+    addMod: (state: AppState, action: PayloadAction<Mod>) => {
+      const mod = action.payload;
+
+      if (!state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path)) {
+        if (!mod.isInData && !state.currentPreset.mods.find((iterMod) => iterMod.name === mod.name)) {
+          state.currentPreset.mods.push(mod);
+        }
+      }
+
+      if (!state.allMods.find((iterMod) => iterMod.path == mod.path)) {
+        state.allMods.push(mod);
+      }
+    },
+    removeMod: (state: AppState, action: PayloadAction<string>) => {
+      const modPath = action.payload;
+
+      if (!state.currentPreset.mods.find((iterMod) => iterMod.path == modPath)) return;
+
+      state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
+      state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
+    },
     setModData: (state: AppState, action: PayloadAction<ModData>) => {
       const data = action.payload;
 
@@ -150,11 +171,11 @@ const appSlice = createSlice({
 
       state.lastSelectedPreset = newPreset;
 
-      state.currentPreset.mods.forEach((mod) => {
-        mod.isEnabled = false;
-      });
-
       if (presetSelection === "unary") {
+        state.currentPreset.mods.forEach((mod) => {
+          mod.isEnabled = false;
+        });
+
         const newPresetMods = withoutDataAndContentDuplicates(newPreset.mods);
 
         state.currentPreset.mods.forEach((mod) => {
@@ -329,6 +350,8 @@ export const {
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   setSharedMod,
+  addMod,
+  removeMod,
 } = appSlice.actions;
 
 export default appSlice.reducer;

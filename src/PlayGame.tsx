@@ -26,6 +26,8 @@ export default function PlayGame() {
   const [isShowingSavedGames, setIsShowingSavedGames] = useState<boolean>(false);
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
+  const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
 
   const playGameClicked = () => {
@@ -140,6 +142,10 @@ export default function PlayGame() {
     document.addEventListener("keyup", onKeyUp);
   });
 
+  const numEnabledMods = mods.filter(
+    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+  ).length;
+
   return (
     <div>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
@@ -178,6 +184,9 @@ export default function PlayGame() {
       </div>
 
       <div className="fixed right-[5%] bottom-[4%]">
+        <div className="text-center text-slate-100 mb-4">
+          {numEnabledMods > 0 && <>Enabled Mods: {numEnabledMods}</>}
+        </div>
         <button
           id="playGame"
           className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto"
