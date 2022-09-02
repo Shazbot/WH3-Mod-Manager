@@ -1,5 +1,4 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import appData from "./appData";
 import {
   adjustDuplicates,
   findAlwaysEnabledMods,
@@ -35,6 +34,13 @@ const appSlice = createSlice({
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
       mod.isEnabled = !mod.isEnabled;
+    },
+    setSharedMod: (state: AppState, action: PayloadAction<ModIdAndLoadOrder>) => {
+      const payload = action.payload;
+      const mod = state.currentPreset.mods.find((mod) => mod.workshopId == payload.workshopId);
+      if (!mod) return;
+      mod.isEnabled = true;
+      mod.loadOrder = payload.loadOrder;
     },
     enableAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = true));
@@ -73,7 +79,7 @@ const appSlice = createSlice({
           (iterMod) => iterMod.isInData && iterMod.name == contentMod.name
         );
         if (dataMod) {
-          dataMod.humanName = data.humanName;
+          dataMod.humanName = data.humanName ?? "";
           dataMod.author = data.author;
         }
       }
@@ -83,7 +89,7 @@ const appSlice = createSlice({
       if (data.isDeleted) {
         mod.isDeleted = data.isDeleted;
       } else {
-        mod.humanName = data.humanName;
+        mod.humanName = data.humanName ?? "";
         mod.author = data.author;
       }
 
@@ -322,6 +328,7 @@ export const {
   toggleMakeUnitsGenerals,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
+  setSharedMod,
 } = appSlice.actions;
 
 export default appSlice.reducer;

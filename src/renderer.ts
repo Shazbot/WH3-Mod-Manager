@@ -11,8 +11,14 @@ import {
 } from "./appSlice";
 import store from "./store";
 
-window.api.handleLog((event, str) => {
-  console.log(str);
+let isSubscribedToStoreChanges = false;
+
+window.api.handleLog((event, msg) => {
+  console.log(msg);
+});
+
+window.api.subscribedToMods((event, ids: string[]) => {
+  console.log("subbed to mods: ", ids);
 });
 
 window.api.setIsDev((event, isDev) => {
@@ -20,22 +26,33 @@ window.api.setIsDev((event, isDev) => {
   store.dispatch(setIsDev(isDev));
 });
 
+const subscribeToStoreChanges = () => {
+  if (!isSubscribedToStoreChanges) {
+    isSubscribedToStoreChanges = true;
+    setTimeout(() => {
+      if (!isSubscribedToStoreChanges) {
+        store.subscribe(() => {
+          window.api.saveConfig(store.getState().app);
+        });
+      }
+    }, 50);
+  }
+};
+
 window.api.fromAppConfig((event, appState: AppStateToWrite) => {
   console.log("INVOKED: FROM API CONFIG");
   store.dispatch(setFromConfig(appState));
 
-  store.subscribe(() => {
-    window.api.saveConfig(store.getState().app);
-  });
+  subscribeToStoreChanges();
 });
 
 window.api.failedReadingConfig(() => {
   console.log("INVOKED: FROM API CONFIG");
-  store.dispatch(setIsOnboardingToRun(true));
+  if (!isSubscribedToStoreChanges) {
+    store.dispatch(setIsOnboardingToRun(true));
+  }
 
-  store.subscribe(() => {
-    window.api.saveConfig(store.getState().app);
-  });
+  subscribeToStoreChanges();
 });
 
 window.api.modsPopulated((event, mods: Mod[]) => {

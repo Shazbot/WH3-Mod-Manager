@@ -1,22 +1,33 @@
 import { app } from "electron";
 import * as fs from "fs/promises";
+import equal from "fast-deep-equal";
 
 let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
 
-export function writeAppConfig(data: AppState) {
-  const toWrite: AppStateToWrite = {
-    alwaysEnabledMods: data.alwaysEnabledMods,
-    hiddenMods: data.hiddenMods,
-    wasOnboardingEverRun: data.wasOnboardingEverRun,
-    presets: data.presets,
-    currentPreset: data.currentPreset,
-    isAuthorEnabled: data.isAuthorEnabled,
-    areThumbnailsEnabled: data.areThumbnailsEnabled,
-    isMakeUnitsGeneralsEnabled: data.isMakeUnitsGeneralsEnabled,
-    isSkipIntroMoviesEnabled: data.isSkipIntroMoviesEnabled,
-    isScriptLoggingEnabled: data.isScriptLoggingEnabled,
+const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
+  return {
+    alwaysEnabledMods: appState.alwaysEnabledMods,
+    hiddenMods: appState.hiddenMods,
+    wasOnboardingEverRun: appState.wasOnboardingEverRun,
+    presets: appState.presets,
+    currentPreset: appState.currentPreset,
+    isAuthorEnabled: appState.isAuthorEnabled,
+    areThumbnailsEnabled: appState.areThumbnailsEnabled,
+    isMakeUnitsGeneralsEnabled: appState.isMakeUnitsGeneralsEnabled,
+    isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,
+    isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
   };
+};
+
+export function setStartingAppState(startingAppState: AppStateToWrite) {
+  dataToWrite = startingAppState;
+}
+
+export function writeAppConfig(data: AppState) {
+  const toWrite: AppStateToWrite = appStateToConfigAppState(data);
+
+  if (equal(dataToWrite, toWrite)) return;
 
   dataToWrite = toWrite;
   if (writeConfigTimeout) {

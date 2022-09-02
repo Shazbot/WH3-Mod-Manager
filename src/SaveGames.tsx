@@ -1,4 +1,6 @@
-import { Button, Modal } from "flowbite-react";
+import { Button } from "flowbite-react";
+
+import { Modal } from "./flowbite/components/Modal/index";
 import React from "react";
 import { useAppSelector } from "./hooks";
 

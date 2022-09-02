@@ -18,5 +18,6 @@
     // "typeRoots": ["node_modules/@types", "./src"]
   },
   "include": ["src/**/*"],
+  "exclude": ["src/flowbite/components/Modal/**/*"],
   "files": ["src/index.d.ts"]
 }

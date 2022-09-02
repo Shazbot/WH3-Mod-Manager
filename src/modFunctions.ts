@@ -13,7 +13,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
       .then((res) => res.text())
       .then((body) => {
         let isDeleted = false;
-        let humanName = undefined;
+        let humanName = "";
         try {
           const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
           const match = body.match(regexpSize);

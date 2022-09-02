@@ -7,11 +7,16 @@ declare global {
 
   interface api {
     startGame: (mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => void;
+    exportModsToClipboard: (mods: Mod[]) => void;
+    subscribeToMods: (ids: string[]) => void;
     openFolderInExplorer: (path: string) => void;
     openInSteam: (url: string) => void;
     openPack: (path: string) => void;
     putPathInClipboard: (path: string) => void;
-    handleLog: (callback: (event: Electron.IpcRendererEvent, string) => void) => Electron.IpcRenderer;
+    handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) => Electron.IpcRenderer;
+    subscribedToMods: (
+      callback: (event: Electron.IpcRendererEvent, ids: string[]) => void
+    ) => Electron.IpcRenderer;
     fromAppConfig: (
       callback: (event: Electron.IpcRendererEvent, appState: AppState) => void
     ) => Electron.IpcRenderer;
@@ -87,6 +92,7 @@ declare global {
     gameSaves: GameSave[];
     saveSetupDone: boolean;
     isMakeUnitsGeneralsEnabled: boolean;
+    hasReadConfig: boolean;
   }
 
   interface AppState {
@@ -137,6 +143,8 @@ declare global {
     updateExists: boolean;
     downloadURL?: string;
   }
+
+  type ModIdAndLoadOrder = Pick<Mod, "workshopId" | "loadOrder">;
 
   interface GameSave {
     name: string;

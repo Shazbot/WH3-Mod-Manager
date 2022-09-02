@@ -6,4 +6,5 @@ export default {
   gameSaves: [],
   saveSetupDone: false,
   isMakeUnitsGeneralsEnabled: false,
+  hasReadConfig: false,
 } as AppData;

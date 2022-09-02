@@ -78,7 +78,7 @@ export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: 
   return mods.filter(
     (mod) =>
       mod.name.toLowerCase().includes(filter) ||
-      mod.humanName.toLowerCase().includes(filter) ||
+      (mod.humanName && mod.humanName.toLowerCase().includes(filter)) ||
       (doAuthorFiltering && mod.author.toLowerCase().includes(filter))
   );
 }

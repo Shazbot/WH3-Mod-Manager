@@ -1,5 +1,5 @@
 import Select, { ActionMeta } from "react-select";
-import React from "react";
+import React, { useState } from "react";
 import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
@@ -12,8 +12,11 @@ import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import selectStyle from "./styles/selectStyle";
 import { Tooltip } from "flowbite-react";
+import ShareMods from "./ShareMods";
 
 export default function OptionsDrawer() {
+  const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
+
   const dispatch = useAppDispatch();
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
@@ -52,6 +55,7 @@ export default function OptionsDrawer() {
 
   return (
     <div>
+      <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <div className="text-center">
         <button
           onClick={() => setIsOpen(!isOpen)}
@@ -150,6 +154,19 @@ export default function OptionsDrawer() {
 
           <div>
             <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+          </div>
+
+          <h6 className="mt-10">Share mods</h6>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+            Share current mod list with other people for multiplayer.
+          </p>
+          <div className="flex mt-2 w-full">
+            <button
+              className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+              onClick={() => setIsShowingShareMods(true)}
+            >
+              <span className="uppercase">Share Mod List</span>
+            </button>
           </div>
 
           <h6 className="mt-10">For Modders</h6>
