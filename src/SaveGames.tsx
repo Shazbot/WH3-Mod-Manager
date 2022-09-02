@@ -2,13 +2,14 @@ import { Button } from "flowbite-react";
 
 import { Modal } from "./flowbite/components/Modal/index";
 import React from "react";
-import { useAppSelector } from "./hooks";
+import { useAppDispatch, useAppSelector } from "./hooks";
 
 export interface SaveGameProps {
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 export default function SaveGame(props: SaveGameProps) {
+  const dispatch = useAppDispatch();
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
@@ -26,12 +27,16 @@ export default function SaveGame(props: SaveGameProps) {
     );
   };
 
+  const onEnableModsInSave = (name: string) => {
+    window.api.getPacksInSave(name);
+  };
+
   return (
     <>
       <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
         <Modal.Header>Saved Games</Modal.Header>
         <Modal.Body>
-          <div className="grid grid-cols-2 h-full gap-4">
+          <div className="grid grid-cols-3 h-full gap-4">
             {saves.map((save, i) => {
               return (
                 <React.Fragment key={save.name}>
@@ -43,7 +48,14 @@ export default function SaveGame(props: SaveGameProps) {
                     type="button"
                     onClick={() => onLoadClick(save.name)}
                   >
-                    Load
+                    Load Save
+                  </button>
+                  <button
+                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm m-auto "
+                    type="button"
+                    onClick={() => onEnableModsInSave(save.name)}
+                  >
+                    Load Mods From Save
                   </button>
                 </React.Fragment>
               );

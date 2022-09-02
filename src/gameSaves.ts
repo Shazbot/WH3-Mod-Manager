@@ -7,7 +7,7 @@ let savesWatcher: chokidar.FSWatcher | undefined;
 
 let saves: GameSave[] = [];
 
-const getSavesFolderPath = () => {
+export const getSavesFolderPath = () => {
   const appDataPath = app.getPath("appData");
   return path.join(appDataPath, "The Creative Assembly/Warhammer3/save_games/");
 };

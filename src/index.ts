@@ -14,7 +14,7 @@ import chokidar from "chokidar";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import windowStateKeeper from "electron-window-state";
 import { readPack } from "./packFileHandler";
-import { readPackData, writePack } from "./packFileSerializer";
+import { getPacksInSave, readPackData, writePack } from "./packFileSerializer";
 import * as steamworks from "steamworks.js";
 import * as nodePath from "path";
 
@@ -226,6 +226,10 @@ const createWindow = (): void => {
         console.log(msg);
       }
     );
+  });
+
+  ipcMain.on("getPacksInSave", async (event, saveName: string) => {
+    mainWindow.webContents.send("packsInSave", await getPacksInSave(saveName));
   });
 
   ipcMain.on("readAppConfig", () => {

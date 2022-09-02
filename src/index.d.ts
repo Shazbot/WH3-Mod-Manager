@@ -12,6 +12,7 @@ declare global {
     openFolderInExplorer: (path: string) => void;
     openInSteam: (url: string) => void;
     openPack: (path: string) => void;
+    getPacksInSave: (saveName: string) => void;
     putPathInClipboard: (path: string) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) => Electron.IpcRenderer;
     subscribedToMods: (
@@ -44,7 +45,10 @@ declare global {
     savesPopulated: (
       callback: (event: Electron.IpcRendererEvent, saves: GameSave[]) => void
     ) => Electron.IpcRenderer;
-    setIsDev: (callback: (event: Electron.IpcRendererEvent, boolean) => void) => Electron.IpcRenderer;
+    setIsDev: (callback: (event: Electron.IpcRendererEvent, isDev: boolean) => void) => Electron.IpcRenderer;
+    packsInSave: (
+      callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void
+    ) => Electron.IpcRenderer;
   }
 
   interface Mod {

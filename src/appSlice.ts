@@ -50,6 +50,15 @@ const appSlice = createSlice({
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
     },
+    enableModsByName: (state: AppState, action: PayloadAction<string[]>) => {
+      const modNames = action.payload;
+      console.log("ENABLING ALL MODS WITH NAMES: ", modNames);
+      state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
+
+      state.currentPreset.mods
+        .filter((mod) => modNames.find((modName) => modName === mod.name))
+        .forEach((mod) => (mod.isEnabled = true));
+    },
     disableAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
@@ -352,6 +361,7 @@ export const {
   setSharedMod,
   addMod,
   removeMod,
+  enableModsByName,
 } = appSlice.actions;
 
 export default appSlice.reducer;

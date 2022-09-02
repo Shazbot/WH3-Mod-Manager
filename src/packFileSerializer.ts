@@ -11,6 +11,8 @@ import {
 } from "./packFileDataManager";
 import clone from "just-clone";
 import { emptyMovie, introMoviePaths } from "./emptyMovie";
+import { app } from "electron";
+import * as path from "path";
 
 const string_schema = `{
     "units_custom_battle_permissions_tables": {
@@ -284,6 +286,28 @@ const readUTFString = async (fileIn: BinaryFile) => {
   // console.log('length is ' + length);
   // since utf8 is 2 bytes per char
   return (await fileIn.read(length * 2)).toString("utf8");
+};
+
+export const getPacksInSave = async (saveName: string): Promise<string[]> => {
+  console.log("Getting packs from save: ", saveName);
+  const appDataPath = app.getPath("appData");
+  const savePath = path.join(appDataPath, "The Creative Assembly/Warhammer3/save_games/", saveName);
+
+  let file: BinaryFile;
+  try {
+    file = new BinaryFile(savePath, "r", true);
+    await file.open();
+    const header = await file.read(await file.size());
+    const utf = header.toString("utf8");
+    const ascii = header.toString("ascii");
+
+    console.log(utf.match(/\0.*?pack/g).length);
+    return ascii.match(/\0[^\0]+?\.pack/g).map((match) => match.replace("\0", ""));
+  } catch (err) {
+    console.log(err);
+  }
+
+  return [];
 };
 
 export const readPack = async (modName: string, modPath: string): Promise<Pack> => {

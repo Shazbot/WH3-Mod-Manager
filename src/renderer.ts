@@ -10,6 +10,7 @@ import {
   setPackData,
   addMod,
   removeMod,
+  enableModsByName,
 } from "./appSlice";
 import store from "./store";
 
@@ -26,6 +27,11 @@ window.api.subscribedToMods((event, ids: string[]) => {
 window.api.setIsDev((event, isDev) => {
   console.log("Setting is dev: " + isDev);
   store.dispatch(setIsDev(isDev));
+});
+
+window.api.packsInSave((event, packNames: string[]) => {
+  console.log("packs in save: ", packNames);
+  store.dispatch(enableModsByName(packNames));
 });
 
 const subscribeToStoreChanges = () => {
