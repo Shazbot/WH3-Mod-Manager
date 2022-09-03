@@ -14,6 +14,45 @@ import { emptyMovie, introMoviePaths } from "./emptyMovie";
 import { app } from "electron";
 import * as path from "path";
 
+import * as schema from "../schema/schema_wh3.json";
+
+interface DBField {
+  name: string;
+  field_type: SCHEMA_FIELD_TYPE;
+  is_key: boolean;
+  default_value: string;
+  is_filename: boolean;
+  filename_relative_path?: any;
+  is_reference: string[];
+  lookup?: any;
+  description: string;
+  ca_order: number;
+  is_bitwise: number;
+  enum_values: Record<string, unknown>;
+  is_part_of_colour?: any;
+}
+
+interface DBVersion {
+  version: number;
+  fields: DBField[];
+}
+
+const DBNameToDBVersions: Record<string, DBVersion[]> = {};
+
+// console.log("FFFFFFFFFFFFFF");
+const vf = (schema as { versioned_files: any[] }).versioned_files as any[];
+for (const versioned_file of vf) {
+  if ("DB" in versioned_file) {
+    // console.log(versioned_file.DB[0]);
+    DBNameToDBVersions[versioned_file.DB[0]] = versioned_file.DB[1];
+    // name: versioned_file.DB[0],
+    // versions: versioned_file.DB[1],
+    // });
+  }
+}
+
+// console.log(DBNameToDBVersions.land_units_officers_tables);
+
 const string_schema = `{
     "units_custom_battle_permissions_tables": {
       "10": [
@@ -30,11 +69,11 @@ const string_schema = `{
       ]
     }}`;
 
-const schema = JSON.parse(string_schema);
-const latest_version = Object.keys(schema.units_custom_battle_permissions_tables).sort()[0];
-const ver_schema = schema.units_custom_battle_permissions_tables[latest_version];
+const object_schema = JSON.parse(string_schema);
+const latest_version = Object.keys(object_schema.units_custom_battle_permissions_tables).sort()[0];
+const ver_schema = object_schema.units_custom_battle_permissions_tables[latest_version];
 
-function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE = null) {
+function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE = null): number {
   switch (type) {
     case "Int8":
     case "UInt8":
@@ -50,6 +89,26 @@ function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE = null) {
     case "String":
       {
         return (val as string).length;
+      }
+      break;
+    case "F32":
+      {
+        return 4;
+      }
+      break;
+    case "I32":
+      {
+        return 4;
+      }
+      break;
+    case "I64":
+      {
+        return 8;
+      }
+      break;
+    case "F64":
+      {
+        return 8;
       }
       break;
   }
@@ -81,9 +140,28 @@ async function parseType(
         // await outFile.writeInt8(newVal !== undefined ? newVal : val);
       }
       break;
+    case "ColourRGB":
+      {
+        const val = await file.readInt32();
+        fields.push({ type: "I32", val });
+        return fields;
+      }
+      break;
+    case "StringU16":
+      {
+        try {
+          const length = await file.readInt16();
+          const val = (await file.read(length * 2)).toString("utf8");
+          fields.push({ type: "String", val });
+          return fields;
+        } catch (e) {
+          console.log(e);
+        }
+      }
+      break;
     case "StringU8":
       {
-        const length = await file.readInt16();
+        const length = await file.readUInt16();
         const val = await file.readString(length);
 
         // console.log('string');
@@ -109,6 +187,148 @@ async function parseType(
         return fields;
       }
       break;
+    case "F32":
+      {
+        const doesExist = await file.readFloat();
+        fields.push({ type: "F32", val: doesExist });
+        return fields;
+      }
+      break;
+    case "I32":
+      {
+        const doesExist = await file.readInt32();
+        fields.push({ type: "I32", val: doesExist });
+        return fields;
+      }
+      break;
+    case "F64":
+      {
+        const doesExist = await file.readDouble();
+        fields.push({ type: "F64", val: doesExist });
+        return fields;
+      }
+      break;
+    case "I64":
+      {
+        const doesExist = await file.readInt64();
+        fields.push({ type: "I64", val: doesExist });
+        return fields;
+      }
+      break;
+    default:
+      console.log("NO WAY TO RESOLVE " + type);
+      break;
+  }
+}
+
+function parseTypeBuffer(
+  buffer: Buffer,
+  pos: number,
+  type: SCHEMA_FIELD_TYPE,
+  existingFields?: Field[]
+): [Field[], number] {
+  const fields: Field[] = existingFields || [];
+  switch (type) {
+    case "Boolean":
+      {
+        // console.log('boolean');
+        const val = buffer.readUInt8(pos); //await file.readUInt8();
+        pos += 1;
+        fields.push({ type: "UInt8", val });
+        return [fields, pos];
+        // await outFile.writeInt8(newVal !== undefined ? newVal : val);
+      }
+      break;
+    case "ColourRGB":
+      {
+        const val = buffer.readInt32LE(pos); // await file.readInt32();
+        pos += 4;
+        fields.push({ type: "I32", val });
+        return [fields, pos];
+      }
+      break;
+    case "StringU16":
+      {
+        try {
+          const length = buffer.readInt16LE(pos); //await file.readInt16();
+          pos += 2;
+          const val = buffer.subarray(pos, pos + length * 2).toString("utf8"); //(await file.read(length * 2)).toString("utf8");
+          pos += length * 2;
+          fields.push({ type: "String", val });
+          return [fields, pos];
+        } catch (e) {
+          console.log(e);
+        }
+      }
+      break;
+    case "StringU8":
+      {
+        const length = buffer.readUint16LE(pos); //await file.readUInt16();
+        pos += 2;
+        const val = buffer.subarray(pos, pos + length).toString("ascii"); //await file.readString(length);
+        pos += length;
+
+        // console.log('string');
+        // console.log('position is ' + file.tell());
+        // const val = await read_string(file);
+
+        // console.log(length);
+        // console.log(val);
+        fields.push({ type: "Int16", val: length });
+        fields.push({ type: "String", val });
+        return [fields, pos];
+        // await outFile.writeString(val + '\0');
+        // await outFile.writeInt16(length);
+        // await outFile.writeString(val);
+      }
+      break;
+    case "OptionalStringU8":
+      {
+        const doesExist = buffer.readUint8(pos); // await file.readUInt8();
+        pos += 1;
+        fields.push({ type: "Int8", val: doesExist });
+        if (doesExist === 1) {
+          return parseTypeBuffer(buffer, pos, "StringU8", fields);
+        }
+
+        return [fields, pos];
+      }
+      break;
+    case "F32":
+      {
+        const doesExist = buffer.readFloatLE(pos); //await file.readFloat();
+        pos += 4;
+        fields.push({ type: "F32", val: doesExist });
+        return [fields, pos];
+      }
+      break;
+    case "I32":
+      {
+        const doesExist = buffer.readInt32LE(pos); //await file.readInt32();
+        pos += 4;
+        fields.push({ type: "I32", val: doesExist });
+        return [fields, pos];
+      }
+      break;
+    case "F64":
+      {
+        const doesExist = buffer.readDoubleLE(pos); //await file.readDouble();
+        pos += 8;
+        fields.push({ type: "F64", val: doesExist });
+        return [fields, pos];
+      }
+      break;
+    case "I64":
+      {
+        const doesExist = Number(buffer.readBigInt64LE(pos)); //await file.readInt64();
+        pos += 8;
+        fields.push({ type: "I64", val: doesExist });
+        return [fields, pos];
+      }
+      break;
+    default:
+      console.log("NO WAY TO RESOLVE " + type);
+      break;
   }
 }
 
@@ -119,10 +339,12 @@ const getGUID = () => {
 };
 
 const createBattlePermissionsData = (pack_files: PackedFile[], enabledMods: Mod[]) => {
+  // console.log(packsData);
+  // console.log(packsData.filter((packData) => packData == null));
   const battlePermissions = packsData
     .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
     .map((packData) => packData.packedFiles)
-    .filter((packedFiles) =>
+    .map((packedFiles) =>
       packedFiles.filter((packedFile) =>
         packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\")
       )
@@ -201,7 +423,7 @@ export const writePack = async (path: string, enabledMods: Mod[], startGameOptio
 
     for (const pack_file of pack_files) {
       const { name, file_size, start_pos, is_compressed } = pack_file;
-      console.log("file size is " + file_size);
+      // console.log("file size is " + file_size);
       await outFile.writeInt32(file_size);
       await outFile.writeInt8(is_compressed);
       await outFile.writeString(name + "\0");
@@ -210,33 +432,36 @@ export const writePack = async (path: string, enabledMods: Mod[], startGameOptio
     for (const pack_file of pack_files) {
       if (pack_file.guid != null) {
         const guid = pack_file.guid;
-        console.log("guid is " + guid);
+        // console.log("guid is " + guid);
         await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff])); // guid marker
         await outFile.writeInt16(guid.length);
         const twoByteGUID = guid
           .split("")
           .map((str) => str + "\0")
           .join("");
-        console.log(twoByteGUID);
+        // console.log(twoByteGUID);
         await outFile.write(Buffer.from(twoByteGUID, "utf-8"));
       }
 
       if (pack_file.version != null) {
+        // console.log(pack_file.version);
         await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
         await outFile.writeInt32(10); // db version
         await outFile.writeInt8(1);
 
-        console.log("NUM OF FIELDS:");
-        console.log(pack_file.schemaFields.length / ver_schema.length);
+        // console.log("NUM OF FIELDS:");
+        // console.log(pack_file.schemaFields.length / ver_schema.length);
         await outFile.writeInt32(pack_file.schemaFields.length / ver_schema.length);
       }
 
       for (const field of pack_file.schemaFields) {
         if (field.name === "general_unit") {
+          // console.log(field.name);
           const newField = clone(field);
           newField.fields[0].val = 1;
           await writeField(outFile, newField);
         } else {
+          // console.log(field.name);
           await writeField(outFile, field);
         }
       }
@@ -288,6 +513,14 @@ const readUTFString = async (fileIn: BinaryFile) => {
   return (await fileIn.read(length * 2)).toString("utf8");
 };
 
+const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] => {
+  const length = buffer.readInt16LE(pos);
+  pos += 2;
+  // console.log('length is ' + length);
+  // since utf8 is 2 bytes per char
+  return [buffer.subarray(pos, pos + length * 2).toString("utf8"), pos + length * 2];
+};
+
 export const getPacksInSave = async (saveName: string): Promise<string[]> => {
   console.log("Getting packs from save: ", saveName);
   const appDataPath = app.getPath("appData");
@@ -309,6 +542,8 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
 
   return [];
 };
+
+let toRead: Mod[];
 
 export const readPack = async (modName: string, modPath: string): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
@@ -365,22 +600,37 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
       // const file_size = (stream.read(4) as Buffer).readInt32LE();
       // const is_compressed = (stream.read(1) as Buffer).readInt8();
 
-      while (null !== (chunk = headerBuffer.toString("ascii", bufPos, bufPos + 1))) {
+      const nameStartPos = bufPos;
+      while (null !== (chunk = headerBuffer.readInt8(bufPos))) {
         bufPos += 1;
         // terminatorIndex = chunk.indexOf(stringTerminator);
-        if (chunk == "\0") {
+        if (chunk == 0) {
           // chunks.push(chunk.subarray(0, terminatorIndex + 1));
           // name = Buffer.concat(chunks).toString("ascii");
 
           // chunks = [];
           // file.seek(file.tell() - (chunk.length - terminatorIndex));
           // chunks.push(chunk.subarray(terminatorIndex, chunk.length + 1));
+
+          // console.log(String.fromCharCode(headerBuffer.readInt16BE(bufPos)));
+          // console.log(String.fromCharCode(headerBuffer.readInt16LE(bufPos)));
+
+          // console.log(Buffer.from([0xe9, 0x9c, 0x87]).toString("utf8"));
+          // console.log(Buffer.from([0x87, 0x9c, 0xe9]).toString("utf8"));
+          // console.log(headerBuffer.toString("utf8", nameStartPos, bufPos - 1));
+          // console.log(headerBuffer.subarray(nameStartPos, bufPos-1).length);
+
+          name = headerBuffer.toString("utf8", nameStartPos, bufPos - 1);
           break;
         }
         // chunks.push(chunk);
-        name += chunk;
+        // name += chunk;
         // console.log(`Read ${chunk.length} bytes of data...`);
       }
+
+      // if (name.startsWith("db")) {
+      //   console.log(name);
+      // }
 
       // if (i === 1000) {
       // console.log(console.timeEnd("1000files"));
@@ -404,50 +654,133 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
 
     // console.log("DONE READING FILE");
 
-    const battle_permissions = pack_files.filter((pack) =>
-      pack.name.startsWith("db\\units_custom_battle_permissions_tables")
+    // pack_files.forEach((pack_file) => {
+    //   const db_name = pack_file.name.match(/db\\(.*?)\\/);
+    //   if (db_name != null) {
+    //     console.log(db_name);
+    //     // console.log(pack_file.name);
+    //   }
+    // });
+
+    // const battle_permissions = pack_files.filter((pack) =>
+    //   pack.name.startsWith("db\\units_custom_battle_permissions_tables")
+    // );
+
+    const dbPackFiles = pack_files.filter((packFile) => {
+      const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
+      return dbNameMatch != null && dbNameMatch[1];
+    });
+
+    if (dbPackFiles.length < 1) return;
+
+    const startPos = dbPackFiles.reduce(
+      (previous, current) => (previous < current.start_pos ? previous : current.start_pos),
+      Number.MAX_SAFE_INTEGER
     );
 
-    for (const pack_file of battle_permissions) {
+    const startOfLastPack = dbPackFiles.reduce(
+      (previous, current) => (previous > current.start_pos ? previous : current.start_pos),
+      -1
+    );
+    const endPos =
+      dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack).file_size + startOfLastPack;
+    // console.log("endPos is ", endPos);
+
+    const buffer = await file.read(endPos - startPos, startPos);
+
+    let currentPos = 0;
+    for (const pack_file of pack_files) {
+      if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
+      currentPos = pack_file.start_pos - startPos;
+      // console.log(currentPos);
+
+      const dbNameMatch = pack_file.name.match(/db\\(.*?)\\/);
+      if (dbNameMatch == null) continue;
+      const dbName = dbNameMatch[1];
+      if (dbName == null) continue;
+
+      const dbversions = DBNameToDBVersions[dbName];
+      if (!dbversions) continue;
+
       // console.log(pack_file);
 
-      file.seek(pack_file.start_pos);
-
+      let version: number = null;
       for (;;) {
-        const marker = await file.read(4);
-        // console.log(marker.toString("hex"));
+        const marker = await buffer.subarray(currentPos, currentPos + 4);
+        currentPos += 4;
+
         if (marker.toString("hex") === "fdfefcff") {
-          const guid = await readUTFString(file);
-          // console.log("guid is " + guid);
-          pack_file.guid = guid;
+          const readUTF = readUTFStringFromBuffer(buffer, currentPos);
+          // console.log("guid is " + readUTF[0]);
+          pack_file.guid = readUTF[0];
+          currentPos = readUTF[1];
         } else if (marker.toString("hex") === "fcfdfeff") {
           // console.log("found version marker");
-          const version = await file.readInt32();
+          version = buffer.readInt32LE(currentPos); // await file.readInt32();
+          currentPos += 4;
+
           pack_file.version = version;
-          await file.read(1);
+          // await file.read(1);
+          currentPos += 1;
         } else {
-          file.seek(file.tell() - 4);
+          // console.log(marker.toString("hex"));
+          currentPos -= 4;
+          // file.seek(file.tell() - 4);
           break;
         }
+        // if (pack_file.name === "db\\character_skill_nodes_tables\\mixu_ll_empire") {
+        // console.log(pack_file.name);
+        // console.log(dbName);
+        // console.log(file.tell());
+        // console.log(dbName);
+        // console.log(marker);
+        // console.log("-------------------");
+        // }
       }
-      const entryCount = await file.readInt32();
+
+      // if (version == null) {
+      //   console.log("version is", version);
+      //   console.log(pack_file.guid);
+      //   console.log(pack_file.name);
+      //   console.log(pack_file.start_pos);
+      // }
+
+      if (version == null) continue;
+      const dbversion = dbversions.find((dbversion) => dbversion.version == version) || dbversions[0];
+      if (!dbversion) continue;
+      if (dbversion.version < version) continue;
+
+      const entryCount = buffer.readInt32LE(currentPos); //await file.readInt32();
+      currentPos += 4;
       // console.log("entry count is " + entryCount);
       // console.log("pos is " + file.tell());
 
+      // console.log(dbName);
       // outFile.seek(file.tell());
       for (let i = 0; i < entryCount; i++) {
-        for (const field of ver_schema) {
-          const [name, type] = field;
+        for (const field of dbversion.fields) {
+          const { name, field_type, is_key } = field;
           // console.log(name);
-          // console.log(type);
+          // console.log(field_type);
+
           // if (name === 'general_unit') console.log("it's a general");
           // console.log("pos is " + outFile.tell());
           // console.log('i is ' + i);
-          const fields = await parseType(file, type);
+          // const fields = await parseType(file, field_type);
+          const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+          const fields = fieldsRet[0];
+          currentPos = fieldsRet[1];
+
+          if (!fields[1] && !fields[0]) {
+            // console.log(name);
+            // console.log(field_type);
+          }
           pack_file.schemaFields.push({
             name,
-            type,
+            type: field_type,
             fields,
+            isKey: is_key,
+            resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
           });
         }
       }
@@ -458,22 +791,46 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
     await file.close();
   }
 
-  // console.log(pack_files);
+  // console.log("read " + modName);
+  // const mod = toRead.find((iterMod) => modName === iterMod.name);
+  // if (mod) {
+  //   toRead.splice(toRead.indexOf(mod), 1);
+  // }
+  // console.log(toRead.map((mod) => mod.name));
 
   return { name: modName, path: modPath, packedFiles: pack_files } as Pack;
 };
 
 export const readPackData = async (mods: Mod[]) => {
   // console.log("READ PACKS STARTED");
-  const packFieldsPromises = mods.map((mod) => {
-    return readPack(mod.name, mod.path);
-  });
+  // mods = mods.filter((mod) => mod.name === "!!pj_test1.pack" || mod.name === "!!pj_test1_dupe.pack");
+  // mods = mods.filter((mod) => mod.name === "!!pj_test1.pack");
+  // mods = mods.filter((mod) => mod.name === "cthdwf.pack");
+  // mods = mods.filter((mod) => mod.name != "data.pack");
 
-  const packFieldsSettled = await Promise.allSettled(packFieldsPromises);
-  const newPacksData = (
-    packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
-  ).map((r) => r.value);
-  packsData.splice(0, packsData.length, ...newPacksData);
+  toRead = [...mods];
+
+  try {
+    const packFieldsPromises = mods.map((mod) => {
+      return readPack(mod.name, mod.path);
+    });
+
+    console.time("readPacks");
+    const packFieldsSettled = await Promise.allSettled(packFieldsPromises);
+    const newPacksData = (
+      packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
+    )
+      .map((r) => r.value)
+      .filter((packData) => packData);
+    packsData.splice(0, packsData.length, ...newPacksData);
+    console.timeEnd("readPacks"); //26.580s
+
+    console.log("READ PACKS DONE");
+  } catch (e) {
+    console.log(e);
+  }
+
+  return;
 
   // let num_conf = 0;
   // console.time("1000files");
@@ -501,9 +858,66 @@ export const readPackData = async (mods: Mod[]) => {
   //   }
   // }
 
-  // console.timeEnd("1000files");
+  console.time("compareKeys");
+  for (let i = 0; i < packsData.length; i++) {
+    const pack = packsData[i];
+    for (let j = i + 1; j < packsData.length; j++) {
+      const packTwo = packsData[j];
+      // for (const pack of packsData) {
+      // for (const packTwo of packsData) {
+      if (pack === packTwo) continue;
+      if (pack.name === packTwo.name) continue;
+      if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
+
+      for (const packFile of pack.packedFiles) {
+        if (packFile.name === "settings.rpfm_reserved") continue;
+        for (const packTwoFile of packTwo.packedFiles) {
+          if (packTwoFile.name === "settings.rpfm_reserved") continue;
+
+          const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
+          if (dbNameMatch1 == null) continue;
+          const dbName1 = dbNameMatch1[1];
+          if (dbName1 == null) continue;
+
+          const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);
+          if (dbNameMatch2 == null) continue;
+          const dbName2 = dbNameMatch2[1];
+          if (dbName2 == null) continue;
+
+          try {
+            if (dbName1 === dbName2) {
+              // console.log(dbName1);
+              const v1Keys = packFile.schemaFields.filter((field) => field.isKey);
+              if (v1Keys.length != 1) continue;
+
+              const v1 = v1Keys[0].resolvedKeyValue;
+              const v2 = packTwoFile.schemaFields.find((field) => field.isKey).resolvedKeyValue;
+
+              // console.log(v1);
+              // console.log(v2);
+
+              if (v1 === v2) {
+                console.log("FOUND CONFLICT");
+                console.log(
+                  pack.name,
+                  packTwo.name,
+                  packFile.name,
+                  packTwoFile.name,
+                  packFile.schemaFields.find((field) => field.isKey).name,
+                  v1
+                );
+              }
+            }
+          } catch (e) {
+            // console.log(e);
+          }
+        }
+      }
+    }
+  }
+
+  console.timeEnd("compareKeys");
   // console.log("num conflicts: " + num_conf);
 
-  console.log("READ PACKS DONE");
   // console.log("num packs: " + packsData.length);
 };
