@@ -1,4 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+/* eslint-disable @typescript-eslint/no-var-requires */
 const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
@@ -14,9 +14,9 @@ module.exports = {
   resolve: {
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css", ".json"],
   },
-  // plugins: [
-  //   new CopyPlugin({
-  //     patterns: [{ from: "./node_modules/nightmare/lib", to: "./native_modules" }],
-  //   }),
-  // ],
+  plugins: [
+    new CopyPlugin({
+      patterns: [{ from: "./temp/sub.js", to: "sub.js" }],
+    }),
+  ],
 };

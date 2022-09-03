@@ -5,9 +5,9 @@
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "tsc ./src/sub.ts --outDir ./temp && electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make",
+    "make": "tsc ./src/sub.ts --outDir ./temp && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "storybook": "start-storybook -p 6006",
