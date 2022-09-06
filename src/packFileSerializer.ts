@@ -7,48 +7,13 @@ import {
   PackedFile,
   SchemaField,
   SCHEMA_FIELD_TYPE,
-} from "./packFileDataManager";
+} from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, introMoviePaths } from "./emptyMovie";
 import { app } from "electron";
 import * as path from "path";
-
-import * as schema from "../schema/schema_wh3.json";
-
-interface DBField {
-  name: string;
-  field_type: SCHEMA_FIELD_TYPE;
-  is_key: boolean;
-  default_value: string;
-  is_filename: boolean;
-  filename_relative_path?: any;
-  is_reference: string[];
-  lookup?: any;
-  description: string;
-  ca_order: number;
-  is_bitwise: number;
-  enum_values: Record<string, unknown>;
-  is_part_of_colour?: any;
-}
-
-interface DBVersion {
-  version: number;
-  fields: DBField[];
-}
-
-const DBNameToDBVersions: Record<string, DBVersion[]> = {};
-
-// console.log("FFFFFFFFFFFFFF");
-const vf = (schema as { versioned_files: any[] }).versioned_files as any[];
-for (const versioned_file of vf) {
-  if ("DB" in versioned_file) {
-    // console.log(versioned_file.DB[0]);
-    DBNameToDBVersions[versioned_file.DB[0]] = versioned_file.DB[1];
-    // name: versioned_file.DB[0],
-    // versions: versioned_file.DB[1],
-    // });
-  }
-}
+import { Worker } from "worker_threads";
+import { DBNameToDBVersions, schema } from "./schema";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -358,7 +323,7 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
     name: `db\\units_custom_battle_permissions_tables\\pj_fimir_test`,
     file_size: getDataSize(battlePermissionsSchemaFields) + 91,
     start_pos: 0,
-    is_compressed: 0,
+    // is_compressed: 0,
     schemaFields: battlePermissionsSchemaFields,
     version: 10,
     guid: getGUID(),
@@ -371,12 +336,30 @@ const createIntroMoviesData = (pack_files: PackedFile[]) => {
       name: moviePath,
       file_size: emptyMovie.length,
       start_pos: 0,
-      is_compressed: 0,
-      schemaFields: [{ name: "", type: "Buffer", fields: [{ type: "Buffer", val: emptyMovie }] }],
+      // is_compressed: 0,
+      schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: emptyMovie }] }],
       version: undefined,
       guid: undefined,
     } as PackedFile);
   }
+};
+
+const getDBName = (packFile: PackedFile) => {
+  const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
+  if (dbNameMatch == null) return;
+  const dbName = dbNameMatch[1];
+  return dbName;
+};
+
+const getDBVersion = (packFile: PackedFile) => {
+  const dbName = getDBName(packFile);
+  const dbversions = DBNameToDBVersions[dbName];
+  if (!dbversions) return;
+
+  const dbversion = dbversions.find((dbversion) => dbversion.version == packFile.version) || dbversions[0];
+  if (!dbversion) return;
+  if (dbversion.version < packFile.version) return;
+  return dbversion;
 };
 
 const createScriptLoggingData = (pack_files: PackedFile[]) => {
@@ -385,7 +368,7 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
     file_size: 1,
     start_pos: 0,
     is_compressed: 0,
-    schemaFields: [{ name: "", type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from([0x00]) }] }],
+    schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from([0x00]) }] }],
     version: undefined,
     guid: undefined,
   } as PackedFile);
@@ -404,14 +387,14 @@ export const writePack = async (
     const refFileCount = 0;
     const pack_file_index_size = 0;
 
-    const pack_files: PackedFile[] = [];
+    const packFiles: PackedFile[] = [];
 
     if (startGameOptions.isMakeUnitsGeneralsEnabled)
-      createBattlePermissionsData(packsData, pack_files, enabledMods);
-    if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(pack_files);
-    if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(pack_files);
+      createBattlePermissionsData(packsData, packFiles, enabledMods);
+    if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(packFiles);
+    if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(packFiles);
 
-    if (pack_files.length < 1) return;
+    if (packFiles.length < 1) return;
 
     outFile = new BinaryFile(path, "w", true);
     await outFile.open();
@@ -420,23 +403,25 @@ export const writePack = async (
     await outFile.writeInt32(refFileCount);
     await outFile.writeInt32(pack_file_index_size);
 
-    await outFile.writeInt32(pack_files.length);
+    await outFile.writeInt32(packFiles.length);
 
-    const index_size = pack_files.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
+    const index_size = packFiles.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
     await outFile.writeInt32(index_size);
     await outFile.writeInt32(0x7fffffff); // header_buffer
 
-    for (const pack_file of pack_files) {
-      const { name, file_size, start_pos, is_compressed } = pack_file;
+    for (const packFile of packFiles) {
+      // const { name, file_size, start_pos, is_compressed } = packFile;
+      const { name, file_size, start_pos } = packFile;
       // console.log("file size is " + file_size);
       await outFile.writeInt32(file_size);
-      await outFile.writeInt8(is_compressed);
+      // await outFile.writeInt8(is_compressed);
+      await outFile.writeInt8(0);
       await outFile.writeString(name + "\0");
     }
 
-    for (const pack_file of pack_files) {
-      if (pack_file.guid != null) {
-        const guid = pack_file.guid;
+    for (const packFile of packFiles) {
+      if (packFile.guid != null) {
+        const guid = packFile.guid;
         // console.log("guid is " + guid);
         await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff])); // guid marker
         await outFile.writeInt16(guid.length);
@@ -448,19 +433,36 @@ export const writePack = async (
         await outFile.write(Buffer.from(twoByteGUID, "utf-8"));
       }
 
-      if (pack_file.version != null) {
-        // console.log(pack_file.version);
+      if (packFile.version != null) {
+        // console.log(packFile.version);
         await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
-        await outFile.writeInt32(10); // db version
+        await outFile.writeInt32(packFile.version); // db version
         await outFile.writeInt8(1);
 
         // console.log("NUM OF FIELDS:");
-        // console.log(pack_file.schemaFields.length / ver_schema.length);
-        await outFile.writeInt32(pack_file.schemaFields.length / ver_schema.length);
+        // console.log(packFile.schemaFields.length / ver_schema.length);
+        await outFile.writeInt32(packFile.schemaFields.length / ver_schema.length);
       }
 
-      for (const field of pack_file.schemaFields) {
-        if (field.name === "general_unit") {
+      let general_unit_index = null;
+      let dbVersionNumFields = null;
+      if (getDBName(packFile) === "units_custom_battle_permissions_tables") {
+        const dbVersion = getDBVersion(packFile);
+        general_unit_index = dbVersion.fields.findIndex((field) => field.name == "general_unit");
+        dbVersionNumFields = dbVersion.fields.length;
+      }
+
+      // console.log(general_unit_index);
+      // console.log(dbVersionNumFields);
+
+      for (let i = 0; i < packFile.schemaFields.length; i++) {
+        const field = packFile.schemaFields[i];
+        if (
+          general_unit_index != null &&
+          dbVersionNumFields != null &&
+          i % dbVersionNumFields == general_unit_index
+        ) {
+          // console.log("FOUND GENERAL UNIT INDEX");
           // console.log(field.name);
           const newField = clone(field);
           newField.fields[0].val = 1;
@@ -647,7 +649,7 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
         name,
         file_size,
         start_pos: file_pos,
-        is_compressed,
+        // is_compressed,
         schemaFields: [],
         version: undefined,
         guid: undefined,
@@ -695,6 +697,8 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
 
     let currentPos = 0;
     for (const pack_file of pack_files) {
+      if (modName == "data.pack" && !pack_file.name.includes("\\units_custom_battle_permissions_tables\\"))
+        continue;
       if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
       currentPos = pack_file.start_pos - startPos;
       // console.log(currentPos);
@@ -777,16 +781,27 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
           currentPos = fieldsRet[1];
 
           if (!fields[1] && !fields[0]) {
-            // console.log(name);
-            // console.log(field_type);
+            console.log(name);
+            console.log(field_type);
           }
-          pack_file.schemaFields.push({
-            name,
+          if (fields[0].val == undefined) {
+            console.log(name);
+            console.log(field_type);
+          }
+          if (fields.length == 0) {
+            console.log(name);
+            console.log(field_type);
+          }
+
+          const schemaField: SchemaField = {
+            // name,
             type: field_type,
             fields,
-            isKey: is_key,
-            resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
-          });
+            // isKey: is_key,
+            // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
+          };
+          if (is_key) schemaField.isKey = true;
+          pack_file.schemaFields.push(schemaField);
         }
       }
     }
@@ -813,9 +828,18 @@ export const readPackData = async (mods: Mod[]) => {
   // mods = mods.filter((mod) => mod.name === "cthdwf.pack");
   // mods = mods.filter((mod) => mod.name != "data.pack");
 
-  const packsData: Pack[] = [];
-
   toRead = [...mods];
+
+  // return (
+  //   await new Promise<{ newPacksData: Pack[] }>((resolve, reject) => {
+  //     const worker = new Worker(path.join(__dirname, "readPacksWorker.js"), { workerData: { mods, schema } });
+  //     worker.on("message", resolve);
+  //     worker.on("error", reject);
+  //     worker.on("exit", (code) => {
+  //       if (code !== 0) reject(new Error(`Stopped with  ${code} exit code`));
+  //     });
+  //   })
+  // ).newPacksData;
 
   try {
     const packFieldsPromises = mods.map((mod) => {
@@ -829,15 +853,13 @@ export const readPackData = async (mods: Mod[]) => {
     )
       .map((r) => r.value)
       .filter((packData) => packData);
-    packsData.splice(0, packsData.length, ...newPacksData);
     console.timeEnd("readPacks"); //26.580s
 
     console.log("READ PACKS DONE");
+    return newPacksData;
   } catch (e) {
     console.log(e);
   }
-
-  return packsData;
 
   // console.log("num conflicts: " + num_conf);
 

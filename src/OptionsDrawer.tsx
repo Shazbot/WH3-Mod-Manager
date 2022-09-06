@@ -170,6 +170,7 @@ export default function OptionsDrawer() {
           </div>
 
           <h6 className="mt-10">For Modders</h6>
+          <p className="mb-1 text-sm text-gray-500 dark:text-gray-400">Keep these in sync for MP.</p>
           <div className="flex items-center ml-1">
             <input
               className="mt-1"

@@ -1,4 +1,4 @@
-import { Pack } from "./packFileDataManager";
+import { Pack } from "./packFileTypes";
 
 interface AppData {
   presets: Preset[];

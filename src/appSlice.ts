@@ -1,4 +1,4 @@
-import { getCompatData, Pack, PackFileCollision, PackTableCollision } from "./packFileDataManager";
+import { Pack, PackCollisions } from "./packFileTypes";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
   adjustDuplicates,

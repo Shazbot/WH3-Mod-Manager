@@ -15,7 +15,7 @@ import {
   setPackCollisions,
 } from "./appSlice";
 import store from "./store";
-import { getCompatData, Pack, PackFileCollision, PackTableCollision } from "./packFileDataManager";
+import { Pack, PackCollisions } from "./packFileTypes";
 
 let isSubscribedToStoreChanges = false;
 

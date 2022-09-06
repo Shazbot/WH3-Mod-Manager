@@ -1,4 +1,4 @@
-import { PackFileCollision } from "./packFileDataManager";
+import { PackCollisions } from "./packFileTypes";
 export {};
 
 declare global {
@@ -158,9 +158,4 @@ declare global {
   }
 
   type PresetSelection = "unary" | "addition" | "subtraction";
-
-  interface PackCollisions {
-    packFileCollisions: PackFileCollision[];
-    packTableCollisions: PackTableCollision[];
-  }
 }

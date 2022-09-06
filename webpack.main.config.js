@@ -16,7 +16,10 @@ module.exports = {
   },
   plugins: [
     new CopyPlugin({
-      patterns: [{ from: "./temp/sub.js", to: "sub.js" }],
+      patterns: [
+        { from: "./temp/sub.js", to: "sub.js" },
+        { from: "./temp/readPacksWorker.js", to: "readPacksWorker.js" },
+      ],
     }),
   ],
 };

@@ -21,7 +21,7 @@ export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
   );
 }
 
-function compareModNames(firstName: string, secondName: string): number {
+export function compareModNames(firstName: string, secondName: string): number {
   firstName = firstName.toLowerCase();
   secondName = secondName.toLowerCase();
   const len = Math.max(firstName.length, secondName.length);
@@ -31,7 +31,7 @@ function compareModNames(firstName: string, secondName: string): number {
 
     const diff = firstName.charCodeAt(i) - secondName.charCodeAt(i);
     if (diff === 0) continue;
-    return diff;
+    return diff < 0 ? -1 : 1;
   }
 
   return 0;
