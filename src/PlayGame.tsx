@@ -10,6 +10,7 @@ import selectStyle from "./styles/selectStyle";
 import SaveGames from "./SaveGames";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import CompatScreen from "./CompatScreen";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
@@ -250,6 +251,9 @@ export default function PlayGame() {
 
       <div className="mt-6">
         <OptionsDrawer />
+      </div>
+      <div className="mt-4">
+        <CompatScreen />
       </div>
     </div>
   );

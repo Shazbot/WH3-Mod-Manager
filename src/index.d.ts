@@ -1,3 +1,4 @@
+import { PackFileCollision } from "./packFileDataManager";
 export {};
 
 declare global {
@@ -38,8 +39,14 @@ declare global {
     setModData: (
       callback: (event: Electron.IpcRendererEvent, modData: ModData) => void
     ) => Electron.IpcRenderer;
-    setPackData: (
+    setPackHeaderData: (
       callback: (event: Electron.IpcRendererEvent, packData: PackData) => void
+    ) => Electron.IpcRenderer;
+    setPacksData: (
+      callback: (event: Electron.IpcRendererEvent, packData: PackData) => void
+    ) => Electron.IpcRenderer;
+    setPackCollisions: (
+      callback: (event: Electron.IpcRendererEvent, packCollisions: PackCollisions) => void
     ) => Electron.IpcRenderer;
     getAllModData: (ids: string[]) => void;
     savesPopulated: (
@@ -76,7 +83,7 @@ declare global {
     isDeleted: boolean;
   }
 
-  interface PackData {
+  interface PackHeaderData {
     path: string;
     isMovie: boolean;
   }
@@ -90,17 +97,6 @@ declare global {
   interface Preset {
     mods: Mod[];
     name: string;
-  }
-
-  interface AppData {
-    presets: Preset[];
-    gamePath: string;
-    contentFolder: string | undefined;
-    dataFolder: string | undefined;
-    gameSaves: GameSave[];
-    saveSetupDone: boolean;
-    isMakeUnitsGeneralsEnabled: boolean;
-    hasReadConfig: boolean;
   }
 
   interface AppState {
@@ -120,6 +116,8 @@ declare global {
     isScriptLoggingEnabled: boolean;
     isSkipIntroMoviesEnabled: boolean;
     allMods: Mod[];
+    packsData: Record<string, Pack>;
+    packCollisions: PackCollisions;
   }
 
   type AppStateToWrite = Pick<
@@ -160,4 +158,9 @@ declare global {
   }
 
   type PresetSelection = "unary" | "addition" | "subtraction";
+
+  interface PackCollisions {
+    packFileCollisions: PackFileCollision[];
+    packTableCollisions: PackTableCollision[];
+  }
 }

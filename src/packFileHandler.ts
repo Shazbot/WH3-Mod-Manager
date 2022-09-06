@@ -1,6 +1,6 @@
 import BinaryFile from "binary-file";
 
-export const readPack = async (path: string): Promise<PackData> => {
+export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
   let file: BinaryFile;
   let isMovie = false;
 

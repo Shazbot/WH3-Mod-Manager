@@ -25,7 +25,7 @@ export default function OptionsDrawer() {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
 
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
 
   const copyToData = () => {
     window.api.copyToData();
@@ -58,8 +58,8 @@ export default function OptionsDrawer() {
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <div className="text-center">
         <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+          onClick={() => setAreOptionsOpen(!areOptionsOpen)}
+          className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
           type="button"
           data-drawer-target="drawer-example"
           data-drawer-show="drawer-example"
@@ -69,7 +69,7 @@ export default function OptionsDrawer() {
         </button>
       </div>
 
-      <Drawer isOpen={isOpen} setIsOpen={setIsOpen}>
+      <Drawer isOpen={areOptionsOpen} setIsOpen={setAreOptionsOpen}>
         <div
           id="drawer-example"
           className="overflow-y-auto fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-0 top-0 transform-none"

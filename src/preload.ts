@@ -26,7 +26,9 @@ const api: api = {
   addMod: (callback) => ipcRenderer.on("addMod", callback),
   removeMod: (callback) => ipcRenderer.on("removeMod", callback),
   setModData: (callback) => ipcRenderer.on("setModData", callback),
-  setPackData: (callback) => ipcRenderer.on("setPackData", callback),
+  setPackHeaderData: (callback) => ipcRenderer.on("setPackHeaderData", callback),
+  setPacksData: (callback) => ipcRenderer.on("setPacksData", callback),
+  setPackCollisions: (callback) => ipcRenderer.on("setPackCollisions", callback),
   getAllModData: (ids) => ipcRenderer.send("getAllModData", ids),
   savesPopulated: (callback) => ipcRenderer.on("savesPopulated", callback),
 };

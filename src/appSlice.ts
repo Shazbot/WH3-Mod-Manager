@@ -1,3 +1,4 @@
+import { getCompatData, Pack, PackFileCollision, PackTableCollision } from "./packFileDataManager";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
   adjustDuplicates,
@@ -28,6 +29,8 @@ const appSlice = createSlice({
     isScriptLoggingEnabled: false,
     isSkipIntroMoviesEnabled: false,
     allMods: [],
+    packsData: {},
+    packCollisions: {},
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -126,12 +129,29 @@ const appSlice = createSlice({
       if (mod.isDeleted) console.log(mod.name + " is deleted!");
       if (data.lastChanged) mod.lastChanged = data.lastChanged;
     },
-    setPackData: (state: AppState, action: PayloadAction<PackData>) => {
+    setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData>) => {
       const data = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.path == data.path);
       mod.isMovie = data.isMovie;
 
       if (data.isMovie) console.log(`${data.path} is movie!`);
+    },
+    setPacksData: (state: AppState, action: PayloadAction<Pack[]>) => {
+      const packsData = action.payload;
+
+      for (const packData of packsData) {
+        state.packsData[packData.name] = packData;
+      }
+    },
+    // setPackCollisions: (
+    //   state: AppState,
+    //   action: PayloadAction<[PackFileCollision[], PackTableCollision[]]>
+    // ) => {
+    //   const [packFileCollisions, packTableCollisions] = action.payload;
+    //   state.packCollisions = { packFileCollisions, packTableCollisions };
+    // },
+    setPackCollisions: (state: AppState, action: PayloadAction<PackCollisions>) => {
+      state.packCollisions = action.payload;
     },
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToWrite>) => {
       const fromConfigAppState = action.payload;
@@ -354,7 +374,7 @@ export const {
   toggleIsAuthorEnabled,
   toggleAreThumbnailsEnabled,
   setIsDev,
-  setPackData,
+  setPackHeaderData,
   toggleMakeUnitsGenerals,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
@@ -362,6 +382,8 @@ export const {
   addMod,
   removeMod,
   enableModsByName,
+  setPacksData,
+  setPackCollisions,
 } = appSlice.actions;
 
 export default appSlice.reducer;

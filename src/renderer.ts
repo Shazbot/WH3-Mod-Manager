@@ -7,12 +7,15 @@ import {
   setSaves,
   setIsOnboardingToRun,
   setIsDev,
-  setPackData,
   addMod,
   removeMod,
   enableModsByName,
+  setPackHeaderData,
+  setPacksData,
+  setPackCollisions,
 } from "./appSlice";
 import store from "./store";
+import { getCompatData, Pack, PackFileCollision, PackTableCollision } from "./packFileDataManager";
 
 let isSubscribedToStoreChanges = false;
 
@@ -93,9 +96,29 @@ window.api.setModData((event, modData: ModData) => {
   store.dispatch(setModData(modData));
 });
 
-window.api.setPackData((event, packData: PackData) => {
+window.api.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
   // console.log("INVOKED: MOD PACK DATA RECIEVED");
-  store.dispatch(setPackData(packData));
+  store.dispatch(setPackHeaderData(packHeaderData));
+});
+
+window.api.setPacksData((event, packsData: Pack[]) => {
+  // console.log("INVOKED: MOD PACK DATA RECIEVED");
+  store.dispatch(setPacksData(packsData));
+
+  // getCompatData(packsData).then((data: Awaited<ReturnType<typeof getCompatData>>) => {
+  //   console.log("GOT COMPAT DATA");
+  //   store.dispatch(setPackCollisions(data));
+  // });
+});
+
+window.api.setPackCollisions((event, packCollisions: PackCollisions) => {
+  // console.log("INVOKED: MOD PACK DATA RECIEVED");
+  store.dispatch(setPackCollisions(packCollisions));
+
+  // getCompatData(packsData).then((data: Awaited<ReturnType<typeof getCompatData>>) => {
+  //   console.log("GOT COMPAT DATA");
+  //   store.dispatch(setPackCollisions(data));
+  // });
 });
 
 window.api.sendApiExists();

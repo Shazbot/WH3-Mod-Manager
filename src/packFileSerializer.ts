@@ -5,7 +5,6 @@ import {
   FIELD_VALUE,
   Pack,
   PackedFile,
-  packsData,
   SchemaField,
   SCHEMA_FIELD_TYPE,
 } from "./packFileDataManager";
@@ -338,7 +337,7 @@ const getGUID = () => {
   return [genRanHex(8), genRanHex(4), genRanHex(4), genRanHex(4), genRanHex(12)].join("-");
 };
 
-const createBattlePermissionsData = (pack_files: PackedFile[], enabledMods: Mod[]) => {
+const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[], enabledMods: Mod[]) => {
   // console.log(packsData);
   // console.log(packsData.filter((packData) => packData == null));
   const battlePermissions = packsData
@@ -392,7 +391,12 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
   } as PackedFile);
 };
 
-export const writePack = async (path: string, enabledMods: Mod[], startGameOptions: StartGameOptions) => {
+export const writePack = async (
+  packsData: Pack[],
+  path: string,
+  enabledMods: Mod[],
+  startGameOptions: StartGameOptions
+) => {
   let outFile: BinaryFile;
   try {
     const header = "PFH5";
@@ -402,7 +406,8 @@ export const writePack = async (path: string, enabledMods: Mod[], startGameOptio
 
     const pack_files: PackedFile[] = [];
 
-    if (startGameOptions.isMakeUnitsGeneralsEnabled) createBattlePermissionsData(pack_files, enabledMods);
+    if (startGameOptions.isMakeUnitsGeneralsEnabled)
+      createBattlePermissionsData(packsData, pack_files, enabledMods);
     if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(pack_files);
     if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(pack_files);
 
@@ -808,6 +813,8 @@ export const readPackData = async (mods: Mod[]) => {
   // mods = mods.filter((mod) => mod.name === "cthdwf.pack");
   // mods = mods.filter((mod) => mod.name != "data.pack");
 
+  const packsData: Pack[] = [];
+
   toRead = [...mods];
 
   try {
@@ -830,93 +837,8 @@ export const readPackData = async (mods: Mod[]) => {
     console.log(e);
   }
 
-  return;
+  return packsData;
 
-  // let num_conf = 0;
-  // console.time("1000files");
-  // for (let i = 0; i < packsData.length; i++) {
-  //   const pack = packsData[i];
-  //   for (let j = i + 1; j < packsData.length; j++) {
-  //     const packTwo = packsData[j];
-  //     // for (const pack of packsData) {
-  //     // for (const packTwo of packsData) {
-  //     if (pack === packTwo) continue;
-  //     if (pack.name === packTwo.name) continue;
-  //     if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
-
-  //     for (const packFile of pack.packedFiles) {
-  //       if (packFile.name === "settings.rpfm_reserved") continue;
-  //       for (const packTwoFile of packTwo.packedFiles) {
-  //         if (packTwoFile.name === "settings.rpfm_reserved") continue;
-  //         if (packFile.name === packTwoFile.name) {
-  //           // console.log("FOUND CONFLICT");
-  //           num_conf += 1;
-  //           // console.log(pack.name, packTwo.name, packFile.name);
-  //         }
-  //       }
-  //     }
-  //   }
-  // }
-
-  console.time("compareKeys");
-  for (let i = 0; i < packsData.length; i++) {
-    const pack = packsData[i];
-    for (let j = i + 1; j < packsData.length; j++) {
-      const packTwo = packsData[j];
-      // for (const pack of packsData) {
-      // for (const packTwo of packsData) {
-      if (pack === packTwo) continue;
-      if (pack.name === packTwo.name) continue;
-      if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
-
-      for (const packFile of pack.packedFiles) {
-        if (packFile.name === "settings.rpfm_reserved") continue;
-        for (const packTwoFile of packTwo.packedFiles) {
-          if (packTwoFile.name === "settings.rpfm_reserved") continue;
-
-          const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
-          if (dbNameMatch1 == null) continue;
-          const dbName1 = dbNameMatch1[1];
-          if (dbName1 == null) continue;
-
-          const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);
-          if (dbNameMatch2 == null) continue;
-          const dbName2 = dbNameMatch2[1];
-          if (dbName2 == null) continue;
-
-          try {
-            if (dbName1 === dbName2) {
-              // console.log(dbName1);
-              const v1Keys = packFile.schemaFields.filter((field) => field.isKey);
-              if (v1Keys.length != 1) continue;
-
-              const v1 = v1Keys[0].resolvedKeyValue;
-              const v2 = packTwoFile.schemaFields.find((field) => field.isKey).resolvedKeyValue;
-
-              // console.log(v1);
-              // console.log(v2);
-
-              if (v1 === v2) {
-                console.log("FOUND CONFLICT");
-                console.log(
-                  pack.name,
-                  packTwo.name,
-                  packFile.name,
-                  packTwoFile.name,
-                  packFile.schemaFields.find((field) => field.isKey).name,
-                  v1
-                );
-              }
-            }
-          } catch (e) {
-            // console.log(e);
-          }
-        }
-      }
-    }
-  }
-
-  console.timeEnd("compareKeys");
   // console.log("num conflicts: " + num_conf);
 
   // console.log("num packs: " + packsData.length);
