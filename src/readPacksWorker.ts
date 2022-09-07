@@ -8,8 +8,9 @@ import {
   PackedFile,
   SchemaField,
 } from "./packFileTypes";
+const { DBNameToDBVersions } = require("./schema") as { DBNameToDBVersions: Record<string, DBVersion[]> };
 
-const { workerData, parentPort } = require("worker_threads");
+const { workerData, parentPort, isMainThread } = require("worker_threads");
 const BinaryFile = require("binary-file");
 
 function parseTypeBuffer(
@@ -131,19 +132,7 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
   return [buffer.subarray(pos, pos + length * 2).toString("utf8"), pos + length * 2];
 };
 
-const DBNameToDBVersions: Record<string, DBVersion[]> = {};
-
-// console.log("FFFFFFFFFFFFFF");
-const vf = (workerData.schema as { versioned_files: any[] }).versioned_files as any[];
-for (const versioned_file of vf) {
-  if ("DB" in versioned_file) {
-    // console.log(versioned_file.DB[0]);
-    DBNameToDBVersions[versioned_file.DB[0]] = versioned_file.DB[1];
-    // name: versioned_file.DB[0],
-    // versions: versioned_file.DB[1],
-    // });
-  }
-}
+// const DBNameToDBVersions: Record<string, DBVersion[]> = {};
 
 // const packsData: dataManager.Pack[] = [];
 
@@ -405,39 +394,48 @@ const readPack = async (modName: string, modPath: string): Promise<Pack> => {
   return { name: modName, path: modPath, packedFiles: pack_files } as Pack;
 };
 
-if (workerData.checkCompat) {
-  {
-    const packFileCollisions = findPackFileCollisions(workerData.packsData);
-    const packTableCollisions = findPackTableCollisions(workerData.packsData);
-    parentPort.postMessage({ packFileCollisions, packTableCollisions });
-  }
-} else {
-  try {
-    const mods: any[] = workerData.mods;
-    const packFieldsPromises = mods.map((mod) => {
-      return readPack(mod.name, mod.path);
-    });
+// const vf = (workerData.schema as { versioned_files: any[] }).versioned_files as any[];
+// for (const versioned_file of vf) {
+//   if ("DB" in versioned_file) {
+//     DBNameToDBVersions[versioned_file.DB[0]] = versioned_file.DB[1];
+//   }
+// }
 
-    console.time("readPacks");
-    Promise.allSettled(packFieldsPromises)
-      .then((packFieldsSettled) => {
-        const newPacksData = (
-          packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
-        )
-          .map((r) => r.value)
-          .filter((packData) => packData);
-        //   packsData.splice(0, packsData.length, ...newPacksData);
-        console.timeEnd("readPacks"); //26.580s
-
-        console.log(newPacksData[0]);
-        console.log("READ PACKS DONE");
-        parentPort.postMessage({ newPacksData });
-      })
-      .catch((e) => {
-        console.log(e);
+if (!isMainThread) {
+  if (workerData.checkCompat) {
+    {
+      const packFileCollisions = findPackFileCollisions(workerData.packsData);
+      const packTableCollisions = findPackTableCollisions(workerData.packsData);
+      parentPort.postMessage({ packFileCollisions, packTableCollisions });
+    }
+  } else {
+    try {
+      const mods: any[] = workerData.mods;
+      const packFieldsPromises = mods.map((mod) => {
+        return readPack(mod.name, mod.path);
       });
-  } catch (e) {
-    console.log(e);
+
+      console.time("readPacks");
+      Promise.allSettled(packFieldsPromises)
+        .then((packFieldsSettled) => {
+          const newPacksData = (
+            packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
+          )
+            .map((r) => r.value)
+            .filter((packData) => packData);
+          //   packsData.splice(0, packsData.length, ...newPacksData);
+          console.timeEnd("readPacks"); //26.580s
+
+          console.log(newPacksData[0]);
+          console.log("READ PACKS DONE");
+          parentPort.postMessage({ newPacksData });
+        })
+        .catch((e) => {
+          console.log(e);
+        });
+    } catch (e) {
+      console.log(e);
+    }
   }
 }
 
@@ -459,6 +457,118 @@ function getDBVersion(packFile: PackedFile) {
   return dbversion;
 }
 
+function findPackTableCollisionsBetweenPacks(
+  pack: Pack,
+  packTwo: Pack,
+  packTableCollisions: PackTableCollision[]
+) {
+  for (const packFile of pack.packedFiles) {
+    if (packFile.name === "settings.rpfm_reserved") continue;
+    for (const packTwoFile of packTwo.packedFiles) {
+      if (packTwoFile.name === "settings.rpfm_reserved") continue;
+
+      const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
+      if (dbNameMatch1 == null) continue;
+      const dbName1 = dbNameMatch1[1];
+      if (dbName1 == null) continue;
+
+      const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);
+      if (dbNameMatch2 == null) continue;
+      const dbName2 = dbNameMatch2[1];
+      if (dbName2 == null) continue;
+
+      try {
+        if (dbName1 === dbName2) {
+          const firstVer = getDBVersion(packFile);
+          const secondVer = getDBVersion(packTwoFile);
+          if (firstVer == null || secondVer == null) continue;
+
+          if (firstVer.fields.filter((field) => field.is_key).length > 1) continue;
+          if (secondVer.fields.filter((field) => field.is_key).length > 1) continue;
+          const firstVerKeyField = firstVer.fields.filter((field) => field.is_key)[0];
+
+          const v1Keys = packFile.schemaFields.filter((field) => field.isKey);
+          if (v1Keys.length < 1) continue;
+          const v2Keys = packTwoFile.schemaFields.filter((field) => field.isKey);
+          if (v2Keys.length < 1) continue;
+
+          for (let ii = 0; ii < v1Keys.length; ii++) {
+            const v1Fields = v1Keys[ii].fields;
+            const v1 =
+              (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) ||
+              v1Fields[0].val.toString();
+            for (let jj = 0; jj < v2Keys.length; jj++) {
+              const v2Fields = v2Keys[jj].fields;
+              const v2 =
+                (v2Fields[1] && v2Fields[1].val != null && v2Fields[1].val.toString()) ||
+                v2Fields[0].val.toString();
+
+              if (v1 === v2) {
+                packTableCollisions.push({
+                  firstPackName: pack.name,
+                  secondPackName: packTwo.name,
+                  fileName: packFile.name,
+                  secondFileName: packTwoFile.name,
+                  // key: packFile.schemaFields.find((field) => field.isKey).name,
+                  key: firstVerKeyField.name,
+                  value: v1,
+                });
+
+                packTableCollisions.push({
+                  secondPackName: pack.name,
+                  firstPackName: packTwo.name,
+                  secondFileName: packFile.name,
+                  fileName: packTwoFile.name,
+                  // key: packFile.schemaFields.find((field) => field.isKey).name,
+                  key: firstVerKeyField.name,
+                  value: v1,
+                });
+                // console.log("FOUND CONFLICT");
+                // console.log(
+                //   pack.name,
+                //   packTwo.name,
+                //   packFile.name,
+                //   packTwoFile.name,
+                //   packFile.schemaFields.find((field) => field.isKey).name,
+                //   v1
+                // );
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.log(e);
+      }
+    }
+  }
+}
+
+export function removeFromPackTableCollisions(
+  packTableCollisions: PackTableCollision[],
+  removedPackName: string
+) {
+  return packTableCollisions.filter((collision) => {
+    return collision.firstPackName != removedPackName && collision.secondPackName != removedPackName;
+  });
+}
+
+export function appendPackTableCollisions(
+  packsData: Pack[],
+  packTableCollisions: PackTableCollision[],
+  newPack: Pack
+) {
+  for (let i = 0; i < packsData.length; i++) {
+    const pack = packsData[i];
+    if (pack === newPack) continue;
+    if (pack.name === newPack.name) continue;
+    if (pack.name === "data.pack" || newPack.name === "data.pack") continue;
+
+    findPackTableCollisionsBetweenPacks(pack, newPack, packTableCollisions);
+  }
+
+  return packTableCollisions;
+}
+
 function findPackTableCollisions(packsData: Pack[]) {
   const packTableCollisions: PackTableCollision[] = [];
   console.time("compareKeys");
@@ -466,97 +576,67 @@ function findPackTableCollisions(packsData: Pack[]) {
     const pack = packsData[i];
     for (let j = i + 1; j < packsData.length; j++) {
       const packTwo = packsData[j];
-      // for (const pack of packsData) {
-      // for (const packTwo of packsData) {
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
       if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
 
-      for (const packFile of pack.packedFiles) {
-        if (packFile.name === "settings.rpfm_reserved") continue;
-        for (const packTwoFile of packTwo.packedFiles) {
-          if (packTwoFile.name === "settings.rpfm_reserved") continue;
-
-          const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
-          if (dbNameMatch1 == null) continue;
-          const dbName1 = dbNameMatch1[1];
-          if (dbName1 == null) continue;
-
-          const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);
-          if (dbNameMatch2 == null) continue;
-          const dbName2 = dbNameMatch2[1];
-          if (dbName2 == null) continue;
-
-          try {
-            if (dbName1 === dbName2) {
-              const firstVer = getDBVersion(packFile);
-              const secondVer = getDBVersion(packTwoFile);
-              if (firstVer == null || secondVer == null) continue;
-
-              if (firstVer.fields.filter((field) => field.is_key).length > 1) continue;
-              if (secondVer.fields.filter((field) => field.is_key).length > 1) continue;
-              const firstVerKeyField = firstVer.fields.filter((field) => field.is_key)[0];
-
-              const v1Keys = packFile.schemaFields.filter((field) => field.isKey);
-              if (v1Keys.length < 1) continue;
-              const v2Keys = packTwoFile.schemaFields.filter((field) => field.isKey);
-              if (v2Keys.length < 1) continue;
-
-              for (let ii = 0; ii < v1Keys.length; ii++) {
-                const v1Fields = v1Keys[ii].fields;
-                const v1 =
-                  (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) ||
-                  v1Fields[0].val.toString();
-                for (let jj = 0; jj < v2Keys.length; jj++) {
-                  const v2Fields = v2Keys[jj].fields;
-                  const v2 =
-                    (v2Fields[1] && v2Fields[1].val != null && v2Fields[1].val.toString()) ||
-                    v2Fields[0].val.toString();
-
-                  if (v1 === v2) {
-                    packTableCollisions.push({
-                      firstPackName: pack.name,
-                      secondPackName: packTwo.name,
-                      fileName: packFile.name,
-                      secondFileName: packTwoFile.name,
-                      // key: packFile.schemaFields.find((field) => field.isKey).name,
-                      key: firstVerKeyField.name,
-                      value: v1,
-                    });
-
-                    packTableCollisions.push({
-                      secondPackName: pack.name,
-                      firstPackName: packTwo.name,
-                      secondFileName: packFile.name,
-                      fileName: packTwoFile.name,
-                      // key: packFile.schemaFields.find((field) => field.isKey).name,
-                      key: firstVerKeyField.name,
-                      value: v1,
-                    });
-                    // console.log("FOUND CONFLICT");
-                    // console.log(
-                    //   pack.name,
-                    //   packTwo.name,
-                    //   packFile.name,
-                    //   packTwoFile.name,
-                    //   packFile.schemaFields.find((field) => field.isKey).name,
-                    //   v1
-                    // );
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.log(e);
-          }
-        }
-      }
+      findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
     }
   }
 
   console.timeEnd("compareKeys");
 
   return packTableCollisions;
+}
+
+export function removeFromPackFileCollisions(
+  packFileCollisions: PackFileCollision[],
+  removedPackName: string
+) {
+  return packFileCollisions.filter((collision) => {
+    return collision.firstPackName != removedPackName && collision.secondPackName != removedPackName;
+  });
+}
+
+export function appendPackFileCollisions(
+  packsData: Pack[],
+  packFileCollisions: PackFileCollision[],
+  newPack: Pack
+) {
+  for (let i = 0; i < packsData.length; i++) {
+    const pack = packsData[i];
+    if (pack === newPack) continue;
+    if (pack.name === newPack.name) continue;
+    if (pack.name === "data.pack" || newPack.name === "data.pack") continue;
+
+    findPackFileCollisionsBetweenPacks(pack, newPack, packFileCollisions);
+  }
+
+  return packFileCollisions;
+}
+
+function findPackFileCollisionsBetweenPacks(pack: Pack, packTwo: Pack, conflicts: PackFileCollision[]) {
+  for (const packFile of pack.packedFiles) {
+    if (packFile.name === "settings.rpfm_reserved") continue;
+    for (const packTwoFile of packTwo.packedFiles) {
+      if (packTwoFile.name === "settings.rpfm_reserved") continue;
+      if (packFile.name === packTwoFile.name) {
+        conflicts.push({
+          firstPackName: pack.name,
+          secondPackName: packTwo.name,
+          fileName: packFile.name,
+        });
+
+        conflicts.push({
+          secondPackName: pack.name,
+          firstPackName: packTwo.name,
+          fileName: packFile.name,
+        });
+        // console.log("FOUND CONFLICT");
+        // console.log(pack.name, packTwo.name, packFile.name);
+      }
+    }
+  }
 }
 
 function findPackFileCollisions(packsData: Pack[]) {
@@ -573,27 +653,7 @@ function findPackFileCollisions(packsData: Pack[]) {
       if (pack.name === packTwo.name) continue;
       if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
 
-      for (const packFile of pack.packedFiles) {
-        if (packFile.name === "settings.rpfm_reserved") continue;
-        for (const packTwoFile of packTwo.packedFiles) {
-          if (packTwoFile.name === "settings.rpfm_reserved") continue;
-          if (packFile.name === packTwoFile.name) {
-            conflicts.push({
-              firstPackName: pack.name,
-              secondPackName: packTwo.name,
-              fileName: packFile.name,
-            });
-
-            conflicts.push({
-              secondPackName: pack.name,
-              firstPackName: packTwo.name,
-              fileName: packFile.name,
-            });
-            // console.log("FOUND CONFLICT");
-            // console.log(pack.name, packTwo.name, packFile.name);
-          }
-        }
-      }
+      findPackFileCollisionsBetweenPacks(pack, packTwo, conflicts);
     }
   }
   console.timeEnd("findPackFileCollisions");

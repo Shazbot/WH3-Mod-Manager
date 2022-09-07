@@ -170,7 +170,7 @@ export default function CompatScreen() {
                               <React.Fragment key={firstPackName + secondPackName + secondPack}>
                                 {!donePackName && <div className="mt-4 underline">{firstPackName}</div>}
                                 {!doneSecondPackName && (
-                                  <div className="ml-4">
+                                  <div className="ml-8">
                                     {secondPackName}
                                     {firstPackIndex > secondPackIndex && (
                                       <span className="ml-2 text-green-700">
@@ -179,7 +179,7 @@ export default function CompatScreen() {
                                     )}
                                   </div>
                                 )}
-                                <div className="ml-8">{secondPack}</div>
+                                <div className="ml-16">{secondPack}</div>
                               </React.Fragment>
                             );
                             donePackName = true;

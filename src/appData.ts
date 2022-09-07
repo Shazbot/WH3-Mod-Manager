@@ -1,4 +1,4 @@
-import { Pack } from "./packFileTypes";
+import { Pack, PackCollisions } from "./packFileTypes";
 
 interface AppData {
   presets: Preset[];
@@ -10,6 +10,7 @@ interface AppData {
   isMakeUnitsGeneralsEnabled: boolean;
   hasReadConfig: boolean;
   packsData: Pack[];
+  compatData: PackCollisions;
 }
 
 export default {
@@ -22,4 +23,5 @@ export default {
   isMakeUnitsGeneralsEnabled: false,
   hasReadConfig: false,
   packsData: [],
+  compatData: undefined,
 } as AppData;
