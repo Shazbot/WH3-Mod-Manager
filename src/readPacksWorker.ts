@@ -12,6 +12,7 @@ const { DBNameToDBVersions } = require("./schema") as { DBNameToDBVersions: Reco
 
 const { workerData, parentPort, isMainThread } = require("worker_threads");
 const BinaryFile = require("binary-file");
+const path = require("path");
 
 function parseTypeBuffer(
   buffer: Buffer,
@@ -136,7 +137,7 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
 
 // const packsData: dataManager.Pack[] = [];
 
-const readPack = async (modName: string, modPath: string): Promise<Pack> => {
+const readPack = async (modPath: string): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
 
   let file: typeof BinaryFile;
@@ -381,7 +382,7 @@ const readPack = async (modName: string, modPath: string): Promise<Pack> => {
   } catch (e) {
     console.log(e);
   } finally {
-    await file.close();
+    if (file) await file.close();
   }
 
   // console.log("read " + modName);
@@ -391,7 +392,7 @@ const readPack = async (modName: string, modPath: string): Promise<Pack> => {
   // }
   // console.log(toRead.map((mod) => mod.name));
 
-  return { name: modName, path: modPath, packedFiles: pack_files } as Pack;
+  return { name: path.basename(modPath), path: modPath, packedFiles: pack_files } as Pack;
 };
 
 // const vf = (workerData.schema as { versioned_files: any[] }).versioned_files as any[];
@@ -412,7 +413,7 @@ if (!isMainThread) {
     try {
       const mods: any[] = workerData.mods;
       const packFieldsPromises = mods.map((mod) => {
-        return readPack(mod.name, mod.path);
+        return readPack(mod.path);
       });
 
       console.time("readPacks");

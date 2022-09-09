@@ -297,7 +297,10 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const settledMods = await Promise.allSettled(newMods);
   (settledMods.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
     const mod = r.value;
-    mods.push(mod);
+    // if a content folder is empty it'll be undefined
+    if (mod != null) {
+      mods.push(mod);
+    }
   });
 
   return mods;

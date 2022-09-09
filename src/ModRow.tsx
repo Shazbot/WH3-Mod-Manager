@@ -75,6 +75,15 @@ export default function ModRow() {
     dispatch(resetModLoadOrder(mods.filter((mod) => mod.loadOrder !== undefined)));
   };
 
+  const formatLastChanged = (lastChanged: number) => {
+    try {
+      return formatDistanceToNow(lastChanged).replace("about ", "~") + " ago";
+    } catch (e) {
+      console.error(e);
+    }
+    return "";
+  };
+
   let currentDragTarget: Element;
   let newE: HTMLDivElement;
   let isBottomDrop = false;
@@ -307,8 +316,8 @@ export default function ModRow() {
     setPositionX(e.clientX);
     setPositionY(e.clientY);
 
-    if (innerHeight - 120 < e.clientY) {
-      setPositionY(e.clientY - 120);
+    if (innerHeight - 200 < e.clientY) {
+      setPositionY(e.clientY - 200);
     }
 
     setIsDropdownOpen(true);
@@ -526,7 +535,7 @@ export default function ModRow() {
                           <>
                             <p>Mod is of a movie mod type.</p>
                             <p>Movie mods always have high priority!</p>
-                            {mod.isMovie && <p>Always enabled since it's located in the WH3/data folder!</p>}
+                            {mod.isInData && <p>Always enabled since it's located in the WH3/data folder!</p>}
                           </>
                         }
                       >
@@ -555,7 +564,7 @@ export default function ModRow() {
                 onContextMenu={(e) => onModRightClick(e, mod)}
               >
                 <label htmlFor={mod.workshopId + "enabled"}>
-                  {formatDistanceToNow(mod.lastChanged).replace("about ", "~") + " ago"}
+                  {(mod.lastChanged && formatLastChanged(mod.lastChanged)) || ""}
                 </label>
               </div>
             </div>

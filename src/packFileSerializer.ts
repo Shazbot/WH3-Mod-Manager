@@ -5,6 +5,7 @@ import {
   FIELD_VALUE,
   Pack,
   PackedFile,
+  PackHeader,
   SchemaField,
   SCHEMA_FIELD_TYPE,
 } from "./packFileTypes";
@@ -374,6 +375,93 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
   } as PackedFile);
 };
 
+export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
+  const randomHexString = [...Array(100)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+  const toAdd = [
+    {
+      name: "whmm_update.txt",
+      file_size: randomHexString.length,
+      start_pos: 0,
+      // is_compressed: 0,
+      schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from(randomHexString) }] }],
+      version: undefined,
+      guid: undefined,
+    } as PackedFile,
+  ];
+  await writeCopyPack(pathSource, pathTarget, toAdd);
+};
+
+export const writeCopyPack = async (pathSource: string, pathTarget: string, packFilesToAdd: PackedFile[]) => {
+  let outFile: BinaryFile;
+  try {
+    // console.log(pathSource);
+    const sourceMod = await readPack(pathSource, true);
+    // console.log(sourceMod);
+
+    const packFiles = sourceMod.packedFiles;
+    const packFilesWithAdded = sourceMod.packedFiles.concat(
+      packFilesToAdd.filter((packFiletoAdd) =>
+        sourceMod.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
+      )
+    );
+
+    const packFilesToAddWithoutReplaced = packFilesToAdd.filter((packFiletoAdd) =>
+      sourceMod.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
+    );
+
+    if (packFiles.length < 1) return;
+
+    outFile = new BinaryFile(pathTarget, "w", true);
+    const sourceFile = new BinaryFile(pathSource, "r", true);
+    await sourceFile.open();
+    await outFile.open();
+    await outFile.write(sourceMod.packHeader.header);
+    await outFile.writeInt32(sourceMod.packHeader.byteMask);
+    await outFile.writeInt32(sourceMod.packHeader.refFileCount);
+    await outFile.writeInt32(sourceMod.packHeader.pack_file_index_size);
+
+    await outFile.writeInt32(packFilesWithAdded.length);
+
+    const index_size = packFilesWithAdded.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
+    await outFile.writeInt32(index_size);
+    await outFile.writeInt32(0x7fffffff); // header_buffer
+
+    for (const packFile of packFilesWithAdded) {
+      const { name, file_size } = packFile;
+      // console.log("file size is " + file_size);
+
+      const replacementPackFile = packFilesToAdd.find((toAdd) => toAdd.name == name);
+      await outFile.writeInt32(replacementPackFile ? replacementPackFile.file_size : file_size);
+      // await outFile.writeInt8(is_compressed);
+      await outFile.writeInt8(0);
+      await outFile.writeString(name + "\0");
+    }
+
+    let startPosOffset = 0; // if we replace files with different lenght change the writing position
+    for (const packFile of packFiles) {
+      console.log(packFile.name, packFile.file_size, packFile.start_pos);
+      let data: Buffer = null;
+      const fileToReplaceWith = packFilesToAdd.find((packFileToAdd) => packFileToAdd.name == packFile.name);
+      if (fileToReplaceWith) {
+        data = fileToReplaceWith.schemaFields[0].fields[0].val as Buffer;
+        startPosOffset += fileToReplaceWith.file_size - packFile.file_size;
+      } else {
+        data = await sourceFile.read(packFile.file_size, packFile.start_pos + startPosOffset);
+      }
+
+      await outFile.write(data);
+    }
+
+    for (const packFile of packFilesToAddWithoutReplaced) {
+      await outFile.write(packFile.schemaFields[0].fields[0].val as Buffer);
+    }
+  } catch (e) {
+    console.log(e);
+  } finally {
+    if (outFile) await outFile.close();
+  }
+};
+
 export const writePack = async (
   packsData: Pack[],
   path: string,
@@ -476,7 +564,7 @@ export const writePack = async (
   } catch (e) {
     console.log(e);
   } finally {
-    await outFile.close();
+    if (outFile) await outFile.close();
   }
 };
 
@@ -552,8 +640,9 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
 
 let toRead: Mod[];
 
-export const readPack = async (modName: string, modPath: string): Promise<Pack> => {
+export const readPack = async (modPath: string, skipParsingTables = false): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
+  let packHeader: PackHeader;
 
   let file: BinaryFile;
   try {
@@ -579,7 +668,16 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
     // console.log(`packed_file_index_size is ${packed_file_index_size}`);
 
     const header_buffer_len = 4;
-    await file.readInt32(); // header_buffer
+    const header_buffer = await file.read(4); // header_buffer
+
+    packHeader = {
+      header,
+      byteMask,
+      refFileCount,
+      pack_file_index_size,
+      pack_file_count,
+      header_buffer,
+    } as PackHeader;
 
     const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
     // console.log("data starts at " + dataStart);
@@ -678,7 +776,9 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
       return dbNameMatch != null && dbNameMatch[1];
     });
 
-    if (dbPackFiles.length < 1) return;
+    if (skipParsingTables || dbPackFiles.length < 1) {
+      return { name: path.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+    }
 
     const startPos = dbPackFiles.reduce(
       (previous, current) => (previous < current.start_pos ? previous : current.start_pos),
@@ -697,7 +797,10 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
 
     let currentPos = 0;
     for (const pack_file of pack_files) {
-      if (modName == "data.pack" && !pack_file.name.includes("\\units_custom_battle_permissions_tables\\"))
+      if (
+        path.basename(modPath) == "data.pack" &&
+        !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
+      )
         continue;
       if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
       currentPos = pack_file.start_pos - startPos;
@@ -808,7 +911,7 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
   } catch (e) {
     console.log(e);
   } finally {
-    await file.close();
+    if (file) await file.close();
   }
 
   // console.log("read " + modName);
@@ -818,7 +921,7 @@ export const readPack = async (modName: string, modPath: string): Promise<Pack> 
   // }
   // console.log(toRead.map((mod) => mod.name));
 
-  return { name: modName, path: modPath, packedFiles: pack_files } as Pack;
+  return { name: path.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
 };
 
 export const readPackData = async (mods: Mod[]) => {
@@ -843,7 +946,7 @@ export const readPackData = async (mods: Mod[]) => {
 
   try {
     const packFieldsPromises = mods.map((mod) => {
-      return readPack(mod.name, mod.path);
+      return readPack(mod.path);
     });
 
     console.time("readPacks");

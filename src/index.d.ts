@@ -15,6 +15,9 @@ declare global {
     openPack: (path: string) => void;
     getPacksInSave: (saveName: string) => void;
     putPathInClipboard: (path: string) => void;
+    updateMod: (mod: Mod, dataMod: Mod) => void;
+    makePackBackup: (mod: Mod) => void;
+    fakeUpdatePack: (mod: Mod, dataMod: Mod) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) => Electron.IpcRenderer;
     subscribedToMods: (
       callback: (event: Electron.IpcRendererEvent, ids: string[]) => void

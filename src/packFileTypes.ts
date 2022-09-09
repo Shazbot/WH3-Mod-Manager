@@ -16,10 +16,20 @@ export interface PackedFile {
   guid: string | undefined;
 }
 
+export interface PackHeader {
+  header: Buffer;
+  byteMask: number;
+  refFileCount: number;
+  pack_file_index_size: number;
+  pack_file_count: number;
+  header_buffer: Buffer;
+}
+
 export interface Pack {
   name: string;
   path: string;
   packedFiles: PackedFile[];
+  packHeader: PackHeader;
 }
 
 export interface PackFileCollision {

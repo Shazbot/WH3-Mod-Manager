@@ -84,10 +84,15 @@ const appSlice = createSlice({
     addMod: (state: AppState, action: PayloadAction<Mod>) => {
       const mod = action.payload;
 
-      if (!state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path)) {
-        if (!mod.isInData && !state.currentPreset.mods.find((iterMod) => iterMod.name === mod.name)) {
-          state.currentPreset.mods.push(mod);
-        }
+      const alreadyExists = state.currentPreset.mods.find((iterMod) => iterMod.path === mod.path);
+      if (alreadyExists) return;
+
+      const alreadyExistsByName = state.currentPreset.mods.find((iterMod) => iterMod.name === mod.name);
+      if (!alreadyExistsByName) {
+        state.currentPreset.mods.push(mod);
+      } else if (mod.isInData) {
+        state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(alreadyExistsByName), 1);
+        state.currentPreset.mods.push(mod);
       }
 
       if (!state.allMods.find((iterMod) => iterMod.path == mod.path)) {
