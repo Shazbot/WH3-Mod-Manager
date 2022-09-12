@@ -1,5 +1,18 @@
 import * as steamworks from "steamworks.js";
 
+if (process.argv[2] == "download") {
+  console.log("download");
+  const id = process.argv[3]; //"2856936614";
+  const client = steamworks.init(1142710);
+
+  console.log(id);
+
+  const promises = [client.workshop.download(BigInt(id), true)];
+
+  Promise.allSettled(promises).then(() => {
+    process.exit();
+  });
+}
 if (process.argv[2] == "update") {
   console.log("update");
   const id = process.argv[3]; //"2856936614";

@@ -44,10 +44,16 @@ export default function ModDropdown(props: ModDropdownProps) {
     const contentMod = allMods.find((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData);
     if (contentMod == null) return;
 
-    window.api.fakeUpdatePack(mod, contentMod);
+    window.api.fakeUpdatePack(mod);
   };
   const makePackBackup = (mod: Mod) => {
     window.api.makePackBackup(mod);
+  };
+  const forceModDownload = (mod: Mod) => {
+    if (mod.isInData) mod = allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod.name);
+    if (!mod) return;
+
+    window.api.forceModDownload(mod);
   };
 
   return (
@@ -190,6 +196,20 @@ export default function ModDropdown(props: ModDropdownProps) {
                 </Tooltip>
               </a>
             </li>
+            {(!props.mod.isInData ||
+              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod.name)) && (
+              <li>
+                <a
+                  onClick={() => forceModDownload(props.mod)}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip placement="top" content="Force Steam to re-download the mod.">
+                    Force Download
+                  </Tooltip>
+                </a>
+              </li>
+            )}
           </ul>
         </div>
       </>
