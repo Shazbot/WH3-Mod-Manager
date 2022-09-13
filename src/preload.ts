@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import electronLog from "electron-log";
 
 const api: api = {
   startGame: (mods: Mod[], startGameOptions: StartGameOptions, name?: string) =>
@@ -35,5 +36,6 @@ const api: api = {
   setPackCollisions: (callback) => ipcRenderer.on("setPackCollisions", callback),
   getAllModData: (ids) => ipcRenderer.send("getAllModData", ids),
   savesPopulated: (callback) => ipcRenderer.on("savesPopulated", callback),
+  electronLog,
 };
 contextBridge.exposeInMainWorld("api", api);

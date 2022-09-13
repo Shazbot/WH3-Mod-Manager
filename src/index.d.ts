@@ -1,3 +1,4 @@
+import { electronLog } from "electron-log";
 import { PackCollisions } from "./packFileTypes";
 export {};
 
@@ -60,6 +61,7 @@ declare global {
     packsInSave: (
       callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void
     ) => Electron.IpcRenderer;
+    electronLog: electronLog;
   }
 
   interface Mod {

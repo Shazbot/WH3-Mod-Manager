@@ -19,6 +19,16 @@ import { Pack, PackCollisions } from "./packFileTypes";
 
 let isSubscribedToStoreChanges = false;
 
+const originalConsoleLog = console.log.bind(console);
+console.log = (...args) => {
+  window.api.electronLog.log(...args);
+  originalConsoleLog(...args);
+};
+
+window.addEventListener("error", (e) => {
+  console.log(e);
+});
+
 window.api.handleLog((event, msg) => {
   console.log(msg);
 });
