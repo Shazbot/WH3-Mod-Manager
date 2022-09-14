@@ -64,7 +64,7 @@ export default function ShareMods(props: ShareModsProps) {
     console.log("waiting for:", restOfMods);
     subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
 
-    newMods.forEach((subbedMod) => dispatch(setSharedMod(subbedMod)));
+    dispatch(setSharedMod(newMods));
   }, 100);
 
   return (

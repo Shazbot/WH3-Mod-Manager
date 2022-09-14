@@ -38,12 +38,15 @@ const appSlice = createSlice({
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
       mod.isEnabled = !mod.isEnabled;
     },
-    setSharedMod: (state: AppState, action: PayloadAction<ModIdAndLoadOrder>) => {
+    setSharedMod: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
       const payload = action.payload;
-      const mod = state.currentPreset.mods.find((mod) => mod.workshopId == payload.workshopId);
-      if (!mod) return;
-      mod.isEnabled = true;
-      mod.loadOrder = payload.loadOrder;
+      payload.forEach((idAndLoadOrder) => {
+        const mod = state.currentPreset.mods.find((mod) => mod.workshopId == idAndLoadOrder.workshopId);
+        if (mod) {
+          mod.isEnabled = true;
+          mod.loadOrder = idAndLoadOrder.loadOrder;
+        }
+      });
     },
     enableAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = true));
