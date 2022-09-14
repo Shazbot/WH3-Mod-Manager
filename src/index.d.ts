@@ -148,7 +148,7 @@ declare global {
   interface ModLoadOrderPayload {
     modName: string;
     loadOrder: number;
-    originalOrder: number;
+    originalOrder?: number;
   }
 
   interface ModUpdateExists {

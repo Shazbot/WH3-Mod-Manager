@@ -316,8 +316,8 @@ export default function ModRow() {
     setPositionX(e.clientX);
     setPositionY(e.clientY);
 
-    if (innerHeight - 200 < e.clientY) {
-      setPositionY(e.clientY - 200);
+    if (innerHeight - 300 < e.clientY) {
+      setPositionY(e.clientY - 300);
     }
 
     setIsDropdownOpen(true);

@@ -45,7 +45,7 @@ export function writeAppConfig(data: AppState) {
       } catch (e) {
         console.log(e);
       }
-    }, 250);
+    }, 300);
   }
 }
 

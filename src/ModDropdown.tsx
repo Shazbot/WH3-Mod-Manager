@@ -1,6 +1,7 @@
 import { Tooltip } from "flowbite-react";
-import React from "react";
-import { toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";
+import React, { useState } from "react";
+import { setModLoadOrder, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";
+import { Modal } from "./flowbite";
 import { useAppDispatch, useAppSelector } from "./hooks";
 
 type ModDropdownProps = {
@@ -14,13 +15,28 @@ export default function ModDropdown(props: ModDropdownProps) {
   const dispatch = useAppDispatch();
   const isDev = useAppSelector((state) => state.app.isDev);
   const allMods = useAppSelector((state) => state.app.allMods);
+  const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
+  const [loadOrderHasError, setLoadOrderHasError] = useState(false);
+  const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
 
   const onGoToWorkshopPageClick = () => {
-    window.open(`https://steamcommunity.com/workshop/filedetails/?id=${props.mod.workshopId}`);
+    let workshopId = props.mod.workshopId;
+    if (props.mod.isInData) {
+      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData);
+      if (!contentMod) return;
+      workshopId = contentMod.workshopId;
+    }
+    window.open(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
   };
 
   const onOpenInSteam = () => {
-    window.api.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${props.mod.workshopId}`);
+    let workshopId = props.mod.workshopId;
+    if (props.mod.isInData) {
+      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData);
+      if (!contentMod) return;
+      workshopId = contentMod.workshopId;
+    }
+    window.api.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
   };
 
   const openInExplorer = (mod: Mod) => {
@@ -59,6 +75,54 @@ export default function ModDropdown(props: ModDropdownProps) {
   return (
     (props.mod == null && <></>) || (
       <>
+        <Modal
+          onClose={() => setIsSetLoadOrderOpen(false)}
+          // show={true}
+          show={isSetLoadOrderOpen}
+          size="2xl"
+          position="center"
+        >
+          <Modal.Header>Set Load Order For {props.mod.name}</Modal.Header>
+          <Modal.Body>
+            <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
+              Set load order for this mod. Changing load orders is very rarely needed in WH3 and can cause
+              unintended compatibility issues between mods.{" "}
+              <span className="text-red-600 font-semibold">
+                Always leave load order at default unless you have a very good reason!
+              </span>
+            </p>
+            <div className="flex mt-4 justify-center items-center">
+              <input
+                id="filterInput"
+                type="text"
+                onChange={(e) => {
+                  const loadOrder = e.target.value;
+                  setCurrentModLoadOrder(loadOrder);
+                  setLoadOrderHasError(loadOrder != "" && !Number(loadOrder));
+                }}
+                value={currentModLoadOrder}
+                className={
+                  "inline-block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-20 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 " +
+                  (loadOrderHasError ? "!border-red-700" : "")
+                }
+              ></input>
+              <div className="ml-4 justify-center inline-block">
+                <button
+                  className="make-tooltip-w-full px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
+                  onClick={() => {
+                    const numLordOrder = Number(currentModLoadOrder) - 1;
+                    if (numLordOrder == null || isNaN(numLordOrder)) return;
+                    if (numLordOrder < 0) return;
+                    dispatch(setModLoadOrder({ modName: props.mod.name, loadOrder: numLordOrder }));
+                    setIsSetLoadOrderOpen(false);
+                  }}
+                >
+                  <span className="uppercase">Set Load Order</span>
+                </button>
+              </div>
+            </div>
+          </Modal.Body>
+        </Modal>
         <div
           id="modDropdown"
           className={
@@ -71,32 +135,43 @@ export default function ModDropdown(props: ModDropdownProps) {
           }}
         >
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
-            {props.mod && !props.mod.isInData && (
-              <>
-                <li>
-                  <a
-                    href="#"
-                    onClick={() => onGoToWorkshopPageClick()}
-                    className={
-                      "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                    }
-                  >
-                    Go to workshop page
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="#"
-                    onClick={() => onOpenInSteam()}
-                    className={
-                      "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                    }
-                  >
-                    Open in Steam
-                  </a>
-                </li>
-              </>
-            )}
+            <li>
+              <a
+                onClick={() => setIsSetLoadOrderOpen(true)}
+                href="#"
+                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+              >
+                Set Load Order
+              </a>
+            </li>
+            {props.mod &&
+              (!props.mod.isInData ||
+                allMods.some((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData)) && (
+                <>
+                  <li>
+                    <a
+                      href="#"
+                      onClick={() => onGoToWorkshopPageClick()}
+                      className={
+                        "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                      }
+                    >
+                      Go to workshop page
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="#"
+                      onClick={() => onOpenInSteam()}
+                      className={
+                        "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                      }
+                    >
+                      Open in Steam
+                    </a>
+                  </li>
+                </>
+              )}
             <li>
               <a
                 onClick={() => dispatch(toggleAlwaysEnabledMods([props.mod]))}
