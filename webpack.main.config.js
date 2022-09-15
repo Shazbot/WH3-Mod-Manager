@@ -21,6 +21,7 @@ module.exports = {
         { from: "./temp/readPacksWorker.js", to: "readPacksWorker.js" },
         { from: "./temp/schema.js", to: "schema.js" },
         { from: "./temp/schema/schema_wh3.json", to: "../schema/schema_wh3.json" },
+        { from: "./node_modules/binary-file", to: "../node_modules/binary-file" },
       ],
     }),
   ],

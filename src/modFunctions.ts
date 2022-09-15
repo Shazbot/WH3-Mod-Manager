@@ -17,9 +17,13 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
         try {
           const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
           const match = body.match(regexpSize);
-          humanName = match[1];
+          if (match[1] != null) {
+            humanName = match[1];
+          } else {
+            log(`failed reading humanName for ${workshopId}`);
+          }
         } catch (err) {
-          log(`failed for ${workshopId}`);
+          log(`failed fetching mod page for ${workshopId}`);
           log(err);
 
           const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
@@ -32,11 +36,13 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           const regexBreadcrumbs = /<div class="breadcrumbs">(.*?)<\/div>/s;
           const breadcrumbs = body.match(regexBreadcrumbs)[1];
           const match = breadcrumbs && breadcrumbs.match(/.*>(.+?)'s .*?<\/a>/);
-          if (match) {
+          if (match && match[1] != null) {
             author = match[1];
+          } else {
+            log(`failed reading author for ${workshopId}`);
           }
         } catch (err) {
-          log(`failed for ${workshopId}`);
+          log(`failed fetching mod page for ${workshopId}`);
           log(err);
         }
 
@@ -50,7 +56,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
             reqModIds = [...requiredModsIds].map((matchAllResult) => matchAllResult[1]);
           }
         } catch (err) {
-          log(`failed for ${workshopId}`);
+          log(`failed fetching mod page for ${workshopId}`);
           log(err);
         }
 

@@ -11,7 +11,7 @@ import {
 const { DBNameToDBVersions } = require("./schema") as { DBNameToDBVersions: Record<string, DBVersion[]> };
 
 const { workerData, parentPort, isMainThread } = require("worker_threads");
-const BinaryFile = require("binary-file");
+const BinaryFile = require("../node_modules/binary-file/");
 const path = require("path");
 
 function parseTypeBuffer(
