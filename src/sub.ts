@@ -2,16 +2,11 @@ import * as steamworks from "steamworks.js";
 
 if (process.argv[2] == "download") {
   console.log("download");
-  const id = process.argv[3]; //"2856936614";
+  const ids = process.argv[3].split(";"); //"2856936614";
   const client = steamworks.init(1142710);
 
-  console.log(id);
-
-  const promises = [client.workshop.download(BigInt(id), true)];
-
-  Promise.allSettled(promises).then(() => {
-    process.exit();
-  });
+  ids.forEach((id) => client.workshop.download(BigInt(id), true));
+  process.exit();
 }
 if (process.argv[2] == "update") {
   console.log("update");
@@ -45,6 +40,8 @@ if (process.argv[2] == "sub") {
   );
 
   Promise.allSettled(promises).then(() => {
-    process.exit();
+    setTimeout(() => {
+      process.exit();
+    }, 200);
   });
 }
