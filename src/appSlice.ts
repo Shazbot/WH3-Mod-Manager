@@ -7,6 +7,9 @@ import {
   withoutDataAndContentDuplicates,
 } from "./modsHelpers";
 
+// if a enabled mod was removed it's possible it was updated, re-enabled it then
+const removedEnabledModPaths: string[] = [];
+
 const appSlice = createSlice({
   name: "app",
   initialState: {
@@ -101,11 +104,20 @@ const appSlice = createSlice({
       if (!state.allMods.find((iterMod) => iterMod.path == mod.path)) {
         state.allMods.push(mod);
       }
+
+      if (removedEnabledModPaths.find((path) => path === mod.path)) {
+        mod.isEnabled = true;
+      }
     },
     removeMod: (state: AppState, action: PayloadAction<string>) => {
       const modPath = action.payload;
 
-      if (!state.currentPreset.mods.find((iterMod) => iterMod.path == modPath)) return;
+      const removedMod = state.currentPreset.mods.find((iterMod) => iterMod.path == modPath);
+      if (!removedMod) return;
+
+      if (removedMod.isEnabled) {
+        removedEnabledModPaths.push(removedMod.path);
+      }
 
       state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
       state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
