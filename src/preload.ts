@@ -15,6 +15,7 @@ const api: api = {
   fakeUpdatePack: (mod: Mod) => ipcRenderer.send("fakeUpdatePack", mod),
   makePackBackup: (mod: Mod) => ipcRenderer.send("makePackBackup", mod),
   forceModDownload: (mod: Mod) => ipcRenderer.send("forceModDownload", mod),
+  forceDownloadMods: (modIds: string[]) => ipcRenderer.send("forceDownloadMods", modIds),
   handleLog: (callback) => ipcRenderer.on("handleLog", callback),
   subscribedToMods: (callback) => ipcRenderer.on("subscribedToMods", callback),
   setIsDev: (callback) => ipcRenderer.on("setIsDev", callback),

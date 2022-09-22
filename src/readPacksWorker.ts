@@ -465,32 +465,49 @@ function findPackTableCollisionsBetweenPacks(
 ) {
   for (const packFile of pack.packedFiles) {
     if (packFile.name === "settings.rpfm_reserved") continue;
+
+    const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
+    // console.log("dbNameMatch1", dbNameMatch1);
+    if (dbNameMatch1 == null) continue;
+    const dbName1 = dbNameMatch1[1];
+    // console.log("dbName1", dbName1);
+    if (dbName1 == null) continue;
+
     for (const packTwoFile of packTwo.packedFiles) {
       if (packTwoFile.name === "settings.rpfm_reserved") continue;
 
-      const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
-      if (dbNameMatch1 == null) continue;
-      const dbName1 = dbNameMatch1[1];
-      if (dbName1 == null) continue;
-
       const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);
+      // console.log("dbNameMatch2", dbNameMatch2);
       if (dbNameMatch2 == null) continue;
       const dbName2 = dbNameMatch2[1];
+      // console.log("dbName2", dbName2);
       if (dbName2 == null) continue;
 
       try {
         if (dbName1 === dbName2) {
+          // console.log("MATCHED", dbName1, dbName2);
           const firstVer = getDBVersion(packFile);
           const secondVer = getDBVersion(packTwoFile);
+          // console.log("ver", firstVer, secondVer);
           if (firstVer == null || secondVer == null) continue;
+
+          // console.log("length:");
+          // console.log(firstVer.fields.filter((field) => field.is_key).length);
+          // console.log(secondVer.fields.filter((field) => field.is_key).length);
 
           if (firstVer.fields.filter((field) => field.is_key).length > 1) continue;
           if (secondVer.fields.filter((field) => field.is_key).length > 1) continue;
           const firstVerKeyField = firstVer.fields.filter((field) => field.is_key)[0];
 
+          // console.log("key field", firstVerKeyField);
+
           const v1Keys = packFile.schemaFields.filter((field) => field.isKey);
+          // console.log(packFile);
+          // console.log(packTwoFile);
+          // console.log(v1Keys);
           if (v1Keys.length < 1) continue;
           const v2Keys = packTwoFile.schemaFields.filter((field) => field.isKey);
+          // console.log(v2Keys);
           if (v2Keys.length < 1) continue;
 
           for (let ii = 0; ii < v1Keys.length; ii++) {

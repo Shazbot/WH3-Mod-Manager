@@ -19,6 +19,7 @@ declare global {
     updateMod: (mod: Mod, dataMod: Mod) => void;
     makePackBackup: (mod: Mod) => void;
     forceModDownload: (mod: Mod) => void;
+    forceDownloadMods: (modsIds: string[]) => void;
     fakeUpdatePack: (mod: Mod) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) => Electron.IpcRenderer;
     subscribedToMods: (

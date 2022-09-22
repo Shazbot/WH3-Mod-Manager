@@ -45,10 +45,8 @@ if (require("electron-squirrel-startup")) {
 if (isMainThread) {
   process.umask(0);
 
-  const originalConsoleLog = console.log.bind(console);
   console.log = (...args) => {
     electronLog.info(...args);
-    originalConsoleLog(...args);
   };
 }
 
@@ -512,6 +510,13 @@ ipcMain.on("makePackBackup", async (event, mod: Mod) => {
 ipcMain.on("forceModDownload", async (event, mod: Mod) => {
   try {
     fork(nodePath.join(__dirname, "sub.js"), ["download", mod.workshopId], {});
+  } catch (e) {
+    console.log(e);
+  }
+});
+ipcMain.on("forceDownloadMods", async (event, modIds: string[]) => {
+  try {
+    fork(nodePath.join(__dirname, "sub.js"), ["download", modIds.join(";")], {});
   } catch (e) {
     console.log(e);
   }

@@ -229,9 +229,11 @@ function parseTypeBuffer(
     case "StringU8":
       {
         const length = buffer.readUint16LE(pos); //await file.readUInt16();
+        // console.log("stringU8 length is", length);
         pos += 2;
         const val = buffer.subarray(pos, pos + length).toString("ascii"); //await file.readString(length);
         pos += length;
+        // console.log("val is", val);
 
         // console.log('string');
         // console.log('position is ' + file.tell());
@@ -795,6 +797,9 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
 
     const buffer = await file.read(endPos - startPos, startPos);
 
+    // console.log("len:", endPos - startPos);
+    // console.log("startPos:", startPos);
+
     let currentPos = 0;
     for (const pack_file of pack_files) {
       if (
@@ -833,10 +838,10 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
 
           pack_file.version = version;
           // await file.read(1);
-          currentPos += 1;
         } else {
           // console.log(marker.toString("hex"));
           currentPos -= 4;
+          currentPos += 1;
           // file.seek(file.tell() - 4);
           break;
         }
@@ -857,10 +862,15 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
       //   console.log(pack_file.start_pos);
       // }
 
-      if (version == null) continue;
-      const dbversion = dbversions.find((dbversion) => dbversion.version == version) || dbversions[0];
+      // if (version == null) continue;
+      const dbversion =
+        dbversions.find((dbversion) => dbversion.version == version) ||
+        dbversions.find((dbversion) => dbversion.version == 0);
       if (!dbversion) continue;
-      if (dbversion.version < version) continue;
+      if (version != null && dbversion.version < version) continue;
+      // if (version == null) {
+      //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
+      // }
 
       const entryCount = buffer.readInt32LE(currentPos); //await file.readInt32();
       currentPos += 4;
@@ -874,6 +884,8 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
           const { name, field_type, is_key } = field;
           // console.log(name);
           // console.log(field_type);
+          // console.log(currentPos);
+          // console.log("real_pos:", currentPos + startPos);
 
           // if (name === 'general_unit') console.log("it's a general");
           // console.log("pos is " + outFile.tell());
@@ -930,6 +942,7 @@ export const readPackData = async (mods: Mod[]) => {
   // mods = mods.filter((mod) => mod.name === "!!pj_test1.pack");
   // mods = mods.filter((mod) => mod.name === "cthdwf.pack");
   // mods = mods.filter((mod) => mod.name != "data.pack");
+  // mods = mods.filter((mod) => mod.name === "!!snek_extra_variants_master_collection.pack");
 
   toRead = [...mods];
 

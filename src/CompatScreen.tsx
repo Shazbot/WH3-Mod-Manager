@@ -22,13 +22,6 @@ export default function CompatScreen() {
 
   const isPackProcessingDone = !!packCollisions.packFileCollisions;
 
-  const copyToData = () => {
-    window.api.copyToData();
-  };
-  const cleanData = () => {
-    window.api.cleanData();
-  };
-
   const groupedPackFileCollisions: Record<string, Record<string, string[]>> = {};
   if (packCollisions.packFileCollisions) {
     for (const pfCollision of packCollisions.packFileCollisions) {
@@ -245,7 +238,14 @@ export default function CompatScreen() {
 
                               const fragment = (
                                 <React.Fragment
-                                  key={firstPackName + secondPackName + collision.key + collision.value}
+                                  key={
+                                    firstPackName +
+                                    secondPackName +
+                                    collision.fileName +
+                                    collision.secondFileName +
+                                    collision.key +
+                                    collision.value
+                                  }
                                 >
                                   {!donePackName && <div className="mt-4 underline">{firstPackName}</div>}
                                   {!doneSecondPackName && <div className="ml-4">{secondPackName}</div>}

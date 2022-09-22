@@ -24,6 +24,7 @@ export default function OptionsDrawer() {
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
+  const contentMods = useAppSelector((state) => state.app.currentPreset.mods).filter((mod) => !mod.isInData);
 
   const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
 
@@ -32,6 +33,10 @@ export default function OptionsDrawer() {
   };
   const cleanData = () => {
     window.api.cleanData();
+  };
+
+  const forceDownloadMods = () => {
+    window.api.forceDownloadMods(contentMods.map((mod) => mod.workshopId));
   };
 
   const onDeleteChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
@@ -110,6 +115,20 @@ export default function OptionsDrawer() {
             <label className="ml-2 mt-1" htmlFor="enable-mod-author">
               Mod Author Column
             </label>
+          </div>
+
+          <h6 className="mt-10">Force Re-download</h6>
+          <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+            Force steam to download the latest version of all mods:
+          </p>
+
+          <div className="flex mt-2">
+            <button
+              className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+              onClick={() => forceDownloadMods()}
+            >
+              <span className="uppercase">Force Re-Download</span>
+            </button>
           </div>
 
           <h6 className="mt-8">Content Mods Vs Data Mods</h6>
