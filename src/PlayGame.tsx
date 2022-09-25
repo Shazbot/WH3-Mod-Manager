@@ -218,25 +218,25 @@ export default function PlayGame() {
         </div>
 
         <div className="fixed right-[5%] bottom-[4%] z-10">
-          {/* {missingModDependencies.length > 0 && ( */}
-          <div className="text-center text-red-700 font-semibold mb-4">
-            <div className="make-tooltip-w-full">
-              <Tooltip
-                placement="left"
-                content={missingModDependencies.map(([mod, reqs]) => (
-                  <div key={mod.path}>
-                    <span className="text-green-500">{mod.humanName + ` missing:`}</span>
-                    {reqs.map(([reqId, reqHumanName]) => (
-                      <div>{reqHumanName}</div>
-                    ))}
-                  </div>
-                ))}
-              >
-                Missing Required Mods!
-              </Tooltip>
+          {missingModDependencies.length > 0 && (
+            <div className="text-center text-red-700 font-semibold mb-4">
+              <div className="make-tooltip-w-full">
+                <Tooltip
+                  placement="left"
+                  content={missingModDependencies.map(([mod, reqs]) => (
+                    <div key={mod.path}>
+                      <span className="">{mod.humanName + ` missing:`}</span>
+                      {reqs.map(([reqId, reqHumanName]) => (
+                        <div className="text-red-600">{reqHumanName}</div>
+                      ))}
+                    </div>
+                  ))}
+                >
+                  Missing Required Mods!
+                </Tooltip>
+              </div>
             </div>
-          </div>
-          {/* )} */}
+          )}
           {enabledMods.length > 0 && (
             <div className="text-center text-slate-100 mb-4">
               <div className="make-tooltip-w-full">
@@ -251,58 +251,60 @@ export default function PlayGame() {
               </div>
             </div>
           )}
-          <button
-            id="playGame"
-            className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto"
-            onClick={() => playGameClicked()}
-          >
-            Play
-          </button>
+          <div className="flex flex-col items-center">
+            <button
+              id="playGame"
+              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto"
+              onClick={() => playGameClicked()}
+            >
+              Play
+            </button>
 
-          <div className="mt-2">
-            <button
-              id="continueGame"
-              className="bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto "
-              onClick={() => onContinueGameClicked()}
-              disabled={saves.length < 1}
-            >
-              <div className="make-tooltip-w-full">
-                <Tooltip
-                  placement="left"
-                  content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}
-                >
-                  <span className="ml-[-25%]">Continue</span>
-                </Tooltip>
-              </div>
-            </button>
-            <button
-              id="showSaves"
-              type="submit"
-              className="absolute h-7 w-9 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
-              onClick={() => onShowSavedGamesClicked()}
-              disabled={saves.length < 1}
-            >
-              <div className="make-tooltip-w-full">
-                <Tooltip placement="left" content={(saves[0] && `Show all saves`) || "No saves found!"}>
-                  <svg
-                    aria-hidden="true"
-                    className="h-6 w-6"
-                    fill="none"
-                    stroke="currentColor"
-                    overflow="visible"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
+            <div className="mt-2 w-36">
+              <button
+                id="continueGame"
+                className="bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto "
+                onClick={() => onContinueGameClicked()}
+                disabled={saves.length < 1}
+              >
+                <div className="make-tooltip-w-full">
+                  <Tooltip
+                    placement="left"
+                    content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    ></path>
-                  </svg>
-                </Tooltip>
-              </div>
-            </button>
+                    <span className="ml-[-25%]">Continue</span>
+                  </Tooltip>
+                </div>
+              </button>
+              <button
+                id="showSaves"
+                type="submit"
+                className="absolute h-7 bottom-0 right-4 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+                onClick={() => onShowSavedGamesClicked()}
+                disabled={saves.length < 1}
+              >
+                <div className="make-tooltip-w-full">
+                  <Tooltip placement="left" content={(saves[0] && `Show all saves`) || "No saves found!"}>
+                    <svg
+                      aria-hidden="true"
+                      className="h-6 w-6"
+                      fill="none"
+                      stroke="currentColor"
+                      overflow="visible"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      ></path>
+                    </svg>
+                  </Tooltip>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
 

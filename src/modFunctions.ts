@@ -17,7 +17,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
         try {
           const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
           const match = body.match(regexpSize);
-          if (match[1] != null) {
+          if (match && match[1] != null) {
             humanName = match[1];
           } else {
             log(`failed reading humanName for ${workshopId}`);
@@ -34,10 +34,15 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
         let author = "";
         try {
           const regexBreadcrumbs = /<div class="breadcrumbs">(.*?)<\/div>/s;
-          const breadcrumbs = body.match(regexBreadcrumbs)[1];
-          const match = breadcrumbs && breadcrumbs.match(/.*>(.+?)'s .*?<\/a>/);
-          if (match && match[1] != null) {
-            author = match[1];
+          const regexBreadcrumbsMatch = body.match(regexBreadcrumbs);
+          if (regexBreadcrumbsMatch && regexBreadcrumbsMatch[1]) {
+            const breadcrumbs = regexBreadcrumbsMatch[1];
+            const match = breadcrumbs && breadcrumbs.match(/.*>(.+?)'s .*?<\/a>/);
+            if (match && match[1] != null) {
+              author = match[1];
+            } else {
+              log(`failed reading author for ${workshopId}`);
+            }
           } else {
             log(`failed reading author for ${workshopId}`);
           }
@@ -68,7 +73,6 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
 
               if (reqIds && reqIds[0] && reqHumanNames && reqHumanNames[0]) {
                 reqModIdToName.push([reqIds[0], reqHumanNames[0]]);
-                console.log(reqModIdToName);
               }
             }
           }
