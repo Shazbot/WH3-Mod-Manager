@@ -351,7 +351,7 @@ const createWindow = (): void => {
       enabledMods.find((mod) => mod.name === iterMod.name)
     );
     mainWindow.setTitle(
-      `WH3 Mod Manager: ${enabledMods.length} mods enabled` +
+      `WH3 Mod Manager v${version}: ${enabledMods.length} mods enabled` +
         (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "")
     );
     writeAppConfig(data);
