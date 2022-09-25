@@ -147,6 +147,19 @@ export default function PlayGame() {
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
   );
 
+  const missingModDependencies = enabledMods
+    .filter((mod) => mod.reqModIdToName && mod.reqModIdToName.length > 0)
+    .map(
+      (mod) =>
+        [
+          mod,
+          mod.reqModIdToName.filter(
+            ([reqId]) => !enabledMods.find((enabledMod) => enabledMod.workshopId == reqId)
+          ),
+        ] as [Mod, [string, string][]]
+    )
+    .filter((member) => member[1].length > 0);
+
   return (
     <div>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
@@ -205,22 +218,39 @@ export default function PlayGame() {
         </div>
 
         <div className="fixed right-[5%] bottom-[4%] z-10">
-          <div className="text-center text-slate-100 mb-4">
-            {enabledMods.length > 0 && (
-              <>
-                <div className="make-tooltip-w-full">
-                  <Tooltip
-                    placement="top"
-                    content={enabledMods.map((mod) => (
-                      <div key={mod.path}>{mod.name.replace(".pack", "")}</div>
+          {/* {missingModDependencies.length > 0 && ( */}
+          <div className="text-center text-red-700 font-semibold mb-4">
+            <div className="make-tooltip-w-full">
+              <Tooltip
+                placement="left"
+                content={missingModDependencies.map(([mod, reqs]) => (
+                  <div key={mod.path}>
+                    <span className="text-green-500">{mod.humanName + ` missing:`}</span>
+                    {reqs.map(([reqId, reqHumanName]) => (
+                      <div>{reqHumanName}</div>
                     ))}
-                  >
-                    Enabled Mods: {enabledMods.length}
-                  </Tooltip>
-                </div>
-              </>
-            )}
+                  </div>
+                ))}
+              >
+                Missing Required Mods!
+              </Tooltip>
+            </div>
           </div>
+          {/* )} */}
+          {enabledMods.length > 0 && (
+            <div className="text-center text-slate-100 mb-4">
+              <div className="make-tooltip-w-full">
+                <Tooltip
+                  placement="left"
+                  content={enabledMods.map((mod) => (
+                    <div key={mod.path}>{mod.name.replace(".pack", "")}</div>
+                  ))}
+                >
+                  Enabled Mods: {enabledMods.length}
+                </Tooltip>
+              </div>
+            </div>
+          )}
           <button
             id="playGame"
             className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto"

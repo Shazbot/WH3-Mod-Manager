@@ -134,6 +134,7 @@ const appSlice = createSlice({
         if (dataMod) {
           dataMod.humanName = data.humanName ?? "";
           dataMod.author = data.author;
+          dataMod.reqModIdToName = data.reqModIdToName;
         }
       }
 
@@ -144,6 +145,7 @@ const appSlice = createSlice({
       } else {
         mod.humanName = data.humanName ?? "";
         mod.author = data.author;
+        mod.reqModIdToName = data.reqModIdToName;
       }
 
       if (mod.isDeleted) console.log(mod.name + " is deleted!");

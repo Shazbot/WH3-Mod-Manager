@@ -46,14 +46,31 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           log(err);
         }
 
-        let reqModIds: string[] = [];
+        const reqModIdToName: [string, string][] = [];
         try {
           const requiredItemsContainerInnerRegex = /id="RequiredItems"(.+?)<\/div>/s;
           const requiredItemsContainerInner = body.match(requiredItemsContainerInnerRegex);
           if (requiredItemsContainerInner && requiredItemsContainerInner[1]) {
             const requiredModsIdsRegex = /filedetails\/\?id=(\w+)/gs;
-            const requiredModsIds = requiredItemsContainerInner[1].matchAll(requiredModsIdsRegex);
-            reqModIds = [...requiredModsIds].map((matchAllResult) => matchAllResult[1]);
+            if (requiredItemsContainerInner && requiredItemsContainerInner[1]) {
+              const requiredModsIds = requiredItemsContainerInner[1].matchAll(requiredModsIdsRegex);
+              const reqIds = [...requiredModsIds]
+                .filter((matchAllResult) => matchAllResult && matchAllResult[1])
+                .map((matchAllResult) => matchAllResult[1]);
+
+              const requiredItemHumanNameIdsRegex = /class="requiredItem">[\n\r\t]+(.*?)[\n\r\t]+/gs;
+              const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(
+                requiredItemHumanNameIdsRegex
+              );
+              const reqHumanNames = [...requiredItemHumanNameIds]
+                .filter((matchAllResult) => matchAllResult && matchAllResult[1])
+                .map((matchAllResult) => matchAllResult[1]);
+
+              if (reqIds && reqIds[0] && reqHumanNames && reqHumanNames[0]) {
+                reqModIdToName.push([reqIds[0], reqHumanNames[0]]);
+                console.log(reqModIdToName);
+              }
+            }
           }
         } catch (err) {
           log(`failed fetching mod page for ${workshopId}`);
@@ -64,38 +81,52 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
         try {
           const detailsStatRightInnerRegex = /class="detailsStatRight">(.+?)<\/div>/gs;
           const detailsStatRightInner = body.matchAll(detailsStatRightInnerRegex);
-          const timeMatches = [...detailsStatRightInner].map((matchAllResult) => matchAllResult[1]);
-          // log(humanName);
-          // log(timeMatches);
-          const steamDate = timeMatches[2] ?? timeMatches[1]; // if mod was never updated, just uploaded
-          //steamDate = "2 Oct, 2021 @ 11:25am";
+          const timeMatches = [...detailsStatRightInner]
+            .filter((matchAllResult) => matchAllResult[1])
+            .map((matchAllResult) => matchAllResult[1]);
 
-          const dateFragments = steamDate
-            .replace(",", "")
-            .replace("@", "")
-            .split(" ")
-            .filter((str) => str !== "");
-          const hasYear = dateFragments.length > 3;
+          if (timeMatches.length > 0) {
+            // log(humanName);
+            // log(timeMatches);
+            const steamDate = timeMatches[2] ?? timeMatches[1]; // if mod was never updated, just uploaded
+            //steamDate = "2 Oct, 2021 @ 11:25am";
 
-          const day = dateFragments[0];
-          const date = dateFragments.join(" ");
-          const hours = dateFragments[hasYear ? 3 : 2].split(":")[0];
-          const hourFormat = hours.length > 1 ? "hh" : "h";
-          const dayFormat = day.length > 1 ? "dd" : "d";
+            if (steamDate) {
+              const dateFragments = steamDate
+                .replace(",", "")
+                .replace("@", "")
+                .split(" ")
+                .filter((str) => str !== "");
+              const hasYear = dateFragments.length > 3;
 
-          // log(`DATE: ${date}`);
-          const format = dayFormat + " MMM " + (hasYear ? "yyyy " : "") + hourFormat + ":mma";
-          // log(`date: ` + date);
-          // log(`FORMAT: ` + format);
-          const result = zonedTimeToUtc(parse(date, format, new Date()), "America/Phoenix");
-          // log(result);
-          lastChanged = getTime(result);
+              const day = dateFragments[0];
+              const date = dateFragments.join(" ");
+              const hours = dateFragments[hasYear ? 3 : 2].split(":")[0];
+              const hourFormat = hours.length > 1 ? "hh" : "h";
+              const dayFormat = day.length > 1 ? "dd" : "d";
+
+              // log(`DATE: ${date}`);
+              const format = dayFormat + " MMM " + (hasYear ? "yyyy " : "") + hourFormat + ":mma";
+              // log(`date: ` + date);
+              // log(`FORMAT: ` + format);
+              const result = zonedTimeToUtc(parse(date, format, new Date()), "America/Phoenix");
+              // log(result);
+              lastChanged = getTime(result);
+            }
+          }
         } catch (err) {
           log(err);
         }
 
         if (humanName || isDeleted) {
-          const modData = { workshopId, humanName, author, reqModIds, lastChanged, isDeleted } as ModData;
+          const modData = {
+            workshopId,
+            humanName,
+            author,
+            reqModIdToName,
+            lastChanged,
+            isDeleted,
+          } as ModData;
           cb(modData);
         }
       })

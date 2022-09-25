@@ -79,12 +79,13 @@ declare global {
     author: string;
     isDeleted: boolean;
     isMovie: boolean;
+    reqModIdToName?: [string, string][];
   }
 
   interface ModData {
     humanName: string;
     workshopId: string;
-    reqModIds: string[];
+    reqModIdToName: [string, string][];
     lastChanged: number;
     author: string;
     isDeleted: boolean;

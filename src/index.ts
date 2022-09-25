@@ -287,7 +287,7 @@ const createWindow = (): void => {
   });
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    if (isDev) return;
+    // if (isDev) return;
 
     fetchModData(
       ids.filter((id) => id !== ""),
