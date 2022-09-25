@@ -17,13 +17,17 @@ module.exports = [
     },
   },
   {
-    test: /\.tsx?$/,
+    test: /\.(ts|tsx)?$/,
     exclude: /(node_modules|\.webpack)/,
     use: {
-      loader: "ts-loader",
-      options: {
-        transpileOnly: true,
-      },
-    },
+        loader: "swc-loader",
+        options: {
+            jsc: {
+                parser: {
+                    syntax: "typescript",
+                }
+            }
+        }
+    }
   },
 ];
