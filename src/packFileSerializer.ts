@@ -628,10 +628,13 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
     file = new BinaryFile(savePath, "r", true);
     await file.open();
     const header = await file.read(await file.size());
-    const utf = header.toString("utf8");
     const ascii = header.toString("ascii");
 
-    console.log(utf.match(/\0.*?pack/g).length);
+    console.log(
+      "mods in save:",
+      ascii.match(/\0[^\0]+?\.pack/g).map((match) => match.replace("\0", ""))
+    );
+
     return ascii.match(/\0[^\0]+?\.pack/g).map((match) => match.replace("\0", ""));
   } catch (err) {
     console.log(err);
