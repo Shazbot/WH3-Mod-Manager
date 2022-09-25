@@ -260,7 +260,7 @@ export default function PlayGame() {
               Play
             </button>
 
-            <div className="mt-2 w-36">
+            <div className="mt-2 w-36 relative">
               <button
                 id="continueGame"
                 className="bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto "
@@ -279,7 +279,7 @@ export default function PlayGame() {
               <button
                 id="showSaves"
                 type="submit"
-                className="absolute h-7 bottom-0 right-4 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+                className="absolute h-7 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
                 onClick={() => onShowSavedGamesClicked()}
                 disabled={saves.length < 1}
               >
