@@ -1,5 +1,3 @@
-import { Button } from "flowbite-react";
-
 import { Modal } from "./flowbite/components/Modal/index";
 import React from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";

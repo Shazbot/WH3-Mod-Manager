@@ -51,7 +51,8 @@ if (isMainThread) {
 }
 
 let mainWindow: BrowserWindow | undefined;
-let watcher: chokidar.FSWatcher | undefined;
+let contentWatcher: chokidar.FSWatcher | undefined;
+let dataWatcher: chokidar.FSWatcher | undefined;
 
 const readConfig = async (mainWindow: BrowserWindow) => {
   try {
@@ -93,6 +94,61 @@ const getMod = async (mainWindow: BrowserWindow, modPath: string) => {
     }
   } catch (e) {
     console.log(e);
+  }
+};
+
+const onNewPackFound = async (path: string) => {
+  if (!mainWindow) return;
+  mainWindow.webContents.send("handleLog", "MOD ADDED: " + path);
+  console.log("MOD ADDED: " + path);
+  await getMod(mainWindow, path);
+  const newPack = await readPack(path);
+  if (appData.packsData && appData.packsData.every((pack) => pack.path != newPack.path)) {
+    appData.packsData.push(newPack);
+  }
+
+  if (appData.compatData) {
+    appData.compatData.packTableCollisions = appendPackTableCollisions(
+      appData.packsData,
+      appData.compatData.packTableCollisions,
+      newPack
+    );
+    appData.compatData.packFileCollisions = appendPackFileCollisions(
+      appData.packsData,
+      appData.compatData.packFileCollisions,
+      newPack
+    );
+
+    mainWindow?.webContents.send("setPackCollisions", {
+      packFileCollisions: appData.compatData.packFileCollisions,
+      packTableCollisions: appData.compatData.packTableCollisions,
+    } as PackCollisions);
+  }
+};
+const onPackDeleted = async (path: string) => {
+  if (!mainWindow) return;
+  mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
+  console.log("MOD REMOVED: " + path);
+  await removeMod(mainWindow, path);
+
+  if (appData.packsData && appData.packsData.some((pack) => pack.path == path)) {
+    appData.packsData = appData.packsData.filter((pack) => pack.path != path);
+  }
+
+  if (appData.compatData) {
+    appData.compatData.packTableCollisions = removeFromPackTableCollisions(
+      appData.compatData.packTableCollisions,
+      nodePath.basename(path)
+    );
+    appData.compatData.packFileCollisions = removeFromPackFileCollisions(
+      appData.compatData.packFileCollisions,
+      nodePath.basename(path)
+    );
+
+    mainWindow?.webContents.send("setPackCollisions", {
+      packFileCollisions: appData.compatData.packFileCollisions,
+      packTableCollisions: appData.compatData.packTableCollisions,
+    } as PackCollisions);
   }
 };
 
@@ -151,68 +207,33 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
     console.log(err);
   }
 
-  if (!watcher) {
+  if (!contentWatcher) {
     const contentFolder = appData.contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
+    contentWatcher = chokidar
+      .watch([`${contentFolder}/**/*.pack`], {
+        ignoreInitial: true,
+        ignored: /whmm_backups/,
+      })
+      .on("add", async (path) => {
+        onNewPackFound(path);
+      })
+      .on("unlink", async (path) => {
+        onPackDeleted(path);
+      });
+  }
+  if (!dataWatcher) {
     const dataFolder = appData.dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
-    watcher = chokidar
-      .watch([`${contentFolder}/**/*.pack`, `${dataFolder}/*.pack`], {
+    contentWatcher = chokidar
+      .watch([`${dataFolder}/*.pack`], {
         ignoreInitial: true,
         awaitWriteFinish: true,
         ignored: /whmm_backups/,
       })
       .on("add", async (path) => {
-        mainWindow.webContents.send("handleLog", "MOD ADDED: " + path);
-        console.log("MOD ADDED: " + path);
-        // getAllMods(mainWindow);
-        await getMod(mainWindow, path);
-        const newPack = await readPack(path);
-        if (appData.packsData && appData.packsData.every((pack) => pack.path != newPack.path)) {
-          appData.packsData.push(newPack);
-        }
-
-        if (appData.compatData) {
-          appData.compatData.packTableCollisions = appendPackTableCollisions(
-            appData.packsData,
-            appData.compatData.packTableCollisions,
-            newPack
-          );
-          appData.compatData.packFileCollisions = appendPackFileCollisions(
-            appData.packsData,
-            appData.compatData.packFileCollisions,
-            newPack
-          );
-
-          mainWindow?.webContents.send("setPackCollisions", {
-            packFileCollisions: appData.compatData.packFileCollisions,
-            packTableCollisions: appData.compatData.packTableCollisions,
-          } as PackCollisions);
-        }
+        onNewPackFound(path);
       })
       .on("unlink", async (path) => {
-        mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
-        console.log("MOD REMOVED: " + path);
-        // getAllMods(mainWindow);
-        await removeMod(mainWindow, path);
-
-        if (appData.packsData && appData.packsData.some((pack) => pack.path == path)) {
-          appData.packsData = appData.packsData.filter((pack) => pack.path != path);
-        }
-
-        if (appData.compatData) {
-          appData.compatData.packTableCollisions = removeFromPackTableCollisions(
-            appData.compatData.packTableCollisions,
-            nodePath.basename(path)
-          );
-          appData.compatData.packFileCollisions = removeFromPackFileCollisions(
-            appData.compatData.packFileCollisions,
-            nodePath.basename(path)
-          );
-
-          mainWindow?.webContents.send("setPackCollisions", {
-            packFileCollisions: appData.compatData.packFileCollisions,
-            packTableCollisions: appData.compatData.packTableCollisions,
-          } as PackCollisions);
-        }
+        onPackDeleted(path);
       });
   }
 };
@@ -524,6 +545,11 @@ ipcMain.on("forceDownloadMods", async (event, modIds: string[]) => {
 
 ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
   fork(nodePath.join(__dirname, "sub.js"), ["sub", ids.join(";")], {});
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  fork(nodePath.join(__dirname, "sub.js"), ["download", ids.join(";")], {});
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {});
+  // await new Promise((resolve) => setTimeout(resolve, 500));
   mainWindow.webContents.send("subscribedToMods", ids);
 });
 
