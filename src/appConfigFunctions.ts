@@ -2,6 +2,7 @@ import { app } from "electron";
 import * as fs from "fs/promises";
 import equal from "fast-deep-equal";
 import { move } from "fs-extra";
+import appData from "./appData";
 
 let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
@@ -28,6 +29,7 @@ export function setStartingAppState(startingAppState: AppStateToWrite) {
 export function writeAppConfig(data: AppState) {
   const toWrite: AppStateToWrite = appStateToConfigAppState(data);
 
+  if (!appData.hasReadConfig) return;
   if (equal(dataToWrite, toWrite)) return;
   const userData = app.getPath("userData");
 

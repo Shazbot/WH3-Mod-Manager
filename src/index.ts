@@ -53,6 +53,7 @@ if (isMainThread) {
 let mainWindow: BrowserWindow | undefined;
 let contentWatcher: chokidar.FSWatcher | undefined;
 let dataWatcher: chokidar.FSWatcher | undefined;
+let downloadsWatcher: chokidar.FSWatcher | undefined;
 
 const readConfig = async (mainWindow: BrowserWindow) => {
   try {
@@ -209,16 +210,39 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
 
   if (!contentWatcher) {
     const contentFolder = appData.contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
+    console.log("content folder:", contentFolder);
     contentWatcher = chokidar
-      .watch([`${contentFolder}/**/*.pack`], {
+      .watch(`${contentFolder}/**/*.pack`, {
         ignoreInitial: true,
         ignored: /whmm_backups/,
       })
       .on("add", async (path) => {
+        console.log("NEW CONTENT ADD", path);
         onNewPackFound(path);
       })
       .on("unlink", async (path) => {
+        console.log("NEW CONTENT UNLINK", path);
         onPackDeleted(path);
+      });
+  }
+  if (!downloadsWatcher) {
+    const downloadsFolder = appData.contentFolder
+      .replaceAll("\\", "/")
+      .replaceAll("//", "/")
+      .replace("/content/", "/downloads/");
+    console.log("downloads folder:", downloadsFolder);
+    downloadsWatcher = chokidar
+      .watch(`${downloadsFolder}/**/*.pack`, {
+        ignoreInitial: true,
+        awaitWriteFinish: true,
+        ignored: /whmm_backups/,
+      })
+      .on("add", async (path) => {
+        console.log("NEW DOWNLOADS ADD", path);
+        fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {});
+      })
+      .on("unlink", async (path) => {
+        console.log("NEW DOWNLOADS UNLINK", path);
       });
   }
   if (!dataWatcher) {
@@ -547,9 +571,9 @@ ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
   fork(nodePath.join(__dirname, "sub.js"), ["sub", ids.join(";")], {});
   await new Promise((resolve) => setTimeout(resolve, 500));
   fork(nodePath.join(__dirname, "sub.js"), ["download", ids.join(";")], {});
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 1000));
   fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {});
-  // await new Promise((resolve) => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
   mainWindow.webContents.send("subscribedToMods", ids);
 });
 

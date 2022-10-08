@@ -11,6 +11,7 @@ import SaveGames from "./SaveGames";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import CompatScreen from "./CompatScreen";
+import RequiredMods from "./RequiredMods";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
@@ -25,6 +26,7 @@ export default function PlayGame() {
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
   const [downloadURL, setDownloadURL] = useState<string>("");
   const [isShowingSavedGames, setIsShowingSavedGames] = useState<boolean>(false);
+  const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
@@ -85,6 +87,10 @@ export default function PlayGame() {
 
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setFilter(e.target.value));
+  };
+
+  const onMissingDependenciesClicked = () => {
+    setIsShowingRequiredMods(true);
   };
 
   const onContinueGameClicked = () => {
@@ -163,6 +169,11 @@ export default function PlayGame() {
   return (
     <div>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
+      <RequiredMods
+        isOpen={isShowingRequiredMods}
+        setIsOpen={setIsShowingRequiredMods}
+        modDependencies={missingModDependencies}
+      />
       <div className="fixed">
         <div id="presetSection">
           <Tooltip placement="left" content="Create new preset by typing its name">
@@ -220,7 +231,10 @@ export default function PlayGame() {
         <div className="fixed right-[5%] bottom-[4%] z-10">
           {missingModDependencies.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
-              <div className="make-tooltip-w-full">
+              <div
+                className="make-tooltip-w-full cursor-pointer"
+                onClick={() => onMissingDependenciesClicked()}
+              >
                 <Tooltip
                   placement="left"
                   content={missingModDependencies.map(([mod, reqs]) => (

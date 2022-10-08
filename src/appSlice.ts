@@ -39,7 +39,7 @@ const appSlice = createSlice({
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
-      mod.isEnabled = !mod.isEnabled;
+      if (mod) mod.isEnabled = !mod.isEnabled;
     },
     setSharedMod: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
       const payload = action.payload;
@@ -251,7 +251,7 @@ const appSlice = createSlice({
     deletePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
       state.presets = state.presets.filter((preset) => preset.name !== name);
-      if (state.lastSelectedPreset.name == name) state.lastSelectedPreset = null;
+      if (state.lastSelectedPreset && state.lastSelectedPreset.name == name) state.lastSelectedPreset = null;
     },
     replacePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
