@@ -29,7 +29,7 @@ function render() {
         }}
       >
         <TopBar />
-        <main>
+        <div id="app-main">
           <Onboarding></Onboarding>
           <div className="grid grid-cols-12 text-white">
             <div className="col-span-10">
@@ -39,7 +39,7 @@ function render() {
               <PlayGame />
             </div>
           </div>
-        </main>
+        </div>
       </ErrorBoundary>
     </Provider>
   );

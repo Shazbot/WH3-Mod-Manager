@@ -74,7 +74,16 @@ const ModalComponent: FC<ModalProps> = ({
             {...theirProps}
           >
             <div className={classNames(theme.content.base, ...explicitClasses, theme.sizes[size])}>
-              <div className={theme.content.inner}>{children}</div>
+              <div
+                className={classNames(
+                  theme.content.inner,
+                  "overflow-auto",
+                  "!h-full",
+                  "scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+                )}
+              >
+                {children}
+              </div>
             </div>
           </div>
         </ModalContext.Provider>,
