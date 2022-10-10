@@ -7,7 +7,7 @@ body {
   background-color: rgb(38, 38, 38);
 }
 
-main {
+#app-main {
   margin: auto;
   max-width: 100rem;
   padding: 2rem 4rem;

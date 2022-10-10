@@ -103,7 +103,11 @@ export default function CompatScreen() {
         onClose={() => setIsCompatOpen(false)}
         size="2xl"
         position="top-center"
-        explicitClasses={["!max-w-7xl"]}
+        explicitClasses={[
+          "!max-w-7xl",
+          "md:!h-full",
+          ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
+        ]}
       >
         <Modal.Header>Mod Compatibility </Modal.Header>
         <Modal.Body>

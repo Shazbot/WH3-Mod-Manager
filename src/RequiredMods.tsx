@@ -73,7 +73,7 @@ export default function RequiredMods(props: RequiredModsProps) {
   return (
     <>
       <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
-        <Modal.Header>Saved Games</Modal.Header>
+        <Modal.Header>Missing Required Mods</Modal.Header>
         <Modal.Body>
           <div className="grid grid-cols-2 h-full gap-4">
             {[...modNameToIdLookup.entries()].map(([modId, modName], i) => {
