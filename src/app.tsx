@@ -6,6 +6,7 @@ import { Provider } from "react-redux";
 import PlayGame from "./PlayGame";
 import Onboarding from "./Onboarding";
 import { ErrorBoundary } from "react-error-boundary";
+import TopBar from "./TopBar";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -27,15 +28,18 @@ function render() {
           // reset the state of your app so the error doesn't happen again
         }}
       >
-        <Onboarding></Onboarding>
-        <div className="grid grid-cols-12 text-white">
-          <div className="col-span-10">
-            <ModRow />
+        <TopBar />
+        <main>
+          <Onboarding></Onboarding>
+          <div className="grid grid-cols-12 text-white">
+            <div className="col-span-10">
+              <ModRow />
+            </div>
+            <div className="ml-3 col-span-2 relative">
+              <PlayGame />
+            </div>
           </div>
-          <div className="ml-3 col-span-2 relative">
-            <PlayGame />
-          </div>
-        </div>
+        </main>
       </ErrorBoundary>
     </Provider>
   );

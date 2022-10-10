@@ -4,9 +4,13 @@
 
 body {
   margin: auto;
-  padding: 2rem 4rem;
-  max-width: 100rem;
   background-color: rgb(38, 38, 38);
+}
+
+main {
+  margin: auto;
+  max-width: 100rem;
+  padding: 2rem 4rem;
 }
 
 [type="checkbox"]:focus,
@@ -107,4 +111,9 @@ body:not(.disable-row-hover) .row:hover > div {
 .mod-row-header {
   background-color: #404040;
   padding: 0.5rem;
+}
+
+#top-bar {
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
 }
