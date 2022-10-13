@@ -6,6 +6,8 @@ import * as dumbfs from "fs";
 import appData from "./appData";
 import fetch from "electron-fetch";
 import { zonedTimeToUtc } from "date-fns-tz";
+import * as nodePath from "path";
+import * as fsExtra from "fs-extra";
 
 export function fetchModData(ids: string[], cb: (modData: ModData) => void, log: (msg: string) => void) {
   ids.forEach(async (workshopId) => {
@@ -145,14 +147,17 @@ async function getDataPath(log: (msg: string) => void): Promise<string> {
   return appData.dataFolder;
 }
 
-export async function getDataMod(fileName: string, log: (msg: string) => void): Promise<Mod> {
+export async function getDataMod(filePath: string, log: (msg: string) => void): Promise<Mod> {
   const dataPath = await getDataPath(log);
   if (!dataPath) return;
+  console.log("file path is:", filePath);
+  const fileName = nodePath.basename(filePath);
 
   let lastChanged = undefined;
+  let size = undefined;
   try {
-    lastChanged = await fs.stat(`${dataPath}\\${fileName}`).then((stats) => {
-      return stats.mtimeMs;
+    [lastChanged, size] = await fs.stat(filePath).then((stats) => {
+      return [stats.mtimeMs, stats.size];
     });
   } catch (err) {
     log(`ERROR: ${err}`);
@@ -166,11 +171,20 @@ export async function getDataMod(fileName: string, log: (msg: string) => void): 
     // eslint-disable-next-line no-empty
   } catch {}
 
+  let mergedModsData = null;
+  try {
+    if (filePath.includes("/merged/") || filePath.includes("\\merged\\")) {
+      mergedModsData = await fsExtra.readJSON(filePath.replace(".pack", ".json"));
+      // console.log(mergedModsData);
+    }
+    // eslint-disable-next-line no-empty
+  } catch {}
+
   const mod: Mod = {
     humanName: "",
     name: fileName,
-    path: `${dataPath}\\${fileName}`,
-    modDirectory: dataPath,
+    path: filePath,
+    modDirectory: nodePath.dirname(filePath),
     imgPath: doesThumbnailExist ? thumbnailPath : "",
     workshopId: fileName,
     isEnabled: false,
@@ -180,6 +194,8 @@ export async function getDataMod(fileName: string, log: (msg: string) => void): 
     author: "",
     isDeleted: false,
     isMovie: false,
+    size,
+    mergedModsData,
   };
   return mod;
 }
@@ -208,7 +224,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
           !vanillaPacks.find((vanillaPack) => file.name === vanillaPack)
       )
       .map(async (file) => {
-        return getDataMod(file.name, log);
+        return getDataMod(nodePath.join(dataPath, file.name), log);
       });
 
     const fulfilled = await Promise.allSettled(dataModsPromises);
@@ -285,10 +301,13 @@ export async function getContentModInFolder(
 
   if (pack) {
     let lastChanged = undefined;
+    let size = undefined;
     try {
-      lastChanged = await fs.stat(`${contentFolder}\\${contentSubFolderName}\\${pack.name}`).then((stats) => {
-        return stats.mtimeMs;
-      });
+      [lastChanged, size] = await fs
+        .stat(`${contentFolder}\\${contentSubFolderName}\\${pack.name}`)
+        .then((stats) => {
+          return [stats.mtimeMs, stats.size];
+        });
     } catch (err) {
       log(`ERROR: ${err}`);
     }
@@ -310,6 +329,7 @@ export async function getContentModInFolder(
       lastChanged,
       isDeleted: false,
       isMovie: false,
+      size,
     };
     return mod;
   }

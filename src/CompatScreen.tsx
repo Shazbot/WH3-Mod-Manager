@@ -89,9 +89,6 @@ export default function CompatScreen() {
           onClick={() => setIsCompatOpen(!isCompatOpen)}
           className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
           type="button"
-          data-drawer-target="drawer-example"
-          data-drawer-show="drawer-example"
-          aria-controls="drawer-example"
         >
           Check Compat
         </button>
@@ -109,7 +106,7 @@ export default function CompatScreen() {
           ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
         ]}
       >
-        <Modal.Header>Mod Compatibility </Modal.Header>
+        <Modal.Header>Mod Compatibility</Modal.Header>
         <Modal.Body>
           <Tabs.Group style="underline">
             <Tabs.Item active={true} title="Files">
@@ -243,10 +240,13 @@ export default function CompatScreen() {
                               const fragment = (
                                 <React.Fragment
                                   key={
-                                    firstPackName +
-                                    secondPackName +
+                                    collision.firstPackName +
+                                    donePackName +
+                                    collision.secondPackName +
+                                    doneSecondPackName +
                                     collision.fileName +
                                     collision.secondFileName +
+                                    doneSecondFileName +
                                     collision.key +
                                     collision.value
                                   }

@@ -34,6 +34,7 @@ const appSlice = createSlice({
     allMods: [],
     packsData: {},
     packCollisions: {},
+    newMergedPacks: [],
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -108,6 +109,14 @@ const appSlice = createSlice({
       if (removedEnabledModPaths.find((path) => path === mod.path)) {
         mod.isEnabled = true;
       }
+
+      if (state.dataFromConfig?.currentPreset.mods.find((iterMod) => iterMod.path == mod.path)?.isEnabled) {
+        mod.isEnabled = true;
+      }
+
+      if (state.newMergedPacks.some((mergedPack) => mergedPack.path == mod.path)) {
+        mod.isEnabled = true;
+      }
     },
     removeMod: (state: AppState, action: PayloadAction<string>) => {
       const modPath = action.payload;
@@ -177,6 +186,9 @@ const appSlice = createSlice({
     },
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToWrite>) => {
       const fromConfigAppState = action.payload;
+
+      state.dataFromConfig = fromConfigAppState;
+
       fromConfigAppState.currentPreset.mods
         .filter((mod) => mod !== undefined)
         .map((mod) => {
@@ -371,6 +383,9 @@ const appSlice = createSlice({
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
+    createdMergedPack: (state: AppState, action: PayloadAction<string>) => {
+      state.newMergedPacks.push({ path: action.payload, creationTime: Date.now() });
+    },
   },
 });
 
@@ -403,6 +418,7 @@ export const {
   setSharedMod,
   addMod,
   removeMod,
+  createdMergedPack,
   enableModsByName,
   setPacksData,
   setPackCollisions,

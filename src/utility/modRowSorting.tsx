@@ -1,4 +1,4 @@
-import { ArrowNarrowDownIcon, ArrowNarrowUpIcon } from "@heroicons/react/solid";
+import { HiArrowNarrowDown, HiArrowNarrowUp } from "react-icons/hi";
 import React from "react";
 import {
   getModsSortedByOrder,
@@ -46,40 +46,40 @@ export function isAuthorSort(sortingType: SortingType) {
 export function getSortingArrow(sortingType: SortingType) {
   return (
     (sortingType === SortingType.PackName && (
-      <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.PackNameReverse && (
-      <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.HumanName && (
-      <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.HumanNameReverse && (
-      <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.LastUpdated && (
-      <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.LastUpdatedReverse && (
-      <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.IsEnabled && (
-      <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.IsEnabledReverse && (
-      <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.Ordered && (
-      <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.OrderedReverse && (
-      <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.Author && (
-      <ArrowNarrowDownIcon className="inline h-4 overflow-visible"></ArrowNarrowDownIcon>
+      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.AuthorReverse && (
-      <ArrowNarrowUpIcon className="inline h-4 overflow-visible"></ArrowNarrowUpIcon>
+      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
     )) || <></>
   );
 }

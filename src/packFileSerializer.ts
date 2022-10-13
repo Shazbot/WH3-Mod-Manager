@@ -15,6 +15,12 @@ import { app } from "electron";
 import * as path from "path";
 import { Worker } from "worker_threads";
 import { DBNameToDBVersions, schema } from "./schema";
+import * as nodePath from "path";
+import appData from "./appData";
+import { format } from "date-fns";
+import { Blob } from "buffer";
+import * as fs from "fs/promises";
+import * as fsExtra from "fs-extra";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -377,6 +383,83 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
   } as PackedFile);
 };
 
+export const mergeMods = async (mods: Mod[], newFileName?: string) => {
+  let outFile: BinaryFile;
+  try {
+    const targetPath = nodePath.join(
+      appData.dataFolder,
+      "/merged/",
+      newFileName || "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack"
+    );
+    await fsExtra.ensureDir(nodePath.dirname(targetPath));
+
+    const packFieldsSettled = await Promise.allSettled(mods.map((mod) => readPack(mod.path, true)));
+    const sources = (
+      packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
+    )
+      .map((r) => r.value)
+      .filter((packData) => packData);
+
+    const header = "PFH5";
+    const byteMask = 3;
+    const refFileCount = 0;
+    const pack_file_index_size = 0;
+
+    outFile = new BinaryFile(targetPath, "w", true);
+    await outFile.open();
+    await outFile.writeString(header);
+    await outFile.writeInt32(byteMask);
+    await outFile.writeInt32(refFileCount);
+    await outFile.writeInt32(pack_file_index_size);
+
+    await outFile.writeInt32(sources.reduce((prev, curr) => prev + curr.packHeader.pack_file_count, 0));
+
+    const index_size = sources
+      .map((pack) => pack.packedFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0))
+      .reduce((prev, curr) => prev + curr, 0);
+    await outFile.writeInt32(index_size);
+    await outFile.writeInt32(0x7fffffff); // header_buffer
+
+    for (const sourcePack of sources) {
+      for (const packFile of sourcePack.packedFiles) {
+        const { name, file_size, start_pos } = packFile;
+        await outFile.writeInt32(file_size);
+        await outFile.writeInt8(0);
+        await outFile.writeString(name + "\0");
+      }
+    }
+
+    for (const sourcePack of sources) {
+      const sourceFile = new BinaryFile(sourcePack.path, "r", true);
+      await sourceFile.open();
+
+      for (const packFile of sourcePack.packedFiles) {
+        // console.log(packFile.name, packFile.file_size, packFile.start_pos);
+        const data: Buffer = await sourceFile.read(packFile.file_size, packFile.start_pos);
+        await outFile.write(data);
+      }
+    }
+
+    const mergedMetaData = mods.map((mod) => ({
+      path: mod.path,
+      lastChanged: mod.lastChanged,
+      humanName: mod.humanName,
+      name: mod.name,
+    }));
+    const parsedTargetPath = nodePath.parse(targetPath);
+    await fsExtra.writeJSON(
+      nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"),
+      mergedMetaData
+    );
+
+    return targetPath;
+  } catch (e) {
+    console.log(e);
+  } finally {
+    if (outFile) await outFile.close();
+  }
+};
+
 export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
   const randomHexString = [...Array(100)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
   const toAdd = [
@@ -424,7 +507,7 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
 
     await outFile.writeInt32(packFilesWithAdded.length);
 
-    const index_size = packFilesWithAdded.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
+    const index_size = packFilesWithAdded.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     await outFile.writeInt32(index_size);
     await outFile.writeInt32(0x7fffffff); // header_buffer
 
@@ -495,7 +578,7 @@ export const writePack = async (
 
     await outFile.writeInt32(packFiles.length);
 
-    const index_size = packFiles.reduce((acc, pack) => acc + pack.name.length + 1 + 5, 0);
+    const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     await outFile.writeInt32(index_size);
     await outFile.writeInt32(0x7fffffff); // header_buffer
 
@@ -690,8 +773,6 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     let chunk;
     let file_pos = dataStart;
 
-    // let terminatorIndex = -1;
-
     const headerSize = dataStart - file.tell();
     const headerBuffer = await file.read(headerSize);
 
@@ -713,28 +794,10 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
       const nameStartPos = bufPos;
       while (null !== (chunk = headerBuffer.readInt8(bufPos))) {
         bufPos += 1;
-        // terminatorIndex = chunk.indexOf(stringTerminator);
         if (chunk == 0) {
-          // chunks.push(chunk.subarray(0, terminatorIndex + 1));
-          // name = Buffer.concat(chunks).toString("ascii");
-
-          // chunks = [];
-          // file.seek(file.tell() - (chunk.length - terminatorIndex));
-          // chunks.push(chunk.subarray(terminatorIndex, chunk.length + 1));
-
-          // console.log(String.fromCharCode(headerBuffer.readInt16BE(bufPos)));
-          // console.log(String.fromCharCode(headerBuffer.readInt16LE(bufPos)));
-
-          // console.log(Buffer.from([0xe9, 0x9c, 0x87]).toString("utf8"));
-          // console.log(Buffer.from([0x87, 0x9c, 0xe9]).toString("utf8"));
-          // console.log(headerBuffer.toString("utf8", nameStartPos, bufPos - 1));
-          // console.log(headerBuffer.subarray(nameStartPos, bufPos-1).length);
-
           name = headerBuffer.toString("utf8", nameStartPos, bufPos - 1);
           break;
         }
-        // chunks.push(chunk);
-        // name += chunk;
         // console.log(`Read ${chunk.length} bytes of data...`);
       }
 
@@ -945,7 +1008,7 @@ export const readPackData = async (mods: Mod[]) => {
   // mods = mods.filter((mod) => mod.name === "!!pj_test1.pack");
   // mods = mods.filter((mod) => mod.name === "cthdwf.pack");
   // mods = mods.filter((mod) => mod.name != "data.pack");
-  // mods = mods.filter((mod) => mod.name === "!!snek_extra_variants_master_collection.pack");
+  // mods = mods.filter((mod) => mod.name === "merged-11-10-2022-15-22.pack");
 
   toRead = [...mods];
 
