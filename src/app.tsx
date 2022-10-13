@@ -7,10 +7,11 @@ import PlayGame from "./PlayGame";
 import Onboarding from "./Onboarding";
 import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "./TopBar";
+import { Toasts } from "./Toasts";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
-    <div role="alert text-red-600">
+    <div role="alert" className="text-red-600">
       <p>Something went wrong:</p>
       <pre>{error.message}</pre>
       <p>Press Ctrl+Shift+I to screenshot the error data in the Console tab</p>
@@ -40,6 +41,7 @@ function render() {
             </div>
           </div>
         </div>
+        <Toasts />
       </ErrorBoundary>
     </Provider>
   );

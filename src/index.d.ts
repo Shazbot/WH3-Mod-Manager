@@ -19,11 +19,17 @@ declare global {
     updateMod: (mod: Mod, dataMod: Mod) => void;
     makePackBackup: (mod: Mod) => void;
     forceModDownload: (mod: Mod) => void;
+    reMerge: (mod: Mod, modsToMerge: Mod[]) => void;
+    deletePack: (mod: Mod) => void;
     forceDownloadMods: (modsIds: string[]) => void;
+    mergeMods: (mods: Mod[]) => void;
     fakeUpdatePack: (mod: Mod) => void;
     handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) => Electron.IpcRenderer;
     subscribedToMods: (
       callback: (event: Electron.IpcRendererEvent, ids: string[]) => void
+    ) => Electron.IpcRenderer;
+    createdMergedPack: (
+      callback: (event: Electron.IpcRendererEvent, filePath: string) => void
     ) => Electron.IpcRenderer;
     fromAppConfig: (
       callback: (event: Electron.IpcRendererEvent, appState: AppState) => void
@@ -65,6 +71,13 @@ declare global {
     electronLog: electronLog;
   }
 
+  type MergedModsData = {
+    path: string;
+    lastChanged: number;
+    humanName: string;
+    name: string;
+  };
+
   interface Mod {
     humanName: string;
     name: string;
@@ -80,6 +93,8 @@ declare global {
     isDeleted: boolean;
     isMovie: boolean;
     reqModIdToName?: [string, string][];
+    size: number;
+    mergedModsData?: MergedModsData[];
   }
 
   interface ModData {
@@ -106,6 +121,10 @@ declare global {
     mods: Mod[];
     name: string;
   }
+  interface NewMergedPack {
+    path: string;
+    creationTime: number;
+  }
 
   interface AppState {
     currentPreset: Preset;
@@ -126,6 +145,8 @@ declare global {
     allMods: Mod[];
     packsData: Record<string, Pack>;
     packCollisions: PackCollisions;
+    dataFromConfig?: AppStateToWrite;
+    newMergedPacks: NewMergedPack[];
   }
 
   type AppStateToWrite = Pick<

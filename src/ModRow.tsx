@@ -6,7 +6,7 @@ import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
 import { formatDistanceToNow } from "date-fns";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGrip, faEraser, faCamera } from "@fortawesome/free-solid-svg-icons";
+import { faGrip, faEraser, faCamera, faFileZipper, faFileArchive } from "@fortawesome/free-solid-svg-icons";
 import { getFilteredMods, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
 import ModDropdown from "./ModDropdown";
@@ -541,6 +541,28 @@ export default function ModRow() {
                       >
                         <span className="text-red-800">
                           <FontAwesomeIcon fill="red" icon={faCamera} />
+                        </span>
+                      </Tooltip>
+                    )}
+                    {mod.mergedModsData && (
+                      <Tooltip
+                        placement="bottom"
+                        content={
+                          <>
+                            <p>Mod merges the following mods:</p>
+                            {mod.mergedModsData.map((mergedModData) => (
+                              <div key={mergedModData.path}>
+                                {(mergedModData.humanName &&
+                                  mergedModData.humanName != "" &&
+                                  mergedModData.humanName) ||
+                                  mergedModData.name}
+                              </div>
+                            ))}
+                          </>
+                        }
+                      >
+                        <span className="text-gray-300">
+                          <FontAwesomeIcon icon={faFileArchive} />
                         </span>
                       </Tooltip>
                     )}

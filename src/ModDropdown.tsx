@@ -71,6 +71,18 @@ export default function ModDropdown(props: ModDropdownProps) {
 
     window.api.forceModDownload(mod);
   };
+  const reMerge = (mod: Mod) => {
+    if (!mod) return;
+
+    const modsToMerge = mod.mergedModsData
+      .map((mod) => allMods.find((iterMod) => iterMod.path == mod.path))
+      .filter((mod) => mod);
+    window.api.reMerge(mod, modsToMerge);
+  };
+  const deletePack = (mod: Mod) => {
+    if (!mod) return;
+    window.api.deletePack(mod);
+  };
 
   return (
     (props.mod == null && <></>) || (
@@ -281,6 +293,35 @@ export default function ModDropdown(props: ModDropdownProps) {
                 >
                   <Tooltip placement="top" content="Force Steam to re-download the mod.">
                     Force Download
+                  </Tooltip>
+                </a>
+              </li>
+            )}
+            {props.mod.mergedModsData && (
+              <li>
+                <a
+                  onClick={() => reMerge(props.mod)}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip
+                    placement="top"
+                    content="Merge mods again to update the merged pack with latest versions of mods."
+                  >
+                    Update (Re-merge)
+                  </Tooltip>
+                </a>
+              </li>
+            )}
+            {props.mod.mergedModsData && (
+              <li>
+                <a
+                  onClick={() => deletePack(props.mod)}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip placement="top" content="Delete the merged pack.">
+                    Delete
                   </Tooltip>
                 </a>
               </li>

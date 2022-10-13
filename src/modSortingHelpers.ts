@@ -43,6 +43,12 @@ export function getModsSortedByName(mods: Mod[]) {
   });
 }
 
+export function getModsSortedBySize(mods: Mod[]) {
+  return [...mods].sort((firstMod, secondMod) => {
+    return firstMod.size - secondMod.size;
+  });
+}
+
 export function getModsSortedByHumanName(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => firstMod.humanName.localeCompare(secondMod.humanName));
 }

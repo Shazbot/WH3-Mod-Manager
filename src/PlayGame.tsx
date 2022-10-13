@@ -12,6 +12,7 @@ import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import CompatScreen from "./CompatScreen";
 import RequiredMods from "./RequiredMods";
+import ModsMerger from "./ModsMerger";
 
 export default function PlayGame() {
   const dispatch = useAppDispatch();
@@ -166,9 +167,24 @@ export default function PlayGame() {
     )
     .filter((member) => member[1].length > 0);
 
+  const outdatedMergedPacks = enabledMods
+    .filter((mod) => mod.mergedModsData)
+    .filter((mod) =>
+      mod.mergedModsData.some((mergedModData) => {
+        const enabledMod = enabledMods.find((enabledMod) => enabledMod.path == mergedModData.path);
+        // if (enabledMod) {
+        //   console.log(enabledMod.path);
+        //   console.log(enabledMod.lastChanged);
+        //   console.log(mergedModData.lastChanged);
+        // }
+        return enabledMod && enabledMod.lastChanged != mergedModData.lastChanged;
+      })
+    );
+
   return (
     <div>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
+
       <RequiredMods
         isOpen={isShowingRequiredMods}
         setIsOpen={setIsShowingRequiredMods}
@@ -251,6 +267,27 @@ export default function PlayGame() {
               </div>
             </div>
           )}
+          {outdatedMergedPacks.length > 0 && (
+            <div className="text-center text-red-700 font-semibold mb-4">
+              <div className="make-tooltip-w-full">
+                <Tooltip
+                  placement="left"
+                  content={
+                    <>
+                      <div>Some merged mods contain outdated mods, create a new merged mod!</div>
+                      {outdatedMergedPacks.map((mod) => (
+                        <div key={mod.path}>
+                          <span className="">{mod.name + ` is not up to date`}</span>
+                        </div>
+                      ))}
+                    </>
+                  }
+                >
+                  Outdated Merged Mods!
+                </Tooltip>
+              </div>
+            </div>
+          )}
           {enabledMods.length > 0 && (
             <div className="text-center text-slate-100 mb-4">
               <div className="make-tooltip-w-full">
@@ -327,6 +364,9 @@ export default function PlayGame() {
         </div>
         <div className="mt-4">
           <CompatScreen />
+        </div>
+        <div className="mt-4">
+          <ModsMerger />
         </div>
       </div>
 

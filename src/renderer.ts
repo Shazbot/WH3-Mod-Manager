@@ -13,6 +13,7 @@ import {
   setPackHeaderData,
   setPacksData,
   setPackCollisions,
+  createdMergedPack,
 } from "./appSlice";
 import store from "./store";
 import { Pack, PackCollisions } from "./packFileTypes";
@@ -35,6 +36,10 @@ window.api.handleLog((event, msg) => {
 
 window.api.subscribedToMods((event, ids: string[]) => {
   console.log("subbed to mods: ", ids);
+});
+
+window.api.createdMergedPack((event, filePath: string) => {
+  store.dispatch(createdMergedPack(filePath));
 });
 
 window.api.setIsDev((event, isDev) => {
