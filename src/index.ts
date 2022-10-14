@@ -223,9 +223,7 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
     };
     console.log("READING PACKS");
     const newPacksData = await readPackData(mods.concat(dataMod));
-    // const newPacksData = await readPackData(mods);
     appData.packsData = newPacksData;
-    // mainWindow?.webContents.send("setPacksData", newPacksData);
     getCompatData(newPacksData).then((compatData) => {
       appData.compatData = compatData;
       mainWindow?.webContents.send("setPackCollisions", compatData);

@@ -133,10 +133,6 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
   return [buffer.subarray(pos, pos + length * 2).toString("utf8"), pos + length * 2];
 };
 
-// const DBNameToDBVersions: Record<string, DBVersion[]> = {};
-
-// const packsData: dataManager.Pack[] = [];
-
 const readPack = async (modPath: string): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
 
@@ -189,35 +185,14 @@ const readPack = async (modPath: string): Promise<Pack> => {
       bufPos += 4;
       const is_compressed = headerBuffer.readInt8(bufPos);
       bufPos += 1;
-      // const file_size = (stream.read(4) as Buffer).readInt32LE();
-      // const is_compressed = (stream.read(1) as Buffer).readInt8();
 
       const nameStartPos = bufPos;
       while (null !== (chunk = headerBuffer.readInt8(bufPos))) {
         bufPos += 1;
-        // terminatorIndex = chunk.indexOf(stringTerminator);
         if (chunk == 0) {
-          // chunks.push(chunk.subarray(0, terminatorIndex + 1));
-          // name = Buffer.concat(chunks).toString("ascii");
-
-          // chunks = [];
-          // file.seek(file.tell() - (chunk.length - terminatorIndex));
-          // chunks.push(chunk.subarray(terminatorIndex, chunk.length + 1));
-
-          // console.log(String.fromCharCode(headerBuffer.readInt16BE(bufPos)));
-          // console.log(String.fromCharCode(headerBuffer.readInt16LE(bufPos)));
-
-          // console.log(Buffer.from([0xe9, 0x9c, 0x87]).toString("utf8"));
-          // console.log(Buffer.from([0x87, 0x9c, 0xe9]).toString("utf8"));
-          // console.log(headerBuffer.toString("utf8", nameStartPos, bufPos - 1));
-          // console.log(headerBuffer.subarray(nameStartPos, bufPos-1).length);
-
           name = headerBuffer.toString("utf8", nameStartPos, bufPos - 1);
           break;
         }
-        // chunks.push(chunk);
-        // name += chunk;
-        // console.log(`Read ${chunk.length} bytes of data...`);
       }
 
       // if (name.startsWith("db")) {
@@ -243,20 +218,7 @@ const readPack = async (modPath: string): Promise<Pack> => {
     }
 
     // console.log("num pack files: " + pack_files.length);
-
     // console.log("DONE READING FILE");
-
-    // pack_files.forEach((pack_file) => {
-    //   const db_name = pack_file.name.match(/db\\(.*?)\\/);
-    //   if (db_name != null) {
-    //     console.log(db_name);
-    //     // console.log(pack_file.name);
-    //   }
-    // });
-
-    // const battle_permissions = pack_files.filter((pack) =>
-    //   pack.name.startsWith("db\\units_custom_battle_permissions_tables")
-    // );
 
     const dbPackFiles = pack_files.filter((packFile) => {
       const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
@@ -354,25 +316,13 @@ const readPack = async (modPath: string): Promise<Pack> => {
           const { name, field_type, is_key } = field;
           // console.log(name);
           // console.log(field_type);
-
-          // if (name === 'general_unit') console.log("it's a general");
-          // console.log("pos is " + outFile.tell());
-          // console.log('i is ' + i);
-          // const fields = await parseType(file, field_type);
           const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
           const fields = fieldsRet[0];
           currentPos = fieldsRet[1];
 
-          if (!fields[1] && !fields[0]) {
-            // console.log(name);
-            // console.log(field_type);
-          }
           const schemaField: SchemaField = {
-            // name,
             type: field_type,
             fields,
-            // isKey: is_key,
-            // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
           };
           if (is_key) schemaField.isKey = true;
           pack_file.schemaFields.push(schemaField);
@@ -394,13 +344,6 @@ const readPack = async (modPath: string): Promise<Pack> => {
 
   return { name: path.basename(modPath), path: modPath, packedFiles: pack_files } as Pack;
 };
-
-// const vf = (workerData.schema as { versioned_files: any[] }).versioned_files as any[];
-// for (const versioned_file of vf) {
-//   if ("DB" in versioned_file) {
-//     DBNameToDBVersions[versioned_file.DB[0]] = versioned_file.DB[1];
-//   }
-// }
 
 if (!isMainThread) {
   if (workerData.checkCompat) {
