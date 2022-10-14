@@ -68,13 +68,14 @@ const readConfig = async (mainWindow: BrowserWindow) => {
   try {
     const appState = await readAppConfig();
     if (!appData.hasReadConfig) {
-      appData.hasReadConfig = true;
       setStartingAppState(appState);
     }
     mainWindow.webContents.send("fromAppConfig", appState);
   } catch (err) {
     mainWindow.webContents.send("failedReadingConfig");
     console.log(err);
+  } finally {
+    appData.hasReadConfig = true;
   }
 };
 
