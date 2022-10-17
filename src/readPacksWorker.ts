@@ -465,25 +465,49 @@ function findPackTableCollisionsBetweenPacks(
                 v2Fields[0].val.toString();
 
               if (v1 === v2) {
-                packTableCollisions.push({
-                  firstPackName: pack.name,
-                  secondPackName: packTwo.name,
-                  fileName: packFile.name,
-                  secondFileName: packTwoFile.name,
-                  // key: packFile.schemaFields.find((field) => field.isKey).name,
-                  key: firstVerKeyField.name,
-                  value: v1,
-                });
+                if (
+                  !packTableCollisions.some(
+                    (collision) =>
+                      collision.firstPackName == pack.name &&
+                      collision.secondPackName == packTwo.name &&
+                      collision.fileName == packFile.name &&
+                      collision.secondFileName == packTwoFile.name &&
+                      collision.key == firstVerKeyField.name &&
+                      collision.value == v1
+                  )
+                ) {
+                  packTableCollisions.push({
+                    firstPackName: pack.name,
+                    secondPackName: packTwo.name,
+                    fileName: packFile.name,
+                    secondFileName: packTwoFile.name,
+                    // key: packFile.schemaFields.find((field) => field.isKey).name,
+                    key: firstVerKeyField.name,
+                    value: v1,
+                  });
+                }
 
-                packTableCollisions.push({
-                  secondPackName: pack.name,
-                  firstPackName: packTwo.name,
-                  secondFileName: packFile.name,
-                  fileName: packTwoFile.name,
-                  // key: packFile.schemaFields.find((field) => field.isKey).name,
-                  key: firstVerKeyField.name,
-                  value: v1,
-                });
+                if (
+                  !packTableCollisions.some(
+                    (collision) =>
+                      collision.firstPackName == packTwo.name &&
+                      collision.secondPackName == pack.name &&
+                      collision.fileName == packTwoFile.name &&
+                      collision.secondFileName == packFile.name &&
+                      collision.key == firstVerKeyField.name &&
+                      collision.value == v1
+                  )
+                ) {
+                  packTableCollisions.push({
+                    secondPackName: pack.name,
+                    firstPackName: packTwo.name,
+                    secondFileName: packFile.name,
+                    fileName: packTwoFile.name,
+                    // key: packFile.schemaFields.find((field) => field.isKey).name,
+                    key: firstVerKeyField.name,
+                    value: v1,
+                  });
+                }
                 // console.log("FOUND CONFLICT");
                 // console.log(
                 //   pack.name,

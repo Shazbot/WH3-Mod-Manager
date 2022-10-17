@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { Modal } from "./flowbite/components/Modal/index";
 import { Spinner, Tabs, Toast, Tooltip } from "./flowbite";
-import { compareModNames, getModsSortedBySize, sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { getModsSortedByName, getModsSortedByHumanName, getModsSortedBySize } from "./modSortingHelpers";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { PackTableCollision } from "./packFileTypes";
@@ -10,15 +10,53 @@ import Select, { ActionMeta } from "react-select";
 import selectStyle from "./styles/selectStyle";
 import { HiCheck } from "react-icons/hi";
 
+type ModsMergeSorts = "Merge" | "MergeDesc" | "Pack" | "PackDesc" | "Name" | "NameDesc" | "Size" | "SizeDesc";
+
 export default function ModsMerger() {
   const mods = useAppSelector((state) => state.app.currentPreset.mods).filter((mod) => !mod.isInData);
 
-  const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(false);
+  const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
   const [isOpen, setIsOpen] = React.useState(false);
   const [modsToMerge, setModsToMerge] = React.useState<Set<Mod>>(new Set<Mod>());
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
+  const [modsMergeSort, setModsMergeSort] = React.useState("Size" as ModsMergeSorts);
 
-  const modsToUse = getModsSortedBySize(mods).filter((mod) => (!useEnabledModsOnly && mod) || mod.isEnabled);
+  let modsToUse = [...mods];
+  switch (modsMergeSort) {
+    case "Merge":
+      modsToUse = modsToUse.sort((firstMod, secondMod) => {
+        if (modsToMerge.has(firstMod) && modsToMerge.has(secondMod)) return 0;
+        if (modsToMerge.has(firstMod)) return -1;
+        if (modsToMerge.has(secondMod)) return 1;
+      });
+      break;
+    case "MergeDesc":
+      modsToUse = modsToUse.sort((firstMod, secondMod) => {
+        if (modsToMerge.has(firstMod) && modsToMerge.has(secondMod)) return 0;
+        if (modsToMerge.has(firstMod)) return 1;
+        if (modsToMerge.has(secondMod)) return -1;
+      });
+      break;
+    case "Pack":
+      modsToUse = getModsSortedByName(modsToUse);
+      break;
+    case "PackDesc":
+      modsToUse = getModsSortedByName(modsToUse).reverse();
+      break;
+    case "Name":
+      modsToUse = getModsSortedByHumanName(modsToUse);
+      break;
+    case "NameDesc":
+      modsToUse = getModsSortedByHumanName(modsToUse).reverse();
+      break;
+    case "Size":
+      modsToUse = getModsSortedBySize(modsToUse);
+      break;
+    case "SizeDesc":
+      modsToUse = getModsSortedBySize(modsToUse).reverse();
+      break;
+  }
+  modsToUse = modsToUse.filter((mod) => (!useEnabledModsOnly && mod) || mod.isEnabled);
 
   const isPackProcessingDone = true; //!!packCollisions.packFileCollisions;
 
@@ -51,6 +89,23 @@ export default function ModsMerger() {
     if (modsToMerge.size < 1) return;
     window.api.mergeMods(Array.from(modsToMerge));
     setIsOpen(false);
+  };
+
+  const toggleMergeSorting = () => {
+    if (modsMergeSort == "Merge") setModsMergeSort("MergeDesc");
+    else setModsMergeSort("Merge");
+  };
+  const toggleNameSorting = () => {
+    if (modsMergeSort == "Name") setModsMergeSort("NameDesc");
+    else setModsMergeSort("Name");
+  };
+  const toggleSizeSorting = () => {
+    if (modsMergeSort == "Size") setModsMergeSort("SizeDesc");
+    else setModsMergeSort("Size");
+  };
+  const togglePackSorting = () => {
+    if (modsMergeSort == "Pack") setModsMergeSort("PackDesc");
+    else setModsMergeSort("Pack");
   };
 
   return (
@@ -88,6 +143,7 @@ export default function ModsMerger() {
                     id="compat-enabled-mod-only"
                     checked={useEnabledModsOnly}
                     onChange={() => {
+                      if (!useEnabledModsOnly) setModsToMerge(new Set<Mod>());
                       setUseEnabledModsOnly(!useEnabledModsOnly);
                     }}
                   ></input>
@@ -114,14 +170,47 @@ export default function ModsMerger() {
                 </button>
               </span>
               <div className="leading-relaxed dark:text-gray-300 relative gap-2 ">
-                <div className="grid grid-cols-6">
-                  <div className="col-span-1 justify-center flex">Merge</div>
-                  <div className="col-span-3">Name</div>
-                  <div className="col-span-2">Size</div>
+                <div className="grid grid-cols-9">
+                  <div
+                    className={
+                      "col-span-1 justify-center flex " +
+                      (((modsMergeSort == "Merge" || modsMergeSort == "MergeDesc") && "font-bold") || "")
+                    }
+                    onClick={() => toggleMergeSorting()}
+                  >
+                    Merge
+                  </div>
+                  <div
+                    className={
+                      "col-span-3 " +
+                      (((modsMergeSort == "Pack" || modsMergeSort == "PackDesc") && "font-bold") || "")
+                    }
+                    onClick={() => togglePackSorting()}
+                  >
+                    Pack
+                  </div>
+                  <div
+                    className={
+                      "col-span-3 " +
+                      (((modsMergeSort == "Name" || modsMergeSort == "NameDesc") && "font-bold") || "")
+                    }
+                    onClick={() => toggleNameSorting()}
+                  >
+                    Name
+                  </div>
+                  <div
+                    className={
+                      "col-span-2 " +
+                      (((modsMergeSort == "Size" || modsMergeSort == "SizeDesc") && "font-bold") || "")
+                    }
+                    onClick={() => toggleSizeSorting()}
+                  >
+                    Size
+                  </div>
                 </div>
                 {modsToUse.map((mod) => (
                   <React.Fragment key={mod.path}>
-                    <div className="grid grid-cols-6 items-center border-b gap-2 py-2 border-gray-600">
+                    <div className="grid grid-cols-9 items-center border-b gap-2 py-2 border-gray-600">
                       <div className="col-span-1 justify-center flex">
                         <input
                           type="checkbox"
@@ -134,6 +223,10 @@ export default function ModsMerger() {
                       <div className="col-span-3">
                         <label htmlFor={mod.name + "_merge_checkbox"}>
                           <div>{`${mod.name}`}</div>
+                        </label>
+                      </div>
+                      <div className="col-span-3">
+                        <label htmlFor={mod.name + "_merge_checkbox"}>
                           <div>{`${mod.humanName}`}</div>
                         </label>
                       </div>
