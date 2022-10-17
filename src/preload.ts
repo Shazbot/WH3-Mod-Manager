@@ -42,6 +42,7 @@ const api: api = {
   setPacksDataRead: (callback) => ipcRenderer.on("setPacksDataRead", callback),
   setPackCollisions: (callback) => ipcRenderer.on("setPackCollisions", callback),
   getAllModData: (ids) => ipcRenderer.send("getAllModData", ids),
+  getCompatData: () => ipcRenderer.send("getCompatData"),
   savesPopulated: (callback) => ipcRenderer.on("savesPopulated", callback),
   electronLog,
 };

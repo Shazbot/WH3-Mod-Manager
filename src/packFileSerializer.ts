@@ -440,12 +440,15 @@ export const mergeMods = async (mods: Mod[], newFileName?: string) => {
       }
     }
 
-    const mergedMetaData = mods.map((mod) => ({
-      path: mod.path,
-      lastChanged: mod.lastChanged,
-      humanName: mod.humanName,
-      name: mod.name,
-    }));
+    const mergedMetaData = mods.map(
+      (mod) =>
+        ({
+          path: mod.path,
+          lastChanged: mod.lastChanged,
+          humanName: mod.humanName,
+          name: mod.name,
+        } as MergedModsData)
+    );
     const parsedTargetPath = nodePath.parse(targetPath);
     await fsExtra.writeJSON(
       nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"),

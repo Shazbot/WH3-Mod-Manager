@@ -72,6 +72,7 @@ declare global {
     packsInSave: (
       callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void
     ) => Electron.IpcRenderer;
+    getCompatData: () => void;
     electronLog: electronLog;
   }
 
@@ -92,6 +93,7 @@ declare global {
     modDirectory: string;
     isInData: boolean;
     lastChanged?: number;
+    lastChangedLocal?: number;
     loadOrder: number | undefined;
     author: string;
     isDeleted: boolean;
