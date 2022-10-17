@@ -337,6 +337,10 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
       })
       .on("unlink", async (path) => {
         onPackDeleted(path);
+      })
+      .on("change", async (path) => {
+        onPackDeleted(path);
+        onNewPackFound(path);
       });
   }
 };
