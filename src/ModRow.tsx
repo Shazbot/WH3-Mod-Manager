@@ -13,6 +13,7 @@ import ModDropdown from "./ModDropdown";
 import { isModAlwaysEnabled } from "./modsHelpers";
 import * as modRowSorting from "./utility/modRowSorting";
 import { SortingType } from "./utility/modRowSorting";
+import { HiOutlineCollection } from "react-icons/hi";
 
 export default function ModRow() {
   const dispatch = useAppDispatch();
@@ -28,6 +29,10 @@ export default function ModRow() {
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
 
   const presetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const enabledMods = presetMods.filter(
+    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+  );
+  const enabledMergeMods = enabledMods.filter((mod) => mod.mergedModsData);
 
   const modsToOrder = presetMods.filter((iterMod) => {
     const isHidden = hiddenMods.find((mod) => mod.name === iterMod.name);
@@ -563,6 +568,26 @@ export default function ModRow() {
                       >
                         <span className="text-gray-300">
                           <FontAwesomeIcon icon={faFileArchive} />
+                        </span>
+                      </Tooltip>
+                    )}
+                    {enabledMergeMods.some((mergeMod) =>
+                      mergeMod.mergedModsData.some((mergeModData) => mergeModData.path == mod.path)
+                    ) && (
+                      <Tooltip
+                        placement="bottom"
+                        content={
+                          <>
+                            <p>Mod is merged in another enabled pack</p>
+                            <p>
+                              You can leave it enabled, but this mod will be ignored since it's inside the
+                              merged mod
+                            </p>
+                          </>
+                        }
+                      >
+                        <span className="text-gray-300">
+                          <HiOutlineCollection className="inline h-4 overflow-visible"></HiOutlineCollection>
                         </span>
                       </Tooltip>
                     )}
