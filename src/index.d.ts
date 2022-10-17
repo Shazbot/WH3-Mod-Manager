@@ -40,6 +40,7 @@ declare global {
     copyToData: () => void;
     cleanData: () => void;
     saveConfig: (appData: AppState) => void;
+    readMods: (mods: Mod[]) => void;
     getUpdateData: () => Promise<ModUpdateExists>;
     modsPopulated: (
       callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void
@@ -56,6 +57,9 @@ declare global {
     ) => Electron.IpcRenderer;
     setPacksData: (
       callback: (event: Electron.IpcRendererEvent, packData: PackData) => void
+    ) => Electron.IpcRenderer;
+    setPacksDataRead: (
+      callback: (event: Electron.IpcRendererEvent, packPaths: string[]) => void
     ) => Electron.IpcRenderer;
     setPackCollisions: (
       callback: (event: Electron.IpcRendererEvent, packCollisions: PackCollisions) => void
@@ -147,6 +151,7 @@ declare global {
     packCollisions: PackCollisions;
     dataFromConfig?: AppStateToWrite;
     newMergedPacks: NewMergedPack[];
+    pathsOfReadPacks: string[];
   }
 
   type AppStateToWrite = Pick<

@@ -329,7 +329,7 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
     [] as SchemaField[]
   );
   pack_files.push({
-    name: `db\\units_custom_battle_permissions_tables\\pj_fimir_test`,
+    name: `db\\units_custom_battle_permissions_tables\\!!!!whmm_out`,
     file_size: getDataSize(battlePermissionsSchemaFields) + 91,
     start_pos: 0,
     // is_compressed: 0,
@@ -1002,7 +1002,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
   return { name: path.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
 };
 
-export const readPackData = async (mods: Mod[]) => {
+export const readDataFromPacks = async (mods: Mod[]) => {
   // console.log("READ PACKS STARTED");
   // mods = mods.filter((mod) => mod.name === "!!pj_test1.pack" || mod.name === "!!pj_test1_dupe.pack");
   // mods = mods.filter((mod) => mod.name === "!!pj_test1.pack");

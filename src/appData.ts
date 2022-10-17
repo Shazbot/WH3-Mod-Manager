@@ -23,5 +23,5 @@ export default {
   isMakeUnitsGeneralsEnabled: false,
   hasReadConfig: false,
   packsData: [],
-  compatData: undefined,
+  compatData: { packTableCollisions: [], packFileCollisions: [] },
 } as AppData;

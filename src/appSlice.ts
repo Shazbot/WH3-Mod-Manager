@@ -35,6 +35,7 @@ const appSlice = createSlice({
     packsData: {},
     packCollisions: {},
     newMergedPacks: [],
+    pathsOfReadPacks: [],
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -172,6 +173,15 @@ const appSlice = createSlice({
 
       for (const packData of packsData) {
         state.packsData[packData.name] = packData;
+      }
+    },
+    setPacksDataRead: (state: AppState, action: PayloadAction<string[]>) => {
+      const packPaths = action.payload;
+
+      for (const path of packPaths) {
+        if (!state.pathsOfReadPacks.some((iterPath) => iterPath == path)) {
+          state.pathsOfReadPacks.push(path);
+        }
       }
     },
     // setPackCollisions: (
@@ -421,6 +431,7 @@ export const {
   createdMergedPack,
   enableModsByName,
   setPacksData,
+  setPacksDataRead,
   setPackCollisions,
 } = appSlice.actions;
 

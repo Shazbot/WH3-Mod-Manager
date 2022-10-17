@@ -12,15 +12,18 @@ export default function CompatScreen() {
   // const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
   // const packsData = useAppSelector((state) => state.app.packsData);
   const packCollisions = useAppSelector((state) => state.app.packCollisions);
+  const pathsOfReadPacks = useAppSelector((state) => state.app.pathsOfReadPacks);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const sortedMods = sortByNameAndLoadOrder(mods);
   const enabledMods = sortedMods.filter((iterMod) => iterMod.isEnabled);
 
   const [isCompatOpen, setIsCompatOpen] = React.useState(false);
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
-  const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(false);
+  const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
 
-  const isPackProcessingDone = !!packCollisions.packFileCollisions;
+  const isPackProcessingDone = ((useEnabledModsOnly && enabledMods) || mods).every((mod) =>
+    pathsOfReadPacks.some((path) => path == mod.path)
+  );
 
   const groupedPackFileCollisions: Record<string, Record<string, string[]>> = {};
   if (packCollisions.packFileCollisions) {
@@ -82,6 +85,14 @@ export default function CompatScreen() {
     });
   }
 
+  const toggleUseEnabledModsOnly = () => {
+    if (useEnabledModsOnly) {
+      console.log("READ ALL MODS");
+      window.api.readMods(mods);
+    }
+    setUseEnabledModsOnly(!useEnabledModsOnly);
+  };
+
   return (
     <div>
       <div className="text-center mt-4">
@@ -116,9 +127,7 @@ export default function CompatScreen() {
                     type="checkbox"
                     id="compat-enabled-mod-only"
                     checked={useEnabledModsOnly}
-                    onChange={() => {
-                      setUseEnabledModsOnly(!useEnabledModsOnly);
-                    }}
+                    onChange={() => toggleUseEnabledModsOnly()}
                   ></input>
                   <label className="ml-2" htmlFor="compat-enabled-mod-only">
                     Enabled Mods Only
@@ -191,9 +200,7 @@ export default function CompatScreen() {
                     type="checkbox"
                     id="compat-enabled-mod-only"
                     checked={useEnabledModsOnly}
-                    onChange={() => {
-                      setUseEnabledModsOnly(!useEnabledModsOnly);
-                    }}
+                    onChange={() => toggleUseEnabledModsOnly()}
                   ></input>
                   <label className="ml-2" htmlFor="compat-enabled-mod-only">
                     Enabled Mods Only

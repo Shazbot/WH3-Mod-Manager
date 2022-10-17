@@ -192,7 +192,17 @@ export default function PlayGame() {
       />
       <div className="fixed">
         <div id="presetSection">
-          <Tooltip placement="left" content="Create new preset by typing its name">
+          <Tooltip
+            placement="left"
+            content={
+              <>
+                <p>Create new preset by typing its name</p>
+                <p className="mt-4">When selecting existing preset:</p>
+                <p>Hold Shift to add a preset to existing selection</p>
+                <p>Hold Ctrl to remove preset from existing selection</p>
+              </>
+            }
+          >
             <span className="text-slate-100">Select or create preset:</span>
           </Tooltip>
           <Creatable

@@ -14,6 +14,7 @@ import {
   setPacksData,
   setPackCollisions,
   createdMergedPack,
+  setPacksDataRead,
 } from "./appSlice";
 import store from "./store";
 import { Pack, PackCollisions } from "./packFileTypes";
@@ -58,7 +59,12 @@ const subscribeToStoreChanges = () => {
       if (!isSubscribedToStoreChanges) {
         isSubscribedToStoreChanges = true;
         store.subscribe(() => {
-          window.api.saveConfig(store.getState().app);
+          const appState = store.getState().app;
+          window.api.saveConfig(appState);
+          const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
+
+          // don't do it if all are enabled, i.e. when user is resetting the enabled column
+          if (enabledMods.length != appState.currentPreset.mods.length) window.api.readMods(enabledMods);
         });
       }
     }, 50);
@@ -124,6 +130,10 @@ window.api.setPacksData((event, packsData: Pack[]) => {
   //   console.log("GOT COMPAT DATA");
   //   store.dispatch(setPackCollisions(data));
   // });
+});
+
+window.api.setPacksDataRead((event, packPaths: string[]) => {
+  store.dispatch(setPacksDataRead(packPaths));
 });
 
 window.api.setPackCollisions((event, packCollisions: PackCollisions) => {

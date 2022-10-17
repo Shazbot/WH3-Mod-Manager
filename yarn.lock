@@ -11102,6 +11102,11 @@ just-clone@^6.1.1:
   resolved "https://registry.yarnpkg.com/just-clone/-/just-clone-6.1.1.tgz#05a67155558c6517362db424303bb76f4f7f23df"
   integrity sha512-V24KLIid8uaG7ayOymGfheNHtxgrbpzj1UznQnF9vQZMHlKGTSLT3WWmFx62OXSQPwk1Tn+uo+H5/Xhb4bL9pA==
 
+just-debounce-it@^3.1.1:
+  version "3.1.1"
+  resolved "https://registry.yarnpkg.com/just-debounce-it/-/just-debounce-it-3.1.1.tgz#aa07c395d48c394233e4bafdcc49ed188fcf62a5"
+  integrity sha512-oPsuRyWp99LJaQ4KXC3A42tQNqkRTcPy0A8BCkRZ5cPCgsx81upB2KUrmHZvDUNhnCDKe7MshfTuWFQB9iXwDg==
+
 keyv@3.0.0:
   version "3.0.0"
   resolved "https://registry.yarnpkg.com/keyv/-/keyv-3.0.0.tgz#44923ba39e68b12a7cec7df6c3268c031f2ef373"
