@@ -444,7 +444,7 @@ export const mergeMods = async (mods: Mod[], newFileName?: string) => {
       (mod) =>
         ({
           path: mod.path,
-          lastChanged: mod.lastChanged,
+          lastChanged: mod.lastChanged || mod.lastChangedLocal,
           humanName: mod.humanName,
           name: mod.name,
         } as MergedModsData)
