@@ -175,9 +175,19 @@ export default function PlayGame() {
         // if (enabledMod) {
         //   console.log(enabledMod.path);
         //   console.log(enabledMod.lastChanged);
+        //   console.log(enabledMod.lastChangedLocal);
         //   console.log(mergedModData.lastChanged);
+        //   if (
+        //     enabledMod.lastChanged != mergedModData.lastChanged &&
+        //     enabledMod.lastChangedLocal != mergedModData.lastChanged
+        //   )
+        //     console.log("THIS ONE");
         // }
-        return enabledMod && enabledMod.lastChanged != mergedModData.lastChanged;
+        return (
+          enabledMod &&
+          enabledMod.lastChanged != mergedModData.lastChanged &&
+          enabledMod.lastChangedLocal != mergedModData.lastChanged
+        );
       })
     );
 

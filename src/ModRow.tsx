@@ -586,7 +586,9 @@ export default function ModRow() {
                 onContextMenu={(e) => onModRightClick(e, mod)}
               >
                 <label htmlFor={mod.workshopId + "enabled"}>
-                  {(mod.lastChanged && formatLastChanged(mod.lastChanged)) || ""}
+                  {(mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
+                    (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
+                    ""}
                 </label>
               </div>
             </div>

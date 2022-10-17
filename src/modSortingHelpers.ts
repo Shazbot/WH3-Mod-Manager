@@ -73,10 +73,12 @@ export function getModsSortedByAuthor(mods: Mod[]) {
 
 export function getModsSortedByLastUpdated(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
-    if (firstMod.lastChanged === undefined && secondMod.lastChanged === undefined) return 0;
-    if (firstMod.lastChanged === undefined) return 1;
-    if (secondMod.lastChanged === undefined) return -1;
-    return secondMod.lastChanged - firstMod.lastChanged;
+    const firstModLastChanged = firstMod.lastChanged || firstMod.lastChangedLocal;
+    const secondModLastChanged = secondMod.lastChanged || secondMod.lastChangedLocal;
+    if (firstModLastChanged === undefined && secondModLastChanged === undefined) return 0;
+    if (firstModLastChanged === undefined) return 1;
+    if (secondModLastChanged === undefined) return -1;
+    return secondModLastChanged - firstModLastChanged;
   });
 }
 

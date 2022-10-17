@@ -542,6 +542,7 @@ export function appendPackTableCollisions(
   packTableCollisions: PackTableCollision[],
   newPack: Pack
 ) {
+  console.time("appendPackTableCollisions");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     if (pack === newPack) continue;
@@ -550,6 +551,7 @@ export function appendPackTableCollisions(
 
     findPackTableCollisionsBetweenPacks(pack, newPack, packTableCollisions);
   }
+  console.timeEnd("appendPackTableCollisions");
 
   return packTableCollisions;
 }

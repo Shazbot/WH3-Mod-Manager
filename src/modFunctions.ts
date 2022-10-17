@@ -153,10 +153,10 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   console.log("file path is:", filePath);
   const fileName = nodePath.basename(filePath);
 
-  let lastChanged = undefined;
+  let lastChangedLocal = undefined;
   let size = undefined;
   try {
-    [lastChanged, size] = await fs.stat(filePath).then((stats) => {
+    [lastChangedLocal, size] = await fs.stat(filePath).then((stats) => {
       return [stats.mtimeMs, stats.size];
     });
   } catch (err) {
@@ -190,7 +190,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     isEnabled: false,
     isInData: true,
     loadOrder: undefined,
-    lastChanged,
+    lastChangedLocal,
     author: "",
     isDeleted: false,
     isMovie: false,
@@ -300,10 +300,10 @@ export async function getContentModInFolder(
   const img = files.find((file) => file.name.endsWith(".png"));
 
   if (pack) {
-    let lastChanged = undefined;
+    let lastChangedLocal = undefined;
     let size = undefined;
     try {
-      [lastChanged, size] = await fs
+      [lastChangedLocal, size] = await fs
         .stat(`${contentFolder}\\${contentSubFolderName}\\${pack.name}`)
         .then((stats) => {
           return [stats.mtimeMs, stats.size];
@@ -326,7 +326,7 @@ export async function getContentModInFolder(
       isEnabled: false,
       isInData: false,
       loadOrder: undefined,
-      lastChanged,
+      lastChangedLocal,
       isDeleted: false,
       isMovie: false,
       size,

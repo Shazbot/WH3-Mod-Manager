@@ -46,8 +46,7 @@ export default function ModDropdown(props: ModDropdownProps) {
     window.api.openPack(mod.path);
   };
   const putPathInClipboard = (mod: Mod) => {
-    if (isDev) console.log(mod);
-
+    console.log(mod);
     window.api.putPathInClipboard(mod.path);
   };
   const updateMod = (mod: Mod) => {

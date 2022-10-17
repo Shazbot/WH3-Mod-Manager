@@ -6,11 +6,10 @@ import { compareModNames, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { PackTableCollision } from "./packFileTypes";
+import { setPackCollisions } from "./appSlice";
 
 export default function CompatScreen() {
   const dispatch = useAppDispatch();
-  // const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
-  // const packsData = useAppSelector((state) => state.app.packsData);
   const packCollisions = useAppSelector((state) => state.app.packCollisions);
   const pathsOfReadPacks = useAppSelector((state) => state.app.pathsOfReadPacks);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -97,7 +96,16 @@ export default function CompatScreen() {
     <div>
       <div className="text-center mt-4">
         <button
-          onClick={() => setIsCompatOpen(!isCompatOpen)}
+          onClick={() =>
+            setIsCompatOpen((wasOpen) => {
+              if (!wasOpen) {
+                window.api.getCompatData();
+              } else {
+                dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
+              }
+              return !isCompatOpen;
+            })
+          }
           className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
           type="button"
         >
@@ -108,7 +116,10 @@ export default function CompatScreen() {
       <Modal
         show={isCompatOpen}
         // show={true}
-        onClose={() => setIsCompatOpen(false)}
+        onClose={() => {
+          setIsCompatOpen(false);
+          dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
+        }}
         size="2xl"
         position="top-center"
         explicitClasses={[
@@ -310,9 +321,10 @@ export default function CompatScreen() {
               <div className="leading-relaxed dark:text-gray-300 relative">
                 <p>
                   The Files tab covers whole files that overwrite each other, these are usually related to
-                  unit visuals: .dds textures and .wsmodel files that define how a unit's look is constructed
-                  ingame. What mod can then apply its visual changes will then depend on the relative priority
-                  of the two mods.
+                  unit visuals: .dds textures, .wsmodel and .variantmeshdefinition files that define how a
+                  unit's look is constructed ingame. The game will use the file from the mod with higher load
+                  order priority, so between two mod that apply visual changes the ingame result will depend
+                  on the relative priority of the two mods.
                 </p>
                 <p>
                   In the panel the "parent" (underlined) mod will have priority unless a
@@ -325,7 +337,8 @@ export default function CompatScreen() {
                   The Tables tab covers keys in database tables that conflict with each other. Database tables
                   usually are related to units stats. For example overhaul submods that affect unit stats will
                   always have collisions here. Unlike in the Files tab, here the actual table names are
-                  compared to determine priority, not pack names.
+                  compared to determine priority, not pack names. So changing load order won't affect anything
+                  here.
                 </p>
               </div>
             </Tabs.Item>

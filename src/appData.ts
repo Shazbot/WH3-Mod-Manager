@@ -11,6 +11,7 @@ interface AppData {
   hasReadConfig: boolean;
   packsData: Pack[];
   compatData: PackCollisions;
+  currentlyReadingModPaths: string[];
 }
 
 export default {
@@ -24,4 +25,5 @@ export default {
   hasReadConfig: false,
   packsData: [],
   compatData: { packTableCollisions: [], packFileCollisions: [] },
+  currentlyReadingModPaths: [],
 } as AppData;

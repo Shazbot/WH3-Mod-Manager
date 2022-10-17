@@ -65,12 +65,22 @@ let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
 
-const sendSetPackCollisions = debounce(() => {
-  mainWindow?.webContents.send("setPackCollisions", {
-    packFileCollisions: appData.compatData.packFileCollisions,
-    packTableCollisions: appData.compatData.packTableCollisions,
-  } as PackCollisions);
-}, 1000);
+const sendSetPackCollisions = () => {};
+// const sendSetPackCollisions = () => {
+//   console.log("setPackCollisions");
+//   mainWindow?.webContents.send("setPackCollisions", {
+//     packFileCollisions: appData.compatData.packFileCollisions,
+//     packTableCollisions: appData.compatData.packTableCollisions,
+//   } as PackCollisions);
+// };
+
+// const sendSetPackCollisions = debounce(() => {
+//   console.log("setPackCollisions");
+//   mainWindow?.webContents.send("setPackCollisions", {
+//     packFileCollisions: appData.compatData.packFileCollisions,
+//     packTableCollisions: appData.compatData.packTableCollisions,
+//   } as PackCollisions);
+// }, 1000);
 
 const readConfig = async (mainWindow: BrowserWindow) => {
   try {
@@ -130,7 +140,6 @@ const appendCollisions = async (newPack: Pack) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (appData.compatData) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
     appData.compatData.packTableCollisions = appendPackTableCollisions(
       appData.packsData,
       appData.compatData.packTableCollisions,
@@ -430,6 +439,14 @@ const createWindow = (): void => {
     getAllMods(mainWindow);
   });
 
+  ipcMain.on("getCompatData", () => {
+    console.log("SET PACK COLLISIONS");
+    mainWindow?.webContents.send("setPackCollisions", {
+      packFileCollisions: appData.compatData.packFileCollisions,
+      packTableCollisions: appData.compatData.packTableCollisions,
+    } as PackCollisions);
+  });
+
   ipcMain.on("copyToData", async () => {
     const mods = await getMods(log);
     const withoutDataMods = mods.filter((mod) => !mod.isInData);
@@ -480,8 +497,16 @@ const createWindow = (): void => {
 
   ipcMain.on("readMods", (event, mods: Mod[]) => {
     mods.forEach(async (mod) => {
-      if (appData.packsData.every((pack) => pack.path != mod.path)) {
+      if (
+        appData.currentlyReadingModPaths.every((path) => path != mod.path) &&
+        appData.packsData.every((pack) => pack.path != mod.path)
+      ) {
+        console.log("READING " + mod.name);
+        appData.currentlyReadingModPaths.push(mod.path);
         const newPack = await readPack(mod.path);
+        appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
+          (path) => path != mod.path
+        );
         if (appData.packsData.every((pack) => pack.path != mod.path)) {
           appendPacksData(newPack);
           appendCollisions(newPack);
