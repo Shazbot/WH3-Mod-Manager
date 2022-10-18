@@ -1,5 +1,5 @@
 import { Modal } from "./flowbite/components/Modal/index";
-import React, { useState } from "react";
+import React, { memo, useCallback, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { setSharedMod } from "./appSlice";
 import { Spinner } from "flowbite-react";
@@ -10,16 +10,17 @@ export interface ShareModsProps {
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
-export default function ShareMods(props: ShareModsProps) {
+const ShareMods = memo((props: ShareModsProps) => {
   const dispatch = useAppDispatch();
   const [importModsText, setImportModsText] = useState("");
   const [isSpinnerOpen, setIsSpinnerOpen] = useState(false);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
-  const onClose = () => {
+
+  const onClose = useCallback(() => {
     props.setIsOpen(!props.isOpen);
-  };
+  }, [props]);
 
   const exportModsToClipboard = () => {
     window.api.exportModsToClipboard(mods);
@@ -149,4 +150,5 @@ export default function ShareMods(props: ShareModsProps) {
       </Modal>
     </>
   );
-}
+});
+export default ShareMods;

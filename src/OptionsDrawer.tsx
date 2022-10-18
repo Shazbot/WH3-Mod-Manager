@@ -1,5 +1,5 @@
 import Select, { ActionMeta } from "react-select";
-import React, { useState } from "react";
+import React, { memo, useCallback, useEffect, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
@@ -13,8 +13,17 @@ import { useAppDispatch, useAppSelector } from "./hooks";
 import selectStyle from "./styles/selectStyle";
 import { Tooltip } from "flowbite-react";
 import ShareMods from "./ShareMods";
+import { useSelector } from "react-redux";
+import { createSelector } from "@reduxjs/toolkit";
 
-export default function OptionsDrawer() {
+const copyToData = () => {
+  window.api.copyToData();
+};
+const cleanData = () => {
+  window.api.cleanData();
+};
+
+const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
 
   const dispatch = useAppDispatch();
@@ -24,20 +33,28 @@ export default function OptionsDrawer() {
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
-  const contentMods = useAppSelector((state) => state.app.currentPreset.mods).filter((mod) => !mod.isInData);
+
+  const contentModsWorshopIdsSelector = createSelector(
+    (state: { app: AppState }) => state.app.currentPreset.mods,
+    (mods: Mod[]) => mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId)
+  );
+  const contentModsWorshopIds = useSelector(contentModsWorshopIdsSelector);
+
+  const hiddenModsToOptionViewDataSelector = createSelector(
+    (state: { app: AppState }) => state.app.hiddenMods,
+    (hiddenMods) =>
+      hiddenMods.map((mod) => {
+        const humanName = mod.humanName !== "" ? mod.humanName : mod.name;
+        return { value: mod.name, label: humanName };
+      })
+  );
+  const options: OptionType[] = useSelector(hiddenModsToOptionViewDataSelector);
 
   const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
 
-  const copyToData = () => {
-    window.api.copyToData();
-  };
-  const cleanData = () => {
-    window.api.cleanData();
-  };
-
-  const forceDownloadMods = () => {
-    window.api.forceDownloadMods(contentMods.map((mod) => mod.workshopId));
-  };
+  const forceDownloadMods = useCallback(() => {
+    window.api.forceDownloadMods(contentModsWorshopIds);
+  }, [contentModsWorshopIds]);
 
   const onDeleteChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
     console.log(newValue.label, newValue.value, actionMeta.action);
@@ -50,13 +67,6 @@ export default function OptionsDrawer() {
     value: string;
     label: string;
   };
-
-  const options: OptionType[] = useAppSelector((state) =>
-    state.app.hiddenMods.map((mod) => {
-      const humanName = mod.humanName !== "" ? mod.humanName : mod.name;
-      return { value: mod.name, label: humanName };
-    })
-  );
 
   return (
     <div>
@@ -228,4 +238,5 @@ export default function OptionsDrawer() {
       </Drawer>
     </div>
   );
-}
+});
+export default OptionsDrawer;
