@@ -325,6 +325,7 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
       });
   }
   if (!mergedWatcher || isDev) {
+    await fsExtra.ensureDir(nodePath.join(appData.dataFolder, "/merged/"));
     const dataFolder = appData.dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
     mergedWatcher = chokidar
       .watch([`${dataFolder}/merged/*.pack`], {
