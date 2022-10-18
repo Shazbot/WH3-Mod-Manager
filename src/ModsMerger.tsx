@@ -1,19 +1,20 @@
-import React, { useState } from "react";
-import { useAppDispatch, useAppSelector } from "./hooks";
+import React from "react";
 import { Modal } from "./flowbite/components/Modal/index";
-import { Spinner, Tabs, Toast, Tooltip } from "./flowbite";
+import { Spinner, Tabs } from "./flowbite";
 import { getModsSortedByName, getModsSortedByHumanName, getModsSortedBySize } from "./modSortingHelpers";
-import { faStar } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { PackTableCollision } from "./packFileTypes";
 import Select, { ActionMeta } from "react-select";
 import selectStyle from "./styles/selectStyle";
-import { HiCheck } from "react-icons/hi";
+import { createSelector } from "@reduxjs/toolkit";
+import { useSelector } from "react-redux";
 
 type ModsMergeSorts = "Merge" | "MergeDesc" | "Pack" | "PackDesc" | "Name" | "NameDesc" | "Size" | "SizeDesc";
 
-export default function ModsMerger() {
-  const mods = useAppSelector((state) => state.app.currentPreset.mods).filter((mod) => !mod.isInData);
+const ModsMerger = React.memo(() => {
+  const modsNotInDataSelector = createSelector(
+    (state: { app: AppState }) => state.app.currentPreset.mods,
+    (mods) => mods.filter((mod) => !mod.isInData)
+  );
+  const mods = useSelector(modsNotInDataSelector);
 
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
   const [isOpen, setIsOpen] = React.useState(false);
@@ -284,4 +285,6 @@ export default function ModsMerger() {
       </Modal>
     </div>
   );
-}
+});
+
+export default ModsMerger;

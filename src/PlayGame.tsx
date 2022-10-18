@@ -14,7 +14,7 @@ import CompatScreen from "./CompatScreen";
 import RequiredMods from "./RequiredMods";
 import ModsMerger from "./ModsMerger";
 
-export default function PlayGame() {
+const PlayGame = React.memo(() => {
   const dispatch = useAppDispatch();
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
@@ -31,7 +31,6 @@ export default function PlayGame() {
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
-  const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
 
   const playGameClicked = () => {
@@ -395,4 +394,6 @@ export default function PlayGame() {
       </div>
     </div>
   );
-}
+});
+
+export default PlayGame;
