@@ -59,6 +59,7 @@ export default function ModRow() {
     const target = event.target as HTMLInputElement;
     const name = target.name;
     const mod = mods.find((mod) => mod.workshopId == name);
+    if (!mod) return;
 
     // if always enabled don't allow unchecking
     if (isModAlwaysEnabled(mod, alwaysEnabledMods)) {
@@ -99,20 +100,20 @@ export default function ModRow() {
     // console.log(`DROPPED ONTO ${droppedOnId}`);
 
     const droppedOnElement = document.getElementById(droppedOnId);
-    if (!droppedOnElement) return;
+    if (!droppedOnElement || !droppedOnElement.parentElement) return;
     const index =
       [...droppedOnElement.parentElement.children]
         .filter((ele) => ele.id !== "drop-ghost")
         .indexOf(droppedOnElement) - 8;
 
     const originalElement = document.getElementById(originalId);
-    if (!originalElement) return;
+    if (!originalElement || !originalElement.parentElement) return;
     const originalElementindex =
       [...originalElement.parentElement.children]
         .filter((ele) => ele.id !== "drop-ghost")
         .indexOf(originalElement) - 8;
 
-    let loadOrder: number = null;
+    let loadOrder: number | null = null;
 
     let prevElement: HTMLDivElement = droppedOnElement.previousElementSibling as HTMLDivElement;
     if (prevElement.id === "drop-ghost") prevElement = prevElement.previousElementSibling as HTMLDivElement;
@@ -154,7 +155,7 @@ export default function ModRow() {
     e.dataTransfer.setData("text/plain", t.id.replace("drag-icon-", ""));
 
     const body = document.getElementById("body");
-    body.classList.add("disable-row-hover");
+    if (body) body.classList.add("disable-row-hover");
 
     // console.log(t.id.replace("drag-icon-", ""));
     const row = document.getElementById(t.id.replace("drag-icon-", ""));
@@ -166,7 +167,7 @@ export default function ModRow() {
     // console.log("onDragEnd");
 
     const ghost = document.getElementById("drop-ghost");
-    if (ghost) {
+    if (ghost && ghost.parentElement) {
       ghost.parentElement.removeChild(ghost);
     }
 
@@ -175,7 +176,7 @@ export default function ModRow() {
     });
 
     const body = document.getElementById("body");
-    body.classList.remove("disable-row-hover");
+    if (body) body.classList.remove("disable-row-hover");
     // e.stopPropagation();
   };
 
@@ -201,12 +202,14 @@ export default function ModRow() {
       });
       newE.addEventListener("drop", (e) => {
         e.preventDefault();
-        const draggedId = e.dataTransfer.getData("text/plain");
-        if (draggedId === "") return;
+        const draggedId = e.dataTransfer?.getData("text/plain");
+        if (!draggedId || draggedId === "") return;
 
         const currentTarget = e.currentTarget as HTMLElement;
         // console.log("dropped on ghost: " + currentTarget.id);
         // console.log("isBottomDrop: " + isBottomDrop);
+
+        if (!currentTarget.nextElementSibling) return;
 
         const rowId = currentTarget.nextElementSibling.id;
         afterDrop(draggedId, rowId);
@@ -242,6 +245,7 @@ export default function ModRow() {
     if (droppedId === t.id) return;
 
     // console.log("isBottomDrop: " + isBottomDrop);
+    if (!t.nextElementSibling) return;
     const rowId = (isBottomDrop ? (t.nextElementSibling.nextElementSibling as HTMLElement) : t).id;
 
     afterDrop(droppedId, rowId);
@@ -285,6 +289,8 @@ export default function ModRow() {
     // if (e.clientY < boundingRect.top || e.clientY > boundingRect.bottom) return;
     // console.log(currentDragTarget.id);
     const parent = currentDragTarget.parentElement;
+    if (!parent || !parent.parentElement) return;
+
     if (boundingRect.y + boundingRect.height / 2 > e.clientY) {
       isBottomDrop = false;
       parent.parentElement.insertBefore(newE, parent);
@@ -301,13 +307,13 @@ export default function ModRow() {
 
     const element = e.currentTarget as HTMLDivElement;
     const dragIcon = document.getElementById(`drag-icon-${element.id}`);
-    dragIcon.classList.remove("hidden");
+    if (dragIcon) dragIcon.classList.remove("hidden");
   };
 
   const onRowHoverEnd = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
     const element = e.currentTarget as HTMLDivElement;
     const dragIcon = document.getElementById(`drag-icon-${element.id}`);
-    dragIcon.classList.add("hidden");
+    if (dragIcon) dragIcon.classList.add("hidden");
   };
 
   const onRemoveModOrder = (mod: Mod) => {
@@ -332,10 +338,12 @@ export default function ModRow() {
   };
 
   const onDropdownOverlayClick = () => {
+    if (!document.scrollingElement) return;
     const lastScrollTop = document.scrollingElement.scrollTop;
     setIsDropdownOpen(false);
+
     setTimeout(() => {
-      document.scrollingElement.scrollTop = lastScrollTop;
+      if (document.scrollingElement) document.scrollingElement.scrollTop = lastScrollTop;
     }, 1);
   };
 
@@ -572,7 +580,9 @@ export default function ModRow() {
                       </Tooltip>
                     )}
                     {enabledMergeMods.some((mergeMod) =>
-                      mergeMod.mergedModsData.some((mergeModData) => mergeModData.path == mod.path)
+                      (mergeMod.mergedModsData as MergedModsData[]).some(
+                        (mergeModData) => mergeModData.path == mod.path
+                      )
                     ) && (
                       <Tooltip
                         placement="bottom"
@@ -596,14 +606,16 @@ export default function ModRow() {
                 </label>
               </div>
               <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
-                <label htmlFor={mod.workshopId + "enabled"}>{decodeHTML(decodeHTML(mod.humanName))}</label>
+                <label htmlFor={mod.workshopId + "enabled"}>
+                  {decodeHTML(decodeHTML(mod.humanName) ?? "")}
+                </label>
               </div>
               <div
                 onContextMenu={(e) => onModRightClick(e, mod)}
                 className={"flex place-items-center grid-area-autohide " + (isAuthorEnabled ? "" : "hidden")}
               >
                 <label htmlFor={mod.workshopId + "enabled"}>
-                  <span className="break-all">{decodeHTML(decodeHTML(mod.author))}</span>
+                  <span className="break-all">{decodeHTML(decodeHTML(mod.author) ?? "")}</span>
                 </label>
               </div>
               <div

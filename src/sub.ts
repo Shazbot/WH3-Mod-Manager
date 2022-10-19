@@ -31,7 +31,7 @@ if (process.argv[2] == "update") {
   ];
 
   Promise.allSettled(promises).then(() => {
-    process.send(path);
+    if (process.send) process.send(path);
     process.exit();
   });
 }

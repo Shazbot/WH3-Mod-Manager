@@ -23,7 +23,7 @@ let isSubscribedToStoreChanges = false;
 
 const originalConsoleLog = console.log.bind(console);
 console.log = (...args) => {
-  window.api.electronLog.log(...args);
+  window.api?.electronLog.log(...args);
   originalConsoleLog(...args);
 };
 
@@ -31,24 +31,24 @@ window.addEventListener("error", (e) => {
   console.log(e);
 });
 
-window.api.handleLog((event, msg) => {
+window.api?.handleLog((event, msg) => {
   console.log(msg);
 });
 
-window.api.subscribedToMods((event, ids: string[]) => {
+window.api?.subscribedToMods((event, ids: string[]) => {
   console.log("subbed to mods: ", ids);
 });
 
-window.api.createdMergedPack((event, filePath: string) => {
+window.api?.createdMergedPack((event, filePath: string) => {
   store.dispatch(createdMergedPack(filePath));
 });
 
-window.api.setIsDev((event, isDev) => {
+window.api?.setIsDev((event, isDev) => {
   console.log("Setting is dev: " + isDev);
   store.dispatch(setIsDev(isDev));
 });
 
-window.api.packsInSave((event, packNames: string[]) => {
+window.api?.packsInSave((event, packNames: string[]) => {
   console.log("packs in save: ", packNames);
   store.dispatch(enableModsByName(packNames));
 });
@@ -60,25 +60,25 @@ const subscribeToStoreChanges = () => {
         isSubscribedToStoreChanges = true;
         store.subscribe(() => {
           const appState = store.getState().app;
-          window.api.saveConfig(appState);
+          window.api?.saveConfig(appState);
           const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
 
           // don't do it if all are enabled, i.e. when user is resetting the enabled column
-          if (enabledMods.length != appState.currentPreset.mods.length) window.api.readMods(enabledMods);
+          if (enabledMods.length != appState.currentPreset.mods.length) window.api?.readMods(enabledMods);
         });
       }
     }, 50);
   }
 };
 
-window.api.fromAppConfig((event, appState: AppStateToWrite) => {
+window.api?.fromAppConfig((event, appState: AppStateToWrite) => {
   console.log("INVOKED: FROM API CONFIG");
   store.dispatch(setFromConfig(appState));
 
   subscribeToStoreChanges();
 });
 
-window.api.failedReadingConfig(() => {
+window.api?.failedReadingConfig(() => {
   console.log("INVOKED: FROM API CONFIG");
   if (!isSubscribedToStoreChanges) {
     store.dispatch(setIsOnboardingToRun(true));
@@ -87,42 +87,42 @@ window.api.failedReadingConfig(() => {
   subscribeToStoreChanges();
 });
 
-window.api.modsPopulated((event, mods: Mod[]) => {
+window.api?.modsPopulated((event, mods: Mod[]) => {
   console.log("INVOKED: MODS POPULATED");
   mods = mods.filter((mod) => mod !== undefined); // try to get rid of this check
   store.dispatch(setMods(mods));
-  window.api.getAllModData(mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId));
+  window.api?.getAllModData(mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId));
 });
 
-window.api.addMod((event, mod: Mod) => {
+window.api?.addMod((event, mod: Mod) => {
   console.log("INVOKED: MOD ADDED");
   store.dispatch(addMod(mod));
   if (mod.workshopId && mod.workshopId !== "") {
-    window.api.getAllModData([mod.workshopId]);
+    window.api?.getAllModData([mod.workshopId]);
   }
 });
 
-window.api.removeMod((event, modPath: string) => {
+window.api?.removeMod((event, modPath: string) => {
   console.log("INVOKED: MOD REMOVED");
   store.dispatch(removeMod(modPath));
 });
 
-window.api.savesPopulated((event, saves: GameSave[]) => {
+window.api?.savesPopulated((event, saves: GameSave[]) => {
   console.log("INVOKED: SAVES POPULATED");
   store.dispatch(setSaves(saves));
 });
 
-window.api.setModData((event, modData: ModData) => {
+window.api?.setModData((event, modData: ModData) => {
   // console.log("INVOKED: MOD DATA RECIEVED");
   store.dispatch(setModData(modData));
 });
 
-window.api.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
+window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
   // console.log("INVOKED: MOD PACK DATA RECIEVED");
   store.dispatch(setPackHeaderData(packHeaderData));
 });
 
-window.api.setPacksData((event, packsData: Pack[]) => {
+window.api?.setPacksData((event, packsData: Pack[]) => {
   // console.log("INVOKED: MOD PACK DATA RECIEVED");
   store.dispatch(setPacksData(packsData));
 
@@ -132,11 +132,11 @@ window.api.setPacksData((event, packsData: Pack[]) => {
   // });
 });
 
-window.api.setPacksDataRead((event, packPaths: string[]) => {
+window.api?.setPacksDataRead((event, packPaths: string[]) => {
   store.dispatch(setPacksDataRead(packPaths));
 });
 
-window.api.setPackCollisions((event, packCollisions: PackCollisions) => {
+window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {
   // console.log("INVOKED: MOD PACK DATA RECIEVED");
   store.dispatch(setPackCollisions(packCollisions));
 
@@ -146,5 +146,5 @@ window.api.setPackCollisions((event, packCollisions: PackCollisions) => {
   // });
 });
 
-window.api.sendApiExists();
-window.api.readAppConfig();
+window.api?.sendApiExists();
+window.api?.readAppConfig();

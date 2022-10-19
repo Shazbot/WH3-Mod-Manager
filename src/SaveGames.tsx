@@ -8,7 +8,7 @@ export interface SaveGameProps {
 }
 
 const onEnableModsInSave = (name: string) => {
-  window.api.getPacksInSave(name);
+  window.api?.getPacksInSave(name);
 };
 
 const SaveGame = memo((props: SaveGameProps) => {
@@ -25,7 +25,7 @@ const SaveGame = memo((props: SaveGameProps) => {
 
   const onLoadClick = useCallback(
     (name: string) => {
-      window.api.startGame(
+      window.api?.startGame(
         mods,
         { isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled },
         name
@@ -40,7 +40,7 @@ const SaveGame = memo((props: SaveGameProps) => {
         <Modal.Header>Saved Games</Modal.Header>
         <Modal.Body>
           <div className="grid grid-cols-3 h-full gap-4">
-            {saves.map((save, i) => {
+            {saves.map((save) => {
               return (
                 <React.Fragment key={save.name}>
                   <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">

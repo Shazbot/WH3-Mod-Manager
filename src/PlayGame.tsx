@@ -1,5 +1,5 @@
 import Creatable from "react-select/creatable";
-import Select, { ActionMeta } from "react-select";
+import Select, { ActionMeta, SingleValue } from "react-select";
 import React, { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from "./appSlice";
@@ -34,7 +34,7 @@ const PlayGame = React.memo(() => {
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
 
   const playGameClicked = () => {
-    window.api.startGame(mods, {
+    window.api?.startGame(mods, {
       isMakeUnitsGeneralsEnabled,
       isSkipIntroMoviesEnabled,
       isScriptLoggingEnabled,
@@ -60,7 +60,8 @@ const PlayGame = React.memo(() => {
   let isShiftDown = false;
   let isControlDown = false;
 
-  const onChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
+  const onChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+    if (!newValue) return;
     console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action !== "select-option") return;
 
@@ -71,19 +72,21 @@ const PlayGame = React.memo(() => {
     dispatch(selectPreset([newValue.value, presetSelection]));
   };
 
-  const onDeleteChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
+  const onDeleteChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+    if (!newValue) return;
     console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action === "select-option") dispatch(deletePreset(newValue.value));
   };
 
-  const onReplaceChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
+  const onReplaceChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+    if (!newValue) return;
     console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action === "select-option") dispatch(replacePreset(newValue.value));
   };
 
   const defaultOption =
-    (lastSelectedPreset !== null &&
-      options.filter((option) => option.value === lastSelectedPreset.name))[0] || null;
+    (lastSelectedPreset != null && options.filter((option) => option.value === lastSelectedPreset.name)[0]) ||
+    null;
 
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch(setFilter(e.target.value));
@@ -94,7 +97,7 @@ const PlayGame = React.memo(() => {
   };
 
   const onContinueGameClicked = () => {
-    window.api.startGame(
+    window.api?.startGame(
       mods,
       { isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled },
       saves[0]?.name
@@ -110,8 +113,9 @@ const PlayGame = React.memo(() => {
 
   const getUpdateData = async () => {
     try {
-      const appUpdateData: ModUpdateExists = await window.api.getUpdateData();
-      if (appUpdateData.updateExists) {
+      const appUpdateData = await window.api?.getUpdateData();
+      if (!appUpdateData) return;
+      if (appUpdateData.updateExists && appUpdateData.downloadURL) {
         console.log("UPDATE EXITS");
         setIsUpdateAvailable(true);
         setDownloadURL(appUpdateData.downloadURL);
@@ -155,6 +159,7 @@ const PlayGame = React.memo(() => {
 
   const missingModDependencies = enabledMods
     .filter((mod) => mod.reqModIdToName && mod.reqModIdToName.length > 0)
+    .map((mod) => mod as ModWithDefinedReqModIdToName)
     .map(
       (mod) =>
         [
@@ -168,6 +173,7 @@ const PlayGame = React.memo(() => {
 
   const outdatedMergedPacks = enabledMods
     .filter((mod) => mod.mergedModsData)
+    .map((mod) => mod as ModWithDefinedMergedModsData)
     .filter((mod) =>
       mod.mergedModsData.some((mergedModData) => {
         const enabledMod = enabledMods.find((enabledMod) => enabledMod.path == mergedModData.path);

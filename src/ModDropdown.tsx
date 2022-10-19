@@ -1,5 +1,5 @@
 import { Tooltip } from "flowbite-react";
-import React, { useState } from "react";
+import React, { memo, useState } from "react";
 import { setModLoadOrder, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";
 import { Modal } from "./flowbite";
 import { useAppDispatch, useAppSelector } from "./hooks";
@@ -11,18 +11,17 @@ type ModDropdownProps = {
   mod?: Mod;
 };
 
-export default function ModDropdown(props: ModDropdownProps) {
+const ModDropdown = memo((props: ModDropdownProps) => {
   const dispatch = useAppDispatch();
-  const isDev = useAppSelector((state) => state.app.isDev);
   const allMods = useAppSelector((state) => state.app.allMods);
   const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
   const [loadOrderHasError, setLoadOrderHasError] = useState(false);
   const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
 
   const onGoToWorkshopPageClick = () => {
-    let workshopId = props.mod.workshopId;
-    if (props.mod.isInData) {
-      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData);
+    let workshopId = props.mod?.workshopId;
+    if (props.mod?.isInData) {
+      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
       if (!contentMod) return;
       workshopId = contentMod.workshopId;
     }
@@ -30,57 +29,60 @@ export default function ModDropdown(props: ModDropdownProps) {
   };
 
   const onOpenInSteam = () => {
-    let workshopId = props.mod.workshopId;
-    if (props.mod.isInData) {
-      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData);
+    let workshopId = props.mod?.workshopId;
+    if (props.mod?.isInData) {
+      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
       if (!contentMod) return;
       workshopId = contentMod.workshopId;
     }
-    window.api.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
+    window.api?.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
   };
 
   const openInExplorer = (mod: Mod) => {
-    window.api.openFolderInExplorer(mod.path);
+    window.api?.openFolderInExplorer(mod.path);
   };
   const openInRPFM = (mod: Mod) => {
-    window.api.openPack(mod.path);
+    window.api?.openPack(mod.path);
   };
   const putPathInClipboard = (mod: Mod) => {
     console.log(mod);
-    window.api.putPathInClipboard(mod.path);
+    window.api?.putPathInClipboard(mod.path);
   };
   const updateMod = (mod: Mod) => {
-    const contentMod = allMods.find((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData);
+    const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
     if (contentMod == null) return;
 
-    window.api.updateMod(mod, contentMod);
+    window.api?.updateMod(mod, contentMod);
   };
   const fakeUpdatePack = (mod: Mod) => {
-    const contentMod = allMods.find((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData);
+    const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
     if (contentMod == null) return;
 
-    window.api.fakeUpdatePack(mod);
+    window.api?.fakeUpdatePack(mod);
   };
   const makePackBackup = (mod: Mod) => {
-    window.api.makePackBackup(mod);
+    window.api?.makePackBackup(mod);
   };
   const forceModDownload = (mod: Mod) => {
-    if (mod.isInData) mod = allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod.name);
-    if (!mod) return;
+    let modToDownload: Mod | undefined = mod;
+    if (mod.isInData)
+      modToDownload = allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name);
+    if (!modToDownload) return;
 
-    window.api.forceModDownload(mod);
+    window.api?.forceModDownload(modToDownload);
   };
   const reMerge = (mod: Mod) => {
     if (!mod) return;
+    if (!mod.mergedModsData) return;
 
     const modsToMerge = mod.mergedModsData
       .map((mod) => allMods.find((iterMod) => iterMod.path == mod.path))
-      .filter((mod) => mod);
-    window.api.reMerge(mod, modsToMerge);
+      .filter((mod) => mod) as Mod[];
+    window.api?.reMerge(mod, modsToMerge);
   };
   const deletePack = (mod: Mod) => {
     if (!mod) return;
-    window.api.deletePack(mod);
+    window.api?.deletePack(mod);
   };
 
   return (
@@ -93,7 +95,7 @@ export default function ModDropdown(props: ModDropdownProps) {
           size="2xl"
           position="center"
         >
-          <Modal.Header>Set Load Order For {props.mod.name}</Modal.Header>
+          <Modal.Header>Set Load Order For {props.mod?.name}</Modal.Header>
           <Modal.Body>
             <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
               Set load order for this mod. Changing load orders is very rarely needed in WH3 and can cause
@@ -124,7 +126,7 @@ export default function ModDropdown(props: ModDropdownProps) {
                     const numLordOrder = Number(currentModLoadOrder) - 1;
                     if (numLordOrder == null || isNaN(numLordOrder)) return;
                     if (numLordOrder < 0) return;
-                    dispatch(setModLoadOrder({ modName: props.mod.name, loadOrder: numLordOrder }));
+                    dispatch(setModLoadOrder({ modName: props.mod?.name ?? "", loadOrder: numLordOrder }));
                     setIsSetLoadOrderOpen(false);
                   }}
                 >
@@ -156,8 +158,8 @@ export default function ModDropdown(props: ModDropdownProps) {
               </a>
             </li>
             {props.mod &&
-              (!props.mod.isInData ||
-                allMods.some((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData)) && (
+              (!props.mod?.isInData ||
+                allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData)) && (
                 <>
                   <li>
                     <a
@@ -185,7 +187,9 @@ export default function ModDropdown(props: ModDropdownProps) {
               )}
             <li>
               <a
-                onClick={() => dispatch(toggleAlwaysEnabledMods([props.mod]))}
+                onClick={() => {
+                  if (props.mod) dispatch(toggleAlwaysEnabledMods([props.mod]));
+                }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
@@ -196,7 +200,9 @@ export default function ModDropdown(props: ModDropdownProps) {
             </li>
             <li>
               <a
-                onClick={() => dispatch(toggleAlwaysHiddenMods([props.mod]))}
+                onClick={() => {
+                  if (props.mod) dispatch(toggleAlwaysHiddenMods([props.mod]));
+                }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
@@ -210,7 +216,9 @@ export default function ModDropdown(props: ModDropdownProps) {
             </li>
             <li>
               <a
-                onClick={() => openInExplorer(props.mod)}
+                onClick={() => {
+                  if (props.mod) openInExplorer(props.mod);
+                }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
@@ -219,7 +227,9 @@ export default function ModDropdown(props: ModDropdownProps) {
             </li>
             <li>
               <a
-                onClick={() => openInRPFM(props.mod)}
+                onClick={() => {
+                  if (props.mod) openInRPFM(props.mod);
+                }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
@@ -228,19 +238,23 @@ export default function ModDropdown(props: ModDropdownProps) {
             </li>
             <li>
               <a
-                onClick={() => putPathInClipboard(props.mod)}
+                onClick={() => {
+                  if (props.mod) putPathInClipboard(props.mod);
+                }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
                 Copy path to clipboard
               </a>
             </li>
-            {props.mod.isInData &&
-              allMods.some((iterMod) => iterMod.name == props.mod.name && !iterMod.isInData) && (
+            {props.mod?.isInData &&
+              allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) && (
                 <>
                   <li>
                     <a
-                      onClick={() => updateMod(props.mod)}
+                      onClick={() => {
+                        if (props.mod) updateMod(props.mod);
+                      }}
                       href="#"
                       className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                     >
@@ -254,7 +268,9 @@ export default function ModDropdown(props: ModDropdownProps) {
                   </li>
                   <li>
                     <a
-                      onClick={() => fakeUpdatePack(props.mod)}
+                      onClick={() => {
+                        if (props.mod) fakeUpdatePack(props.mod);
+                      }}
                       href="#"
                       className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                     >
@@ -270,7 +286,9 @@ export default function ModDropdown(props: ModDropdownProps) {
               )}
             <li>
               <a
-                onClick={() => makePackBackup(props.mod)}
+                onClick={() => {
+                  if (props.mod) makePackBackup(props.mod);
+                }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
@@ -282,11 +300,13 @@ export default function ModDropdown(props: ModDropdownProps) {
                 </Tooltip>
               </a>
             </li>
-            {(!props.mod.isInData ||
-              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod.name)) && (
+            {(!props.mod?.isInData ||
+              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name)) && (
               <li>
                 <a
-                  onClick={() => forceModDownload(props.mod)}
+                  onClick={() => {
+                    if (props.mod) forceModDownload(props.mod);
+                  }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
@@ -296,10 +316,12 @@ export default function ModDropdown(props: ModDropdownProps) {
                 </a>
               </li>
             )}
-            {props.mod.mergedModsData && (
+            {props.mod?.mergedModsData && (
               <li>
                 <a
-                  onClick={() => reMerge(props.mod)}
+                  onClick={() => {
+                    if (props.mod) reMerge(props.mod);
+                  }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
@@ -312,10 +334,12 @@ export default function ModDropdown(props: ModDropdownProps) {
                 </a>
               </li>
             )}
-            {props.mod.mergedModsData && (
+            {props.mod?.mergedModsData && (
               <li>
                 <a
-                  onClick={() => deletePack(props.mod)}
+                  onClick={() => {
+                    if (props.mod) deletePack(props.mod);
+                  }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
@@ -330,4 +354,5 @@ export default function ModDropdown(props: ModDropdownProps) {
       </>
     )
   );
-}
+});
+export default ModDropdown;

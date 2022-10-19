@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { memo } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { Modal } from "./flowbite/components/Modal/index";
 import { Spinner, Tabs, Tooltip } from "./flowbite";
@@ -8,7 +8,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { PackTableCollision } from "./packFileTypes";
 import { setPackCollisions } from "./appSlice";
 
-export default function CompatScreen() {
+const CompatScreen = memo(() => {
   const dispatch = useAppDispatch();
   const packCollisions = useAppSelector((state) => state.app.packCollisions);
   const pathsOfReadPacks = useAppSelector((state) => state.app.pathsOfReadPacks);
@@ -87,7 +87,7 @@ export default function CompatScreen() {
   const toggleUseEnabledModsOnly = () => {
     if (useEnabledModsOnly) {
       console.log("READ ALL MODS");
-      window.api.readMods(mods);
+      window.api?.readMods(mods);
     }
     setUseEnabledModsOnly(!useEnabledModsOnly);
   };
@@ -99,7 +99,7 @@ export default function CompatScreen() {
           onClick={() =>
             setIsCompatOpen((wasOpen) => {
               if (!wasOpen) {
-                window.api.getCompatData();
+                window.api?.getCompatData();
               } else {
                 dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
               }
@@ -149,34 +149,34 @@ export default function CompatScreen() {
                   Object.keys(groupedPackFileCollisions)
                     .sort((firstPackName, secondPackName) => {
                       const firstPackIndex = sortedMods.indexOf(
-                        sortedMods.find((iterMod) => iterMod.name == firstPackName)
+                        sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
                       );
                       const secondPackIndex = sortedMods.indexOf(
-                        sortedMods.find((iterMod) => iterMod.name == secondPackName)
+                        sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
                       );
 
                       return firstPackIndex - secondPackIndex;
                     })
                     .map((firstPackName) => {
                       const firstPackIndex = sortedMods.indexOf(
-                        sortedMods.find((iterMod) => iterMod.name == firstPackName)
+                        sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
                       );
                       const secondPacks = groupedPackFileCollisions[firstPackName];
                       let donePackName = false;
                       return Object.keys(secondPacks)
                         .sort((firstPackName, secondPackName) => {
                           const firstPackIndex = sortedMods.indexOf(
-                            sortedMods.find((iterMod) => iterMod.name == firstPackName)
+                            sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
                           );
                           const secondPackIndex = sortedMods.indexOf(
-                            sortedMods.find((iterMod) => iterMod.name == secondPackName)
+                            sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
                           );
 
                           return firstPackIndex - secondPackIndex;
                         })
                         .map((secondPackName) => {
                           const secondPackIndex = sortedMods.indexOf(
-                            sortedMods.find((iterMod) => iterMod.name == secondPackName)
+                            sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
                           );
                           let doneSecondPackName = false;
                           return secondPacks[secondPackName].map((secondPack) => {
@@ -222,10 +222,10 @@ export default function CompatScreen() {
                   Object.keys(groupedPackTableCollisions)
                     .sort((firstPackName, secondPackName) => {
                       const firstPackIndex = sortedMods.indexOf(
-                        sortedMods.find((iterMod) => iterMod.name == firstPackName)
+                        sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
                       );
                       const secondPackIndex = sortedMods.indexOf(
-                        sortedMods.find((iterMod) => iterMod.name == secondPackName)
+                        sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
                       );
 
                       return firstPackIndex - secondPackIndex;
@@ -236,10 +236,10 @@ export default function CompatScreen() {
                       return Object.keys(secondPacks)
                         .sort((firstPackName, secondPackName) => {
                           const firstPackIndex = sortedMods.indexOf(
-                            sortedMods.find((iterMod) => iterMod.name == firstPackName)
+                            sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
                           );
                           const secondPackIndex = sortedMods.indexOf(
-                            sortedMods.find((iterMod) => iterMod.name == secondPackName)
+                            sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
                           );
 
                           return firstPackIndex - secondPackIndex;
@@ -253,7 +253,9 @@ export default function CompatScreen() {
                             return collisions.map((collision) => {
                               const firstBaseName = collision.fileName.replace(/.*\\/, "");
                               const secondBaseName = collision.secondFileName.replace(/.*\\/, "");
-                              const dbName = collision.fileName.match(/.*?\\(.*?)\\.*?/)[1];
+
+                              const dbNameMatches = collision.fileName.match(/.*?\\(.*?)\\.*?/);
+                              const dbName = dbNameMatches && dbNameMatches[1];
 
                               const fragment = (
                                 <React.Fragment
@@ -363,4 +365,5 @@ export default function CompatScreen() {
       </Modal>
     </div>
   );
-}
+});
+export default CompatScreen;

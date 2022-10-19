@@ -2,7 +2,7 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
   const newMods = getModsSortedByName(mods);
   [...newMods]
     .filter((mod) => mod.loadOrder != null)
-    .sort((modF, modS) => modF.loadOrder - modS.loadOrder)
+    .sort((modF, modS) => (modF.loadOrder as number) - (modS.loadOrder as number))
     .map((mod) => {
       // console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
       newMods.splice(newMods.indexOf(mod), 1);
@@ -10,7 +10,7 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
       return mod;
     })
     .forEach((mod) => {
-      newMods.splice(mod.loadOrder, 0, mod);
+      newMods.splice(mod.loadOrder as number, 0, mod);
     });
   return newMods;
 }

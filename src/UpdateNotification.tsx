@@ -1,16 +1,14 @@
 import { Button, Toast } from "flowbite-react";
-import React from "react";
+import React, { memo, useCallback } from "react";
 
 interface UpdateNotificationProps {
   downloadURL: string;
 }
 
-export function UpdateNotification(props: UpdateNotificationProps) {
-  const url = props.downloadURL;
-
-  const onDownloadClick = () => {
-    window.open(url);
-  };
+export const UpdateNotification = memo(({ downloadURL }: UpdateNotificationProps) => {
+  const onDownloadClick = useCallback(() => {
+    window.open(downloadURL);
+  }, [downloadURL]);
 
   return (
     <Toast>
@@ -30,4 +28,4 @@ export function UpdateNotification(props: UpdateNotificationProps) {
       </div>
     </Toast>
   );
-}
+});

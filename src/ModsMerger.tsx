@@ -2,7 +2,7 @@ import React from "react";
 import { Modal } from "./flowbite/components/Modal/index";
 import { Spinner, Tabs } from "./flowbite";
 import { getModsSortedByName, getModsSortedByHumanName, getModsSortedBySize } from "./modSortingHelpers";
-import Select, { ActionMeta } from "react-select";
+import Select, { ActionMeta, SingleValue } from "react-select";
 import selectStyle from "./styles/selectStyle";
 import { createSelector } from "@reduxjs/toolkit";
 import { useSelector } from "react-redux";
@@ -29,6 +29,7 @@ const ModsMerger = React.memo(() => {
         if (modsToMerge.has(firstMod) && modsToMerge.has(secondMod)) return 0;
         if (modsToMerge.has(firstMod)) return -1;
         if (modsToMerge.has(secondMod)) return 1;
+        return 0;
       });
       break;
     case "MergeDesc":
@@ -36,6 +37,7 @@ const ModsMerger = React.memo(() => {
         if (modsToMerge.has(firstMod) && modsToMerge.has(secondMod)) return 0;
         if (modsToMerge.has(firstMod)) return 1;
         if (modsToMerge.has(secondMod)) return -1;
+        return 0;
       });
       break;
     case "Pack":
@@ -75,7 +77,8 @@ const ModsMerger = React.memo(() => {
     label: number;
   };
 
-  const onReplaceChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
+  const onReplaceChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+    if (!newValue) return;
     console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action === "select-option") {
       setModsToMerge(new Set<Mod>(modsToUse.slice(0, newValue.value)));
@@ -88,7 +91,7 @@ const ModsMerger = React.memo(() => {
 
   const mergeMods = () => {
     if (modsToMerge.size < 1) return;
-    window.api.mergeMods(Array.from(modsToMerge));
+    window.api?.mergeMods(Array.from(modsToMerge));
     setIsOpen(false);
   };
 

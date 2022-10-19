@@ -65,6 +65,7 @@ let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
 
+// eslint-disable-next-line @typescript-eslint/no-empty-function
 const sendSetPackCollisions = () => {};
 // const sendSetPackCollisions = () => {
 //   console.log("setPackCollisions");
@@ -132,7 +133,7 @@ const appendPacksData = async (newPack: Pack) => {
   }
   if (appData.packsData && appData.packsData.every((pack) => pack.path != newPack.path)) {
     appData.packsData.push(newPack);
-    mainWindow.webContents.send("setPacksDataRead", [newPack.path]);
+    mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
   }
 };
 const appendCollisions = async (newPack: Pack) => {
@@ -215,7 +216,9 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
         const packHeaderData = await readPackHeader(mod.path);
         if (packHeaderData.isMovie) mainWindow.webContents.send("setPackHeaderData", packHeaderData);
       } catch (e) {
-        log(e);
+        if (e instanceof Error) {
+          log(e.message);
+        }
       }
     });
 
@@ -249,7 +252,7 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
     // const newPacksData = await readDataFromPacks(mods.concat(dataMod));
     const newPacksData = await readDataFromPacks([dataMod]);
     // appData.packsData = newPacksData;
-    newPacksData.forEach((pack) => {
+    newPacksData?.forEach((pack) => {
       if (appData.packsData.every((iterPack) => iterPack.path != pack.path)) {
         appendPacksData(pack);
         appendCollisions(pack);
@@ -271,6 +274,7 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
     await downloadsWatcher?.close();
     await mergedWatcher?.close();
   }
+  if (!appData.contentFolder || !appData.dataFolder) return;
 
   if (!contentWatcher || isDev) {
     const contentFolder = appData.contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
@@ -427,21 +431,21 @@ const createWindow = (): void => {
     fetchModData(
       ids.filter((id) => id !== ""),
       (modData) => {
-        mainWindow.webContents.send("setModData", modData);
+        mainWindow?.webContents.send("setModData", modData);
       },
       (msg) => {
-        mainWindow.webContents.send("handleLog", msg);
+        mainWindow?.webContents.send("handleLog", msg);
         console.log(msg);
       }
     );
   });
 
   ipcMain.on("getPacksInSave", async (event, saveName: string) => {
-    mainWindow.webContents.send("packsInSave", await getPacksInSave(saveName));
+    mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
   });
 
   ipcMain.on("readAppConfig", () => {
-    getAllMods(mainWindow);
+    getAllMods(mainWindow as BrowserWindow);
   });
 
   ipcMain.on("getCompatData", () => {
@@ -456,7 +460,7 @@ const createWindow = (): void => {
     const mods = await getMods(log);
     const withoutDataMods = mods.filter((mod) => !mod.isInData);
     const copyPromises = withoutDataMods.map((mod) => {
-      mainWindow.webContents.send(
+      mainWindow?.webContents.send(
         "handleLog",
         `COPYING ${mod.path} to ${appData.gamePath}\\data\\${mod.name}`
       );
@@ -465,25 +469,25 @@ const createWindow = (): void => {
     });
 
     await Promise.allSettled(copyPromises);
-    getAllMods(mainWindow);
+    getAllMods(mainWindow as BrowserWindow);
   });
 
   ipcMain.on("cleanData", async () => {
     const mods = await getMods(log);
     mods.forEach((mod) => {
-      if (mod.isInData) mainWindow.webContents.send("handleLog", `is in data ${mod.name}`);
+      if (mod.isInData) mainWindow?.webContents.send("handleLog", `is in data ${mod.name}`);
     });
     const modsInBothPlaces = mods.filter(
       (mod) => mod.isInData && mods.find((modSecond) => !modSecond.isInData && modSecond.name === mod.name)
     );
     const deletePromises = modsInBothPlaces.map((mod) => {
-      mainWindow.webContents.send("handleLog", `DELETING ${mod.path}`);
+      mainWindow?.webContents.send("handleLog", `DELETING ${mod.path}`);
 
       return fs.unlink(mod.path);
     });
 
     await Promise.allSettled(deletePromises);
-    getAllMods(mainWindow);
+    getAllMods(mainWindow as BrowserWindow);
   });
 
   ipcMain.on("saveConfig", (event, data: AppState) => {
@@ -493,7 +497,7 @@ const createWindow = (): void => {
     const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
       enabledMods.find((mod) => mod.name === iterMod.name)
     );
-    mainWindow.setTitle(
+    mainWindow?.setTitle(
       `WH3 Mod Manager v${version}: ${enabledMods.length} mods enabled` +
         (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "")
     );
@@ -532,7 +536,7 @@ const createWindow = (): void => {
       .then((res) => res.json())
       .then((body) => {
         body.assets.forEach((asset: { content_type: string; browser_download_url: string }) => {
-          mainWindow.webContents.send("handleLog", asset.content_type == "application/x-zip-compressed");
+          mainWindow?.webContents.send("handleLog", asset.content_type == "application/x-zip-compressed");
           if (asset.content_type === "application/x-zip-compressed") {
             modUpdatedExists = {
               updateExists: true,
@@ -547,8 +551,8 @@ const createWindow = (): void => {
   });
 
   ipcMain.on("sendApiExists", async () => {
-    mainWindow.webContents.send("handleLog", "API now exists");
-    mainWindow.webContents.send("setIsDev", isDev);
+    mainWindow?.webContents.send("handleLog", "API now exists");
+    mainWindow?.webContents.send("setIsDev", isDev);
   });
 };
 
@@ -701,7 +705,7 @@ ipcMain.on("forceDownloadMods", async (event, modIds: string[]) => {
 ipcMain.on("mergeMods", async (event, mods: Mod[]) => {
   try {
     mergeMods(mods).then((targetPath) => {
-      mainWindow.webContents.send("createdMergedPack", targetPath);
+      mainWindow?.webContents.send("createdMergedPack", targetPath);
     });
   } catch (e) {
     console.log(e);
@@ -715,7 +719,7 @@ ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {});
   await new Promise((resolve) => setTimeout(resolve, 500));
-  mainWindow.webContents.send("subscribedToMods", ids);
+  mainWindow?.webContents.send("subscribedToMods", ids);
 });
 
 ipcMain.on("exportModsToClipboard", async (event, mods: Mod[]) => {
@@ -771,7 +775,7 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
 
   const modPathsInsideMergedMods = enabledMods
     .filter((mod) => mod.mergedModsData)
-    .map((mod) => mod.mergedModsData.map((mod) => mod.path))
+    .map((mod) => (mod.mergedModsData as MergedModsData[]).map((mod) => mod.path))
     .flatMap((paths) => paths);
 
   const enabledModsWithoutMergedInMods = enabledMods.filter(
@@ -780,7 +784,7 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
 
   const text =
     enabledModsWithoutMergedInMods
-      .filter((mod) => nodePath.relative(appData.dataFolder, mod.modDirectory) != "")
+      .filter((mod) => nodePath.relative(appData.dataFolder as string, mod.modDirectory) != "")
       .map((mod) => `add_working_directory "${mod.modDirectory}";`)
       .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
       .join("\n") + extraEnabledMods;
@@ -793,8 +797,8 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
   }
   batData += " my_mods.txt;";
 
-  mainWindow.webContents.send("handleLog", "starting game:");
-  mainWindow.webContents.send("handleLog", batData);
+  mainWindow?.webContents.send("handleLog", "starting game:");
+  mainWindow?.webContents.send("handleLog", batData);
 
   await fs.writeFile(batPath, batData);
   execFile(batPath);

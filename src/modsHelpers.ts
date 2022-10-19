@@ -21,12 +21,12 @@ export function isModAlwaysEnabled(mod: Mod, alwaysEnabledMods: Mod[]) {
 export function adjustDuplicates(mods: Mod[]) {
   mods
     .filter((mod) => mod.loadOrder != null)
-    .sort((modF, modS) => modF.loadOrder - modS.loadOrder)
+    .sort((modF, modS) => (modF.loadOrder as number) - (modS.loadOrder as number))
     .forEach((mod) => {
       const duplicateMod = mods
         .filter((iterMod) => iterMod.name != mod.name)
         .find((iterMod) => mod.loadOrder === iterMod.loadOrder);
-      if (duplicateMod) {
+      if (duplicateMod && duplicateMod.loadOrder) {
         duplicateMod.loadOrder += 1;
         return adjustDuplicates(mods);
       }

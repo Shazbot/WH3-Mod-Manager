@@ -1,7 +1,8 @@
 import { Modal } from "./flowbite/components/Modal/index";
-import React from "react";
+import React, { memo } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { toggleMod } from "./appSlice";
+import store from "./store";
 
 const subbedModIdsToWaitFor: string[] = [];
 
@@ -11,13 +12,10 @@ export interface RequiredModsProps {
   modDependencies: [Mod, [string, string][]][];
 }
 
-export default function RequiredMods(props: RequiredModsProps) {
+const RequiredMods = memo((props: RequiredModsProps) => {
   const dispatch = useAppDispatch();
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const allMods = useAppSelector((state) => state.app.allMods);
-  const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
-  const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
-  const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
   const onClose = () => {
@@ -29,9 +27,9 @@ export default function RequiredMods(props: RequiredModsProps) {
       const modInAll = allMods.find((mod) => mod.workshopId == id);
       if (!modInAll) {
         subbedModIdsToWaitFor.push(id);
-        window.api.subscribeToMods([id]);
+        window.api?.subscribeToMods([id]);
       } else {
-        foundMod = mods.find((mod) => mod.name == foundMod.name);
+        foundMod = mods.find((mod) => mod.name == name);
         if (!foundMod) return;
       }
     }
@@ -76,7 +74,7 @@ export default function RequiredMods(props: RequiredModsProps) {
         <Modal.Header>Missing Required Mods</Modal.Header>
         <Modal.Body>
           <div className="grid grid-cols-2 h-full gap-4">
-            {[...modNameToIdLookup.entries()].map(([modId, modName], i) => {
+            {[...modNameToIdLookup.entries()].map(([modId, modName]) => {
               return (
                 <React.Fragment key={modId}>
                   <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
@@ -85,7 +83,7 @@ export default function RequiredMods(props: RequiredModsProps) {
                   <button
                     className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-15 w-26 m-auto "
                     type="button"
-                    onClick={(e) => {
+                    onClick={() => {
                       onModClick(modName, modId);
                       // e.currentTarget.disabled = true;
                     }}
@@ -100,4 +98,5 @@ export default function RequiredMods(props: RequiredModsProps) {
       </Modal>
     </>
   );
-}
+});
+export default RequiredMods;

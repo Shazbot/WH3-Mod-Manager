@@ -26,11 +26,11 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           }
         } catch (err) {
           log(`failed fetching mod page for ${workshopId}`);
-          log(err);
+          if (err instanceof Error) log(err.message);
 
           const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
           const match = body.match(regexpDeleted);
-          if (match[0]) isDeleted = true;
+          if (match && match[0]) isDeleted = true;
         }
 
         let author = "";
@@ -50,7 +50,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           }
         } catch (err) {
           log(`failed fetching mod page for ${workshopId}`);
-          log(err);
+          if (err instanceof Error) log(err.message);
         }
 
         const reqModIdToName: [string, string][] = [];
@@ -80,7 +80,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           }
         } catch (err) {
           log(`failed fetching mod page for ${workshopId}`);
-          log(err);
+          if (err instanceof Error) log(err.message);
         }
 
         let lastChanged = undefined;
@@ -121,7 +121,7 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
             }
           }
         } catch (err) {
-          log(err);
+          if (err instanceof Error) log(err.message);
         }
 
         if (humanName || isDeleted) {
@@ -144,17 +144,18 @@ async function getDataPath(log: (msg: string) => void): Promise<string> {
   if (!appData.dataFolder) {
     await getFolderPaths(log);
   }
-  return appData.dataFolder;
+  return appData.dataFolder as string;
 }
 
 export async function getDataMod(filePath: string, log: (msg: string) => void): Promise<Mod> {
   const dataPath = await getDataPath(log);
-  if (!dataPath) return;
+  if (!dataPath) throw new Error("Data folder not found");
+
   console.log("file path is:", filePath);
   const fileName = nodePath.basename(filePath);
 
   let lastChangedLocal = undefined;
-  let size = undefined;
+  let size = -1;
   try {
     [lastChangedLocal, size] = await fs.stat(filePath).then((stats) => {
       return [stats.mtimeMs, stats.size];
@@ -202,7 +203,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
 
 const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise<Mod[]> => {
   const dataPath = await getDataPath(log);
-  if (!dataPath) return;
+  if (!dataPath) throw new Error("Data folder not found");
 
   const vanillaPacks: string[] = [];
   return fs.readFile(`${gameDir}\\data\\manifest.txt`, "utf8").then(async (data) => {
@@ -291,7 +292,7 @@ export async function getContentModInFolder(
   if (!appData.contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.contentFolder) return;
+  if (!appData.contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.contentFolder;
 
   const files = await fs.readdir(`${contentFolder}\\${contentSubFolderName}`, { withFileTypes: true });
@@ -299,40 +300,40 @@ export async function getContentModInFolder(
   const pack = files.find((file) => file.name.endsWith(".pack"));
   const img = files.find((file) => file.name.endsWith(".png"));
 
-  if (pack) {
-    let lastChangedLocal = undefined;
-    let size = undefined;
-    try {
-      [lastChangedLocal, size] = await fs
-        .stat(`${contentFolder}\\${contentSubFolderName}\\${pack.name}`)
-        .then((stats) => {
-          return [stats.mtimeMs, stats.size];
-        });
-    } catch (err) {
-      log(`ERROR: ${err}`);
-    }
+  if (!pack) throw new Error(`Content folder ${contentSubFolderName} doesn't contain a pack!`);
 
-    // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
-    const packPath = `${contentFolder}\\${contentSubFolderName}\\${pack.name}`;
-    const imgPath = `${contentFolder}\\${contentSubFolderName}\\${img.name}`;
-    const mod: Mod = {
-      author: "",
-      humanName: "",
-      name: pack.name,
-      path: packPath,
-      modDirectory: `${contentFolder}\\${contentSubFolderName}`,
-      imgPath: imgPath,
-      workshopId: contentSubFolderName,
-      isEnabled: false,
-      isInData: false,
-      loadOrder: undefined,
-      lastChangedLocal,
-      isDeleted: false,
-      isMovie: false,
-      size,
-    };
-    return mod;
+  let lastChangedLocal = undefined;
+  let size = -1;
+  try {
+    [lastChangedLocal, size] = await fs
+      .stat(`${contentFolder}\\${contentSubFolderName}\\${pack.name}`)
+      .then((stats) => {
+        return [stats.mtimeMs, stats.size];
+      });
+  } catch (err) {
+    log(`ERROR: ${err}`);
   }
+
+  // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
+  const packPath = `${contentFolder}\\${contentSubFolderName}\\${pack.name}`;
+  const imgPath = (img && `${contentFolder}\\${contentSubFolderName}\\${img.name}`) || "";
+  const mod: Mod = {
+    author: "",
+    humanName: "",
+    name: pack.name,
+    path: packPath,
+    modDirectory: `${contentFolder}\\${contentSubFolderName}`,
+    imgPath: imgPath,
+    workshopId: contentSubFolderName,
+    isEnabled: false,
+    isInData: false,
+    loadOrder: undefined,
+    lastChangedLocal,
+    isDeleted: false,
+    isMovie: false,
+    size,
+  };
+  return mod;
 }
 
 export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
@@ -341,7 +342,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   if (!appData.contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.contentFolder) return;
+  if (!appData.contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.contentFolder;
 
   const dataMods = await getDataMods(appData.gamePath, log);
