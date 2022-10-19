@@ -45,7 +45,7 @@ export default {
 } as ComponentMeta<typeof ModRow>;
 
 // More on component templates: https://storybook.js.org/docs/react/writing-stories/introduction#using-args
-const Template: ComponentStory<typeof ModRow> = (args) => <ModRow {...args} />;
+const Template: ComponentStory<typeof ModRow> = () => <ModRow />;
 
 export const Primary = Template.bind({});
 // More on args: https://storybook.js.org/docs/react/writing-stories/args

@@ -20,7 +20,7 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 function render() {
-  const root = createRoot(document.getElementById("root"));
+  const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <Provider store={store}>
       <ErrorBoundary

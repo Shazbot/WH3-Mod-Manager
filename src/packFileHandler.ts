@@ -1,7 +1,7 @@
 import BinaryFile from "binary-file";
 
 export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
-  let file: BinaryFile;
+  let file: BinaryFile | undefined;
   let isMovie = false;
 
   try {

@@ -1,15 +1,15 @@
-import React from "react";
+import React, { memo, useCallback, useRef } from "react";
 import Joyride, { Placement, CallBackProps } from "react-joyride";
 import { faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { setIsOnboardingToRun, setWasOnboardingEverRun } from "./appSlice";
 
-export default function Onboarding() {
+const Onboarding = memo(() => {
   const dispatch = useAppDispatch();
   const toRun = useAppSelector((state) => state.app.isOnboardingToRun);
 
-  const steps = [
+  const { current: steps } = useRef([
     {
       target: "body",
       content:
@@ -130,18 +130,19 @@ export default function Onboarding() {
         </>
       ),
     },
-  ];
+  ]);
   for (const step of steps) {
     step.disableBeacon = true;
   }
 
-  const onJoyrideStateChange = (data: CallBackProps) => {
+  const onJoyrideStateChange = useCallback((data: CallBackProps) => {
     console.log(data);
     if (data.action === "reset") {
       dispatch(setIsOnboardingToRun(false));
       dispatch(setWasOnboardingEverRun(true));
     }
-  };
+  }, []);
+
   return (
     <Joyride
       showSkipButton={true}
@@ -153,4 +154,5 @@ export default function Onboarding() {
       callback={onJoyrideStateChange}
     ></Joyride>
   );
-}
+});
+export default Onboarding;

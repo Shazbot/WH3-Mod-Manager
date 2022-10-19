@@ -1,4 +1,4 @@
-import Select, { ActionMeta } from "react-select";
+import Select, { ActionMeta, SingleValue } from "react-select";
 import React, { memo, useCallback, useEffect, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
@@ -17,10 +17,10 @@ import { useSelector } from "react-redux";
 import { createSelector } from "@reduxjs/toolkit";
 
 const copyToData = () => {
-  window.api.copyToData();
+  window.api?.copyToData();
 };
 const cleanData = () => {
-  window.api.cleanData();
+  window.api?.cleanData();
 };
 
 const OptionsDrawer = memo(() => {
@@ -53,10 +53,11 @@ const OptionsDrawer = memo(() => {
   const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
 
   const forceDownloadMods = useCallback(() => {
-    window.api.forceDownloadMods(contentModsWorshopIds);
+    window.api?.forceDownloadMods(contentModsWorshopIds);
   }, [contentModsWorshopIds]);
 
-  const onDeleteChange = (newValue: OptionType, actionMeta: ActionMeta<OptionType>) => {
+  const onDeleteChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+    if (!newValue) return;
     console.log(newValue.label, newValue.value, actionMeta.action);
     const mod = alwaysHidden.find((mod) => mod.name == newValue.value);
     if (!mod) return;

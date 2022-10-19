@@ -33,7 +33,7 @@ const appSlice = createSlice({
     isSkipIntroMoviesEnabled: false,
     allMods: [],
     packsData: {},
-    packCollisions: {},
+    packCollisions: { packTableCollisions: [], packFileCollisions: [] },
     newMergedPacks: [],
     pathsOfReadPacks: [],
   } as AppState,
@@ -164,7 +164,7 @@ const appSlice = createSlice({
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData>) => {
       const data = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.path == data.path);
-      mod.isMovie = data.isMovie;
+      if (mod) mod.isMovie = data.isMovie;
 
       if (data.isMovie) console.log(`${data.path} is movie!`);
     },
@@ -278,7 +278,7 @@ const appSlice = createSlice({
     replacePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
       const preset = state.presets.find((preset) => preset.name === name);
-      preset.mods = state.currentPreset.mods;
+      if (preset) preset.mods = state.currentPreset.mods;
     },
     setFilter: (state: AppState, action: PayloadAction<string>) => {
       const filter = action.payload;

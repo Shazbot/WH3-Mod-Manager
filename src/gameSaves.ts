@@ -17,7 +17,7 @@ export const getSaveFiles = async () => {
 
   for (const saveFile of files) {
     if (!saves.find((iterSave) => iterSave.name === saveFile.name)) {
-      let lastChanged = undefined;
+      let lastChanged: number | undefined;
       try {
         lastChanged = await fs.stat(path.join(folderPath, saveFile.name)).then((stats) => {
           return stats.mtimeMs;
@@ -25,7 +25,7 @@ export const getSaveFiles = async () => {
       } catch (e) {
         console.log(e);
       }
-      saves.push({ name: saveFile.name, lastChanged });
+      saves.push({ name: saveFile.name, lastChanged: lastChanged ?? -1 });
     }
   }
 
@@ -35,7 +35,7 @@ export const getSaveFiles = async () => {
 const addNewSave = async function (savePath: string) {
   const basename = path.win32.basename(savePath);
   if (!saves.find((iterSave) => iterSave.name === basename)) {
-    let lastChanged = undefined;
+    let lastChanged: number | undefined;
     try {
       lastChanged = await fs.stat(savePath).then((stats) => {
         return stats.mtimeMs;
@@ -43,7 +43,7 @@ const addNewSave = async function (savePath: string) {
     } catch (e) {
       console.log(e);
     }
-    saves.push({ name: basename, lastChanged });
+    saves.push({ name: basename, lastChanged: lastChanged ?? -1 });
   }
 };
 

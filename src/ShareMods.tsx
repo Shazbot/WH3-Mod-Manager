@@ -23,7 +23,7 @@ const ShareMods = memo((props: ShareModsProps) => {
   }, [props]);
 
   const exportModsToClipboard = () => {
-    window.api.exportModsToClipboard(mods);
+    window.api?.exportModsToClipboard(mods);
   };
 
   const importMods = () => {
@@ -45,7 +45,7 @@ const ShareMods = memo((props: ShareModsProps) => {
     );
     if (newMods.length > 0) {
       setIsSpinnerOpen(true);
-      window.api.subscribeToMods(onlyIds);
+      window.api?.subscribeToMods(onlyIds);
     }
   };
 

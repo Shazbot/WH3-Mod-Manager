@@ -1,8 +1,8 @@
-import React from "react";
+import React, { memo } from "react";
 import { useAppSelector } from "./hooks";
 import { version } from "../package.json";
 
-export default function TopBar() {
+const TopBar = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
   const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
@@ -22,4 +22,5 @@ export default function TopBar() {
       <span className="ml-2 font-light text-sm text-slate-100">{title}</span>
     </div>
   );
-}
+});
+export default TopBar;

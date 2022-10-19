@@ -8,10 +8,14 @@ import {
   PackedFile,
   SchemaField,
 } from "./packFileTypes";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { DBNameToDBVersions } = require("./schema") as { DBNameToDBVersions: Record<string, DBVersion[]> };
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { workerData, parentPort, isMainThread } = require("worker_threads");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const BinaryFile = require("../node_modules/binary-file/");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const path = require("path");
 
 function parseTypeBuffer(
@@ -51,6 +55,7 @@ function parseTypeBuffer(
           return [fields, pos];
         } catch (e) {
           console.log(e);
+          throw e;
         }
       }
       break;
@@ -121,6 +126,7 @@ function parseTypeBuffer(
       break;
     default:
       console.log("NO WAY TO RESOLVE " + type);
+      throw new Error("NO WAY TO RESOLVE " + type);
       break;
   }
 }
@@ -133,7 +139,7 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
   return [buffer.subarray(pos, pos + length * 2).toString("utf8"), pos + length * 2];
 };
 
-const readPack = async (modPath: string): Promise<Pack> => {
+const readPack = async (modPath: string): Promise<Pack | undefined> => {
   const pack_files: PackedFile[] = [];
 
   let file: typeof BinaryFile;
@@ -237,7 +243,8 @@ const readPack = async (modPath: string): Promise<Pack> => {
       -1
     );
     const endPos =
-      dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack).file_size + startOfLastPack;
+      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
+      startOfLastPack;
     // console.log("endPos is ", endPos);
 
     const buffer = await file.read(endPos - startPos, startPos);
@@ -258,7 +265,7 @@ const readPack = async (modPath: string): Promise<Pack> => {
 
       // console.log(pack_file);
 
-      let version: number = null;
+      let version: number | undefined;
       for (;;) {
         const marker = await buffer.subarray(currentPos, currentPos + 4);
         currentPos += 4;
@@ -383,23 +390,24 @@ if (!isMainThread) {
   }
 }
 
-function getDBName(packFile: PackedFile) {
+const getDBName = (packFile: PackedFile) => {
   const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
-  if (dbNameMatch == null) return;
+  if (dbNameMatch == null) throw new Error("dbNameMatch cannot be null");
   const dbName = dbNameMatch[1];
   return dbName;
-}
+};
 
-function getDBVersion(packFile: PackedFile) {
+const getDBVersion = (packFile: PackedFile) => {
   const dbName = getDBName(packFile);
   const dbversions = DBNameToDBVersions[dbName];
   if (!dbversions) return;
 
   const dbversion = dbversions.find((dbversion) => dbversion.version == packFile.version) || dbversions[0];
   if (!dbversion) return;
+  if (packFile.version == null) return;
   if (dbversion.version < packFile.version) return;
   return dbversion;
-}
+};
 
 function findPackTableCollisionsBetweenPacks(
   pack: Pack,
@@ -457,12 +465,12 @@ function findPackTableCollisionsBetweenPacks(
             const v1Fields = v1Keys[ii].fields;
             const v1 =
               (v1Fields[1] && v1Fields[1].val != null && v1Fields[1].val.toString()) ||
-              v1Fields[0].val.toString();
+              v1Fields[0]?.val?.toString();
             for (let jj = 0; jj < v2Keys.length; jj++) {
               const v2Fields = v2Keys[jj].fields;
               const v2 =
                 (v2Fields[1] && v2Fields[1].val != null && v2Fields[1].val.toString()) ||
-                v2Fields[0].val.toString();
+                (v2Fields[0]?.val?.toString() ?? "");
 
               if (v1 === v2) {
                 if (

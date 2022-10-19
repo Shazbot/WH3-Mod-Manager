@@ -12,14 +12,11 @@ import {
 import clone from "just-clone";
 import { emptyMovie, introMoviePaths } from "./emptyMovie";
 import { app } from "electron";
-import * as path from "path";
-import { Worker } from "worker_threads";
-import { DBNameToDBVersions, schema } from "./schema";
+import { DBNameToDBVersions } from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
 import { format } from "date-fns";
 import { Blob } from "buffer";
-import * as fs from "fs/promises";
 import * as fsExtra from "fs-extra";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
@@ -44,7 +41,7 @@ const object_schema = JSON.parse(string_schema);
 const latest_version = Object.keys(object_schema.units_custom_battle_permissions_tables).sort()[0];
 const ver_schema = object_schema.units_custom_battle_permissions_tables[latest_version];
 
-function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE = null): number {
+function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE): number {
   switch (type) {
     case "Int8":
     case "UInt8":
@@ -81,6 +78,9 @@ function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE = null): number {
       {
         return 8;
       }
+      break;
+    default:
+      throw new Error("UNKNOWN TYPE_FIELD");
       break;
   }
 }
@@ -127,6 +127,7 @@ async function parseType(
           return fields;
         } catch (e) {
           console.log(e);
+          throw e;
         }
       }
       break;
@@ -188,6 +189,7 @@ async function parseType(
       break;
     default:
       console.log("NO WAY TO RESOLVE " + type);
+      throw new Error("NO WAY TO RESOLVE " + type);
       break;
   }
 }
@@ -229,6 +231,7 @@ function parseTypeBuffer(
           return [fields, pos];
         } catch (e) {
           console.log(e);
+          throw e;
         }
       }
       break;
@@ -300,7 +303,7 @@ function parseTypeBuffer(
       }
       break;
     default:
-      console.log("NO WAY TO RESOLVE " + type);
+      throw new Error("NO WAY TO RESOLVE " + type);
       break;
   }
 }
@@ -362,11 +365,13 @@ const getDBName = (packFile: PackedFile) => {
 
 const getDBVersion = (packFile: PackedFile) => {
   const dbName = getDBName(packFile);
+  if (!dbName) return;
   const dbversions = DBNameToDBVersions[dbName];
   if (!dbversions) return;
 
   const dbversion = dbversions.find((dbversion) => dbversion.version == packFile.version) || dbversions[0];
   if (!dbversion) return;
+  if (packFile.version == null) return;
   if (dbversion.version < packFile.version) return;
   return dbversion;
 };
@@ -384,7 +389,8 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
 };
 
 export const mergeMods = async (mods: Mod[], newFileName?: string) => {
-  let outFile: BinaryFile;
+  if (!appData.dataFolder) return;
+  let outFile: BinaryFile | undefined;
   try {
     const targetPath = nodePath.join(
       appData.dataFolder,
@@ -480,7 +486,7 @@ export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
 };
 
 export const writeCopyPack = async (pathSource: string, pathTarget: string, packFilesToAdd: PackedFile[]) => {
-  let outFile: BinaryFile;
+  let outFile: BinaryFile | undefined;
   try {
     // console.log(pathSource);
     const sourceMod = await readPack(pathSource, true);
@@ -528,7 +534,7 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
     let startPosOffset = 0; // if we replace files with different lenght change the writing position
     for (const packFile of packFiles) {
       console.log(packFile.name, packFile.file_size, packFile.start_pos);
-      let data: Buffer = null;
+      let data: Buffer | undefined;
       const fileToReplaceWith = packFilesToAdd.find((packFileToAdd) => packFileToAdd.name == packFile.name);
       if (fileToReplaceWith) {
         data = fileToReplaceWith.schemaFields[0].fields[0].val as Buffer;
@@ -556,7 +562,7 @@ export const writePack = async (
   enabledMods: Mod[],
   startGameOptions: StartGameOptions
 ) => {
-  let outFile: BinaryFile;
+  let outFile: BinaryFile | undefined;
   try {
     const header = "PFH5";
     const byteMask = 3;
@@ -624,8 +630,10 @@ export const writePack = async (
       let dbVersionNumFields = null;
       if (getDBName(packFile) === "units_custom_battle_permissions_tables") {
         const dbVersion = getDBVersion(packFile);
-        general_unit_index = dbVersion.fields.findIndex((field) => field.name == "general_unit");
-        dbVersionNumFields = dbVersion.fields.length;
+        if (dbVersion != null) {
+          general_unit_index = dbVersion.fields.findIndex((field) => field.name == "general_unit");
+          dbVersionNumFields = dbVersion.fields.length;
+        }
       }
 
       // console.log(general_unit_index);
@@ -707,7 +715,7 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
 export const getPacksInSave = async (saveName: string): Promise<string[]> => {
   console.log("Getting packs from save: ", saveName);
   const appDataPath = app.getPath("appData");
-  const savePath = path.join(appDataPath, "The Creative Assembly/Warhammer3/save_games/", saveName);
+  const savePath = nodePath.join(appDataPath, "The Creative Assembly/Warhammer3/save_games/", saveName);
 
   let file: BinaryFile;
   try {
@@ -718,10 +726,11 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
 
     console.log(
       "mods in save:",
-      ascii.match(/\0[^\0]+?\.pack/g).map((match) => match.replace("\0", ""))
+      ascii.match(/\0[^\0]+?\.pack/g)?.map((match) => match.replace("\0", ""))
     );
 
-    return ascii.match(/\0[^\0]+?\.pack/g).map((match) => match.replace("\0", ""));
+    const packsInSave = ascii.match(/\0[^\0]+?\.pack/g);
+    if (packsInSave != null) return packsInSave.map((match) => match.replace("\0", ""));
   } catch (err) {
     console.log(err);
   }
@@ -733,9 +742,9 @@ let toRead: Mod[];
 
 export const readPack = async (modPath: string, skipParsingTables = false): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
-  let packHeader: PackHeader;
+  let packHeader: PackHeader | undefined;
 
-  let file: BinaryFile;
+  let file: BinaryFile | undefined;
   try {
     file = new BinaryFile(modPath, "r", true);
     await file.open();
@@ -848,7 +857,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     });
 
     if (skipParsingTables || dbPackFiles.length < 1) {
-      return { name: path.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+      return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
     }
 
     const startPos = dbPackFiles.reduce(
@@ -861,7 +870,8 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
       -1
     );
     const endPos =
-      dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack).file_size + startOfLastPack;
+      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
+      startOfLastPack;
     // console.log("endPos is ", endPos);
 
     const buffer = await file.read(endPos - startPos, startPos);
@@ -872,7 +882,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     let currentPos = 0;
     for (const pack_file of pack_files) {
       if (
-        path.basename(modPath) == "data.pack" &&
+        nodePath.basename(modPath) == "data.pack" &&
         !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
       )
         continue;
@@ -890,7 +900,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
 
       // console.log(pack_file);
 
-      let version: number = null;
+      let version: number | undefined;
       for (;;) {
         const marker = await buffer.subarray(currentPos, currentPos + 4);
         currentPos += 4;
@@ -1002,7 +1012,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
   // }
   // console.log(toRead.map((mod) => mod.name));
 
-  return { name: path.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+  return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
 };
 
 export const readDataFromPacks = async (mods: Mod[]) => {

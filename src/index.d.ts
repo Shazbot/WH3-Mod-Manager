@@ -194,4 +194,11 @@ declare global {
   }
 
   type PresetSelection = "unary" | "addition" | "subtraction";
+
+  interface ModWithDefinedReqModIdToName extends Omit<Mod, "reqModIdToName"> {
+    reqModIdToName: [string, string][];
+  }
+  interface ModWithDefinedMergedModsData extends Omit<Mod, "mergedModsData"> {
+    mergedModsData: MergedModsData[];
+  }
 }
