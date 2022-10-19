@@ -389,11 +389,11 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
 };
 
 export const mergeMods = async (mods: Mod[], newFileName?: string) => {
-  if (!appData.dataFolder) return;
+  if (!appData.gamePath) return;
   let outFile: BinaryFile | undefined;
   try {
     const targetPath = nodePath.join(
-      appData.dataFolder,
+      appData.gamePath,
       "/merged/",
       newFileName || "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack"
     );
