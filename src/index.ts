@@ -359,8 +359,8 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
 
 const createWindow = (): void => {
   const mainWindowState = windowStateKeeper({
-    defaultWidth: 1024,
-    defaultHeight: 800,
+    defaultWidth: 1280,
+    defaultHeight: 900,
   });
 
   // Create the browser window.
