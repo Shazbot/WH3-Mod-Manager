@@ -7,6 +7,7 @@ import {
   Pack,
   PackedFile,
   SchemaField,
+  PackHeader,
 } from "./packFileTypes";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { DBNameToDBVersions } = require("./schema") as { DBNameToDBVersions: Record<string, DBVersion[]> };
@@ -16,7 +17,7 @@ const { workerData, parentPort, isMainThread } = require("worker_threads");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const BinaryFile = require("../node_modules/binary-file/");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const path = require("path");
+const nodePath = require("path");
 
 function parseTypeBuffer(
   buffer: Buffer,
@@ -62,9 +63,11 @@ function parseTypeBuffer(
     case "StringU8":
       {
         const length = buffer.readUint16LE(pos); //await file.readUInt16();
+        // console.log("stringU8 length is", length);
         pos += 2;
         const val = buffer.subarray(pos, pos + length).toString("ascii"); //await file.readString(length);
         pos += length;
+        // console.log("val is", val);
 
         // console.log('string');
         // console.log('position is ' + file.tell());
@@ -125,7 +128,6 @@ function parseTypeBuffer(
       }
       break;
     default:
-      console.log("NO WAY TO RESOLVE " + type);
       throw new Error("NO WAY TO RESOLVE " + type);
       break;
   }
@@ -139,10 +141,11 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
   return [buffer.subarray(pos, pos + length * 2).toString("utf8"), pos + length * 2];
 };
 
-const readPack = async (modPath: string): Promise<Pack | undefined> => {
+export const readPack = async (modPath: string, skipParsingTables = false): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
+  let packHeader: PackHeader | undefined;
 
-  let file: typeof BinaryFile;
+  let file: typeof BinaryFile | undefined;
   try {
     file = new BinaryFile(modPath, "r", true);
     await file.open();
@@ -166,15 +169,22 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
     // console.log(`packed_file_index_size is ${packed_file_index_size}`);
 
     const header_buffer_len = 4;
-    await file.readInt32(); // header_buffer
+    const header_buffer = await file.read(4); // header_buffer
+
+    packHeader = {
+      header,
+      byteMask,
+      refFileCount,
+      pack_file_index_size,
+      pack_file_count,
+      header_buffer,
+    } as PackHeader;
 
     const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
     // console.log("data starts at " + dataStart);
 
     let chunk;
     let file_pos = dataStart;
-
-    // let terminatorIndex = -1;
 
     const headerSize = dataStart - file.tell();
     const headerBuffer = await file.read(headerSize);
@@ -191,6 +201,8 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
       bufPos += 4;
       const is_compressed = headerBuffer.readInt8(bufPos);
       bufPos += 1;
+      // const file_size = (stream.read(4) as Buffer).readInt32LE();
+      // const is_compressed = (stream.read(1) as Buffer).readInt8();
 
       const nameStartPos = bufPos;
       while (null !== (chunk = headerBuffer.readInt8(bufPos))) {
@@ -199,6 +211,7 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
           name = headerBuffer.toString("utf8", nameStartPos, bufPos - 1);
           break;
         }
+        // console.log(`Read ${chunk.length} bytes of data...`);
       }
 
       // if (name.startsWith("db")) {
@@ -224,14 +237,29 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
     }
 
     // console.log("num pack files: " + pack_files.length);
+
     // console.log("DONE READING FILE");
+
+    // pack_files.forEach((pack_file) => {
+    //   const db_name = pack_file.name.match(/db\\(.*?)\\/);
+    //   if (db_name != null) {
+    //     console.log(db_name);
+    //     // console.log(pack_file.name);
+    //   }
+    // });
+
+    // const battle_permissions = pack_files.filter((pack) =>
+    //   pack.name.startsWith("db\\units_custom_battle_permissions_tables")
+    // );
 
     const dbPackFiles = pack_files.filter((packFile) => {
       const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
       return dbNameMatch != null && dbNameMatch[1];
     });
 
-    if (dbPackFiles.length < 1) return;
+    if (skipParsingTables || dbPackFiles.length < 1) {
+      return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+    }
 
     const startPos = dbPackFiles.reduce(
       (previous, current) => (previous < current.start_pos ? previous : current.start_pos),
@@ -249,8 +277,16 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
 
     const buffer = await file.read(endPos - startPos, startPos);
 
+    // console.log("len:", endPos - startPos);
+    // console.log("startPos:", startPos);
+
     let currentPos = 0;
     for (const pack_file of pack_files) {
+      if (
+        nodePath.basename(modPath) == "data.pack" &&
+        !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
+      )
+        continue;
       if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
       currentPos = pack_file.start_pos - startPos;
       // console.log(currentPos);
@@ -282,10 +318,10 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
 
           pack_file.version = version;
           // await file.read(1);
-          currentPos += 1;
         } else {
           // console.log(marker.toString("hex"));
           currentPos -= 4;
+          currentPos += 1;
           // file.seek(file.tell() - 4);
           break;
         }
@@ -306,10 +342,15 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
       //   console.log(pack_file.start_pos);
       // }
 
-      if (version == null) continue;
-      const dbversion = dbversions.find((dbversion) => dbversion.version == version) || dbversions[0];
+      // if (version == null) continue;
+      const dbversion =
+        dbversions.find((dbversion) => dbversion.version == version) ||
+        dbversions.find((dbversion) => dbversion.version == 0);
       if (!dbversion) continue;
-      if (dbversion.version < version) continue;
+      if (version != null && dbversion.version < version) continue;
+      // if (version == null) {
+      //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
+      // }
 
       const entryCount = buffer.readInt32LE(currentPos); //await file.readInt32();
       currentPos += 4;
@@ -323,13 +364,36 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
           const { name, field_type, is_key } = field;
           // console.log(name);
           // console.log(field_type);
+          // console.log(currentPos);
+          // console.log("real_pos:", currentPos + startPos);
+
+          // if (name === 'general_unit') console.log("it's a general");
+          // console.log("pos is " + outFile.tell());
+          // console.log('i is ' + i);
+          // const fields = await parseType(file, field_type);
           const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
           const fields = fieldsRet[0];
           currentPos = fieldsRet[1];
 
+          if (!fields[1] && !fields[0]) {
+            console.log(name);
+            console.log(field_type);
+          }
+          if (fields[0].val == undefined) {
+            console.log(name);
+            console.log(field_type);
+          }
+          if (fields.length == 0) {
+            console.log(name);
+            console.log(field_type);
+          }
+
           const schemaField: SchemaField = {
+            // name,
             type: field_type,
             fields,
+            // isKey: is_key,
+            // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
           };
           if (is_key) schemaField.isKey = true;
           pack_file.schemaFields.push(schemaField);
@@ -349,7 +413,7 @@ const readPack = async (modPath: string): Promise<Pack | undefined> => {
   // }
   // console.log(toRead.map((mod) => mod.name));
 
-  return { name: path.basename(modPath), path: modPath, packedFiles: pack_files } as Pack;
+  return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
 };
 
 if (!isMainThread) {
@@ -361,9 +425,9 @@ if (!isMainThread) {
     }
   } else {
     try {
-      const mods: any[] = workerData.mods;
-      const packFieldsPromises = mods.map((mod) => {
-        return readPack(mod.path);
+      const modPaths: string[] = workerData.mods;
+      const packFieldsPromises = modPaths.map((path) => {
+        return readPack(path);
       });
 
       console.time("readPacks");
@@ -377,9 +441,12 @@ if (!isMainThread) {
           //   packsData.splice(0, packsData.length, ...newPacksData);
           console.timeEnd("readPacks"); //26.580s
 
-          console.log(newPacksData[0]);
+          // console.log(newPacksData[0]);
+          if (newPacksData[0] == null) {
+            console.log("FAILED READING", modPaths[0]);
+          }
           console.log("READ PACKS DONE");
-          parentPort.postMessage({ newPacksData });
+          parentPort.postMessage(newPacksData[0]);
         })
         .catch((e) => {
           console.log(e);
@@ -392,13 +459,14 @@ if (!isMainThread) {
 
 const getDBName = (packFile: PackedFile) => {
   const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
-  if (dbNameMatch == null) throw new Error("dbNameMatch cannot be null");
+  if (dbNameMatch == null) return;
   const dbName = dbNameMatch[1];
   return dbName;
 };
 
 const getDBVersion = (packFile: PackedFile) => {
   const dbName = getDBName(packFile);
+  if (!dbName) return;
   const dbversions = DBNameToDBVersions[dbName];
   if (!dbversions) return;
 
