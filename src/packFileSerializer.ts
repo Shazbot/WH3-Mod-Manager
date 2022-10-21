@@ -18,6 +18,7 @@ import appData from "./appData";
 import { format } from "date-fns";
 import { Blob } from "buffer";
 import * as fsExtra from "fs-extra";
+import { Worker } from "node:worker_threads";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -1013,6 +1014,19 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
   // console.log(toRead.map((mod) => mod.name));
 
   return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+};
+
+export const readPackWithWorker = async (modPath: string, skipParsingTables = false): Promise<Pack> => {
+  return new Promise<Pack>((resolve, reject) => {
+    const worker = new Worker(nodePath.join(__dirname, "readPacksWorker.js"), {
+      workerData: { mods: [modPath] },
+    });
+    worker.on("message", resolve);
+    worker.on("error", reject);
+    worker.on("exit", (code: number) => {
+      if (code !== 0) reject(new Error(`Stopped with  ${code} exit code`));
+    });
+  });
 };
 
 export const readDataFromPacks = async (mods: Mod[]) => {

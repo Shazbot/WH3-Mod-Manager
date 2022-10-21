@@ -58,10 +58,15 @@ const subscribeToStoreChanges = () => {
     setTimeout(() => {
       if (!isSubscribedToStoreChanges) {
         isSubscribedToStoreChanges = true;
+
+        let appState = store.getState().app;
+        let enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
+        if (enabledMods.length != appState.currentPreset.mods.length) window.api?.readMods(enabledMods);
+
         store.subscribe(() => {
-          const appState = store.getState().app;
+          appState = store.getState().app;
           window.api?.saveConfig(appState);
-          const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
+          enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
 
           // don't do it if all are enabled, i.e. when user is resetting the enabled column
           if (enabledMods.length != appState.currentPreset.mods.length) window.api?.readMods(enabledMods);
