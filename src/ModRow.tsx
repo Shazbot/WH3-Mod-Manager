@@ -24,7 +24,7 @@ export default function ModRow() {
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
 
-  const [sortingType, setSortingType] = useState<SortingType>(SortingType.Ordered);
+  const [sortingType, setSortingType] = useState<SortingType>(SortingType.IsEnabled);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
 
