@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import equal from "fast-deep-equal";
 import { move } from "fs-extra";
 import appData from "./appData";
+import * as nodePath from "path";
 
 let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
@@ -39,8 +40,17 @@ export function writeAppConfig(data: AppState) {
   } else {
     writeConfigTimeout = setTimeout(async () => {
       try {
+        const stringifiedData = JSON.stringify(dataToWrite);
+
+        // write to the dir where the exe is due to bizarre file permission issues
+        const exeDirPath = nodePath.dirname(app.getPath("exe"));
+        const exeDirTempConfigPath = `${exeDirPath}\\config_temp.json`;
+        const exeDirConfigPath = `${exeDirPath}\\config.json`;
+        await fs.writeFile(exeDirTempConfigPath, stringifiedData);
+        await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
+
         const tempFilePath = `${userData}\\config_temp.json`;
-        await fs.writeFile(tempFilePath, JSON.stringify(dataToWrite));
+        await fs.writeFile(tempFilePath, stringifiedData);
 
         const configFilePath = `${userData}\\config.json`;
         await move(tempFilePath, configFilePath, { overwrite: true });
@@ -52,7 +62,22 @@ export function writeAppConfig(data: AppState) {
 }
 
 export async function readAppConfig(): Promise<AppStateToWrite> {
-  const userData = app.getPath("userData");
-  const data = await fs.readFile(`${userData}\\config.json`, "utf8");
+  let data: string | undefined;
+  try {
+    const userData = app.getPath("userData");
+    data = await fs.readFile(`${userData}\\config.json`, "utf8");
+    // eslint-disable-next-line no-empty
+  } catch (err) {}
+
+  try {
+    if (!data) {
+      const exeDirConfigPath = `${nodePath.dirname(app.getPath("exe"))}\\config.json`;
+      data = await fs.readFile(exeDirConfigPath, "utf8");
+    }
+    // eslint-disable-next-line no-empty
+  } catch (err) {}
+
+  if (!data) throw new Error("No App config file exists!");
+
   return JSON.parse(data);
 }
