@@ -336,7 +336,16 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
       });
   }
   if (!mergedWatcher || isDev) {
-    await fsExtra.ensureDir(nodePath.join(appData.gamePath, "/merged/"));
+    const mergedDirPath = nodePath.join(appData.gamePath, "/merged/");
+    exec(`mkdir "${mergedDirPath}"`);
+
+    while (!fsExtra.existsSync(mergedDirPath)) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+    }
+
+    // await fsExtra.ensureDir(nodePath.join(appData.gamePath, "/merged/"));
     const gamePath = appData.gamePath.replaceAll("\\", "/").replaceAll("//", "/");
     mergedWatcher = chokidar
       .watch([`${gamePath}/merged/*.pack`], {
