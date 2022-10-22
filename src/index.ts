@@ -22,10 +22,8 @@ import {
   readPack,
   readDataFromPacks,
   writePack,
-  readPackWithWorker,
 } from "./packFileSerializer";
 import * as nodePath from "path";
-import { getCompatData } from "./packFileDataManager";
 import { format } from "date-fns";
 import {
   appendPackFileCollisions,
@@ -165,7 +163,7 @@ const onNewPackFound = async (path: string) => {
   mainWindow.webContents.send("handleLog", "MOD ADDED: " + path);
   console.log("MOD ADDED: " + path);
   await getMod(mainWindow, path);
-  const newPack = await readPackWithWorker(path);
+  const newPack = await readPack(path);
 
   try {
     appendPacksData(newPack);
@@ -529,15 +527,7 @@ const createWindow = (): void => {
       ) {
         console.log("READING " + mod.name);
         appData.currentlyReadingModPaths.push(mod.path);
-        let newPack;
-        if (mod.size && mod.size > 5e8) {
-          newPack = await readPackWithWorker(mod.path);
-        } else {
-          newPack = await readPack(mod.path);
-        }
-        if (newPack == null) {
-          console.log("FAILED READING", mod.path);
-        }
+        const newPack = await readPack(mod.path);
         appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
           (path) => path != mod.path
         );
