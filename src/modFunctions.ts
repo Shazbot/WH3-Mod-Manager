@@ -1,13 +1,14 @@
 import { parse, getTime } from "date-fns";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
-import * as fs from "fs/promises";
+import * as fsPromises from "fs/promises";
 import * as dumbfs from "fs";
 import appData from "./appData";
 import fetch from "electron-fetch";
 import { zonedTimeToUtc } from "date-fns-tz";
 import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
+import * as os from "os";
 
 export function fetchModData(ids: string[], cb: (modData: ModData) => void, log: (msg: string) => void) {
   ids.forEach(async (workshopId) => {
@@ -157,7 +158,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   let lastChangedLocal = undefined;
   let size = -1;
   try {
-    [lastChangedLocal, size] = await fs.stat(filePath).then((stats) => {
+    [lastChangedLocal, size] = await fsPromises.stat(filePath).then((stats) => {
       return [stats.mtimeMs, stats.size];
     });
   } catch (err) {
@@ -165,9 +166,9 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   }
 
   let doesThumbnailExist = false;
-  const thumbnailPath = `${dataPath}\\${fileName.replace(/\.pack$/, ".png")}`;
+  const thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".png"));
   try {
-    await fs.access(thumbnailPath, dumbfs.constants.R_OK);
+    await fsPromises.access(thumbnailPath, dumbfs.constants.R_OK);
     doesThumbnailExist = true;
     // eslint-disable-next-line no-empty
   } catch {}
@@ -181,11 +182,13 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     // eslint-disable-next-line no-empty
   } catch {}
 
+
+  const linuxBit = process.platform === "linux" ? "Z:" : "";
   const mod: Mod = {
     humanName: "",
     name: fileName,
     path: filePath,
-    modDirectory: nodePath.dirname(filePath),
+    modDirectory: linuxBit + nodePath.dirname(filePath),
     imgPath: doesThumbnailExist ? thumbnailPath : "",
     workshopId: fileName,
     isEnabled: false,
@@ -206,7 +209,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
   if (!dataPath) throw new Error("Data folder not found");
 
   const vanillaPacks: string[] = [];
-  return fs.readFile(`${gameDir}\\data\\manifest.txt`, "utf8").then(async (data) => {
+  return fsPromises.readFile(nodePath.join(gameDir, "data", "manifest.txt"), "utf8").then(async (data) => {
     const re = /([^\s]+)/;
     data.split("\n").map((line) => {
       const found = line.match(re);
@@ -215,7 +218,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
       }
     });
 
-    const files = await fs.readdir(dataPath, { withFileTypes: true });
+    const files = await fsPromises.readdir(dataPath, { withFileTypes: true });
 
     const dataModsPromises = files
       .filter(
@@ -238,36 +241,52 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
 };
 
 const getFolderPaths = async (log: (msg: string) => void) => {
-  const regKey = new Registry({
-    hive: Registry.HKLM,
-    key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
-  });
+  let installPath = "";
+  if (process.platform === "win32") {
+    const regKey = new Registry({
+      hive: Registry.HKLM,
+      key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
+    });
 
-  const items = await regKeyValuesAsPromise(regKey);
-  const installPathObj = items.find((x) => x.name === "InstallPath");
-  if (!installPathObj) return;
+    const items = await regKeyValuesAsPromise(regKey);
+    const installPathObj = items.find((x) => x.name === "InstallPath");
+    if (!installPathObj) {
+      log("Unable to find InstallPath in Windows registry");
+      return;
+    }
+    installPath = installPathObj.value;
+  }
+  else if (process.platform === "linux") {
+    const steamPath = os.homedir() + "/.steam/steam";
+    if (!dumbfs.existsSync(steamPath)) {
+      log("Unable to find steam directory at " + steamPath);
+      return;
+    }
+    installPath = steamPath;
+  }
 
-  const installPath = installPathObj.value;
-  const libFoldersPath = `${installPath}\\steamapps\\libraryfolders.vdf`;
+  const libFoldersPath = nodePath.join(installPath, "steamapps", "libraryfolders.vdf");
+  log(`Check lib vdf at ${libFoldersPath}`);
+  if (!dumbfs.existsSync(libFoldersPath)) return;
   log(`Found libraryfolders.vdf at ${libFoldersPath}`);
 
-  const data = await fs.readFile(libFoldersPath, "utf8");
+  const data = await fsPromises.readFile(libFoldersPath, "utf8");
   const object = VDF.parse(data).libraryfolders;
   const paths = [];
   for (const property in object) {
     paths.push(object[property].path);
   }
 
-  for (const path of paths) {
-    const worshopFilePath = `${path}\\steamapps\\appmanifest_1142710.acf`;
+  for (const basepath of paths) {
+    const path = basepath.replaceAll("\\\\", "\\").replaceAll("//", "/");
+    const worshopFilePath = nodePath.join(path, "steamapps", "appmanifest_1142710.acf");
     try {
-      await fs.readFile(worshopFilePath);
+      await fsPromises.readFile(worshopFilePath);
       log(`Found appmanifest_1142710.acf at ${worshopFilePath}`);
-      // log(worshopFilePath);
-      const contentFolder = `${path}\\steamapps\\workshop\\content\\1142710`;
-      appData.contentFolder = contentFolder.replaceAll("\\\\", "\\");
-      appData.gamePath = `${path}\\steamapps\\common\\Total War WARHAMMER III`.replaceAll("\\\\", "\\");
-      appData.dataFolder = `${appData.gamePath}\\data`.replaceAll("\\\\", "\\");
+      const contentFolder = nodePath.join(path, "steamapps", "workshop", "content", "1142710");
+      appData.contentFolder = contentFolder;
+      appData.gamePath = nodePath.join(path, "steamapps", "common", "Total War WARHAMMER III");
+      appData.dataFolder = nodePath.join(appData.gamePath, "data");
 
       log(`Content folder is at ${appData.contentFolder}`);
       log(`Game path is at ${appData.gamePath}`);
@@ -295,7 +314,7 @@ export async function getContentModInFolder(
   if (!appData.contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.contentFolder;
 
-  const files = await fs.readdir(`${contentFolder}\\${contentSubFolderName}`, { withFileTypes: true });
+  const files = await fsPromises.readdir(nodePath.join(contentFolder, contentSubFolderName), { withFileTypes: true });
 
   const pack = files.find((file) => file.name.endsWith(".pack"));
   const img = files.find((file) => file.name.endsWith(".png"));
@@ -305,8 +324,8 @@ export async function getContentModInFolder(
   let lastChangedLocal = undefined;
   let size = -1;
   try {
-    [lastChangedLocal, size] = await fs
-      .stat(`${contentFolder}\\${contentSubFolderName}\\${pack.name}`)
+    [lastChangedLocal, size] = await fsPromises
+      .stat(nodePath.join(contentFolder, contentSubFolderName, pack.name))
       .then((stats) => {
         return [stats.mtimeMs, stats.size];
       });
@@ -315,14 +334,14 @@ export async function getContentModInFolder(
   }
 
   // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
-  const packPath = `${contentFolder}\\${contentSubFolderName}\\${pack.name}`;
-  const imgPath = (img && `${contentFolder}\\${contentSubFolderName}\\${img.name}`) || "";
+  const packPath = nodePath.join(contentFolder, contentSubFolderName, pack.name);
+  const imgPath = (img && nodePath.join(contentFolder, contentSubFolderName, img.name) || "");
   const mod: Mod = {
     author: "",
     humanName: "",
     name: pack.name,
     path: packPath,
-    modDirectory: `${contentFolder}\\${contentSubFolderName}`,
+    modDirectory: nodePath.join(contentFolder, contentSubFolderName),
     imgPath: imgPath,
     workshopId: contentSubFolderName,
     isEnabled: false,
@@ -348,7 +367,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const dataMods = await getDataMods(appData.gamePath, log);
   mods.push(...dataMods);
 
-  const files = await fs.readdir(contentFolder, { withFileTypes: true });
+  const files = await fsPromises.readdir(contentFolder, { withFileTypes: true });
   const newMods = files
     .filter((file) => file.isDirectory())
     .map(async (contentSubFolder) => {
