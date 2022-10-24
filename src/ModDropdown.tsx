@@ -1,5 +1,5 @@
 import { Tooltip } from "flowbite-react";
-import React, { memo, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { setModLoadOrder, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";
 import { Modal } from "./flowbite";
 import { useAppDispatch, useAppSelector } from "./hooks";
@@ -9,6 +9,7 @@ type ModDropdownProps = {
   positionX: number;
   positionY: number;
   mod?: Mod;
+  referenceElement: HTMLDivElement | undefined;
 };
 
 const ModDropdown = memo((props: ModDropdownProps) => {
@@ -17,6 +18,13 @@ const ModDropdown = memo((props: ModDropdownProps) => {
   const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
   const [loadOrderHasError, setLoadOrderHasError] = useState(false);
   const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
+
+  let deltaX = 0;
+  let deltaY = 0;
+  if (props.referenceElement) {
+    deltaX = props.referenceElement.getBoundingClientRect().left - props.positionX;
+    deltaY = props.referenceElement.getBoundingClientRect().top - props.positionY;
+  }
 
   const onGoToWorkshopPageClick = () => {
     let workshopId = props.mod?.workshopId;
@@ -85,6 +93,22 @@ const ModDropdown = memo((props: ModDropdownProps) => {
     window.api?.deletePack(mod);
   };
 
+  const modDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (modDropdownRef.current && props.referenceElement) {
+        modDropdownRef.current.style.top = `${(
+          props.referenceElement.getBoundingClientRect().top - deltaY
+        ).toString()}px`;
+        modDropdownRef.current.style.left = `${(
+          props.referenceElement.getBoundingClientRect().left - deltaX
+        ).toString()}px`;
+      }
+    }, 10);
+    return () => clearInterval(interval);
+  }, [props.referenceElement, modDropdownRef.current]);
+
   return (
     (props.mod == null && <></>) || (
       <>
@@ -142,10 +166,7 @@ const ModDropdown = memo((props: ModDropdownProps) => {
             `${props.isOpen ? "" : "hidden"}` +
             ` fixed w-44 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700`
           }
-          style={{
-            left: props.positionX,
-            top: props.positionY,
-          }}
+          ref={modDropdownRef}
         >
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
             <li>
