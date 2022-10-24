@@ -1,6 +1,6 @@
 import React from "react";
 import { Modal } from "./flowbite/components/Modal/index";
-import { Spinner, Tabs } from "./flowbite";
+import { Spinner, Tabs, Tooltip } from "./flowbite";
 import { getModsSortedByName, getModsSortedByHumanName, getModsSortedBySize } from "./modSortingHelpers";
 import Select, { ActionMeta, SingleValue } from "react-select";
 import selectStyle from "./styles/selectStyle";
@@ -16,13 +16,29 @@ const ModsMerger = React.memo(() => {
   );
   const mods = useSelector(modsNotInDataSelector);
 
+  const mergerModsSelector = createSelector(
+    (state: { app: AppState }) => state.app.currentPreset.mods,
+    (mods) => mods.filter((mod) => mod.mergedModsData)
+  );
+  const mergerMods = useSelector(mergerModsSelector);
+
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
+  const [isHidingAlreadyMergedMods, setIsHidingAlreadyMergedMods] = React.useState(true);
   const [isOpen, setIsOpen] = React.useState(false);
   const [modsToMerge, setModsToMerge] = React.useState<Set<Mod>>(new Set<Mod>());
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
   const [modsMergeSort, setModsMergeSort] = React.useState("Size" as ModsMergeSorts);
 
   let modsToUse = [...mods];
+
+  if (isHidingAlreadyMergedMods) {
+    modsToUse = modsToUse.filter((mod) =>
+      mergerMods.every((mergerMod) =>
+        mergerMod.mergedModsData?.every((mergedModData) => mergedModData.name != mod.name)
+      )
+    );
+  }
+
   switch (modsMergeSort) {
     case "Merge":
       modsToUse = modsToUse.sort((firstMod, secondMod) => {
@@ -72,21 +88,49 @@ const ModsMerger = React.memo(() => {
     setModsToMerge(new Set<Mod>(modsToMerge));
   };
 
-  type OptionType = {
+  type NumModsOptionType = {
     value: number;
     label: number;
   };
+  type ExistingMergerOptionType = {
+    value: string;
+    label: string;
+  };
 
-  const onReplaceChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+  const onSelectNumModsChange = (
+    newValue: SingleValue<NumModsOptionType>,
+    actionMeta: ActionMeta<NumModsOptionType>
+  ) => {
     if (!newValue) return;
     console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action === "select-option") {
       setModsToMerge(new Set<Mod>(modsToUse.slice(0, newValue.value)));
     }
   };
+  const onSelectExistingMergerChange = (
+    newValue: SingleValue<ExistingMergerOptionType>,
+    actionMeta: ActionMeta<ExistingMergerOptionType>
+  ) => {
+    if (!newValue) return;
+    console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
+    if (actionMeta.action === "select-option") {
+      const mergerMod = mergerMods.find((mergerMod) => mergerMod.name == newValue.value);
+      if (!mergerMod || !mergerMod.mergedModsData) return;
+      const mergedData = mergerMod.mergedModsData;
+      setModsToMerge(
+        new Set<Mod>(
+          modsToUse.filter((mod) => mergedData.some((mergedModData) => mergedModData.name == mod.name))
+        )
+      );
+    }
+  };
 
-  const options: OptionType[] = [5, 10, 15, 20, 25, 30, 35, 40, 50, 75, 100, 0].map((num) => {
+  const options: NumModsOptionType[] = [5, 10, 15, 20, 25, 30, 35, 40, 50, 75, 100, 0].map((num) => {
     return { value: num, label: num };
+  });
+
+  const mergerOptions: ExistingMergerOptionType[] = mergerMods.map((mod) => {
+    return { value: mod.name, label: mod.name };
   });
 
   const mergeMods = () => {
@@ -110,6 +154,10 @@ const ModsMerger = React.memo(() => {
   const togglePackSorting = () => {
     if (modsMergeSort == "Pack") setModsMergeSort("PackDesc");
     else setModsMergeSort("Pack");
+  };
+
+  const onMergeRightClick = () => {
+    setModsToMerge(new Set<Mod>());
   };
 
   return (
@@ -136,31 +184,68 @@ const ModsMerger = React.memo(() => {
           ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
         ]}
       >
-        <Modal.Header>Merge Mods</Modal.Header>
+        <Modal.Header>Merge Mods{modsToMerge.size > 0 && ` - ${modsToMerge.size} selected`}</Modal.Header>
         <Modal.Body>
           <Tabs.Group style="underline">
             <Tabs.Item active={true} title="Merge">
               <span className="absolute top-[6rem] right-0 flex items-center leading-relaxed dark:text-gray-300">
-                <span className="mr-10">
+                {mergerMods.length > 0 && (
+                  <>
+                    <span className="make-tooltip-inline">
+                      <Tooltip style={"light"} content={<p>Load mods that are in an existing merged mod.</p>}>
+                        <span className="text-center w-full">Load existing:</span>
+                      </Tooltip>
+                    </span>
+                    <Select
+                      options={mergerOptions}
+                      styles={selectStyle}
+                      onChange={onSelectExistingMergerChange}
+                      value={null}
+                      className="mx-2"
+                    ></Select>
+                  </>
+                )}
+
+                <span className="border-l-2 px-2 border-gray-600">
                   <input
                     type="checkbox"
-                    id="compat-enabled-mod-only"
+                    id="merge-hide-already-merged"
+                    checked={isHidingAlreadyMergedMods}
+                    onChange={() => {
+                      setIsHidingAlreadyMergedMods(!isHidingAlreadyMergedMods);
+                    }}
+                  ></input>
+                  <label className="ml-2" htmlFor="merge-hide-already-merged">
+                    <span className="make-tooltip-inline">
+                      <Tooltip
+                        style={"light"}
+                        content={<p>Don't show a mod if it's inside an enabled merged pack.</p>}
+                      >
+                        <span className="text-center w-full">Hide Already Merged</span>
+                      </Tooltip>
+                    </span>
+                  </label>
+                </span>
+
+                <span className="border-x-2 px-2 border-gray-600">
+                  <input
+                    type="checkbox"
+                    id="merge-enabled-mod-only"
                     checked={useEnabledModsOnly}
                     onChange={() => {
                       if (!useEnabledModsOnly) setModsToMerge(new Set<Mod>());
                       setUseEnabledModsOnly(!useEnabledModsOnly);
                     }}
                   ></input>
-                  <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                  <label className="ml-2" htmlFor="merge-enabled-mod-only">
                     Enabled Mods Only
                   </label>
                 </span>
-                <span>Select first</span>
+                <span className="ml-2">Select first</span>
                 <Select
-                  id="replacePreset"
                   options={options}
                   styles={selectStyle}
-                  onChange={onReplaceChange}
+                  onChange={onSelectNumModsChange}
                   value={null}
                   className="mx-2"
                 ></Select>
@@ -176,6 +261,7 @@ const ModsMerger = React.memo(() => {
               <div className="leading-relaxed dark:text-gray-300 relative gap-2 ">
                 <div className="grid grid-cols-9">
                   <div
+                    onContextMenu={() => onMergeRightClick()}
                     className={
                       "col-span-1 justify-center flex " +
                       (((modsMergeSort == "Merge" || modsMergeSort == "MergeDesc") && "font-bold") || "")

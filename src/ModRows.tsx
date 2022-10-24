@@ -474,6 +474,7 @@ export default function ModRows() {
           .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name))
           .map((mod) => (
             <ModRow
+              key={mod.path}
               {...{
                 mod,
                 onRowHoverStart,
