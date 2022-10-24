@@ -761,15 +761,16 @@ ipcMain.on("exportModsToClipboard", async (event, mods: Mod[]) => {
 
 ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => {
   const appDataPath = app.getPath("userData");
-  const userScriptPath = `${appData.gamePath}\\my_mods.txt`;
+  const userScriptPath = nodePath.join(appData.gamePath, "my_mods.txt");
 
   const sortedMods = sortByNameAndLoadOrder(mods);
   const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
 
+  const linuxBit = process.platform === "linux" ? "Z:" : "";
   const dataMod: Mod = {
     humanName: "",
     name: "data.pack",
-    path: `${appData.dataFolder}\\data.pack`,
+    path: nodePath.join(appData.dataFolder as string, "data.pack"),
     imgPath: "",
     workshopId: "",
     isEnabled: true,
@@ -789,14 +790,13 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
     startGameOptions.isScriptLoggingEnabled ||
     startGameOptions.isSkipIntroMoviesEnabled
   ) {
-    await fs.mkdir(`${appDataPath}\\tempPacks`, { recursive: true });
+    await fs.mkdir(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
 
     // const data = await readPacks(enabledMods.map((mod) => mod.path));
     const tempPackName = "!!!!out.pack";
-    const tempPackPath = `${appDataPath}\\tempPacks\\${tempPackName}`;
+    const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
     await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
-
-    extraEnabledMods = `\nadd_working_directory "${appDataPath}\\tempPacks";` + `\nmod "${tempPackName}";`;
+    extraEnabledMods = `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` + `\nmod "${tempPackName}";`;
   }
 
   const modPathsInsideMergedMods = enabledMods
@@ -811,12 +811,12 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
   const text =
     enabledModsWithoutMergedInMods
       .filter((mod) => nodePath.relative(appData.dataFolder as string, mod.modDirectory) != "")
-      .map((mod) => `add_working_directory "${mod.modDirectory}";`)
+      .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
       .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
       .join("\n") + extraEnabledMods;
 
   await fs.writeFile(userScriptPath, text);
-  const batPath = `${appDataPath}\\game.bat`;
+  const batPath = nodePath.join(appDataPath, "game.bat");
   let batData = `start /d "${appData.gamePath}" Warhammer3.exe`;
   if (saveName) {
     batData += ` game_startup_mode campaign_load "${saveName}" ;`;
