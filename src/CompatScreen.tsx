@@ -87,7 +87,7 @@ const CompatScreen = memo(() => {
   const toggleUseEnabledModsOnly = () => {
     if (useEnabledModsOnly) {
       console.log("READ ALL MODS");
-      window.api?.readMods(mods);
+      window.api?.readMods(mods, false);
     }
     setUseEnabledModsOnly(!useEnabledModsOnly);
   };
