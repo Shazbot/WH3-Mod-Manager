@@ -632,7 +632,7 @@ export function appendPackTableCollisions(
   return packTableCollisions;
 }
 
-function findPackTableCollisions(packsData: Pack[]) {
+export function findPackTableCollisions(packsData: Pack[]) {
   const packTableCollisions: PackTableCollision[] = [];
   console.time("compareKeys");
   for (let i = 0; i < packsData.length; i++) {
@@ -702,7 +702,7 @@ function findPackFileCollisionsBetweenPacks(pack: Pack, packTwo: Pack, conflicts
   }
 }
 
-function findPackFileCollisions(packsData: Pack[]) {
+export function findPackFileCollisions(packsData: Pack[]) {
   console.time("findPackFileCollisions");
   const conflicts: PackFileCollision[] = [];
   for (let i = 0; i < packsData.length; i++) {
