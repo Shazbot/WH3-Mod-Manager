@@ -23,6 +23,8 @@ type ModRowProps = {
   onModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
   onRemoveModOrder: (mod: Mod) => void;
   loadOrder: number;
+  isEnabledInMergedMod: boolean;
+  isAlwaysEnabled: boolean;
 };
 
 const domParser = new DOMParser();
@@ -51,22 +53,16 @@ const ModRow = memo(
     onDragLeave,
     onDragEnter,
     onDragOver,
-    onDragEnd,
     onModToggled,
     onModRightClick,
     onRemoveModOrder,
+    isAlwaysEnabled,
+    isEnabledInMergedMod,
     loadOrder,
   }: ModRowProps) => {
     const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
-    const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
     const isDev = useAppSelector((state) => state.app.isDev);
     const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
-
-    const presetMods = useAppSelector((state) => state.app.currentPreset.mods);
-    const enabledMods = presetMods.filter(
-      (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
-    );
-    const enabledMergeMods = enabledMods.filter((mod) => mod.mergedModsData);
 
     return (
       <div
@@ -85,7 +81,7 @@ const ModRow = memo(
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
           <span className={mod.loadOrder === undefined ? "" : "text-red-600 font-bold"}>{loadOrder}</span>
         </div>
-        <div className="relative grid" onDragEnd={(e) => onDragEnd(e)} onDragStart={(e) => onDragStart(e)}>
+        <div className="relative grid" onDragStart={(e) => onDragStart(e)}>
           <div
             draggable="true"
             className="hidden absolute left-0 self-center cursor-grab first:p-0 z-10"
@@ -98,9 +94,10 @@ const ModRow = memo(
           >
             <input
               style={
-                alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name) && {
+                (isAlwaysEnabled && {
                   color: "#6D28D9",
-                }
+                }) ||
+                {}
               }
               type="checkbox"
               name={mod.workshopId}
@@ -173,11 +170,7 @@ const ModRow = memo(
                   </span>
                 </Tooltip>
               )}
-              {enabledMergeMods.some((mergeMod) =>
-                (mergeMod.mergedModsData as MergedModsData[]).some(
-                  (mergeModData) => mergeModData.path == mod.path
-                )
-              ) && (
+              {isEnabledInMergedMod && (
                 <Tooltip
                   placement="bottom"
                   content={
