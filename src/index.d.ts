@@ -40,7 +40,7 @@ declare global {
     copyToData: () => void;
     cleanData: () => void;
     saveConfig: (appData: AppState) => void;
-    readMods: (mods: Mod[]) => void;
+    readMods: (mods: Mod[], skipCollisionCheck = true) => void;
     getUpdateData: () => Promise<ModUpdateExists>;
     modsPopulated: (
       callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void
