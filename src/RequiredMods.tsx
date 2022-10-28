@@ -1,8 +1,7 @@
 import { Modal } from "./flowbite/components/Modal/index";
-import React, { memo } from "react";
+import React, { memo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { toggleMod } from "./appSlice";
-import store from "./store";
 
 const subbedModIdsToWaitFor: string[] = [];
 
@@ -48,25 +47,28 @@ const RequiredMods = memo((props: RequiredModsProps) => {
 
   // console.log(modNameToIdLookup);
 
-  setInterval(() => {
-    const newMods = subbedModIdsToWaitFor.filter((subbedModId) =>
-      mods.find((iterMod) => iterMod.workshopId === subbedModId)
-    );
-    if (newMods.length == 0) return;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newMods = subbedModIdsToWaitFor.filter((subbedModId) =>
+        mods.find((iterMod) => iterMod.workshopId === subbedModId)
+      );
+      if (newMods.length == 0) return;
 
-    const restOfMods = subbedModIdsToWaitFor.filter(
-      (subbedModId) => !mods.find((iterMod) => iterMod.workshopId === subbedModId)
-    );
-    console.log("waiting for:", restOfMods);
-    subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
+      const restOfMods = subbedModIdsToWaitFor.filter(
+        (subbedModId) => !mods.find((iterMod) => iterMod.workshopId === subbedModId)
+      );
+      console.log("waiting for:", restOfMods);
+      subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
 
-    newMods.forEach((id) => {
-      const foundMod = mods.find((mod) => mod.workshopId == id);
-      if (foundMod) {
-        dispatch(toggleMod(foundMod));
-      }
-    });
-  }, 100);
+      newMods.forEach((id) => {
+        const foundMod = mods.find((mod) => mod.workshopId == id);
+        if (foundMod) {
+          dispatch(toggleMod(foundMod));
+        }
+      });
+    }, 100);
+    return () => clearInterval(interval);
+  }, [subbedModIdsToWaitFor, mods]);
 
   return (
     <>

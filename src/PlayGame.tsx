@@ -1,6 +1,6 @@
 import Creatable from "react-select/creatable";
 import Select, { ActionMeta, SingleValue } from "react-select";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from "./appSlice";
 import { Tooltip } from "flowbite-react";
@@ -30,6 +30,7 @@ const PlayGame = React.memo(() => {
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const allMods = useAppSelector((state) => state.app.allMods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
 
@@ -151,10 +152,24 @@ const PlayGame = React.memo(() => {
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keyup", onKeyUp);
+    };
   });
 
   const enabledMods = mods.filter(
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+  );
+
+  const isDependencyEnabledByPackName = useCallback(
+    (reqId: string): boolean => {
+      const modInAllById = allMods.find((mod) => mod.workshopId == reqId);
+      if (!modInAllById) return false;
+      return enabledMods.some((enabledMod) => enabledMod.name == modInAllById.name);
+    },
+    [allMods, enabledMods]
   );
 
   const missingModDependencies = enabledMods
@@ -165,7 +180,9 @@ const PlayGame = React.memo(() => {
         [
           mod,
           mod.reqModIdToName.filter(
-            ([reqId]) => !enabledMods.find((enabledMod) => enabledMod.workshopId == reqId)
+            ([reqId]) =>
+              !isDependencyEnabledByPackName(reqId) &&
+              !enabledMods.some((enabledMod) => enabledMod.workshopId == reqId)
           ),
         ] as [Mod, [string, string][]]
     )

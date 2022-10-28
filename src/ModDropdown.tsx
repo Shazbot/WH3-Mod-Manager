@@ -12,6 +12,24 @@ type ModDropdownProps = {
   referenceElement: HTMLDivElement | undefined;
 };
 
+const openInExplorer = (mod: Mod) => {
+  window.api?.openFolderInExplorer(mod.path);
+};
+const openInRPFM = (mod: Mod) => {
+  window.api?.openPack(mod.path);
+};
+const putPathInClipboard = (mod: Mod) => {
+  console.log(mod);
+  window.api?.putPathInClipboard(mod.path);
+};
+const makePackBackup = (mod: Mod) => {
+  window.api?.makePackBackup(mod);
+};
+const deletePack = (mod: Mod) => {
+  if (!mod) return;
+  window.api?.deletePack(mod);
+};
+
 const ModDropdown = memo((props: ModDropdownProps) => {
   const dispatch = useAppDispatch();
   const allMods = useAppSelector((state) => state.app.allMods);
@@ -26,59 +44,61 @@ const ModDropdown = memo((props: ModDropdownProps) => {
     deltaY = props.referenceElement.getBoundingClientRect().top - props.positionY;
   }
 
-  const onGoToWorkshopPageClick = () => {
-    let workshopId = props.mod?.workshopId;
-    if (props.mod?.isInData) {
-      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
-      if (!contentMod) return;
-      workshopId = contentMod.workshopId;
-    }
-    window.open(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
-  };
+  const onGoToWorkshopPageClick = useCallback(
+    (mod: Mod) => {
+      let workshopId = mod.workshopId;
+      if (mod.isInData) {
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+        if (!contentMod) return;
+        workshopId = contentMod.workshopId;
+      }
+      window.open(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
+    },
+    [allMods]
+  );
 
-  const onOpenInSteam = () => {
-    let workshopId = props.mod?.workshopId;
-    if (props.mod?.isInData) {
-      const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
-      if (!contentMod) return;
-      workshopId = contentMod.workshopId;
-    }
-    window.api?.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
-  };
+  const onOpenInSteam = useCallback(
+    (mod: Mod) => {
+      let workshopId = mod.workshopId;
+      if (mod.isInData) {
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+        if (!contentMod) return;
+        workshopId = contentMod.workshopId;
+      }
+      window.api?.openInSteam(`https://steamcommunity.com/workshop/filedetails/?id=${workshopId}`);
+    },
+    [allMods]
+  );
 
-  const openInExplorer = (mod: Mod) => {
-    window.api?.openFolderInExplorer(mod.path);
-  };
-  const openInRPFM = (mod: Mod) => {
-    window.api?.openPack(mod.path);
-  };
-  const putPathInClipboard = (mod: Mod) => {
-    console.log(mod);
-    window.api?.putPathInClipboard(mod.path);
-  };
-  const updateMod = (mod: Mod) => {
-    const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
-    if (contentMod == null) return;
+  const updateMod = useCallback(
+    (mod: Mod) => {
+      const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      if (contentMod == null) return;
 
-    window.api?.updateMod(mod, contentMod);
-  };
-  const fakeUpdatePack = (mod: Mod) => {
-    const contentMod = allMods.find((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData);
-    if (contentMod == null) return;
+      window.api?.updateMod(mod, contentMod);
+    },
+    [allMods]
+  );
+  const fakeUpdatePack = useCallback(
+    (mod: Mod) => {
+      const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      if (contentMod == null) return;
 
-    window.api?.fakeUpdatePack(mod);
-  };
-  const makePackBackup = (mod: Mod) => {
-    window.api?.makePackBackup(mod);
-  };
-  const forceModDownload = (mod: Mod) => {
-    let modToDownload: Mod | undefined = mod;
-    if (mod.isInData)
-      modToDownload = allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name);
-    if (!modToDownload) return;
+      window.api?.fakeUpdatePack(mod);
+    },
+    [allMods]
+  );
+  const forceModDownload = useCallback(
+    (mod: Mod) => {
+      let modToDownload: Mod | undefined = mod;
+      if (mod.isInData)
+        modToDownload = allMods.find((iterMod) => !iterMod.isInData && iterMod.name == mod.name);
+      if (!modToDownload) return;
 
-    window.api?.forceModDownload(modToDownload);
-  };
+      window.api?.forceModDownload(modToDownload);
+    },
+    [allMods]
+  );
   const reMerge = (mod: Mod) => {
     if (!mod) return;
     if (!mod.mergedModsData) return;
@@ -87,10 +107,6 @@ const ModDropdown = memo((props: ModDropdownProps) => {
       .map((mod) => allMods.find((iterMod) => iterMod.path == mod.path))
       .filter((mod) => mod) as Mod[];
     window.api?.reMerge(mod, modsToMerge);
-  };
-  const deletePack = (mod: Mod) => {
-    if (!mod) return;
-    window.api?.deletePack(mod);
   };
 
   const modDropdownRef = useRef<HTMLDivElement>(null);
@@ -185,7 +201,11 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                   <li>
                     <a
                       href="#"
-                      onClick={() => onGoToWorkshopPageClick()}
+                      onClick={() => {
+                        if (props.mod) {
+                          onGoToWorkshopPageClick(props.mod);
+                        }
+                      }}
                       className={
                         "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       }
@@ -196,7 +216,11 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                   <li>
                     <a
                       href="#"
-                      onClick={() => onOpenInSteam()}
+                      onClick={() => {
+                        if (props.mod) {
+                          onOpenInSteam(props.mod);
+                        }
+                      }}
                       className={
                         "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       }

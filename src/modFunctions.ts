@@ -175,13 +175,10 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
 
   let mergedModsData = null;
   try {
-    if (filePath.includes("/merged/") || filePath.includes("\\merged\\")) {
-      mergedModsData = await fsExtra.readJSON(filePath.replace(".pack", ".json"));
-      // console.log(mergedModsData);
-    }
+    mergedModsData = await fsExtra.readJSON(filePath.replace(".pack", ".json"));
+    // console.log(mergedModsData);
     // eslint-disable-next-line no-empty
   } catch {}
-
 
   const linuxBit = process.platform === "linux" ? "Z:" : "";
   const mod: Mod = {
@@ -255,8 +252,7 @@ const getFolderPaths = async (log: (msg: string) => void) => {
       return;
     }
     installPath = installPathObj.value;
-  }
-  else if (process.platform === "linux") {
+  } else if (process.platform === "linux") {
     const steamPath = os.homedir() + "/.steam/steam";
     if (!dumbfs.existsSync(steamPath)) {
       log("Unable to find steam directory at " + steamPath);
@@ -314,7 +310,9 @@ export async function getContentModInFolder(
   if (!appData.contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.contentFolder;
 
-  const files = await fsPromises.readdir(nodePath.join(contentFolder, contentSubFolderName), { withFileTypes: true });
+  const files = await fsPromises.readdir(nodePath.join(contentFolder, contentSubFolderName), {
+    withFileTypes: true,
+  });
 
   const pack = files.find((file) => file.name.endsWith(".pack"));
   const img = files.find((file) => file.name.endsWith(".png"));
@@ -335,7 +333,7 @@ export async function getContentModInFolder(
 
   // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
   const packPath = nodePath.join(contentFolder, contentSubFolderName, pack.name);
-  const imgPath = (img && nodePath.join(contentFolder, contentSubFolderName, img.name) || "");
+  const imgPath = (img && nodePath.join(contentFolder, contentSubFolderName, img.name)) || "";
   const mod: Mod = {
     author: "",
     humanName: "",

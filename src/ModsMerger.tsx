@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import { Modal } from "./flowbite/components/Modal/index";
 import { Spinner, Tabs, Tooltip } from "./flowbite";
 import { getModsSortedByName, getModsSortedByHumanName, getModsSortedBySize } from "./modSortingHelpers";
@@ -8,6 +8,14 @@ import { createSelector } from "@reduxjs/toolkit";
 import { useSelector } from "react-redux";
 
 type ModsMergeSorts = "Merge" | "MergeDesc" | "Pack" | "PackDesc" | "Name" | "NameDesc" | "Size" | "SizeDesc";
+type NumModsOptionType = {
+  value: number;
+  label: number;
+};
+type ExistingMergerOptionType = {
+  value: string;
+  label: string;
+};
 
 const ModsMerger = React.memo(() => {
   const modsNotInDataSelector = createSelector(
@@ -79,23 +87,17 @@ const ModsMerger = React.memo(() => {
 
   const isPackProcessingDone = true; //!!packCollisions.packFileCollisions;
 
-  const onModToggled = (mod: Mod) => {
-    if (modsToMerge.has(mod)) {
-      modsToMerge.delete(mod);
-    } else {
-      modsToMerge.add(mod);
-    }
-    setModsToMerge(new Set<Mod>(modsToMerge));
-  };
-
-  type NumModsOptionType = {
-    value: number;
-    label: number;
-  };
-  type ExistingMergerOptionType = {
-    value: string;
-    label: string;
-  };
+  const onModToggled = useCallback(
+    (mod: Mod) => {
+      if (modsToMerge.has(mod)) {
+        modsToMerge.delete(mod);
+      } else {
+        modsToMerge.add(mod);
+      }
+      setModsToMerge(new Set<Mod>(modsToMerge));
+    },
+    [modsToMerge]
+  );
 
   const onSelectNumModsChange = (
     newValue: SingleValue<NumModsOptionType>,
@@ -125,40 +127,48 @@ const ModsMerger = React.memo(() => {
     }
   };
 
-  const options: NumModsOptionType[] = [5, 10, 15, 20, 25, 30, 35, 40, 50, 75, 100, 0].map((num) => {
-    return { value: num, label: num };
-  });
+  const options: NumModsOptionType[] = useMemo(
+    () =>
+      [5, 10, 15, 20, 25, 30, 35, 40, 50, 75, 100, 0].map((num) => {
+        return { value: num, label: num };
+      }),
+    []
+  );
 
-  const mergerOptions: ExistingMergerOptionType[] = mergerMods.map((mod) => {
-    return { value: mod.name, label: mod.name };
-  });
+  const mergerOptions = useMemo<ExistingMergerOptionType[]>(
+    () =>
+      mergerMods.map((mod) => {
+        return { value: mod.name, label: mod.name };
+      }),
+    [mergerMods]
+  );
 
-  const mergeMods = () => {
+  const mergeMods = useCallback(() => {
     if (modsToMerge.size < 1) return;
     window.api?.mergeMods(Array.from(modsToMerge));
     setIsOpen(false);
-  };
+  }, [modsToMerge]);
 
-  const toggleMergeSorting = () => {
+  const toggleMergeSorting = useCallback(() => {
     if (modsMergeSort == "Merge") setModsMergeSort("MergeDesc");
     else setModsMergeSort("Merge");
-  };
-  const toggleNameSorting = () => {
+  }, [modsMergeSort]);
+  const toggleNameSorting = useCallback(() => {
     if (modsMergeSort == "Name") setModsMergeSort("NameDesc");
     else setModsMergeSort("Name");
-  };
-  const toggleSizeSorting = () => {
+  }, [modsMergeSort]);
+  const toggleSizeSorting = useCallback(() => {
     if (modsMergeSort == "Size") setModsMergeSort("SizeDesc");
     else setModsMergeSort("Size");
-  };
-  const togglePackSorting = () => {
+  }, [modsMergeSort]);
+  const togglePackSorting = useCallback(() => {
     if (modsMergeSort == "Pack") setModsMergeSort("PackDesc");
     else setModsMergeSort("Pack");
-  };
+  }, [modsMergeSort]);
 
-  const onMergeRightClick = () => {
+  const onMergeRightClick = useCallback(() => {
     setModsToMerge(new Set<Mod>());
-  };
+  }, [modsMergeSort]);
 
   return (
     <div>

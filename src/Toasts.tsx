@@ -13,12 +13,13 @@ export function Toasts() {
   if (latestPack && !isShown && Date.now() - latestPack.creationTime < 5000) setIsShown(true);
 
   useEffect(() => {
-    setInterval(() => {
+    const interval = setInterval(() => {
       if (isShown && latestPack && Date.now() - latestPack.creationTime > 5000) {
         setIsShown(false);
       }
     }, 500);
-  });
+    return () => clearInterval(interval);
+  }, [isShown, latestPack]);
 
   return (
     (latestPack && isShown && (
