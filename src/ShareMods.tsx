@@ -1,5 +1,5 @@
 import { Modal } from "./flowbite/components/Modal/index";
-import React, { memo, useCallback, useState } from "react";
+import React, { memo, useCallback, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { setSharedMod } from "./appSlice";
 import { Spinner } from "flowbite-react";
@@ -53,20 +53,23 @@ const ShareMods = memo((props: ShareModsProps) => {
     setImportModsText(input);
   };
 
-  setInterval(() => {
-    const newMods = subbedModIdsToWaitFor.filter((subbedMod) =>
-      mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
-    );
-    if (newMods.length == 0) return;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newMods = subbedModIdsToWaitFor.filter((subbedMod) =>
+        mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
+      );
+      if (newMods.length == 0) return;
 
-    const restOfMods = subbedModIdsToWaitFor.filter(
-      (subbedMod) => !mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
-    );
-    console.log("waiting for:", restOfMods);
-    subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
+      const restOfMods = subbedModIdsToWaitFor.filter(
+        (subbedMod) => !mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
+      );
+      console.log("waiting for:", restOfMods);
+      subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
 
-    dispatch(setSharedMod(newMods));
-  }, 100);
+      dispatch(setSharedMod(newMods));
+    }, 100);
+    return () => clearInterval(interval);
+  }, [subbedModIdsToWaitFor, mods]);
 
   return (
     <>

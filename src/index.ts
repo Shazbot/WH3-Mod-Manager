@@ -796,7 +796,9 @@ ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOp
     const tempPackName = "!!!!out.pack";
     const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
     await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
-    extraEnabledMods = `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` + `\nmod "${tempPackName}";`;
+    extraEnabledMods =
+      `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` +
+      `\nmod "${tempPackName}";`;
   }
 
   const modPathsInsideMergedMods = enabledMods

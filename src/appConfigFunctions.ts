@@ -42,12 +42,16 @@ export function writeAppConfig(data: AppState) {
       try {
         const stringifiedData = JSON.stringify(dataToWrite);
 
-        // write to the dir where the exe is due to bizarre file permission issues
-        const exeDirPath = nodePath.dirname(app.getPath("exe"));
-        const exeDirTempConfigPath = `${exeDirPath}\\config_temp.json`;
-        const exeDirConfigPath = `${exeDirPath}\\config.json`;
-        await fs.writeFile(exeDirTempConfigPath, stringifiedData);
-        await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
+        try {
+          // write to the dir where the exe is due to bizarre file permission issues
+          const exeDirPath = nodePath.dirname(app.getPath("exe"));
+          const exeDirTempConfigPath = `${exeDirPath}\\config_temp.json`;
+          const exeDirConfigPath = `${exeDirPath}\\config.json`;
+          await fs.writeFile(exeDirTempConfigPath, stringifiedData);
+          await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
+        } catch (err) {
+          console.log(err);
+        }
 
         const tempFilePath = `${userData}\\config_temp.json`;
         await fs.writeFile(tempFilePath, stringifiedData);
