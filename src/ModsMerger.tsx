@@ -37,7 +37,7 @@ const ModsMerger = React.memo(() => {
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
   const [modsMergeSort, setModsMergeSort] = React.useState("Size" as ModsMergeSorts);
 
-  let modsToUse = [...mods];
+  let modsToUse = useMemo(() => [...mods], [mods]);
 
   if (isHidingAlreadyMergedMods) {
     modsToUse = modsToUse.filter((mod) =>
@@ -99,33 +99,33 @@ const ModsMerger = React.memo(() => {
     [modsToMerge]
   );
 
-  const onSelectNumModsChange = (
-    newValue: SingleValue<NumModsOptionType>,
-    actionMeta: ActionMeta<NumModsOptionType>
-  ) => {
-    if (!newValue) return;
-    console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
-    if (actionMeta.action === "select-option") {
-      setModsToMerge(new Set<Mod>(modsToUse.slice(0, newValue.value)));
-    }
-  };
-  const onSelectExistingMergerChange = (
-    newValue: SingleValue<ExistingMergerOptionType>,
-    actionMeta: ActionMeta<ExistingMergerOptionType>
-  ) => {
-    if (!newValue) return;
-    console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
-    if (actionMeta.action === "select-option") {
-      const mergerMod = mergerMods.find((mergerMod) => mergerMod.name == newValue.value);
-      if (!mergerMod || !mergerMod.mergedModsData) return;
-      const mergedData = mergerMod.mergedModsData;
-      setModsToMerge(
-        new Set<Mod>(
-          modsToUse.filter((mod) => mergedData.some((mergedModData) => mergedModData.name == mod.name))
-        )
-      );
-    }
-  };
+  const onSelectNumModsChange = useCallback(
+    (newValue: SingleValue<NumModsOptionType>, actionMeta: ActionMeta<NumModsOptionType>) => {
+      if (!newValue) return;
+      console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
+      if (actionMeta.action === "select-option") {
+        setModsToMerge(new Set<Mod>(modsToUse.slice(0, newValue.value)));
+      }
+    },
+    [modsToUse]
+  );
+  const onSelectExistingMergerChange = useCallback(
+    (newValue: SingleValue<ExistingMergerOptionType>, actionMeta: ActionMeta<ExistingMergerOptionType>) => {
+      if (!newValue) return;
+      console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
+      if (actionMeta.action === "select-option") {
+        const mergerMod = mergerMods.find((mergerMod) => mergerMod.name == newValue.value);
+        if (!mergerMod || !mergerMod.mergedModsData) return;
+        const mergedData = mergerMod.mergedModsData;
+        setModsToMerge(
+          new Set<Mod>(
+            modsToUse.filter((mod) => mergedData.some((mergedModData) => mergedModData.name == mod.name))
+          )
+        );
+      }
+    },
+    [mergerMods]
+  );
 
   const options: NumModsOptionType[] = useMemo(
     () =>
