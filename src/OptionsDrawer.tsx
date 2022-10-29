@@ -23,6 +23,11 @@ const cleanData = () => {
   window.api?.cleanData();
 };
 
+type OptionType = {
+  value: string;
+  label: string;
+};
+
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
 
@@ -56,18 +61,16 @@ const OptionsDrawer = memo(() => {
     window.api?.forceDownloadMods(contentModsWorshopIds);
   }, [contentModsWorshopIds]);
 
-  const onDeleteChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
-    if (!newValue) return;
-    console.log(newValue.label, newValue.value, actionMeta.action);
-    const mod = alwaysHidden.find((mod) => mod.name == newValue.value);
-    if (!mod) return;
-    if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([mod]));
-  };
-
-  type OptionType = {
-    value: string;
-    label: string;
-  };
+  const onDeleteChange = useCallback(
+    (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+      if (!newValue) return;
+      console.log(newValue.label, newValue.value, actionMeta.action);
+      const mod = alwaysHidden.find((mod) => mod.name == newValue.value);
+      if (!mod) return;
+      if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([mod]));
+    },
+    [alwaysHidden]
+  );
 
   return (
     <div>
