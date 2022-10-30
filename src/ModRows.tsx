@@ -2,18 +2,13 @@ import React, { useCallback, useState } from "react";
 import "./index.css";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "./appSlice";
-import classNames from "classnames";
 import { Alert, Tooltip } from "flowbite-react";
-import { formatDistanceToNow } from "date-fns";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGrip, faEraser, faCamera, faFileArchive } from "@fortawesome/free-solid-svg-icons";
 import { getFilteredMods, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
 import ModDropdown from "./ModDropdown";
 import { isModAlwaysEnabled } from "./modsHelpers";
 import * as modRowSorting from "./utility/modRowSorting";
 import { SortingType } from "./utility/modRowSorting";
-import { HiOutlineCollection } from "react-icons/hi";
 import ModRow from "./ModRow";
 
 let currentDragTarget: Element;
@@ -42,11 +37,10 @@ export default function ModRows() {
   const filter = useAppSelector((state) => state.app.filter);
   const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
-  const isDev = useAppSelector((state) => state.app.isDev);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
 
-  const [sortingType, setSortingType] = useState<SortingType>(SortingType.IsEnabled);
+  const [sortingType, setSortingType] = useState<SortingType>(SortingType.Ordered);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
@@ -410,7 +404,11 @@ export default function ModRows() {
             placement="right"
             content="Mods with lower order have priority, don't change unless you really know what you're doing, right click on mod to reset or here to reset all"
           >
-            <span className="text-center w-full">Order</span>
+            <span
+              className={`text-center w-full ${modRowSorting.isOrderSort(sortingType) && "font-semibold"}`}
+            >
+              Order
+            </span>
           </Tooltip>
         </div>
         <div
@@ -421,7 +419,11 @@ export default function ModRows() {
         >
           {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <Tooltip placement="right" content="Right click to enable or disable all mods">
-            <span className="text-center w-full">Enabled</span>
+            <span
+              className={`text-center w-full ${modRowSorting.isEnabledSort(sortingType) && "font-semibold"}`}
+            >
+              Enabled
+            </span>
           </Tooltip>
         </div>
         <div
@@ -437,7 +439,7 @@ export default function ModRows() {
           onClick={() => modRowSorting.onPackSort(setSortingType)}
         >
           {modRowSorting.isPackNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          Pack
+          <span className={`${modRowSorting.isPackNameSort(sortingType) && "font-semibold"}`}>Pack</span>
         </div>
 
         <div
@@ -445,7 +447,7 @@ export default function ModRows() {
           onClick={() => modRowSorting.onNameSort(setSortingType)}
         >
           {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          Name
+          <span className={`${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>Name</span>
         </div>
         <div
           className={
@@ -455,14 +457,16 @@ export default function ModRows() {
           onClick={() => modRowSorting.onAuthorSort(setSortingType)}
         >
           {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          Author
+          <span className={`${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>Author</span>
         </div>
         <div
           className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl"
           onClick={() => modRowSorting.onLastUpdatedSort(setSortingType)}
         >
           {modRowSorting.isLastUpdatedSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          Last Updated
+          <span className={`${modRowSorting.isLastUpdatedSort(sortingType) && "font-semibold"}`}>
+            Last Updated
+          </span>
         </div>
 
         {mods

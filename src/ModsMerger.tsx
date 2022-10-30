@@ -182,190 +182,196 @@ const ModsMerger = React.memo(() => {
         </button>
       </div>
 
-      <Modal
-        show={isOpen}
-        // show={true}
-        onClose={() => setIsOpen(false)}
-        size="2xl"
-        position="top-center"
-        explicitClasses={[
-          "!max-w-7xl",
-          "md:!h-full",
-          ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
-        ]}
-      >
-        <Modal.Header>Merge Mods{modsToMerge.size > 0 && ` - ${modsToMerge.size} selected`}</Modal.Header>
-        <Modal.Body>
-          <Tabs.Group style="underline">
-            <Tabs.Item active={true} title="Merge">
-              <span className="absolute top-[6rem] right-0 flex items-center leading-relaxed dark:text-gray-300">
-                {mergerMods.length > 0 && (
-                  <>
-                    <span className="make-tooltip-inline">
-                      <Tooltip style={"light"} content={<p>Load mods that are in an existing merged mod.</p>}>
-                        <span className="text-center w-full">Load existing:</span>
-                      </Tooltip>
-                    </span>
-                    <Select
-                      options={mergerOptions}
-                      styles={selectStyle}
-                      onChange={onSelectExistingMergerChange}
-                      value={null}
-                      className="mx-2"
-                    ></Select>
-                  </>
-                )}
+      {isOpen && (
+        <Modal
+          show={isOpen}
+          // show={true}
+          onClose={() => setIsOpen(false)}
+          size="2xl"
+          position="top-center"
+          explicitClasses={[
+            "!max-w-7xl",
+            "md:!h-full",
+            ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
+          ]}
+        >
+          <Modal.Header>Merge Mods{modsToMerge.size > 0 && ` - ${modsToMerge.size} selected`}</Modal.Header>
+          <Modal.Body>
+            <Tabs.Group style="underline">
+              <Tabs.Item active={true} title="Merge">
+                <span className="absolute top-[6rem] right-0 flex items-center leading-relaxed dark:text-gray-300">
+                  {mergerMods.length > 0 && (
+                    <>
+                      <span className="make-tooltip-inline">
+                        <Tooltip
+                          style={"light"}
+                          content={<p>Load mods that are in an existing merged mod.</p>}
+                        >
+                          <span className="text-center w-full">Load existing:</span>
+                        </Tooltip>
+                      </span>
+                      <Select
+                        options={mergerOptions}
+                        styles={selectStyle}
+                        onChange={onSelectExistingMergerChange}
+                        value={null}
+                        className="mx-2"
+                      ></Select>
+                    </>
+                  )}
 
-                <span className="border-l-2 px-2 border-gray-600">
-                  <input
-                    type="checkbox"
-                    id="merge-hide-already-merged"
-                    checked={isHidingAlreadyMergedMods}
-                    onChange={() => {
-                      setIsHidingAlreadyMergedMods(!isHidingAlreadyMergedMods);
-                    }}
-                  ></input>
-                  <label className="ml-2" htmlFor="merge-hide-already-merged">
-                    <span className="make-tooltip-inline">
-                      <Tooltip
-                        style={"light"}
-                        content={<p>Don't show a mod if it's inside an enabled merged pack.</p>}
-                      >
-                        <span className="text-center w-full">Hide Already Merged</span>
-                      </Tooltip>
-                    </span>
-                  </label>
-                </span>
+                  <span className="border-l-2 px-2 border-gray-600">
+                    <input
+                      type="checkbox"
+                      id="merge-hide-already-merged"
+                      checked={isHidingAlreadyMergedMods}
+                      onChange={() => {
+                        setIsHidingAlreadyMergedMods(!isHidingAlreadyMergedMods);
+                      }}
+                    ></input>
+                    <label className="ml-2" htmlFor="merge-hide-already-merged">
+                      <span className="make-tooltip-inline">
+                        <Tooltip
+                          style={"light"}
+                          content={<p>Don't show a mod if it's inside an enabled merged pack.</p>}
+                        >
+                          <span className="text-center w-full">Hide Already Merged</span>
+                        </Tooltip>
+                      </span>
+                    </label>
+                  </span>
 
-                <span className="border-x-2 px-2 border-gray-600">
-                  <input
-                    type="checkbox"
-                    id="merge-enabled-mod-only"
-                    checked={useEnabledModsOnly}
-                    onChange={() => {
-                      if (!useEnabledModsOnly) setModsToMerge(new Set<Mod>());
-                      setUseEnabledModsOnly(!useEnabledModsOnly);
-                    }}
-                  ></input>
-                  <label className="ml-2" htmlFor="merge-enabled-mod-only">
-                    Enabled Mods Only
-                  </label>
-                </span>
-                <span className="ml-2">Select first</span>
-                <Select
-                  options={options}
-                  styles={selectStyle}
-                  onChange={onSelectNumModsChange}
-                  value={null}
-                  className="mx-2"
-                ></Select>
-                <span>mods to merge</span>
-                <button
-                  id="playGame"
-                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-12 w-20 ml-6 mr-10"
-                  onClick={() => mergeMods()}
-                >
-                  Merge
-                </button>
-              </span>
-              <div className="leading-relaxed dark:text-gray-300 relative gap-2 ">
-                <div className="grid grid-cols-9">
-                  <div
-                    onContextMenu={() => onMergeRightClick()}
-                    className={
-                      "col-span-1 justify-center flex " +
-                      (((modsMergeSort == "Merge" || modsMergeSort == "MergeDesc") && "font-bold") || "")
-                    }
-                    onClick={() => toggleMergeSorting()}
+                  <span className="border-x-2 px-2 border-gray-600">
+                    <input
+                      type="checkbox"
+                      id="merge-enabled-mod-only"
+                      checked={useEnabledModsOnly}
+                      onChange={() => {
+                        if (!useEnabledModsOnly) setModsToMerge(new Set<Mod>());
+                        setUseEnabledModsOnly(!useEnabledModsOnly);
+                      }}
+                    ></input>
+                    <label className="ml-2" htmlFor="merge-enabled-mod-only">
+                      Enabled Mods Only
+                    </label>
+                  </span>
+                  <span className="ml-2">Select first</span>
+                  <Select
+                    options={options}
+                    styles={selectStyle}
+                    onChange={onSelectNumModsChange}
+                    value={null}
+                    className="mx-2"
+                  ></Select>
+                  <span>mods to merge</span>
+                  <button
+                    id="playGame"
+                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-12 w-20 ml-6 mr-10"
+                    onClick={() => mergeMods()}
                   >
                     Merge
-                  </div>
-                  <div
-                    className={
-                      "col-span-3 " +
-                      (((modsMergeSort == "Pack" || modsMergeSort == "PackDesc") && "font-bold") || "")
-                    }
-                    onClick={() => togglePackSorting()}
-                  >
-                    Pack
-                  </div>
-                  <div
-                    className={
-                      "col-span-3 " +
-                      (((modsMergeSort == "Name" || modsMergeSort == "NameDesc") && "font-bold") || "")
-                    }
-                    onClick={() => toggleNameSorting()}
-                  >
-                    Name
-                  </div>
-                  <div
-                    className={
-                      "col-span-2 " +
-                      (((modsMergeSort == "Size" || modsMergeSort == "SizeDesc") && "font-bold") || "")
-                    }
-                    onClick={() => toggleSizeSorting()}
-                  >
-                    Size
-                  </div>
-                </div>
-                {modsToUse.map((mod) => (
-                  <React.Fragment key={mod.path}>
-                    <div className="grid grid-cols-9 items-center border-b gap-2 py-2 border-gray-600">
-                      <div className="col-span-1 justify-center flex">
-                        <input
-                          type="checkbox"
-                          checked={modsToMerge.has(mod) || false}
-                          onChange={() => onModToggled(mod)}
-                          id={mod.name + "_merge_checkbox"}
-                          name={mod.name}
-                        />
-                      </div>
-                      <div className="col-span-3">
-                        <label htmlFor={mod.name + "_merge_checkbox"}>
-                          <div>{`${mod.name}`}</div>
-                        </label>
-                      </div>
-                      <div className="col-span-3">
-                        <label htmlFor={mod.name + "_merge_checkbox"}>
-                          <div>{`${mod.humanName}`}</div>
-                        </label>
-                      </div>
-                      <div className="col-span-2">
-                        <label htmlFor={mod.name + "_merge_checkbox"}>{mod.size}</label>
-                      </div>
+                  </button>
+                </span>
+                <div className="leading-relaxed dark:text-gray-300 relative gap-2 ">
+                  <div className="grid grid-cols-9">
+                    <div
+                      onContextMenu={() => onMergeRightClick()}
+                      className={
+                        "col-span-1 justify-center flex " +
+                        (((modsMergeSort == "Merge" || modsMergeSort == "MergeDesc") && "font-bold") || "")
+                      }
+                      onClick={() => toggleMergeSorting()}
+                    >
+                      Merge
                     </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            </Tabs.Item>
-            <Tabs.Item title="Help">
-              <div className="leading-relaxed dark:text-gray-300 relative font-normal">
-                <p>
-                  This panel allows you to merge mods to get around the mod limit. It merges selected mods
-                  into a new mod .pack and puts it inside a data/merged folder. Mods are pre-sorted by size
-                  for quicker merging.
-                </p>
-                <p className="mt-6">
-                  The merged mod won't have the same file names as the merged mods which can affect load order
-                  priority, so skip merging mods that require manual load order fiddling. That said, those
-                  kind of mods should be incredibly rare and as a rule you should never manually touch load
-                  order anyway!
-                </p>
-                <p className="mt-6">
-                  When mods get updated the merged pack will have the old outdated mod inside it. You should
-                  get a warning in red (it'll be above the Play button) warning you about this and you can
-                  then right click the merged pack and use the Update (Re-merge) option which will update the
-                  merged pack.
-                </p>
-                <p className="mt-6">
-                  You can leave the mods that have been merged enabled in the mod manager, the manager will
-                  automatically skip them if they're already present in a merged mod you have enabled.
-                </p>
-              </div>
-            </Tabs.Item>
-          </Tabs.Group>
-        </Modal.Body>
-      </Modal>
+                    <div
+                      className={
+                        "col-span-3 " +
+                        (((modsMergeSort == "Pack" || modsMergeSort == "PackDesc") && "font-bold") || "")
+                      }
+                      onClick={() => togglePackSorting()}
+                    >
+                      Pack
+                    </div>
+                    <div
+                      className={
+                        "col-span-3 " +
+                        (((modsMergeSort == "Name" || modsMergeSort == "NameDesc") && "font-bold") || "")
+                      }
+                      onClick={() => toggleNameSorting()}
+                    >
+                      Name
+                    </div>
+                    <div
+                      className={
+                        "col-span-2 " +
+                        (((modsMergeSort == "Size" || modsMergeSort == "SizeDesc") && "font-bold") || "")
+                      }
+                      onClick={() => toggleSizeSorting()}
+                    >
+                      Size
+                    </div>
+                  </div>
+                  {modsToUse.map((mod) => (
+                    <React.Fragment key={mod.path}>
+                      <div className="grid grid-cols-9 items-center border-b gap-2 py-2 border-gray-600">
+                        <div className="col-span-1 justify-center flex">
+                          <input
+                            type="checkbox"
+                            checked={modsToMerge.has(mod) || false}
+                            onChange={() => onModToggled(mod)}
+                            id={mod.name + "_merge_checkbox"}
+                            name={mod.name}
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <label htmlFor={mod.name + "_merge_checkbox"}>
+                            <div>{`${mod.name}`}</div>
+                          </label>
+                        </div>
+                        <div className="col-span-3">
+                          <label htmlFor={mod.name + "_merge_checkbox"}>
+                            <div>{`${mod.humanName}`}</div>
+                          </label>
+                        </div>
+                        <div className="col-span-2">
+                          <label htmlFor={mod.name + "_merge_checkbox"}>{mod.size}</label>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </Tabs.Item>
+              <Tabs.Item title="Help">
+                <div className="leading-relaxed dark:text-gray-300 relative font-normal">
+                  <p>
+                    This panel allows you to merge mods to get around the mod limit. It merges selected mods
+                    into a new mod .pack and puts it inside a data/merged folder. Mods are pre-sorted by size
+                    for quicker merging.
+                  </p>
+                  <p className="mt-6">
+                    The merged mod won't have the same file names as the merged mods which can affect load
+                    order priority, so skip merging mods that require manual load order fiddling. That said,
+                    those kind of mods should be incredibly rare and as a rule you should never manually touch
+                    load order anyway!
+                  </p>
+                  <p className="mt-6">
+                    When mods get updated the merged pack will have the old outdated mod inside it. You should
+                    get a warning in red (it'll be above the Play button) warning you about this and you can
+                    then right click the merged pack and use the Update (Re-merge) option which will update
+                    the merged pack.
+                  </p>
+                  <p className="mt-6">
+                    You can leave the mods that have been merged enabled in the mod manager, the manager will
+                    automatically skip them if they're already present in a merged mod you have enabled.
+                  </p>
+                </div>
+              </Tabs.Item>
+            </Tabs.Group>
+          </Modal.Body>
+        </Modal>
+      )}
+
       <Modal
         onClose={() => setIsSpinnerClosed(true)}
         show={!isSpinnerClosed && isOpen && !isPackProcessingDone}

@@ -86,160 +86,162 @@ const OptionsDrawer = memo(() => {
         </button>
       </div>
 
-      <Drawer isOpen={areOptionsOpen} setIsOpen={setAreOptionsOpen}>
-        <div
-          id="drawer-example"
-          className="overflow-y-auto fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-0 top-0 transform-none"
-          tabIndex={-1}
-          aria-labelledby="drawer-label"
-          aria-modal="true"
-          role="dialog"
-        >
-          <h5
-            id="drawer-label"
-            className="inline-flex items-center mb-4 text-base font-semibold text-gray-500 dark:text-gray-400"
+      {areOptionsOpen && (
+        <Drawer isOpen={areOptionsOpen} setIsOpen={setAreOptionsOpen}>
+          <div
+            id="drawer-example"
+            className="overflow-y-auto fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-0 top-0 transform-none"
+            tabIndex={-1}
+            aria-labelledby="drawer-label"
+            aria-modal="true"
+            role="dialog"
           >
-            Other Options
-          </h5>
-
-          <h6>Extra Columns</h6>
-          <div className="flex items-center ml-1">
-            <input
-              className="mt-1"
-              type="checkbox"
-              id="enable-thumbnails"
-              checked={!!areThumbnailsEnabled}
-              onChange={() => dispatch(toggleAreThumbnailsEnabled())}
-            ></input>
-            <label className="ml-2 mt-1" htmlFor="enable-thumbnails">
-              Mod Thumbnail Column
-            </label>
-          </div>
-
-          <div className="flex items-center ml-1">
-            <input
-              className="mt-1"
-              type="checkbox"
-              id="enable-mod-author"
-              checked={!!isAuthorEnabled}
-              onChange={() => dispatch(toggleIsAuthorEnabled())}
-            ></input>
-            <label className="ml-2 mt-1" htmlFor="enable-mod-author">
-              Mod Author Column
-            </label>
-          </div>
-
-          <h6 className="mt-10">Force Re-download</h6>
-          <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-            Force steam to download the latest version of all mods:
-          </p>
-
-          <div className="flex mt-2">
-            <button
-              className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-              onClick={() => forceDownloadMods()}
+            <h5
+              id="drawer-label"
+              className="inline-flex items-center mb-4 text-base font-semibold text-gray-500 dark:text-gray-400"
             >
-              <span className="uppercase">Force Re-Download</span>
-            </button>
-          </div>
+              Other Options
+            </h5>
 
-          <h6 className="mt-8">Content Mods Vs Data Mods</h6>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-            Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from the
-            data folder. Don't touch unless you know what you're doing!
-          </p>
+            <h6>Extra Columns</h6>
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="enable-thumbnails"
+                checked={!!areThumbnailsEnabled}
+                onChange={() => dispatch(toggleAreThumbnailsEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="enable-thumbnails">
+                Mod Thumbnail Column
+              </label>
+            </div>
 
-          <div className="flex mt-2">
-            <button
-              className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-              onClick={() => copyToData()}
-            >
-              <Tooltip
-                placement="bottom"
-                content="Will copy all the mods from content into data. As a modder this can overwrite your mod in data with an
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="enable-mod-author"
+                checked={!!isAuthorEnabled}
+                onChange={() => dispatch(toggleIsAuthorEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="enable-mod-author">
+                Mod Author Column
+              </label>
+            </div>
+
+            <h6 className="mt-10">Force Re-download</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              Force steam to download the latest version of all mods:
+            </p>
+
+            <div className="flex mt-2">
+              <button
+                className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => forceDownloadMods()}
+              >
+                <span className="uppercase">Force Re-Download</span>
+              </button>
+            </div>
+
+            <h6 className="mt-8">Content Mods Vs Data Mods</h6>
+            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+              Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from
+              the data folder. Don't touch unless you know what you're doing!
+            </p>
+
+            <div className="flex mt-2">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => copyToData()}
+              >
+                <Tooltip
+                  placement="bottom"
+                  content="Will copy all the mods from content into data. As a modder this can overwrite your mod in data with an
                 older version you have in content!"
+                >
+                  <span className="uppercase">Copy to data</span>
+                </Tooltip>
+              </button>
+            </div>
+
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => cleanData()}
               >
-                <span className="uppercase">Copy to data</span>
-              </Tooltip>
-            </button>
-          </div>
+                <Tooltip
+                  placement="bottom"
+                  content="Will remove mods in data if the mod already exists in content. As a modder this can remove a newer version of your mod in data!"
+                >
+                  <span className="uppercase">Clean data</span>
+                </Tooltip>
+              </button>
+            </div>
 
-          <div className="flex mt-2 w-full">
-            <button
-              className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-              onClick={() => cleanData()}
-            >
-              <Tooltip
-                placement="bottom"
-                content="Will remove mods in data if the mod already exists in content. As a modder this can remove a newer version of your mod in data!"
+            <h6 className="mt-10">Hidden mods</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              Unhide mods you've previously hidden:
+            </p>
+
+            <div>
+              <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+            </div>
+
+            <h6 className="mt-10">Share mods</h6>
+            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+              Share current mod list with other people for multiplayer.
+            </p>
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => setIsShowingShareMods(true)}
               >
-                <span className="uppercase">Clean data</span>
-              </Tooltip>
-            </button>
-          </div>
+                <span className="uppercase">Share Mod List</span>
+              </button>
+            </div>
 
-          <h6 className="mt-10">Hidden mods</h6>
-          <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-            Unhide mods you've previously hidden:
-          </p>
-
-          <div>
-            <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+            <h6 className="mt-10">For Modders</h6>
+            <p className="mb-1 text-sm text-gray-500 dark:text-gray-400">Keep these in sync for MP.</p>
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="make-general-units"
+                checked={!!isMakeUnitsGeneralsEnabled}
+                onChange={() => dispatch(toggleMakeUnitsGenerals())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="make-general-units">
+                Make all units custom battle generals
+              </label>
+            </div>
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="toggle-script-logging"
+                checked={!!isScriptLoggingEnabled}
+                onChange={() => dispatch(toggleIsScriptLoggingEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="toggle-script-logging">
+                Enable script logging
+              </label>
+            </div>
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="toggle-intro-movies"
+                checked={!!isSkipIntroMoviesEnabled}
+                onChange={() => dispatch(toggleIsSkipIntroMoviesEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
+                Skip intro movies
+              </label>
+            </div>
           </div>
-
-          <h6 className="mt-10">Share mods</h6>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-            Share current mod list with other people for multiplayer.
-          </p>
-          <div className="flex mt-2 w-full">
-            <button
-              className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-              onClick={() => setIsShowingShareMods(true)}
-            >
-              <span className="uppercase">Share Mod List</span>
-            </button>
-          </div>
-
-          <h6 className="mt-10">For Modders</h6>
-          <p className="mb-1 text-sm text-gray-500 dark:text-gray-400">Keep these in sync for MP.</p>
-          <div className="flex items-center ml-1">
-            <input
-              className="mt-1"
-              type="checkbox"
-              id="make-general-units"
-              checked={!!isMakeUnitsGeneralsEnabled}
-              onChange={() => dispatch(toggleMakeUnitsGenerals())}
-            ></input>
-            <label className="ml-2 mt-1" htmlFor="make-general-units">
-              Make all units custom battle generals
-            </label>
-          </div>
-          <div className="flex items-center ml-1">
-            <input
-              className="mt-1"
-              type="checkbox"
-              id="toggle-script-logging"
-              checked={!!isScriptLoggingEnabled}
-              onChange={() => dispatch(toggleIsScriptLoggingEnabled())}
-            ></input>
-            <label className="ml-2 mt-1" htmlFor="toggle-script-logging">
-              Enable script logging
-            </label>
-          </div>
-          <div className="flex items-center ml-1">
-            <input
-              className="mt-1"
-              type="checkbox"
-              id="toggle-intro-movies"
-              checked={!!isSkipIntroMoviesEnabled}
-              onChange={() => dispatch(toggleIsSkipIntroMoviesEnabled())}
-            ></input>
-            <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
-              Skip intro movies
-            </label>
-          </div>
-        </div>
-      </Drawer>
+        </Drawer>
+      )}
     </div>
   );
 });
