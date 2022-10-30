@@ -182,6 +182,10 @@ const ModDropdown = memo((props: ModDropdownProps) => {
             `${props.isOpen ? "" : "hidden"}` +
             ` fixed w-44 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700`
           }
+          style={{
+            left: props.positionX,
+            top: props.positionY,
+          }}
           ref={modDropdownRef}
         >
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">

@@ -389,15 +389,17 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
   } as PackedFile);
 };
 
-export const mergeMods = async (mods: Mod[], newFileName?: string) => {
+export const mergeMods = async (mods: Mod[], existingPath?: string) => {
   if (!appData.gamePath) return;
   let outFile: BinaryFile | undefined;
   try {
-    const targetPath = nodePath.join(
-      appData.gamePath,
-      "/merged/",
-      newFileName || "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack"
-    );
+    const targetPath =
+      existingPath ||
+      nodePath.join(
+        appData.gamePath,
+        "/merged/",
+        "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack"
+      );
     await fsExtra.ensureDir(nodePath.dirname(targetPath));
 
     const packFieldsSettled = await Promise.allSettled(mods.map((mod) => readPack(mod.path, true)));

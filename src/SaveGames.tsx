@@ -36,36 +36,38 @@ const SaveGame = memo((props: SaveGameProps) => {
 
   return (
     <>
-      <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
-        <Modal.Header>Saved Games</Modal.Header>
-        <Modal.Body>
-          <div className="grid grid-cols-3 h-full gap-4">
-            {saves.map((save) => {
-              return (
-                <React.Fragment key={save.name}>
-                  <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-                    {save.name}
-                  </div>
-                  <button
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-15 w-26 m-auto "
-                    type="button"
-                    onClick={() => onLoadClick(save.name)}
-                  >
-                    Load Save
-                  </button>
-                  <button
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm m-auto "
-                    type="button"
-                    onClick={() => onEnableModsInSave(save.name)}
-                  >
-                    Load Mods From Save
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </Modal.Body>
-      </Modal>
+      {props.isOpen && (
+        <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
+          <Modal.Header>Saved Games</Modal.Header>
+          <Modal.Body>
+            <div className="grid grid-cols-3 h-full gap-4">
+              {saves.map((save) => {
+                return (
+                  <React.Fragment key={save.name}>
+                    <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
+                      {save.name}
+                    </div>
+                    <button
+                      className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-15 w-26 m-auto "
+                      type="button"
+                      onClick={() => onLoadClick(save.name)}
+                    >
+                      Load Save
+                    </button>
+                    <button
+                      className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm m-auto "
+                      type="button"
+                      onClick={() => onEnableModsInSave(save.name)}
+                    >
+                      Load Mods From Save
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </Modal.Body>
+        </Modal>
+      )}
     </>
   );
 });

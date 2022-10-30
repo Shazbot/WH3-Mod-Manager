@@ -412,9 +412,13 @@ const PlayGame = React.memo(() => {
         </div>
       </div>
 
-      <div className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}>
-        <UpdateNotification downloadURL={downloadURL}></UpdateNotification>
-      </div>
+      {isUpdateAvailable && (
+        <div
+          className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}
+        >
+          <UpdateNotification downloadURL={downloadURL}></UpdateNotification>
+        </div>
+      )}
     </div>
   );
 });

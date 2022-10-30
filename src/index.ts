@@ -332,6 +332,10 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
       })
       .on("unlink", async (path) => {
         onPackDeleted(path);
+      })
+      .on("change", async (path) => {
+        onPackDeleted(path);
+        onNewPackFound(path);
       });
   }
   if (!mergedWatcher || isDev) {
@@ -441,7 +445,7 @@ const createWindow = (): void => {
   });
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    if (isDev) return;
+    // if (isDev) return;
 
     fetchModData(
       ids.filter((id) => id !== ""),
@@ -709,7 +713,7 @@ ipcMain.on("forceModDownload", async (event, mod: Mod) => {
 });
 ipcMain.on("reMerge", async (event, mod: Mod, modsToMerge: Mod[]) => {
   try {
-    mergeMods(modsToMerge, mod.name);
+    mergeMods(modsToMerge, mod.path);
   } catch (e) {
     console.log(e);
   }
