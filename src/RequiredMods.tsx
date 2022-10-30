@@ -72,32 +72,34 @@ const RequiredMods = memo((props: RequiredModsProps) => {
 
   return (
     <>
-      <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
-        <Modal.Header>Missing Required Mods</Modal.Header>
-        <Modal.Body>
-          <div className="grid grid-cols-2 h-full gap-4">
-            {[...modNameToIdLookup.entries()].map(([modId, modName]) => {
-              return (
-                <React.Fragment key={modId}>
-                  <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-                    {modName}
-                  </div>
-                  <button
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-15 w-26 m-auto "
-                    type="button"
-                    onClick={() => {
-                      onModClick(modName, modId);
-                      // e.currentTarget.disabled = true;
-                    }}
-                  >
-                    {(allMods.some((mod) => mod.workshopId == modId) && `Enable`) || `Subscribe And Enable`}
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </Modal.Body>
-      </Modal>
+      {props.isOpen && (
+        <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
+          <Modal.Header>Missing Required Mods</Modal.Header>
+          <Modal.Body>
+            <div className="grid grid-cols-2 h-full gap-4">
+              {[...modNameToIdLookup.entries()].map(([modId, modName]) => {
+                return (
+                  <React.Fragment key={modId}>
+                    <div className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
+                      {modName}
+                    </div>
+                    <button
+                      className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-15 w-26 m-auto "
+                      type="button"
+                      onClick={() => {
+                        onModClick(modName, modId);
+                        // e.currentTarget.disabled = true;
+                      }}
+                    >
+                      {(allMods.some((mod) => mod.workshopId == modId) && `Enable`) || `Subscribe And Enable`}
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </Modal.Body>
+        </Modal>
+      )}
     </>
   );
 });
