@@ -15,9 +15,13 @@ import {
   setPackCollisions,
   createdMergedPack,
   setPacksDataRead,
+  setAppFolderPaths,
+  setWarhammer3Folder,
+  setContentFolder,
 } from "./appSlice";
 import store from "./store";
 import { Pack, PackCollisions } from "./packFileTypes";
+import { AppFolderPaths } from "./appData";
 
 let isSubscribedToStoreChanges = false;
 
@@ -83,6 +87,11 @@ window.api?.fromAppConfig((event, appState: AppStateToWrite) => {
   subscribeToStoreChanges();
 });
 
+window.api?.setAppFolderPaths((event, appFolderPaths: AppFolderPaths) => {
+  console.log("INVOKED: SET APP FOLDER PATHS");
+  store.dispatch(setAppFolderPaths(appFolderPaths));
+});
+
 window.api?.failedReadingConfig(() => {
   console.log("INVOKED: FROM API CONFIG");
   if (!isSubscribedToStoreChanges) {
@@ -110,6 +119,15 @@ window.api?.addMod((event, mod: Mod) => {
 window.api?.removeMod((event, modPath: string) => {
   console.log("INVOKED: MOD REMOVED");
   store.dispatch(removeMod(modPath));
+});
+
+window.api?.setContentFolder((event, path: string) => {
+  console.log("INVOKED: setContentFolder");
+  store.dispatch(setContentFolder(path));
+});
+window.api?.setWarhammer3Folder((event, path: string) => {
+  console.log("INVOKED: setWarhammer3Folder");
+  store.dispatch(setWarhammer3Folder(path));
 });
 
 window.api?.savesPopulated((event, saves: GameSave[]) => {

@@ -1,5 +1,6 @@
 import { electronLog } from "electron-log";
 import { PackCollisions } from "./packFileTypes";
+import { AppFolderPaths } from "./appData";
 export {};
 
 declare global {
@@ -72,7 +73,18 @@ declare global {
     packsInSave: (
       callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void
     ) => Electron.IpcRenderer;
+    setAppFolderPaths: (
+      callback: (event: Electron.IpcRendererEvent, appFolderPaths: AppFolderPaths) => void
+    ) => Electron.IpcRenderer;
     getCompatData: () => void;
+    selectContentFolder: () => void;
+    selectWarhammer3Folder: () => void;
+    setContentFolder: (
+      callback: (event: Electron.IpcRendererEvent, path: string) => void
+    ) => Electron.IpcRenderer;
+    setWarhammer3Folder: (
+      callback: (event: Electron.IpcRendererEvent, path: string) => void
+    ) => Electron.IpcRenderer;
     electronLog: electronLog;
   }
 
@@ -154,6 +166,8 @@ declare global {
     dataFromConfig?: AppStateToWrite;
     newMergedPacks: NewMergedPack[];
     pathsOfReadPacks: string[];
+    appFolderPaths: AppFolderPaths;
+    isSetAppFolderPathsDone: boolean;
   }
 
   type AppStateToWrite = Pick<
@@ -168,6 +182,7 @@ declare global {
     | "isMakeUnitsGeneralsEnabled"
     | "isScriptLoggingEnabled"
     | "isSkipIntroMoviesEnabled"
+    | "appFolderPaths"
   >;
 
   type StartGameOptions = Pick<

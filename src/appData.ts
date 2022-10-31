@@ -2,7 +2,7 @@ import { Pack, PackCollisions } from "./packFileTypes";
 
 interface AppData {
   presets: Preset[];
-  gamePath: string;
+  gamePath: string | undefined;
   contentFolder: string | undefined;
   dataFolder: string | undefined;
   gameSaves: GameSave[];
@@ -14,9 +14,11 @@ interface AppData {
   currentlyReadingModPaths: string[];
 }
 
+export type AppFolderPaths = { gamePath: string; contentFolder: string };
+
 export default {
   presets: [],
-  gamePath: "",
+  gamePath: undefined,
   contentFolder: undefined,
   dataFolder: undefined,
   gameSaves: [],

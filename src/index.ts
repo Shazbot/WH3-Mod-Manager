@@ -5,12 +5,13 @@ import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
 import isDev from "electron-is-dev";
 import * as fs from "fs/promises";
+import * as fsdumb from "fs";
 import { updateAvailable } from "gh-release-fetch";
 import { version } from "../package.json";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
-import { fetchModData, getContentModInFolder, getDataMod, getMods } from "./modFunctions";
-import appData from "./appData";
+import { fetchModData, getContentModInFolder, getDataMod, getFolderPaths, getMods } from "./modFunctions";
+import appData, { AppFolderPaths } from "./appData";
 import chokidar from "chokidar";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import windowStateKeeper from "electron-window-state";
@@ -82,16 +83,27 @@ const sendSetPackCollisions = () => {};
 //   } as PackCollisions);
 // }, 1000);
 
-const readConfig = async (mainWindow: BrowserWindow) => {
+const readConfig = async (): Promise<AppStateToWrite> => {
   try {
     const appState = await readAppConfig();
     if (!appData.hasReadConfig) {
       setStartingAppState(appState);
     }
-    mainWindow.webContents.send("fromAppConfig", appState);
-  } catch (err) {
-    mainWindow.webContents.send("failedReadingConfig");
-    console.log(err);
+
+    if (appState.appFolderPaths.contentFolder && !fsdumb.existsSync(appState.appFolderPaths.contentFolder)) {
+      appState.appFolderPaths.contentFolder = "";
+    } else {
+      appData.contentFolder = appState.appFolderPaths.contentFolder;
+    }
+
+    if (appState.appFolderPaths.gamePath && !fsdumb.existsSync(appState.appFolderPaths.gamePath)) {
+      appState.appFolderPaths.gamePath = "";
+    } else {
+      appData.gamePath = appState.appFolderPaths.gamePath;
+      appData.dataFolder = nodePath.join(appState.appFolderPaths.gamePath, "/data/");
+    }
+
+    return appState;
   } finally {
     appData.hasReadConfig = true;
   }
@@ -208,11 +220,10 @@ const removePackFromCollisions = (packPath: string) => {
   }
 };
 
-const getAllMods = async (mainWindow: BrowserWindow) => {
+const getAllMods = async () => {
   try {
     const mods = await getMods(log);
     mainWindow?.webContents.send("modsPopulated", mods);
-    readConfig(mainWindow);
 
     mods.forEach(async (mod) => {
       try {
@@ -220,7 +231,7 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
           console.log(mod);
         }
         const packHeaderData = await readPackHeader(mod.path);
-        if (packHeaderData.isMovie) mainWindow.webContents.send("setPackHeaderData", packHeaderData);
+        if (packHeaderData.isMovie) mainWindow?.webContents.send("setPackHeaderData", packHeaderData);
       } catch (e) {
         if (e instanceof Error) {
           log(e.message);
@@ -280,7 +291,7 @@ const getAllMods = async (mainWindow: BrowserWindow) => {
     await downloadsWatcher?.close();
     await mergedWatcher?.close();
   }
-  if (!appData.contentFolder || !appData.dataFolder) return;
+  if (!appData.contentFolder || !appData.dataFolder || !appData.gamePath) return;
 
   if (!contentWatcher || isDev) {
     const contentFolder = appData.contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
@@ -463,8 +474,83 @@ const createWindow = (): void => {
     mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
   });
 
-  ipcMain.on("readAppConfig", () => {
-    getAllMods(mainWindow as BrowserWindow);
+  ipcMain.on("readAppConfig", async () => {
+    try {
+      try {
+        const appState = await readConfig();
+        mainWindow?.webContents.send("fromAppConfig", appState);
+      } catch (err) {
+        mainWindow?.webContents.send("failedReadingConfig");
+        console.log(err);
+      }
+
+      if (!appData.gamePath || !appData.contentFolder || !appData.dataFolder) {
+        await getFolderPaths(log);
+      }
+      getAllMods();
+    } finally {
+      mainWindow?.webContents.send("setAppFolderPaths", {
+        gamePath: appData.gamePath || "",
+        contentFolder: appData.contentFolder || "",
+      } as AppFolderPaths);
+    }
+  });
+
+  const refreshModsIfFoldersValid = () => {
+    if (appData.contentFolder && appData.gamePath && appData.dataFolder) {
+      console.log(appData.contentFolder, appData.gamePath, appData.dataFolder);
+      getAllMods();
+    }
+  };
+
+  ipcMain.on("selectContentFolder", async () => {
+    try {
+      if (!mainWindow) return;
+      const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openDirectory"],
+      });
+
+      if (!dialogReturnValue.canceled) {
+        const contentFolderPath = dialogReturnValue.filePaths[0];
+        appData.contentFolder = contentFolderPath;
+        mainWindow?.webContents.send("setContentFolder", contentFolderPath);
+        refreshModsIfFoldersValid();
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  });
+
+  ipcMain.on("selectWarhammer3Folder", async () => {
+    try {
+      if (!mainWindow) return;
+      const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openDirectory"],
+      });
+
+      if (!dialogReturnValue.canceled) {
+        const wh3FolderPath = dialogReturnValue.filePaths[0];
+        appData.gamePath = wh3FolderPath;
+        appData.dataFolder = nodePath.join(wh3FolderPath, "/data/");
+        mainWindow?.webContents.send("setWarhammer3Folder", wh3FolderPath);
+
+        const calculatedContentPath = nodePath.join(
+          appData.gamePath,
+          "..",
+          "..",
+          "workshop",
+          "content",
+          "1142710"
+        );
+        if (fsdumb.existsSync(calculatedContentPath)) {
+          appData.contentFolder = calculatedContentPath;
+          mainWindow?.webContents.send("setContentFolder", calculatedContentPath);
+        }
+        refreshModsIfFoldersValid();
+      }
+    } catch (e) {
+      console.log(e);
+    }
   });
 
   ipcMain.on("getCompatData", () => {
@@ -490,7 +576,7 @@ const createWindow = (): void => {
     });
 
     await Promise.allSettled(copyPromises);
-    getAllMods(mainWindow as BrowserWindow);
+    getAllMods();
   });
 
   ipcMain.on("cleanData", async () => {
@@ -508,7 +594,7 @@ const createWindow = (): void => {
     });
 
     await Promise.allSettled(deletePromises);
-    getAllMods(mainWindow as BrowserWindow);
+    getAllMods();
   });
 
   ipcMain.on("saveConfig", (event, data: AppState) => {
@@ -764,6 +850,8 @@ ipcMain.on("exportModsToClipboard", async (event, mods: Mod[]) => {
 });
 
 ipcMain.on("startGame", async (event, mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => {
+  if (!appData.gamePath) return;
+
   const appDataPath = app.getPath("userData");
   const userScriptPath = nodePath.join(appData.gamePath, "my_mods.txt");
 
