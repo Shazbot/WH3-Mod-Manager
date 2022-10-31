@@ -65,24 +65,6 @@ let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
 
-// eslint-disable-next-line @typescript-eslint/no-empty-function
-const sendSetPackCollisions = () => {};
-// const sendSetPackCollisions = () => {
-//   console.log("setPackCollisions");
-//   mainWindow?.webContents.send("setPackCollisions", {
-//     packFileCollisions: appData.compatData.packFileCollisions,
-//     packTableCollisions: appData.compatData.packTableCollisions,
-//   } as PackCollisions);
-// };
-
-// const sendSetPackCollisions = debounce(() => {
-//   console.log("setPackCollisions");
-//   mainWindow?.webContents.send("setPackCollisions", {
-//     packFileCollisions: appData.compatData.packFileCollisions,
-//     packTableCollisions: appData.compatData.packTableCollisions,
-//   } as PackCollisions);
-// }, 1000);
-
 const readConfig = async (): Promise<AppStateToWrite> => {
   try {
     const appState = await readAppConfig();
@@ -162,12 +144,6 @@ const appendCollisions = async (newPack: Pack) => {
       appData.compatData.packFileCollisions,
       newPack
     );
-
-    sendSetPackCollisions();
-    // mainWindow?.webContents.send("setPackCollisions", {
-    //   packFileCollisions: appData.compatData.packFileCollisions,
-    //   packTableCollisions: appData.compatData.packTableCollisions,
-    // } as PackCollisions);
   }
 };
 
@@ -211,12 +187,6 @@ const removePackFromCollisions = (packPath: string) => {
       appData.compatData.packFileCollisions,
       nodePath.basename(packPath)
     );
-
-    sendSetPackCollisions();
-    // mainWindow?.webContents.send("setPackCollisions", {
-    //   packFileCollisions: appData.compatData.packFileCollisions,
-    //   packTableCollisions: appData.compatData.packTableCollisions,
-    // } as PackCollisions);
   }
 };
 
@@ -275,12 +245,6 @@ const getAllMods = async () => {
         // appendCollisions(pack);
       }
     });
-    sendSetPackCollisions();
-    // mainWindow?.webContents.send("setPackCollisions", appData.compatData);
-    // getCompatData(newPacksData).then((compatData) => {
-    //   appData.compatData = compatData;
-    //   mainWindow?.webContents.send("setPackCollisions", compatData);
-    // });
   } catch (err) {
     console.log(err);
   }
@@ -487,6 +451,7 @@ const createWindow = (): void => {
       if (!appData.gamePath || !appData.contentFolder || !appData.dataFolder) {
         await getFolderPaths(log);
       }
+
       getAllMods();
     } finally {
       mainWindow?.webContents.send("setAppFolderPaths", {
@@ -644,7 +609,6 @@ const createWindow = (): void => {
   ipcMain.handle("getUpdateData", async () => {
     let modUpdatedExists = { updateExists: false } as ModUpdateExists;
 
-    // return { updateExists: true, downloadURL: "http://www.google.com" } as ModUpdateExists;
     const isAvailable = await updateAvailable("Shazbot/WH3-Mod-Manager", version);
     if (!isAvailable) return modUpdatedExists;
 
