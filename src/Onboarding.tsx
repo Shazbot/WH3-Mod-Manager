@@ -7,7 +7,13 @@ import { setIsOnboardingToRun, setWasOnboardingEverRun } from "./appSlice";
 
 const Onboarding = memo(() => {
   const dispatch = useAppDispatch();
-  const toRun = useAppSelector((state) => state.app.isOnboardingToRun);
+  const isOnboardingToRun = useAppSelector((state) => state.app.isOnboardingToRun);
+
+  const isSetAppFolderPathsDone = useAppSelector((state) => state.app.isSetAppFolderPathsDone);
+  const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
+  const isAnyPathEmpty = appFolderPaths.contentFolder == "" || appFolderPaths.gamePath == "";
+
+  const toRun = !(isSetAppFolderPathsDone && isAnyPathEmpty) && isOnboardingToRun;
 
   const { current: steps } = useRef([
     {
@@ -137,22 +143,26 @@ const Onboarding = memo(() => {
 
   const onJoyrideStateChange = useCallback((data: CallBackProps) => {
     console.log(data);
-    if (data.action === "reset") {
+    if (data.action === "reset" || data.action === "skip") {
       dispatch(setIsOnboardingToRun(false));
       dispatch(setWasOnboardingEverRun(true));
     }
   }, []);
 
   return (
-    <Joyride
-      showSkipButton={true}
-      disableScrolling={true}
-      continuous={true}
-      disableOverlayClose={true}
-      steps={steps}
-      run={toRun}
-      callback={onJoyrideStateChange}
-    ></Joyride>
+    <>
+      {toRun && (
+        <Joyride
+          showSkipButton={true}
+          disableScrolling={true}
+          continuous={true}
+          disableOverlayClose={true}
+          steps={steps}
+          run={toRun}
+          callback={onJoyrideStateChange}
+        ></Joyride>
+      )}
+    </>
   );
 });
 export default Onboarding;
