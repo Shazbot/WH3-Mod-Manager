@@ -242,7 +242,7 @@ export const getFolderPaths = async (log: (msg: string) => void) => {
   if (process.platform === "win32") {
     const regKey = new Registry({
       hive: Registry.HKLM,
-      key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steama",
+      key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
     });
 
     const items = await regKeyValuesAsPromise(regKey);
