@@ -42,9 +42,14 @@ const api: api = {
   setPacksData: (callback) => ipcRenderer.on("setPacksData", callback),
   setPacksDataRead: (callback) => ipcRenderer.on("setPacksDataRead", callback),
   setPackCollisions: (callback) => ipcRenderer.on("setPackCollisions", callback),
+  setAppFolderPaths: (callback) => ipcRenderer.on("setAppFolderPaths", callback),
   getAllModData: (ids) => ipcRenderer.send("getAllModData", ids),
   getCompatData: () => ipcRenderer.send("getCompatData"),
+  selectContentFolder: () => ipcRenderer.send("selectContentFolder"),
+  selectWarhammer3Folder: () => ipcRenderer.send("selectWarhammer3Folder"),
   savesPopulated: (callback) => ipcRenderer.on("savesPopulated", callback),
+  setContentFolder: (callback) => ipcRenderer.on("setContentFolder", callback),
+  setWarhammer3Folder: (callback) => ipcRenderer.on("setWarhammer3Folder", callback),
   electronLog,
 };
 contextBridge.exposeInMainWorld("api", api);

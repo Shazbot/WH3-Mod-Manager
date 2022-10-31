@@ -20,6 +20,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isMakeUnitsGeneralsEnabled: appState.isMakeUnitsGeneralsEnabled,
     isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
+    appFolderPaths: appState.appFolderPaths,
   };
 };
 

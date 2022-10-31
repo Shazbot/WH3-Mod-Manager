@@ -1,3 +1,4 @@
+import { AppFolderPaths } from "./appData";
 import { Pack, PackCollisions } from "./packFileTypes";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
@@ -36,6 +37,8 @@ const appSlice = createSlice({
     packCollisions: { packTableCollisions: [], packFileCollisions: [] },
     newMergedPacks: [],
     pathsOfReadPacks: [],
+    appFolderPaths: { gamePath: "", contentFolder: "" },
+    isSetAppFolderPathsDone: false,
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -194,6 +197,10 @@ const appSlice = createSlice({
     setPackCollisions: (state: AppState, action: PayloadAction<PackCollisions>) => {
       state.packCollisions = action.payload;
     },
+    setAppFolderPaths: (state: AppState, action: PayloadAction<AppFolderPaths>) => {
+      state.appFolderPaths = action.payload;
+      state.isSetAppFolderPathsDone = true;
+    },
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToWrite>) => {
       const fromConfigAppState = action.payload;
 
@@ -229,6 +236,11 @@ const appSlice = createSlice({
 
       state.wasOnboardingEverRun = fromConfigAppState.wasOnboardingEverRun;
       if (!fromConfigAppState.wasOnboardingEverRun) state.isOnboardingToRun = true;
+
+      if (fromConfigAppState.appFolderPaths.gamePath)
+        state.appFolderPaths.gamePath = fromConfigAppState.appFolderPaths.gamePath;
+      if (fromConfigAppState.appFolderPaths.contentFolder)
+        state.appFolderPaths.gamePath = fromConfigAppState.appFolderPaths.contentFolder;
     },
     addPreset: (state: AppState, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;
@@ -396,6 +408,12 @@ const appSlice = createSlice({
     createdMergedPack: (state: AppState, action: PayloadAction<string>) => {
       state.newMergedPacks.push({ path: action.payload, creationTime: Date.now() });
     },
+    setContentFolder: (state: AppState, action: PayloadAction<string>) => {
+      state.appFolderPaths.contentFolder = action.payload;
+    },
+    setWarhammer3Folder: (state: AppState, action: PayloadAction<string>) => {
+      state.appFolderPaths.gamePath = action.payload;
+    },
   },
 });
 
@@ -433,6 +451,9 @@ export const {
   setPacksData,
   setPacksDataRead,
   setPackCollisions,
+  setAppFolderPaths,
+  setWarhammer3Folder,
+  setContentFolder,
 } = appSlice.actions;
 
 export default appSlice.reducer;

@@ -237,12 +237,12 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
   });
 };
 
-const getFolderPaths = async (log: (msg: string) => void) => {
+export const getFolderPaths = async (log: (msg: string) => void) => {
   let installPath = "";
   if (process.platform === "win32") {
     const regKey = new Registry({
       hive: Registry.HKLM,
-      key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steam",
+      key: "\\SOFTWARE\\Wow6432Node\\Valve\\Steama",
     });
 
     const items = await regKeyValuesAsPromise(regKey);
@@ -362,6 +362,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   if (!appData.contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.contentFolder;
 
+  if (!appData.gamePath) throw new Error("Game folder not found");
   const dataMods = await getDataMods(appData.gamePath, log);
   mods.push(...dataMods);
 

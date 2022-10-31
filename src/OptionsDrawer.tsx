@@ -15,6 +15,7 @@ import { Tooltip } from "flowbite-react";
 import ShareMods from "./ShareMods";
 import { useSelector } from "react-redux";
 import { createSelector } from "@reduxjs/toolkit";
+import GamePathsSetup from "./GamePathsSetup";
 
 const copyToData = () => {
   window.api?.copyToData();
@@ -30,6 +31,7 @@ type OptionType = {
 
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
+  const [isShowingSetFolderPaths, setIsShowingSetFolderPaths] = useState<boolean>(false);
 
   const dispatch = useAppDispatch();
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
@@ -74,6 +76,10 @@ const OptionsDrawer = memo(() => {
 
   return (
     <div>
+      <GamePathsSetup
+        isOpen={isShowingSetFolderPaths}
+        setIsOpen={setIsShowingSetFolderPaths}
+      ></GamePathsSetup>
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <div className="text-center">
         <button
@@ -90,7 +96,7 @@ const OptionsDrawer = memo(() => {
         <Drawer isOpen={areOptionsOpen} setIsOpen={setAreOptionsOpen}>
           <div
             id="drawer-example"
-            className="overflow-y-auto fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-0 top-0 transform-none"
+            className="overflow-y-scroll fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-[-16px] top-0 transform-none scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
             tabIndex={-1}
             aria-labelledby="drawer-label"
             aria-modal="true"
@@ -98,7 +104,7 @@ const OptionsDrawer = memo(() => {
           >
             <h5
               id="drawer-label"
-              className="inline-flex items-center mb-4 text-base font-semibold text-gray-500 dark:text-gray-400"
+              className="inline-flex items-center mb-4 text-base font-semibold text-gray-500 dark:text-gray-400 mt-6"
             >
               Other Options
             </h5>
@@ -238,6 +244,19 @@ const OptionsDrawer = memo(() => {
               <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
                 Skip intro movies
               </label>
+            </div>
+
+            <h6 className="mt-10">Set Folder Paths</h6>
+            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+              Set WH3 and Steam Workshop content folder paths.
+            </p>
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => setIsShowingSetFolderPaths(true)}
+              >
+                <span className="uppercase">Set Folder Paths</span>
+              </button>
             </div>
           </div>
         </Drawer>
