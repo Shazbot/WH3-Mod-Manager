@@ -45,18 +45,18 @@ export function writeAppConfig(data: AppState) {
         try {
           // write to the dir where the exe is due to bizarre file permission issues
           const exeDirPath = nodePath.dirname(app.getPath("exe"));
-          const exeDirTempConfigPath = `${exeDirPath}\\config_temp.json`;
-          const exeDirConfigPath = `${exeDirPath}\\config.json`;
+          const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
+          const exeDirConfigPath = nodePath.join(exeDirPath, "config.json");
           await fs.writeFile(exeDirTempConfigPath, stringifiedData);
           await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
         } catch (err) {
           console.log(err);
         }
 
-        const tempFilePath = `${userData}\\config_temp.json`;
+        const tempFilePath = nodePath.join(userData, "config_temp.json");
         await fs.writeFile(tempFilePath, stringifiedData);
 
-        const configFilePath = `${userData}\\config.json`;
+        const configFilePath = nodePath.join(userData, "config.json");
         await move(tempFilePath, configFilePath, { overwrite: true });
       } catch (e) {
         console.log(e);
@@ -69,13 +69,14 @@ export async function readAppConfig(): Promise<AppStateToWrite> {
   let data: string | undefined;
   try {
     const userData = app.getPath("userData");
-    data = await fs.readFile(`${userData}\\config.json`, "utf8");
+    const userDataConfigFilePath = nodePath.join(userData, "config.json");
+    data = await fs.readFile(userDataConfigFilePath, "utf8");
     // eslint-disable-next-line no-empty
   } catch (err) {}
 
   try {
     if (!data) {
-      const exeDirConfigPath = `${nodePath.dirname(app.getPath("exe"))}\\config.json`;
+      const exeDirConfigPath = nodePath.join(nodePath.dirname(app.getPath("exe")), "config.json");
       data = await fs.readFile(exeDirConfigPath, "utf8");
     }
     // eslint-disable-next-line no-empty
