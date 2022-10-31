@@ -1,5 +1,5 @@
 import Select, { ActionMeta, SingleValue } from "react-select";
-import React, { memo, useCallback, useEffect, useState } from "react";
+import React, { memo, useCallback, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
@@ -81,6 +81,7 @@ const OptionsDrawer = memo(() => {
         setIsOpen={setIsShowingSetFolderPaths}
       ></GamePathsSetup>
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
+
       <div className="text-center">
         <button
           onClick={() => setAreOptionsOpen(!areOptionsOpen)}
