@@ -7,6 +7,7 @@ import {
   getModsSortedByEnabled,
   getModsSortedByLastUpdated,
   getModsSortedByAuthor,
+  getModsSortedBySubbedTime,
 } from "../modSortingHelpers";
 
 export enum SortingType {
@@ -22,6 +23,8 @@ export enum SortingType {
   OrderedReverse,
   Author,
   AuthorReverse,
+  SubbedTime,
+  SubbedTimeReverse,
 }
 
 export function isOrderSort(sortingType: SortingType) {
@@ -39,47 +42,57 @@ export function isHumanNameSort(sortingType: SortingType) {
 export function isLastUpdatedSort(sortingType: SortingType) {
   return sortingType === SortingType.LastUpdated || sortingType === SortingType.LastUpdatedReverse;
 }
+export function isSubbedTimeSort(sortingType: SortingType) {
+  return sortingType === SortingType.SubbedTime || sortingType === SortingType.SubbedTimeReverse;
+}
 export function isAuthorSort(sortingType: SortingType) {
   return sortingType === SortingType.Author || sortingType === SortingType.AuthorReverse;
 }
 
+const sortingArrowClassNames = "inline h-4 overflow-visible";
 export function getSortingArrow(sortingType: SortingType) {
   return (
     (sortingType === SortingType.PackName && (
-      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.PackNameReverse && (
-      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.HumanName && (
-      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.HumanNameReverse && (
-      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.LastUpdated && (
-      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
+    )) ||
+    (sortingType === SortingType.SubbedTime && (
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
+    )) ||
+    (sortingType === SortingType.SubbedTimeReverse && (
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.LastUpdatedReverse && (
-      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.IsEnabled && (
-      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.IsEnabledReverse && (
-      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.Ordered && (
-      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.OrderedReverse && (
-      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) ||
     (sortingType === SortingType.Author && (
-      <HiArrowNarrowDown className="inline h-4 overflow-visible"></HiArrowNarrowDown>
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
     )) ||
     (sortingType === SortingType.AuthorReverse && (
-      <HiArrowNarrowUp className="inline h-4 overflow-visible"></HiArrowNarrowUp>
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) || <></>
   );
 }
@@ -127,6 +140,14 @@ export function getSortedMods(presetMods: Mod[], orderedMods: Mod[], sortingType
         mods = mods.reverse();
       }
       break;
+    case SortingType.SubbedTime:
+    case SortingType.SubbedTimeReverse:
+      mods = getModsSortedBySubbedTime(presetMods);
+
+      if (sortingType == SortingType.SubbedTimeReverse) {
+        mods = mods.reverse();
+      }
+      break;
     case SortingType.Author:
     case SortingType.AuthorReverse:
       mods = getModsSortedByAuthor(presetMods);
@@ -162,6 +183,11 @@ export const onNameSort = (setSortingType: React.Dispatch<React.SetStateAction<S
 export const onLastUpdatedSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
   setSortingType((prevState) => {
     return prevState === SortingType.LastUpdated ? SortingType.LastUpdatedReverse : SortingType.LastUpdated;
+  });
+};
+export const onSubbedTimeSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
+  setSortingType((prevState) => {
+    return prevState === SortingType.SubbedTime ? SortingType.SubbedTimeReverse : SortingType.SubbedTime;
   });
 };
 export const onAuthorSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {

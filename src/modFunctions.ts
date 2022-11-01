@@ -309,8 +309,18 @@ export async function getContentModInFolder(
   }
   if (!appData.contentFolder) throw new Error("Content folder not found");
   const contentFolder = appData.contentFolder;
+  const contentSubfolder = nodePath.join(contentFolder, contentSubFolderName);
 
-  const files = await fsPromises.readdir(nodePath.join(contentFolder, contentSubFolderName), {
+  let subbedTime = -1;
+  try {
+    [subbedTime] = await fsPromises.stat(contentSubfolder).then((stats) => {
+      return [stats.birthtimeMs];
+    });
+  } catch (err) {
+    log(`ERROR: ${err}`);
+  }
+
+  const files = await fsPromises.readdir(contentSubfolder, {
     withFileTypes: true,
   });
 
@@ -323,7 +333,7 @@ export async function getContentModInFolder(
   let size = -1;
   try {
     [lastChangedLocal, size] = await fsPromises
-      .stat(nodePath.join(contentFolder, contentSubFolderName, pack.name))
+      .stat(nodePath.join(contentSubfolder, pack.name))
       .then((stats) => {
         return [stats.mtimeMs, stats.size];
       });
@@ -332,14 +342,14 @@ export async function getContentModInFolder(
   }
 
   // log(`Reading pack file ${contentFolder}\\${file.name}\\${pack.name}`);
-  const packPath = nodePath.join(contentFolder, contentSubFolderName, pack.name);
-  const imgPath = (img && nodePath.join(contentFolder, contentSubFolderName, img.name)) || "";
+  const packPath = nodePath.join(contentSubfolder, pack.name);
+  const imgPath = (img && nodePath.join(contentSubfolder, img.name)) || "";
   const mod: Mod = {
     author: "",
     humanName: "",
     name: pack.name,
     path: packPath,
-    modDirectory: nodePath.join(contentFolder, contentSubFolderName),
+    modDirectory: nodePath.join(contentSubfolder),
     imgPath: imgPath,
     workshopId: contentSubFolderName,
     isEnabled: false,
@@ -348,6 +358,7 @@ export async function getContentModInFolder(
     lastChangedLocal,
     isDeleted: false,
     isMovie: false,
+    subbedTime: (subbedTime != -1 && subbedTime) || lastChangedLocal,
     size,
   };
   return mod;
