@@ -16,6 +16,7 @@ import ShareMods from "./ShareMods";
 import { useSelector } from "react-redux";
 import { createSelector } from "@reduxjs/toolkit";
 import GamePathsSetup from "./GamePathsSetup";
+import AboutScreen from "./AboutScreen";
 
 const copyToData = () => {
   window.api?.copyToData();
@@ -32,6 +33,7 @@ type OptionType = {
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
   const [isShowingSetFolderPaths, setIsShowingSetFolderPaths] = useState<boolean>(false);
+  const [isShowingAboutScreen, setIsShowingAboutScreen] = useState<boolean>(false);
 
   const dispatch = useAppDispatch();
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
@@ -80,6 +82,7 @@ const OptionsDrawer = memo(() => {
         isOpen={isShowingSetFolderPaths}
         setIsOpen={setIsShowingSetFolderPaths}
       ></GamePathsSetup>
+      <AboutScreen isOpen={isShowingAboutScreen} setIsOpen={setIsShowingAboutScreen}></AboutScreen>
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
 
       <div className="text-center">
@@ -110,7 +113,16 @@ const OptionsDrawer = memo(() => {
               Other Options
             </h5>
 
-            <h6>Extra Columns</h6>
+            <div className="flex ">
+              <button
+                className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[50%]"
+                onClick={() => setIsShowingAboutScreen(true)}
+              >
+                <span className="uppercase">About</span>
+              </button>
+            </div>
+
+            <h6 className="mt-6">Extra Columns</h6>
             <div className="flex items-center ml-1">
               <input
                 className="mt-1"
