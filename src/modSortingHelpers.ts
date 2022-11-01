@@ -43,6 +43,15 @@ export function getModsSortedByName(mods: Mod[]) {
   });
 }
 
+export function getModsSortedByIsDataPack(mods: Mod[]) {
+  return [...mods].sort((firstMod, secondMod) => {
+    if (firstMod.isInData && secondMod.isInData) return compareModNames(firstMod.name, secondMod.name);
+    if (firstMod.isInData) return -1;
+    if (secondMod.isInData) return 1;
+    return compareModNames(firstMod.name, secondMod.name);
+  });
+}
+
 export function getModsSortedBySize(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
     return firstMod.size - secondMod.size;

@@ -8,6 +8,7 @@ import {
   getModsSortedByLastUpdated,
   getModsSortedByAuthor,
   getModsSortedBySubbedTime,
+  getModsSortedByIsDataPack,
 } from "../modSortingHelpers";
 
 export enum SortingType {
@@ -25,6 +26,8 @@ export enum SortingType {
   AuthorReverse,
   SubbedTime,
   SubbedTimeReverse,
+  IsDataPack,
+  IsDataPackReverse,
 }
 
 export function isOrderSort(sortingType: SortingType) {
@@ -35,6 +38,9 @@ export function isEnabledSort(sortingType: SortingType) {
 }
 export function isPackNameSort(sortingType: SortingType) {
   return sortingType === SortingType.PackName || sortingType === SortingType.PackNameReverse;
+}
+export function isDataPackSort(sortingType: SortingType) {
+  return sortingType === SortingType.IsDataPack || sortingType === SortingType.IsDataPackReverse;
 }
 export function isHumanNameSort(sortingType: SortingType) {
   return sortingType === SortingType.HumanName || sortingType === SortingType.HumanNameReverse;
@@ -82,6 +88,12 @@ export function getSortingArrow(sortingType: SortingType) {
     (sortingType === SortingType.IsEnabledReverse && (
       <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
     )) ||
+    (sortingType === SortingType.IsDataPack && (
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
+    )) ||
+    (sortingType === SortingType.IsDataPackReverse && (
+      <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
+    )) ||
     (sortingType === SortingType.Ordered && (
       <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
     )) ||
@@ -114,6 +126,14 @@ export function getSortedMods(presetMods: Mod[], orderedMods: Mod[], sortingType
       mods = getModsSortedByName(presetMods);
 
       if (sortingType == SortingType.PackNameReverse) {
+        mods = mods.reverse();
+      }
+      break;
+    case SortingType.IsDataPack:
+    case SortingType.IsDataPackReverse:
+      mods = getModsSortedByIsDataPack(presetMods);
+
+      if (sortingType == SortingType.IsDataPackReverse) {
         mods = mods.reverse();
       }
       break;
@@ -173,6 +193,11 @@ export const onEnabledSort = (setSortingType: React.Dispatch<React.SetStateActio
 export const onPackSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
   setSortingType((prevState) => {
     return prevState === SortingType.PackName ? SortingType.PackNameReverse : SortingType.PackName;
+  });
+};
+export const onIsDataPackSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
+  setSortingType((prevState) => {
+    return prevState === SortingType.IsDataPack ? SortingType.IsDataPackReverse : SortingType.IsDataPack;
   });
 };
 export const onNameSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
