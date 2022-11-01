@@ -82,6 +82,7 @@ const appSlice = createSlice({
       toEnable.forEach((mod) => (mod.isEnabled = true));
     },
     setMods: (state: AppState, action: PayloadAction<Mod[]>) => {
+      console.log("appSlice/setMods: SETTING CURRENT PRESET");
       const mods = action.payload;
       state.currentPreset.mods = mods;
       state.allMods = mods;
@@ -91,6 +92,14 @@ const appSlice = createSlice({
           mod.isInData ||
           (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
       );
+
+      if (state.dataFromConfig) {
+        state.currentPreset.mods
+          .filter((iterMod) =>
+            state.dataFromConfig?.alwaysEnabledMods.some((mod) => mod.name == iterMod.name)
+          )
+          .forEach((mod) => (mod.isEnabled = true));
+      }
     },
     addMod: (state: AppState, action: PayloadAction<Mod>) => {
       const mod = action.payload;
@@ -119,6 +128,10 @@ const appSlice = createSlice({
       }
 
       if (state.newMergedPacks.some((mergedPack) => mergedPack.path == mod.path)) {
+        mod.isEnabled = true;
+      }
+
+      if (state.alwaysEnabledMods.some((iterMod) => iterMod.name == mod.name)) {
         mod.isEnabled = true;
       }
     },
@@ -229,8 +242,9 @@ const appSlice = createSlice({
       state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
-      const toEnable = state.currentPreset.mods.filter((iterMod) =>
-        fromConfigAppState.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+
+      const toEnable = fromConfigAppState.currentPreset.mods.filter((iterMod) =>
+        fromConfigAppState.alwaysEnabledMods.some((mod) => mod.name == iterMod.name)
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
 
