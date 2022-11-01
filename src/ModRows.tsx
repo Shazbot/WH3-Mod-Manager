@@ -462,10 +462,17 @@ export default function ModRows() {
         <div
           className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl"
           onClick={() => modRowSorting.onLastUpdatedSort(setSortingType)}
+          onContextMenu={() => modRowSorting.onSubbedTimeSort(setSortingType)}
         >
-          {modRowSorting.isLastUpdatedSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`${modRowSorting.isLastUpdatedSort(sortingType) && "font-semibold"}`}>
-            Last Updated
+          {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
+            modRowSorting.getSortingArrow(sortingType)}
+          <span
+            className={`${
+              (modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
+              "font-semibold"
+            }`}
+          >
+            {(modRowSorting.isSubbedTimeSort(sortingType) && "Subscription Time") || "Last Updated"}
           </span>
         </div>
 

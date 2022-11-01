@@ -113,6 +113,7 @@ declare global {
     reqModIdToName?: [string, string][];
     size: number;
     mergedModsData?: MergedModsData[];
+    subbedTime?: number;
   }
 
   interface ModData {

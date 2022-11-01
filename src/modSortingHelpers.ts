@@ -82,6 +82,17 @@ export function getModsSortedByLastUpdated(mods: Mod[]) {
   });
 }
 
+export function getModsSortedBySubbedTime(mods: Mod[]) {
+  return [...mods].sort((firstMod, secondMod) => {
+    const firstModLastChanged = firstMod.subbedTime || firstMod.lastChanged || firstMod.lastChangedLocal;
+    const secondModLastChanged = secondMod.subbedTime || secondMod.lastChanged || secondMod.lastChangedLocal;
+    if (firstModLastChanged === undefined && secondModLastChanged === undefined) return 0;
+    if (firstModLastChanged === undefined) return 1;
+    if (secondModLastChanged === undefined) return -1;
+    return secondModLastChanged - firstModLastChanged;
+  });
+}
+
 export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: boolean) {
   return mods.filter(
     (mod) =>
