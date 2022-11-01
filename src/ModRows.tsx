@@ -437,9 +437,18 @@ export default function ModRows() {
         <div
           className="flex grid-area-packName place-items-center pl-1 mod-row-header"
           onClick={() => modRowSorting.onPackSort(setSortingType)}
+          onContextMenu={() => modRowSorting.onIsDataPackSort(setSortingType)}
         >
-          {modRowSorting.isPackNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`${modRowSorting.isPackNameSort(sortingType) && "font-semibold"}`}>Pack</span>
+          {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
+            modRowSorting.getSortingArrow(sortingType)}
+          <span
+            className={`${
+              (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
+              "font-semibold"
+            }`}
+          >
+            {(modRowSorting.isDataPackSort(sortingType) && "Data Packs") || "Pack"}
+          </span>
         </div>
 
         <div
@@ -500,6 +509,7 @@ export default function ModRows() {
                 onModToggled,
                 onModRightClick,
                 onRemoveModOrder,
+                sortingType,
                 isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
                 isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
                   (mergeMod.mergedModsData as MergedModsData[]).some(

@@ -2,11 +2,11 @@ import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-sol
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import React, { memo } from "react";
 import { useAppSelector } from "./hooks";
-import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
 import { HiOutlineCollection } from "react-icons/hi";
 import { formatDistanceToNow } from "date-fns";
+import { isSubbedTimeSort, SortingType } from "./utility/modRowSorting";
 
 type ModRowProps = {
   mod: Mod;
@@ -25,6 +25,7 @@ type ModRowProps = {
   loadOrder: number;
   isEnabledInMergedMod: boolean;
   isAlwaysEnabled: boolean;
+  sortingType: SortingType;
 };
 
 const domParser = new DOMParser();
@@ -59,10 +60,20 @@ const ModRow = memo(
     isAlwaysEnabled,
     isEnabledInMergedMod,
     loadOrder,
+    sortingType,
   }: ModRowProps) => {
     const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
     const isDev = useAppSelector((state) => state.app.isDev);
     const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+
+    const timeColumnValue =
+      (isSubbedTimeSort(sortingType) &&
+        mod.subbedTime != null &&
+        mod.subbedTime != -1 &&
+        formatLastChanged(mod.subbedTime)) ||
+      (mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
+      (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
+      "";
 
     return (
       <div
@@ -207,11 +218,7 @@ const ModRow = memo(
           className="flex place-items-center grid-area-autohide"
           onContextMenu={(e) => onModRightClick(e, mod)}
         >
-          <label htmlFor={mod.workshopId + "enabled"}>
-            {(mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
-              (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
-              ""}
-          </label>
+          <label htmlFor={mod.workshopId + "enabled"}>{timeColumnValue}</label>
         </div>
       </div>
     );
