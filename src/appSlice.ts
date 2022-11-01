@@ -237,10 +237,12 @@ const appSlice = createSlice({
       state.wasOnboardingEverRun = fromConfigAppState.wasOnboardingEverRun;
       if (!fromConfigAppState.wasOnboardingEverRun) state.isOnboardingToRun = true;
 
-      if (fromConfigAppState.appFolderPaths.gamePath)
-        state.appFolderPaths.gamePath = fromConfigAppState.appFolderPaths.gamePath;
-      if (fromConfigAppState.appFolderPaths.contentFolder)
-        state.appFolderPaths.gamePath = fromConfigAppState.appFolderPaths.contentFolder;
+      if (fromConfigAppState.appFolderPaths) {
+        if (fromConfigAppState.appFolderPaths.gamePath)
+          state.appFolderPaths.gamePath = fromConfigAppState.appFolderPaths.gamePath;
+        if (fromConfigAppState.appFolderPaths.contentFolder)
+          state.appFolderPaths.gamePath = fromConfigAppState.appFolderPaths.contentFolder;
+      }
     },
     addPreset: (state: AppState, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;

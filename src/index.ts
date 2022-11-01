@@ -72,17 +72,22 @@ const readConfig = async (): Promise<AppStateToWrite> => {
       setStartingAppState(appState);
     }
 
-    if (appState.appFolderPaths.contentFolder && !fsdumb.existsSync(appState.appFolderPaths.contentFolder)) {
-      appState.appFolderPaths.contentFolder = "";
-    } else {
-      appData.contentFolder = appState.appFolderPaths.contentFolder;
-    }
+    if (appState.appFolderPaths) {
+      if (
+        appState.appFolderPaths.contentFolder &&
+        !fsdumb.existsSync(appState.appFolderPaths.contentFolder)
+      ) {
+        appState.appFolderPaths.contentFolder = "";
+      } else {
+        appData.contentFolder = appState.appFolderPaths.contentFolder;
+      }
 
-    if (appState.appFolderPaths.gamePath && !fsdumb.existsSync(appState.appFolderPaths.gamePath)) {
-      appState.appFolderPaths.gamePath = "";
-    } else {
-      appData.gamePath = appState.appFolderPaths.gamePath;
-      appData.dataFolder = nodePath.join(appState.appFolderPaths.gamePath, "/data/");
+      if (appState.appFolderPaths.gamePath && !fsdumb.existsSync(appState.appFolderPaths.gamePath)) {
+        appState.appFolderPaths.gamePath = "";
+      } else {
+        appData.gamePath = appState.appFolderPaths.gamePath;
+        appData.dataFolder = nodePath.join(appState.appFolderPaths.gamePath, "/data/");
+      }
     }
 
     return appState;
