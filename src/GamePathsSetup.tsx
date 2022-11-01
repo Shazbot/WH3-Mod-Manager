@@ -33,29 +33,28 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
         >
           <Modal.Header>Configure Folder Locations</Modal.Header>
           <Modal.Body>
-            <div className="flex flex-col gap-y-6 gap-x-4 z-10 leading-relaxed dark:text-gray-300 relative font-normal items-center">
-              <div className="w-full">
+            <div className="flex flex-col gap-y-8 gap-x-4 z-10 leading-relaxed dark:text-gray-300 relative font-normal items-center">
+              <div>
                 {(isAnyPathEmpty && (
-                  <p>
+                  <p className="m-auto text-center">
                     The mod manager tried to get WH3 folder locations from Windows Registry, but it couldn't
                     find them! You'll have to set them manually!
                   </p>
                 )) || (
-                  <p>
+                  <p className="m-auto text-center">
                     The mod manager automatically found WH3 folder paths from the Windows Registry, but you
                     can set them manually here.
                   </p>
                 )}
               </div>
               <div className="border w-full border-gray-600"></div>
-              <div className="w-full">
-                <p>
+              <div>
+                <p className="m-auto text-center">
                   The main Warhammer 3 folder that contains Warhammer3.exe, for example C:\Program Files
                   (x86)\Steam\steamapps\common\Total War WARHAMMER III
                 </p>
                 <div className="flex gap-x-4 items-center w-full mt-4">
                   <span className="whitespace-nowrap">WH3 folder:</span>
-                  <p></p>
                   <span className="w-full">
                     <input
                       type="text"
@@ -75,15 +74,14 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
                 </div>
               </div>
               <div className="border w-full border-gray-600"></div>
-              <div className="w-full">
-                <p>
+              <div className="max-w-[90%]">
+                <p className="m-auto max-w-[95%] text-center">
                   The Warhammer 3 Steam Workshop content folder named 1142710 (which is the steam ID for WH3)
                   that contains mods, for example C:\Program Files
                   (x86)\Steam\steamapps\workshop\content\1142710
                 </p>
                 <div className="flex gap-x-4 items-center w-full mt-4">
                   <span className="whitespace-nowrap">Content folder:</span>
-                  <p></p>
                   <span className="w-full">
                     <input
                       type="text"
