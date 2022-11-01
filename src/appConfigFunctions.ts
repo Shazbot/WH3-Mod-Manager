@@ -1,9 +1,10 @@
 import { app } from "electron";
 import * as fs from "fs/promises";
 import equal from "fast-deep-equal";
-import { move } from "fs-extra";
+import { copy, move } from "fs-extra";
 import appData from "./appData";
 import * as nodePath from "path";
+import { version } from "../package.json";
 
 let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
@@ -42,6 +43,7 @@ export function writeAppConfig(data: AppState) {
     writeConfigTimeout = setTimeout(async () => {
       try {
         const stringifiedData = JSON.stringify(dataToWrite);
+        const backupVersionConfigName = `config_backup_v${version}.json`;
 
         try {
           // write to the dir where the exe is due to bizarre file permission issues
@@ -49,6 +51,8 @@ export function writeAppConfig(data: AppState) {
           const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
           const exeDirConfigPath = nodePath.join(exeDirPath, "config.json");
           await fs.writeFile(exeDirTempConfigPath, stringifiedData);
+          const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
+          await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
           await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
         } catch (err) {
           console.log(err);
@@ -57,6 +61,8 @@ export function writeAppConfig(data: AppState) {
         const tempFilePath = nodePath.join(userData, "config_temp.json");
         await fs.writeFile(tempFilePath, stringifiedData);
 
+        const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
+        await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
         const configFilePath = nodePath.join(userData, "config.json");
         await move(tempFilePath, configFilePath, { overwrite: true });
       } catch (e) {
