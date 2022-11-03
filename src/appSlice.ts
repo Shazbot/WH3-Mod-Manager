@@ -99,6 +99,17 @@ const appSlice = createSlice({
             state.dataFromConfig?.alwaysEnabledMods.some((mod) => mod.name == iterMod.name)
           )
           .forEach((mod) => (mod.isEnabled = true));
+
+        state.dataFromConfig.currentPreset.mods
+          .filter((mod) => mod !== undefined)
+          .map((mod) => {
+            const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
+            if (existingMod) {
+              existingMod.isEnabled = mod.isEnabled;
+              if (mod.humanName !== "") existingMod.humanName = mod.humanName;
+              if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
+            }
+          });
       }
     },
     addMod: (state: AppState, action: PayloadAction<Mod>) => {
