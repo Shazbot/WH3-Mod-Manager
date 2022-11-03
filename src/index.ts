@@ -224,32 +224,31 @@ const getAllMods = async () => {
         .catch();
     }
 
-    const dataMod: Mod = {
-      humanName: "",
-      name: "data.pack",
-      path: `${appData.dataFolder}\\data.pack`,
-      imgPath: "",
-      workshopId: "",
-      isEnabled: true,
-      modDirectory: `${appData.dataFolder}`,
-      isInData: true,
-      lastChanged: undefined,
-      loadOrder: undefined,
-      author: "",
-      isDeleted: false,
-      isMovie: false,
-      size: 0,
-    };
-    console.log("READING PACKS");
-    // const newPacksData = await readDataFromPacks(mods.concat(dataMod));
-    const newPacksData = await readDataFromPacks([dataMod]);
-    // appData.packsData = newPacksData;
-    newPacksData?.forEach((pack) => {
-      if (appData.packsData.every((iterPack) => iterPack.path != pack.path)) {
-        appendPacksData(pack);
-        // appendCollisions(pack);
-      }
-    });
+    if (appData.dataFolder) {
+      const dataMod: Mod = {
+        humanName: "",
+        name: "data.pack",
+        path: nodePath.join(appData.dataFolder, "data.pack"),
+        imgPath: "",
+        workshopId: "",
+        isEnabled: true,
+        modDirectory: `${appData.dataFolder}`,
+        isInData: true,
+        lastChanged: undefined,
+        loadOrder: undefined,
+        author: "",
+        isDeleted: false,
+        isMovie: false,
+        size: 0,
+      };
+      console.log("READING PACKS");
+      const newPacksData = await readDataFromPacks([dataMod]);
+      newPacksData?.forEach((pack) => {
+        if (appData.packsData.every((iterPack) => iterPack.path != pack.path)) {
+          appendPacksData(pack);
+        }
+      });
+    }
   } catch (err) {
     console.log(err);
   }
