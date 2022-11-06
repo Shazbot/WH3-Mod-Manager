@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { Blob } from "buffer";
 import * as fsExtra from "fs-extra";
 import { Worker } from "node:worker_threads";
+import { compareModNames } from "./modSortingHelpers";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -389,6 +390,10 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
   } as PackedFile);
 };
 
+const sortByPackName = (packFirst: Pack, packSecond: Pack) => {
+  return compareModNames(packFirst.name, packSecond.name);
+};
+
 export const mergeMods = async (mods: Mod[], existingPath?: string) => {
   if (!appData.gamePath) return;
   let outFile: BinaryFile | undefined;
@@ -421,32 +426,61 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
     await outFile.writeInt32(refFileCount);
     await outFile.writeInt32(pack_file_index_size);
 
-    await outFile.writeInt32(sources.reduce((prev, curr) => prev + curr.packHeader.pack_file_count, 0));
+    const packedFileNameToPackFileLookup: Record<string, PackedFile> = {};
+    const packedFileNameToPackSource: Record<string, Pack> = {};
 
-    const index_size = sources
-      .map((pack) => pack.packedFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0))
-      .reduce((prev, curr) => prev + curr, 0);
-    await outFile.writeInt32(index_size);
-    await outFile.writeInt32(0x7fffffff); // header_buffer
+    const reverseSortedPacksByName = sources.sort(sortByPackName).reverse();
 
-    for (const sourcePack of sources) {
+    for (const sourcePack of reverseSortedPacksByName) {
       for (const packFile of sourcePack.packedFiles) {
-        const { name, file_size, start_pos } = packFile;
-        await outFile.writeInt32(file_size);
-        await outFile.writeInt8(0);
-        await outFile.writeString(name + "\0");
+        const packedFileName = packFile.name;
+        packedFileNameToPackFileLookup[packedFileName] = packFile;
+        packedFileNameToPackSource[packedFileName] = sourcePack;
       }
     }
 
+    await outFile.writeInt32(Object.keys(packedFileNameToPackFileLookup).length);
+
+    const index_size = Object.keys(packedFileNameToPackFileLookup).reduce(
+      (acc, name) => acc + new Blob([name]).size + 1 + 5,
+      0
+    );
+    await outFile.writeInt32(index_size);
+    await outFile.writeInt32(0x7fffffff); // header_buffer
+
+    const sortedPackFileNames = Object.keys(packedFileNameToPackFileLookup).sort(compareModNames);
+
+    for (const packedFileName of sortedPackFileNames
+      .filter((name) => name.startsWith("db\\"))
+      .concat(sortedPackFileNames.filter((name) => !name.startsWith("db\\")))) {
+      const packedFile = packedFileNameToPackFileLookup[packedFileName];
+      const { name, file_size, start_pos } = packedFile;
+      await outFile.writeInt32(file_size);
+      await outFile.writeInt8(0);
+      await outFile.writeString(name + "\0");
+    }
+
+    const packNameToFileHandle: Record<string, BinaryFile> = {};
     for (const sourcePack of sources) {
       const sourceFile = new BinaryFile(sourcePack.path, "r", true);
       await sourceFile.open();
-
-      for (const packFile of sourcePack.packedFiles) {
-        // console.log(packFile.name, packFile.file_size, packFile.start_pos);
-        const data: Buffer = await sourceFile.read(packFile.file_size, packFile.start_pos);
-        await outFile.write(data);
+      for (const packedFile of sourcePack.packedFiles) {
+        packNameToFileHandle[packedFile.name] = sourceFile;
       }
+    }
+
+    for (const packedFileName of sortedPackFileNames
+      .filter((name) => name.startsWith("db\\"))
+      .concat(sortedPackFileNames.filter((name) => !name.startsWith("db\\")))) {
+      const sourceFile = packNameToFileHandle[packedFileName];
+      const packedFile = packedFileNameToPackFileLookup[packedFileName];
+
+      const data: Buffer = await sourceFile.read(packedFile.file_size, packedFile.start_pos);
+      await outFile.write(data);
+    }
+
+    for (const fileHandle of Object.values(packNameToFileHandle)) {
+      await fileHandle.close();
     }
 
     const mergedMetaData = mods.map(
@@ -536,7 +570,6 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
 
     let startPosOffset = 0; // if we replace files with different lenght change the writing position
     for (const packFile of packFiles) {
-      console.log(packFile.name, packFile.file_size, packFile.start_pos);
       let data: Buffer | undefined;
       const fileToReplaceWith = packFilesToAdd.find((packFileToAdd) => packFileToAdd.name == packFile.name);
       if (fileToReplaceWith) {
