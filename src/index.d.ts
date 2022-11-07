@@ -1,5 +1,5 @@
 import { electronLog } from "electron-log";
-import { PackCollisions } from "./packFileTypes";
+import { Pack, PackCollisions } from "./packFileTypes";
 import { AppFolderPaths } from "./appData";
 export {};
 
@@ -85,6 +85,12 @@ declare global {
     setWarhammer3Folder: (
       callback: (event: Electron.IpcRendererEvent, path: string) => void
     ) => Electron.IpcRenderer;
+    setOverwrittenDataPackedFiles: (
+      callback: (
+        event: Electron.IpcRendererEvent,
+        overwrittenDataPackedFiles: Record<string, string[]>
+      ) => void
+    ) => Electron.IpcRenderer;
     electronLog: electronLog;
   }
 
@@ -169,6 +175,7 @@ declare global {
     pathsOfReadPacks: string[];
     appFolderPaths: AppFolderPaths;
     isSetAppFolderPathsDone: boolean;
+    overwrittenDataPackedFiles: Record<string, string[]>;
   }
 
   type AppStateToWrite = Pick<

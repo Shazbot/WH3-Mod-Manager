@@ -39,6 +39,7 @@ const appSlice = createSlice({
     pathsOfReadPacks: [],
     appFolderPaths: { gamePath: "", contentFolder: "" },
     isSetAppFolderPathsDone: false,
+    overwrittenDataPackedFiles: {},
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -433,13 +434,22 @@ const appSlice = createSlice({
       state.isDev = action.payload;
     },
     createdMergedPack: (state: AppState, action: PayloadAction<string>) => {
-      state.newMergedPacks.push({ path: action.payload, creationTime: Date.now() });
+      const path = action.payload;
+      state.newMergedPacks.push({ path, creationTime: Date.now() });
+
+      const existingMod = state.currentPreset.mods.find((mod) => mod.path == path);
+      if (existingMod) {
+        existingMod.isEnabled = true;
+      }
     },
     setContentFolder: (state: AppState, action: PayloadAction<string>) => {
       state.appFolderPaths.contentFolder = action.payload;
     },
     setWarhammer3Folder: (state: AppState, action: PayloadAction<string>) => {
       state.appFolderPaths.gamePath = action.payload;
+    },
+    setOverwrittenDataPackedFiles: (state: AppState, action: PayloadAction<Record<string, string[]>>) => {
+      state.overwrittenDataPackedFiles = action.payload;
     },
   },
 });
@@ -481,6 +491,7 @@ export const {
   setAppFolderPaths,
   setWarhammer3Folder,
   setContentFolder,
+  setOverwrittenDataPackedFiles,
 } = appSlice.actions;
 
 export default appSlice.reducer;
