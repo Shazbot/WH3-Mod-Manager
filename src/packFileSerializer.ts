@@ -450,11 +450,13 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
 
     const sortedPackFileNames = Object.keys(packedFileNameToPackFileLookup).sort(compareModNames);
 
-    for (const packedFileName of sortedPackFileNames
+    const sortedPackFileNamesDBFirst = sortedPackFileNames
       .filter((name) => name.startsWith("db\\"))
-      .concat(sortedPackFileNames.filter((name) => !name.startsWith("db\\")))) {
+      .concat(sortedPackFileNames.filter((name) => !name.startsWith("db\\")));
+
+    for (const packedFileName of sortedPackFileNamesDBFirst) {
       const packedFile = packedFileNameToPackFileLookup[packedFileName];
-      const { name, file_size, start_pos } = packedFile;
+      const { name, file_size } = packedFile;
       await outFile.writeInt32(file_size);
       await outFile.writeInt8(0);
       await outFile.writeString(name + "\0");
@@ -467,20 +469,6 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
       for (const packedFile of sourcePack.packedFiles) {
         packNameToFileHandle[packedFile.name] = sourceFile;
       }
-    }
-
-    for (const packedFileName of sortedPackFileNames
-      .filter((name) => name.startsWith("db\\"))
-      .concat(sortedPackFileNames.filter((name) => !name.startsWith("db\\")))) {
-      const sourceFile = packNameToFileHandle[packedFileName];
-      const packedFile = packedFileNameToPackFileLookup[packedFileName];
-
-      const data: Buffer = await sourceFile.read(packedFile.file_size, packedFile.start_pos);
-      await outFile.write(data);
-    }
-
-    for (const fileHandle of Object.values(packNameToFileHandle)) {
-      await fileHandle.close();
     }
 
     const mergedMetaData = mods.map(
@@ -497,6 +485,18 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
       nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"),
       mergedMetaData
     );
+
+    for (const packedFileName of sortedPackFileNamesDBFirst) {
+      const sourceFile = packNameToFileHandle[packedFileName];
+      const packedFile = packedFileNameToPackFileLookup[packedFileName];
+
+      const data: Buffer = await sourceFile.read(packedFile.file_size, packedFile.start_pos);
+      await outFile.write(data);
+    }
+
+    for (const fileHandle of Object.values(packNameToFileHandle)) {
+      await fileHandle.close();
+    }
 
     return targetPath;
   } catch (e) {

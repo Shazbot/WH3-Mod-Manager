@@ -132,6 +132,20 @@ const appendPacksData = async (newPack: Pack) => {
   if (appData.packsData && appData.packsData.every((pack) => pack.path != newPack.path)) {
     appData.packsData.push(newPack);
     mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
+
+    // if (appData.dataPack != null && newPack != appData.dataPack) {
+    //   const overwrittenFileNames = newPack.packedFiles
+    //     .map((packedFile) => packedFile.name)
+    //     .filter((packedFileName) => packedFileName.match(/db\\.*\\data__/) || packedFileName.endsWith(".lua"))
+    //     .filter((packedFileName) =>
+    //       appData.dataPack?.packedFiles.some((packedFileInData) => packedFileInData.name == packedFileName)
+    //     );
+    //   if (overwrittenFileNames.length > 0) {
+    //     appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
+    //     console.log(appData.overwrittenDataPackedFiles);
+    //     mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
+    //   }
+    // }
   }
 };
 const appendCollisions = async (newPack: Pack) => {
@@ -243,6 +257,14 @@ const getAllMods = async () => {
       };
       console.log("READING PACKS");
       const newPacksData = await readDataFromPacks([dataMod]);
+      console.log("READ DATA MOD");
+      if (newPacksData) {
+        appData.dataPack = newPacksData[0];
+        // mainWindow?.webContents.send(
+        //   "setPackedFileNamesInDataPack",
+        //   newPacksData[0].packedFiles.map((packedFile) => packedFile.name)
+        // );
+      }
       newPacksData?.forEach((pack) => {
         if (appData.packsData.every((iterPack) => iterPack.path != pack.path)) {
           appendPacksData(pack);
@@ -332,8 +354,12 @@ const getAllMods = async () => {
     mergedWatcher = chokidar
       .watch([`${gamePath}/merged/*.pack`], {
         ignoreInitial: false,
-        awaitWriteFinish: true,
+        awaitWriteFinish: {
+          stabilityThreshold: 3000,
+          pollInterval: 100,
+        },
         ignored: /whmm_backups/,
+        usePolling: true,
       })
       .on("add", async (path) => {
         onNewPackFound(path);
@@ -581,6 +607,7 @@ const createWindow = (): void => {
   });
 
   ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true) => {
+    console.log("READ MODS RECEIVED");
     // console.log("READ MODS RECEIVED", mods);
     mods.forEach(async (mod) => {
       if (

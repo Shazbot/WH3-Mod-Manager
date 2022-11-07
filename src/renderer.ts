@@ -18,6 +18,7 @@ import {
   setAppFolderPaths,
   setWarhammer3Folder,
   setContentFolder,
+  setOverwrittenDataPackedFiles,
 } from "./appSlice";
 import store from "./store";
 import { Pack, PackCollisions } from "./packFileTypes";
@@ -133,6 +134,11 @@ window.api?.setContentFolder((event, path: string) => {
 window.api?.setWarhammer3Folder((event, path: string) => {
   console.log("INVOKED: setWarhammer3Folder");
   store.dispatch(setWarhammer3Folder(path));
+});
+
+window.api?.setOverwrittenDataPackedFiles((event, overwrittenDataPackedFiles: Record<string, string[]>) => {
+  console.log("INVOKED: setOverwrittenDataPackedFiles");
+  store.dispatch(setOverwrittenDataPackedFiles(overwrittenDataPackedFiles));
 });
 
 window.api?.savesPopulated((event, saves: GameSave[]) => {

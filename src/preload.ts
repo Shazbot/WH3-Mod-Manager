@@ -50,6 +50,7 @@ const api: api = {
   savesPopulated: (callback) => ipcRenderer.on("savesPopulated", callback),
   setContentFolder: (callback) => ipcRenderer.on("setContentFolder", callback),
   setWarhammer3Folder: (callback) => ipcRenderer.on("setWarhammer3Folder", callback),
+  setOverwrittenDataPackedFiles: (callback) => ipcRenderer.on("setOverwrittenDataPackedFiles", callback),
   electronLog,
 };
 contextBridge.exposeInMainWorld("api", api);

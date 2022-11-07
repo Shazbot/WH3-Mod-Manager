@@ -20,6 +20,7 @@ const PlayGame = React.memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const filter = useAppSelector((state) => state.app.filter);
+  const overwrittenDataPackedFiles = useAppSelector((state) => state.app.overwrittenDataPackedFiles);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
@@ -309,6 +310,32 @@ const PlayGame = React.memo(() => {
               </div>
             </div>
           )}
+
+          {/* {Object.keys(overwrittenDataPackedFiles).length > 0 && (
+            <div className="text-center text-red-700 font-semibold mb-4">
+              <div
+                className="make-tooltip-w-full cursor-pointer"
+                onClick={() => onMissingDependenciesClicked()}
+              >
+                <Tooltip
+                  placement="left"
+                  content={Object.entries(overwrittenDataPackedFiles).map(
+                    ([packName, overwrittenFileNames]) => (
+                      <div key={packName}>
+                        <span className="">{packName + ` overwrites:`}</span>
+                        {overwrittenFileNames.map((packedFileName) => (
+                          <div className="text-red-600">{packedFileName}</div>
+                        ))}
+                      </div>
+                    )
+                  )}
+                >
+                  Missing Required Mods!
+                </Tooltip>
+              </div>
+            </div>
+          )} */}
+
           {outdatedMergedPacks.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div className="make-tooltip-w-full">
