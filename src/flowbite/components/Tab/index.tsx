@@ -85,6 +85,8 @@ export const TabsComponent: FC<TabsProps> = ({ children, style = "default", ...r
     tabRefs.current[focusedTab]?.focus();
   }, [focusedTab]);
 
+  const tabItemStyle = theme.tablist.tabitem.styles[style];
+
   return (
     <div className={theme.base}>
       <div
@@ -99,10 +101,14 @@ export const TabsComponent: FC<TabsProps> = ({ children, style = "default", ...r
             type="button"
             aria-controls={`${id}-tabpanel-${index}`}
             aria-selected={index === activeTab}
-            className={classNames(theme.tablist.tabitem.base, theme.tablist.tabitem.styles[style], {
-              [theme.tablist.tabitem.styles[style].active.on]: index === activeTab,
-              [theme.tablist.tabitem.styles[style].active.off]: index !== activeTab && !tab.disabled,
-            })}
+            className={classNames(
+              theme.tablist.tabitem.base,
+              { ...tabItemStyle },
+              {
+                [theme.tablist.tabitem.styles[style].active.on]: index === activeTab,
+                [theme.tablist.tabitem.styles[style].active.off]: index !== activeTab && !tab.disabled,
+              }
+            )}
             disabled={tab.disabled}
             id={`${id}-tab-${index}`}
             onClick={() => handleClick({ target: index })}
