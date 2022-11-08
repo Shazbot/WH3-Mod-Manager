@@ -13,7 +13,28 @@ if (process.argv[2] == "download") {
   const client = steamworks.init(1142710);
 
   ids.forEach((id) => client.workshop.download(BigInt(id), true));
-  process.exit();
+  setTimeout(() => {
+    process.exit();
+  }, 300);
+}
+if (process.argv[2] == "checkState") {
+  console.log("checkState");
+  const ids = process.argv[3].split(";"); //"2856936614";
+  const client = steamworks.init(1142710);
+
+  const idsThatNeedUpdates = ids
+    .map((id) => [id, client.workshop.state(BigInt(id))] as [string, number])
+    .filter((num) => num[1] & 8)
+    .map((num) => num[0]);
+
+  idsThatNeedUpdates.forEach((id) => {
+    client.workshop.download(BigInt(id), true);
+  });
+
+  const timeoutValue = (idsThatNeedUpdates.length > 0 && 200) || 0;
+  setTimeout(() => {
+    process.exit();
+  }, timeoutValue);
 }
 if (process.argv[2] == "update") {
   console.log("update");
