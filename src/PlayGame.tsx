@@ -21,6 +21,7 @@ const PlayGame = React.memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const filter = useAppSelector((state) => state.app.filter);
   const overwrittenDataPackedFiles = useAppSelector((state) => state.app.overwrittenDataPackedFiles);
+  const dataModLastChangedLocal = useAppSelector((state) => state.app.dataModLastChangedLocal);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
@@ -214,6 +215,16 @@ const PlayGame = React.memo(() => {
       })
     );
 
+  const timeCheckedOverwrittenDataPackedFiles: typeof overwrittenDataPackedFiles = {};
+  if (dataModLastChangedLocal) {
+    for (const [packName, data] of Object.entries(overwrittenDataPackedFiles)) {
+      const mod = enabledMods.find((iterMod) => !iterMod.isInData && iterMod.name == packName);
+      if (mod && mod.lastChanged && mod.lastChanged < dataModLastChangedLocal) {
+        timeCheckedOverwrittenDataPackedFiles[packName] = data;
+      }
+    }
+  }
+
   return (
     <div>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
@@ -300,7 +311,9 @@ const PlayGame = React.memo(() => {
                     <div key={mod.path}>
                       <span className="">{mod.humanName + ` missing:`}</span>
                       {reqs.map(([reqId, reqHumanName]) => (
-                        <div className="text-red-600">{reqHumanName}</div>
+                        <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
+                          {reqHumanName}
+                        </div>
                       ))}
                     </div>
                   ))}
@@ -311,30 +324,34 @@ const PlayGame = React.memo(() => {
             </div>
           )}
 
-          {/* {Object.keys(overwrittenDataPackedFiles).length > 0 && (
+          {Object.keys(timeCheckedOverwrittenDataPackedFiles).length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
-              <div
-                className="make-tooltip-w-full cursor-pointer"
-                onClick={() => onMissingDependenciesClicked()}
-              >
+              <div className="make-tooltip-w-full">
                 <Tooltip
                   placement="left"
-                  content={Object.entries(overwrittenDataPackedFiles).map(
-                    ([packName, overwrittenFileNames]) => (
-                      <div key={packName}>
-                        <span className="">{packName + ` overwrites:`}</span>
-                        {overwrittenFileNames.map((packedFileName) => (
-                          <div className="text-red-600">{packedFileName}</div>
-                        ))}
-                      </div>
-                    )
-                  )}
+                  content={
+                    <>
+                      <p>These packs overwrite CA data and should not be used when outdated:</p>
+                      {Object.entries(timeCheckedOverwrittenDataPackedFiles).map(
+                        ([packName, overwrittenFileNames]) => (
+                          <div key={packName}>
+                            <span className="">{packName + ` overwrites:`}</span>
+                            {overwrittenFileNames.map((packedFileName) => (
+                              <div key={`${packName}_${packedFileName}`} className="text-red-600">
+                                {packedFileName}
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      )}
+                    </>
+                  }
                 >
-                  Missing Required Mods!
+                  Outdated packs!
                 </Tooltip>
               </div>
             </div>
-          )} */}
+          )}
 
           {outdatedMergedPacks.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">

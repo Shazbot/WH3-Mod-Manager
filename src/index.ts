@@ -106,8 +106,8 @@ const removeMod = async (mainWindow: BrowserWindow, modPath: string) => {
 };
 
 const getMod = async (mainWindow: BrowserWindow, modPath: string) => {
+  let mod: Mod | undefined;
   try {
-    let mod: Mod;
     if (modPath.includes("\\content\\1142710\\")) {
       const modSubfolderName = nodePath.dirname(modPath).replace(/.*\\/, "");
       console.log("looking for ", modSubfolderName);
@@ -116,13 +116,11 @@ const getMod = async (mainWindow: BrowserWindow, modPath: string) => {
       console.log("looking for DATA MOD: ", modPath);
       mod = await getDataMod(modPath, log);
     }
-
-    if (mod) {
-      mainWindow?.webContents.send("addMod", mod);
-    }
   } catch (e) {
     console.log(e);
   }
+
+  return mod;
 };
 
 const appendPacksData = async (newPack: Pack) => {
@@ -133,19 +131,19 @@ const appendPacksData = async (newPack: Pack) => {
     appData.packsData.push(newPack);
     mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
 
-    // if (appData.dataPack != null && newPack != appData.dataPack) {
-    //   const overwrittenFileNames = newPack.packedFiles
-    //     .map((packedFile) => packedFile.name)
-    //     .filter((packedFileName) => packedFileName.match(/db\\.*\\data__/) || packedFileName.endsWith(".lua"))
-    //     .filter((packedFileName) =>
-    //       appData.dataPack?.packedFiles.some((packedFileInData) => packedFileInData.name == packedFileName)
-    //     );
-    //   if (overwrittenFileNames.length > 0) {
-    //     appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
-    //     console.log(appData.overwrittenDataPackedFiles);
-    //     mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
-    //   }
-    // }
+    if (appData.dataPack && newPack != appData.dataPack) {
+      const overwrittenFileNames = newPack.packedFiles
+        .map((packedFile) => packedFile.name)
+        .filter((packedFileName) => packedFileName.match(/db\\.*\\data__/) || packedFileName.endsWith(".lua"))
+        .filter((packedFileName) =>
+          appData.dataPack?.packedFiles.some((packedFileInData) => packedFileInData.name == packedFileName)
+        );
+      if (overwrittenFileNames.length > 0) {
+        appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
+        console.log(appData.overwrittenDataPackedFiles);
+        mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
+      }
+    }
   }
 };
 const appendCollisions = async (newPack: Pack) => {
@@ -170,7 +168,12 @@ const onNewPackFound = async (path: string) => {
   if (!mainWindow) return;
   mainWindow.webContents.send("handleLog", "MOD ADDED: " + path);
   console.log("MOD ADDED: " + path);
-  await getMod(mainWindow, path);
+
+  const mod = await getMod(mainWindow, path);
+  if (mod) {
+    mainWindow?.webContents.send("addMod", mod);
+  }
+
   const newPack = await readPack(path);
 
   try {
@@ -260,10 +263,17 @@ const getAllMods = async () => {
       console.log("READ DATA MOD");
       if (newPacksData) {
         appData.dataPack = newPacksData[0];
-        // mainWindow?.webContents.send(
-        //   "setPackedFileNamesInDataPack",
-        //   newPacksData[0].packedFiles.map((packedFile) => packedFile.name)
-        // );
+
+        try {
+          mainWindow?.webContents.send(
+            "setDataModLastChangedLocal",
+            await fs.stat(dataMod.path).then((stats) => {
+              return stats.mtimeMs;
+            })
+          );
+        } catch {
+          /* empty */
+        }
       }
       newPacksData?.forEach((pack) => {
         if (appData.packsData.every((iterPack) => iterPack.path != pack.path)) {

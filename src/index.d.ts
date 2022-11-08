@@ -91,6 +91,9 @@ declare global {
         overwrittenDataPackedFiles: Record<string, string[]>
       ) => void
     ) => Electron.IpcRenderer;
+    setDataModLastChangedLocal: (
+      callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void
+    ) => Electron.IpcRenderer;
     electronLog: electronLog;
   }
 
@@ -176,6 +179,7 @@ declare global {
     appFolderPaths: AppFolderPaths;
     isSetAppFolderPathsDone: boolean;
     overwrittenDataPackedFiles: Record<string, string[]>;
+    dataModLastChangedLocal?: number;
   }
 
   type AppStateToWrite = Pick<

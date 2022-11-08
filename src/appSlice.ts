@@ -451,6 +451,9 @@ const appSlice = createSlice({
     setOverwrittenDataPackedFiles: (state: AppState, action: PayloadAction<Record<string, string[]>>) => {
       state.overwrittenDataPackedFiles = action.payload;
     },
+    setDataModLastChangedLocal: (state: AppState, action: PayloadAction<number>) => {
+      state.dataModLastChangedLocal = action.payload;
+    },
   },
 });
 
@@ -492,6 +495,7 @@ export const {
   setWarhammer3Folder,
   setContentFolder,
   setOverwrittenDataPackedFiles,
+  setDataModLastChangedLocal,
 } = appSlice.actions;
 
 export default appSlice.reducer;
