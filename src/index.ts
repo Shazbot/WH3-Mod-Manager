@@ -69,6 +69,7 @@ const readConfig = async (): Promise<AppStateToWrite> => {
   try {
     const appState = await readAppConfig();
     if (!appData.hasReadConfig) {
+      fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {}); // forces steam workshop to download mods
       setStartingAppState(appState);
     }
 
@@ -279,6 +280,24 @@ const getAllMods = async () => {
           appendPacksData(pack);
         }
       });
+    }
+
+    try {
+      fork(
+        nodePath.join(__dirname, "sub.js"),
+        [
+          "checkState",
+          mods
+            .filter(
+              (mod) => !mod.isInData && !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId))
+            )
+            .map((mod) => mod.workshopId)
+            .join(";"),
+        ],
+        {}
+      );
+    } catch (e) {
+      console.log(e);
     }
   } catch (err) {
     console.log(err);
