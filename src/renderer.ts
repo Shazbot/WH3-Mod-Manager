@@ -19,6 +19,7 @@ import {
   setWarhammer3Folder,
   setContentFolder,
   setOverwrittenDataPackedFiles,
+  setDataModLastChangedLocal,
 } from "./appSlice";
 import store from "./store";
 import { Pack, PackCollisions } from "./packFileTypes";
@@ -168,6 +169,10 @@ window.api?.setPacksData((event, packsData: Pack[]) => {
 
 window.api?.setPacksDataRead((event, packPaths: string[]) => {
   store.dispatch(setPacksDataRead(packPaths));
+});
+
+window.api?.setDataModLastChangedLocal((event, dataModLastChangedLocal: number) => {
+  store.dispatch(setDataModLastChangedLocal(dataModLastChangedLocal));
 });
 
 window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {
