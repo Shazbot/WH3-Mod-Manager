@@ -14,7 +14,6 @@ interface AppData {
   currentlyReadingModPaths: string[];
   dataPack?: Pack;
   overwrittenDataPackedFiles: Record<string, string[]>;
-  dataModLastChangedLocal?: number;
 }
 
 export type AppFolderPaths = { gamePath: string; contentFolder: string };

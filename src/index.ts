@@ -140,7 +140,6 @@ const appendPacksData = async (newPack: Pack) => {
         );
       if (overwrittenFileNames.length > 0) {
         appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
-        console.log(appData.overwrittenDataPackedFiles);
         mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
       }
     }
