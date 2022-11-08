@@ -346,8 +346,9 @@ const ModsMerger = React.memo(() => {
                 <div className="leading-relaxed dark:text-gray-300 relative font-normal">
                   <p>
                     This panel allows you to merge mods to get around the mod limit. It merges selected mods
-                    into a new mod .pack and puts it inside a data/merged folder. Mods are pre-sorted by size
-                    for quicker merging.
+                    into a new mod .pack and puts it inside a WH3/merged folder. Merged mods also have an
+                    accompanying .json file with the same name, if you rename or move the merged mod also
+                    rename or move the json file. Mods are pre-sorted by size for quicker merging.
                   </p>
                   <p className="mt-6">
                     The merged mod won't have the same file names as the merged mods which can affect load
@@ -363,7 +364,9 @@ const ModsMerger = React.memo(() => {
                   </p>
                   <p className="mt-6">
                     You can leave the mods that have been merged enabled in the mod manager, the manager will
-                    automatically skip them if they're already present in a merged mod you have enabled.
+                    automatically skip them if they're already present in a merged mod you have enabled. This
+                    is reliant on the .json file, if it's missing you'll have to disable those mods or the
+                    game will crash since it doesn't like duplicate files in mods.
                   </p>
                 </div>
               </Tabs.Item>
