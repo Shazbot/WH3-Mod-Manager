@@ -4,6 +4,7 @@ import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
   toggleIsAuthorEnabled,
+  toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
@@ -42,6 +43,7 @@ const OptionsDrawer = memo(() => {
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
+  const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
 
   const contentModsWorshopIdsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -256,6 +258,18 @@ const OptionsDrawer = memo(() => {
               ></input>
               <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
                 Skip intro movies
+              </label>
+            </div>
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="toggleIsAutoStartCustomBattleEnabled"
+                checked={!!isAutoStartCustomBattleEnabled}
+                onChange={() => dispatch(toggleIsAutoStartCustomBattleEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="toggleIsAutoStartCustomBattleEnabled">
+                Auto-start custom battle
               </label>
             </div>
 

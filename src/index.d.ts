@@ -20,6 +20,7 @@ declare global {
     updateMod: (mod: Mod, dataMod: Mod) => void;
     makePackBackup: (mod: Mod) => void;
     forceModDownload: (mod: Mod) => void;
+    unsubscribeToMod: (mod: Mod) => void;
     reMerge: (mod: Mod, modsToMerge: Mod[]) => void;
     deletePack: (mod: Mod) => void;
     forceDownloadMods: (modsIds: string[]) => void;
@@ -170,6 +171,7 @@ declare global {
     isMakeUnitsGeneralsEnabled: boolean;
     isScriptLoggingEnabled: boolean;
     isSkipIntroMoviesEnabled: boolean;
+    isAutoStartCustomBattleEnabled: boolean;
     allMods: Mod[];
     packsData: Record<string, Pack>;
     packCollisions: PackCollisions;
@@ -195,11 +197,15 @@ declare global {
     | "isScriptLoggingEnabled"
     | "isSkipIntroMoviesEnabled"
     | "appFolderPaths"
+    | "isAutoStartCustomBattleEnabled"
   >;
 
   type StartGameOptions = Pick<
     AppState,
-    "isMakeUnitsGeneralsEnabled" | "isSkipIntroMoviesEnabled" | "isScriptLoggingEnabled"
+    | "isMakeUnitsGeneralsEnabled"
+    | "isSkipIntroMoviesEnabled"
+    | "isScriptLoggingEnabled"
+    | "isAutoStartCustomBattleEnabled"
   >;
 
   interface ModLoadOrderPayload {

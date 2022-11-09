@@ -19,6 +19,7 @@ const PlayGame = React.memo(() => {
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
+  const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const filter = useAppSelector((state) => state.app.filter);
   const overwrittenDataPackedFiles = useAppSelector((state) => state.app.overwrittenDataPackedFiles);
   const dataModLastChangedLocal = useAppSelector((state) => state.app.dataModLastChangedLocal);
@@ -41,6 +42,7 @@ const PlayGame = React.memo(() => {
       isMakeUnitsGeneralsEnabled,
       isSkipIntroMoviesEnabled,
       isScriptLoggingEnabled,
+      isAutoStartCustomBattleEnabled,
     });
   };
 
@@ -102,7 +104,12 @@ const PlayGame = React.memo(() => {
   const onContinueGameClicked = () => {
     window.api?.startGame(
       mods,
-      { isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled },
+      {
+        isMakeUnitsGeneralsEnabled,
+        isSkipIntroMoviesEnabled,
+        isScriptLoggingEnabled,
+        isAutoStartCustomBattleEnabled,
+      },
       saves[0]?.name
     );
   };

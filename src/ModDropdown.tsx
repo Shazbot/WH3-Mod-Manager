@@ -29,6 +29,9 @@ const deletePack = (mod: Mod) => {
   if (!mod) return;
   window.api?.deletePack(mod);
 };
+const unsubscribe = (mod: Mod) => {
+  window.api?.unsubscribeToMod(mod);
+};
 
 const ModDropdown = memo((props: ModDropdownProps) => {
   const dispatch = useAppDispatch();
@@ -242,7 +245,11 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                <Tooltip placement="top" content="Mod will always be enabled, even when hidden.">
+                <Tooltip
+                  placement="right"
+                  style="light"
+                  content={<div className="min-w-[10rem]">Mod will always be enabled, even when hidden.</div>}
+                >
                   Keep always enabled
                 </Tooltip>
               </a>
@@ -256,8 +263,13 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
                 <Tooltip
-                  placement="bottom"
-                  content="Mod will be hidden from the list and disabled (except when always enabled)."
+                  placement="right"
+                  style="light"
+                  content={
+                    <div className="min-w-[10rem]">
+                      Mod will be hidden from the list and disabled (except when always enabled).
+                    </div>
+                  }
                 >
                   Hide from list
                 </Tooltip>
@@ -308,8 +320,13 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                       className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                     >
                       <Tooltip
-                        placement="top"
-                        content="Uploads update to the workshop. Must already exist on the workshop."
+                        placement="right"
+                        style="light"
+                        content={
+                          <div className="min-w-[10rem]">
+                            Uploads update to the workshop. Must already exist on the workshop.
+                          </div>
+                        }
                       >
                         Update Mod
                       </Tooltip>
@@ -324,8 +341,14 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                       className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                     >
                       <Tooltip
-                        placement="top"
-                        content="Adds a whmm_update.txt file to the pack filled with random hex numbers, or changes the numbers if the file already exists. UPDATE PLZ"
+                        placement="right"
+                        style="light"
+                        content={
+                          <div className="min-w-[10rem]">
+                            Adds a whmm_update.txt file to the pack filled with random hex numbers, or changes
+                            the numbers if the file already exists. UPDATE PLZ
+                          </div>
+                        }
                       >
                         Fake Update Pack
                       </Tooltip>
@@ -342,8 +365,14 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
                 <Tooltip
-                  placement="top"
-                  content="Creates a backup of the pack in a whmm_backups folder that is in the same location as the pack."
+                  placement="right"
+                  style="light"
+                  content={
+                    <div className="min-w-[10rem]">
+                      Creates a backup of the pack in a whmm_backups folder that is in the same location as
+                      the pack.
+                    </div>
+                  }
                 >
                   Create Backup
                 </Tooltip>
@@ -359,8 +388,32 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
-                  <Tooltip placement="top" content="Force Steam to re-download the mod.">
+                  <Tooltip
+                    placement="right"
+                    content={<div className="min-w-[10rem]">Force Steam to re-download the mod.</div>}
+                    style="light"
+                  >
                     Force Download
+                  </Tooltip>
+                </a>
+              </li>
+            )}
+            {(!props.mod?.isInData ||
+              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name)) && (
+              <li>
+                <a
+                  onClick={() => {
+                    if (props.mod) unsubscribe(props.mod);
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip
+                    placement="right"
+                    content={<div className="min-w-[10rem]">Unsubscribe from the mod in Steam.</div>}
+                    style="light"
+                  >
+                    Unsubscribe
                   </Tooltip>
                 </a>
               </li>
@@ -375,8 +428,13 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
                   <Tooltip
-                    placement="top"
-                    content="Merge mods again to update the merged pack with latest versions of mods."
+                    placement="right"
+                    content={
+                      <div className="min-w-[10rem]">
+                        Merge mods again to update the merged pack with latest versions of mods.
+                      </div>
+                    }
+                    style="light"
                   >
                     Update (Re-merge)
                   </Tooltip>
@@ -392,7 +450,11 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
-                  <Tooltip placement="top" content="Delete the merged pack.">
+                  <Tooltip
+                    placement="right"
+                    content={<div className="min-w-[10rem]">Delete the merged pack.</div>}
+                    style="light"
+                  >
                     Delete
                   </Tooltip>
                 </a>

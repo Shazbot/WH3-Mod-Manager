@@ -15,6 +15,7 @@ const api: api = {
   fakeUpdatePack: (mod: Mod) => ipcRenderer.send("fakeUpdatePack", mod),
   makePackBackup: (mod: Mod) => ipcRenderer.send("makePackBackup", mod),
   forceModDownload: (mod: Mod) => ipcRenderer.send("forceModDownload", mod),
+  unsubscribeToMod: (mod: Mod) => ipcRenderer.send("unsubscribeToMod", mod),
   reMerge: (mod: Mod, modsToMerge: Mod[]) => ipcRenderer.send("reMerge", mod, modsToMerge),
   deletePack: (mod: Mod) => ipcRenderer.send("deletePack", mod),
   forceDownloadMods: (modIds: string[]) => ipcRenderer.send("forceDownloadMods", modIds),

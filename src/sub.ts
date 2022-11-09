@@ -17,6 +17,16 @@ if (process.argv[2] == "download") {
     process.exit();
   }, 300);
 }
+if (process.argv[2] == "unsubscribe") {
+  console.log("unsubscribe");
+  const id = process.argv[3];
+  const client = steamworks.init(1142710);
+
+  client.workshop.unsubscribe(BigInt(id));
+  setTimeout(() => {
+    process.exit();
+  }, 200);
+}
 if (process.argv[2] == "checkState") {
   console.log("checkState");
   const ids = process.argv[3].split(";"); //"2856936614";
