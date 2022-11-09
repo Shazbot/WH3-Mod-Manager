@@ -188,17 +188,17 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("addMod", mod);
     }
 
-    const newPack = await readPack(path);
+    // const newPack = await readPack(path);
 
-    try {
-      appendPacksData(newPack);
-      // appendCollisions(newPack);
-    } catch (err) {
-      if (err instanceof Error) {
-        console.log(err.message);
-        console.log("MOD PATH IS", path);
-      }
-    }
+    // try {
+    //   appendPacksData(newPack);
+    //   // appendCollisions(newPack);
+    // } catch (err) {
+    //   if (err instanceof Error) {
+    //     console.log(err.message);
+    //     console.log("MOD PATH IS", path);
+    //   }
+    // }
   };
   const onPackDeleted = async (path: string) => {
     if (!mainWindow) return;
@@ -591,10 +591,19 @@ if (!gotTheLock) {
       }
     });
 
-    ipcMain.on("getCompatData", () => {
+    ipcMain.on("getCompatData", (event, pathsToUse?: string[]) => {
       console.log("SET PACK COLLISIONS");
 
-      mainWindow?.webContents.send("setPackCollisions", getCompatData(appData.packsData));
+      if (pathsToUse) {
+        mainWindow?.webContents.send(
+          "setPackCollisions",
+          getCompatData(
+            appData.packsData.filter((pack) => pathsToUse.some((pathToUse) => pathToUse == pack.path))
+          )
+        );
+      } else {
+        mainWindow?.webContents.send("setPackCollisions", getCompatData(appData.packsData));
+      }
       // mainWindow?.webContents.send("setPackCollisions", {
       // packFileCollisions: appData.compatData.packFileCollisions,
       // packTableCollisions: appData.compatData.packTableCollisions,
@@ -655,8 +664,10 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true) => {
-      console.log("READ MODS RECEIVED");
-      // console.log("READ MODS RECEIVED", mods);
+      console.log(
+        "READ MODS RECEIVED",
+        mods.map((mod) => mod.name)
+      );
       mods.forEach(async (mod) => {
         if (
           appData.currentlyReadingModPaths.every((path) => path != mod.path) &&

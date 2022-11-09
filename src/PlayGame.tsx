@@ -368,7 +368,10 @@ const PlayGame = React.memo(() => {
                   placement="left"
                   content={
                     <>
-                      <div>Some merged mods contain outdated mods, create a new merged mod!</div>
+                      <div>
+                        Some merged mods contain outdated mods, update them (right click) or create a new
+                        merged mod!
+                      </div>
                       {outdatedMergedPacks.map((mod) => (
                         <div key={mod.path}>
                           <span className="">{mod.name + ` is not up to date`}</span>
