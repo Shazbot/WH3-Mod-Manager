@@ -160,34 +160,36 @@ const appSlice = createSlice({
       state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
       state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
     },
-    setModData: (state: AppState, action: PayloadAction<ModData>) => {
-      const data = action.payload;
+    setModData: (state: AppState, action: PayloadAction<ModData[]>) => {
+      const datas = action.payload;
 
-      // if the same mod is also in data cover it as well
-      const contentMod = state.allMods.find((mod) => mod.workshopId == data.workshopId);
-      if (contentMod) {
-        const dataMod = state.currentPreset.mods.find(
-          (iterMod) => iterMod.isInData && iterMod.name == contentMod.name
-        );
-        if (dataMod) {
-          dataMod.humanName = data.humanName ?? "";
-          dataMod.author = data.author;
-          dataMod.reqModIdToName = data.reqModIdToName;
+      for (const data of datas) {
+        // if the same mod is also in data cover it as well
+        const contentMod = state.allMods.find((mod) => mod.workshopId == data.workshopId);
+        if (contentMod) {
+          const dataMod = state.currentPreset.mods.find(
+            (iterMod) => iterMod.isInData && iterMod.name == contentMod.name
+          );
+          if (dataMod) {
+            dataMod.humanName = data.humanName ?? "";
+            dataMod.author = data.author;
+            dataMod.reqModIdToName = data.reqModIdToName;
+          }
         }
-      }
 
-      const mod = state.currentPreset.mods.find((mod) => mod.workshopId == data.workshopId);
-      if (!mod) return;
-      if (data.isDeleted) {
-        mod.isDeleted = data.isDeleted;
-      } else {
-        mod.humanName = data.humanName ?? "";
-        mod.author = data.author;
-        mod.reqModIdToName = data.reqModIdToName;
-      }
+        const mod = state.currentPreset.mods.find((mod) => mod.workshopId == data.workshopId);
+        if (!mod) continue;
+        if (data.isDeleted) {
+          mod.isDeleted = data.isDeleted;
+        } else {
+          mod.humanName = data.humanName ?? "";
+          mod.author = data.author;
+          mod.reqModIdToName = data.reqModIdToName;
+        }
 
-      if (mod.isDeleted) console.log(mod.name + " is deleted!");
-      if (data.lastChanged) mod.lastChanged = data.lastChanged;
+        if (mod.isDeleted) console.log(mod.name + " is deleted!");
+        if (data.lastChanged) mod.lastChanged = data.lastChanged;
+      }
     },
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData>) => {
       const data = action.payload;

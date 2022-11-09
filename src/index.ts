@@ -1,3 +1,4 @@
+import debounce from "just-debounce-it";
 import { Pack, PackCollisions } from "./packFileTypes";
 import { execFile, exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
@@ -64,6 +65,12 @@ let contentWatcher: chokidar.FSWatcher | undefined;
 let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
+
+const tempModDatas: ModData[] = [];
+const sendModData = debounce(() => {
+  mainWindow?.webContents.send("setModData", [...tempModDatas]);
+  tempModDatas.splice(0, tempModDatas.length);
+}, 150);
 
 const readConfig = async (): Promise<AppStateToWrite> => {
   try {
@@ -483,7 +490,8 @@ const createWindow = (): void => {
     fetchModData(
       ids.filter((id) => id !== ""),
       (modData) => {
-        mainWindow?.webContents.send("setModData", modData);
+        tempModDatas.push(modData);
+        sendModData();
       },
       (msg) => {
         mainWindow?.webContents.send("handleLog", msg);
