@@ -594,9 +594,14 @@ const createWindow = (): void => {
     // } as PackCollisions);
   });
 
-  ipcMain.on("copyToData", async () => {
+  ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
     const mods = await getMods(log);
-    const withoutDataMods = mods.filter((mod) => !mod.isInData);
+    let withoutDataMods = mods.filter((mod) => !mod.isInData);
+    if (modPathsToCopy) {
+      withoutDataMods = withoutDataMods.filter((mod) =>
+        modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path)
+      );
+    }
     const copyPromises = withoutDataMods.map((mod) => {
       mainWindow?.webContents.send(
         "handleLog",

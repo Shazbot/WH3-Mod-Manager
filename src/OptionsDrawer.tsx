@@ -19,9 +19,6 @@ import { createSelector } from "@reduxjs/toolkit";
 import GamePathsSetup from "./GamePathsSetup";
 import AboutScreen from "./AboutScreen";
 
-const copyToData = () => {
-  window.api?.copyToData();
-};
 const cleanData = () => {
   window.api?.cleanData();
 };
@@ -45,11 +42,16 @@ const OptionsDrawer = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
 
+  const enabledModsSelector = createSelector(
+    (state: { app: AppState }) => state.app.currentPreset.mods,
+    (mods: Mod[]) => mods.filter((iterMod) => iterMod.isEnabled)
+  );
   const contentModsWorshopIdsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
     (mods: Mod[]) => mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId)
   );
   const contentModsWorshopIds = useSelector(contentModsWorshopIdsSelector);
+  const enabledMods = useSelector(enabledModsSelector);
 
   const hiddenModsToOptionViewDataSelector = createSelector(
     (state: { app: AppState }) => state.app.hiddenMods,
@@ -76,6 +78,17 @@ const OptionsDrawer = memo(() => {
       if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([mod]));
     },
     [alwaysHidden]
+  );
+
+  const copyToData = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+      if (e.shiftKey) {
+        window.api?.copyToData();
+      } else {
+        window.api?.copyToData(enabledMods.map((mod) => mod.path));
+      }
+    },
+    [enabledMods]
   );
 
   return (
@@ -174,12 +187,20 @@ const OptionsDrawer = memo(() => {
             <div className="flex mt-2">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-                onClick={() => copyToData()}
+                onClick={(e) => copyToData(e)}
               >
                 <Tooltip
                   placement="bottom"
-                  content="Will copy all the mods from content into data. As a modder this can overwrite your mod in data with an
-                older version you have in content!"
+                  content={
+                    <>
+                      <div>Will copy currently enabled mods from content into data.</div>
+                      <div>Hold Shift if you want to copy all mods.</div>
+                      <div>
+                        As a modder this can overwrite your mod in data with an older version you have in
+                        content!
+                      </div>
+                    </>
+                  }
                 >
                   <span className="uppercase">Copy to data</span>
                 </Tooltip>

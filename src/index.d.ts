@@ -39,7 +39,7 @@ declare global {
     failedReadingConfig: (callback: (event: Electron.IpcRendererEvent) => void) => Electron.IpcRenderer;
     sendApiExists: () => void;
     readAppConfig: () => void;
-    copyToData: () => void;
+    copyToData: (modPathsToCopy?: string[]) => void;
     cleanData: () => void;
     saveConfig: (appData: AppState) => void;
     readMods: (mods: Mod[], skipCollisionCheck = true) => void;
