@@ -99,7 +99,11 @@ const CompatScreen = memo(() => {
           onClick={() =>
             setIsCompatOpen((wasOpen) => {
               if (!wasOpen) {
-                window.api?.getCompatData();
+                if (useEnabledModsOnly) {
+                  window.api?.getCompatData(enabledMods.map((mod) => mod.path));
+                } else {
+                  window.api?.getCompatData();
+                }
               } else {
                 dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
               }

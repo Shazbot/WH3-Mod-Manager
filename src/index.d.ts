@@ -77,7 +77,7 @@ declare global {
     setAppFolderPaths: (
       callback: (event: Electron.IpcRendererEvent, appFolderPaths: AppFolderPaths) => void
     ) => Electron.IpcRenderer;
-    getCompatData: () => void;
+    getCompatData: (pathsToUse?: string[]) => void;
     selectContentFolder: () => void;
     selectWarhammer3Folder: () => void;
     setContentFolder: (
