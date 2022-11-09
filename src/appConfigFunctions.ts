@@ -8,6 +8,7 @@ import { version } from "../package.json";
 
 let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
+let isWriting: boolean = false;
 
 const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
   return {
@@ -43,6 +44,9 @@ export function writeAppConfig(data: AppState) {
   } else {
     writeConfigTimeout = setTimeout(async () => {
       try {
+        if (isWriting) return;
+        isWriting = true;
+
         const stringifiedData = JSON.stringify(dataToWrite);
         const backupVersionConfigName = `config_backup_v${version}.json`;
 
@@ -66,6 +70,8 @@ export function writeAppConfig(data: AppState) {
         await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
         const configFilePath = nodePath.join(userData, "config.json");
         await move(tempFilePath, configFilePath, { overwrite: true });
+
+        isWriting = false;
       } catch (e) {
         console.log(e);
       }
