@@ -256,7 +256,17 @@ const OptionsDrawer = memo(() => {
                 onChange={() => dispatch(toggleMakeUnitsGenerals())}
               ></input>
               <label className="ml-2 mt-1" htmlFor="make-general-units">
-                Make all units custom battle generals
+                <Tooltip
+                  placement="left"
+                  style="light"
+                  content={
+                    <>
+                      <div>For 1v1 testing in custom battles.</div>
+                    </>
+                  }
+                >
+                  Make all units custom battle generals
+                </Tooltip>
               </label>
             </div>
             <div className="flex items-center ml-1">
@@ -268,7 +278,18 @@ const OptionsDrawer = memo(() => {
                 onChange={() => dispatch(toggleIsScriptLoggingEnabled())}
               ></input>
               <label className="ml-2 mt-1" htmlFor="toggle-script-logging">
-                Enable script logging
+                <Tooltip
+                  placement="left"
+                  style="light"
+                  content={
+                    <>
+                      <div>Enables WH3 script logging.</div>
+                      <div>Logs are created in the WH3 folder.</div>
+                    </>
+                  }
+                >
+                  Enable script logging
+                </Tooltip>
               </label>
             </div>
             <div className="flex items-center ml-1">
@@ -292,7 +313,18 @@ const OptionsDrawer = memo(() => {
                 onChange={() => dispatch(toggleIsAutoStartCustomBattleEnabled())}
               ></input>
               <label className="ml-2 mt-1" htmlFor="toggleIsAutoStartCustomBattleEnabled">
-                Auto-start custom battle
+                <Tooltip
+                  placement="bottom"
+                  style="light"
+                  content={
+                    <>
+                      <div>For repetitive visual testing that involves restarting the game.</div>
+                      <div>Set up a custom battle once and enable this to auto-enter it.</div>
+                    </>
+                  }
+                >
+                  Auto-start custom battle
+                </Tooltip>
               </label>
             </div>
 

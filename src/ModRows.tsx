@@ -450,14 +450,16 @@ export default function ModRows() {
         >
           {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
-          <span
-            className={`${
-              (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
-              "font-semibold"
-            }`}
-          >
-            {(modRowSorting.isDataPackSort(sortingType) && "Data Packs") || "Pack"}
-          </span>
+          <Tooltip placement="right" style="light" content="Right click to switch to sorting by data packs">
+            <span
+              className={`${
+                (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
+                "font-semibold"
+              }`}
+            >
+              {(modRowSorting.isDataPackSort(sortingType) && "Data Packs") || "Pack"}
+            </span>
+          </Tooltip>
         </div>
 
         <div
@@ -484,14 +486,21 @@ export default function ModRows() {
         >
           {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
-          <span
-            className={`${
-              (modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
-              "font-semibold"
-            }`}
+          <Tooltip
+            placement="left"
+            style="light"
+            content="Right click to switch to sorting by subscribed date"
           >
-            {(modRowSorting.isSubbedTimeSort(sortingType) && "Subscription Time") || "Last Updated"}
-          </span>
+            <span
+              className={`${
+                (modRowSorting.isLastUpdatedSort(sortingType) ||
+                  modRowSorting.isSubbedTimeSort(sortingType)) &&
+                "font-semibold"
+              }`}
+            >
+              {(modRowSorting.isSubbedTimeSort(sortingType) && "Subscription Time") || "Last Updated"}
+            </span>
+          </Tooltip>
         </div>
 
         {mods
