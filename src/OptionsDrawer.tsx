@@ -190,7 +190,8 @@ const OptionsDrawer = memo(() => {
                 onClick={(e) => copyToData(e)}
               >
                 <Tooltip
-                  placement="bottom"
+                  placement="top"
+                  style="light"
                   content={
                     <>
                       <div>Will copy currently enabled mods from content into data.</div>
@@ -214,6 +215,7 @@ const OptionsDrawer = memo(() => {
               >
                 <Tooltip
                   placement="bottom"
+                  style="light"
                   content="Will remove mods in data if the mod already exists in content. As a modder this can remove a newer version of your mod in data!"
                 >
                   <span className="uppercase">Clean data</span>

@@ -402,7 +402,16 @@ export default function ModRows() {
           {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <Tooltip
             placement="right"
-            content="Mods with lower order have priority, don't change unless you really know what you're doing, right click on mod to reset or here to reset all"
+            style="light"
+            content={
+              <>
+                <div>Mods with lower order have higher priority.</div>
+                <div>Right click on mod number to reset or here to reset all.</div>
+                <div className="text-red-600 font-bold">
+                  Don't change mod priority unless you really know what you're doing!
+                </div>
+              </>
+            }
           >
             <span
               className={`text-center w-full ${modRowSorting.isOrderSort(sortingType) && "font-semibold"}`}
@@ -418,7 +427,7 @@ export default function ModRows() {
           id="enabledHeader"
         >
           {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip placement="right" content="Right click to enable or disable all mods">
+          <Tooltip placement="right" style="light" content="Right click to enable or disable all mods">
             <span
               className={`text-center w-full ${modRowSorting.isEnabledSort(sortingType) && "font-semibold"}`}
             >
