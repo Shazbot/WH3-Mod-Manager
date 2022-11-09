@@ -24,14 +24,14 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
             humanName = match[1];
           } else {
             log(`failed reading humanName for ${workshopId}`);
+
+            const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
+            const match = body.match(regexpDeleted);
+            if (match && match[0]) isDeleted = true;
           }
         } catch (err) {
           log(`failed fetching mod page for ${workshopId}`);
           if (err instanceof Error) log(err.message);
-
-          const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
-          const match = body.match(regexpDeleted);
-          if (match && match[0]) isDeleted = true;
         }
 
         let author = "";

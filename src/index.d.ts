@@ -51,7 +51,7 @@ declare global {
       callback: (event: Electron.IpcRendererEvent, modPath: string) => void
     ) => Electron.IpcRenderer;
     setModData: (
-      callback: (event: Electron.IpcRendererEvent, modData: ModData) => void
+      callback: (event: Electron.IpcRendererEvent, modDatas: ModData[]) => void
     ) => Electron.IpcRenderer;
     setPackHeaderData: (
       callback: (event: Electron.IpcRendererEvent, packData: PackData) => void

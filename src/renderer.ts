@@ -147,9 +147,9 @@ window.api?.savesPopulated((event, saves: GameSave[]) => {
   store.dispatch(setSaves(saves));
 });
 
-window.api?.setModData((event, modData: ModData) => {
+window.api?.setModData((event, modDatas: ModData[]) => {
   // console.log("INVOKED: MOD DATA RECIEVED");
-  store.dispatch(setModData(modData));
+  store.dispatch(setModData(modDatas));
 });
 
 window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
