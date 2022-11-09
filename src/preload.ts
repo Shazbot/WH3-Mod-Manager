@@ -27,7 +27,7 @@ const api: api = {
   packsInSave: (callback) => ipcRenderer.on("packsInSave", callback),
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
-  copyToData: () => ipcRenderer.send("copyToData"),
+  copyToData: (modPathsToCopy?: string[]) => ipcRenderer.send("copyToData", modPathsToCopy),
   cleanData: () => ipcRenderer.send("cleanData"),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
   readMods: (mods: Mod[], skipCollisionCheck = true) =>
