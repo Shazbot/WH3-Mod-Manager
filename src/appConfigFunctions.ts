@@ -20,6 +20,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     areThumbnailsEnabled: appState.areThumbnailsEnabled,
     isMakeUnitsGeneralsEnabled: appState.isMakeUnitsGeneralsEnabled,
     isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,
+    isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
     appFolderPaths: appState.appFolderPaths,
   };

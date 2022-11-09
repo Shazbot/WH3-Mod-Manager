@@ -32,6 +32,7 @@ const appSlice = createSlice({
     isMakeUnitsGeneralsEnabled: false,
     isScriptLoggingEnabled: false,
     isSkipIntroMoviesEnabled: false,
+    isAutoStartCustomBattleEnabled: false,
     allMods: [],
     packsData: {},
     packCollisions: { packTableCollisions: [], packFileCollisions: [] },
@@ -256,6 +257,7 @@ const appSlice = createSlice({
       state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
+      state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
 
       const toEnable = fromConfigAppState.currentPreset.mods.filter((iterMod) =>
         fromConfigAppState.alwaysEnabledMods.some((mod) => mod.name == iterMod.name)
@@ -432,6 +434,9 @@ const appSlice = createSlice({
     toggleIsSkipIntroMoviesEnabled: (state: AppState) => {
       state.isSkipIntroMoviesEnabled = !state.isSkipIntroMoviesEnabled;
     },
+    toggleIsAutoStartCustomBattleEnabled: (state: AppState) => {
+      state.isAutoStartCustomBattleEnabled = !state.isAutoStartCustomBattleEnabled;
+    },
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
@@ -485,6 +490,7 @@ export const {
   toggleMakeUnitsGenerals,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
+  toggleIsAutoStartCustomBattleEnabled,
   setSharedMod,
   addMod,
   removeMod,

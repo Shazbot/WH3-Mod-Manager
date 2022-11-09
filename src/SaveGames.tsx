@@ -16,6 +16,7 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
+  const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
@@ -27,7 +28,12 @@ const SaveGame = memo((props: SaveGameProps) => {
     (name: string) => {
       window.api?.startGame(
         mods,
-        { isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled },
+        {
+          isMakeUnitsGeneralsEnabled,
+          isSkipIntroMoviesEnabled,
+          isScriptLoggingEnabled,
+          isAutoStartCustomBattleEnabled,
+        },
         name
       );
     },

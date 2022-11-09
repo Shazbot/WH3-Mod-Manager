@@ -43,3 +43,44 @@ export const introMoviePaths = [
   "movies\\startup_movie_03.ca_vp8",
   "movies\\startup_movie_04.ca_vp8",
 ];
+
+export const autoStartCustomBattleScript = `core:remove_listener("pj_auto_custom_battles_FrontendScreenTransition")
+core:add_listener(
+	"pj_auto_custom_battles_FrontendScreenTransition",
+	"FrontendScreenTransition",
+	function(context)
+		return context.string == "custom_battle"
+	end,
+	function(context)
+		core:remove_listener("pj_auto_custom_battles_press_factions_button")
+		core:add_listener(
+			"pj_auto_custom_battles_press_factions_button",
+			"RealTimeTrigger",
+			function(context)
+				return context.string == "pj_auto_custom_battles_press_factions_button"
+			end,
+			function(context)
+					local start_battle = find_uicomponent(core:get_ui_root(), "custom_battle", "ready_parent", "start_button_frame", "button_start_battle")
+					start_battle:SimulateLClick()
+			end,
+			false
+		)
+
+		real_timer.register_singleshot("pj_auto_custom_battles_press_factions_button", 1000)
+	end,
+	true
+)
+
+local function run_it()
+    local battle_button = find_uicomponent(core:get_ui_root(), "main", "left_holder", "buttons_holder", "buttons_list", "battle_frame", "battle_buttons", "practice_battle_holder", "button_practice_battle")
+    if battle_button then
+        battle_button:SimulateLClick()
+    end
+end
+
+core:add_ui_created_callback(
+	function()
+		run_it()
+	end
+)
+`;

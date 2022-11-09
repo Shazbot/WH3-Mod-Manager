@@ -10,7 +10,7 @@ import {
   SCHEMA_FIELD_TYPE,
 } from "./packFileTypes";
 import clone from "just-clone";
-import { emptyMovie, introMoviePaths } from "./emptyMovie";
+import { emptyMovie, introMoviePaths, autoStartCustomBattleScript } from "./helperPackData";
 import { app } from "electron";
 import { DBNameToDBVersions } from "./schema";
 import * as nodePath from "path";
@@ -390,6 +390,24 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
   } as PackedFile);
 };
 
+const createAutoStartCustomBattleData = (pack_files: PackedFile[]) => {
+  const scriptBuffer = Buffer.from(autoStartCustomBattleScript, "utf-8");
+  pack_files.push({
+    name: "script\\frontend\\mod\\pj_auto_custom_battles.lua",
+    file_size: scriptBuffer.byteLength,
+    start_pos: 0,
+    is_compressed: 0,
+    schemaFields: [
+      {
+        type: "Buffer",
+        fields: [{ type: "Buffer", val: scriptBuffer }],
+      },
+    ],
+    version: undefined,
+    guid: undefined,
+  } as PackedFile);
+};
+
 const sortByPackName = (packFirst: Pack, packSecond: Pack) => {
   return compareModNames(packFirst.name, packSecond.name);
 };
@@ -611,6 +629,7 @@ export const writePack = async (
       createBattlePermissionsData(packsData, packFiles, enabledMods);
     if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(packFiles);
     if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(packFiles);
+    if (startGameOptions.isAutoStartCustomBattleEnabled) createAutoStartCustomBattleData(packFiles);
 
     if (packFiles.length < 1) return;
 

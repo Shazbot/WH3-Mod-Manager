@@ -70,7 +70,7 @@ const tempModDatas: ModData[] = [];
 const sendModData = debounce(() => {
   mainWindow?.webContents.send("setModData", [...tempModDatas]);
   tempModDatas.splice(0, tempModDatas.length);
-}, 150);
+}, 200);
 
 const readConfig = async (): Promise<AppStateToWrite> => {
   try {
@@ -845,6 +845,13 @@ ipcMain.on("deletePack", async (event, mod: Mod) => {
 ipcMain.on("forceDownloadMods", async (event, modIds: string[]) => {
   try {
     fork(nodePath.join(__dirname, "sub.js"), ["download", modIds.join(";")], {});
+  } catch (e) {
+    console.log(e);
+  }
+});
+ipcMain.on("unsubscribeToMod", async (event, mod: Mod) => {
+  try {
+    fork(nodePath.join(__dirname, "sub.js"), ["unsubscribe", mod.workshopId], {});
   } catch (e) {
     console.log(e);
   }
