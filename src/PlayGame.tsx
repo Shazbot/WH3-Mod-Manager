@@ -245,12 +245,13 @@ const PlayGame = React.memo(() => {
         <div id="presetSection">
           <Tooltip
             placement="left"
+            style="light"
             content={
               <>
-                <p>Create new preset by typing its name</p>
-                <p className="mt-4">When selecting existing preset:</p>
-                <p>Hold Shift to add mods in preset to current mods</p>
-                <p>Hold Ctrl to remove mods in preset from current mods</p>
+                <p>Create a new preset by typing its name.</p>
+                <p className="mt-3">When selecting existing preset:</p>
+                <p>Hold Shift to add mods in preset to current mods.</p>
+                <p>Hold Ctrl to remove mods in preset from current mods.</p>
               </>
             }
           >
