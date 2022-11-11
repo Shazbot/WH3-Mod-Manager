@@ -299,6 +299,7 @@ const appSlice = createSlice({
           const modToChange = findMod(newPresetMods, mod);
           if (modToChange) {
             mod.isEnabled = modToChange.isEnabled;
+            mod.loadOrder = modToChange.loadOrder;
           }
         });
       } else if (presetSelection === "addition" || presetSelection === "subtraction") {
@@ -334,30 +335,31 @@ const appSlice = createSlice({
       const newLoadOrder = payload.loadOrder;
       const originalLoadOrder = payload.originalOrder;
 
-      // console.log(`orig order is ${originalLoadOrder}`);
-      // console.log(`new order is ${newLoadOrder}`);
+      console.log(`orig order is ${originalLoadOrder}`);
+      console.log(`new order is ${newLoadOrder}`);
 
       if (ourMod) {
         state.currentPreset.mods.forEach((mod) => {
           if (mod.name === payload.modName) {
-            // console.log(`setting loadOredr to ${newLoadOrder}`);
-            ourMod.loadOrder = newLoadOrder;
+            // console.log(`setting loadOrder to ${newLoadOrder}`);
           } else if (mod.loadOrder) {
-            // if (mod.loadOrder > newLoadOrder && mod.loadOrder < originalLoadOrder) {
-            if (mod.loadOrder > newLoadOrder) {
-              // mod.loadOrder += 1;
-              // console.log(`${mod.name} load order is +1, ${mod.loadOrder}`);
-              // } else if (mod.loadOrder < newLoadOrder && mod.loadOrder > originalLoadOrder) {
-            } else if (mod.loadOrder < newLoadOrder) {
-              // mod.loadOrder -= 1;
-              // console.log(`${mod.name} load order is -1, ${mod.loadOrder}`);
-            } else if (mod.loadOrder == newLoadOrder) {
-              mod.loadOrder += 1;
+            if (
+              originalLoadOrder != null &&
+              mod.loadOrder > originalLoadOrder &&
+              mod.loadOrder <= newLoadOrder
+            ) {
+              mod.loadOrder -= 1;
             }
           }
-
-          adjustDuplicates(state.currentPreset.mods);
         });
+
+        ourMod.loadOrder = newLoadOrder;
+        // console.log(
+        //   state.currentPreset.mods
+        //     .filter((mod) => mod.loadOrder != null)
+        //     .map((mod) => [mod.name, mod.loadOrder])
+        // );
+        adjustDuplicates(state.currentPreset.mods, ourMod);
       }
 
       // printLoadOrders(state.currentPreset.mods);

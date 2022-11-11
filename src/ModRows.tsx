@@ -108,6 +108,7 @@ export default function ModRows() {
 
     const droppedOnElement = document.getElementById(droppedOnId);
     if (!droppedOnElement || !droppedOnElement.parentElement) return;
+
     const index =
       [...droppedOnElement.parentElement.children]
         .filter((ele) => ele.id !== "drop-ghost")
@@ -125,25 +126,39 @@ export default function ModRows() {
     let prevElement: HTMLDivElement = droppedOnElement.previousElementSibling as HTMLDivElement;
     if (prevElement.id === "drop-ghost") prevElement = prevElement.previousElementSibling as HTMLDivElement;
     const prevElementOnLoadOrder = prevElement.dataset.loadOrder;
+
     if (prevElementOnLoadOrder != null && prevElement.id !== originalId) {
-      loadOrder = Number(prevElementOnLoadOrder) + 1;
-      // console.log("PREV ELEMENT DROPPED load order is: " + prevElementOnLoadOrder);
+      loadOrder = Number(prevElementOnLoadOrder) + ((originalElementindex >= index && 1) || 0);
+
+      console.log("PREV ELEMENT LOAD ORDER!");
+      console.log("ORIG Y:", originalElementindex);
+      console.log("droppedOnElementY Y:", index);
+      console.log("OFFSET IS", (originalElementindex >= index && 1) || 0);
+      console.log("PREV ELEMENT DROPPED load order is: " + prevElementOnLoadOrder);
+      console.log("NEW LOAD ORDER IS", loadOrder);
     }
 
     const droppedOnLoadOrder = droppedOnElement.dataset.loadOrder;
+
     if (
       loadOrder == null &&
       droppedOnLoadOrder != null &&
       (prevElement.id !== originalId || Number(droppedOnLoadOrder) !== Number(prevElementOnLoadOrder) + 1)
     ) {
-      loadOrder = Number(droppedOnLoadOrder);
+      console.log("NEXT ELEMENT LOAD ORDER!");
+      console.log("DROPPED ON LOAD ORDER IS", droppedOnLoadOrder);
+      console.log("ORIG Y:", originalElementindex);
+      console.log("droppedOnElementY Y:", index);
+      loadOrder = Number(droppedOnLoadOrder) + ((originalElementindex < index && -1) || 0);
+      console.log("NEW LOAD ORDER IS", loadOrder);
+      console.log("OFFSET IS", (originalElementindex < index && -1) || 0);
     }
 
     if (loadOrder == null) {
       loadOrder = index > originalElementindex ? index : index + 1;
     }
 
-    const originalOrder = originalElementindex + (index > originalElementindex ? 1 : 0);
+    const originalOrder = originalElementindex + 1;
 
     // console.log(`index is ${index}`);
     // console.log(`orig index is ${originalElementindex}`);

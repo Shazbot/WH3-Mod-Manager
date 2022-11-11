@@ -169,7 +169,13 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                     const numLordOrder = Number(currentModLoadOrder) - 1;
                     if (numLordOrder == null || isNaN(numLordOrder)) return;
                     if (numLordOrder < 0) return;
-                    dispatch(setModLoadOrder({ modName: props.mod?.name ?? "", loadOrder: numLordOrder }));
+                    dispatch(
+                      setModLoadOrder({
+                        modName: props.mod?.name ?? "",
+                        loadOrder: numLordOrder,
+                        originalOrder: props.mod?.loadOrder,
+                      })
+                    );
                     setIsSetLoadOrderOpen(false);
                   }}
                 >
