@@ -18,7 +18,7 @@ export function isModAlwaysEnabled(mod: Mod, alwaysEnabledMods: Mod[]) {
   return alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name);
 }
 
-export function adjustDuplicates(mods: Mod[]) {
+export function adjustDuplicates(mods: Mod[], modToKeepOrder: Mod) {
   mods
     .filter((mod) => mod.loadOrder != null)
     .sort((modF, modS) => (modF.loadOrder as number) - (modS.loadOrder as number))
@@ -26,9 +26,9 @@ export function adjustDuplicates(mods: Mod[]) {
       const duplicateMod = mods
         .filter((iterMod) => iterMod.name != mod.name)
         .find((iterMod) => mod.loadOrder === iterMod.loadOrder);
-      if (duplicateMod && duplicateMod.loadOrder) {
+      if (duplicateMod && duplicateMod.loadOrder != null && duplicateMod != modToKeepOrder) {
         duplicateMod.loadOrder += 1;
-        return adjustDuplicates(mods);
+        return adjustDuplicates(mods, duplicateMod);
       }
     });
 }
