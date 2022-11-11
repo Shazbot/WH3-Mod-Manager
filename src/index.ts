@@ -883,6 +883,7 @@ if (!gotTheLock) {
   ipcMain.on("unsubscribeToMod", async (event, mod: Mod) => {
     try {
       fork(nodePath.join(__dirname, "sub.js"), ["unsubscribe", mod.workshopId], {});
+      await fsExtra.remove(mod.path);
     } catch (e) {
       console.log(e);
     }
