@@ -416,7 +416,7 @@ export default function ModRows() {
         >
           {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <Tooltip
-            placement="right"
+            placement="bottom"
             style="light"
             content={
               <>

@@ -23,6 +23,10 @@ module.exports = {
         { from: "./temp/schema/schema_wh3.json", to: "../schema/schema_wh3.json" },
         { from: "./node_modules/binary-file", to: "../node_modules/binary-file" },
         { from: "./node_modules/denodeify", to: "../node_modules/denodeify" },
+        {
+          from: "./node_modules/steamworks.js/",
+          to: "../node_modules/steamworks.js/",
+        },
       ],
     }),
   ],
