@@ -26,18 +26,18 @@ const ModsMerger = React.memo(() => {
 
   const mergerModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (mods) => mods.filter((mod) => mod.mergedModsData)
+    (mods) => mods.filter((mod) => mod.mergedModsData && mod.isEnabled)
   );
   const mergerMods = useSelector(mergerModsSelector);
 
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
   const [isHidingAlreadyMergedMods, setIsHidingAlreadyMergedMods] = React.useState(true);
   const [isOpen, setIsOpen] = React.useState(false);
-  const [modsToMerge, setModsToMerge] = React.useState<Set<Mod>>(new Set<Mod>());
+  const [modsToMerge, setModsToMerge] = React.useState<Set<string>>(new Set<string>());
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
   const [modsMergeSort, setModsMergeSort] = React.useState("Size" as ModsMergeSorts);
 
-  let modsToUse = useMemo(() => [...mods], [mods]);
+  let modsToUse = [...mods];
 
   if (isHidingAlreadyMergedMods) {
     modsToUse = modsToUse.filter((mod) =>
@@ -50,17 +50,17 @@ const ModsMerger = React.memo(() => {
   switch (modsMergeSort) {
     case "Merge":
       modsToUse = modsToUse.sort((firstMod, secondMod) => {
-        if (modsToMerge.has(firstMod) && modsToMerge.has(secondMod)) return 0;
-        if (modsToMerge.has(firstMod)) return -1;
-        if (modsToMerge.has(secondMod)) return 1;
+        if (modsToMerge.has(firstMod.workshopId) && modsToMerge.has(secondMod.workshopId)) return 0;
+        if (modsToMerge.has(firstMod.workshopId)) return -1;
+        if (modsToMerge.has(secondMod.workshopId)) return 1;
         return 0;
       });
       break;
     case "MergeDesc":
       modsToUse = modsToUse.sort((firstMod, secondMod) => {
-        if (modsToMerge.has(firstMod) && modsToMerge.has(secondMod)) return 0;
-        if (modsToMerge.has(firstMod)) return 1;
-        if (modsToMerge.has(secondMod)) return -1;
+        if (modsToMerge.has(firstMod.workshopId) && modsToMerge.has(secondMod.workshopId)) return 0;
+        if (modsToMerge.has(firstMod.workshopId)) return 1;
+        if (modsToMerge.has(secondMod.workshopId)) return -1;
         return 0;
       });
       break;
@@ -84,17 +84,25 @@ const ModsMerger = React.memo(() => {
       break;
   }
   modsToUse = modsToUse.filter((mod) => (!useEnabledModsOnly && mod) || mod.isEnabled);
+  if (useEnabledModsOnly) {
+    const filteredSet = new Set(
+      Array.from(modsToMerge).filter((workshopId) =>
+        modsToUse.some((modToUse) => modToUse.workshopId == workshopId)
+      )
+    );
+    if (filteredSet.size != modsToMerge.size) setModsToMerge(filteredSet);
+  }
 
   const isPackProcessingDone = true; //!!packCollisions.packFileCollisions;
 
   const onModToggled = useCallback(
     (mod: Mod) => {
-      if (modsToMerge.has(mod)) {
-        modsToMerge.delete(mod);
+      if (modsToMerge.has(mod.workshopId)) {
+        modsToMerge.delete(mod.workshopId);
       } else {
-        modsToMerge.add(mod);
+        modsToMerge.add(mod.workshopId);
       }
-      setModsToMerge(new Set<Mod>(modsToMerge));
+      setModsToMerge(new Set<string>(modsToMerge));
     },
     [modsToMerge]
   );
@@ -104,7 +112,7 @@ const ModsMerger = React.memo(() => {
       if (!newValue) return;
       console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
       if (actionMeta.action === "select-option") {
-        setModsToMerge(new Set<Mod>(modsToUse.slice(0, newValue.value)));
+        setModsToMerge(new Set<string>(modsToUse.slice(0, newValue.value).map((mod) => mod.workshopId)));
       }
     },
     [modsToUse]
@@ -118,8 +126,10 @@ const ModsMerger = React.memo(() => {
         if (!mergerMod || !mergerMod.mergedModsData) return;
         const mergedData = mergerMod.mergedModsData;
         setModsToMerge(
-          new Set<Mod>(
-            modsToUse.filter((mod) => mergedData.some((mergedModData) => mergedModData.name == mod.name))
+          new Set<string>(
+            modsToUse
+              .filter((mod) => mergedData.some((mergedModData) => mergedModData.name == mod.name))
+              .map((mod) => mod.workshopId)
           )
         );
       }
@@ -145,7 +155,10 @@ const ModsMerger = React.memo(() => {
 
   const mergeMods = useCallback(() => {
     if (modsToMerge.size < 1) return;
-    window.api?.mergeMods(Array.from(modsToMerge));
+    const modsToMergeArray = Array.from(modsToMerge);
+    window.api?.mergeMods(
+      mods.filter((mod) => modsToMergeArray.some((modToMergeId) => modToMergeId == mod.workshopId))
+    );
     setIsOpen(false);
   }, [modsToMerge]);
 
@@ -167,7 +180,7 @@ const ModsMerger = React.memo(() => {
   }, [modsMergeSort]);
 
   const onMergeRightClick = useCallback(() => {
-    setModsToMerge(new Set<Mod>());
+    setModsToMerge(new Set<string>());
   }, [modsMergeSort]);
 
   return (
@@ -247,7 +260,7 @@ const ModsMerger = React.memo(() => {
                       id="merge-enabled-mod-only"
                       checked={useEnabledModsOnly}
                       onChange={() => {
-                        if (!useEnabledModsOnly) setModsToMerge(new Set<Mod>());
+                        if (!useEnabledModsOnly) setModsToMerge(new Set<string>());
                         setUseEnabledModsOnly(!useEnabledModsOnly);
                       }}
                     ></input>
@@ -318,7 +331,7 @@ const ModsMerger = React.memo(() => {
                         <div className="col-span-1 justify-center flex">
                           <input
                             type="checkbox"
-                            checked={modsToMerge.has(mod) || false}
+                            checked={modsToMerge.has(mod.workshopId) || false}
                             onChange={() => onModToggled(mod)}
                             id={mod.name + "_merge_checkbox"}
                             name={mod.name}
