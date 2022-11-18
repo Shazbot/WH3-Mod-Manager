@@ -413,16 +413,12 @@ const sortByPackName = (packFirst: Pack, packSecond: Pack) => {
 };
 
 export const mergeMods = async (mods: Mod[], existingPath?: string) => {
-  if (!appData.gamePath) return;
+  if (!appData.dataFolder) return;
   let outFile: BinaryFile | undefined;
   try {
     const targetPath =
       existingPath ||
-      nodePath.join(
-        appData.gamePath,
-        "/merged/",
-        "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack"
-      );
+      nodePath.join(appData.dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
     await fsExtra.ensureDir(nodePath.dirname(targetPath));
 
     const packFieldsSettled = await Promise.allSettled(mods.map((mod) => readPack(mod.path, true)));
