@@ -359,7 +359,7 @@ const ModsMerger = React.memo(() => {
                 <div className="leading-relaxed dark:text-gray-300 relative font-normal">
                   <p>
                     This panel allows you to merge mods to get around the mod limit. It merges selected mods
-                    into a new mod .pack and puts it inside a WH3/merged folder. Merged mods also have an
+                    into a new mod .pack and puts it inside the WH3/data folder. Merged mods also have an
                     accompanying .json file with the same name, if you rename or move the merged mod also
                     rename or move the json file. Mods are pre-sorted by size for quicker merging.
                   </p>
@@ -373,7 +373,8 @@ const ModsMerger = React.memo(() => {
                     When mods get updated the merged pack will have the old outdated mod inside it. You should
                     get a warning in red (it'll be above the Play button) warning you about this and you can
                     then right click the merged pack and use the Update (Re-merge) option which will update
-                    the merged pack.
+                    the merged pack. The warning can appear when you start the app but disappears once we get
+                    newer info from the workshop, you don't have to update it in that case.
                   </p>
                   <p className="mt-6">
                     You can leave the mods that have been merged enabled in the mod manager, the manager will
