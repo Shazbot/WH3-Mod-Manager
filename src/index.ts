@@ -279,12 +279,15 @@ if (!gotTheLock) {
           appData.dataPack = newPacksData[0];
 
           try {
-            mainWindow?.webContents.send(
-              "setDataModLastChangedLocal",
-              await fs.stat(dataMod.path).then((stats) => {
-                return stats.mtimeMs;
-              })
+            const res = await fetch(
+              `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`
             );
+            const gameUpdates = (await res.json()) as GameUpdateData[];
+            gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
+
+            if (gameUpdates[0]) {
+              mainWindow?.webContents.send("setDataModLastChangedLocal", parseInt(gameUpdates[0].timestamp)*1000);
+            }
           } catch {
             /* empty */
           }

@@ -231,7 +231,12 @@ declare global {
   interface ModWithDefinedReqModIdToName extends Omit<Mod, "reqModIdToName"> {
     reqModIdToName: [string, string][];
   }
+
   interface ModWithDefinedMergedModsData extends Omit<Mod, "mergedModsData"> {
     mergedModsData: MergedModsData[];
+  }
+
+  interface GameUpdateData {
+    timestamp: string;
   }
 }
