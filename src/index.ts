@@ -237,7 +237,8 @@ if (!gotTheLock) {
             console.log(mod);
           }
           const packHeaderData = await readPackHeader(mod.path);
-          if (packHeaderData.isMovie) mainWindow?.webContents.send("setPackHeaderData", packHeaderData);
+          if (packHeaderData.isMovie || packHeaderData.dependencyPacks.length > 0)
+            mainWindow?.webContents.send("setPackHeaderData", packHeaderData);
         } catch (e) {
           if (e instanceof Error) {
             log(e.message);
@@ -286,7 +287,10 @@ if (!gotTheLock) {
             gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
 
             if (gameUpdates[0]) {
-              mainWindow?.webContents.send("setDataModLastChangedLocal", parseInt(gameUpdates[0].timestamp)*1000);
+              mainWindow?.webContents.send(
+                "setDataModLastChangedLocal",
+                parseInt(gameUpdates[0].timestamp) * 1000
+              );
             }
           } catch {
             /* empty */

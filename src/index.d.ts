@@ -120,6 +120,7 @@ declare global {
     author: string;
     isDeleted: boolean;
     isMovie: boolean;
+    dependencyPacks?: string[];
     reqModIdToName?: [string, string][];
     size: number;
     mergedModsData?: MergedModsData[];
@@ -138,6 +139,7 @@ declare global {
   interface PackHeaderData {
     path: string;
     isMovie: boolean;
+    dependencyPacks: string[];
   }
 
   interface FetchedModData {

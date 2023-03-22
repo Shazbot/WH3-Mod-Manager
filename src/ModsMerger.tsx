@@ -1,11 +1,19 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "./flowbite/components/Modal/index";
 import { Spinner, Tabs, Tooltip } from "./flowbite";
-import { getModsSortedByName, getModsSortedByHumanName, getModsSortedBySize } from "./modSortingHelpers";
+import {
+  getModsSortedByName,
+  getModsSortedByHumanName,
+  getModsSortedBySize,
+  getFilteredMods,
+} from "./modSortingHelpers";
 import Select, { ActionMeta, SingleValue } from "react-select";
 import selectStyle from "./styles/selectStyle";
 import { createSelector } from "@reduxjs/toolkit";
 import { useSelector } from "react-redux";
+import { useAppSelector } from "./hooks";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faXmark } from "@fortawesome/free-solid-svg-icons";
 
 type ModsMergeSorts = "Merge" | "MergeDesc" | "Pack" | "PackDesc" | "Name" | "NameDesc" | "Size" | "SizeDesc";
 type NumModsOptionType = {
@@ -18,11 +26,25 @@ type ExistingMergerOptionType = {
 };
 
 const ModsMerger = React.memo(() => {
+  const isDev = useAppSelector((state) => state.app.isDev);
+
   const modsNotInDataSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (mods) => mods.filter((mod) => !mod.isInData)
+    (mods) => mods.filter((mod) => isDev || !mod.isInData)
   );
   const mods = useSelector(modsNotInDataSelector);
+
+  const allDependencyPacks =
+    mods
+      .map((mod) => mod.dependencyPacks)
+      .filter((depPack) => depPack != null)
+      .reduce((acc, val) => {
+        if (acc && val)
+          return acc?.concat(val.filter((depPack) => !acc.find((accPack) => accPack == depPack)));
+        return [];
+      }, [] as string[]) || [];
+
+  console.log("allDependencyPacks", allDependencyPacks);
 
   const mergerModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -107,12 +129,29 @@ const ModsMerger = React.memo(() => {
     [modsToMerge]
   );
 
+  const modsWithoutDependencies = useCallback(
+    (mods: Mod[]) => {
+      return mods.filter(
+        (mod) =>
+          (!mod.dependencyPacks || mod.dependencyPacks.length < 1) &&
+          !allDependencyPacks.some((packName) => packName == mod.name)
+      );
+    },
+    [mods]
+  );
+
   const onSelectNumModsChange = useCallback(
     (newValue: SingleValue<NumModsOptionType>, actionMeta: ActionMeta<NumModsOptionType>) => {
       if (!newValue) return;
       console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
       if (actionMeta.action === "select-option") {
-        setModsToMerge(new Set<string>(modsToUse.slice(0, newValue.value).map((mod) => mod.workshopId)));
+        setModsToMerge(
+          new Set<string>(
+            modsWithoutDependencies(modsToUse)
+              .slice(0, newValue.value)
+              .map((mod) => mod.workshopId)
+          )
+        );
       }
     },
     [modsToUse]
@@ -127,7 +166,7 @@ const ModsMerger = React.memo(() => {
         const mergedData = mergerMod.mergedModsData;
         setModsToMerge(
           new Set<string>(
-            modsToUse
+            modsWithoutDependencies(modsToUse)
               .filter((mod) => mergedData.some((mergedModData) => mergedModData.name == mod.name))
               .map((mod) => mod.workshopId)
           )
@@ -183,6 +222,32 @@ const ModsMerger = React.memo(() => {
     setModsToMerge(new Set<string>());
   }, [modsMergeSort]);
 
+  const [modFilter, setModFilter] = useState("");
+  const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setModFilter(e.target.value);
+  };
+
+  const clearFilter = () => {
+    setModFilter("");
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "f") {
+        const modMergingFilter = document.getElementById("modMergingFilter");
+        modMergingFilter?.focus();
+        // e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  });
+
   return (
     <div>
       <div className="text-center mt-4">
@@ -208,7 +273,9 @@ const ModsMerger = React.memo(() => {
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
           ]}
         >
-          <Modal.Header>Merge Mods{modsToMerge.size > 0 && ` - ${modsToMerge.size} selected`}</Modal.Header>
+          <Modal.Header>
+            <span>Merge Mods{modsToMerge.size > 0 && ` - ${modsToMerge.size} selected`}</span>
+          </Modal.Header>
           <Modal.Body>
             <Tabs.Group style="underline">
               <Tabs.Item active={true} title="Merge">
@@ -285,7 +352,27 @@ const ModsMerger = React.memo(() => {
                     Merge
                   </button>
                 </span>
-                <div className="leading-relaxed dark:text-gray-300 relative gap-2 ">
+
+                <div className="flex items-center">
+                  <span className="text-slate-100">Filter:</span>
+                  <span className="relative">
+                    <input
+                      id="modMergingFilter"
+                      type="text"
+                      onChange={(e) => onFilterChange(e)}
+                      value={modFilter}
+                      className="ml-2 block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                    ></input>
+
+                    <span className="absolute right-[0.3rem] top-[0.6rem] text-gray-400">
+                      <button onClick={() => clearFilter()}>
+                        <FontAwesomeIcon icon={faXmark} />
+                      </button>
+                    </span>
+                  </span>
+                </div>
+
+                <div className="mt-5 leading-relaxed dark:text-gray-300 relative gap-2">
                   <div className="grid grid-cols-9">
                     <div
                       onContextMenu={() => onMergeRightClick()}
@@ -325,26 +412,78 @@ const ModsMerger = React.memo(() => {
                       Size
                     </div>
                   </div>
-                  {modsToUse.map((mod) => (
+                  {getFilteredMods(modsToUse, modFilter, true).map((mod) => (
                     <React.Fragment key={mod.path}>
                       <div className="grid grid-cols-9 items-center border-b gap-2 py-2 border-gray-600">
-                        <div className="col-span-1 justify-center flex">
-                          <input
-                            type="checkbox"
-                            checked={modsToMerge.has(mod.workshopId) || false}
-                            onChange={() => onModToggled(mod)}
-                            id={mod.name + "_merge_checkbox"}
-                            name={mod.name}
-                          />
-                        </div>
+                        {(((mod.dependencyPacks && mod.dependencyPacks.length > 0) ||
+                          allDependencyPacks.some((packName) => packName == mod.name)) && (
+                          <span className="make-tooltip-inline">
+                            <Tooltip
+                              style={"light"}
+                              content={
+                                <p>
+                                  Mod cannot be merged since it has a pack-level dependency with another mod.
+                                </p>
+                              }
+                            >
+                              <div className="col-span-1 justify-center flex">
+                                <input
+                                  type="checkbox"
+                                  checked={modsToMerge.has(mod.workshopId) || false}
+                                  onChange={() => onModToggled(mod)}
+                                  id={mod.name + "_merge_checkbox"}
+                                  name={mod.name}
+                                  disabled={true}
+                                />
+                              </div>
+                            </Tooltip>
+                          </span>
+                        )) || (
+                          <div className="col-span-1 justify-center flex">
+                            <input
+                              type="checkbox"
+                              checked={modsToMerge.has(mod.workshopId) || false}
+                              onChange={() => onModToggled(mod)}
+                              id={mod.name + "_merge_checkbox"}
+                              name={mod.name}
+                            />
+                          </div>
+                        )}
+
                         <div className="col-span-3">
                           <label htmlFor={mod.name + "_merge_checkbox"}>
-                            <div>{`${mod.name}`}</div>
+                            {(((mod.dependencyPacks && mod.dependencyPacks.length > 0) ||
+                              allDependencyPacks.some((packName) => packName == mod.name)) && (
+                              <Tooltip
+                                style={"light"}
+                                content={
+                                  <p>
+                                    Mod cannot be merged since it has a pack-level dependency with another
+                                    mod.
+                                  </p>
+                                }
+                              >
+                                <div className="line-through">{`${mod.name}`}</div>
+                              </Tooltip>
+                            )) || <div>{`${mod.name}`}</div>}
                           </label>
                         </div>
                         <div className="col-span-3">
                           <label htmlFor={mod.name + "_merge_checkbox"}>
-                            <div>{`${mod.humanName}`}</div>
+                            {(((mod.dependencyPacks && mod.dependencyPacks.length > 0) ||
+                              allDependencyPacks.some((packName) => packName == mod.name)) && (
+                              <Tooltip
+                                style={"light"}
+                                content={
+                                  <p>
+                                    Mod cannot be merged since it has a pack-level dependency with another
+                                    mod.
+                                  </p>
+                                }
+                              >
+                                <div className="line-through">{`${mod.humanName}`}</div>
+                              </Tooltip>
+                            )) || <div>{`${mod.humanName}`}</div>}
                           </label>
                         </div>
                         <div className="col-span-2">
