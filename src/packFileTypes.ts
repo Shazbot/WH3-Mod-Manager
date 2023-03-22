@@ -14,6 +14,7 @@ export interface PackedFile {
   schemaFields: SchemaField[];
   version: number | undefined;
   guid: string | undefined;
+  dependencyPacks?: string[];
 }
 
 export interface PackHeader {

@@ -161,6 +161,9 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     const pack_file_count = await file.readInt32();
     const packed_file_index_size = await file.readInt32();
 
+    const dependencyPacks: string[] = [];
+
+    // console.log(`modPath is ${modPath}`);
     // console.log(`header is ${header}`);
     // console.log(`byteMask is ${byteMask}`);
     // console.log(`refFileCount is ${refFileCount}`);
@@ -179,6 +182,26 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
       pack_file_count,
       header_buffer,
     } as PackHeader;
+
+    if (pack_file_index_size > 0) {
+      let chunk;
+      let bufPos = 0;
+      let lastDependencyStart = 0;
+      const packIndexBuffer = await file.read(pack_file_index_size);
+
+      while (null !== (chunk = packIndexBuffer.readInt8(bufPos))) {
+        bufPos += 1;
+        if (chunk == 0) {
+          const name = packIndexBuffer.toString("utf8", lastDependencyStart, bufPos - 1);
+          dependencyPacks.push(name);
+          lastDependencyStart = bufPos;
+          // console.log(`found dep pack ${name}`);
+          if (bufPos >= pack_file_index_size) {
+            break;
+          }
+        }
+      }
+    }
 
     const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
     // console.log("data starts at " + dataStart);
@@ -232,6 +255,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
         schemaFields: [],
         version: undefined,
         guid: undefined,
+        dependencyPacks,
       });
       file_pos += file_size;
     }

@@ -195,7 +195,10 @@ const appSlice = createSlice({
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData>) => {
       const data = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.path == data.path);
-      if (mod) mod.isMovie = data.isMovie;
+      if (mod) {
+        mod.isMovie = data.isMovie;
+        mod.dependencyPacks = data.dependencyPacks;
+      }
 
       if (data.isMovie) console.log(`${data.path} is movie!`);
     },
