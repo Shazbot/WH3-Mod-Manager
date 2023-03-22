@@ -44,7 +44,7 @@ const ModsMerger = React.memo(() => {
         return [];
       }, [] as string[]) || [];
 
-  console.log("allDependencyPacks", allDependencyPacks);
+  // console.log("allDependencyPacks", allDependencyPacks);
 
   const mergerModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,

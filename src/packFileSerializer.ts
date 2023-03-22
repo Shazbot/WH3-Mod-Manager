@@ -1033,6 +1033,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
 
       // console.log(dbName);
       // outFile.seek(file.tell());
+
       for (let i = 0; i < entryCount; i++) {
         for (const field of dbversion.fields) {
           const { name, field_type, is_key } = field;
@@ -1045,32 +1046,52 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
           // console.log("pos is " + outFile.tell());
           // console.log('i is ' + i);
           // const fields = await parseType(file, field_type);
-          const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
-          const fields = fieldsRet[0];
-          currentPos = fieldsRet[1];
+          const lastPos = currentPos;
+          try {
+            const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+            const fields = fieldsRet[0];
+            currentPos = fieldsRet[1];
 
-          if (!fields[1] && !fields[0]) {
-            console.log(name);
-            console.log(field_type);
-          }
-          if (fields[0].val == undefined) {
-            console.log(name);
-            console.log(field_type);
-          }
-          if (fields.length == 0) {
-            console.log(name);
-            console.log(field_type);
-          }
+            if (!fields[1] && !fields[0]) {
+              console.log(name);
+              console.log(field_type);
+            }
+            if (fields[0].val == undefined) {
+              console.log(name);
+              console.log(field_type);
+            }
+            if (fields.length == 0) {
+              console.log(name);
+              console.log(field_type);
+            }
 
-          const schemaField: SchemaField = {
-            // name,
-            type: field_type,
-            fields,
-            // isKey: is_key,
-            // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
-          };
-          if (is_key) schemaField.isKey = true;
-          pack_file.schemaFields.push(schemaField);
+            const schemaField: SchemaField = {
+              // name,
+              type: field_type,
+              fields,
+              // isKey: is_key,
+              // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
+            };
+            if (is_key) schemaField.isKey = true;
+            pack_file.schemaFields.push(schemaField);
+
+            // if (pack_file.name.includes("xyz")) {
+            //   console.log(dbName, name, field_type);
+            //   console.log("lastPos:", lastPos);
+            //   console.log("currentPos:", currentPos);
+            //   console.log("read", fields[0]);
+            //   console.log("read", fields[1]);
+            // }
+          } catch (e) {
+            console.log(e);
+            console.log("ERROR PARSING DB FIELD");
+            console.log(modPath);
+            console.log(pack_file.name);
+            console.log(dbName, name, field_type);
+            console.log("lastPos:", lastPos);
+            console.log("currentPos:", currentPos);
+            console.log("real_pos:", currentPos + startPos);
+          }
         }
       }
     }
