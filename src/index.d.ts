@@ -11,6 +11,7 @@ declare global {
   interface api {
     startGame: (mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => void;
     exportModsToClipboard: (mods: Mod[]) => void;
+    exportModNamesToClipboard: (mods: Mod[]) => void;
     subscribeToMods: (ids: string[]) => void;
     openFolderInExplorer: (path: string) => void;
     openInSteam: (url: string) => void;

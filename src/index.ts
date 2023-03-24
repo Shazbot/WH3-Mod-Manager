@@ -926,6 +926,13 @@ if (!gotTheLock) {
     clipboard.writeText(exportedMods);
   });
 
+  ipcMain.on("exportModNamesToClipboard", async (event, mods: Mod[]) => {
+    const sortedMods = sortByNameAndLoadOrder(mods);
+    clipboard.writeText(
+      sortedMods.map((mod) => (mod.humanName != "" && mod.humanName) || mod.name).join("\n")
+    );
+  });
+
   ipcMain.on(
     "startGame",
     async (event, mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => {
