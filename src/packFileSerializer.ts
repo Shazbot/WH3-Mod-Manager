@@ -359,7 +359,7 @@ const createIntroMoviesData = (pack_files: PackedFile[]) => {
 };
 
 const getDBName = (packFile: PackedFile) => {
-  const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
+  const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
   if (dbNameMatch == null) return;
   const dbName = dbNameMatch[1];
   return dbName;
@@ -915,7 +915,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     // console.log("DONE READING FILE");
 
     // pack_files.forEach((pack_file) => {
-    //   const db_name = pack_file.name.match(/db\\(.*?)\\/);
+    //   const db_name = pack_file.name.match(/^db\\(.*?)\\/);
     //   if (db_name != null) {
     //     console.log(db_name);
     //     // console.log(pack_file.name);
@@ -927,7 +927,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     // );
 
     const dbPackFiles = pack_files.filter((packFile) => {
-      const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
+      const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
       return dbNameMatch != null && dbNameMatch[1];
     });
 
@@ -965,7 +965,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
       currentPos = pack_file.start_pos - startPos;
       // console.log(currentPos);
 
-      const dbNameMatch = pack_file.name.match(/db\\(.*?)\\/);
+      const dbNameMatch = pack_file.name.match(/^db\\(.*?)\\/);
       if (dbNameMatch == null) continue;
       const dbName = dbNameMatch[1];
       if (dbName == null) continue;
@@ -1034,65 +1034,71 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
       // console.log(dbName);
       // outFile.seek(file.tell());
 
-      for (let i = 0; i < entryCount; i++) {
-        for (const field of dbversion.fields) {
-          const { name, field_type, is_key } = field;
-          // console.log(name);
-          // console.log(field_type);
-          // console.log(currentPos);
-          // console.log("real_pos:", currentPos + startPos);
+      try {
+        for (let i = 0; i < entryCount; i++) {
+          for (const field of dbversion.fields) {
+            const { name, field_type, is_key } = field;
+            // console.log(name);
+            // console.log(field_type);
+            // console.log(currentPos);
+            // console.log("real_pos:", currentPos + startPos);
 
-          // if (name === 'general_unit') console.log("it's a general");
-          // console.log("pos is " + outFile.tell());
-          // console.log('i is ' + i);
-          // const fields = await parseType(file, field_type);
-          const lastPos = currentPos;
-          try {
-            const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
-            const fields = fieldsRet[0];
-            currentPos = fieldsRet[1];
+            // if (name === 'general_unit') console.log("it's a general");
+            // console.log("pos is " + outFile.tell());
+            // console.log('i is ' + i);
+            // const fields = await parseType(file, field_type);
+            const lastPos = currentPos;
+            try {
+              const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+              const fields = fieldsRet[0];
+              currentPos = fieldsRet[1];
 
-            if (!fields[1] && !fields[0]) {
-              console.log(name);
-              console.log(field_type);
+              if (!fields[1] && !fields[0]) {
+                console.log(name);
+                console.log(field_type);
+              }
+              if (fields[0].val == undefined) {
+                console.log(name);
+                console.log(field_type);
+              }
+              if (fields.length == 0) {
+                console.log(name);
+                console.log(field_type);
+              }
+
+              const schemaField: SchemaField = {
+                // name,
+                type: field_type,
+                fields,
+                // isKey: is_key,
+                // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
+              };
+              if (is_key) schemaField.isKey = true;
+              pack_file.schemaFields.push(schemaField);
+
+              // if (pack_file.name.includes("xyz")) {
+              //   console.log(dbName, name, field_type);
+              //   console.log("lastPos:", lastPos);
+              //   console.log("currentPos:", currentPos);
+              //   console.log("read", fields[0]);
+              //   console.log("read", fields[1]);
+              // }
+            } catch (e) {
+              console.log(e);
+              console.log("ERROR PARSING DB FIELD");
+              console.log(modPath);
+              console.log(pack_file.name);
+              console.log(dbName, name, field_type);
+              console.log("lastPos:", lastPos);
+              console.log("currentPos:", currentPos);
+              console.log("real_pos:", currentPos + startPos);
+
+              throw e;
             }
-            if (fields[0].val == undefined) {
-              console.log(name);
-              console.log(field_type);
-            }
-            if (fields.length == 0) {
-              console.log(name);
-              console.log(field_type);
-            }
-
-            const schemaField: SchemaField = {
-              // name,
-              type: field_type,
-              fields,
-              // isKey: is_key,
-              // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
-            };
-            if (is_key) schemaField.isKey = true;
-            pack_file.schemaFields.push(schemaField);
-
-            // if (pack_file.name.includes("xyz")) {
-            //   console.log(dbName, name, field_type);
-            //   console.log("lastPos:", lastPos);
-            //   console.log("currentPos:", currentPos);
-            //   console.log("read", fields[0]);
-            //   console.log("read", fields[1]);
-            // }
-          } catch (e) {
-            console.log(e);
-            console.log("ERROR PARSING DB FIELD");
-            console.log(modPath);
-            console.log(pack_file.name);
-            console.log(dbName, name, field_type);
-            console.log("lastPos:", lastPos);
-            console.log("currentPos:", currentPos);
-            console.log("real_pos:", currentPos + startPos);
           }
         }
+      } catch {
+        console.log(`cannot read ${pack_file.name} in ${modPath}, skipping it`);
       }
     }
   } catch (e) {
