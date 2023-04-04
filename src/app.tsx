@@ -8,7 +8,7 @@ import Onboarding from "./Onboarding";
 import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "./TopBar";
 import { Toasts } from "./Toasts";
-import { RouterProvider, createBrowserRouter, useLocation } from "react-router-dom";
+import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import ModsViewer from "./ModsViewer";
 
 function ErrorFallback({ error }: { error: Error }) {

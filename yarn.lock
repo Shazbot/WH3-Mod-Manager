@@ -14243,6 +14243,11 @@ rcedit@^3.0.1:
   dependencies:
     cross-spawn-windows-exe "^1.1.0"
 
+re-resizable@^6.9.9:
+  version "6.9.9"
+  resolved "https://registry.yarnpkg.com/re-resizable/-/re-resizable-6.9.9.tgz#99e8b31c67a62115dc9c5394b7e55892265be216"
+  integrity sha512-l+MBlKZffv/SicxDySKEEh42hR6m5bAHfNu3Tvxks2c4Ah+ldnWjfnVRwxo/nxF27SsUsxDS0raAzFuJNKABXA==
+
 react-accessible-treeview@^2.3.4:
   version "2.3.4"
   resolved "https://registry.yarnpkg.com/react-accessible-treeview/-/react-accessible-treeview-2.3.4.tgz#688a305456cfd11fddfbba2a881c495fa8354930"
