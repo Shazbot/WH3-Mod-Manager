@@ -38,7 +38,9 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
           map.children = [];
         }
         map.children = map.children || [];
-        map.children.push({ name: dbName, children: [{ name: dbSubname, children: [] }] });
+        const existingNode = map.children.find((node) => node.name == dbName);
+        if (existingNode) existingNode.children?.push({ name: dbSubname, children: [] });
+        else map.children.push({ name: dbName, children: [{ name: dbSubname, children: [] }] });
       }
       return map;
     },
@@ -74,23 +76,6 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
       }
     }
   };
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "f") {
-        const modMergingFilter = document.getElementById("modMergingFilter");
-        modMergingFilter?.focus();
-        // e.stopPropagation();
-        e.stopImmediatePropagation();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  });
 
   const ArrowIcon = ({ isOpen, className }: { isOpen: boolean; className: string }) => {
     const baseClass = "arrow";
