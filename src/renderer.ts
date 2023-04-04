@@ -20,13 +20,26 @@ import {
   setContentFolder,
   setOverwrittenDataPackedFiles,
   setDataModLastChangedLocal,
+  selectDBTable,
 } from "./appSlice";
 import store from "./store";
-import { Pack, PackCollisions } from "./packFileTypes";
+import { PackCollisions } from "./packFileTypes";
 import { AppFolderPaths } from "./appData";
 import debounce from "just-debounce-it";
+import { api } from "./preload";
 
 let isSubscribedToStoreChanges = false;
+
+interface WindowWithApi extends Window {
+  api: api;
+}
+
+declare const window: WindowWithApi;
+
+const isViewer = window.location.pathname == "/viewer";
+const isMain = window.location.pathname == "/main_window";
+
+if (isViewer) window.api?.viewerIsReady();
 
 const originalConsoleLog = console.log.bind(console);
 console.log = (...args) => {
@@ -58,6 +71,16 @@ window.api?.setIsDev((event, isDev) => {
 window.api?.packsInSave((event, packNames: string[]) => {
   console.log("packs in save: ", packNames);
   store.dispatch(enableModsByName(packNames));
+});
+
+window.api?.openModInViewer((event, modPath: string) => {
+  store.dispatch(
+    selectDBTable({
+      packPath: modPath,
+      dbName: "main_units_tables",
+      dbSubname: "",
+    })
+  );
 });
 
 const saveConfig = (appState: AppState) => {
@@ -157,9 +180,14 @@ window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
   store.dispatch(setPackHeaderData(packHeaderData));
 });
 
-window.api?.setPacksData((event, packsData: Pack[]) => {
-  // console.log("INVOKED: MOD PACK DATA RECIEVED");
+window.api?.setPacksData((event, packsData: PackViewData[]) => {
+  console.log(
+    `INVOKED: MOD PACK DATA RECIEVED FOR ${packsData.map((packData) => packData.packName).join(",")}`
+  );
+
+  // if (packsData[0].currentTable) console.log(packsData[0].currentTable!.schemaFields[0]);
   store.dispatch(setPacksData(packsData));
+  // currentPackData.data = packsData[0];
 
   // getCompatData(packsData).then((data: Awaited<ReturnType<typeof getCompatData>>) => {
   //   console.log("GOT COMPAT DATA");
@@ -185,5 +213,7 @@ window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {
   // });
 });
 
-window.api?.sendApiExists();
-window.api?.readAppConfig();
+if (isMain) {
+  window.api?.sendApiExists();
+  window.api?.readAppConfig();
+}

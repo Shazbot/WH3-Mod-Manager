@@ -18,6 +18,9 @@ const openInExplorer = (mod: Mod) => {
 const openInRPFM = (mod: Mod) => {
   window.api?.openPack(mod.path);
 };
+const openInViewer = (mod: Mod) => {
+  window.api?.requestOpenModInViewer(mod.path);
+};
 const putPathInClipboard = (mod: Mod) => {
   console.log(mod);
   window.api?.putPathInClipboard(mod.path);
@@ -301,6 +304,17 @@ const ModDropdown = memo((props: ModDropdownProps) => {
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
                 Open in RPFM
+              </a>
+            </li>
+            <li>
+              <a
+                onClick={() => {
+                  if (props.mod) openInViewer(props.mod);
+                }}
+                href="#"
+                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+              >
+                Open in Viewer
               </a>
             </li>
             <li>

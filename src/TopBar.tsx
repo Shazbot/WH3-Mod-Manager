@@ -1,6 +1,6 @@
 import React, { memo } from "react";
 import { useAppSelector } from "./hooks";
-import { version } from "../package.json";
+import appPackage from "../package.json";
 
 const TopBar = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -14,7 +14,7 @@ const TopBar = memo(() => {
     enabledMods.find((mod) => mod.name === iterMod.name)
   );
   const title =
-    `WH3 Mod Manager v${version}: ${enabledMods.length} mods enabled` +
+    `WH3 Mod Manager v${appPackage.version}: ${enabledMods.length} mods enabled` +
     (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "");
 
   return (

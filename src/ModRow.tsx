@@ -137,7 +137,10 @@ const ModRow = memo(
               })}
             >
               {mod.isDeleted && (
-                <Tooltip placement="bottom" content="Mod was deleted from the workshop.">
+                <Tooltip
+                  placement="bottom"
+                  content="Failed fetching steam workshop page, mod was deleted from the workshop or is hidden."
+                >
                   <span className="text-red-800">
                     <FontAwesomeIcon fill="red" icon={faEraser} />
                   </span>

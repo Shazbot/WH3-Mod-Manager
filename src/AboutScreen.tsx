@@ -2,7 +2,7 @@ import { Modal } from "./flowbite/components/Modal/index";
 import React, { memo } from "react";
 import { FaGithub, FaSteam, FaPaypal, FaPatreon } from "react-icons/fa";
 import { Tooltip } from "flowbite-react";
-import { version } from "../package.json";
+import appPackage from "../package.json";
 
 export interface AboutScreenProps {
   isOpen: boolean;
@@ -27,7 +27,7 @@ const AboutScreen = memo(({ isOpen, setIsOpen }: AboutScreenProps) => {
             <div className="flex flex-col gap-y-6 gap-x-4 z-10 leading-relaxed dark:text-gray-300 relative font-normal items-center">
               <div className="w-full flex flex-col gap-y-6">
                 <div className="text-gray-100 font-bold m-auto text-2xl">Warhammer 3 Mod Manager</div>
-                <div className="text-gray-200 font-semibold m-auto text-xl -my-2">{`Version ${version}`}</div>
+                <div className="text-gray-200 font-semibold m-auto text-xl -my-2">{`Version ${appPackage.version}`}</div>
                 <div className="text-gray-200 font-semibold m-auto text-xl">
                   by Prop Joe (Steam) / Shazbot (GitHub)
                 </div>

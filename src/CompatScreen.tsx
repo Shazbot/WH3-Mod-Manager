@@ -90,7 +90,7 @@ const CompatScreen = memo(() => {
       window.api?.readMods(mods, false);
     }
     setUseEnabledModsOnly(!useEnabledModsOnly);
-  }, [useEnabledModsOnly]);
+  }, [useEnabledModsOnly, mods]);
 
   return (
     <div>
@@ -100,9 +100,9 @@ const CompatScreen = memo(() => {
             setIsCompatOpen((wasOpen) => {
               if (!wasOpen) {
                 if (useEnabledModsOnly) {
-                  window.api?.getCompatData(enabledMods.map((mod) => mod.path));
+                  window.api?.getCompatData(enabledMods);
                 } else {
-                  window.api?.getCompatData();
+                  window.api?.getCompatData(mods);
                 }
               } else {
                 dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));

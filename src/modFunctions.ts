@@ -152,7 +152,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   const dataPath = await getDataPath(log);
   if (!dataPath) throw new Error("Data folder not found");
 
-  console.log("file path is:", filePath);
+  // console.log("file path is:", filePath);
   const fileName = nodePath.basename(filePath);
 
   let lastChangedLocal = undefined;

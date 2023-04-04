@@ -6,14 +6,19 @@ export interface SchemaField {
   //   resolvedKeyValue?: string;
 }
 
+export interface AmendedSchemaField extends SchemaField {
+  name: string;
+  resolvedKeyValue: string;
+}
+
 export interface PackedFile {
   name: string;
   file_size: number;
   start_pos: number;
   // is_compressed: number;
-  schemaFields: SchemaField[];
-  version: number | undefined;
-  guid: string | undefined;
+  schemaFields?: SchemaField[];
+  version?: number;
+  guid?: string;
   dependencyPacks?: string[];
 }
 

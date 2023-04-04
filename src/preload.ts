@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 import electronLog from "electron-log";
+import { PackCollisions } from "./packFileTypes";
+import { AppFolderPaths } from "./appData";
 
-const api: api = {
+const api = {
   startGame: (mods: Mod[], startGameOptions: StartGameOptions, name?: string) =>
     ipcRenderer.send("startGame", mods, startGameOptions, name),
   exportModsToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModsToClipboard", mods),
@@ -21,39 +23,71 @@ const api: api = {
   deletePack: (mod: Mod) => ipcRenderer.send("deletePack", mod),
   forceDownloadMods: (modIds: string[]) => ipcRenderer.send("forceDownloadMods", modIds),
   mergeMods: (mods: Mod[]) => ipcRenderer.send("mergeMods", mods),
-  handleLog: (callback) => ipcRenderer.on("handleLog", callback),
-  subscribedToMods: (callback) => ipcRenderer.on("subscribedToMods", callback),
-  createdMergedPack: (callback) => ipcRenderer.on("createdMergedPack", callback),
-  setIsDev: (callback) => ipcRenderer.on("setIsDev", callback),
-  packsInSave: (callback) => ipcRenderer.on("packsInSave", callback),
+  handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) =>
+    ipcRenderer.on("handleLog", callback),
+  subscribedToMods: (callback: (event: Electron.IpcRendererEvent, ids: string[]) => void) =>
+    ipcRenderer.on("subscribedToMods", callback),
+  createdMergedPack: (callback: (event: Electron.IpcRendererEvent, filePath: string) => void) =>
+    ipcRenderer.on("createdMergedPack", callback),
+  setIsDev: (callback: (event: Electron.IpcRendererEvent, isDev: boolean) => void) =>
+    ipcRenderer.on("setIsDev", callback),
+  packsInSave: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
+    ipcRenderer.on("packsInSave", callback),
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
+  viewerIsReady: () => ipcRenderer.send("viewerIsReady"),
+  requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
+  openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
+    ipcRenderer.on("openModInViewer", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
   copyToData: (modPathsToCopy?: string[]) => ipcRenderer.send("copyToData", modPathsToCopy),
   cleanData: () => ipcRenderer.send("cleanData"),
+  getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
   readMods: (mods: Mod[], skipCollisionCheck = true) =>
     ipcRenderer.send("readMods", mods, skipCollisionCheck),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
-  fromAppConfig: (callback) => ipcRenderer.on("fromAppConfig", callback),
-  failedReadingConfig: (callback) => ipcRenderer.on("failedReadingConfig", callback),
-  modsPopulated: (callback) => ipcRenderer.on("modsPopulated", callback),
-  addMod: (callback) => ipcRenderer.on("addMod", callback),
-  removeMod: (callback) => ipcRenderer.on("removeMod", callback),
-  setModData: (callback) => ipcRenderer.on("setModData", callback),
-  setPackHeaderData: (callback) => ipcRenderer.on("setPackHeaderData", callback),
-  setPacksData: (callback) => ipcRenderer.on("setPacksData", callback),
-  setPacksDataRead: (callback) => ipcRenderer.on("setPacksDataRead", callback),
-  setPackCollisions: (callback) => ipcRenderer.on("setPackCollisions", callback),
-  setAppFolderPaths: (callback) => ipcRenderer.on("setAppFolderPaths", callback),
-  getAllModData: (ids) => ipcRenderer.send("getAllModData", ids),
-  getCompatData: (pathsToUse?: string[]) => ipcRenderer.send("getCompatData", pathsToUse),
+  fromAppConfig: (callback: (event: Electron.IpcRendererEvent, appState: AppState) => void) =>
+    ipcRenderer.on("fromAppConfig", callback),
+  failedReadingConfig: (callback: (event: Electron.IpcRendererEvent) => void) =>
+    ipcRenderer.on("failedReadingConfig", callback),
+  modsPopulated: (callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void) =>
+    ipcRenderer.on("modsPopulated", callback),
+  addMod: (callback: (event: Electron.IpcRendererEvent, mod: Mod) => void) =>
+    ipcRenderer.on("addMod", callback),
+  removeMod: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
+    ipcRenderer.on("removeMod", callback),
+  setModData: (callback: (event: Electron.IpcRendererEvent, modDatas: ModData[]) => void) =>
+    ipcRenderer.on("setModData", callback),
+  setPackHeaderData: (callback: (event: Electron.IpcRendererEvent, packHeaderData: PackHeaderData) => void) =>
+    ipcRenderer.on("setPackHeaderData", callback),
+  setPacksData: (callback: (event: Electron.IpcRendererEvent, packsData: PackViewData[]) => void) =>
+    ipcRenderer.on("setPacksData", callback),
+  setPacksDataRead: (callback: (event: Electron.IpcRendererEvent, packPaths: string[]) => void) =>
+    ipcRenderer.on("setPacksDataRead", callback),
+  setPackCollisions: (callback: (event: Electron.IpcRendererEvent, packCollisions: PackCollisions) => void) =>
+    ipcRenderer.on("setPackCollisions", callback),
+  setAppFolderPaths: (callback: (event: Electron.IpcRendererEvent, appFolderPaths: AppFolderPaths) => void) =>
+    ipcRenderer.on("setAppFolderPaths", callback),
+  getAllModData: (ids: string[]) => ipcRenderer.send("getAllModData", ids),
+  getCompatData: (mods: Mod[]) => ipcRenderer.send("getCompatData", mods),
   selectContentFolder: () => ipcRenderer.send("selectContentFolder"),
   selectWarhammer3Folder: () => ipcRenderer.send("selectWarhammer3Folder"),
-  savesPopulated: (callback) => ipcRenderer.on("savesPopulated", callback),
-  setContentFolder: (callback) => ipcRenderer.on("setContentFolder", callback),
-  setWarhammer3Folder: (callback) => ipcRenderer.on("setWarhammer3Folder", callback),
-  setOverwrittenDataPackedFiles: (callback) => ipcRenderer.on("setOverwrittenDataPackedFiles", callback),
-  setDataModLastChangedLocal: (callback) => ipcRenderer.on("setDataModLastChangedLocal", callback),
+  savesPopulated: (callback: (event: Electron.IpcRendererEvent, saves: GameSave[]) => void) =>
+    ipcRenderer.on("savesPopulated", callback),
+  setContentFolder: (callback: (event: Electron.IpcRendererEvent, path: string) => void) =>
+    ipcRenderer.on("setContentFolder", callback),
+  setWarhammer3Folder: (callback: (event: Electron.IpcRendererEvent, path: string) => void) =>
+    ipcRenderer.on("setWarhammer3Folder", callback),
+  setOverwrittenDataPackedFiles: (
+    callback: (event: Electron.IpcRendererEvent, overwrittenDataPackedFiles: Record<string, string[]>) => void
+  ) => ipcRenderer.on("setOverwrittenDataPackedFiles", callback),
+  setDataModLastChangedLocal: (
+    callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void
+  ) => ipcRenderer.on("setDataModLastChangedLocal", callback),
   electronLog,
 };
-contextBridge.exposeInMainWorld("api", api);
+
+export type api = typeof api;
+
+window.api = api;
+// contextBridge.exposeInMainWorld("api", api);
