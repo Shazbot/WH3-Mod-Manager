@@ -17,6 +17,7 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
@@ -33,6 +34,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           isSkipIntroMoviesEnabled,
           isScriptLoggingEnabled,
           isAutoStartCustomBattleEnabled,
+          isClosedOnPlay,
         },
         name
       );

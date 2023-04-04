@@ -20,6 +20,7 @@ const Sidebar = React.memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const filter = useAppSelector((state) => state.app.filter);
   const overwrittenDataPackedFiles = useAppSelector((state) => state.app.overwrittenDataPackedFiles);
   const dataModLastChangedLocal = useAppSelector((state) => state.app.dataModLastChangedLocal);
@@ -43,6 +44,7 @@ const Sidebar = React.memo(() => {
       isSkipIntroMoviesEnabled,
       isScriptLoggingEnabled,
       isAutoStartCustomBattleEnabled,
+      isClosedOnPlay,
     });
   };
 
@@ -109,6 +111,7 @@ const Sidebar = React.memo(() => {
         isSkipIntroMoviesEnabled,
         isScriptLoggingEnabled,
         isAutoStartCustomBattleEnabled,
+        isClosedOnPlay,
       },
       saves[0]?.name
     );

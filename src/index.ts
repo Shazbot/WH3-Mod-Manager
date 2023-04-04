@@ -773,31 +773,6 @@ if (!gotTheLock) {
           console.log("data folder is", appData.dataFolder);
           packPath = nodePath.join(appData.dataFolder as string, "data.pack");
         }
-
-        // const packData = appData.packsData.find((pack) => pack.path === packPath);
-        // if (
-        //   !packData ||
-        //   (table &&
-        //     packData.packedFiles
-        //       .filter((packedFile) => packedFile.schemaFields)
-        //       .every((packedFile) => packedFile.name != dbTableToString(table)))
-        // ) {
-        //   console.log("WAIT FOR DATA TO BE READ");
-        //   await new Promise((resolve) => setTimeout(resolve, 1000));
-        //   console.log("DONE WAITING FOR DATA TO BE READ");
-        //   getPackData(packPath, table);
-        //   return;
-        // } else {
-        //   console.log(`SENDING PACK DATA FOR ${packPath}`);
-        //   // console.log("SENDING", getPackViewData(packData, table));
-        //   const toSend = [getPackViewData(packData, table)];
-        //   viewerWindow?.webContents.send("setPacksData", toSend);
-        //   if (!isViewerReady) {
-        //     console.log("VIEWER NOT READY, QUEUEING");
-        //     queuedViewerData = toSend;
-        //   }
-        //   return;
-        // }
       }
       console.log("CURRENTLY READING:");
       console.log(appData.currentlyReadingModPaths);
@@ -860,7 +835,11 @@ if (!gotTheLock) {
       console.log("ON requestOpenModInViewer", modPath);
       viewerWindow?.webContents.send("openModInViewer", modPath);
       getPackData(modPath);
-      createViewerWindow();
+      if (viewerWindow) {
+        viewerWindow.focus();
+      } else {
+        createViewerWindow();
+      }
     });
 
     const readMods = async (mods: Mod[], skipParsingTables = true, skipCollisionCheck = true) => {
@@ -1034,6 +1013,7 @@ if (!gotTheLock) {
     console.log("SENDING QUEUED DATA TO VIEWER");
     viewerWindow?.webContents.send("setPacksData", queuedViewerData);
     viewerWindow?.webContents.send("openModInViewer", queuedViewerData[0]?.packPath);
+    viewerWindow?.focus();
     queuedViewerData = [];
   };
 
@@ -1298,6 +1278,14 @@ if (!gotTheLock) {
 
       await fs.writeFile(batPath, batData);
       execFile(batPath);
+
+      if (startGameOptions.isClosedOnPlay) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 5000);
+        });
+
+        app.exit();
+      }
     }
   );
 }

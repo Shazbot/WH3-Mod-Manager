@@ -8,7 +8,7 @@ import { version } from "../package.json";
 
 let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
-let isWriting: boolean = false;
+let isWriting = false;
 
 const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
   return {
@@ -24,6 +24,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
     appFolderPaths: appState.appFolderPaths,
+    isClosedOnPlay: appState.isClosedOnPlay,
   };
 };
 
