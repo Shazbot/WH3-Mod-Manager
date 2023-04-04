@@ -3,6 +3,8 @@ import electronLog from "electron-log";
 import { PackCollisions } from "./packFileTypes";
 import { AppFolderPaths } from "./appData";
 
+console.log("IN PRELOAD");
+
 const api = {
   startGame: (mods: Mod[], startGameOptions: StartGameOptions, name?: string) =>
     ipcRenderer.send("startGame", mods, startGameOptions, name),
