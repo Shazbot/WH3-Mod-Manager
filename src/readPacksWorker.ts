@@ -19,6 +19,9 @@ const BinaryFile = require("../node_modules/binary-file/");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const nodePath = require("path");
 
+// READING A PACK WITH A WORKER THREAD
+// not used currently because we get cpu but the memory use spike is insane because it's duplicated when moved to main thread
+
 function parseTypeBuffer(
   buffer: Buffer,
   pos: number,
@@ -420,6 +423,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
             // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
           };
           if (is_key) schemaField.isKey = true;
+          pack_file.schemaFields = pack_file.schemaFields || [];
           pack_file.schemaFields.push(schemaField);
         }
       }
@@ -507,6 +511,7 @@ function findPackTableCollisionsBetweenPacks(
   packTableCollisions: PackTableCollision[]
 ) {
   for (const packFile of pack.packedFiles) {
+    if (!packFile.schemaFields) continue;
     if (packFile.name === "settings.rpfm_reserved") continue;
 
     const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
@@ -517,6 +522,7 @@ function findPackTableCollisionsBetweenPacks(
     if (dbName1 == null) continue;
 
     for (const packTwoFile of packTwo.packedFiles) {
+      if (!packTwoFile.schemaFields) continue;
       if (packTwoFile.name === "settings.rpfm_reserved") continue;
 
       const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);

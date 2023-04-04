@@ -67,6 +67,14 @@
                   "preload": {
                     "js": "./src/preload.ts"
                   }
+                },
+                {
+                  "html": "./src/viewer/viewerIndex.html",
+                  "js": "./src/renderer.ts",
+                  "name": "viewer",
+                  "preload": {
+                    "js": "./src/preload.ts"
+                  }
                 }
               ]
             }
@@ -124,9 +132,11 @@
     "@fortawesome/fontawesome-svg-core": "^6.2.0",
     "@fortawesome/free-solid-svg-icons": "^6.2.0",
     "@fortawesome/react-fontawesome": "^0.2.0",
+    "@handsontable/react": "^12.3.3",
     "@heroicons/react": "^2.0.13",
     "@node-steam/vdf": "^2.2.0",
     "@reduxjs/toolkit": "^1.9.0",
+    "@silevis/reactgrid": "^4.0.4",
     "@types/binary-file": "^0.2.0",
     "binary-file": "^0.2.3",
     "chokidar": "^3.5.3",
@@ -144,14 +154,18 @@
     "flowbite-react": "^0.3.4",
     "fs-extra": "^10.1.0",
     "gh-release-fetch": "^3.0.2",
+    "handsontable": "^12.3.3",
     "just-clone": "^6.1.1",
     "just-debounce-it": "^3.1.1",
+    "path-browserify": "^1.0.1",
     "react": "^18.2.0",
+    "react-accessible-treeview": "^2.3.4",
     "react-dom": "^18.2.0",
     "react-error-boundary": "^3.1.4",
     "react-icons": "^4.6.0",
     "react-joyride": "^2.5.3",
     "react-redux": "^8.0.5",
+    "react-router-dom": "^6.10.0",
     "react-select": "^5.6.0",
     "semver": "^7.3.8",
     "steamworks.js": "^0.0.25",

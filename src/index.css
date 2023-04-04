@@ -7,12 +7,6 @@ body {
   background-color: rgb(38, 38, 38);
 }
 
-#app-main {
-  margin: auto;
-  max-width: 100rem;
-  padding: 2rem 4rem;
-}
-
 [type="checkbox"]:focus,
 [type="radio"]:focus,
 [type="text"]:focus {

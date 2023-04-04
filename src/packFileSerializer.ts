@@ -20,6 +20,7 @@ import { Blob } from "buffer";
 import * as fsExtra from "fs-extra";
 import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
+import { getDBName } from "./utility/packFileHelpers";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -329,10 +330,9 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
     )
     .reduce((previous, packedFile) => previous.concat(packedFile), []);
 
-  const battlePermissionsSchemaFields = battlePermissions.reduce(
-    (previous, packedFile) => previous.concat(packedFile.schemaFields),
-    [] as SchemaField[]
-  );
+  const battlePermissionsSchemaFields = battlePermissions.reduce((previous, packedFile) => {
+    return (packedFile.schemaFields && previous.concat(packedFile.schemaFields)) || previous;
+  }, [] as SchemaField[]);
   pack_files.push({
     name: `db\\units_custom_battle_permissions_tables\\!!!!whmm_out`,
     file_size: getDataSize(battlePermissionsSchemaFields) + 91,
@@ -352,28 +352,27 @@ const createIntroMoviesData = (pack_files: PackedFile[]) => {
       start_pos: 0,
       // is_compressed: 0,
       schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: emptyMovie }] }],
-      version: undefined,
-      guid: undefined,
     } as PackedFile);
   }
 };
 
-const getDBName = (packFile: PackedFile) => {
-  const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
-  if (dbNameMatch == null) return;
-  const dbName = dbNameMatch[1];
-  return dbName;
-};
-
-const getDBVersion = (packFile: PackedFile) => {
+export const getDBVersion = (packFile: PackedFile) => {
+  // console.log("GETTING DB VERSION FOR", packFile.name);
   const dbName = getDBName(packFile);
+  // console.log("GETTING DB VERSION, DBNAME IS", dbName);
   if (!dbName) return;
   const dbversions = DBNameToDBVersions[dbName];
+  // console.log("GETTING DB VERSIONS, dbversions IS", dbversions);
   if (!dbversions) return;
 
-  const dbversion = dbversions.find((dbversion) => dbversion.version == packFile.version) || dbversions[0];
+  const dbversion =
+    dbversions.find((dbversion) => dbversion.version == packFile.version) ||
+    dbversions.find((dbversion) => dbversion.version == 0) ||
+    dbversions[0];
+  // console.log("GETTING DB VERSION from dbversions, dbversion IS", dbversion);
   if (!dbversion) return;
-  if (packFile.version == null) return;
+  // console.log("GETTING DB VERSION packFile version IS", packFile.version);
+  if (packFile.version == null) return dbversion;
   if (dbversion.version < packFile.version) return;
   return dbversion;
 };
@@ -385,8 +384,6 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
     start_pos: 0,
     is_compressed: 0,
     schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from([0x00]) }] }],
-    version: undefined,
-    guid: undefined,
   } as PackedFile);
 };
 
@@ -403,8 +400,6 @@ const createAutoStartCustomBattleData = (pack_files: PackedFile[]) => {
         fields: [{ type: "Buffer", val: scriptBuffer }],
       },
     ],
-    version: undefined,
-    guid: undefined,
   } as PackedFile);
 };
 
@@ -421,7 +416,9 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
       nodePath.join(appData.dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
     await fsExtra.ensureDir(nodePath.dirname(targetPath));
 
-    const packFieldsSettled = await Promise.allSettled(mods.map((mod) => readPack(mod.path, true)));
+    const packFieldsSettled = await Promise.allSettled(
+      mods.map((mod) => readPack(mod.path, { skipParsingTables: true }))
+    );
     const sources = (
       packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
     )
@@ -529,8 +526,6 @@ export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
       start_pos: 0,
       // is_compressed: 0,
       schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from(randomHexString) }] }],
-      version: undefined,
-      guid: undefined,
     } as PackedFile,
   ];
   await writeCopyPack(pathSource, pathTarget, toAdd);
@@ -540,7 +535,7 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
   let outFile: BinaryFile | undefined;
   try {
     // console.log(pathSource);
-    const sourceMod = await readPack(pathSource, true);
+    const sourceMod = await readPack(pathSource, { skipParsingTables: true });
     // console.log(sourceMod);
 
     const packFiles = sourceMod.packedFiles;
@@ -586,7 +581,7 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
     for (const packFile of packFiles) {
       let data: Buffer | undefined;
       const fileToReplaceWith = packFilesToAdd.find((packFileToAdd) => packFileToAdd.name == packFile.name);
-      if (fileToReplaceWith) {
+      if (fileToReplaceWith && fileToReplaceWith.schemaFields) {
         data = fileToReplaceWith.schemaFields[0].fields[0].val as Buffer;
         startPosOffset += fileToReplaceWith.file_size - packFile.file_size;
       } else {
@@ -597,7 +592,7 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
     }
 
     for (const packFile of packFilesToAddWithoutReplaced) {
-      await outFile.write(packFile.schemaFields[0].fields[0].val as Buffer);
+      if (packFile.schemaFields) await outFile.write(packFile.schemaFields[0].fields[0].val as Buffer);
     }
   } catch (e) {
     console.log(e);
@@ -653,6 +648,7 @@ export const writePack = async (
     }
 
     for (const packFile of packFiles) {
+      if (!packFile.schemaFields) continue;
       if (packFile.guid != null) {
         const guid = packFile.guid;
         // console.log("guid is " + guid);
@@ -791,7 +787,242 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
 
 let toRead: Mod[];
 
-export const readPack = async (modPath: string, skipParsingTables = false): Promise<Pack> => {
+export const readFromExistingPack = async (
+  pack: Pack,
+  packReadingOptions: PackReadingOptions = { skipParsingTables: false }
+): Promise<Pack> => {
+  const pack_files = pack.packedFiles;
+  let packHeader: PackHeader | undefined;
+  const modPath = pack.path;
+
+  console.log(`reading from existing pack ${modPath}`);
+
+  let file: BinaryFile | undefined;
+  try {
+    file = new BinaryFile(modPath, "r", true);
+    await file.open();
+
+    console.log(`${modPath} file opened`);
+    if (packReadingOptions.tablesToRead) console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead);
+
+    const dbPackFiles = pack_files.filter((packFile) => {
+      const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
+      return dbNameMatch != null && dbNameMatch[1];
+    });
+
+    if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
+      return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+    }
+
+    const startPos = dbPackFiles.reduce(
+      (previous, current) => (previous < current.start_pos ? previous : current.start_pos),
+      Number.MAX_SAFE_INTEGER
+    );
+
+    const startOfLastPack = dbPackFiles.reduce(
+      (previous, current) => (previous > current.start_pos ? previous : current.start_pos),
+      -1
+    );
+    const endPos =
+      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
+      startOfLastPack;
+    // console.log("endPos is ", endPos);
+
+    const buffer = await file.read(endPos - startPos, startPos);
+
+    // console.log("len:", endPos - startPos);
+    // console.log("startPos:", startPos);
+
+    await readDBPackedFiles(packReadingOptions, dbPackFiles, buffer, startPos, modPath);
+  } catch (e) {
+    console.log(e);
+  } finally {
+    if (file) await file.close();
+  }
+
+  console.log("done reading");
+  // const mod = toRead.find((iterMod) => modName === iterMod.name);
+  // if (mod) {
+  //   toRead.splice(toRead.indexOf(mod), 1);
+  // }
+  // console.log(toRead.map((mod) => mod.name));
+
+  return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+};
+
+const readDBPackedFiles = async (
+  packReadingOptions: PackReadingOptions,
+  dbPackFiles: PackedFile[],
+  buffer: Buffer,
+  startPos: number,
+  modPath: string
+) => {
+  let currentPos = 0;
+  for (const pack_file of dbPackFiles) {
+    if (
+      packReadingOptions.tablesToRead &&
+      !packReadingOptions.tablesToRead.some((tableToRead) => pack_file.name.startsWith(tableToRead))
+    )
+      continue;
+
+    if (packReadingOptions.tablesToRead) {
+      console.log("READING TABLE ", pack_file.name);
+    }
+
+    // if (
+    //   nodePath.basename(modPath) == "data.pack" &&
+    //   !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
+    // )
+    //   continue;
+    // if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
+    currentPos = pack_file.start_pos - startPos;
+    // console.log(currentPos);
+
+    const dbNameMatch = pack_file.name.match(/^db\\(.*?)\\/);
+    if (dbNameMatch == null) continue;
+    const dbName = dbNameMatch[1];
+    if (dbName == null) continue;
+
+    const dbversions = DBNameToDBVersions[dbName];
+    if (!dbversions) continue;
+
+    // console.log(`reading ${pack_file.name}`);
+
+    let version: number | undefined;
+    for (;;) {
+      const marker = await buffer.subarray(currentPos, currentPos + 4);
+      currentPos += 4;
+
+      if (marker.toString("hex") === "fdfefcff") {
+        const readUTF = readUTFStringFromBuffer(buffer, currentPos);
+        // console.log("guid is " + readUTF[0]);
+        pack_file.guid = readUTF[0];
+        currentPos = readUTF[1];
+      } else if (marker.toString("hex") === "fcfdfeff") {
+        // console.log("found version marker");
+        version = buffer.readInt32LE(currentPos); // await file.readInt32();
+        currentPos += 4;
+
+        pack_file.version = version;
+        // await file.read(1);
+      } else {
+        // console.log(marker.toString("hex"));
+        currentPos -= 4;
+        currentPos += 1;
+        // file.seek(file.tell() - 4);
+        break;
+      }
+      // if (pack_file.name === "db\\character_skill_nodes_tables\\mixu_ll_empire") {
+      // console.log(pack_file.name);
+      // console.log(dbName);
+      // console.log(file.tell());
+      // console.log(dbName);
+      // console.log(marker);
+      // console.log("-------------------");
+      // }
+    }
+
+    // if (version == null) {
+    //   console.log("version is", version);
+    //   console.log(pack_file.guid);
+    //   console.log(pack_file.name);
+    //   console.log(pack_file.start_pos);
+    // }
+
+    // if (version == null) continue;
+    const dbversion =
+      dbversions.find((dbversion) => dbversion.version == version) ||
+      dbversions.find((dbversion) => dbversion.version == 0);
+    if (!dbversion) continue;
+    if (version != null && dbversion.version < version) continue;
+    // if (version == null) {
+    //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
+    // }
+
+    const entryCount = buffer.readInt32LE(currentPos); //await file.readInt32();
+    currentPos += 4;
+    // console.log("entry count is " + entryCount);
+    // console.log("pos is " + file.tell());
+
+    // console.log(dbName);
+    // outFile.seek(file.tell());
+
+    try {
+      for (let i = 0; i < entryCount; i++) {
+        for (const field of dbversion.fields) {
+          const { name, field_type, is_key } = field;
+          // console.log(name);
+          // console.log(field_type);
+          // console.log(currentPos);
+          // console.log("real_pos:", currentPos + startPos);
+
+          // if (name === 'general_unit') console.log("it's a general");
+          // console.log("pos is " + outFile.tell());
+          // console.log('i is ' + i);
+          // const fields = await parseType(file, field_type);
+          const lastPos = currentPos;
+          try {
+            const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+            const fields = fieldsRet[0];
+            currentPos = fieldsRet[1];
+
+            if (!fields[1] && !fields[0]) {
+              console.log(name);
+              console.log(field_type);
+            }
+            if (fields[0].val == undefined) {
+              console.log(name);
+              console.log(field_type);
+            }
+            if (fields.length == 0) {
+              console.log(name);
+              console.log(field_type);
+            }
+
+            const schemaField: SchemaField = {
+              // name,
+              type: field_type,
+              fields,
+              // isKey: is_key,
+              // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
+            };
+            if (is_key) {
+              schemaField.isKey = true;
+            }
+            pack_file.schemaFields = pack_file.schemaFields || [];
+            pack_file.schemaFields.push(schemaField);
+
+            // if (pack_file.name.includes("xyz")) {
+            // console.log(dbName, name, field_type);
+            //   console.log("lastPos:", lastPos);
+            //   console.log("currentPos:", currentPos);
+            //   console.log("read", fields[0]);
+            //   console.log("read", fields[1]);
+            // }
+          } catch (e) {
+            console.log(e);
+            console.log("ERROR PARSING DB FIELD");
+            console.log(modPath);
+            console.log(pack_file.name);
+            console.log(dbName, name, field_type);
+            console.log("lastPos:", lastPos);
+            console.log("currentPos:", currentPos);
+            console.log("real_pos:", currentPos + startPos);
+
+            throw e;
+          }
+        }
+      }
+    } catch {
+      console.log(`cannot read ${pack_file.name} in ${modPath}, skipping it`);
+    }
+  }
+};
+
+export const readPack = async (
+  modPath: string,
+  packReadingOptions: PackReadingOptions = { skipParsingTables: false }
+): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
   let packHeader: PackHeader | undefined;
 
@@ -800,7 +1031,8 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     file = new BinaryFile(modPath, "r", true);
     await file.open();
 
-    // console.log(`${modPath} file opened`);
+    console.log(`${modPath} file opened`);
+    if (packReadingOptions.tablesToRead) console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead);
 
     const header = await file.read(4);
     if (header === null) throw new Error("header missing");
@@ -902,9 +1134,6 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
         file_size,
         start_pos: file_pos,
         // is_compressed,
-        schemaFields: [],
-        version: undefined,
-        guid: undefined,
         dependencyPacks,
       });
       file_pos += file_size;
@@ -931,7 +1160,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
       return dbNameMatch != null && dbNameMatch[1];
     });
 
-    if (skipParsingTables || dbPackFiles.length < 1) {
+    if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
       return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
     }
 
@@ -954,153 +1183,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     // console.log("len:", endPos - startPos);
     // console.log("startPos:", startPos);
 
-    let currentPos = 0;
-    for (const pack_file of pack_files) {
-      if (
-        nodePath.basename(modPath) == "data.pack" &&
-        !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
-      )
-        continue;
-      if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
-      currentPos = pack_file.start_pos - startPos;
-      // console.log(currentPos);
-
-      const dbNameMatch = pack_file.name.match(/^db\\(.*?)\\/);
-      if (dbNameMatch == null) continue;
-      const dbName = dbNameMatch[1];
-      if (dbName == null) continue;
-
-      const dbversions = DBNameToDBVersions[dbName];
-      if (!dbversions) continue;
-
-      // console.log(pack_file);
-
-      let version: number | undefined;
-      for (;;) {
-        const marker = await buffer.subarray(currentPos, currentPos + 4);
-        currentPos += 4;
-
-        if (marker.toString("hex") === "fdfefcff") {
-          const readUTF = readUTFStringFromBuffer(buffer, currentPos);
-          // console.log("guid is " + readUTF[0]);
-          pack_file.guid = readUTF[0];
-          currentPos = readUTF[1];
-        } else if (marker.toString("hex") === "fcfdfeff") {
-          // console.log("found version marker");
-          version = buffer.readInt32LE(currentPos); // await file.readInt32();
-          currentPos += 4;
-
-          pack_file.version = version;
-          // await file.read(1);
-        } else {
-          // console.log(marker.toString("hex"));
-          currentPos -= 4;
-          currentPos += 1;
-          // file.seek(file.tell() - 4);
-          break;
-        }
-        // if (pack_file.name === "db\\character_skill_nodes_tables\\mixu_ll_empire") {
-        // console.log(pack_file.name);
-        // console.log(dbName);
-        // console.log(file.tell());
-        // console.log(dbName);
-        // console.log(marker);
-        // console.log("-------------------");
-        // }
-      }
-
-      // if (version == null) {
-      //   console.log("version is", version);
-      //   console.log(pack_file.guid);
-      //   console.log(pack_file.name);
-      //   console.log(pack_file.start_pos);
-      // }
-
-      // if (version == null) continue;
-      const dbversion =
-        dbversions.find((dbversion) => dbversion.version == version) ||
-        dbversions.find((dbversion) => dbversion.version == 0);
-      if (!dbversion) continue;
-      if (version != null && dbversion.version < version) continue;
-      // if (version == null) {
-      //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
-      // }
-
-      const entryCount = buffer.readInt32LE(currentPos); //await file.readInt32();
-      currentPos += 4;
-      // console.log("entry count is " + entryCount);
-      // console.log("pos is " + file.tell());
-
-      // console.log(dbName);
-      // outFile.seek(file.tell());
-
-      try {
-        for (let i = 0; i < entryCount; i++) {
-          for (const field of dbversion.fields) {
-            const { name, field_type, is_key } = field;
-            // console.log(name);
-            // console.log(field_type);
-            // console.log(currentPos);
-            // console.log("real_pos:", currentPos + startPos);
-
-            // if (name === 'general_unit') console.log("it's a general");
-            // console.log("pos is " + outFile.tell());
-            // console.log('i is ' + i);
-            // const fields = await parseType(file, field_type);
-            const lastPos = currentPos;
-            try {
-              const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
-              const fields = fieldsRet[0];
-              currentPos = fieldsRet[1];
-
-              if (!fields[1] && !fields[0]) {
-                console.log(name);
-                console.log(field_type);
-              }
-              if (fields[0].val == undefined) {
-                console.log(name);
-                console.log(field_type);
-              }
-              if (fields.length == 0) {
-                console.log(name);
-                console.log(field_type);
-              }
-
-              const schemaField: SchemaField = {
-                // name,
-                type: field_type,
-                fields,
-                // isKey: is_key,
-                // resolvedKeyValue: (is_key && fields[1] && fields[1].val.toString()) || fields[0].val.toString(),
-              };
-              if (is_key) schemaField.isKey = true;
-              pack_file.schemaFields.push(schemaField);
-
-              // if (pack_file.name.includes("xyz")) {
-              //   console.log(dbName, name, field_type);
-              //   console.log("lastPos:", lastPos);
-              //   console.log("currentPos:", currentPos);
-              //   console.log("read", fields[0]);
-              //   console.log("read", fields[1]);
-              // }
-            } catch (e) {
-              console.log(e);
-              console.log("ERROR PARSING DB FIELD");
-              console.log(modPath);
-              console.log(pack_file.name);
-              console.log(dbName, name, field_type);
-              console.log("lastPos:", lastPos);
-              console.log("currentPos:", currentPos);
-              console.log("real_pos:", currentPos + startPos);
-
-              throw e;
-            }
-          }
-        }
-      } catch {
-        console.log(`cannot read ${pack_file.name} in ${modPath}, skipping it`);
-      }
-    }
+    await readDBPackedFiles(packReadingOptions, dbPackFiles, buffer, startPos, modPath);
   } catch (e) {
     console.log(e);
   } finally {

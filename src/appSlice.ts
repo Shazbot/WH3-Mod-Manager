@@ -1,5 +1,5 @@
 import { AppFolderPaths } from "./appData";
-import { Pack, PackCollisions } from "./packFileTypes";
+import { PackCollisions } from "./packFileTypes";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
   adjustDuplicates,
@@ -202,11 +202,11 @@ const appSlice = createSlice({
 
       if (data.isMovie) console.log(`${data.path} is movie!`);
     },
-    setPacksData: (state: AppState, action: PayloadAction<Pack[]>) => {
+    setPacksData: (state: AppState, action: PayloadAction<PackViewData[]>) => {
       const packsData = action.payload;
 
       for (const packData of packsData) {
-        state.packsData[packData.name] = packData;
+        state.packsData[packData.packPath] = packData;
       }
     },
     setPacksDataRead: (state: AppState, action: PayloadAction<string[]>) => {
@@ -466,6 +466,9 @@ const appSlice = createSlice({
     setDataModLastChangedLocal: (state: AppState, action: PayloadAction<number>) => {
       state.dataModLastChangedLocal = action.payload;
     },
+    selectDBTable: (state: AppState, action: PayloadAction<DBTableSelection>) => {
+      state.currentDBTableSelection = action.payload;
+    },
   },
 });
 
@@ -509,6 +512,7 @@ export const {
   setContentFolder,
   setOverwrittenDataPackedFiles,
   setDataModLastChangedLocal,
+  selectDBTable,
 } = appSlice.actions;
 
 export default appSlice.reducer;

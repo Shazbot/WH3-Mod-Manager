@@ -1,5 +1,5 @@
 import debounce from "just-debounce-it";
-import { Pack, PackCollisions } from "./packFileTypes";
+import { AmendedSchemaField, Pack, PackCollisions, SCHEMA_FIELD_TYPE, SchemaField } from "./packFileTypes";
 import { execFile, exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
@@ -22,8 +22,9 @@ import {
   getPacksInSave,
   mergeMods,
   readPack,
-  readDataFromPacks,
   writePack,
+  getDBVersion,
+  readFromExistingPack,
 } from "./packFileSerializer";
 import * as nodePath from "path";
 import { format } from "date-fns";
@@ -43,6 +44,8 @@ import { getCompatData } from "./packFileDataManager";
 // whether you're running in development or production).
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+declare const VIEWER_WEBPACK_ENTRY: string;
+declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -66,10 +69,13 @@ if (!gotTheLock) {
   }
 
   let mainWindow: BrowserWindow | undefined;
+  let viewerWindow: BrowserWindow | undefined;
   let contentWatcher: chokidar.FSWatcher | undefined;
   let dataWatcher: chokidar.FSWatcher | undefined;
   let downloadsWatcher: chokidar.FSWatcher | undefined;
   let mergedWatcher: chokidar.FSWatcher | undefined;
+  let queuedViewerData: (PackViewData | undefined)[];
+  let isViewerReady = false;
 
   const tempModDatas: ModData[] = [];
   const sendModData = debounce(() => {
@@ -136,11 +142,10 @@ if (!gotTheLock) {
     return mod;
   };
 
-  const appendPacksData = async (newPack: Pack) => {
-    while (!appData.packsData) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    if (appData.packsData && appData.packsData.every((pack) => pack.path != newPack.path)) {
+  const appendPacksData = (newPack: Pack) => {
+    const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
+
+    if (!existingPack) {
       appData.packsData.push(newPack);
       mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
 
@@ -158,8 +163,22 @@ if (!gotTheLock) {
           mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
         }
       }
+    } else {
+      console.log("existing pack for", newPack.name, "found");
+      newPack.packedFiles
+        .filter((packedFile) => packedFile.schemaFields)
+        .forEach((newPackedFile) => {
+          const index = existingPack.packedFiles.findIndex(
+            (existingPackedFile) => existingPackedFile.name == newPackedFile.name
+          );
+          if (index != -1) {
+            existingPack.packedFiles.splice(index, 1);
+          }
+          existingPack.packedFiles.push(newPackedFile);
+        });
     }
   };
+
   const appendCollisions = async (newPack: Pack) => {
     while (!appData.compatData) {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -187,18 +206,6 @@ if (!gotTheLock) {
     if (mod) {
       mainWindow?.webContents.send("addMod", mod);
     }
-
-    // const newPack = await readPack(path);
-
-    // try {
-    //   appendPacksData(newPack);
-    //   // appendCollisions(newPack);
-    // } catch (err) {
-    //   if (err instanceof Error) {
-    //     console.log(err.message);
-    //     console.log("MOD PATH IS", path);
-    //   }
-    // }
   };
   const onPackDeleted = async (path: string) => {
     if (!mainWindow) return;
@@ -234,7 +241,7 @@ if (!gotTheLock) {
       mods.forEach(async (mod) => {
         try {
           if (mod == null || mod.path == null) {
-            console.log(mod);
+            console.error("MOD OR MOD PATH IS NULL");
           }
           const packHeaderData = await readPackHeader(mod.path);
           if (packHeaderData.isMovie || packHeaderData.dependencyPacks.length > 0)
@@ -257,10 +264,11 @@ if (!gotTheLock) {
       }
 
       if (appData.dataFolder) {
+        const dataPackPath = nodePath.join(appData.dataFolder, "data.pack");
         const dataMod: Mod = {
           humanName: "",
           name: "data.pack",
-          path: nodePath.join(appData.dataFolder, "data.pack"),
+          path: dataPackPath,
           imgPath: "",
           workshopId: "",
           isEnabled: true,
@@ -273,34 +281,40 @@ if (!gotTheLock) {
           isMovie: false,
           size: 0,
         };
-        console.log("READING PACKS");
-        const newPacksData = await readDataFromPacks([dataMod]);
-        console.log("READ DATA MOD");
-        if (newPacksData) {
-          appData.dataPack = newPacksData[0];
+        if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
+          console.log("READING DATA PACK");
+          appData.currentlyReadingModPaths.push(dataPackPath);
+          const dataPackData = await readPack(dataMod.path, {
+            // tablesToRead: ["db\\units_custom_battle_permissions_tables\\"],
+            skipParsingTables: true,
+          });
+          appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
+            (path) => path != dataPackPath
+          );
+          if (dataPackData) {
+            appData.dataPack = dataPackData;
 
-          try {
-            const res = await fetch(
-              `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`
-            );
-            const gameUpdates = (await res.json()) as GameUpdateData[];
-            gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
-
-            if (gameUpdates[0]) {
-              mainWindow?.webContents.send(
-                "setDataModLastChangedLocal",
-                parseInt(gameUpdates[0].timestamp) * 1000
+            try {
+              const res = await fetch(
+                `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`
               );
+              const gameUpdates = (await res.json()) as GameUpdateData[];
+              gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
+
+              if (gameUpdates[0]) {
+                mainWindow?.webContents.send(
+                  "setDataModLastChangedLocal",
+                  parseInt(gameUpdates[0].timestamp) * 1000
+                );
+              }
+            } catch {
+              /* empty */
             }
-          } catch {
-            /* empty */
+          }
+          if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
+            appendPacksData(dataPackData);
           }
         }
-        newPacksData?.forEach((pack) => {
-          if (appData.packsData.every((iterPack) => iterPack.path != pack.path)) {
-            appendPacksData(pack);
-          }
-        });
       }
 
       try {
@@ -425,6 +439,7 @@ if (!gotTheLock) {
 
   const createWindow = (): void => {
     const mainWindowState = windowStateKeeper({
+      file: "main_window.json",
       defaultWidth: 1280,
       defaultHeight: 900,
     });
@@ -443,6 +458,8 @@ if (!gotTheLock) {
         height: 28,
       },
       webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
         preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       },
       title: "WH3 Mod Manager",
@@ -498,8 +515,12 @@ if (!gotTheLock) {
       evt.preventDefault();
     });
 
+    mainWindow.on("closed", () => {
+      if (viewerWindow) viewerWindow.close();
+    });
+
     ipcMain.on("getAllModData", (event, ids: string[]) => {
-      // if (isDev) return;
+      if (isDev) return;
 
       fetchModData(
         ids.filter((id) => id !== ""),
@@ -598,19 +619,18 @@ if (!gotTheLock) {
       }
     });
 
-    ipcMain.on("getCompatData", (event, pathsToUse?: string[]) => {
+    ipcMain.on("getCompatData", async (event, mods: Mod[]) => {
       console.log("SET PACK COLLISIONS");
 
-      if (pathsToUse) {
-        mainWindow?.webContents.send(
-          "setPackCollisions",
-          getCompatData(
-            appData.packsData.filter((pack) => pathsToUse.some((pathToUse) => pathToUse == pack.path))
-          )
-        );
-      } else {
-        mainWindow?.webContents.send("setPackCollisions", getCompatData(appData.packsData));
-      }
+      await readMods(mods, false, true);
+      // if (pathsToUse) {
+      mainWindow?.webContents.send(
+        "setPackCollisions",
+        getCompatData(appData.packsData.filter((pack) => mods.some((mod) => mod.path == pack.path)))
+      );
+      // } else {
+      //   mainWindow?.webContents.send("setPackCollisions", getCompatData(appData.packsData));
+      // }
       // mainWindow?.webContents.send("setPackCollisions", {
       // packFileCollisions: appData.compatData.packFileCollisions,
       // packTableCollisions: appData.compatData.packTableCollisions,
@@ -670,40 +690,225 @@ if (!gotTheLock) {
       writeAppConfig(data);
     });
 
-    ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true) => {
-      console.log(
-        "READ MODS RECEIVED",
-        mods.map((mod) => mod.name)
-      );
-      mods.forEach(async (mod) => {
+    const isSchemaFieldNumber = (fieldType: SCHEMA_FIELD_TYPE) => {
+      return fieldType === "I32" || fieldType === "I64" || fieldType === "F32" || fieldType === "F64";
+    };
+
+    const getPackViewData = (pack: Pack, table?: DBTable) => {
+      const tables = pack.packedFiles.map((packedFile) => packedFile.name);
+      const result = { packName: pack.name, packPath: pack.path, tables } as PackViewData;
+      if (table) {
+        const packedFile = pack.packedFiles.find((packedFile) =>
+          packedFile.name.endsWith(`\\${table.dbName}\\${table.dbSubname}`)
+        );
+        if (packedFile) {
+          const amendedSchemaFields: AmendedSchemaField[] = [];
+          const dbversion = getDBVersion(packedFile);
+          if (!dbversion) {
+            return;
+          }
+
+          const chunkedSchemaIntoRows =
+            packedFile.schemaFields?.reduce<SchemaField[][]>((resultArray, item, index) => {
+              const chunkIndex = Math.floor(index / dbversion.fields.length);
+
+              if (!resultArray[chunkIndex]) {
+                resultArray[chunkIndex] = []; // start a new chunk
+              }
+
+              resultArray[chunkIndex].push(item as SchemaField);
+
+              return resultArray;
+            }, []) ?? [];
+
+          // console.log("chunked into ", chunkedSchemaIntoRows.length);
+          // console.log("num fields in row is ", dbversion.fields.length);
+          // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
+          // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
+
+          for (const chunkedSchemaIntoRow of chunkedSchemaIntoRows) {
+            for (const dbFieldsIndex of dbversion.fields.keys()) {
+              const { name, field_type } = dbversion.fields[dbFieldsIndex];
+              const fields = chunkedSchemaIntoRow[dbFieldsIndex].fields;
+              if (!fields) {
+                console.log("MISSING FIELD ", name);
+              }
+              const resolvedKeyValue = isSchemaFieldNumber(field_type)
+                ? (fields[0].val as number).toFixed(3).toString()
+                : // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                  (fields[1] && fields[1].val!.toString()) || fields[0].val!.toString();
+
+              amendedSchemaFields.push({ name, resolvedKeyValue, ...chunkedSchemaIntoRow[dbFieldsIndex] });
+
+              // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
+              //   console.log("AMENDING ", name, resolvedKeyValue);
+              // }
+            }
+          }
+          packedFile.schemaFields = amendedSchemaFields;
+          result.currentTableSchema = dbversion;
+        }
+        result.currentTable = packedFile;
+      }
+
+      return result;
+    };
+
+    const dbTableToString = (dbTable: DBTable) => {
+      return `db\\${dbTable.dbName}\\${dbTable.dbSubname}`;
+    };
+
+    const getPackData = async (packPath: string, table?: DBTable) => {
+      console.log(`getPackData ${packPath}`);
+      if (table) console.log("GETTING TABLE ", table.dbName, table.dbSubname);
+      if (packPath == "data.pack" || nodePath.basename(packPath) == "data.pack") {
+        if (!appData.dataFolder) {
+          console.log("WAIT FOR DATAFOLDER TO BE SET");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          console.log("DONE WAITING FOR DATAFOLDER");
+          getPackData(packPath, table);
+          return;
+        }
+        if (packPath == "data.pack") {
+          console.log("data folder is", appData.dataFolder);
+          packPath = nodePath.join(appData.dataFolder as string, "data.pack");
+        }
+
+        // const packData = appData.packsData.find((pack) => pack.path === packPath);
+        // if (
+        //   !packData ||
+        //   (table &&
+        //     packData.packedFiles
+        //       .filter((packedFile) => packedFile.schemaFields)
+        //       .every((packedFile) => packedFile.name != dbTableToString(table)))
+        // ) {
+        //   console.log("WAIT FOR DATA TO BE READ");
+        //   await new Promise((resolve) => setTimeout(resolve, 1000));
+        //   console.log("DONE WAITING FOR DATA TO BE READ");
+        //   getPackData(packPath, table);
+        //   return;
+        // } else {
+        //   console.log(`SENDING PACK DATA FOR ${packPath}`);
+        //   // console.log("SENDING", getPackViewData(packData, table));
+        //   const toSend = [getPackViewData(packData, table)];
+        //   viewerWindow?.webContents.send("setPacksData", toSend);
+        //   if (!isViewerReady) {
+        //     console.log("VIEWER NOT READY, QUEUEING");
+        //     queuedViewerData = toSend;
+        //   }
+        //   return;
+        // }
+      }
+      console.log("CURRENTLY READING:");
+      console.log(appData.currentlyReadingModPaths);
+
+      const packData = appData.packsData.find((pack) => pack.path === packPath);
+      if (
+        appData.currentlyReadingModPaths.every((path) => path != packPath) &&
+        (!packData ||
+          (table &&
+            packData.packedFiles
+              .filter((packedFile) => packedFile.schemaFields)
+              .every((packedFile) => packedFile.name != dbTableToString(table))))
+      ) {
+        appData.currentlyReadingModPaths.push(packPath);
+        console.log(`READING ${packPath}`);
+        const newPack = await readPack(packPath, table && { tablesToRead: [dbTableToString(table)] });
+        appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
+          (path) => path != packPath
+        );
+        if (appData.packsData.every((pack) => pack.path != packPath)) {
+          appendPacksData(newPack);
+        }
+
+        const toSend = [getPackViewData(newPack, table)];
+        viewerWindow?.webContents.send("setPacksData", toSend);
+        if (!isViewerReady) {
+          console.log("VIEWER NOT READY, QUEUEING");
+          queuedViewerData = toSend;
+        }
+      } else {
+        if (appData.currentlyReadingModPaths.some((path) => path == packPath)) {
+          console.log("WAIT");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          console.log("DONE WAITING");
+          getPackData(packPath, table);
+          return;
+        }
+        const packData = appData.packsData.find((pack) => pack.path === packPath);
+
+        if (packData) {
+          const toSend = [getPackViewData(packData, table)];
+
+          viewerWindow?.webContents.send("setPacksData", toSend);
+          if (!isViewerReady) {
+            console.log("VIEWER NOT READY, QUEUEING");
+            queuedViewerData = toSend;
+          }
+        }
+      }
+    };
+
+    ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
+      getPackData(packPath, table);
+    });
+
+    ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
+      if (modPath == "data.pack") {
+        modPath = nodePath.join(appData.dataFolder as string, "data.pack");
+      }
+      console.log("ON requestOpenModInViewer", modPath);
+      viewerWindow?.webContents.send("openModInViewer", modPath);
+      getPackData(modPath);
+      createViewerWindow();
+    });
+
+    const readMods = async (mods: Mod[], skipParsingTables = true, skipCollisionCheck = true) => {
+      if (!skipParsingTables) {
+        appData.packsData = appData.packsData.filter((pack) => !mods.some((mod) => mod.path == pack.path));
+      }
+      for (const mod of mods) {
         if (
           appData.currentlyReadingModPaths.every((path) => path != mod.path) &&
           appData.packsData.every((pack) => pack.path != mod.path)
         ) {
           console.log("READING " + mod.name);
           appData.currentlyReadingModPaths.push(mod.path);
-          const newPack = await readPack(mod.path);
+          const newPack = await readPack(mod.path, {
+            skipParsingTables: skipParsingTables,
+          });
           appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
             (path) => path != mod.path
           );
           if (appData.packsData.every((pack) => pack.path != mod.path)) {
             appendPacksData(newPack);
-
-            if (!skipCollisionCheck) {
-              appendCollisions(newPack);
-
-              mainWindow?.webContents.send("setPackCollisions", {
-                packFileCollisions: appData.compatData.packFileCollisions,
-                packTableCollisions: appData.compatData.packTableCollisions,
-              } as PackCollisions);
-            }
+          }
+          if (!skipCollisionCheck) {
+            appendCollisions(newPack);
           }
         }
-      });
+      }
+
+      if (!skipCollisionCheck) {
+        mainWindow?.webContents.send("setPackCollisions", {
+          packFileCollisions: appData.compatData.packFileCollisions,
+          packTableCollisions: appData.compatData.packTableCollisions,
+        } as PackCollisions);
+      }
+    };
+
+    ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true) => {
+      console.log(
+        "READ MODS RECEIVED",
+        mods.map((mod) => mod.name)
+      );
+      readMods(mods, skipCollisionCheck, skipCollisionCheck);
     });
 
     ipcMain.removeHandler("getUpdateData");
     ipcMain.handle("getUpdateData", async () => {
+      if (isDev) return;
+
       let modUpdatedExists = { updateExists: false } as ModUpdateExists;
 
       const isAvailable = await updateAvailable("Shazbot/WH3-Mod-Manager", version);
@@ -730,6 +935,49 @@ if (!gotTheLock) {
     ipcMain.on("sendApiExists", async () => {
       mainWindow?.webContents.send("handleLog", "API now exists");
       mainWindow?.webContents.send("setIsDev", isDev);
+    });
+  };
+
+  const createViewerWindow = () => {
+    if (viewerWindow) return;
+
+    const viewerWindowState = windowStateKeeper({
+      file: "viewer_window.json",
+      defaultWidth: 1280,
+      defaultHeight: 900,
+    });
+
+    viewerWindow = new BrowserWindow({
+      x: viewerWindowState.x,
+      y: viewerWindowState.y,
+      width: viewerWindowState.width,
+      height: viewerWindowState.height,
+      autoHideMenuBar: true,
+      titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: "#374151",
+        symbolColor: "#9ca3af",
+        height: 28,
+      },
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        preload: VIEWER_PRELOAD_WEBPACK_ENTRY,
+      },
+      title: "WH3 Mod Manager Mod Viewer",
+    });
+
+    viewerWindowState.manage(viewerWindow);
+
+    viewerWindow.loadURL(VIEWER_WEBPACK_ENTRY);
+
+    viewerWindow.on("page-title-updated", (evt) => {
+      evt.preventDefault();
+    });
+
+    viewerWindow.on("closed", () => {
+      viewerWindow = undefined;
+      isViewerReady = false;
     });
   };
 
@@ -774,6 +1022,29 @@ if (!gotTheLock) {
   });
   process.on("uncaughtException", (err) => {
     console.log(err);
+  });
+
+  const sendQueuedDataToViewer = async () => {
+    if (!isViewerReady) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      sendQueuedDataToViewer();
+      return;
+    }
+
+    console.log("SENDING QUEUED DATA TO VIEWER");
+    viewerWindow?.webContents.send("setPacksData", queuedViewerData);
+    viewerWindow?.webContents.send("openModInViewer", queuedViewerData[0]?.packPath);
+    queuedViewerData = [];
+  };
+
+  ipcMain.on("viewerIsReady", (event) => {
+    console.log("VIEWER IS NOW READY");
+    isViewerReady = true;
+
+    // console.log("QUEUED DATA IS ", queuedViewerData);
+    if (queuedViewerData.length > 0) {
+      sendQueuedDataToViewer();
+    }
   });
 
   ipcMain.on("openFolderInExplorer", (event, path: string) => {
@@ -926,12 +1197,30 @@ if (!gotTheLock) {
     clipboard.writeText(exportedMods);
   });
 
-  ipcMain.on("exportModNamesToClipboard", async (event, mods: Mod[]) => {
-    const sortedMods = sortByNameAndLoadOrder(mods);
-    clipboard.writeText(
-      sortedMods.map((mod) => (mod.humanName != "" && mod.humanName) || mod.name).join("\n")
-    );
-  });
+  const getDBsForGameStartOptions = async (mods: Mod[], startGameOptions: StartGameOptions) => {
+    const tablesToRead: string[] = [];
+    if (startGameOptions.isMakeUnitsGeneralsEnabled) {
+      tablesToRead.push("db\\units_custom_battle_permissions_tables\\");
+    }
+
+    if (tablesToRead.length == 0) return;
+
+    for (const mod of mods) {
+      const existingPack = appData.packsData.find((pack) => pack.path == mod.path);
+      console.log("READING FOR GAME START " + mod.name);
+      let newPack = null;
+      if (existingPack) {
+        newPack = await readFromExistingPack(existingPack, {
+          tablesToRead,
+        });
+      } else {
+        newPack = await readPack(mod.path, {
+          tablesToRead,
+        });
+      }
+      appendPacksData(newPack);
+    }
+  };
 
   ipcMain.on(
     "startGame",
@@ -970,7 +1259,8 @@ if (!gotTheLock) {
       ) {
         await fs.mkdir(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
 
-        // const data = await readPacks(enabledMods.map((mod) => mod.path));
+        await getDBsForGameStartOptions(enabledMods.concat([dataMod]), startGameOptions);
+
         const tempPackName = "!!!!out.pack";
         const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
         await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
