@@ -273,7 +273,7 @@ const ModsViewer = React.memo(() => {
       {isOpen && (
         <>
           <div className="grid grid-cols-10 dark:text-gray-300">
-            <div className="col-span-2 overflow-scroll h-[80vh]">
+            <div className="col-span-2 overflow-scroll h-[90vh]">
               <PackTablesTreeView tableFilter={modFilter} />
             </div>
             <div className="col-span-8">

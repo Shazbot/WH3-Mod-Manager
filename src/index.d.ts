@@ -78,6 +78,7 @@ declare global {
     isOnboardingToRun: boolean;
     wasOnboardingEverRun: boolean;
     areThumbnailsEnabled: boolean;
+    isClosedOnPlay: boolean;
     isAuthorEnabled: boolean;
     isDev: boolean;
     isMakeUnitsGeneralsEnabled: boolean;
@@ -111,6 +112,7 @@ declare global {
     | "isSkipIntroMoviesEnabled"
     | "appFolderPaths"
     | "isAutoStartCustomBattleEnabled"
+    | "isClosedOnPlay"
   >;
 
   type StartGameOptions = Pick<
@@ -119,6 +121,7 @@ declare global {
     | "isSkipIntroMoviesEnabled"
     | "isScriptLoggingEnabled"
     | "isAutoStartCustomBattleEnabled"
+    | "isClosedOnPlay"
   >;
 
   interface ModLoadOrderPayload {

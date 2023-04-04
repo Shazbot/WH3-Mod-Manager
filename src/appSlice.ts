@@ -28,6 +28,7 @@ const appSlice = createSlice({
     wasOnboardingEverRun: false,
     isDev: false,
     areThumbnailsEnabled: false,
+    isClosedOnPlay: false,
     isAuthorEnabled: false,
     isMakeUnitsGeneralsEnabled: false,
     isScriptLoggingEnabled: false,
@@ -254,6 +255,7 @@ const appSlice = createSlice({
       });
 
       state.areThumbnailsEnabled = fromConfigAppState.areThumbnailsEnabled;
+      state.isClosedOnPlay = fromConfigAppState.isClosedOnPlay;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
       state.hiddenMods = fromConfigAppState.hiddenMods;
       state.alwaysEnabledMods = fromConfigAppState.alwaysEnabledMods;
@@ -427,6 +429,9 @@ const appSlice = createSlice({
     toggleAreThumbnailsEnabled: (state: AppState) => {
       state.areThumbnailsEnabled = !state.areThumbnailsEnabled;
     },
+    toggleIsClosedOnPlay: (state: AppState) => {
+      state.isClosedOnPlay = !state.isClosedOnPlay;
+    },
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
     },
@@ -493,6 +498,7 @@ export const {
   setWasOnboardingEverRun,
   toggleIsAuthorEnabled,
   toggleAreThumbnailsEnabled,
+  toggleIsClosedOnPlay,
   setIsDev,
   setPackHeaderData,
   toggleMakeUnitsGenerals,

@@ -411,7 +411,7 @@ const PackTablesTableView = React.memo(() => {
         ]}
         // dropdownMenu={true}
         width="100%"
-        height="80vh"
+        height="90vh"
         colHeaders={columnHeaders}
         licenseKey="non-commercial-and-evaluation" // for non-commercial use only
         // columns={columns}

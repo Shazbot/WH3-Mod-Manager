@@ -3,6 +3,7 @@ import React, { memo, useCallback, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
+  toggleIsClosedOnPlay,
   toggleIsAuthorEnabled,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
@@ -40,6 +41,7 @@ const OptionsDrawer = memo(() => {
   const dispatch = useAppDispatch();
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
+  const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
@@ -139,6 +141,19 @@ const OptionsDrawer = memo(() => {
               >
                 <span className="uppercase">About</span>
               </button>
+            </div>
+
+            <div className="flex items-center ml-1 mt-6">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="enable-thumbnails"
+                checked={!!isClosedOnPlay}
+                onChange={() => dispatch(toggleIsClosedOnPlay())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="enable-thumbnails">
+                Close Mananger On Play
+              </label>
             </div>
 
             <h6 className="mt-6">Extra Columns</h6>
