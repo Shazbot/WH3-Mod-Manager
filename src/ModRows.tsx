@@ -79,12 +79,18 @@ export default function ModRows() {
       const mod = mods.find((mod) => mod.workshopId == name);
       if (!mod) return;
 
+      const lastScrollTop = document.scrollingElement?.scrollTop;
+
       // if always enabled don't allow unchecking
       if (isModAlwaysEnabled(mod, alwaysEnabledMods)) {
         return;
       }
 
       dispatch(toggleMod(mod));
+
+      setTimeout(() => {
+        if (lastScrollTop && document.scrollingElement) document.scrollingElement.scrollTop = lastScrollTop;
+      }, 1);
     },
     [mods]
   );
