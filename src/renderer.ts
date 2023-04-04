@@ -28,6 +28,8 @@ import { AppFolderPaths } from "./appData";
 import debounce from "just-debounce-it";
 import { api } from "./preload";
 
+console.log("IN RENDERER");
+
 let isSubscribedToStoreChanges = false;
 
 interface WindowWithApi extends Window {
@@ -36,8 +38,8 @@ interface WindowWithApi extends Window {
 
 declare const window: WindowWithApi;
 
-const isViewer = window.location.pathname == "/viewer";
-const isMain = window.location.pathname == "/main_window";
+const isViewer = window.location.pathname.includes("/viewer");
+const isMain = window.location.pathname.includes("/main_window");
 
 if (isViewer) window.api?.viewerIsReady();
 
