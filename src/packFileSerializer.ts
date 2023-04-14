@@ -339,8 +339,8 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
     start_pos: 0,
     // is_compressed: 0,
     schemaFields: battlePermissionsSchemaFields,
-    version: 10,
-    guid: getGUID(),
+    version: 11,
+    guid: "129d32d8-3563-4d4f-8e19-a815e834e456",
   });
 };
 
