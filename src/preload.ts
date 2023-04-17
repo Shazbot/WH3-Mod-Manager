@@ -42,7 +42,10 @@ const api = {
     ipcRenderer.on("openModInViewer", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
   copyToData: (modPathsToCopy?: string[]) => ipcRenderer.send("copyToData", modPathsToCopy),
+  copyToDataAsSymbolicLink: (modPathsToCopy?: string[]) =>
+    ipcRenderer.send("copyToDataAsSymbolicLink", modPathsToCopy),
   cleanData: () => ipcRenderer.send("cleanData"),
+  cleanSymbolicLinksInData: () => ipcRenderer.send("cleanSymbolicLinksInData"),
   getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
   readMods: (mods: Mod[], skipCollisionCheck = true) =>

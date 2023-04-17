@@ -1,6 +1,7 @@
 import { PackedFile, PackCollisions } from "./packFileTypes";
 import { AppFolderPaths } from "./appData";
 import { DBVersion } from "./schema";
+import { api } from "./preload";
 export {};
 
 declare global {
@@ -35,6 +36,7 @@ declare global {
     size: number;
     mergedModsData?: MergedModsData[];
     subbedTime?: number;
+    isSymbolicLink: boolean;
   }
 
   interface ModData {
