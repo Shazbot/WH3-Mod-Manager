@@ -276,7 +276,7 @@ const OptionsDrawer = memo(() => {
                   style="light"
                   content={
                     <>
-                      <div>Will create Symbolics Links of currently enabled mods from content into data.</div>
+                      <div>Will create Symbolic Links of currently enabled mods from content into data.</div>
                       <div>Hold Shift if you want to create links of all mods.</div>
                       <div>This won't create links of mods that already exist in data.</div>
                       <div>Mods that are symbolic links will have a blue name in the manager.</div>
