@@ -697,6 +697,7 @@ if (!gotTheLock) {
 
       await Promise.allSettled(copyPromises);
 
+      // should be tracked automatically by the data watcher, but chokidar can choke on symlinks here
       for (const pathsOfNewSymLink of pathsOfNewSymLinks) {
         onNewPackFound(pathsOfNewSymLink);
       }
@@ -733,6 +734,7 @@ if (!gotTheLock) {
 
       await Promise.allSettled(deletePromises);
 
+      // should be tracked automatically by the data watcher, but chokidar can choke on symlinks here
       for (const deletedSymLink of symLinksToDelete) {
         onPackDeleted(deletedSymLink.path);
       }
