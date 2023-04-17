@@ -134,6 +134,7 @@ const ModRow = memo(
             <span
               className={classNames("break-all", "flex", "items-center", {
                 ["text-orange-500"]: mod.isInData,
+                ["text-blue-400"]: mod.isSymbolicLink,
               })}
             >
               {mod.isDeleted && (

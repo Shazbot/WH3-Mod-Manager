@@ -280,6 +280,7 @@ if (!gotTheLock) {
           isDeleted: false,
           isMovie: false,
           size: 0,
+          isSymbolicLink: false,
         };
         if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
           console.log("READING DATA PACK");
@@ -389,6 +390,7 @@ if (!gotTheLock) {
         .watch([`${dataFolder}/*.pack`], {
           ignoreInitial: true,
           awaitWriteFinish: true,
+          followSymlinks: false,
           ignored: /whmm_backups/,
         })
         .on("add", async (path) => {
@@ -638,6 +640,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
+      console.log("copyToData: modPathsToCopy:", modPathsToCopy);
       const mods = await getMods(log);
       let withoutDataMods = mods.filter((mod) => !mod.isInData);
       if (modPathsToCopy) {
@@ -655,7 +658,29 @@ if (!gotTheLock) {
       });
 
       await Promise.allSettled(copyPromises);
-      getAllMods();
+      // getAllMods();
+    });
+
+    ipcMain.on("copyToDataAsSymbolicLink", async (event, modPathsToCopy?: string[]) => {
+      console.log("copyToDataAsSymbolicLink modPathsToCopy:", modPathsToCopy);
+      const mods = await getMods(log);
+      let withoutDataMods = mods.filter((mod) => !mod.isInData);
+      if (modPathsToCopy) {
+        withoutDataMods = withoutDataMods.filter((mod) =>
+          modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path)
+        );
+      }
+      const copyPromises = withoutDataMods.map((mod) => {
+        mainWindow?.webContents.send(
+          "handleLog",
+          `CREATING SYMLINK of ${mod.path} to ${appData.gamePath}\\data\\${mod.name}`
+        );
+
+        return fsExtra.symlink(mod.path, `${appData.gamePath}\\data\\${mod.name}`);
+      });
+
+      await Promise.allSettled(copyPromises);
+      // getAllMods();
     });
 
     ipcMain.on("cleanData", async () => {
@@ -673,13 +698,29 @@ if (!gotTheLock) {
       });
 
       await Promise.allSettled(deletePromises);
-      getAllMods();
+      // getAllMods();
+    });
+
+    ipcMain.on("cleanSymbolicLinksInData", async () => {
+      const mods = await getMods(log);
+      const symLinksToDelete = mods.filter((mod) => mod.isInData && mod.isSymbolicLink);
+      console.log("symLinksToDelete", symLinksToDelete);
+      const deletePromises = symLinksToDelete.map((mod) => {
+        mainWindow?.webContents.send("handleLog", `DELETING SYMLINK ${mod.path}`);
+
+        return fs.unlink(mod.path);
+      });
+
+      await Promise.allSettled(deletePromises);
+      // getAllMods();
     });
 
     ipcMain.on("saveConfig", (event, data: AppState) => {
+      console.log("saveConfig");
       const enabledMods = data.currentPreset.mods.filter(
         (iterMod) => iterMod.isEnabled || data.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
       );
+      appData.enabledMods = enabledMods;
       const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
         enabledMods.find((mod) => mod.name === iterMod.name)
       );
@@ -834,6 +875,7 @@ if (!gotTheLock) {
       }
       console.log("ON requestOpenModInViewer", modPath);
       viewerWindow?.webContents.send("openModInViewer", modPath);
+      viewerWindow?.setTitle(`WH3 Mod Manager v${version}: viewing ${nodePath.basename(modPath)}`);
       getPackData(modPath);
       if (viewerWindow) {
         viewerWindow.focus();
@@ -1013,6 +1055,10 @@ if (!gotTheLock) {
     console.log("SENDING QUEUED DATA TO VIEWER");
     viewerWindow?.webContents.send("setPacksData", queuedViewerData);
     viewerWindow?.webContents.send("openModInViewer", queuedViewerData[0]?.packPath);
+    if (queuedViewerData[0]?.packPath)
+      viewerWindow?.setTitle(
+        `WH3 Mod Manager v${version}: viewing ${nodePath.basename(queuedViewerData[0]?.packPath)}`
+      );
     viewerWindow?.focus();
     queuedViewerData = [];
   };
@@ -1229,6 +1275,7 @@ if (!gotTheLock) {
         isDeleted: false,
         isMovie: false,
         size: 0,
+        isSymbolicLink: false,
       };
 
       let extraEnabledMods = "";

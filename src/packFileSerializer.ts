@@ -330,7 +330,17 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
     )
     .reduce((previous, packedFile) => previous.concat(packedFile), []);
 
+  const dataPack = packsData.find((packData) => packData.name === "data.pack");
+  if (!dataPack) return;
+  const vanillaBattlePersmission = dataPack.packedFiles.find((pf) =>
+    pf.name.startsWith("db\\units_custom_battle_permissions_tables\\")
+  );
+  if (!vanillaBattlePersmission) return;
+
+  const vanillaBattlePersmissionVersion = vanillaBattlePersmission.version;
+
   const battlePermissionsSchemaFields = battlePermissions.reduce((previous, packedFile) => {
+    if (packedFile.version != vanillaBattlePersmissionVersion) return previous;
     return (packedFile.schemaFields && previous.concat(packedFile.schemaFields)) || previous;
   }, [] as SchemaField[]);
   pack_files.push({

@@ -9,6 +9,7 @@ import {
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
+  dataModsToEnableByName,
 } from "./appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "./hooks";
@@ -22,6 +23,10 @@ import AboutScreen from "./AboutScreen";
 
 const cleanData = () => {
   window.api?.cleanData();
+};
+
+const cleanSymbolicLinksInData = () => {
+  window.api?.cleanSymbolicLinksInData();
 };
 
 const exportModNamesToClipboard = (enabledMods: Mod[]) => {
@@ -92,6 +97,18 @@ const OptionsDrawer = memo(() => {
         window.api?.copyToData();
       } else {
         window.api?.copyToData(enabledMods.map((mod) => mod.path));
+      }
+    },
+    [enabledMods]
+  );
+
+  const copyToDataAsSymbolicLink = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+      if (e.shiftKey) {
+        window.api?.copyToDataAsSymbolicLink();
+      } else {
+        window.api?.copyToDataAsSymbolicLink(enabledMods.map((mod) => mod.path));
+        dataModsToEnableByName.push(...enabledMods.map((mod) => mod.name));
       }
     },
     [enabledMods]
@@ -219,6 +236,7 @@ const OptionsDrawer = memo(() => {
                         As a modder this can overwrite your mod in data with an older version you have in
                         content!
                       </div>
+                      <div>Mods that are in data will have a red name in the manager.</div>
                     </>
                   }
                 >
@@ -238,6 +256,48 @@ const OptionsDrawer = memo(() => {
                   content="Will remove mods in data if the mod already exists in content. As a modder this can remove a newer version of your mod in data!"
                 >
                   <span className="uppercase">Clean data</span>
+                </Tooltip>
+              </button>
+            </div>
+
+            <p className="mt-6 mb-4 text-sm text-gray-500 dark:text-gray-400">
+              You can also copy them as symbolic links (basically a shortcut) so they don't take up duplicate
+              space. They will also always be up-to-date with the content mod since they're just a shortcut to
+              the actual mod.
+            </p>
+
+            <div className="flex mt-2">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={(e) => copyToDataAsSymbolicLink(e)}
+              >
+                <Tooltip
+                  placement="top"
+                  style="light"
+                  content={
+                    <>
+                      <div>Will create Symbolics Links of currently enabled mods from content into data.</div>
+                      <div>Hold Shift if you want to create links of all mods.</div>
+                      <div>This won't create links of mods that already exist in data.</div>
+                      <div>Mods that are symbolic links will have a blue name in the manager.</div>
+                    </>
+                  }
+                >
+                  <span className="uppercase">Create symbolic links in data</span>
+                </Tooltip>
+              </button>
+            </div>
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => cleanSymbolicLinksInData()}
+              >
+                <Tooltip
+                  placement="bottom"
+                  style="light"
+                  content="Will remove all symbolic links in data. Won't touch real mods that aren't symbolic links."
+                >
+                  <span className="uppercase">Clean symbolic links in data</span>
                 </Tooltip>
               </button>
             </div>

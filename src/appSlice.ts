@@ -9,7 +9,11 @@ import {
 } from "./modsHelpers";
 
 // if a enabled mod was removed it's possible it was updated, re-enabled it then
-const removedEnabledModPaths: string[] = [];
+let removedEnabledModPaths: string[] = [];
+
+// queue mods in data that should be enabled when they're added
+// for use with copy to data so we re-enable mods
+export const dataModsToEnableByName: string[] = [];
 
 const appSlice = createSlice({
   name: "app",
@@ -135,6 +139,15 @@ const appSlice = createSlice({
 
       if (removedEnabledModPaths.find((path) => path === mod.path)) {
         mod.isEnabled = true;
+        removedEnabledModPaths = removedEnabledModPaths.filter((pathOfRemoved) => pathOfRemoved != mod.path);
+      }
+
+      if (mod.isInData && dataModsToEnableByName.find((nameOfToEnable) => nameOfToEnable === mod.name)) {
+        mod.isEnabled = true;
+        dataModsToEnableByName.splice(
+          dataModsToEnableByName.findIndex((nameOfToEnable) => nameOfToEnable === mod.name),
+          1
+        );
       }
 
       if (state.dataFromConfig?.currentPreset.mods.find((iterMod) => iterMod.path == mod.path)?.isEnabled) {

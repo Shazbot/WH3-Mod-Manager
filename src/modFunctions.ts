@@ -157,9 +157,10 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
 
   let lastChangedLocal = undefined;
   let size = -1;
+  let isSymbolicLink = false;
   try {
-    [lastChangedLocal, size] = await fsPromises.stat(filePath).then((stats) => {
-      return [stats.mtimeMs, stats.size];
+    [lastChangedLocal, size, isSymbolicLink] = await fsPromises.lstat(filePath).then((stats) => {
+      return [stats.mtimeMs, stats.size, stats.isSymbolicLink()] as [number, number, boolean];
     });
   } catch (err) {
     log(`ERROR: ${err}`);
@@ -197,6 +198,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     isMovie: false,
     size,
     mergedModsData,
+    isSymbolicLink,
   };
   return mod;
 }
@@ -220,7 +222,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
     const dataModsPromises = files
       .filter(
         (file) =>
-          file.isFile() &&
+          !file.isDirectory() &&
           file.name.endsWith(".pack") &&
           !vanillaPacks.find((vanillaPack) => file.name === vanillaPack)
       )
@@ -331,11 +333,12 @@ export async function getContentModInFolder(
 
   let lastChangedLocal = undefined;
   let size = -1;
+  let isSymbolicLink = false;
   try {
-    [lastChangedLocal, size] = await fsPromises
-      .stat(nodePath.join(contentSubfolder, pack.name))
+    [lastChangedLocal, size, isSymbolicLink] = await fsPromises
+      .lstat(nodePath.join(contentSubfolder, pack.name))
       .then((stats) => {
-        return [stats.mtimeMs, stats.size];
+        return [stats.mtimeMs, stats.size, stats.isSymbolicLink()] as [number, number, boolean];
       });
   } catch (err) {
     log(`ERROR: ${err}`);
@@ -360,6 +363,7 @@ export async function getContentModInFolder(
     isMovie: false,
     subbedTime: (subbedTime != -1 && subbedTime) || lastChangedLocal,
     size,
+    isSymbolicLink,
   };
   return mod;
 }
@@ -376,6 +380,11 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   if (!appData.gamePath) throw new Error("Game folder not found");
   const dataMods = await getDataMods(appData.gamePath, log);
   mods.push(...dataMods);
+
+  console.log(
+    "DATa MODS THAT ARE SIMLINKS:",
+    dataMods.filter((mod) => mod.isSymbolicLink)
+  );
 
   const files = await fsPromises.readdir(contentFolder, { withFileTypes: true });
   const newMods = files
