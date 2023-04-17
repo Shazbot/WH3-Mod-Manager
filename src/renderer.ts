@@ -21,6 +21,7 @@ import {
   setOverwrittenDataPackedFiles,
   setDataModLastChangedLocal,
   selectDBTable,
+  setStartArgs,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -68,6 +69,11 @@ window.api?.createdMergedPack((event, filePath: string) => {
 window.api?.setIsDev((event, isDev) => {
   console.log("Setting is dev: " + isDev);
   store.dispatch(setIsDev(isDev));
+});
+
+window.api?.setStartArgs((event, startArgs) => {
+  console.log("Start args are:", startArgs);
+  store.dispatch(setStartArgs(startArgs));
 });
 
 window.api?.packsInSave((event, packNames: string[]) => {

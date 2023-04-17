@@ -2,7 +2,14 @@ import Creatable from "react-select/creatable";
 import Select, { ActionMeta, SingleValue } from "react-select";
 import React, { useCallback, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "./hooks";
-import { addPreset, deletePreset, replacePreset, selectPreset, setFilter } from "./appSlice";
+import {
+  addPreset,
+  deletePreset,
+  replacePreset,
+  selectPreset,
+  setFilter,
+  createOnGameStartPreset,
+} from "./appSlice";
 import { Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
 import OptionsDrawer from "./OptionsDrawer";
@@ -39,6 +46,7 @@ const Sidebar = React.memo(() => {
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
 
   const playGameClicked = () => {
+    dispatch(createOnGameStartPreset());
     window.api?.startGame(mods, {
       isMakeUnitsGeneralsEnabled,
       isSkipIntroMoviesEnabled,

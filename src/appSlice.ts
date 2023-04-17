@@ -46,6 +46,7 @@ const appSlice = createSlice({
     appFolderPaths: { gamePath: "", contentFolder: "" },
     isSetAppFolderPathsDone: false,
     overwrittenDataPackedFiles: {},
+    startArgs: [],
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -109,7 +110,7 @@ const appSlice = createSlice({
 
         state.dataFromConfig.currentPreset.mods
           .filter((mod) => mod !== undefined)
-          .map((mod) => {
+          .forEach((mod) => {
             const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
             if (existingMod) {
               existingMod.isEnabled = mod.isEnabled;
@@ -117,6 +118,14 @@ const appSlice = createSlice({
               if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
             }
           });
+      }
+
+      const appStartIndex = state.presets.findIndex((preset) => preset.name === "On App Start");
+      const newPreset = { name: "On App Start", mods: [...state.currentPreset.mods] };
+      if (appStartIndex != -1) {
+        state.presets.splice(appStartIndex, 1, newPreset);
+      } else {
+        state.presets.push(newPreset);
       }
     },
     addMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -298,6 +307,18 @@ const appSlice = createSlice({
       state.presets.push(newPreset);
       state.lastSelectedPreset = newPreset;
     },
+    createOnGameStartPreset: (state: AppState) => {
+      const appStartIndex = state.presets.findIndex((preset) => preset.name === "On Last Game Launch");
+      const newPreset = {
+        name: "On Last Game Launch",
+        mods: [...state.currentPreset.mods],
+      };
+      if (appStartIndex != -1) {
+        state.presets.splice(appStartIndex, 1, newPreset);
+      } else {
+        state.presets.push(newPreset);
+      }
+    },
     selectPreset: (state: AppState, action: PayloadAction<[string, PresetSelection]>) => {
       const [name, presetSelection] = action.payload;
 
@@ -463,6 +484,9 @@ const appSlice = createSlice({
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
+    setStartArgs: (state: AppState, action: PayloadAction<string[]>) => {
+      state.startArgs = action.payload;
+    },
     createdMergedPack: (state: AppState, action: PayloadAction<string>) => {
       const path = action.payload;
       state.newMergedPacks.push({ path, creationTime: Date.now() });
@@ -499,6 +523,7 @@ export const {
   disableAll,
   addPreset,
   selectPreset,
+  createOnGameStartPreset,
   replacePreset,
   deletePreset,
   setFilter,
@@ -513,6 +538,7 @@ export const {
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
   setIsDev,
+  setStartArgs,
   setPackHeaderData,
   toggleMakeUnitsGenerals,
   toggleIsScriptLoggingEnabled,

@@ -52,6 +52,14 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
+  console.log("ARGVS:", process.argv);
+  appData.startArgs = process.argv.slice(1);
+
+  if (process.argv.find((arg) => arg == "-nogpu")) {
+    console.log("DISABLED HARDWARE ACCELERATION");
+    app.disableHardwareAcceleration();
+  }
+
   process.noAsar = true;
 
   // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -956,6 +964,7 @@ if (!gotTheLock) {
     ipcMain.on("sendApiExists", async () => {
       mainWindow?.webContents.send("handleLog", "API now exists");
       mainWindow?.webContents.send("setIsDev", isDev);
+      mainWindow?.webContents.send("setStartArgs", appData.startArgs);
     });
   };
 
