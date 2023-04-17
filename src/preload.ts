@@ -33,6 +33,8 @@ const api = {
     ipcRenderer.on("createdMergedPack", callback),
   setIsDev: (callback: (event: Electron.IpcRendererEvent, isDev: boolean) => void) =>
     ipcRenderer.on("setIsDev", callback),
+  setStartArgs: (callback: (event: Electron.IpcRendererEvent, startArgs: string[]) => void) =>
+    ipcRenderer.on("setStartArgs", callback),
   packsInSave: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("packsInSave", callback),
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
