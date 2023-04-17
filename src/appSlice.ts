@@ -177,7 +177,19 @@ const appSlice = createSlice({
       const removedMod = state.currentPreset.mods.find((iterMod) => iterMod.path == modPath);
       if (!removedMod) return;
 
-      if (removedMod.isEnabled) {
+      // if this mod is in data and the actual mod is in content just switch to the content mod
+      const dataMod =
+        removedMod.isInData &&
+        state.allMods.find((iterMod) => !iterMod.isInData && iterMod.name == removedMod.name);
+
+      if (dataMod) {
+        state.currentPreset.mods.push(dataMod);
+        if (removedMod.isEnabled) {
+          dataMod.isEnabled = true;
+        }
+      }
+
+      if (!dataMod && removedMod.isEnabled) {
         removedEnabledModPaths.push(removedMod.path);
       }
 

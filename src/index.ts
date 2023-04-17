@@ -648,6 +648,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
+      if (!appData.gamePath) return;
       console.log("copyToData: modPathsToCopy:", modPathsToCopy);
       const mods = await getMods(log);
       let withoutDataMods = mods.filter((mod) => !mod.isInData);
@@ -662,7 +663,8 @@ if (!gotTheLock) {
           `COPYING ${mod.path} to ${appData.gamePath}\\data\\${mod.name}`
         );
 
-        return fs.copyFile(mod.path, `${appData.gamePath}\\data\\${mod.name}`);
+        if (!appData.gamePath) throw new Error("game path not set");
+        return fs.copyFile(mod.path, nodePath.join(appData.gamePath, "/data/", mod.name));
       });
 
       await Promise.allSettled(copyPromises);
@@ -678,16 +680,26 @@ if (!gotTheLock) {
           modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path)
         );
       }
+
+      if (!appData.gamePath) return;
+      const pathsOfNewSymLinks = withoutDataMods.map((mod) =>
+        nodePath.join(appData.gamePath ?? "", "/data/", mod.name)
+      );
       const copyPromises = withoutDataMods.map((mod) => {
         mainWindow?.webContents.send(
           "handleLog",
           `CREATING SYMLINK of ${mod.path} to ${appData.gamePath}\\data\\${mod.name}`
         );
 
-        return fsExtra.symlink(mod.path, `${appData.gamePath}\\data\\${mod.name}`);
+        if (!appData.gamePath) throw new Error("game path not set");
+        return fsExtra.symlink(mod.path, nodePath.join(appData.gamePath, "/data/", mod.name));
       });
 
       await Promise.allSettled(copyPromises);
+
+      for (const pathsOfNewSymLink of pathsOfNewSymLinks) {
+        onNewPackFound(pathsOfNewSymLink);
+      }
       // getAllMods();
     });
 
@@ -720,6 +732,10 @@ if (!gotTheLock) {
       });
 
       await Promise.allSettled(deletePromises);
+
+      for (const deletedSymLink of symLinksToDelete) {
+        onPackDeleted(deletedSymLink.path);
+      }
       // getAllMods();
     });
 
