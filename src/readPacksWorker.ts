@@ -512,7 +512,7 @@ function findPackTableCollisionsBetweenPacks(
 ) {
   for (const packFile of pack.packedFiles) {
     if (!packFile.schemaFields) continue;
-    if (packFile.name === "settings.rpfm_reserved") continue;
+    if (packFile.name.includes(".rpfm_reserved")) continue;
 
     const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
     // console.log("dbNameMatch1", dbNameMatch1);
@@ -523,7 +523,7 @@ function findPackTableCollisionsBetweenPacks(
 
     for (const packTwoFile of packTwo.packedFiles) {
       if (!packTwoFile.schemaFields) continue;
-      if (packTwoFile.name === "settings.rpfm_reserved") continue;
+      if (packTwoFile.name.includes(".rpfm_reserved")) continue;
 
       const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);
       // console.log("dbNameMatch2", dbNameMatch2);
@@ -710,9 +710,9 @@ export function appendPackFileCollisions(
 
 function findPackFileCollisionsBetweenPacks(pack: Pack, packTwo: Pack, conflicts: PackFileCollision[]) {
   for (const packFile of pack.packedFiles) {
-    if (packFile.name === "settings.rpfm_reserved") continue;
+    if (packFile.name.includes(".rpfm_reserved")) continue;
     for (const packTwoFile of packTwo.packedFiles) {
-      if (packTwoFile.name === "settings.rpfm_reserved") continue;
+      if (packTwoFile.name.includes(".rpfm_reserved")) continue;
       if (packFile.name === packTwoFile.name) {
         conflicts.push({
           firstPackName: pack.name,
