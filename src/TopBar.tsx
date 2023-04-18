@@ -7,6 +7,7 @@ const TopBar = memo(() => {
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
   const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
   const startArgs = useAppSelector((state) => state.app.startArgs);
+  const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const isHardwareAccelerationDisabled = startArgs.some((arg) => arg == "-nogpu");
 
   const enabledMods = mods.filter(
@@ -18,7 +19,8 @@ const TopBar = memo(() => {
   const title =
     `WH3 Mod Manager v${appPackage.version}: ${enabledMods.length} mods enabled` +
     (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "") +
-    ((isHardwareAccelerationDisabled && " nogpu") || "");
+    ((isHardwareAccelerationDisabled && " nogpu") || "") +
+    ((isAdmin && " admin") || "");
 
   return (
     <div id="top-bar" className="h-[28px] bg-gray-700 w-full sticky top-0 flex items-center z-50">

@@ -33,6 +33,8 @@ const api = {
     ipcRenderer.on("createdMergedPack", callback),
   setIsDev: (callback: (event: Electron.IpcRendererEvent, isDev: boolean) => void) =>
     ipcRenderer.on("setIsDev", callback),
+  setIsAdmin: (callback: (event: Electron.IpcRendererEvent, isAdmin: boolean) => void) =>
+    ipcRenderer.on("setIsAdmin", callback),
   setStartArgs: (callback: (event: Electron.IpcRendererEvent, startArgs: string[]) => void) =>
     ipcRenderer.on("setStartArgs", callback),
   packsInSave: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>

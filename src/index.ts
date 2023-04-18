@@ -1,6 +1,6 @@
 import debounce from "just-debounce-it";
 import { AmendedSchemaField, Pack, PackCollisions, SCHEMA_FIELD_TYPE, SchemaField } from "./packFileTypes";
-import { execFile, exec, fork } from "child_process";
+import { execFile, exec, fork, execFileSync } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
@@ -54,6 +54,11 @@ if (!gotTheLock) {
 } else {
   console.log("ARGVS:", process.argv);
   appData.startArgs = process.argv.slice(1);
+
+  exec("NET SESSION", function (err, so, se) {
+    appData.isAdmin = se.length === 0;
+    console.log("isAdmin:", appData.isAdmin);
+  });
 
   if (process.argv.find((arg) => arg == "-nogpu")) {
     console.log("DISABLED HARDWARE ACCELERATION");
@@ -215,7 +220,7 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("addMod", mod);
     }
   };
-  const onPackDeleted = async (path: string) => {
+  const onPackDeleted = async (path: string, isDeletedFromContent = false) => {
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
     console.log("MOD REMOVED: " + path);
@@ -223,6 +228,18 @@ if (!gotTheLock) {
 
     if (appData.packsData && appData.packsData.some((pack) => pack.path == path)) {
       appData.packsData = appData.packsData.filter((pack) => pack.path != path);
+    }
+
+    if (isDeletedFromContent && appData.dataFolder) {
+      try {
+        const potentialSymlinkDataPath = nodePath.join(appData.dataFolder, nodePath.basename(path));
+        await fs.readlink(potentialSymlinkDataPath);
+        await fs.unlink(potentialSymlinkDataPath);
+        await removeMod(mainWindow, path);
+      } catch (e) {
+        console.log("deleted content pack doesn't have a symbolic link in data");
+        console.log(e);
+      }
     }
 
     removePackFromCollisions(path);
@@ -369,7 +386,7 @@ if (!gotTheLock) {
         })
         .on("unlink", async (path) => {
           console.log("NEW CONTENT UNLINK", path);
-          onPackDeleted(path);
+          onPackDeleted(path, true);
         });
     }
     if (!downloadsWatcher || isDev) {
@@ -983,6 +1000,7 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("handleLog", "API now exists");
       mainWindow?.webContents.send("setIsDev", isDev);
       mainWindow?.webContents.send("setStartArgs", appData.startArgs);
+      mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
     });
   };
 
