@@ -16,6 +16,7 @@ interface AppData {
   overwrittenDataPackedFiles: Record<string, string[]>;
   enabledMods: Mod[];
   startArgs: string[];
+  isAdmin: boolean;
 }
 
 export type AppFolderPaths = { gamePath: string; contentFolder: string };
@@ -35,4 +36,5 @@ export default {
   overwrittenDataPackedFiles: {},
   enabledMods: [],
   startArgs: [],
+  isAdmin: false,
 } as AppData;

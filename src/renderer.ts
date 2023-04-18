@@ -22,6 +22,7 @@ import {
   setDataModLastChangedLocal,
   selectDBTable,
   setStartArgs,
+  setIsAdmin,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -67,8 +68,13 @@ window.api?.createdMergedPack((event, filePath: string) => {
 });
 
 window.api?.setIsDev((event, isDev) => {
-  console.log("Setting is dev: " + isDev);
+  console.log("Setting is dev: ", isDev);
   store.dispatch(setIsDev(isDev));
+});
+
+window.api?.setIsAdmin((event, isAdmin) => {
+  console.log("Setting is admin: ", isAdmin);
+  store.dispatch(setIsAdmin(isAdmin));
 });
 
 window.api?.setStartArgs((event, startArgs) => {

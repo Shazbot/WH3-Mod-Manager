@@ -83,6 +83,7 @@ declare global {
     isClosedOnPlay: boolean;
     isAuthorEnabled: boolean;
     isDev: boolean;
+    isAdmin: boolean;
     startArgs: string[];
     isMakeUnitsGeneralsEnabled: boolean;
     isScriptLoggingEnabled: boolean;

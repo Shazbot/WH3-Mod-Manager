@@ -52,6 +52,7 @@ const OptionsDrawer = memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isAdmin = useAppSelector((state) => state.app.isAdmin);
 
   const enabledModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -268,14 +269,23 @@ const OptionsDrawer = memo(() => {
 
             <div className="flex mt-2">
               <button
-                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                className={
+                  "make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%] " +
+                  ((!isAdmin &&
+                    "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+                    "")
+                }
                 onClick={(e) => copyToDataAsSymbolicLink(e)}
+                disabled={!isAdmin}
               >
                 <Tooltip
                   placement="top"
                   style="light"
                   content={
                     <>
+                      {!isAdmin && (
+                        <div className="text-red-700 font-bold">Requires running as administrator!</div>
+                      )}
                       <div>Will create Symbolic Links of currently enabled mods from content into data.</div>
                       <div>Hold Shift if you want to create links of all mods.</div>
                       <div>This won't create links of mods that already exist in data.</div>

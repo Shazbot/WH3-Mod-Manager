@@ -31,6 +31,7 @@ const appSlice = createSlice({
     isOnboardingToRun: false,
     wasOnboardingEverRun: false,
     isDev: false,
+    isAdmin: false,
     areThumbnailsEnabled: false,
     isClosedOnPlay: false,
     isAuthorEnabled: false,
@@ -515,6 +516,9 @@ const appSlice = createSlice({
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
+    setIsAdmin: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isAdmin = action.payload;
+    },
     setStartArgs: (state: AppState, action: PayloadAction<string[]>) => {
       state.startArgs = action.payload;
     },
@@ -569,6 +573,7 @@ export const {
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
   setIsDev,
+  setIsAdmin,
   setStartArgs,
   setPackHeaderData,
   toggleMakeUnitsGenerals,
