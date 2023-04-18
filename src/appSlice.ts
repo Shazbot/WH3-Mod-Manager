@@ -175,7 +175,26 @@ const appSlice = createSlice({
       const modPath = action.payload;
 
       const removedMod = state.currentPreset.mods.find((iterMod) => iterMod.path == modPath);
-      if (!removedMod) return;
+      if (!removedMod) {
+        // in case we deleted a content mod check if there is a symbolic link in data of that mod
+        // if there is remove the symbolic link in data as well, it will also be deleted as a file in the main thread
+        const removedModInAll = state.allMods.find((iterMod) => iterMod.path == modPath);
+        if (removedModInAll) {
+          const sameModOrSymLinkInData =
+            !removedModInAll.isInData &&
+            state.currentPreset.mods.find(
+              (iterMod) => iterMod.isInData && iterMod.name == removedModInAll.name
+            );
+          if (sameModOrSymLinkInData && sameModOrSymLinkInData.isSymbolicLink) {
+            state.currentPreset.mods = state.currentPreset.mods.filter(
+              (iterMod) => iterMod.path !== sameModOrSymLinkInData.path
+            );
+            state.allMods = state.allMods.filter((iterMod) => iterMod.path !== sameModOrSymLinkInData.path);
+            state.allMods = state.allMods.filter((iterMod) => iterMod.path !== removedModInAll.path);
+          }
+        }
+        return;
+      }
 
       // if this mod is in data and the actual mod is in content just switch to the content mod
       const dataMod =
