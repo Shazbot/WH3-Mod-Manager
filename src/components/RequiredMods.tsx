@@ -1,7 +1,7 @@
-import { Modal } from "./flowbite/components/Modal/index";
+import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useEffect } from "react";
-import { useAppDispatch, useAppSelector } from "./hooks";
-import { toggleMod } from "./appSlice";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import { toggleMod } from "../appSlice";
 
 const subbedModIdsToWaitFor: string[] = [];
 

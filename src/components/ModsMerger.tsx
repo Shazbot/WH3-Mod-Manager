@@ -1,17 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal } from "./flowbite/components/Modal/index";
-import { Spinner, Tabs, Tooltip } from "./flowbite";
+import { Modal } from "../flowbite/components/Modal/index";
+import { Spinner, Tabs, Tooltip } from "../flowbite";
 import {
   getModsSortedByName,
   getModsSortedByHumanName,
   getModsSortedBySize,
   getFilteredMods,
-} from "./modSortingHelpers";
+} from "../modSortingHelpers";
 import Select, { ActionMeta, SingleValue } from "react-select";
-import selectStyle from "./styles/selectStyle";
+import selectStyle from "../styles/selectStyle";
 import { createSelector } from "@reduxjs/toolkit";
 import { useSelector } from "react-redux";
-import { useAppSelector } from "./hooks";
+import { useAppSelector } from "../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 

@@ -1,12 +1,12 @@
 import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import React, { memo } from "react";
-import { useAppSelector } from "./hooks";
+import { useAppSelector } from "../hooks";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
 import { HiOutlineCollection } from "react-icons/hi";
 import { formatDistanceToNow } from "date-fns";
-import { isSubbedTimeSort, SortingType } from "./utility/modRowSorting";
+import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 
 type ModRowProps = {
   mod: Mod;
@@ -125,7 +125,7 @@ const ModRow = memo(
           <label htmlFor={mod.workshopId + "enabled"}>
             <img
               className="max-w-[6rem] aspect-square"
-              src={((isDev || mod.imgPath === "") && require("./assets/modThumbnail.png")) || mod.imgPath}
+              src={((isDev || mod.imgPath === "") && require("../assets/modThumbnail.png")) || mod.imgPath}
             ></img>
           </label>
         </div>

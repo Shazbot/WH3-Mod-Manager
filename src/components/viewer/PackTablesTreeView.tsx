@@ -1,11 +1,11 @@
 import React, { useEffect } from "react";
-import { useAppDispatch, useAppSelector } from "../hooks";
+import { useAppDispatch, useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
-import { getDBNameFromString, getDBSubnameFromString } from "../utility/packFileHelpers";
-import { selectDBTable } from "../appSlice";
+import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
+import { selectDBTable } from "../../appSlice";
 
 type PackTablesTreeViewProps = {
   tableFilter: string;

@@ -2,8 +2,8 @@ import React, { memo, useCallback, useRef } from "react";
 import Joyride, { Placement, CallBackProps } from "react-joyride";
 import { faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useAppDispatch, useAppSelector } from "./hooks";
-import { setIsOnboardingToRun, setWasOnboardingEverRun } from "./appSlice";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import { setIsOnboardingToRun, setWasOnboardingEverRun } from "../appSlice";
 
 const Onboarding = memo(() => {
   const dispatch = useAppDispatch();

@@ -1,7 +1,7 @@
 import { Toast } from "flowbite-react";
 import React, { useEffect, useState } from "react";
 import { HiCheck } from "react-icons/hi";
-import { useAppSelector } from "./hooks";
+import { useAppSelector } from "../hooks";
 
 export function Toasts() {
   const newMergedPacks = [...useAppSelector((state) => state.app.newMergedPacks)].sort(

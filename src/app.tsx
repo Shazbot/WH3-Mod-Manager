@@ -1,14 +1,15 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import ModRow from "./ModRows";
+import ModRow from "./components/ModRows";
 import store from "./store";
 import { Provider } from "react-redux";
-import Sidebar from "./Sidebar";
-import Onboarding from "./Onboarding";
+import Sidebar from "./components/Sidebar";
+import Onboarding from "./components/Onboarding";
 import { ErrorBoundary } from "react-error-boundary";
-import TopBar from "./TopBar";
-import { Toasts } from "./Toasts";
-import ModsViewer from "./ModsViewer";
+import TopBar from "./components/TopBar";
+import { Toasts } from "./components/Toasts";
+import ModsViewer from "./components/viewer/ModsViewer";
+import LeftSidebar from "./components/LeftSidebar";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -33,7 +34,7 @@ function render() {
       >
         <TopBar />
         {(window.location.pathname.includes("/main_window") && (
-          <div className="m-auto px-8 py-4 max-w-[100rem]">
+          <div className="m-auto px-8 pb-4 pt-11 max-w-[100rem]">
             <Onboarding></Onboarding>
             <div className="grid grid-cols-12 text-white">
               <div className="col-span-10">

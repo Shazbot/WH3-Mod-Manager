@@ -100,6 +100,7 @@ declare global {
     overwrittenDataPackedFiles: Record<string, string[]>;
     dataModLastChangedLocal?: number;
     currentDBTableSelection?: DBTableSelection;
+    currentTab: MainWindowTab;
   }
 
   type AppStateToWrite = Pick<
@@ -181,4 +182,6 @@ declare global {
     skipParsingTables?: boolean;
     tablesToRead?: string[];
   }
+
+  type MainWindowTab = "mods" | "enabledMods" | "categories";
 }

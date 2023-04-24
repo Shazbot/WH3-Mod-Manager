@@ -1,6 +1,6 @@
-import { Modal } from "./flowbite/components/Modal/index";
+import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo } from "react";
-import { useAppSelector } from "./hooks";
+import { useAppSelector } from "../hooks";
 
 export interface GamePathsSetupProps {
   isOpen: boolean;

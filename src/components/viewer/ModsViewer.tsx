@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useAppSelector } from "./hooks";
+import { useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
-import PackTablesTreeView from "./components/PackTablesTreeView";
-import PackTablesTableView from "./components/PackTablesTableView";
+import PackTablesTreeView from "./PackTablesTreeView";
+import PackTablesTableView from "./PackTablesTableView";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
 

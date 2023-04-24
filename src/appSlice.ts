@@ -48,6 +48,7 @@ const appSlice = createSlice({
     isSetAppFolderPathsDone: false,
     overwrittenDataPackedFiles: {},
     startArgs: [],
+    currentTab: "mods",
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -546,6 +547,10 @@ const appSlice = createSlice({
     selectDBTable: (state: AppState, action: PayloadAction<DBTableSelection>) => {
       state.currentDBTableSelection = action.payload;
     },
+    setCurrentTab: (state: AppState, action: PayloadAction<MainWindowTab>) => {
+      const tabType = action.payload;
+      state.currentTab = tabType;
+    },
   },
 });
 
@@ -594,6 +599,7 @@ export const {
   setOverwrittenDataPackedFiles,
   setDataModLastChangedLocal,
   selectDBTable,
+  setCurrentTab,
 } = appSlice.actions;
 
 export default appSlice.reducer;
