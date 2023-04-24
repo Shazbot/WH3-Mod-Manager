@@ -1,14 +1,14 @@
 import React, { useCallback, useState } from "react";
-import "./index.css";
-import { useAppDispatch, useAppSelector } from "./hooks";
-import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "./appSlice";
+import "../index.css";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "../appSlice";
 import { Alert, Tooltip } from "flowbite-react";
-import { getFilteredMods, sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { getFilteredMods, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
 import ModDropdown from "./ModDropdown";
-import { isModAlwaysEnabled } from "./modsHelpers";
-import * as modRowSorting from "./utility/modRowSorting";
-import { SortingType } from "./utility/modRowSorting";
+import { isModAlwaysEnabled } from "../modsHelpers";
+import * as modRowSorting from "../utility/modRowSorting";
+import { SortingType } from "../utility/modRowSorting";
 import ModRow from "./ModRow";
 
 let currentDragTarget: Element;
@@ -175,7 +175,7 @@ export default function ModRows() {
   }, []);
 
   const onDragStart = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    // console.log("DRAG START");
+    console.log("DRAG START");
     const t = e.target as HTMLDivElement;
 
     e.dataTransfer.effectAllowed = "move";

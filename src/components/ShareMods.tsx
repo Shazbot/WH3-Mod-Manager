@@ -1,7 +1,7 @@
-import { Modal } from "./flowbite/components/Modal/index";
+import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useCallback, useEffect, useState } from "react";
-import { useAppDispatch, useAppSelector } from "./hooks";
-import { setSharedMod } from "./appSlice";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import { setSharedMod } from "../appSlice";
 import { Spinner } from "flowbite-react";
 
 const subbedModIdsToWaitFor: ModIdAndLoadOrder[] = [];

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from "react";
-import { useAppSelector } from "../hooks";
+import { useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
-import { getPackNameFromPath } from "../utility/packFileHelpers";
-import { AmendedSchemaField, SCHEMA_FIELD_TYPE } from "../packFileTypes";
+import { getPackNameFromPath } from "../../utility/packFileHelpers";
+import { AmendedSchemaField, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 
 import "handsontable/dist/handsontable.full.min.css";
 

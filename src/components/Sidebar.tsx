@@ -1,7 +1,7 @@
 import Creatable from "react-select/creatable";
 import Select, { ActionMeta, SingleValue } from "react-select";
 import React, { useCallback, useEffect, useState } from "react";
-import { useAppDispatch, useAppSelector } from "./hooks";
+import { useAppDispatch, useAppSelector } from "../hooks";
 import {
   addPreset,
   deletePreset,
@@ -9,11 +9,11 @@ import {
   selectPreset,
   setFilter,
   createOnGameStartPreset,
-} from "./appSlice";
+} from "../appSlice";
 import { Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
 import OptionsDrawer from "./OptionsDrawer";
-import selectStyle from "./styles/selectStyle";
+import selectStyle from "../styles/selectStyle";
 import SaveGames from "./SaveGames";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";

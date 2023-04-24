@@ -5,6 +5,9 @@
 body {
   margin: auto;
   background-color: rgb(38, 38, 38);
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
 }
 
 [type="checkbox"]:focus,
@@ -105,9 +108,18 @@ body:not(.disable-row-hover) .row:hover > div {
 .mod-row-header {
   background-color: #404040;
   padding: 0.5rem;
+  position: sticky;
+  top: 1.25rem;
 }
 
 #top-bar {
   -webkit-user-select: none;
   -webkit-app-region: drag;
+}
+
+.parent-unhide-child .hidden-child {
+  display: none;
+}
+.parent-unhide-child:hover .hidden-child {
+  display: initial;
 }

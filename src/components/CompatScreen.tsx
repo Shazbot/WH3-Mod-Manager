@@ -1,12 +1,12 @@
 import React, { memo, useCallback } from "react";
-import { useAppDispatch, useAppSelector } from "./hooks";
-import { Modal } from "./flowbite/components/Modal/index";
-import { Spinner, Tabs, Tooltip } from "./flowbite";
-import { compareModNames, sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import { Modal } from "../flowbite/components/Modal/index";
+import { Spinner, Tabs, Tooltip } from "../flowbite";
+import { compareModNames, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { PackTableCollision } from "./packFileTypes";
-import { setPackCollisions } from "./appSlice";
+import { PackTableCollision } from "../packFileTypes";
+import { setPackCollisions } from "../appSlice";
 
 const CompatScreen = memo(() => {
   const dispatch = useAppDispatch();

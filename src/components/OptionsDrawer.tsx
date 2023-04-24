@@ -10,10 +10,10 @@ import {
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
   dataModsToEnableByName,
-} from "./appSlice";
+} from "../appSlice";
 import Drawer from "./Drawer";
-import { useAppDispatch, useAppSelector } from "./hooks";
-import selectStyle from "./styles/selectStyle";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import selectStyle from "../styles/selectStyle";
 import { Tooltip } from "flowbite-react";
 import ShareMods from "./ShareMods";
 import { useSelector } from "react-redux";
@@ -165,11 +165,11 @@ const OptionsDrawer = memo(() => {
               <input
                 className="mt-1"
                 type="checkbox"
-                id="enable-thumbnails"
+                id="enable-closed-on-play"
                 checked={!!isClosedOnPlay}
                 onChange={() => dispatch(toggleIsClosedOnPlay())}
               ></input>
-              <label className="ml-2 mt-1" htmlFor="enable-thumbnails">
+              <label className="ml-2 mt-1" htmlFor="enable-closed-on-play">
                 Close Mananger On Play
               </label>
             </div>

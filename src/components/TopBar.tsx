@@ -1,6 +1,6 @@
 import React, { memo } from "react";
-import { useAppSelector } from "./hooks";
-import appPackage from "../package.json";
+import { useAppSelector } from "../hooks";
+import appPackage from "../../package.json";
 
 const TopBar = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -23,7 +23,11 @@ const TopBar = memo(() => {
     ((isAdmin && " admin") || "");
 
   return (
-    <div id="top-bar" className="h-[28px] bg-gray-700 w-full sticky top-0 flex items-center z-50">
+    <div
+      id="top-bar"
+      draggable="true"
+      className="h-[28px] bg-gray-700 w-full fixed top-0 flex items-center z-[1000]"
+    >
       <span className="ml-2 font-light text-sm text-slate-100">{title}</span>
     </div>
   );

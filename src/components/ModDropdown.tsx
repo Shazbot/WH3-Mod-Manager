@@ -1,8 +1,8 @@
 import { Tooltip } from "flowbite-react";
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
-import { setModLoadOrder, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "./appSlice";
-import { Modal } from "./flowbite";
-import { useAppDispatch, useAppSelector } from "./hooks";
+import { setModLoadOrder, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "../appSlice";
+import { Modal } from "../flowbite";
+import { useAppDispatch, useAppSelector } from "../hooks";
 
 type ModDropdownProps = {
   isOpen: boolean;

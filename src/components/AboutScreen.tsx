@@ -1,8 +1,8 @@
-import { Modal } from "./flowbite/components/Modal/index";
+import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo } from "react";
 import { FaGithub, FaSteam, FaPaypal, FaPatreon } from "react-icons/fa";
 import { Tooltip } from "flowbite-react";
-import appPackage from "../package.json";
+import appPackage from "../../package.json";
 
 export interface AboutScreenProps {
   isOpen: boolean;
