@@ -22,7 +22,7 @@
   "config": {
     "forge": {
       "packagerConfig": {
-        "icon": "./src/assets/Modmanager.ico"
+        "icon": "./src/assets/modmanager.ico"
       },
       "publishers": [
         {

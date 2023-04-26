@@ -7,7 +7,7 @@ rules.push(
     use: [{ loader: "style-loader" }, { loader: "css-loader" }, { loader: "postcss-loader" }],
   },
   {
-    test: /\.(png|svg|jpg|jpeg|gif)$/i,
+    test: /\.(png|svg|jpg|jpeg|gif|ico)$/i,
     type: "asset/resource",
   }
 );

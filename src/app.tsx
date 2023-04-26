@@ -47,7 +47,7 @@ function render() {
           </div>
         )) ||
           (window.location.pathname.includes("/viewer") && (
-            <div className="m-auto px-8 py-4">
+            <div className="m-auto px-8 pb-4 pt-11">
               <ModsViewer />
             </div>
           ))}
