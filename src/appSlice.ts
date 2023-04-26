@@ -49,6 +49,7 @@ const appSlice = createSlice({
     overwrittenDataPackedFiles: {},
     startArgs: [],
     currentTab: "mods",
+    isCreateSteamCollectionOpen: false,
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -551,6 +552,9 @@ const appSlice = createSlice({
       const tabType = action.payload;
       state.currentTab = tabType;
     },
+    setIsCreateSteamCollectionOpen: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isCreateSteamCollectionOpen = action.payload;
+    },
   },
 });
 
@@ -600,6 +604,7 @@ export const {
   setDataModLastChangedLocal,
   selectDBTable,
   setCurrentTab,
+  setIsCreateSteamCollectionOpen,
 } = appSlice.actions;
 
 export default appSlice.reducer;

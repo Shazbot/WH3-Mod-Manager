@@ -39,16 +39,20 @@ export default function ModRows() {
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
+  const currentTab = useAppSelector((state) => state.app.currentTab);
 
   const [sortingType, setSortingType] = useState<SortingType>(SortingType.Ordered);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
 
-  const presetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  let presetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = presetMods.filter(
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
   );
+  if (currentTab == "enabledMods") {
+    presetMods = enabledMods;
+  }
   const enabledMergeMods = enabledMods.filter((mod) => mod.mergedModsData);
 
   const modsToOrder = presetMods.filter((iterMod) => {

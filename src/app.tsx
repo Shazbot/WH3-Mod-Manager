@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import ModRow from "./components/ModRows";
+import ModRows from "./components/ModRows";
 import store from "./store";
 import { Provider } from "react-redux";
 import Sidebar from "./components/Sidebar";
@@ -38,7 +38,7 @@ function render() {
             <Onboarding></Onboarding>
             <div className="grid grid-cols-12 text-white">
               <div className="col-span-10">
-                <ModRow />
+                <ModRows />
               </div>
               <div className="ml-3 col-span-2 relative">
                 <Sidebar />
