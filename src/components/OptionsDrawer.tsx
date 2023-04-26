@@ -34,9 +34,6 @@ const cleanSymbolicLinksInData = () => {
 const exportModNamesToClipboard = (enabledMods: Mod[]) => {
   window.api?.exportModNamesToClipboard(enabledMods);
 };
-const createSteamCollection = (enabledMods: Mod[]) => {
-  window.api?.createSteamCollection(enabledMods);
-};
 
 type OptionType = {
   value: string;

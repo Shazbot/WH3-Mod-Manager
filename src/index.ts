@@ -1,6 +1,6 @@
 import debounce from "just-debounce-it";
 import { AmendedSchemaField, Pack, PackCollisions, SCHEMA_FIELD_TYPE, SchemaField } from "./packFileTypes";
-import { execFile, exec, fork, execFileSync } from "child_process";
+import { execFile, exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
@@ -1266,6 +1266,17 @@ if (!gotTheLock) {
       .filter((mod) => !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId)))
       .map((mod) => mod.workshopId + (mod.loadOrder != null ? `;${mod.loadOrder}` : ""))
       .join("|");
+    clipboard.writeText(exportedMods);
+  });
+
+  ipcMain.on("exportModNamesToClipboard", async (event, mods: Mod[]) => {
+    const sortedMods = sortByNameAndLoadOrder(mods);
+    const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
+
+    const exportedMods = enabledMods
+      .filter((mod) => mod.humanName != "")
+      .map((mod) => mod.humanName)
+      .join("\n");
     clipboard.writeText(exportedMods);
   });
 
