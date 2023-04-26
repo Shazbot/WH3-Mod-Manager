@@ -28,7 +28,8 @@ const TopBar = memo(() => {
       draggable="true"
       className="h-[28px] bg-gray-700 w-full fixed top-0 flex items-center z-[1000]"
     >
-      <span className="ml-2 font-light text-sm text-slate-100">{title}</span>
+      <img className="ml-1 h-[24px]" src={require("../assets/modmanager.ico")} />
+      <span className="ml-1 font-light text-sm text-slate-100">{title}</span>
     </div>
   );
 });
