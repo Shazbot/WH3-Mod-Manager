@@ -491,6 +491,7 @@ if (!gotTheLock) {
         preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       },
       title: "WH3 Mod Manager",
+      icon: "./assets/Modmanager.ico",
     });
 
     mainWindowState.manage(mainWindow);
@@ -1032,6 +1033,7 @@ if (!gotTheLock) {
         preload: VIEWER_PRELOAD_WEBPACK_ENTRY,
       },
       title: "WH3 Mod Manager Mod Viewer",
+      icon: "./assets/Modmanager.ico",
     });
 
     viewerWindowState.manage(viewerWindow);
