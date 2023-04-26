@@ -10,6 +10,7 @@ import {
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
   dataModsToEnableByName,
+  setIsCreateSteamCollectionOpen,
 } from "../appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -20,6 +21,7 @@ import { useSelector } from "react-redux";
 import { createSelector } from "@reduxjs/toolkit";
 import GamePathsSetup from "./GamePathsSetup";
 import AboutScreen from "./AboutScreen";
+import CreateSteamCollection from "./CreateSteamCollection";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -31,6 +33,9 @@ const cleanSymbolicLinksInData = () => {
 
 const exportModNamesToClipboard = (enabledMods: Mod[]) => {
   window.api?.exportModNamesToClipboard(enabledMods);
+};
+const createSteamCollection = (enabledMods: Mod[]) => {
+  window.api?.createSteamCollection(enabledMods);
 };
 
 type OptionType = {
@@ -123,6 +128,7 @@ const OptionsDrawer = memo(() => {
       ></GamePathsSetup>
       <AboutScreen isOpen={isShowingAboutScreen} setIsOpen={setIsShowingAboutScreen}></AboutScreen>
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
+      <CreateSteamCollection />
 
       <div className="text-center">
         <button
@@ -323,7 +329,7 @@ const OptionsDrawer = memo(() => {
 
             <h6 className="mt-10">Share mods</h6>
             <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
-              Share current mod list with other people for multiplayer.
+              Share current mod list with other people for multiplayer:
             </p>
             <div className="flex mt-2 w-full">
               <button
@@ -334,7 +340,7 @@ const OptionsDrawer = memo(() => {
               </button>
             </div>
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              Copy names of enabled mods to clipboard.
+              Copy names of enabled mods to clipboard:
             </p>
             <div className="flex mt-2 w-full">
               <button
@@ -342,6 +348,17 @@ const OptionsDrawer = memo(() => {
                 onClick={() => exportModNamesToClipboard(enabledMods)}
               >
                 <span className="uppercase">Copy Mod List</span>
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              Create a Steam collection from enabled mods:
+            </p>
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => dispatch(setIsCreateSteamCollectionOpen(true))}
+              >
+                <span className="uppercase">Create Steam Collection</span>
               </button>
             </div>
 

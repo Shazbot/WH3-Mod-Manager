@@ -10,6 +10,7 @@ const api = {
     ipcRenderer.send("startGame", mods, startGameOptions, name),
   exportModsToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModsToClipboard", mods),
   exportModNamesToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModNamesToClipboard", mods),
+  createSteamCollection: (mods: Mod[]) => ipcRenderer.send("createSteamCollection", mods),
   subscribeToMods: (ids: string[]) => ipcRenderer.send("subscribeToMods", ids),
   openFolderInExplorer: (path: string) => ipcRenderer.send("openFolderInExplorer", path),
   openInSteam: (url: string) => ipcRenderer.send("openInSteam", url),

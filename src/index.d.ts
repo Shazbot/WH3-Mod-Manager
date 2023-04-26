@@ -101,6 +101,7 @@ declare global {
     dataModLastChangedLocal?: number;
     currentDBTableSelection?: DBTableSelection;
     currentTab: MainWindowTab;
+    isCreateSteamCollectionOpen: boolean;
   }
 
   type AppStateToWrite = Pick<
