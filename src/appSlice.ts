@@ -47,6 +47,7 @@ const appSlice = createSlice({
     appFolderPaths: { gamePath: "", contentFolder: "" },
     isSetAppFolderPathsDone: false,
     overwrittenDataPackedFiles: {},
+    outdatedPackFiles: {},
     startArgs: [],
     currentTab: "mods",
     isCreateSteamCollectionOpen: false,
@@ -542,6 +543,9 @@ const appSlice = createSlice({
     setOverwrittenDataPackedFiles: (state: AppState, action: PayloadAction<Record<string, string[]>>) => {
       state.overwrittenDataPackedFiles = action.payload;
     },
+    setOutdatedPackFiles: (state: AppState, action: PayloadAction<Record<string, string[]>>) => {
+      state.outdatedPackFiles = action.payload;
+    },
     setDataModLastChangedLocal: (state: AppState, action: PayloadAction<number>) => {
       state.dataModLastChangedLocal = action.payload;
     },
@@ -601,6 +605,7 @@ export const {
   setWarhammer3Folder,
   setContentFolder,
   setOverwrittenDataPackedFiles,
+  setOutdatedPackFiles,
   setDataModLastChangedLocal,
   selectDBTable,
   setCurrentTab,

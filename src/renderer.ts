@@ -23,6 +23,7 @@ import {
   selectDBTable,
   setStartArgs,
   setIsAdmin,
+  setOutdatedPackFiles,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -177,6 +178,11 @@ window.api?.setWarhammer3Folder((event, path: string) => {
 window.api?.setOverwrittenDataPackedFiles((event, overwrittenDataPackedFiles: Record<string, string[]>) => {
   console.log("INVOKED: setOverwrittenDataPackedFiles");
   store.dispatch(setOverwrittenDataPackedFiles(overwrittenDataPackedFiles));
+});
+
+window.api?.setOutdatedPackFiles((event, outdatedPackFiles: Record<string, string[]>) => {
+  console.log("INVOKED: setOutdatedPackFiles");
+  store.dispatch(setOutdatedPackFiles(outdatedPackFiles));
 });
 
 window.api?.savesPopulated((event, saves: GameSave[]) => {

@@ -14,9 +14,11 @@ interface AppData {
   currentlyReadingModPaths: string[];
   dataPack?: Pack;
   overwrittenDataPackedFiles: Record<string, string[]>;
+  outdatedPackFiles: Record<string, string[]>;
   enabledMods: Mod[];
   startArgs: string[];
   isAdmin: boolean;
+  gameUpdates: GameUpdateData[];
 }
 
 export type AppFolderPaths = { gamePath: string; contentFolder: string };
@@ -34,7 +36,9 @@ export default {
   compatData: { packTableCollisions: [], packFileCollisions: [] },
   currentlyReadingModPaths: [],
   overwrittenDataPackedFiles: {},
+  outdatedPackFiles: {},
   enabledMods: [],
   startArgs: [],
   isAdmin: false,
+  gameUpdates: [],
 } as AppData;

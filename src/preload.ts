@@ -91,6 +91,9 @@ const api = {
   setOverwrittenDataPackedFiles: (
     callback: (event: Electron.IpcRendererEvent, overwrittenDataPackedFiles: Record<string, string[]>) => void
   ) => ipcRenderer.on("setOverwrittenDataPackedFiles", callback),
+  setOutdatedPackFiles: (
+    callback: (event: Electron.IpcRendererEvent, outdatedPackFiles: Record<string, string[]>) => void
+  ) => ipcRenderer.on("setOutdatedPackFiles", callback),
   setDataModLastChangedLocal: (
     callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void
   ) => ipcRenderer.on("setDataModLastChangedLocal", callback),

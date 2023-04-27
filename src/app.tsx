@@ -36,6 +36,7 @@ function render() {
         {(window.location.pathname.includes("/main_window") && (
           <div className="m-auto px-8 pb-4 pt-11 max-w-[100rem]">
             <Onboarding></Onboarding>
+            {/* <LeftSidebar /> */}
             <div className="grid grid-cols-12 text-white">
               <div className="col-span-10">
                 <ModRows />

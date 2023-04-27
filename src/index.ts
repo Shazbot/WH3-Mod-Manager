@@ -156,7 +156,7 @@ if (!gotTheLock) {
     return mod;
   };
 
-  const appendPacksData = (newPack: Pack) => {
+  const appendPacksData = (newPack: Pack, mod?: Mod) => {
     const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
 
     if (!existingPack) {
@@ -175,6 +175,41 @@ if (!gotTheLock) {
         if (overwrittenFileNames.length > 0) {
           appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
           mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
+        }
+
+        const outdatedPackFiles = new Set<string>();
+        if (mod && (mod.lastChangedLocal || mod.lastChanged)) {
+          const lastChanged = mod.lastChanged || mod.lastChangedLocal;
+          if (lastChanged) {
+            appData.gameUpdates
+              .filter((gameUpdate) => parseInt(gameUpdate.timestamp) - lastChanged < 0)
+              .reduce((acc, current) => {
+                if (current.files) {
+                  current.files
+                    .filter((fileUpdateRule) => {
+                      const ret = newPack.packedFiles.some((pF) => pF.name.search(fileUpdateRule.regex) > -1);
+                      // if (ret)
+                      //   console.log(
+                      //     "file match",
+                      //     newPack.packedFiles.find((pF) => pF.name.search(fileUpdateRule.regex) > -1)?.name,
+                      //     "regex",
+                      //     fileUpdateRule.regex,
+                      //     "ret",
+                      //     ret
+                      //   );
+                      return ret;
+                    })
+                    .map((updateRule) => `${current.version}: ${updateRule.reason}`)
+                    .forEach((updateStr) => acc.add(updateStr));
+                }
+                return acc;
+              }, outdatedPackFiles);
+          }
+        }
+        console.log("outdatedPackFiles", outdatedPackFiles);
+        if (outdatedPackFiles.size > 0) {
+          appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
+          mainWindow?.webContents.send("setOutdatedPackFiles", appData.outdatedPackFiles);
         }
       }
     } else {
@@ -325,7 +360,13 @@ if (!gotTheLock) {
               const res = await fetch(
                 `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`
               );
-              const gameUpdates = (await res.json()) as GameUpdateData[];
+              // eslint-disable-next-line prefer-const
+              let gameUpdates = (await res.json()) as GameUpdateData[];
+              // if (isDev) {
+              //   gameUpdates = JSON.parse(fsdumb.readFileSync("./test/wh3.json", "utf-8")) as GameUpdateData[];
+              // }
+              appData.gameUpdates = gameUpdates;
+              console.log("gameUpdates", gameUpdates);
               gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
 
               if (gameUpdates[0]) {
@@ -334,8 +375,8 @@ if (!gotTheLock) {
                   parseInt(gameUpdates[0].timestamp) * 1000
                 );
               }
-            } catch {
-              /* empty */
+            } catch (e) {
+              console.log(e);
             }
           }
           if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
@@ -947,7 +988,7 @@ if (!gotTheLock) {
             (path) => path != mod.path
           );
           if (appData.packsData.every((pack) => pack.path != mod.path)) {
-            appendPacksData(newPack);
+            appendPacksData(newPack, mod);
           }
           if (!skipCollisionCheck) {
             appendCollisions(newPack);
@@ -1312,7 +1353,7 @@ if (!gotTheLock) {
           tablesToRead,
         });
       }
-      appendPacksData(newPack);
+      appendPacksData(newPack, mod);
     }
   };
 
