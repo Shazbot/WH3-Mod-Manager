@@ -182,7 +182,7 @@ if (!gotTheLock) {
           const lastChanged = mod.lastChanged || mod.lastChangedLocal;
           if (lastChanged) {
             appData.gameUpdates
-              .filter((gameUpdate) => parseInt(gameUpdate.timestamp) - lastChanged < 0)
+              .filter((gameUpdate) => parseInt(gameUpdate.timestamp) * 1000 - lastChanged > 0)
               .reduce((acc, current) => {
                 if (current.files) {
                   current.files
