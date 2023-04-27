@@ -98,6 +98,7 @@ declare global {
     appFolderPaths: AppFolderPaths;
     isSetAppFolderPathsDone: boolean;
     overwrittenDataPackedFiles: Record<string, string[]>;
+    outdatedPackFiles: Record<string, string[]>;
     dataModLastChangedLocal?: number;
     currentDBTableSelection?: DBTableSelection;
     currentTab: MainWindowTab;
@@ -158,8 +159,15 @@ declare global {
     mergedModsData: MergedModsData[];
   }
 
+  interface IGameUpdateDataSelection {
+    regex: string;
+    reason: string;
+  }
+
   interface GameUpdateData {
     timestamp: string;
+    version?: string;
+    files?: IGameUpdateDataSelection[];
   }
 
   interface DBTable {

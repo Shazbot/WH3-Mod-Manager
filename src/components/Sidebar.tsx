@@ -30,6 +30,7 @@ const Sidebar = React.memo(() => {
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const filter = useAppSelector((state) => state.app.filter);
   const overwrittenDataPackedFiles = useAppSelector((state) => state.app.overwrittenDataPackedFiles);
+  const outdatedPackFiles = useAppSelector((state) => state.app.outdatedPackFiles);
   const dataModLastChangedLocal = useAppSelector((state) => state.app.dataModLastChangedLocal);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
@@ -363,6 +364,33 @@ const Sidebar = React.memo(() => {
                           </div>
                         )
                       )}
+                    </>
+                  }
+                >
+                  Outdated overwriting packs!
+                </Tooltip>
+              </div>
+            </div>
+          )}
+
+          {Object.keys(outdatedPackFiles).length > 0 && (
+            <div className="text-center text-red-700 font-semibold mb-4">
+              <div className="make-tooltip-w-full">
+                <Tooltip
+                  placement="left"
+                  content={
+                    <>
+                      <p>Packs that contain outdated files that have since been changed in a patch:</p>
+                      {Object.entries(outdatedPackFiles).map(([packName, overwrittenFileNames]) => (
+                        <div key={packName}>
+                          <span className="">{`${packName}:`}</span>
+                          {overwrittenFileNames.map((packedFileName) => (
+                            <div key={`${packName}_${packedFileName}`} className="text-red-600">
+                              {`Patch ${packedFileName}`}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
                     </>
                   }
                 >
