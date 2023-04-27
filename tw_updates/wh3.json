@@ -1,1 +1,17 @@
-[{ "timestamp": "1681407858", "version": "3.0" }, { "timestamp": "1676546494" }]
+[
+  {
+    "timestamp": "1681407858",
+    "version": "3.0",
+    "files": [
+      {
+        "regex": "^animations[/\\\\].*\\.animpack$",
+        "reason": "Custom animations in mod need to be remade."
+      },
+      {
+        "regex": "^db[/\\\\]main_units_tables[/\\\\]",
+        "reason": "Vanilla attributes renamed in main_units_tables."
+      }
+    ]
+  },
+  { "timestamp": "1676546494" }
+]
