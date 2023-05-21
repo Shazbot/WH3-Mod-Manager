@@ -51,6 +51,8 @@ const appSlice = createSlice({
     startArgs: [],
     currentTab: "mods",
     isCreateSteamCollectionOpen: false,
+    isWH3Running: false,
+    toasts: [],
   } as AppState,
   reducers: {
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
@@ -522,6 +524,9 @@ const appSlice = createSlice({
     setIsAdmin: (state: AppState, action: PayloadAction<boolean>) => {
       state.isAdmin = action.payload;
     },
+    setIsWH3Running: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isWH3Running = action.payload;
+    },
     setStartArgs: (state: AppState, action: PayloadAction<string[]>) => {
       state.startArgs = action.payload;
     },
@@ -533,6 +538,19 @@ const appSlice = createSlice({
       if (existingMod) {
         existingMod.isEnabled = true;
       }
+
+      path.split("\\").pop()?.split("/").pop();
+
+      state.toasts.push({
+        type: "info",
+        messages: ["Created merged pack:", path.split("\\").pop()?.split("/").pop()],
+        startTime: Date.now(),
+      } as Toast);
+    },
+    setToastDismissed: (state: AppState, action: PayloadAction<Toast>) => {
+      const targetToast = action.payload;
+      const toast = state.toasts.find((curToast) => curToast === targetToast);
+      if (toast) toast.isDismissed = true;
     },
     setContentFolder: (state: AppState, action: PayloadAction<string>) => {
       state.appFolderPaths.contentFolder = action.payload;
@@ -559,12 +577,16 @@ const appSlice = createSlice({
     setIsCreateSteamCollectionOpen: (state: AppState, action: PayloadAction<boolean>) => {
       state.isCreateSteamCollectionOpen = action.payload;
     },
+    addToast: (state: AppState, action: PayloadAction<Toast>) => {
+      state.toasts.push(action.payload);
+    },
   },
 });
 
 export const {
   toggleMod,
   setMods,
+  addToast,
   setModData,
   setFromConfig,
   enableAll,
@@ -587,6 +609,7 @@ export const {
   toggleIsClosedOnPlay,
   setIsDev,
   setIsAdmin,
+  setIsWH3Running,
   setStartArgs,
   setPackHeaderData,
   toggleMakeUnitsGenerals,
@@ -610,6 +633,7 @@ export const {
   selectDBTable,
   setCurrentTab,
   setIsCreateSteamCollectionOpen,
+  setToastDismissed,
 } = appSlice.actions;
 
 export default appSlice.reducer;

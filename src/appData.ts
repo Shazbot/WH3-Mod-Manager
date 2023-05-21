@@ -19,6 +19,7 @@ interface AppData {
   startArgs: string[];
   isAdmin: boolean;
   gameUpdates: GameUpdateData[];
+  isWH3Running: boolean;
 }
 
 export type AppFolderPaths = { gamePath: string; contentFolder: string };
@@ -41,4 +42,5 @@ export default {
   startArgs: [],
   isAdmin: false,
   gameUpdates: [],
+  isWH3Running: false,
 } as AppData;

@@ -714,8 +714,6 @@ export const writePack = async (
         }
       }
     }
-  } catch (e) {
-    console.log(e);
   } finally {
     if (outFile) await outFile.close();
   }

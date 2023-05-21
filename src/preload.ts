@@ -36,6 +36,8 @@ const api = {
     ipcRenderer.on("setIsDev", callback),
   setIsAdmin: (callback: (event: Electron.IpcRendererEvent, isAdmin: boolean) => void) =>
     ipcRenderer.on("setIsAdmin", callback),
+  setIsWH3Running: (callback: (event: Electron.IpcRendererEvent, isWH3Running: boolean) => void) =>
+    ipcRenderer.on("setIsWH3Running", callback),
   setStartArgs: (callback: (event: Electron.IpcRendererEvent, startArgs: string[]) => void) =>
     ipcRenderer.on("setStartArgs", callback),
   packsInSave: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
@@ -76,6 +78,8 @@ const api = {
     ipcRenderer.on("setPacksDataRead", callback),
   setPackCollisions: (callback: (event: Electron.IpcRendererEvent, packCollisions: PackCollisions) => void) =>
     ipcRenderer.on("setPackCollisions", callback),
+  addToast: (callback: (event: Electron.IpcRendererEvent, toast: Toast) => void) =>
+    ipcRenderer.on("addToast", callback),
   setAppFolderPaths: (callback: (event: Electron.IpcRendererEvent, appFolderPaths: AppFolderPaths) => void) =>
     ipcRenderer.on("setAppFolderPaths", callback),
   getAllModData: (ids: string[]) => ipcRenderer.send("getAllModData", ids),

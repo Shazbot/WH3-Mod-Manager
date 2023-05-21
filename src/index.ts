@@ -1,4 +1,5 @@
 import debounce from "just-debounce-it";
+import psList from "ps-list";
 import { AmendedSchemaField, Pack, PackCollisions, SCHEMA_FIELD_TYPE, SchemaField } from "./packFileTypes";
 import { execFile, exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
@@ -90,6 +91,7 @@ if (!gotTheLock) {
   let mergedWatcher: chokidar.FSWatcher | undefined;
   let queuedViewerData: (PackViewData | undefined)[];
   let isViewerReady = false;
+  let checkWH3RunningInterval: NodeJS.Timer;
 
   const tempModDatas: ModData[] = [];
   const sendModData = debounce(() => {
@@ -1044,6 +1046,17 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("setIsDev", isDev);
       mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
+
+      if (!checkWH3RunningInterval) {
+        checkWH3RunningInterval = setInterval(async () => {
+          const processes = await psList();
+          const isWH3Running = processes.some((process) => process.name == "Warhammer3.exe");
+          if (appData.isWH3Running != isWH3Running) {
+            appData.isWH3Running = isWH3Running;
+            mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+          }
+        }, 500);
+      }
     });
   };
 
@@ -1340,6 +1353,12 @@ if (!gotTheLock) {
 
     if (tablesToRead.length == 0) return;
 
+    mainWindow?.webContents.send("addToast", {
+      type: "info",
+      messages: ["Processing mods..."],
+      startTime: Date.now(),
+    } as Toast);
+
     for (const mod of mods) {
       const existingPack = appData.packsData.find((pack) => pack.path == mod.path);
       console.log("READING FOR GAME START " + mod.name);
@@ -1393,16 +1412,43 @@ if (!gotTheLock) {
         startGameOptions.isScriptLoggingEnabled ||
         startGameOptions.isSkipIntroMoviesEnabled
       ) {
+        log("making temp dir");
         await fs.mkdir(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
 
+        log("getting start game dbs");
         await getDBsForGameStartOptions(enabledMods.concat([dataMod]), startGameOptions);
 
         const tempPackName = "!!!!out.pack";
         const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
-        await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
-        extraEnabledMods =
-          `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` +
-          `\nmod "${tempPackName}";`;
+        log("writing start game pack");
+
+        let failedWriting = true;
+        for (let i = 0; i < 10; i++) {
+          try {
+            await (await fs.open(tempPackPath, "w")).close();
+            await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
+            failedWriting = false;
+            break;
+          } catch (e) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            if (i == 0) {
+              mainWindow?.webContents.send("addToast", {
+                type: "info",
+                messages: ["Game still closing, retrying..."],
+                startTime: Date.now(),
+              } as Toast);
+            }
+          }
+        }
+
+        if (!failedWriting) {
+          log("done writing temp pack");
+          extraEnabledMods =
+            `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` +
+            `\nmod "${tempPackName}";`;
+        } else {
+          log("gave up trying to write temp pack");
+        }
       }
 
       const modPathsInsideMergedMods = enabledMods
@@ -1421,6 +1467,7 @@ if (!gotTheLock) {
           .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
           .join("\n") + extraEnabledMods;
 
+      log("writing my_mods");
       await fs.writeFile(userScriptPath, text);
       const batPath = nodePath.join(appDataPath, "game.bat");
       let batData = `start /d "${appData.gamePath}" Warhammer3.exe`;

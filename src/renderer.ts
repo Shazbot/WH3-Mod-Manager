@@ -23,7 +23,9 @@ import {
   selectDBTable,
   setStartArgs,
   setIsAdmin,
+  setIsWH3Running,
   setOutdatedPackFiles,
+  addToast,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -76,6 +78,16 @@ window.api?.setIsDev((event, isDev) => {
 window.api?.setIsAdmin((event, isAdmin) => {
   console.log("Setting is admin: ", isAdmin);
   store.dispatch(setIsAdmin(isAdmin));
+});
+
+window.api?.setIsWH3Running((event, isWH3Running) => {
+  console.log("Setting isWH3Running: ", isWH3Running);
+  store.dispatch(setIsWH3Running(isWH3Running));
+});
+
+window.api?.addToast((event, toast) => {
+  console.log("adding new toast", toast);
+  store.dispatch(addToast(toast));
 });
 
 window.api?.setStartArgs((event, startArgs) => {

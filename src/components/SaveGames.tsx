@@ -12,6 +12,7 @@ const onEnableModsInSave = (name: string) => {
 };
 
 const SaveGame = memo((props: SaveGameProps) => {
+  const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
@@ -56,8 +57,11 @@ const SaveGame = memo((props: SaveGameProps) => {
                       {save.name}
                     </div>
                     <button
-                      className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-15 w-26 m-auto "
+                      className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-15 w-26 m-auto ${
+                        (isWH3Running && "opacity-30") || ""
+                      }`}
                       type="button"
+                      disabled={isWH3Running}
                       onClick={() => onLoadClick(save.name)}
                     >
                       Load Save
