@@ -234,7 +234,7 @@ const OptionsDrawer = memo(() => {
                   style="light"
                   content={
                     <>
-                      <div>Will copy currently enabled mods from content into data.</div>
+                      <div>Copies currently enabled mods from content into data.</div>
                       <div>Hold Shift if you want to copy all mods.</div>
                       <div>
                         As a modder this can overwrite your mod in data with an older version you have in
@@ -257,7 +257,7 @@ const OptionsDrawer = memo(() => {
                 <Tooltip
                   placement="bottom"
                   style="light"
-                  content="Will remove mods in data if the mod already exists in content. As a modder this can remove a newer version of your mod in data!"
+                  content="Removes all mods in data if such mod already exists in content. As a modder this can remove a newer version of your mod in data!"
                 >
                   <span className="uppercase">Clean data</span>
                 </Tooltip>
@@ -289,7 +289,7 @@ const OptionsDrawer = memo(() => {
                       {!isAdmin && (
                         <div className="text-red-700 font-bold">Requires running as administrator!</div>
                       )}
-                      <div>Will create Symbolic Links of currently enabled mods from content into data.</div>
+                      <div>Creates Symbolic Links of currently enabled mods from content into data.</div>
                       <div>Hold Shift if you want to create links of all mods.</div>
                       <div>This won't create links of mods that already exist in data.</div>
                       <div>Mods that are symbolic links will have a blue name in the manager.</div>
@@ -308,7 +308,7 @@ const OptionsDrawer = memo(() => {
                 <Tooltip
                   placement="bottom"
                   style="light"
-                  content="Will remove all symbolic links in data. Won't touch real mods that aren't symbolic links."
+                  content="Removes all symbolic links in data. Won't touch real mods that aren't symbolic links."
                 >
                   <span className="uppercase">Clean symbolic links in data</span>
                 </Tooltip>

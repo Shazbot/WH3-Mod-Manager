@@ -103,6 +103,8 @@ declare global {
     currentDBTableSelection?: DBTableSelection;
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
+    isWH3Running: boolean;
+    toasts: Toast[];
   }
 
   type AppStateToWrite = Pick<
@@ -191,6 +193,16 @@ declare global {
     skipParsingTables?: boolean;
     tablesToRead?: string[];
   }
+
+  interface Toast {
+    type: ToastType;
+    messages: string[];
+    duration?: number;
+    startTime: number;
+    isDismissed?: boolean;
+  }
+
+  type ToastType = "success" | "warning" | "info";
 
   type MainWindowTab = "mods" | "enabledMods" | "categories";
 }

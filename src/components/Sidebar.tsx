@@ -23,6 +23,7 @@ import ModsMerger from "./ModsMerger";
 
 const Sidebar = React.memo(() => {
   const dispatch = useAppDispatch();
+  const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
@@ -441,18 +442,34 @@ const Sidebar = React.memo(() => {
           <div className="flex flex-col items-center">
             <button
               id="playGame"
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto"
+              disabled={isWH3Running}
+              className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto ${
+                (isWH3Running &&
+                  "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+                ""
+              }`}
               onClick={() => playGameClicked()}
             >
-              Play
+              {(isWH3Running && (
+                <div className="make-tooltip-w-full">
+                  <Tooltip placement="left" content={"Game is currently running!"}>
+                    <span>Play</span>
+                  </Tooltip>
+                </div>
+              )) ||
+                "Play"}
             </button>
 
             <div className="mt-2 w-36 relative">
               <button
                 id="continueGame"
-                className="bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto "
+                className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto ${
+                  (isWH3Running &&
+                    "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+                  ""
+                }`}
                 onClick={() => onContinueGameClicked()}
-                disabled={saves.length < 1}
+                disabled={saves.length < 1 || isWH3Running}
               >
                 <div className="make-tooltip-w-full">
                   <Tooltip
@@ -466,7 +483,7 @@ const Sidebar = React.memo(() => {
               <button
                 id="showSaves"
                 type="submit"
-                className="absolute h-7 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+                className="absolute h-7 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border-2 border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
                 onClick={() => onShowSavedGamesClicked()}
                 disabled={saves.length < 1}
               >

@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "1.36.0",
+  "version": "1.36.1",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
@@ -104,6 +104,7 @@
     "@storybook/testing-library": "^0.0.13",
     "@types/fs-extra": "^9.0.13",
     "@types/nightmare": "^2.10.6",
+    "@types/object-hash": "^3.0.2",
     "@types/react": "^18.0.14",
     "@types/react-dom": "^18.0.5",
     "@types/winreg": "^1.2.31",
@@ -160,6 +161,7 @@
     "just-clone": "^6.1.1",
     "just-debounce-it": "^3.1.1",
     "path-browserify": "^1.0.1",
+    "ps-list": "^8.1.1",
     "re-resizable": "^6.9.9",
     "react": "^18.2.0",
     "react-accessible-treeview": "^2.3.4",
