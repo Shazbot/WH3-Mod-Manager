@@ -1,7 +1,7 @@
 import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useCallback, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { setSharedMod } from "../appSlice";
+import { disableAllMods, setAreModsEnabled, setSharedMod } from "../appSlice";
 import { Spinner } from "flowbite-react";
 
 const subbedModIdsToWaitFor: ModIdAndLoadOrder[] = [];
@@ -27,13 +27,17 @@ const ShareMods = memo((props: ShareModsProps) => {
   };
 
   const importMods = () => {
-    const imported: ModIdAndLoadOrder[] = importModsText.split("|").map((idAndOrder) => {
-      if (idAndOrder.indexOf(";") > -1) {
-        const [workshopId, loadOrderStr] = idAndOrder.split(";");
-        return { workshopId, loadOrder: Number(loadOrderStr) };
-      }
-      return { workshopId: idAndOrder, loadOrder: undefined };
-    });
+    dispatch(disableAllMods());
+    const imported: ModIdAndLoadOrder[] = importModsText
+      .trim()
+      .split("|")
+      .map((idAndOrder) => {
+        if (idAndOrder.indexOf(";") > -1) {
+          const [workshopId, loadOrderStr] = idAndOrder.split(";");
+          return { workshopId, loadOrder: Number(loadOrderStr) };
+        }
+        return { workshopId: idAndOrder, loadOrder: undefined };
+      });
 
     const onlyIds = imported.map((idAndOrder) => idAndOrder.workshopId);
     subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...imported);

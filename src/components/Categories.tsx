@@ -51,8 +51,6 @@ interface ModRow {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const isCategoryRow = (row: any): row is CategoryRow => !!row.category;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const isModRow = (row: any): row is ModRow => !row.category;
 
 type CategoriesTable = CategoryRow[];
 
@@ -97,6 +95,49 @@ const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
         <span className="sr-only">Remove badge</span>
       </button>
     </span>
+  );
+});
+
+const BadgesRowRenderer = memo((props: any) => {
+  // the available renderer-related props are:
+  // - `row` (row index)
+  // - `col` (column index)
+  // - `prop` (column property name)
+  // - `TD` (the HTML cell element)
+
+  // console.log("RENDERCOMP");
+
+  const rowMin = Math.min(selectedInTable.row, selectedInTable.row2);
+  const rowMax = Math.max(selectedInTable.row, selectedInTable.row2);
+
+  // console.log("rowMin", rowMin, "rowMax", rowMin, "row", row);
+  props.TD.style.background = "rgba(255,255, 255,1)";
+  if (props.isContextMenuOpen && props.row >= rowMin && props.row <= rowMax)
+    props.TD.style.background = "rgba(0, 94, 255, 0.1)";
+
+  // console.log(props.value);
+  if (!props.value) return <></>;
+  const categories = props.value as string[];
+
+  const hotRef = props.hotRef;
+  // console.log(hotRef);
+  if (!hotRef || !hotRef.current) return <></>;
+  const hot = hotRef.current.hotInstance;
+  if (!hot) return <></>;
+
+  const rowData = hot.getSourceDataAtRow(props.row) as ModRow;
+  const mod = (props.mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
+  if (!mod) return <></>;
+
+  // - `cellProperties` (the `cellProperties` object for the edited cell)
+  // return (props.value && props.value) || <></>;
+
+  return (
+    <>
+      {categories.map((category) => (
+        <Badge key={category} text={category} mod={mod} />
+      ))}
+    </>
   );
 });
 
@@ -273,48 +314,6 @@ const Categories = React.memo(() => {
   }, [contextMenuRef.current]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const RendererComponent = (props: any) => {
-    // the available renderer-related props are:
-    // - `row` (row index)
-    // - `col` (column index)
-    // - `prop` (column property name)
-    // - `TD` (the HTML cell element)
-
-    // console.log("RENDERCOMP");
-
-    const rowMin = Math.min(selectedInTable.row, selectedInTable.row2);
-    const rowMax = Math.max(selectedInTable.row, selectedInTable.row2);
-
-    // console.log("rowMin", rowMin, "rowMax", rowMin, "row", row);
-    props.TD.style.background = "rgba(255,255, 255,1)";
-    if (isContextMenuOpen && props.row >= rowMin && props.row <= rowMax)
-      props.TD.style.background = "rgba(0, 94, 255, 0.1)";
-
-    // console.log(props.value);
-    if (!props.value) return <></>;
-    const categories = props.value as string[];
-
-    const hotRef = props.hotRef;
-    // console.log(hotRef);
-    if (!hotRef || !hotRef.current) return <></>;
-    const hot = hotRef.current.hotInstance;
-    if (!hot) return <></>;
-
-    const rowData = hot.getSourceDataAtRow(props.row) as ModRow;
-    const mod = mods.find((iterMod) => iterMod.path == rowData.path);
-    if (!mod) return <></>;
-
-    // - `cellProperties` (the `cellProperties` object for the edited cell)
-    // return (props.value && props.value) || <></>;
-
-    return (
-      <>
-        {categories.map((category) => (
-          <Badge key={category} text={category} mod={mod} />
-        ))}
-      </>
-    );
-  };
 
   const getSelectedMods = (): Mod[] => {
     if (!hotRef || !hotRef.current) return [];
@@ -668,7 +667,12 @@ const Categories = React.memo(() => {
           ></HotColumn> */}
           <HotColumn data="categories" readOnly={true}>
             {/* add the `hot-renderer` attribute to mark the component as a Handsontable renderer */}
-            <RendererComponent hotRef={hotRef} hot-renderer />
+            <BadgesRowRenderer
+              mods={mods}
+              isContextMenuOpen={isContextMenuOpen}
+              hotRef={hotRef}
+              hot-renderer
+            />
           </HotColumn>
         </HotTable>
       </div>

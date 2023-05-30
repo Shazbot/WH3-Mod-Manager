@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import "../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "../appSlice";
+import { toggleMod, enableAll, disableAllMods, setModLoadOrder, resetModLoadOrder } from "../appSlice";
 import { Alert, Tooltip } from "flowbite-react";
 import { getFilteredMods, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
@@ -101,7 +101,7 @@ export default function ModRows() {
 
   const onEnabledRightClick = useCallback(() => {
     if (mods.every((mod) => mod.isEnabled)) {
-      dispatch(disableAll());
+      dispatch(disableAllMods());
     } else {
       dispatch(enableAll());
     }

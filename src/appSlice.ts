@@ -139,7 +139,7 @@ const appSlice = createSlice({
         .filter((mod) => modNames.find((modName) => modName === mod.name))
         .forEach((mod) => (mod.isEnabled = true));
     },
-    disableAll: (state: AppState) => {
+    disableAllMods: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
       const toEnable = state.currentPreset.mods.filter((iterMod) =>
@@ -674,7 +674,7 @@ export const {
   setModData,
   setFromConfig,
   enableAll,
-  disableAll,
+  disableAllMods,
   addPreset,
   selectPreset,
   createOnGameStartPreset,
