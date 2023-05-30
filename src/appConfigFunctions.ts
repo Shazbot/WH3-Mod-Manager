@@ -25,6 +25,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
     appFolderPaths: appState.appFolderPaths,
     isClosedOnPlay: appState.isClosedOnPlay,
+    categories: appState.categories,
   };
 };
 

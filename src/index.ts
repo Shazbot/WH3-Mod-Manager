@@ -1165,7 +1165,7 @@ if (!gotTheLock) {
     queuedViewerData = [];
   };
 
-  ipcMain.on("viewerIsReady", (event) => {
+  ipcMain.on("viewerIsReady", () => {
     console.log("VIEWER IS NOW READY");
     isViewerReady = true;
 

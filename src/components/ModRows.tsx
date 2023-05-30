@@ -4,7 +4,7 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import { toggleMod, enableAll, disableAll, setModLoadOrder, resetModLoadOrder } from "../appSlice";
 import { Alert, Tooltip } from "flowbite-react";
 import { getFilteredMods, sortByNameAndLoadOrder } from "../modSortingHelpers";
-import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
+import { FloatingOverlay } from "@floating-ui/react";
 import ModDropdown from "./ModDropdown";
 import { isModAlwaysEnabled } from "../modsHelpers";
 import * as modRowSorting from "../utility/modRowSorting";

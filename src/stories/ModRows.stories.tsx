@@ -1,72 +1,95 @@
 import React from "react";
-import { ComponentStory, ComponentMeta } from "@storybook/react";
+import { ComponentStory, ComponentMeta, Meta, StoryObj } from "@storybook/react";
 
 import ModRow from "../components/ModRows";
+import { configureStore, createSlice } from "@reduxjs/toolkit";
+import { Provider } from "react-redux";
+import { modsFive } from "./test_data/mods";
 
-interface ButtonProps {
-  /**
-   * Is this the principal call to action on the page?
-   */
-  primary?: boolean;
-  /**
-   * What background color to use
-   */
-  backgroundColor?: string;
-  /**
-   * How large should the button be?
-   */
-  size?: "small" | "medium" | "large";
-  /**
-   * Button contents
-   */
-  label: string;
-  /**
-   * Optional click handler
-   */
-  onClick?: () => void;
-}
-
-type ButtonState = {
-  isChecked: boolean;
-};
-
-/**
- * Primary UI component for user interaction
- */
-
-// More on default export: https://storybook.js.org/docs/react/writing-stories/introduction#default-export
-export default {
-  title: "Example/ModRow",
-  component: ModRow,
-  // More on argTypes: https://storybook.js.org/docs/react/api/argtypes
-  argTypes: {
-    backgroundColor: { control: "color" },
+console.log(modsFive);
+export const MockedState: AppState = {
+  currentPreset: {
+    mods: modsFive,
+    name: "",
   },
-} as ComponentMeta<typeof ModRow>;
-
-// More on component templates: https://storybook.js.org/docs/react/writing-stories/introduction#using-args
-const Template: ComponentStory<typeof ModRow> = () => <ModRow />;
-
-export const Primary = Template.bind({});
-// More on args: https://storybook.js.org/docs/react/writing-stories/args
-Primary.args = {
-  primary: true,
-  label: "aaaButton",
+  lastSelectedPreset: null,
+  presets: [],
+  categories: [],
+  filter: "",
+  alwaysEnabledMods: [],
+  hiddenMods: [],
+  saves: [],
+  isOnboardingToRun: false,
+  wasOnboardingEverRun: false,
+  isDev: false,
+  isAdmin: false,
+  areThumbnailsEnabled: false,
+  isClosedOnPlay: false,
+  isAuthorEnabled: false,
+  isMakeUnitsGeneralsEnabled: false,
+  isScriptLoggingEnabled: false,
+  isSkipIntroMoviesEnabled: false,
+  isAutoStartCustomBattleEnabled: false,
+  allMods: modsFive,
+  packsData: {},
+  packCollisions: { packTableCollisions: [], packFileCollisions: [] },
+  newMergedPacks: [],
+  pathsOfReadPacks: [],
+  appFolderPaths: { gamePath: "", contentFolder: "" },
+  isSetAppFolderPathsDone: false,
+  overwrittenDataPackedFiles: {},
+  outdatedPackFiles: {},
+  startArgs: [],
+  currentTab: "mods",
+  isCreateSteamCollectionOpen: false,
+  isWH3Running: false,
+  toasts: [],
 };
 
-export const Secondary = Template.bind({});
-Secondary.args = {
-  label: "Button",
+// A super-simple mock of a redux store
+const Mockstore = ({ appState, children }: { appState: AppState; children: React.ReactNode }) => (
+  <Provider
+    store={configureStore({
+      reducer: {
+        app: createSlice({
+          name: "app",
+          initialState: appState,
+          reducers: {
+            updateTaskState: (state, action) => {
+              const { id, newTaskState } = action.payload;
+            },
+          },
+        }).reducer,
+      },
+    })}
+  >
+    {children}
+  </Provider>
+);
+
+const taskList: Meta<typeof ModRow> = {
+  component: ModRow,
+  title: "ModRows",
+};
+export default taskList;
+type Story = StoryObj<typeof ModRow>;
+
+export const Default: Story = {
+  decorators: [(story) => <Mockstore appState={MockedState}>{story()}</Mockstore>],
 };
 
-export const Large = Template.bind({});
-Large.args = {
-  size: "large",
-  label: "Button",
-};
-
-export const Small = Template.bind({});
-Small.args = {
-  size: "small",
-  label: "Button",
+export const WithPinnedTasks: Story = {
+  decorators: [
+    (story) => {
+      return (
+        <Mockstore
+          appState={{
+            ...MockedState,
+          }}
+        >
+          {story()}
+        </Mockstore>
+      );
+    },
+  ],
 };

@@ -123,3 +123,24 @@ body:not(.disable-row-hover) .row:hover > div {
 .parent-unhide-child:hover .hidden-child {
   display: initial;
 }
+
+#webpack-dev-server-client-overlay {
+  display: none;
+}
+
+.handsontable th div.ht_nestingButton.ht_nestingCollapse:after {
+  display: none;
+}
+
+.handsontable td {
+}
+
+.my-cell {
+  width: 1px;
+  height: 1px;
+  display: none;
+}
+
+.categories-path-cell {
+  overflow: hidden;
+}

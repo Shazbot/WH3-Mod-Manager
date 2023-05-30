@@ -10,6 +10,7 @@ import TopBar from "./components/TopBar";
 import { Toasts } from "./components/Toasts";
 import ModsViewer from "./components/viewer/ModsViewer";
 import LeftSidebar from "./components/LeftSidebar";
+import Main from "./components/Main";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -36,15 +37,8 @@ function render() {
         {(window.location.pathname.includes("/main_window") && (
           <div className="m-auto px-8 pb-4 pt-11 max-w-[100rem]">
             <Onboarding></Onboarding>
-            {/* <LeftSidebar /> */}
-            <div className="grid grid-cols-12 text-white">
-              <div className="col-span-10">
-                <ModRows />
-              </div>
-              <div className="ml-3 col-span-2 relative">
-                <Sidebar />
-              </div>
-            </div>
+            <LeftSidebar />
+            <Main />
           </div>
         )) ||
           (window.location.pathname.includes("/viewer") && (

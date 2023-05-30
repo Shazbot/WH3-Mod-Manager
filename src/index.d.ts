@@ -37,6 +37,7 @@ declare global {
     mergedModsData?: MergedModsData[];
     subbedTime?: number;
     isSymbolicLink: boolean;
+    categories?: string[];
   }
 
   interface ModData {
@@ -70,6 +71,7 @@ declare global {
   }
 
   interface AppState {
+    categories: string[];
     currentPreset: Preset;
     presets: Preset[];
     lastSelectedPreset: Preset | null;
@@ -122,6 +124,7 @@ declare global {
     | "appFolderPaths"
     | "isAutoStartCustomBattleEnabled"
     | "isClosedOnPlay"
+    | "categories"
   >;
 
   type StartGameOptions = Pick<
@@ -151,7 +154,7 @@ declare global {
     lastChanged: number;
   }
 
-  type PresetSelection = "unary" | "addition" | "subtraction";
+  type SelectOperation = "unary" | "addition" | "subtraction";
 
   interface ModWithDefinedReqModIdToName extends Omit<Mod, "reqModIdToName"> {
     reqModIdToName: [string, string][];
@@ -200,6 +203,32 @@ declare global {
     duration?: number;
     startTime: number;
     isDismissed?: boolean;
+  }
+
+  interface AddCategoryPayload {
+    mods: Mod[];
+    category: string;
+  }
+
+  interface RemoveCategoryPayload {
+    mods: Mod[];
+    category: string;
+  }
+
+  interface AddCategoryPayload {
+    mods: Mod[];
+    category: string;
+  }
+
+  interface CategorySelectionPayload {
+    mods: Mod[];
+    category: string;
+    selectOperation: SelectOperation;
+  }
+
+  interface SetIsModEnabledPayload {
+    mod: Mod;
+    isEnabled: boolean;
   }
 
   type ToastType = "success" | "warning" | "info";

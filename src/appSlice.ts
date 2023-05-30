@@ -10,10 +10,45 @@ import {
 
 // if a enabled mod was removed it's possible it was updated, re-enabled it then
 let removedEnabledModPaths: string[] = [];
+const removedModsCategories: Record<string, string[]> = {};
 
 // queue mods in data that should be enabled when they're added
 // for use with copy to data so we re-enable mods
 export const dataModsToEnableByName: string[] = [];
+
+const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
+  const { mods, category } = payload;
+  let wasCategoryAddedToAnyMod = false;
+
+  for (const mod of mods) {
+    const modInPreset = state.currentPreset.mods.find((iterMod) => iterMod.path === mod.path);
+    if (modInPreset) {
+      modInPreset.categories = modInPreset.categories || [];
+      if (!modInPreset.categories.includes(category)) {
+        modInPreset.categories.push(category);
+        wasCategoryAddedToAnyMod = true;
+      }
+    }
+  }
+
+  if (wasCategoryAddedToAnyMod) {
+    if (!state.categories.includes(category)) state.categories.push(category);
+  }
+};
+
+const removeCategoryByPayload = (state: AppState, payload: RemoveCategoryPayload) => {
+  const { mods, category } = payload;
+  for (const inputMod of mods) {
+    const mod = state.currentPreset.mods.find((iterMod) => iterMod.path == inputMod.path);
+    if (mod && mod.categories) {
+      if (mod.categories.includes(category)) {
+        mod.categories = mod.categories.filter((currentCategory) => currentCategory != category);
+      }
+    }
+  }
+  if (mods.every((mod) => !mod.categories || !mod.categories.includes(category)))
+    state.categories = state.categories.filter((iterCategory) => iterCategory != category);
+};
 
 const appSlice = createSlice({
   name: "app",
@@ -22,6 +57,7 @@ const appSlice = createSlice({
       mods: [],
       name: "",
     },
+    categories: [],
     lastSelectedPreset: null,
     presets: [],
     filter: "",
@@ -55,10 +91,26 @@ const appSlice = createSlice({
     toasts: [],
   } as AppState,
   reducers: {
+    addCategory: (state: AppState, action: PayloadAction<AddCategoryPayload>) =>
+      addCategoryByPayload(state, action.payload),
+    removeCategory: (state: AppState, action: PayloadAction<RemoveCategoryPayload>) =>
+      removeCategoryByPayload(state, action.payload),
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
       if (mod) mod.isEnabled = !mod.isEnabled;
+    },
+    setIsModEnabled: (state: AppState, action: PayloadAction<SetIsModEnabledPayload>) => {
+      const { mod, isEnabled } = action.payload;
+      const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
+      if (presetMod) presetMod.isEnabled = isEnabled;
+    },
+    setAreModsEnabled: (state: AppState, action: PayloadAction<SetIsModEnabledPayload[]>) => {
+      const enablePayloads = action.payload;
+      for (const { mod, isEnabled } of enablePayloads) {
+        const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
+        if (presetMod) presetMod.isEnabled = isEnabled;
+      }
     },
     setSharedMod: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
       const payload = action.payload;
@@ -120,6 +172,7 @@ const appSlice = createSlice({
             const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
             if (existingMod) {
               existingMod.isEnabled = mod.isEnabled;
+              existingMod.categories = mod.categories;
               if (mod.humanName !== "") existingMod.humanName = mod.humanName;
               if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
             }
@@ -155,6 +208,11 @@ const appSlice = createSlice({
       if (removedEnabledModPaths.find((path) => path === mod.path)) {
         mod.isEnabled = true;
         removedEnabledModPaths = removedEnabledModPaths.filter((pathOfRemoved) => pathOfRemoved != mod.path);
+      }
+
+      if (removedModsCategories[mod.path]) {
+        mod.categories = removedModsCategories[mod.path];
+        delete removedModsCategories[mod.path];
       }
 
       if (mod.isInData && dataModsToEnableByName.find((nameOfToEnable) => nameOfToEnable === mod.name)) {
@@ -217,6 +275,7 @@ const appSlice = createSlice({
       if (!dataMod && removedMod.isEnabled) {
         removedEnabledModPaths.push(removedMod.path);
       }
+      removedModsCategories[removedMod.path] = removedMod.categories ?? [];
 
       state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
       state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
@@ -323,6 +382,12 @@ const appSlice = createSlice({
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
 
+      const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
+      if (fromConfigAppState.categories) {
+        fromConfigAppState.categories.forEach((category) => categoriesFromMods.add(category));
+      }
+      state.categories = Array.from(categoriesFromMods);
+
       const toEnable = fromConfigAppState.currentPreset.mods.filter((iterMod) =>
         fromConfigAppState.alwaysEnabledMods.some((mod) => mod.name == iterMod.name)
       );
@@ -356,7 +421,7 @@ const appSlice = createSlice({
         state.presets.push(newPreset);
       }
     },
-    selectPreset: (state: AppState, action: PayloadAction<[string, PresetSelection]>) => {
+    selectPreset: (state: AppState, action: PayloadAction<[string, SelectOperation]>) => {
       const [name, presetSelection] = action.payload;
 
       const newPreset = state.presets.find((preset) => preset.name === name);
@@ -539,8 +604,6 @@ const appSlice = createSlice({
         existingMod.isEnabled = true;
       }
 
-      path.split("\\").pop()?.split("/").pop();
-
       state.toasts.push({
         type: "info",
         messages: ["Created merged pack:", path.split("\\").pop()?.split("/").pop()],
@@ -580,11 +643,32 @@ const appSlice = createSlice({
     addToast: (state: AppState, action: PayloadAction<Toast>) => {
       state.toasts.push(action.payload);
     },
+    selectCategory: (state: AppState, action: PayloadAction<CategorySelectionPayload>) => {
+      const { mods, category, selectOperation } = action.payload;
+
+      console.log("selectOperation is", selectOperation);
+      if (selectOperation == "addition") {
+        return addCategoryByPayload(state, { mods, category });
+      }
+
+      if (selectOperation == "subtraction") {
+        return removeCategoryByPayload(state, { mods, category });
+
+        return;
+      } else if (selectOperation == "unary") {
+        for (const mod of mods) {
+          mod.categories = [category];
+        }
+
+        return;
+      }
+    },
   },
 });
 
 export const {
   toggleMod,
+  selectCategory,
   setMods,
   addToast,
   setModData,
@@ -630,10 +714,14 @@ export const {
   setOverwrittenDataPackedFiles,
   setOutdatedPackFiles,
   setDataModLastChangedLocal,
+  setIsModEnabled,
   selectDBTable,
   setCurrentTab,
+  setAreModsEnabled,
   setIsCreateSteamCollectionOpen,
   setToastDismissed,
+  addCategory,
+  removeCategory,
 } = appSlice.actions;
 
 export default appSlice.reducer;
