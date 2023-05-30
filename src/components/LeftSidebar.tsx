@@ -15,13 +15,14 @@ const LeftSidebar = () => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const onTabSelected = (index: number) => {
     const tabType = tabIndexToTabType[index];
+    console.log("setting tab", tabType);
     dispatch(setCurrentTab(tabType));
   };
 
   return (
     <>
       <Tabs
-        className="fixed top-10 z-50 left-0 outline-transparent parent-unhide-child"
+        className="fixed top-14 z-[200] left-0 outline-transparent parent-unhide-child"
         onSelect={(index) => onTabSelected(index)}
         defaultIndex={tabIndexToTabType.findIndex((tabType) => tabType == currentTab)}
       >

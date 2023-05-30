@@ -82,11 +82,11 @@ const Sidebar = React.memo(() => {
     console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action !== "select-option") return;
 
-    let presetSelection = "unary" as PresetSelection;
-    if (isControlDown) presetSelection = "subtraction" as PresetSelection;
-    else if (isShiftDown) presetSelection = "addition" as PresetSelection;
+    let selectOperation = "unary" as SelectOperation;
+    if (isControlDown) selectOperation = "subtraction" as SelectOperation;
+    else if (isShiftDown) selectOperation = "addition" as SelectOperation;
 
-    dispatch(selectPreset([newValue.value, presetSelection]));
+    dispatch(selectPreset([newValue.value, selectOperation]));
   };
 
   const onDeleteChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
@@ -331,6 +331,7 @@ const Sidebar = React.memo(() => {
                   content={missingModDependencies.map(([mod, reqs]) => (
                     <div key={mod.path}>
                       <span className="">{mod.humanName + ` missing:`}</span>
+                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
                       {reqs.map(([reqId, reqHumanName]) => (
                         <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
                           {reqHumanName}
