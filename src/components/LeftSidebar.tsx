@@ -22,7 +22,8 @@ const LeftSidebar = () => {
   return (
     <>
       <Tabs
-        className="fixed top-14 z-[200] left-0 outline-transparent parent-unhide-child"
+        id="left-sidebar"
+        className="fixed top-8 z-[200] left-0 outline-transparent parent-unhide-child"
         onSelect={(index) => onTabSelected(index)}
         defaultIndex={tabIndexToTabType.findIndex((tabType) => tabType == currentTab)}
       >

@@ -144,3 +144,7 @@ body:not(.disable-row-hover) .row:hover > div {
 .categories-path-cell {
   overflow: hidden;
 }
+
+#left-sidebar li {
+  outline: none;
+}
