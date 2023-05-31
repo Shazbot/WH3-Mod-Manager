@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-tabs";
 import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
@@ -10,7 +10,7 @@ import { setCurrentTab } from "../appSlice";
 
 const tabIndexToTabType: MainWindowTab[] = ["mods", "enabledMods", "categories"];
 
-const LeftSidebar = () => {
+const LeftSidebar = memo(() => {
   const dispatch = useAppDispatch();
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const onTabSelected = (index: number) => {
@@ -53,5 +53,5 @@ const LeftSidebar = () => {
       </Tabs>
     </>
   );
-};
+});
 export default LeftSidebar;
