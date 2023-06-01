@@ -299,6 +299,9 @@ export default function ModRows() {
         return;
       }
 
+      // TODO investigate, performance issuses
+      return;
+
       // if (ghost) {
       //   t.parentElement.removeChild(ghost);
       // }
