@@ -38,7 +38,8 @@ export interface FlowbiteFloatingTheme {
   };
 }
 
-export interface FloatingProps extends PropsWithChildren<Omit<ComponentProps<"div">, "className" | "style">> {
+export interface FloatingProps
+  extends PropsWithChildren<Omit<ComponentProps<"div">, "content" | "className" | "style">> {
   content: ReactNode;
   theme: FlowbiteFloatingTheme | FlowbiteDropdownTheme;
   placement?: "auto" | Placement;

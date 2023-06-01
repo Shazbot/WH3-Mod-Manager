@@ -301,39 +301,6 @@ export default function ModRows() {
 
       // TODO investigate, performance issuses
       return;
-
-      // if (ghost) {
-      //   t.parentElement.removeChild(ghost);
-      // }
-
-      // console.log("DRAG ENTER");
-      // const tch = t.children[0];
-      // console.log(tch.innerHTML);
-      // console.log(tch.clientHeight);
-      // console.log(tch.getBoundingClientRect());
-      const boundingRect = currentDragTarget.getBoundingClientRect();
-      // console.log(e.clientX);
-      // console.log(e.clientY);
-      // const newE = document.createElement("div");
-      // newE.id = "drop-ghost";
-      // newE.dataset.rowId = t.id;
-      // newE.classList.add("drop-ghost");
-      // newE.classList.add(getGhostClass());
-
-      // if (e.clientY < boundingRect.top || e.clientY > boundingRect.bottom) return;
-      // console.log(currentDragTarget.id);
-      const parent = currentDragTarget.parentElement;
-      if (!parent || !parent.parentElement) return;
-
-      if (boundingRect.y + boundingRect.height / 2 > e.clientY) {
-        isBottomDrop = false;
-        parent.parentElement.insertBefore(dropOutlineElement, parent);
-        // console.log("inserting before");
-      } else {
-        isBottomDrop = true;
-        parent.parentElement.insertBefore(dropOutlineElement, parent.nextSibling);
-        // console.log("inserting after");
-      }
     },
     [currentDragTarget, dropOutlineElement]
   );

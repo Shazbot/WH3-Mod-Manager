@@ -5,7 +5,8 @@ import { excludeClassName } from "../../helpers/exclude";
 import { Floating } from "../Floating";
 import { useTheme } from "../Flowbite/ThemeContext";
 
-export interface TooltipProps extends PropsWithChildren<Omit<ComponentProps<"div">, "className" | "style">> {
+export interface TooltipProps
+  extends PropsWithChildren<Omit<ComponentProps<"div">, "content" | "className" | "style">> {
   content: ReactNode;
   placement?: "auto" | Placement;
   trigger?: "hover" | "click";
