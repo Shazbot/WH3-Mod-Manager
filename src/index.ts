@@ -1379,115 +1379,128 @@ if (!gotTheLock) {
   ipcMain.on(
     "startGame",
     async (event, mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => {
-      if (!appData.gamePath) return;
+      try {
+        if (!appData.gamePath) return;
 
-      const appDataPath = app.getPath("userData");
-      const userScriptPath = nodePath.join(appData.gamePath, "my_mods.txt");
+        const appDataPath = app.getPath("userData");
+        const myModsPath = nodePath.join(appData.gamePath, "my_mods.txt");
+        const usedModsPath = nodePath.join(appData.gamePath, "used_mods.txt");
 
-      const sortedMods = sortByNameAndLoadOrder(mods);
-      const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
+        const sortedMods = sortByNameAndLoadOrder(mods);
+        const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
 
-      const linuxBit = process.platform === "linux" ? "Z:" : "";
-      const dataMod: Mod = {
-        humanName: "",
-        name: "data.pack",
-        path: nodePath.join(appData.dataFolder as string, "data.pack"),
-        imgPath: "",
-        workshopId: "",
-        isEnabled: true,
-        modDirectory: `${appData.dataFolder}`,
-        isInData: true,
-        lastChanged: undefined,
-        loadOrder: undefined,
-        author: "",
-        isDeleted: false,
-        isMovie: false,
-        size: 0,
-        isSymbolicLink: false,
-      };
+        const linuxBit = process.platform === "linux" ? "Z:" : "";
+        const dataMod: Mod = {
+          humanName: "",
+          name: "data.pack",
+          path: nodePath.join(appData.dataFolder as string, "data.pack"),
+          imgPath: "",
+          workshopId: "",
+          isEnabled: true,
+          modDirectory: `${appData.dataFolder}`,
+          isInData: true,
+          lastChanged: undefined,
+          loadOrder: undefined,
+          author: "",
+          isDeleted: false,
+          isMovie: false,
+          size: 0,
+          isSymbolicLink: false,
+        };
 
-      let extraEnabledMods = "";
-      if (
-        startGameOptions.isMakeUnitsGeneralsEnabled ||
-        startGameOptions.isScriptLoggingEnabled ||
-        startGameOptions.isSkipIntroMoviesEnabled
-      ) {
-        log("making temp dir");
-        await fs.mkdir(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
+        let extraEnabledMods = "";
+        if (
+          startGameOptions.isMakeUnitsGeneralsEnabled ||
+          startGameOptions.isScriptLoggingEnabled ||
+          startGameOptions.isSkipIntroMoviesEnabled
+        ) {
+          log("making temp dir");
+          await fs.mkdir(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
 
-        log("getting start game dbs");
-        await getDBsForGameStartOptions(enabledMods.concat([dataMod]), startGameOptions);
+          log("getting start game dbs");
+          await getDBsForGameStartOptions(enabledMods.concat([dataMod]), startGameOptions);
 
-        const tempPackName = "!!!!out.pack";
-        const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
-        log("writing start game pack");
+          const tempPackName = "!!!!out.pack";
+          const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
+          log("writing start game pack");
 
-        let failedWriting = true;
-        for (let i = 0; i < 10; i++) {
-          try {
-            await (await fs.open(tempPackPath, "w")).close();
-            await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
-            failedWriting = false;
-            break;
-          } catch (e) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            if (i == 0) {
-              mainWindow?.webContents.send("addToast", {
-                type: "info",
-                messages: ["Game still closing, retrying..."],
-                startTime: Date.now(),
-              } as Toast);
+          let failedWriting = true;
+          for (let i = 0; i < 10; i++) {
+            try {
+              await (await fs.open(tempPackPath, "w")).close();
+              await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
+              failedWriting = false;
+              break;
+            } catch (e) {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              if (i == 0) {
+                mainWindow?.webContents.send("addToast", {
+                  type: "info",
+                  messages: ["Game still closing, retrying..."],
+                  startTime: Date.now(),
+                } as Toast);
+              }
             }
+          }
+
+          if (!failedWriting) {
+            log("done writing temp pack");
+            extraEnabledMods =
+              `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` +
+              `\nmod "${tempPackName}";`;
+          } else {
+            log("gave up trying to write temp pack");
           }
         }
 
-        if (!failedWriting) {
-          log("done writing temp pack");
-          extraEnabledMods =
-            `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` +
-            `\nmod "${tempPackName}";`;
-        } else {
-          log("gave up trying to write temp pack");
+        const modPathsInsideMergedMods = enabledMods
+          .filter((mod) => mod.mergedModsData)
+          .map((mod) => (mod.mergedModsData as MergedModsData[]).map((mod) => mod.path))
+          .flatMap((paths) => paths);
+
+        const enabledModsWithoutMergedInMods = enabledMods.filter(
+          (mod) => !modPathsInsideMergedMods.some((path) => path == mod.path)
+        );
+
+        const text =
+          enabledModsWithoutMergedInMods
+            .filter((mod) => nodePath.relative(appData.dataFolder as string, mod.modDirectory) != "")
+            .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
+            .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
+            .join("\n") + extraEnabledMods;
+
+        let fileNameWithModList = "used_mods.txt";
+        try {
+          log("writing used_mods.txt");
+          await fs.writeFile(usedModsPath, text);
+        } catch (e) {
+          log("failed writing to used_mods.txt, trying to use my_mods.txt");
+          fileNameWithModList = "my_mods.txt";
+          await fs.writeFile(myModsPath, text);
         }
-      }
+        const batPath = nodePath.join(appDataPath, "game.bat");
+        let batData = `start /d "${appData.gamePath}" Warhammer3.exe`;
+        if (saveName) {
+          batData += ` game_startup_mode campaign_load "${saveName}" ;`;
+        }
+        // file with the list of mods for the game to use, used_mods.txt or my_mods.txt
+        batData += ` ${fileNameWithModList};`;
 
-      const modPathsInsideMergedMods = enabledMods
-        .filter((mod) => mod.mergedModsData)
-        .map((mod) => (mod.mergedModsData as MergedModsData[]).map((mod) => mod.path))
-        .flatMap((paths) => paths);
+        mainWindow?.webContents.send("handleLog", "starting game:");
+        mainWindow?.webContents.send("handleLog", batData);
 
-      const enabledModsWithoutMergedInMods = enabledMods.filter(
-        (mod) => !modPathsInsideMergedMods.some((path) => path == mod.path)
-      );
+        await fs.writeFile(batPath, batData);
+        execFile(batPath);
 
-      const text =
-        enabledModsWithoutMergedInMods
-          .filter((mod) => nodePath.relative(appData.dataFolder as string, mod.modDirectory) != "")
-          .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
-          .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
-          .join("\n") + extraEnabledMods;
+        if (startGameOptions.isClosedOnPlay) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 5000);
+          });
 
-      log("writing my_mods");
-      await fs.writeFile(userScriptPath, text);
-      const batPath = nodePath.join(appDataPath, "game.bat");
-      let batData = `start /d "${appData.gamePath}" Warhammer3.exe`;
-      if (saveName) {
-        batData += ` game_startup_mode campaign_load "${saveName}" ;`;
-      }
-      batData += " my_mods.txt;";
-
-      mainWindow?.webContents.send("handleLog", "starting game:");
-      mainWindow?.webContents.send("handleLog", batData);
-
-      await fs.writeFile(batPath, batData);
-      execFile(batPath);
-
-      if (startGameOptions.isClosedOnPlay) {
-        await new Promise((resolve) => {
-          setTimeout(resolve, 5000);
-        });
-
-        app.exit();
+          app.exit();
+        }
+      } catch (e) {
+        console.log(e);
       }
     }
   );

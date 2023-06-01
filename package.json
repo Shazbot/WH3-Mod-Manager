@@ -1,13 +1,13 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "1.36.1",
+  "version": "1.36.2",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
-    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --resolveJsonModule --outDir ./temp && electron-forge start",
+    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start",
     "package": "electron-forge package",
-    "make": "tsc ./src/sub.ts ./src/readPacksWorker.ts --resolveJsonModule --outDir ./temp && electron-forge make",
+    "make": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "storybook": "start-storybook -p 6006",
@@ -55,9 +55,9 @@
         }
       ],
       "plugins": [
-        [
-          "@electron-forge/plugin-webpack",
-          {
+        {
+          "name": "@electron-forge/plugin-webpack",
+          "config": {
             "mainConfig": "./webpack.main.config.js",
             "renderer": {
               "config": "./webpack.renderer.config.js",
@@ -81,7 +81,7 @@
               ]
             }
           }
-        ]
+        }
       ]
     }
   },
@@ -132,6 +132,7 @@
   },
   "dependencies": {
     "@floating-ui/react-dom": "^1.0.0",
+    "@floating-ui/react-dom-interactions": "0.9.1",
     "@fortawesome/fontawesome-svg-core": "^6.2.0",
     "@fortawesome/free-solid-svg-icons": "^6.2.0",
     "@fortawesome/react-fontawesome": "^0.2.0",
