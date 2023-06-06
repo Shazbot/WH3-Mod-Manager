@@ -36,6 +36,8 @@ export interface Pack {
   path: string;
   packedFiles: PackedFile[];
   packHeader: PackHeader;
+  lastChangedLocal: number;
+  readTables: string[] | "all";
 }
 
 export interface PackFileCollision {

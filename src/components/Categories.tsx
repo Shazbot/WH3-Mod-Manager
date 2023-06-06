@@ -1,30 +1,23 @@
 import Creatable from "react-select/creatable";
-import React, { memo, useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import "@silevis/reactgrid/styles.css";
-
 import "handsontable/dist/handsontable.full.min.css";
-
 import { HotColumn, HotTable } from "@handsontable/react";
 import { textRenderer, checkboxRenderer } from "handsontable/renderers";
-
 import { registerAllModules } from "handsontable/registry";
-import { Tooltip } from "flowbite-react";
 import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
 import selectStyle from "../styles/selectStyle";
 import { ActionMeta, SingleValue } from "react-select";
-import {
-  addCategory,
-  removeCategory,
-  selectCategory,
-  setAreModsEnabled,
-  setIsModEnabled,
-  toggleMod,
-} from "../appSlice";
+import { addCategory, removeCategory, selectCategory, setAreModsEnabled, toggleMod } from "../appSlice";
 import { CellProperties } from "handsontable/settings";
 import Core from "handsontable/core";
-import Handsontable from "handsontable";
 import debounce from "just-debounce-it";
+import { faXmark } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import ModDropdownOptions from "./ModDropdownOptions";
+import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
+import { Tooltip } from "../flowbite";
 
 type CategorySelectType = {
   value: string;
@@ -54,16 +47,14 @@ const isCategoryRow = (row: any): row is CategoryRow => !!row.category;
 
 type CategoriesTable = CategoryRow[];
 
-let selectedInTable = { row: 0, column: 0, row2: 0, column2: 0 } as {
+let selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }] as {
   row: number;
   column: number;
   row2: number;
   column2: number;
-};
+}[];
 
 const headerNames = ["Category", "Enabled", "Name", "Categories"];
-
-let nestedRowHeaders: NodeListOf<Element>;
 
 const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
   const dispatch = useAppDispatch();
@@ -98,6 +89,7 @@ const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
   );
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BadgesRowRenderer = memo((props: any) => {
   // the available renderer-related props are:
   // - `row` (row index)
@@ -105,22 +97,23 @@ const BadgesRowRenderer = memo((props: any) => {
   // - `prop` (column property name)
   // - `TD` (the HTML cell element)
 
-  // console.log("RENDERCOMP");
+  const selectedRows: number[] = [];
+  for (const selection of selectedInTable) {
+    if (selection.row == -1) continue;
+    const rowMin = Math.min(selection.row, selection.row2);
+    const rowMax = Math.max(selection.row, selection.row2);
 
-  const rowMin = Math.min(selectedInTable.row, selectedInTable.row2);
-  const rowMax = Math.max(selectedInTable.row, selectedInTable.row2);
+    for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
+  }
 
-  // console.log("rowMin", rowMin, "rowMax", rowMin, "row", row);
   props.TD.style.background = "rgba(255,255, 255,1)";
-  if (props.isContextMenuOpen && props.row >= rowMin && props.row <= rowMax)
+  if (props.isContextMenuOpen && selectedRows.includes(props.row))
     props.TD.style.background = "rgba(0, 94, 255, 0.1)";
 
-  // console.log(props.value);
   if (!props.value) return <></>;
   const categories = props.value as string[];
 
   const hotRef = props.hotRef;
-  // console.log(hotRef);
   if (!hotRef || !hotRef.current) return <></>;
   const hot = hotRef.current.hotInstance;
   if (!hot) return <></>;
@@ -128,9 +121,6 @@ const BadgesRowRenderer = memo((props: any) => {
   const rowData = hot.getSourceDataAtRow(props.row) as ModRow;
   const mod = (props.mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
   if (!mod) return <></>;
-
-  // - `cellProperties` (the `cellProperties` object for the edited cell)
-  // return (props.value && props.value) || <></>;
 
   return (
     <>
@@ -141,10 +131,6 @@ const BadgesRowRenderer = memo((props: any) => {
   );
 });
 
-const rerenderTable = debounce((hot: Handsontable) => {
-  // hot.render();
-}, 100);
-
 let isShiftDown = false;
 let isControlDown = false;
 
@@ -153,43 +139,50 @@ const Categories = React.memo(() => {
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
 
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [nameFilter, setNameFilter] = useState<string>("");
+  const [categoriesFilter, setCategoriesFilter] = useState<string>("");
+  const [currentlySelectedMods, setCurrentlySelectedMods] = useState<Mod[]>([]);
+
+  const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const categories = useAppSelector((state) => state.app.categories);
+
+  const setNewCategoryFilter = useMemo(
+    () =>
+      debounce((value: string) => {
+        setCategoryFilter(value);
+      }, 200),
+    [setCategoryFilter]
+  );
+  const setNewNameFilter = useMemo(
+    () =>
+      debounce((value: string) => {
+        setNameFilter(value);
+      }, 200),
+    [setNameFilter]
+  );
+  const setNewCategoriesFilter = useMemo(
+    () =>
+      debounce((value: string) => {
+        setCategoriesFilter(value);
+      }, 200),
+    [setCategoriesFilter]
+  );
+
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const hotRef = useRef<HotTable>(null);
-
-  const onClick = useCallback(
-    (event: Event) => {
-      try {
-        // console.log("clicked", event.currentTarget, event.target);
-        const element = event.currentTarget as Node;
-        const rowNum = ((element as HTMLElement).childNodes[0].childNodes[0] as HTMLElement).innerHTML.split(
-          " "
-        )[0];
-        // console.log("rowNum", rowNum);
-
-        if (!hotRef || !hotRef.current) return;
-        const hot = hotRef.current.hotInstance;
-        if (!hot) return;
-
-        const rowData = hot.getDataAtRow(Number(rowNum) - 1);
-        const category = rowData[0];
-        if (category) {
-          if (hiddenCategories.includes(category)) {
-            setHiddenCategories(hiddenCategories.filter((iterCategory) => iterCategory != category));
-          } else {
-            setHiddenCategories([...hiddenCategories, category]);
-          }
-        }
-      } catch (e) {
-        console.log(e);
-      }
-    },
-    [hiddenCategories, hotRef.current]
-  );
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Shift") isShiftDown = true;
       if (e.key === "Control") isControlDown = true;
+      if (e.key === " ") {
+        const selectedMods = getSelectedMods();
+        if (selectedMods.length > 0) {
+          const toEnable = selectedMods.some((mod) => !mod.isEnabled);
+          dispatch(setAreModsEnabled(selectedMods.map((mod) => ({ mod, isEnabled: toEnable }))));
+        }
+      }
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -199,53 +192,49 @@ const Categories = React.memo(() => {
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
-    // document.addEventListener("click", onClick);
 
-    nestedRowHeaders?.forEach((rowHeader) => {
-      rowHeader.removeEventListener("click", onClick);
-    });
-
-    nestedRowHeaders = document.querySelectorAll(".handsontable th.ht_nestingLevels");
-    nestedRowHeaders.forEach((rowHeader) => {
-      rowHeader.addEventListener("click", onClick);
-    });
+    if (isContextMenuOpen) {
+      setTimeout(() => {
+        const contextMenu = document.getElementById("categoriesContextMenu");
+        if (contextMenu) {
+          const bounds = contextMenu.getBoundingClientRect();
+          if (window.innerHeight < bounds.y + bounds.height) {
+            contextMenu.style.top = `${bounds.y - bounds.height}px`;
+          }
+        }
+      }, 10);
+    }
 
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
-      // document.removeEventListener("click", onClick);
-      nestedRowHeaders.forEach((rowHeader) => {
-        rowHeader.removeEventListener("click", onClick);
-      });
     };
-  }, [hiddenCategories, hotRef.current]);
+  });
 
   registerAllModules();
 
-  const mods = useAppSelector((state) => state.app.currentPreset.mods);
-  const categories = useAppSelector((state) => state.app.categories);
+  let sourceDataObject = getModsSortedByHumanNameAndName(mods).reduce((acc, current) => {
+    let modCategories = current.categories ?? ["Uncategorized"];
+    if (modCategories.length == 0) modCategories = ["Uncategorized"];
 
-  const sourceDataObject = mods.reduce((acc, current) => {
-    for (const category of current.categories ?? ["Uncategorized"]) {
+    for (const category of modCategories) {
       const existingCategoryRow = acc.find((row) => row.category === category);
       const { isEnabled, humanName, path, name, categories } = current;
 
+      const newModRow = {
+        isEnabled,
+        humanName: humanName != "" ? humanName : name.replace(".pack", ""),
+        path,
+        name,
+        categories: categories ?? [],
+      };
+
       if (existingCategoryRow) {
         if (!hiddenCategories.includes(category)) {
-          existingCategoryRow.__children.push({
-            isEnabled,
-            humanName,
-            path,
-            name,
-            categories: categories ?? [],
-          });
+          existingCategoryRow.__children.push(newModRow);
         }
       } else {
-        const children =
-          (!hiddenCategories.includes(category) && [
-            { isEnabled, humanName, path, name, categories: categories ?? [] },
-          ]) ||
-          [];
+        const children = (!hiddenCategories.includes(category) && [newModRow]) || [];
         acc.push({
           category,
           isEnabled: false,
@@ -268,25 +257,84 @@ const Categories = React.memo(() => {
     categoryRowObject.isEnabled = modsInCategory.every((child) => child.isEnabled);
   }
 
-  const onOverlayClick = useCallback(() => {
-    if (!document.scrollingElement) return;
-    const lastScrollTop = document.scrollingElement.scrollTop;
-    setIsContextMenuOpen(false);
+  // filter out the name column, supports comma as OR
+  if (nameFilter.trim() != "") {
+    const filterNames = nameFilter
+      .trim()
+      .toLowerCase()
+      .split(",")
+      .map((name) => name.trim())
+      .filter((category) => category != "");
 
-    setTimeout(() => {
-      if (document.scrollingElement) document.scrollingElement.scrollTop = lastScrollTop;
-      if (!hotRef || !hotRef.current) return;
-      const hot = hotRef.current.hotInstance;
-      if (!hot) return;
-      hot.selectCell(
-        selectedInTable.row,
-        selectedInTable.column,
-        selectedInTable.row2,
-        selectedInTable.column2
+    for (const categoryRow of sourceDataObject) {
+      categoryRow.__children = categoryRow.__children.filter((row) =>
+        filterNames.some((filterName) => row.humanName.toLowerCase().includes(filterName))
       );
+    }
 
-      rerenderTable(hot);
-    }, 1);
+    sourceDataObject = sourceDataObject.filter((categoryRow) => categoryRow.__children.length > 0);
+  }
+
+  // filter out the category column, supports comma as OR
+  if (categoryFilter.trim() != "") {
+    const filterCategories = categoryFilter
+      .trim()
+      .toLowerCase()
+      .split(",")
+      .map((category) => category.trim())
+      .filter((category) => category != "");
+
+    sourceDataObject = sourceDataObject.filter((categoryRow) =>
+      filterCategories.some((category) =>
+        categoryRow.category.toLowerCase().includes(category.toLowerCase().trim())
+      )
+    );
+  }
+
+  // filter out the categories column, supports comma as OR
+  if (categoriesFilter.trim() != "") {
+    const filterCategories = categoriesFilter
+      .trim()
+      .toLowerCase()
+      .split(",")
+      .map((category) => category.trim())
+      .filter((category) => category != "");
+
+    for (const categoryRow of sourceDataObject) {
+      categoryRow.__children = categoryRow.__children.filter((row) =>
+        filterCategories.some((filterCategory) =>
+          (row.categories ?? []).some((category) =>
+            category.toLowerCase().includes(filterCategory.toLowerCase().trim())
+          )
+        )
+      );
+    }
+
+    sourceDataObject = sourceDataObject.filter((categoryRow) => categoryRow.__children.length > 0);
+  }
+
+  // if we filtered out all rows make a new blank row or HotTable will disable its plugins permanently
+  if (sourceDataObject.length == 0) {
+    sourceDataObject.push({
+      category: "NO MATCHES",
+      isEnabled: false,
+      humanName: null,
+      path: null,
+      name: null,
+      categories: null,
+      __children: [],
+    });
+  }
+
+  const flattenedData: (CategoryRow | ModRow)[] = [];
+  for (const categoryRow of sourceDataObject) {
+    flattenedData.push(categoryRow, ...categoryRow.__children);
+  }
+
+  const onOverlayClick = useCallback(() => {
+    selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
+    console.log("clearing tracked selection");
+    setIsContextMenuOpen(false);
   }, []);
 
   const onContextMenu = useCallback((ev: MouseEvent) => {
@@ -294,10 +342,6 @@ const Categories = React.memo(() => {
     if (!contextMenu) return;
     if (!ev || !ev.currentTarget) return;
 
-    // console.log("x", ev.x);
-    // console.log("y", ev.y);
-    // console.log("ox", ev.offsetX);
-    // console.log("oy", ev.offsetY);
     contextMenu.style.left = `${ev.x}px`;
     contextMenu.style.top = `${ev.y}px`;
   }, []);
@@ -313,21 +357,28 @@ const Categories = React.memo(() => {
     return () => document.removeEventListener("contextmenu", onContextMenu);
   }, [contextMenuRef.current]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-
   const getSelectedMods = (): Mod[] => {
     if (!hotRef || !hotRef.current) return [];
     const hot = hotRef.current.hotInstance;
     if (!hot) return [];
 
+    const selectedRows: number[] = [];
+    for (const selection of selectedInTable) {
+      if (selection.row == -1) continue;
+      const rowMin = Math.min(selection.row, selection.row2);
+      const rowMax = Math.max(selection.row, selection.row2);
+
+      for (let i = rowMin; i <= rowMax; i++) {
+        selectedRows.push(i);
+      }
+    }
+
     const selectedMods: Mod[] = [];
-    for (
-      let rowNum = Math.min(selectedInTable.row, selectedInTable.row2);
-      rowNum <= Math.max(selectedInTable.row, selectedInTable.row2);
-      rowNum++
-    ) {
-      const path = (hot.getSourceDataAtRow(rowNum) as ModRow).path;
-      const selectedMod = mods.find((iterMod) => iterMod.path === path);
+    for (const rowNum of selectedRows) {
+      const rowData = hot.getSourceDataAtRow(rowNum) as CategoryRow | ModRow;
+      if (isCategoryRow(rowData)) continue;
+      const path = rowData.path;
+      const selectedMod = mods.find((iterMod) => iterMod.path == path);
       if (selectedMod) selectedMods.push(selectedMod);
     }
     return selectedMods;
@@ -349,10 +400,13 @@ const Categories = React.memo(() => {
     else if (isControlDown) selectOperation = "subtraction" as SelectOperation;
 
     dispatch(selectCategory({ mods: getSelectedMods(), category: newValue.value, selectOperation }));
+    setIsContextMenuOpen(false);
   };
 
   const onCreateNewCategory = (name: string) => {
     dispatch(addCategory({ category: name, mods: getSelectedMods() }));
+    selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
+    setIsContextMenuOpen(false);
   };
 
   const options = categories.map(
@@ -375,13 +429,23 @@ const Categories = React.memo(() => {
     value: any,
     cellProperties: CellProperties
   ) {
+    if (col == 1) {
+      td.style.verticalAlign = "middle";
+    }
+
     if (col == 1) checkboxRenderer.apply(this, [_instance, td, row, col, prop, value, cellProperties]);
     else textRenderer.apply(this, [_instance, td, row, col, prop, value, cellProperties]);
 
-    const rowMin = Math.min(selectedInTable.row, selectedInTable.row2);
-    const rowMax = Math.max(selectedInTable.row, selectedInTable.row2);
-    // console.log("rowMin", rowMin, "rowMax", rowMin, "row", row);
-    if (isContextMenuOpen && row >= rowMin && row <= rowMax) td.style.background = "rgba(0, 94, 255, 0.1)";
+    const selectedRows: number[] = [];
+    for (const selection of selectedInTable) {
+      if (selection.row == -1) continue;
+      const rowMin = Math.min(selection.row, selection.row2);
+      const rowMax = Math.max(selection.row, selection.row2);
+
+      for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
+    }
+
+    if (isContextMenuOpen && selectedRows.includes(row)) td.style.background = "rgba(0, 94, 255, 0.1)";
   }
 
   return (
@@ -409,8 +473,17 @@ const Categories = React.memo(() => {
           ref={contextMenuRef}
         >
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
-            <li className="border-b-2 pb-4 mb-1 flex justify-center flex-wrap">
-              <div className="mt-1 mb-2">Add category:</div>
+            <li className=" pb-3 mb-1 flex justify-center flex-wrap">
+              <Tooltip
+                content={
+                  <>
+                    <p>Hold Ctrl to remove category.</p>
+                    <p>Hold Ctrl+Shift to replace all categories.</p>
+                  </>
+                }
+              >
+                <div className="mt-1 mb-2">Add category:</div>
+              </Tooltip>
               <Creatable
                 className=" w-10/12"
                 options={options}
@@ -419,96 +492,182 @@ const Categories = React.memo(() => {
                 onCreateOption={(name) => onCreateNewCategory(name)}
               ></Creatable>
             </li>
-            <li>
-              <a
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                Set Load Order
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                <Tooltip
-                  placement="right"
-                  style="light"
-                  content={<div className="min-w-[10rem]">Mod will always be enabled, even when hidden.</div>}
-                >
-                  Keep always enabled
-                </Tooltip>
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                <Tooltip
-                  placement="right"
-                  style="light"
-                  content={
-                    <div className="min-w-[10rem]">
-                      Mod will be hidden from the list and disabled (except when always enabled).
-                    </div>
-                  }
-                >
-                  Hide from list
-                </Tooltip>
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                Show in explorer
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                Open in RPFM
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                Open in Viewer
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                Copy path to clipboard
-              </a>
-            </li>
           </ul>
+          {currentlySelectedMods.length > 1 && (
+            <div>
+              <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
+                <li>
+                  <a
+                    onClick={() => {
+                      dispatch(
+                        setAreModsEnabled(currentlySelectedMods.map((mod) => ({ mod: mod, isEnabled: true })))
+                      );
+                      setIsContextMenuOpen(false);
+                    }}
+                    href="#"
+                    className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                  >
+                    Enable All
+                  </a>
+                </li>
+                <li>
+                  <a
+                    onClick={() => {
+                      dispatch(
+                        setAreModsEnabled(
+                          currentlySelectedMods.map((mod) => ({ mod: mod, isEnabled: false }))
+                        )
+                      );
+                      setIsContextMenuOpen(false);
+                    }}
+                    href="#"
+                    className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                  >
+                    Disable All
+                  </a>
+                </li>
+              </ul>
+            </div>
+          )}
+          {currentlySelectedMods.length == 1 && (
+            <ModDropdownOptions
+              isOpen={isContextMenuOpen}
+              mod={currentlySelectedMods[0]}
+            ></ModDropdownOptions>
+          )}
         </div>
       </FloatingOverlay>
+
+      <div className="-mt-6">
+        <div className="mt-5 flex">
+          <span className="relative ml-4">
+            <input
+              id="categoryFilterInput"
+              type="text"
+              defaultValue={categoryFilter}
+              placeholder="Category filter"
+              onChange={(e) => {
+                setNewCategoryFilter(e.target.value);
+              }}
+              className="bg-gray-50 w-40 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            ></input>
+
+            <span className="absolute right-2 top-2 text-gray-400">
+              <button
+                onClick={() => {
+                  (document.getElementById("categoryFilterInput") as HTMLInputElement).value = "";
+                  setCategoryFilter("");
+                }}
+              >
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </span>
+          </span>
+
+          <span className="relative ml-8">
+            <input
+              id="nameFilterInput"
+              type="text"
+              defaultValue={nameFilter}
+              placeholder="Name filter"
+              onChange={(e) => {
+                setNewNameFilter(e.target.value);
+              }}
+              className="bg-gray-50 w-72 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            ></input>
+
+            <span className="absolute right-2 top-2 text-gray-400">
+              <button
+                onClick={() => {
+                  (document.getElementById("nameFilterInput") as HTMLInputElement).value = "";
+                  setNameFilter("");
+                }}
+              >
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </span>
+          </span>
+
+          <span className="relative ml-10">
+            <input
+              id="categoriesFilterInput"
+              type="text"
+              defaultValue={categoriesFilter}
+              placeholder="Categories filter"
+              onChange={(e) => {
+                setNewCategoriesFilter(e.target.value);
+              }}
+              className="bg-gray-50 w-80 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            ></input>
+
+            <span className="absolute right-2 top-2 text-gray-400">
+              <button
+                onClick={() => {
+                  (document.getElementById("categoriesFilterInput") as HTMLInputElement).value = "";
+                  setCategoriesFilter("");
+                }}
+              >
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </span>
+          </span>
+        </div>
+      </div>
       <div
         onClick={(ev) => {
-          // console.log(ev);
+          const targetElement = ev.target as HTMLElement;
+          let innerHmtl = "";
+          if (targetElement.classList.contains("rowHeader")) {
+            innerHmtl = targetElement.innerHTML;
+          } else if (targetElement.parentElement?.classList.contains("rowHeader")) {
+            innerHmtl = targetElement.parentElement?.innerHTML;
+          }
+
+          if (innerHmtl == "") return;
+          const rowNum = Number(innerHmtl.split(" ")[0]) - 1;
+          if (flattenedData.length <= rowNum) return;
+
+          const rowData = flattenedData[rowNum];
+          if (!isCategoryRow(rowData)) return;
+
+          const category = rowData.category;
+          if (category) {
+            if (hiddenCategories.includes(category)) {
+              setHiddenCategories(hiddenCategories.filter((iterCategory) => iterCategory != category));
+            } else {
+              setHiddenCategories([...hiddenCategories, category]);
+            }
+          }
         }}
         onContextMenu={() => {
-          setIsContextMenuOpen(true);
-
           if (!hotRef || !hotRef.current) return;
           const hot = hotRef.current.hotInstance;
           if (!hot) return;
-          rerenderTable(hot);
+
+          const selectedRows: number[] = [];
+          for (const selection of selectedInTable) {
+            if (selection.row == -1) continue;
+            const rowMin = Math.min(selection.row, selection.row2);
+            const rowMax = Math.max(selection.row, selection.row2);
+
+            for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
+          }
+
+          const selectedMods: Mod[] = [];
+          for (const i of selectedRows) {
+            const rowData = hot.getSourceDataAtRow(i) as ModRow | CategoryRow;
+            if (!isCategoryRow(rowData)) {
+              const mod = mods.find((mod) => mod.path == rowData.path);
+              if (mod) selectedMods.push(mod);
+            }
+          }
+          setCurrentlySelectedMods(selectedMods);
+          setIsContextMenuOpen(true);
         }}
         className="overflow-hidden"
       >
         <HotTable
+          className={(isContextMenuOpen && "disable-border") || ""}
           viewportColumnRenderingOffset={100}
           viewportRowRenderingOffset={100}
           data={sourceDataObject}
@@ -516,28 +675,16 @@ const Categories = React.memo(() => {
           width="100%"
           ref={hotRef}
           stretchH="last"
-          height={"94vh"}
+          height={"90vh"}
           nestedRows={true}
           // preventOverflow={"vertical"}
           licenseKey="non-commercial-and-evaluation"
           rowHeaders={(visualRowIndex) => {
-            // console.log()
-            // console.log(this)
-            if (!hotRef || !hotRef.current) return `${visualRowIndex + 1}`;
-            const hot = hotRef.current.hotInstance;
-            if (!hot) {
-              setTimeout(() => {
-                if (!hotRef || !hotRef.current) return `${visualRowIndex + 1}`;
-                const hot = hotRef.current.hotInstance;
-                if (hot) hot.render();
-              }, 500);
-              return `${visualRowIndex + 1}`;
-            }
-            // const hot = this as unknown as Handsontable;
-            const rowData = hot.getDataAtRow(visualRowIndex);
-            const category = rowData[0];
-            if (category) {
-              if (hiddenCategories.includes(category)) {
+            if (visualRowIndex >= flattenedData.length) return `${visualRowIndex + 1}`;
+
+            const data = flattenedData[visualRowIndex];
+            if (isCategoryRow(data)) {
+              if (hiddenCategories.includes(data.category)) {
                 return `${visualRowIndex + 1} <span style="">▼</span>`;
               }
               return `${visualRowIndex + 1} <span style="">▲</span>`;
@@ -545,7 +692,8 @@ const Categories = React.memo(() => {
 
             return `${visualRowIndex + 1}`;
           }}
-          afterChange={(changes, source) => {
+          afterChange={(changes) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             changes?.forEach(([row, prop, oldValue, newValue]) => {
               if (!hotRef || !hotRef.current) return;
               const hot = hotRef.current.hotInstance;
@@ -576,64 +724,66 @@ const Categories = React.memo(() => {
           afterSelection={(row, column, row2, column2, preventScrolling) => {
             if (column == 1) return;
             // if(row == -1){ }
-            console.log("selected", row, column);
-            selectedInTable = { row, column, row2, column2 };
+            // console.log("selected", row, column);
+            selectedInTable.push({ row, column, row2, column2 });
 
             if (!hotRef || !hotRef.current) return;
             const hot = hotRef.current.hotInstance;
             if (!hot) return;
-            // console.log("SELECTED DATA IS", hot.getSourceData(row, column, row2, column2));
-            // console.log("SELECTED DATA IS2", hot.getSourceDataArray(row, column, row2, column2));
-            // console.log("SELECTED DATA IS3", hot.getSourceDataAtRow(row));
+
             preventScrolling.value = true;
-            if (row == row2 && column == column2) {
+            if (row == row2 && column == column2 && column == 0) {
               // console.log("THEY'RE SAME");
               const rowData = hot.getDataAtRow(row);
               const category = rowData[0];
               const name = rowData[2];
               // console.log("rowData", rowData);
-              if (!name) {
+              if (!name && category) {
                 let currentRowNum = row + 1;
                 for (; ; currentRowNum++) {
-                  // console.log("max is", hot.countRows());
-                  // console.log("current is", currentRowNum);
                   if (hot.countRows() <= currentRowNum) {
-                    selectedInTable = { row, column, row2: currentRowNum - 1, column2 };
+                    selectedInTable.push({ row, column, row2: currentRowNum - 1, column2 });
                     hot.selectRows(row, currentRowNum - 1);
-                    rerenderTable(hot);
                     break;
                   }
                   const rowData = hot.getDataAtRow(currentRowNum);
                   const currentRowCategory = rowData[0];
                   if (currentRowCategory) {
                     console.log("NEW selectedInTable", { row, column, row2: currentRowNum - 1, column2 });
-                    selectedInTable = { row, column, row2: currentRowNum - 1, column2 };
+                    selectedInTable.push({ row, column, row2: currentRowNum - 1, column2 });
                     setTimeout(() => {
-                      // rerenderTable(hot);
                       hot.selectRows(row, currentRowNum - 1);
-                      rerenderTable(hot);
-                    }, 100);
+                    }, 50);
                     break;
                   }
                 }
               }
+            } else {
+              const selected = hot.getSelected();
+              if (selected) {
+                // console.log("selected:", selected);
+                selectedInTable = selected.map((selection) => {
+                  const [row, column, row2, column2] = selection;
+                  return { row, column, row2, column2 };
+                });
+              }
             }
-            setTimeout(() => {
-              // rerenderTable(hot);
-            }, 100);
           }}
           afterDeselect={() => {
-            // console.log("deselected");
-            if (!isContextMenuOpen) selectedInTable = { row: 0, column: 0, row2: 0, column2: 0 };
+            console.log("deselected");
+            if (!isContextMenuOpen) {
+              selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
+              console.log("clearing tracked selection");
+            }
             if (!hotRef || !hotRef.current) return;
             const hot = hotRef.current.hotInstance;
             if (!hot) return;
             // hot.render();
           }}
           readOnlyCellClassName="" // prevents use of the default class
-          selectionMode="range"
+          selectionMode="multiple"
           // disableVisualSelection={true}
-          // rowHeights={"29px"}
+          rowHeights={"29px"}
           hiddenColumns={
             {
               // columns: [3],
@@ -651,20 +801,14 @@ const Categories = React.memo(() => {
             return cellProperties;
           }}
           autoRowSize={true}
-          rowHeights="28px"
-          autoColumnSize={false}
+          // rowHeights="28px"
+
+          autoColumnSize={true}
           bindRowsWithHeaders={false}
         >
-          <HotColumn data="category" width={120} readOnly={true}></HotColumn>
+          <HotColumn data="category" className="htCenter htMiddle" width={120} readOnly={true}></HotColumn>
           <HotColumn data="isEnabled" width={30} type="checkbox"></HotColumn>
-          <HotColumn data="name" width={300} readOnly={true}></HotColumn>
-          {/* <HotColumn
-            height={10}
-            data="path"
-            className="categories-path-cell"
-            width={50}
-            readOnly={true}
-          ></HotColumn> */}
+          <HotColumn data="humanName" className="htMiddle" width={300} readOnly={true}></HotColumn>
           <HotColumn data="categories" readOnly={true}>
             {/* add the `hot-renderer` attribute to mark the component as a Handsontable renderer */}
             <BadgesRowRenderer

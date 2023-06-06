@@ -37,3 +37,17 @@ modsFive[2].categories = [];
 modsFive[2].categories.push("Empire");
 modsFive[2].categories.push("Stinky");
 modsFive[2].isEnabled = true;
+
+export const categories: string[] = [];
+for (let i = 0; i < 16; i++) {
+  const newCategory = randomWords(1).join();
+  modsFive[2].categories.push(newCategory);
+  categories.push(newCategory);
+}
+
+modsFive[4].categories = [];
+for (let i = 0; i < 8; i++) {
+  const newCategory = randomWords(1).join();
+  modsFive[4].categories.push(newCategory);
+  categories.push(newCategory);
+}

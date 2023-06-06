@@ -46,7 +46,8 @@ const removeCategoryByPayload = (state: AppState, payload: RemoveCategoryPayload
       }
     }
   }
-  if (mods.every((mod) => !mod.categories || !mod.categories.includes(category)))
+
+  if (state.currentPreset.mods.every((mod) => !mod.categories || !mod.categories.includes(category)))
     state.categories = state.categories.filter((iterCategory) => iterCategory != category);
 };
 
@@ -91,6 +92,7 @@ const appSlice = createSlice({
     toasts: [],
   } as AppState,
   reducers: {
+    // when mutating mods make sure you get the same mod from state.currentPreset.mods and don't change the mod that's from the payload
     addCategory: (state: AppState, action: PayloadAction<AddCategoryPayload>) =>
       addCategoryByPayload(state, action.payload),
     removeCategory: (state: AppState, action: PayloadAction<RemoveCategoryPayload>) =>
@@ -656,8 +658,9 @@ const appSlice = createSlice({
 
         return;
       } else if (selectOperation == "unary") {
-        for (const mod of mods) {
-          mod.categories = [category];
+        for (const payloadMod of mods) {
+          const mod = state.currentPreset.mods.find((iterMod) => iterMod.path == payloadMod.path);
+          if (mod) mod.categories = [category];
         }
 
         return;

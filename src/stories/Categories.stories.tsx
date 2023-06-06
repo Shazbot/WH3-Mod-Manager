@@ -4,7 +4,7 @@ import { ComponentStory, ComponentMeta, Meta, StoryObj } from "@storybook/react"
 import Categories from "../components/Categories";
 import { configureStore, createSlice } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { modsFive } from "./test_data/mods";
+import { modsFive, categories } from "./test_data/mods";
 
 export const MockedState: AppState = {
   currentPreset: {
@@ -41,7 +41,7 @@ export const MockedState: AppState = {
   currentTab: "mods",
   isCreateSteamCollectionOpen: false,
   isWH3Running: false,
-  categories: ["Empire", "Stinky"],
+  categories: [...categories, ...["Empire", "Stinky"]],
   toasts: [],
 };
 

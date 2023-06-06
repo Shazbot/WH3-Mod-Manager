@@ -62,6 +62,14 @@ export function getModsSortedByHumanName(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => firstMod.humanName.localeCompare(secondMod.humanName));
 }
 
+export function getModsSortedByHumanNameAndName(mods: Mod[]) {
+  return [...mods].sort((firstMod, secondMod) => {
+    const firstModValue = (firstMod.humanName != "" && firstMod.humanName) || firstMod.name;
+    const secondModValue = (secondMod.humanName != "" && secondMod.humanName) || secondMod.name;
+    return firstModValue.localeCompare(secondModValue);
+  });
+}
+
 export function getModsSortedByEnabled(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
     if (firstMod.isEnabled == secondMod.isEnabled) {

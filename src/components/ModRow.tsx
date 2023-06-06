@@ -10,6 +10,7 @@ import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 
 type ModRowProps = {
   mod: Mod;
+  index: number;
   onRowHoverStart: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
   onRowHoverEnd: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
   onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
@@ -45,6 +46,7 @@ const formatLastChanged = (lastChanged: number) => {
 
 const ModRow = memo(
   ({
+    index,
     mod,
     onRowHoverStart,
     onRowHoverEnd,
@@ -89,6 +91,7 @@ const ModRow = memo(
         id={mod.name}
         data-load-order={mod.loadOrder}
       >
+        {index != 0 && <div className="drop-ghost grid-column-7 h-10 hidden"></div>}
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
           <span className={mod.loadOrder === undefined ? "" : "text-red-600 font-bold"}>{loadOrder}</span>
         </div>
@@ -224,6 +227,7 @@ const ModRow = memo(
         >
           <label htmlFor={mod.workshopId + "enabled"}>{timeColumnValue}</label>
         </div>
+        {/* <div className="drop-ghost grid-column-7 h-10 hidden"></div> */}
       </div>
     );
   }
