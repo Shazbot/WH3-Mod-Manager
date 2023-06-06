@@ -216,6 +216,16 @@ if (!gotTheLock) {
       }
     } else {
       console.log("existing pack for", newPack.name, "found");
+      // append list of tables that are parsed in that pack
+      if (newPack.readTables == "all") {
+        existingPack.readTables = "all";
+      } else {
+        newPack.readTables.forEach((newlyRead) => {
+          if (existingPack.readTables != "all" && !existingPack.readTables.includes(newlyRead)) {
+            existingPack.readTables.push(newlyRead);
+          }
+        });
+      }
       newPack.packedFiles
         .filter((packedFile) => packedFile.schemaFields)
         .forEach((newPackedFile) => {
@@ -1361,13 +1371,38 @@ if (!gotTheLock) {
 
     for (const mod of mods) {
       const existingPack = appData.packsData.find((pack) => pack.path == mod.path);
-      console.log("READING FOR GAME START " + mod.name);
-      let newPack = null;
+      let needsReRead = false;
       if (existingPack) {
+        const lastChangedLocal = (await fsExtra.stat(mod.path)).mtimeMs;
+        if (lastChangedLocal != existingPack.lastChangedLocal) {
+          needsReRead = true;
+          appData.packsData = appData.packsData.filter((pack) => pack.path != mod.path);
+        }
+      }
+      console.log("READING FOR GAME START " + mod.name);
+      let newPack: Pack | null = null;
+      if (existingPack && !needsReRead) {
+        console.log("existingPack.readTables", existingPack.readTables);
+        console.log("tablesToRead", tablesToRead);
+        if (existingPack.readTables === "all") {
+          console.log("don't need to read tables for", existingPack.name, "all tables in pack are parsed");
+          continue;
+        }
+        if (
+          tablesToRead.every((tableToRead) =>
+            (existingPack.readTables as string[]).some((iterTableName) => iterTableName == tableToRead)
+          )
+        ) {
+          console.log("don't need to read tables for", existingPack.name, tablesToRead, "are parsed");
+          continue;
+        }
+
+        console.log("reading from existing pack");
         newPack = await readFromExistingPack(existingPack, {
           tablesToRead,
         });
       } else {
+        console.log("reading from new pack");
         newPack = await readPack(mod.path, {
           tablesToRead,
         });
@@ -1379,6 +1414,10 @@ if (!gotTheLock) {
   ipcMain.on(
     "startGame",
     async (event, mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => {
+      console.log("before start:");
+      for (const pack of appData.packsData) {
+        console.log(pack.name, pack.readTables);
+      }
       try {
         if (!appData.gamePath) return;
 
@@ -1419,6 +1458,11 @@ if (!gotTheLock) {
 
           log("getting start game dbs");
           await getDBsForGameStartOptions(enabledMods.concat([dataMod]), startGameOptions);
+
+          console.log("before start:");
+          for (const pack of appData.packsData) {
+            console.log(pack.name, pack.readTables);
+          }
 
           const tempPackName = "!!!!out.pack";
           const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);

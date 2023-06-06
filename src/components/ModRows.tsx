@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import "../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { toggleMod, enableAll, disableAllMods, setModLoadOrder, resetModLoadOrder } from "../appSlice";
@@ -14,13 +14,35 @@ import ModRow from "./ModRow";
 let currentDragTarget: Element;
 let dropOutlineElement: HTMLDivElement;
 let isBottomDrop = false;
+let idOfDragged = "";
 
 const onDragEnd = (e?: React.DragEvent<HTMLDivElement>) => {
   console.log("onDragEnd");
 
-  const ghost = document.getElementById("drop-ghost");
-  if (ghost && ghost.parentElement) {
-    ghost.parentElement.removeChild(ghost);
+  // console.log("on drag end height", rowsParentRef.current?.clientHeight);
+  // console.log("on drag end height", rowsParentRef.current?.getBoundingClientRect());
+  // console.log("on drag end height", rowsParentRef.current?.scrollTop);
+  console.log("on drag end SCR 1", document.scrollingElement?.scrollTop);
+
+  // const ghost = document.getElementById("drop-ghost");
+  // if (ghost && ghost.parentElement) {
+  //   ghost.parentElement.removeChild(ghost);
+  // }
+
+  // console.log("idOfDragged");
+  console.log(idOfDragged);
+  // console.log("111");
+  let oldTop = -1;
+  const originalElement = (idOfDragged != "" && document.getElementById(idOfDragged)) || null;
+  // // console.log("orig", !!originalElement, !!originalElement?.parentElement);
+  // // if (!originalElement || !originalElement.parentElement) return;
+  // const oldTop = originalElement?.getBoundingClientRect().top;
+  // console.log(originalElement?.getBoundingClientRect(), oldTop);
+  // console.log(originalElement?.offsetTop);
+  if (originalElement && originalElement.children[1]) {
+    console.log("first child rect", originalElement?.children[1].getBoundingClientRect());
+
+    oldTop = originalElement.children[1].getBoundingClientRect().top;
   }
 
   [...document.getElementsByClassName("row-bg-color-manually")].forEach((element) => {
@@ -30,6 +52,44 @@ const onDragEnd = (e?: React.DragEvent<HTMLDivElement>) => {
   const body = document.getElementById("body");
   if (body) body.classList.remove("disable-row-hover");
   // e.stopPropagation();
+
+  setTimeout(() => {
+    const modsGrid = document.getElementById("modsGrid");
+    if (modsGrid) {
+      const ghosts = modsGrid.getElementsByClassName("drop-ghost");
+      for (const ghost of ghosts) {
+        if (!ghost.classList.contains("hidden")) {
+          //     console.log("found one");
+          //     console.log(e?.clientY);
+          //     console.log(ghost.getBoundingClientRect());
+          ghost.classList.add("hidden");
+        }
+      }
+    }
+
+    setTimeout(() => {
+      const originalElement = (idOfDragged != "" && document.getElementById(idOfDragged)) || null;
+      // // console.log("orig", !!originalElement, !!originalElement?.parentElement);
+      // // if (!originalElement || !originalElement.parentElement) return;
+      // const oldTop = originalElement?.getBoundingClientRect().top;
+      // console.log(originalElement?.getBoundingClientRect(), oldTop);
+      // console.log(originalElement?.offsetTop);
+      if (oldTop != -1 && originalElement && originalElement.children[1]) {
+        console.log("first child rect AFTER", originalElement?.children[1].getBoundingClientRect());
+        const newTop = originalElement.children[1].getBoundingClientRect().top;
+
+        window.scrollBy(0, newTop - oldTop);
+      }
+
+      // console.log("on drag end SCR 2", document.scrollingElement?.scrollTop);
+      // const newTop = originalElement?.getBoundingClientRect().top;
+      // console.log("oldtop", oldTop, "newtop", newTop);
+      // if (oldTop && newTop) {
+      //   window.scrollBy(0, newTop - oldTop);
+      //   console.log("scrolled by", newTop - oldTop);
+      // }
+    }, 50);
+  }, 100);
 };
 
 export default function ModRows() {
@@ -45,6 +105,8 @@ export default function ModRows() {
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
+
+  const rowsParentRef = useRef<HTMLDivElement>(null);
 
   let presetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = presetMods.filter(
@@ -186,13 +248,48 @@ export default function ModRows() {
     // console.log(`setting data ${t.id}`);
     e.dataTransfer.setData("text/plain", t.id.replace("drag-icon-", ""));
 
+    console.log("idOfDragged");
+    console.log(t.id.replace("drag-icon-", ""));
+    console.log("111");
+    console.log(rowsParentRef.current?.clientHeight);
+    console.log(rowsParentRef.current?.scrollTop);
+    console.log(rowsParentRef.current?.getBoundingClientRect());
+    console.log("docu scroll", document.scrollingElement?.scrollTop);
+    const originalElement = (idOfDragged != "" && document.getElementById("rowsParent")) || null;
+    // console.log("orig", !!originalElement, !!originalElement?.parentElement);
+    // if (!originalElement || !originalElement.parentElement) return;
+    console.log(originalElement?.getBoundingClientRect());
+    console.log(originalElement?.offsetTop);
+
     const body = document.getElementById("body");
     if (body) body.classList.add("disable-row-hover");
 
     // console.log(t.id.replace("drag-icon-", ""));
     const row = document.getElementById(t.id.replace("drag-icon-", ""));
     row?.classList.add("row-bg-color-manually");
-    // e.stopPropagation();
+
+    // const elTop = t.offsetTop;
+    // const viewportHeight = window.innerHeight;
+
+    const viewportOffset = t.parentElement?.getBoundingClientRect();
+    const oldTop = viewportOffset?.top;
+    // these are relative to the viewport, i.e. the window
+
+    setTimeout(() => {
+      const modsGrid = document.getElementById("modsGrid");
+      if (modsGrid) {
+        const ghosts = modsGrid.getElementsByClassName("drop-ghost");
+        for (const ghost of ghosts) {
+          if (ghost.classList.contains("hidden")) ghost.classList.remove("hidden");
+        }
+      }
+      setTimeout(() => {
+        const newTop = t.parentElement?.getBoundingClientRect().top;
+        if (oldTop && newTop) window.scrollBy(0, newTop - oldTop);
+
+        // t.parentElement?.scrollIntoView({ block: "center" });
+      }, 50);
+    }, 50);
   }, []);
 
   const getGhostClass = useCallback(() => {
@@ -212,34 +309,30 @@ export default function ModRows() {
 
       const ghost = document.getElementById("drop-ghost");
       if (!ghost) {
-        // ghost.parentElement.removeChild(ghost);
-        const newE = document.createElement("div");
-        dropOutlineElement = newE;
-        newE.id = "drop-ghost";
-        newE.dataset.rowId = t.id;
-        newE.classList.add("drop-ghost");
-        newE.classList.add(getGhostClass());
-        if (areThumbnailsEnabled) newE.classList.add("h-10");
-        else newE.classList.add("h-8");
-
-        newE.addEventListener("dragover", (e) => {
-          e.preventDefault();
-        });
-        newE.addEventListener("drop", (e) => {
-          e.preventDefault();
-          const draggedId = e.dataTransfer?.getData("text/plain");
-          if (!draggedId || draggedId === "") return;
-
-          const currentTarget = e.currentTarget as HTMLElement;
-          // console.log("dropped on ghost: " + currentTarget.id);
-          // console.log("isBottomDrop: " + isBottomDrop);
-
-          if (!currentTarget.nextElementSibling) return;
-
-          const rowId = currentTarget.nextElementSibling.id;
-          afterDrop(draggedId, rowId);
-          onDragEnd();
-        });
+        //   // ghost.parentElement.removeChild(ghost);
+        //   const newE = document.createElement("div");
+        //   dropOutlineElement = newE;
+        //   newE.id = "drop-ghost";
+        //   newE.dataset.rowId = t.id;
+        //   newE.classList.add("drop-ghost");
+        //   newE.classList.add(getGhostClass());
+        //   if (areThumbnailsEnabled) newE.classList.add("h-10");
+        //   else newE.classList.add("h-8");
+        //   newE.addEventListener("dragover", (e) => {
+        //     e.preventDefault();
+        //   });
+        //   newE.addEventListener("drop", (e) => {
+        //     e.preventDefault();
+        //     const draggedId = e.dataTransfer?.getData("text/plain");
+        //     if (!draggedId || draggedId === "") return;
+        //     const currentTarget = e.currentTarget as HTMLElement;
+        //     // console.log("dropped on ghost: " + currentTarget.id);
+        //     // console.log("isBottomDrop: " + isBottomDrop);
+        //     if (!currentTarget.nextElementSibling) return;
+        //     const rowId = currentTarget.nextElementSibling.id;
+        //     afterDrop(draggedId, rowId);
+        //     onDragEnd();
+        //   });
       } else {
         dropOutlineElement = ghost as HTMLDivElement;
         // newE = ghost as HTMLDivElement;
@@ -252,21 +345,32 @@ export default function ModRows() {
     },
     [getGhostClass]
   );
+
   const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    const parent = e.currentTarget;
+    const ghosts = parent.getElementsByClassName("drop-ghost");
+    for (const ghost of ghosts) {
+      // if (!ghost.classList.contains("hidden")) ghost.classList.add("hidden");
+    }
     // console.log("onDragLeave");
     // e.stopPropagation();
   }, []);
+
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     // console.log("onDragOver");
     // e.stopPropagation();
     e.preventDefault();
     // return false;
   }, []);
+
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    // console.log("onDrop");
+    console.log("onDrop");
     // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
     const droppedId = e.dataTransfer.getData("text/plain");
     if (droppedId === "") return;
+    idOfDragged = droppedId;
+
+    console.log("in ondrop droppedID", droppedId);
 
     const t = e.currentTarget as HTMLDivElement;
     // console.log(`DROPPED ONTO ${t.id}`);
@@ -278,29 +382,22 @@ export default function ModRows() {
     const rowId = (isBottomDrop ? (t.nextElementSibling.nextElementSibling as HTMLElement) : t).id;
 
     afterDrop(droppedId, rowId);
-    onDragEnd();
+    // onDragEnd();
     // e.stopPropagation();
   }, []);
+
   const onDrag = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      // console.log(e.currentTarget);
-
-      if (e.dataTransfer.types.length > 1) return;
-
-      if (!currentDragTarget) {
-        console.log("CURRENT DRAG TARGET MISSING");
-        return;
-      }
-      // if (currentDragTarget.parentElement !== e.currentTarget) return;
-
-      // const newE = document.getElementById("drop-ghost");
-      if (!dropOutlineElement) {
-        console.log("NEWE MISSING");
-        return;
+      if (e.clientY < 200) {
+        const yRatio = e.clientY / 200;
+        console.log(-(20 * yRatio + 75 * (1 - yRatio)));
+        scrollBy(0, -(20 * yRatio + 75 * (1 - yRatio)));
       }
 
-      // TODO investigate, performance issuses
-      return;
+      if (e.clientY > innerHeight - 75) {
+        const yRatio = (e.clientY - (innerHeight - 75)) / 75;
+        scrollBy(0, 75 * yRatio + 20 * (1 - yRatio));
+      }
     },
     [currentDragTarget, dropOutlineElement]
   );
@@ -372,6 +469,7 @@ export default function ModRows() {
       onDragEnd={(e) => onDragEnd(e)}
       className={`dark:text-slate-100 ` + (areThumbnailsEnabled ? "text-lg" : "")}
       id="rowsParent"
+      ref={rowsParentRef}
     >
       <FloatingOverlay
         onClick={() => onDropdownOverlayClick()}
@@ -505,10 +603,11 @@ export default function ModRows() {
               (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
           )
           .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name))
-          .map((mod) => (
+          .map((mod, i) => (
             <ModRow
               key={mod.path}
               {...{
+                index: i,
                 mod,
                 onRowHoverStart,
                 onRowHoverEnd,

@@ -805,6 +805,13 @@ export const readFromExistingPack = async (
 
   console.log(`reading from existing pack ${modPath}`);
 
+  let lastChangedLocal = -1;
+  try {
+    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
+  } catch (e) {
+    console.log(e);
+  }
+
   let file: BinaryFile | undefined;
   try {
     file = new BinaryFile(modPath, "r", true);
@@ -819,7 +826,14 @@ export const readFromExistingPack = async (
     });
 
     if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
-      return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+      return {
+        name: nodePath.basename(modPath),
+        path: modPath,
+        packedFiles: pack_files,
+        packHeader,
+        lastChangedLocal,
+        readTables: [],
+      } as Pack;
     }
 
     const startPos = dbPackFiles.reduce(
@@ -855,7 +869,18 @@ export const readFromExistingPack = async (
   // }
   // console.log(toRead.map((mod) => mod.name));
 
-  return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+  let readTables: string[] | "all" = "all";
+  if (packReadingOptions.skipParsingTables) readTables = [];
+  if (packReadingOptions.tablesToRead) readTables = packReadingOptions.tablesToRead;
+
+  return {
+    name: nodePath.basename(modPath),
+    path: modPath,
+    packedFiles: pack_files,
+    packHeader,
+    lastChangedLocal,
+    readTables,
+  } as Pack;
 };
 
 const readDBPackedFiles = async (
@@ -1034,6 +1059,13 @@ export const readPack = async (
   const pack_files: PackedFile[] = [];
   let packHeader: PackHeader | undefined;
 
+  let lastChangedLocal = -1;
+  try {
+    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
+  } catch (e) {
+    console.log(e);
+  }
+
   let file: BinaryFile | undefined;
   try {
     file = new BinaryFile(modPath, "r", true);
@@ -1169,7 +1201,14 @@ export const readPack = async (
     });
 
     if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
-      return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+      return {
+        name: nodePath.basename(modPath),
+        path: modPath,
+        packedFiles: pack_files,
+        packHeader,
+        lastChangedLocal,
+        readTables: [],
+      } as Pack;
     }
 
     const startPos = dbPackFiles.reduce(
@@ -1205,7 +1244,18 @@ export const readPack = async (
   // }
   // console.log(toRead.map((mod) => mod.name));
 
-  return { name: nodePath.basename(modPath), path: modPath, packedFiles: pack_files, packHeader } as Pack;
+  let readTables: string[] | "all" = "all";
+  if (packReadingOptions.skipParsingTables) readTables = [];
+  if (packReadingOptions.tablesToRead) readTables = packReadingOptions.tablesToRead;
+
+  return {
+    name: nodePath.basename(modPath),
+    path: modPath,
+    packedFiles: pack_files,
+    packHeader,
+    lastChangedLocal,
+    readTables,
+  } as Pack;
 };
 
 export const readPackWithWorker = async (modPath: string, skipParsingTables = false): Promise<Pack> => {

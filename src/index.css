@@ -79,15 +79,15 @@ body {
   padding: 0.25rem;
 }
 
-.row-bg-color-manually > * {
+.row-bg-color-manually > :not(.drop-ghost) {
   background-color: #525252;
 }
 
-body:not(.disable-row-hover) .row:hover div {
+body:not(.disable-row-hover) .row:hover div:not(.drop-ghost) {
   background-color: #525252;
 }
 
-body:not(.disable-row-hover) .row:hover > div {
+body:not(.disable-row-hover) .row:hover > div:not(.drop-ghost) {
   box-shadow: inset 0 1px 0 #71717a, 0 1px 0 hsla(0, 0%, 0%, 0.5);
 }
 
@@ -147,4 +147,18 @@ body:not(.disable-row-hover) .row:hover > div {
 
 #left-sidebar li {
   outline: none;
+}
+
+.ht_clone_inline_start.ht_clone_left.handsontable {
+  display: none;
+}
+
+.handsontable .ht_clone_inline_start thead,
+.handsontable .ht_master thead,
+.handsontable .ht_master tr th {
+  visibility: visible !important;
+}
+
+.disable-border .htBorders {
+  display: none !important;
 }
