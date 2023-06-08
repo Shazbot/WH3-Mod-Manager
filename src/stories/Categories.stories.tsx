@@ -43,6 +43,9 @@ export const MockedState: AppState = {
   isWH3Running: false,
   categories: [...categories, ...["Empire", "Stinky"]],
   toasts: [],
+  removedModsCategories: {},
+  dataModsToEnableByName: [],
+  removedEnabledModPaths: [],
 };
 
 // A super-simple mock of a redux store

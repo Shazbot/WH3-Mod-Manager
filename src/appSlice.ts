@@ -8,15 +8,6 @@ import {
   withoutDataAndContentDuplicates,
 } from "./modsHelpers";
 
-// these var are outside the state, if we're changing them inside a reducer make sure it's done inside a timeout
-// if a enabled mod was removed it's possible it was updated, re-enabled it then
-let removedEnabledModPaths: string[] = [];
-const removedModsCategories: Record<string, string[]> = {};
-
-// queue mods in data that should be enabled when they're added
-// for use with copy to data so we re-enable mods
-export const dataModsToEnableByName: string[] = [];
-
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
   let wasCategoryAddedToAnyMod = false;
@@ -91,6 +82,11 @@ const appSlice = createSlice({
     isCreateSteamCollectionOpen: false,
     isWH3Running: false,
     toasts: [],
+    removedModsCategories: {},
+    // before we make symbolic links in data queue those mods to be re-enabled
+    dataModsToEnableByName: [],
+    // if a enabled mod was removed it's possible it was updated, re-enabled it then
+    removedEnabledModPaths: [],
   } as AppState,
   reducers: {
     // when mutating mods make sure you get the same mod from state.currentPreset.mods and don't change the mod that's from the payload
@@ -208,30 +204,27 @@ const appSlice = createSlice({
         state.allMods.push(mod);
       }
 
-      if (removedEnabledModPaths.find((path) => path === mod.path)) {
+      if (state.removedEnabledModPaths.find((path) => path === mod.path)) {
         mod.isEnabled = true;
-        setTimeout(() => {
-          removedEnabledModPaths = removedEnabledModPaths.filter(
-            (pathOfRemoved) => pathOfRemoved != mod.path
-          );
-        }, 1);
+        state.removedEnabledModPaths = state.removedEnabledModPaths.filter(
+          (pathOfRemoved) => pathOfRemoved != mod.path
+        );
       }
 
-      if (removedModsCategories[mod.path]) {
-        mod.categories = removedModsCategories[mod.path];
-        setTimeout(() => {
-          delete removedModsCategories[mod.path];
-        }, 1);
+      if (state.removedModsCategories[mod.path]) {
+        mod.categories = state.removedModsCategories[mod.path];
+        delete state.removedModsCategories[mod.path];
       }
-      if (mod.isInData && dataModsToEnableByName.find((nameOfToEnable) => nameOfToEnable === mod.name)) {
+      if (
+        mod.isInData &&
+        state.dataModsToEnableByName.find((nameOfToEnable) => nameOfToEnable === mod.name)
+      ) {
         mod.isEnabled = true;
 
-        setTimeout(() => {
-          dataModsToEnableByName.splice(
-            dataModsToEnableByName.findIndex((nameOfToEnable) => nameOfToEnable === mod.name),
-            1
-          );
-        }, 1);
+        state.dataModsToEnableByName.splice(
+          state.dataModsToEnableByName.findIndex((nameOfToEnable) => nameOfToEnable === mod.name),
+          1
+        );
       }
       if (state.dataFromConfig?.currentPreset.mods.find((iterMod) => iterMod.path == mod.path)?.isEnabled) {
         mod.isEnabled = true;
@@ -281,13 +274,9 @@ const appSlice = createSlice({
       }
 
       if (!dataMod && removedMod.isEnabled) {
-        setTimeout(() => {
-          removedEnabledModPaths.push(removedMod.path);
-        }, 1);
+        state.removedEnabledModPaths.push(removedMod.path);
       }
-      setTimeout(() => {
-        removedModsCategories[removedMod.path] = removedMod.categories ?? [];
-      }, 1);
+      state.removedModsCategories[removedMod.path] = removedMod.categories ?? [];
 
       state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
       state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
@@ -649,6 +638,9 @@ const appSlice = createSlice({
       const tabType = action.payload;
       state.currentTab = tabType;
     },
+    setDataModsToEnableByName: (state: AppState, action: PayloadAction<string[]>) => {
+      state.dataModsToEnableByName = action.payload;
+    },
     setIsCreateSteamCollectionOpen: (state: AppState, action: PayloadAction<boolean>) => {
       state.isCreateSteamCollectionOpen = action.payload;
     },
@@ -733,6 +725,7 @@ export const {
   setAreModsEnabled,
   setIsCreateSteamCollectionOpen,
   setToastDismissed,
+  setDataModsToEnableByName,
   addCategory,
   removeCategory,
 } = appSlice.actions;
