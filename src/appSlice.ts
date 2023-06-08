@@ -8,6 +8,7 @@ import {
   withoutDataAndContentDuplicates,
 } from "./modsHelpers";
 
+// these var are outside the state, if we're changing them inside a reducer make sure it's done inside a timeout
 // if a enabled mod was removed it's possible it was updated, re-enabled it then
 let removedEnabledModPaths: string[] = [];
 const removedModsCategories: Record<string, string[]> = {};
@@ -209,30 +210,35 @@ const appSlice = createSlice({
 
       if (removedEnabledModPaths.find((path) => path === mod.path)) {
         mod.isEnabled = true;
-        removedEnabledModPaths = removedEnabledModPaths.filter((pathOfRemoved) => pathOfRemoved != mod.path);
+        setTimeout(() => {
+          removedEnabledModPaths = removedEnabledModPaths.filter(
+            (pathOfRemoved) => pathOfRemoved != mod.path
+          );
+        }, 1);
       }
 
       if (removedModsCategories[mod.path]) {
         mod.categories = removedModsCategories[mod.path];
-        delete removedModsCategories[mod.path];
+        setTimeout(() => {
+          delete removedModsCategories[mod.path];
+        }, 1);
       }
-
       if (mod.isInData && dataModsToEnableByName.find((nameOfToEnable) => nameOfToEnable === mod.name)) {
         mod.isEnabled = true;
-        dataModsToEnableByName.splice(
-          dataModsToEnableByName.findIndex((nameOfToEnable) => nameOfToEnable === mod.name),
-          1
-        );
-      }
 
+        setTimeout(() => {
+          dataModsToEnableByName.splice(
+            dataModsToEnableByName.findIndex((nameOfToEnable) => nameOfToEnable === mod.name),
+            1
+          );
+        }, 1);
+      }
       if (state.dataFromConfig?.currentPreset.mods.find((iterMod) => iterMod.path == mod.path)?.isEnabled) {
         mod.isEnabled = true;
       }
-
       if (state.newMergedPacks.some((mergedPack) => mergedPack.path == mod.path)) {
         mod.isEnabled = true;
       }
-
       if (state.alwaysEnabledMods.some((iterMod) => iterMod.name == mod.name)) {
         mod.isEnabled = true;
       }
@@ -275,9 +281,13 @@ const appSlice = createSlice({
       }
 
       if (!dataMod && removedMod.isEnabled) {
-        removedEnabledModPaths.push(removedMod.path);
+        setTimeout(() => {
+          removedEnabledModPaths.push(removedMod.path);
+        }, 1);
       }
-      removedModsCategories[removedMod.path] = removedMod.categories ?? [];
+      setTimeout(() => {
+        removedModsCategories[removedMod.path] = removedMod.categories ?? [];
+      }, 1);
 
       state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
       state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
