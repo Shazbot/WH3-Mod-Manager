@@ -9,8 +9,8 @@ import {
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
-  dataModsToEnableByName,
   setIsCreateSteamCollectionOpen,
+  setDataModsToEnableByName,
 } from "../appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -55,6 +55,7 @@ const OptionsDrawer = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
+  const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
 
   const enabledModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -111,7 +112,9 @@ const OptionsDrawer = memo(() => {
         window.api?.copyToDataAsSymbolicLink();
       } else {
         window.api?.copyToDataAsSymbolicLink(enabledMods.map((mod) => mod.path));
-        dataModsToEnableByName.push(...enabledMods.map((mod) => mod.name));
+        dispatch(
+          setDataModsToEnableByName([...dataModsToEnableByName, ...enabledMods.map((mod) => mod.name)])
+        );
       }
     },
     [enabledMods]

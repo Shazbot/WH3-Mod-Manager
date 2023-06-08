@@ -44,6 +44,9 @@ export const MockedState: AppState = {
   isCreateSteamCollectionOpen: false,
   isWH3Running: false,
   toasts: [],
+  removedModsCategories: {},
+  dataModsToEnableByName: [],
+  removedEnabledModPaths: [],
 };
 
 // A super-simple mock of a redux store

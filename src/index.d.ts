@@ -107,6 +107,9 @@ declare global {
     isCreateSteamCollectionOpen: boolean;
     isWH3Running: boolean;
     toasts: Toast[];
+    removedModsCategories: Record<string, string[]>;
+    dataModsToEnableByName: string[];
+    removedEnabledModPaths: string[];
   }
 
   type AppStateToWrite = Pick<
