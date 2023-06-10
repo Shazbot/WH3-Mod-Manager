@@ -722,16 +722,6 @@ export const writePack = async (
         await outFile.writeInt32(packFile.schemaFields.length / ver_schema.length);
       }
 
-      let general_unit_index = null;
-      let dbVersionNumFields = null;
-      if (getDBName(packFile) === "units_custom_battle_permissions_tables") {
-        const dbVersion = getDBVersion(packFile);
-        if (dbVersion != null) {
-          general_unit_index = dbVersion.fields.findIndex((field) => field.name == "general_unit");
-          dbVersionNumFields = dbVersion.fields.length;
-        }
-      }
-
       // console.log(general_unit_index);
       // console.log(dbVersionNumFields);
 
