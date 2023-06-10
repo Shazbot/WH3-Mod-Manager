@@ -5,7 +5,7 @@
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
-    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start",
+    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start --inspect-electron",
     "package": "electron-forge package",
     "make": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge make",
     "publish": "electron-forge publish",

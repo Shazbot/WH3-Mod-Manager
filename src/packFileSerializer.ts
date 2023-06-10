@@ -320,16 +320,6 @@ const getGUID = () => {
 const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[], enabledMods: Mod[]) => {
   // console.log(packsData);
   // console.log(packsData.filter((packData) => packData == null));
-  const battlePermissions = packsData
-    .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
-    .map((packData) => packData.packedFiles)
-    .map((packedFiles) =>
-      packedFiles.filter((packedFile) =>
-        packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\")
-      )
-    )
-    .reduce((previous, packedFile) => previous.concat(packedFile), []);
-
   const dataPack = packsData.find((packData) => packData.name === "data.pack");
   if (!dataPack) return;
   const vanillaBattlePersmission = dataPack.packedFiles.find((pf) =>
@@ -338,6 +328,55 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
   if (!vanillaBattlePersmission) return;
 
   const vanillaBattlePersmissionVersion = vanillaBattlePersmission.version;
+
+  const battlePermissions = clone(
+    packsData
+      .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
+      .map((packData) => packData.packedFiles)
+      .map((packedFiles) =>
+        packedFiles.filter(
+          (packedFile) =>
+            packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\") &&
+            packedFile.version == vanillaBattlePersmissionVersion
+        )
+      )
+      .reduce((previous, packedFile) => previous.concat(packedFile), [])
+  );
+
+  for (const packFile of battlePermissions) {
+    const newFields: SchemaField[] = [];
+    if (!packFile.schemaFields) continue;
+    if (getDBName(packFile) === "units_custom_battle_permissions_tables") {
+      const dbVersion = getDBVersion(packFile);
+      if (dbVersion == null) continue;
+      const general_unit_index = dbVersion.fields.findIndex((field) => field.name == "general_unit");
+      const dbVersionNumFields = dbVersion.fields.length;
+
+      for (let i = 0; i < packFile.schemaFields.length; i++) {
+        const field = packFile.schemaFields[i];
+        if (
+          general_unit_index != null &&
+          dbVersionNumFields != null &&
+          i % dbVersionNumFields == general_unit_index
+        ) {
+          // console.log("FOUND GENERAL UNIT INDEX");
+          // console.log(field.name);
+
+          if (field.fields[0].val == 1) {
+            for (let j = 0; j < dbVersion.fields.length; j++) {
+              const fieldToAdd = clone(packFile.schemaFields[i - general_unit_index + j]);
+              if (j == general_unit_index) fieldToAdd.fields[0].val = 0;
+              newFields.push(fieldToAdd);
+            }
+          } else {
+            field.fields[0].val = 1;
+          }
+        }
+      }
+
+      packFile.schemaFields.push(...newFields);
+    }
+  }
 
   const battlePermissionsSchemaFields = battlePermissions.reduce((previous, packedFile) => {
     if (packedFile.version != vanillaBattlePersmissionVersion) return previous;
@@ -698,20 +737,7 @@ export const writePack = async (
 
       for (let i = 0; i < packFile.schemaFields.length; i++) {
         const field = packFile.schemaFields[i];
-        if (
-          general_unit_index != null &&
-          dbVersionNumFields != null &&
-          i % dbVersionNumFields == general_unit_index
-        ) {
-          // console.log("FOUND GENERAL UNIT INDEX");
-          // console.log(field.name);
-          const newField = clone(field);
-          newField.fields[0].val = 1;
-          await writeField(outFile, newField);
-        } else {
-          // console.log(field.name);
-          await writeField(outFile, field);
-        }
+        await writeField(outFile, field);
       }
     }
   } finally {
