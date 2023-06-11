@@ -26,6 +26,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     appFolderPaths: appState.appFolderPaths,
     isClosedOnPlay: appState.isClosedOnPlay,
     categories: appState.categories,
+    modRowsSortingType: appState.modRowsSortingType,
   };
 };
 

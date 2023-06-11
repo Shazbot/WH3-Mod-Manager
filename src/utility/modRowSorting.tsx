@@ -180,43 +180,19 @@ export function getSortedMods(presetMods: Mod[], orderedMods: Mod[], sortingType
   return mods;
 }
 
-export const onOrderedSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.Ordered ? SortingType.OrderedReverse : SortingType.Ordered;
-  });
+const sortTypeToReverseType: { [key in SortingType]?: SortingType } = {
+  [SortingType.Ordered]: SortingType.OrderedReverse,
+  [SortingType.IsEnabled]: SortingType.IsEnabledReverse,
+  [SortingType.PackName]: SortingType.PackNameReverse,
+  [SortingType.IsDataPack]: SortingType.IsDataPackReverse,
+  [SortingType.HumanName]: SortingType.HumanNameReverse,
+  [SortingType.LastUpdated]: SortingType.LastUpdatedReverse,
+  [SortingType.SubbedTime]: SortingType.SubbedTimeReverse,
+  [SortingType.Author]: SortingType.AuthorReverse,
 };
-export const onEnabledSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.IsEnabled ? SortingType.IsEnabledReverse : SortingType.IsEnabled;
-  });
-};
-export const onPackSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.PackName ? SortingType.PackNameReverse : SortingType.PackName;
-  });
-};
-export const onIsDataPackSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.IsDataPack ? SortingType.IsDataPackReverse : SortingType.IsDataPack;
-  });
-};
-export const onNameSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.HumanName ? SortingType.HumanNameReverse : SortingType.HumanName;
-  });
-};
-export const onLastUpdatedSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.LastUpdated ? SortingType.LastUpdatedReverse : SortingType.LastUpdated;
-  });
-};
-export const onSubbedTimeSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.SubbedTime ? SortingType.SubbedTimeReverse : SortingType.SubbedTime;
-  });
-};
-export const onAuthorSort = (setSortingType: React.Dispatch<React.SetStateAction<SortingType>>) => {
-  setSortingType((prevState) => {
-    return prevState === SortingType.Author ? SortingType.AuthorReverse : SortingType.Author;
-  });
+
+export const getNewSortType = (newSortingType: SortingType, currentSortingType: SortingType) => {
+  return (
+    (currentSortingType == newSortingType && sortTypeToReverseType[currentSortingType]) || newSortingType
+  );
 };

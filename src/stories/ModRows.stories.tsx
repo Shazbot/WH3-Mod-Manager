@@ -1,10 +1,11 @@
 import React from "react";
-import { ComponentStory, ComponentMeta, Meta, StoryObj } from "@storybook/react";
+import { Meta, StoryObj } from "@storybook/react";
 
 import ModRow from "../components/ModRows";
 import { configureStore, createSlice } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { modsFive } from "./test_data/mods";
+import { SortingType } from "../utility/modRowSorting";
 
 console.log(modsFive);
 export const MockedState: AppState = {
@@ -47,6 +48,7 @@ export const MockedState: AppState = {
   removedModsCategories: {},
   dataModsToEnableByName: [],
   removedEnabledModPaths: [],
+  modRowsSortingType: SortingType.Ordered,
 };
 
 // A super-simple mock of a redux store
