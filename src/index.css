@@ -162,3 +162,26 @@ body:not(.disable-row-hover) .row:hover > div:not(.drop-ghost) {
 .disable-border .htBorders {
   display: none !important;
 }
+
+.border-slate-100-opacity-6 {
+  border-color: rgba(241 245 249 / 0.6);
+}
+
+.expandable-panel-rounded-border {
+  scroll-padding-top: 2rem;
+  border-top-left-radius: 5%;
+  border-top-right-radius: 5%;
+  padding: 0.5rem;
+  border-bottom-left-radius: 5%;
+  border-width: 2px 0px;
+  border-bottom-right-radius: 5%;
+  padding-bottom: 1rem;
+}
+
+.icon-color-on-hover:hover {
+  border-color: #394250;
+}
+
+.icon-color-on-hover:hover > svg {
+  color: #394250;
+}

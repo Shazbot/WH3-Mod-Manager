@@ -233,6 +233,8 @@ const ModsMerger = React.memo(() => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+
       if (e.ctrlKey && e.key === "f") {
         const modMergingFilter = document.getElementById("modMergingFilter");
         modMergingFilter?.focus();

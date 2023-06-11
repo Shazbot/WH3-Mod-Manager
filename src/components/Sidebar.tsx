@@ -36,6 +36,7 @@ const Sidebar = React.memo(() => {
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
+  const [isEditPresetsPanelOpen, setIsEditPresetsPanelOpen] = useState<boolean>(false);
   const [isUpdateCheckDone, setIsUpdateCheckDone] = useState<boolean>(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
   const [downloadURL, setDownloadURL] = useState<string>("");
@@ -268,7 +269,7 @@ const Sidebar = React.memo(() => {
               </>
             }
           >
-            <span className="text-slate-100">Select or create preset:</span>
+            <span className="text-slate-100 select-none">Select or create preset:</span>
           </Tooltip>
           <Creatable
             id="createOrSelectPreset"
@@ -278,30 +279,61 @@ const Sidebar = React.memo(() => {
             styles={selectStyle}
             onCreateOption={(name) => newPresetMade(name)}
           ></Creatable>
-          <div className="mt-5">
-            <span className="text-slate-100">Replace preset:</span>
-            <Select
-              id="replacePreset"
-              options={options}
-              styles={selectStyle}
-              onChange={onReplaceChange}
-              value={null}
-            ></Select>
+          <div
+            className={
+              "pb-1 border-slate-100-opacity-6 mt-5 w-full flex text-slate-100 items-center region-click cursor-pointer select-none icon-color-on-hover " +
+              ((!isEditPresetsPanelOpen && "border-b-2") || "")
+            }
+            onClick={() => {
+              setIsEditPresetsPanelOpen(!isEditPresetsPanelOpen);
+            }}
+          >
+            <svg
+              stroke="currentcolor"
+              fill="currentcolor"
+              strokeWidth="0"
+              viewBox="0 0 24 24"
+              height="0.9em"
+              width="0.9em"
+              xmlns="http://www.w3.org/2000/svg"
+              style={{ marginTop: "1px" }}
+            >
+              {(isEditPresetsPanelOpen && (
+                <path d="M11.178 19.569a.998.998 0 0 0 1.644 0l9-13A.999.999 0 0 0 21 5H3a1.002 1.002 0 0 0-.822 1.569l9 13z"></path>
+              )) || (
+                <path d="M5.536 21.886a1.004 1.004 0 0 0 1.033-.064l13-9a1 1 0 0 0 0-1.644l-13-9A1 1 0 0 0 5 3v18a1 1 0 0 0 .536.886z"></path>
+              )}
+            </svg>
+            <span className="ml-1">Edit presets</span>
           </div>
-          <div className="mt-5">
-            <span className="text-slate-100">Delete preset:</span>
-            <Select
-              id="deletePreset"
-              options={options}
-              styles={selectStyle}
-              onChange={onDeleteChange}
-              value={null}
-            ></Select>
-          </div>
+          {isEditPresetsPanelOpen && (
+            <div className="expandable-panel-rounded-border border-slate-100-opacity-6">
+              <div className="">
+                <span className="text-slate-100 select-none">Replace preset:</span>
+                <Select
+                  id="replacePreset"
+                  options={options}
+                  styles={selectStyle}
+                  onChange={onReplaceChange}
+                  value={null}
+                ></Select>
+              </div>
+              <div className="mt-4">
+                <span className="text-slate-100 select-none">Delete preset:</span>
+                <Select
+                  id="deletePreset"
+                  options={options}
+                  styles={selectStyle}
+                  onChange={onDeleteChange}
+                  value={null}
+                ></Select>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-5 static">
-          <span className="text-slate-100">Filter:</span>
+          <span className="text-slate-100 select-none">Filter:</span>
           <span className="relative">
             <input
               id="filterInput"
@@ -331,12 +363,14 @@ const Sidebar = React.memo(() => {
                   content={missingModDependencies.map(([mod, reqs]) => (
                     <div key={mod.path}>
                       <span className="">{mod.humanName + ` missing:`}</span>
-                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                      {reqs.map(([reqId, reqHumanName]) => (
-                        <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
-                          {reqHumanName}
-                        </div>
-                      ))}
+                      {
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        reqs.map(([reqId, reqHumanName]) => (
+                          <div key={`${mod.path}_${reqHumanName}`} className="text-red-600">
+                            {reqHumanName}
+                          </div>
+                        ))
+                      }
                     </div>
                   ))}
                 >
