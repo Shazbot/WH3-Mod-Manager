@@ -110,6 +110,7 @@ declare global {
     removedModsCategories: Record<string, string[]>;
     dataModsToEnableByName: string[];
     removedEnabledModPaths: string[];
+    modRowsSortingType: SortingType;
   }
 
   type AppStateToWrite = Pick<
@@ -128,6 +129,7 @@ declare global {
     | "isAutoStartCustomBattleEnabled"
     | "isClosedOnPlay"
     | "categories"
+    | "modRowsSortingType"
   >;
 
   type StartGameOptions = Pick<

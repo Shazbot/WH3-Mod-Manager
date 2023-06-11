@@ -7,6 +7,7 @@ import {
   findMod,
   withoutDataAndContentDuplicates,
 } from "./modsHelpers";
+import { SortingType } from "./utility/modRowSorting";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -87,9 +88,13 @@ const appSlice = createSlice({
     dataModsToEnableByName: [],
     // if a enabled mod was removed it's possible it was updated, re-enabled it then
     removedEnabledModPaths: [],
+    modRowsSortingType: SortingType.Ordered,
   } as AppState,
   reducers: {
     // when mutating mods make sure you get the same mod from state.currentPreset.mods and don't change the mod that's from the payload
+    setModRowsSortingType: (state: AppState, action: PayloadAction<SortingType>) => {
+      state.modRowsSortingType = action.payload;
+    },
     addCategory: (state: AppState, action: PayloadAction<AddCategoryPayload>) =>
       addCategoryByPayload(state, action.payload),
     removeCategory: (state: AppState, action: PayloadAction<RemoveCategoryPayload>) =>
@@ -382,6 +387,7 @@ const appSlice = createSlice({
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
+      state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -728,6 +734,7 @@ export const {
   setDataModsToEnableByName,
   addCategory,
   removeCategory,
+  setModRowsSortingType,
 } = appSlice.actions;
 
 export default appSlice.reducer;

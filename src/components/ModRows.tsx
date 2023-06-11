@@ -1,7 +1,14 @@
 import React, { useCallback, useRef, useState } from "react";
 import "../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { toggleMod, enableAll, disableAllMods, setModLoadOrder, resetModLoadOrder } from "../appSlice";
+import {
+  toggleMod,
+  enableAll,
+  disableAllMods,
+  setModLoadOrder,
+  resetModLoadOrder,
+  setModRowsSortingType,
+} from "../appSlice";
 import { Alert, Tooltip } from "flowbite-react";
 import { getFilteredMods, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
@@ -100,8 +107,8 @@ export default function ModRows() {
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const currentTab = useAppSelector((state) => state.app.currentTab);
+  const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
 
-  const [sortingType, setSortingType] = useState<SortingType>(SortingType.Ordered);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
@@ -159,6 +166,13 @@ export default function ModRows() {
       }, 1);
     },
     [mods]
+  );
+
+  const setSortingType = useCallback(
+    (newSortingType: SortingType) => {
+      dispatch(setModRowsSortingType(modRowSorting.getNewSortType(newSortingType, sortingType)));
+    },
+    [dispatch, setModRowsSortingType, sortingType]
   );
 
   const onEnabledRightClick = useCallback(() => {
@@ -489,7 +503,7 @@ export default function ModRows() {
         <div
           id="sortHeader"
           className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
-          onClick={() => modRowSorting.onOrderedSort(setSortingType)}
+          onClick={() => setSortingType(SortingType.Ordered)}
           onContextMenu={onOrderRightClick}
         >
           {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
@@ -515,7 +529,7 @@ export default function ModRows() {
         </div>
         <div
           className="flex place-items-center w-full justify-center z-10 mod-row-header"
-          onClick={() => modRowSorting.onEnabledSort(setSortingType)}
+          onClick={() => setSortingType(SortingType.IsEnabled)}
           onContextMenu={onEnabledRightClick}
           id="enabledHeader"
         >
@@ -538,8 +552,8 @@ export default function ModRows() {
         </div>
         <div
           className="flex grid-area-packName place-items-center pl-1 mod-row-header"
-          onClick={() => modRowSorting.onPackSort(setSortingType)}
-          onContextMenu={() => modRowSorting.onIsDataPackSort(setSortingType)}
+          onClick={() => setSortingType(SortingType.PackName)}
+          onContextMenu={() => setSortingType(SortingType.IsDataPack)}
         >
           {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
@@ -557,7 +571,7 @@ export default function ModRows() {
 
         <div
           className="flex grid-area-humanName place-items-center pl-1 mod-row-header"
-          onClick={() => modRowSorting.onNameSort(setSortingType)}
+          onClick={() => setSortingType(SortingType.HumanName)}
         >
           {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <span className={`${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>Name</span>
@@ -567,15 +581,15 @@ export default function ModRows() {
             "flex grid-area-autohide place-items-center pl-1 mod-row-header " +
             (isAuthorEnabled ? "" : "hidden")
           }
-          onClick={() => modRowSorting.onAuthorSort(setSortingType)}
+          onClick={() => setSortingType(SortingType.Author)}
         >
           {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <span className={`${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>Author</span>
         </div>
         <div
           className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl"
-          onClick={() => modRowSorting.onLastUpdatedSort(setSortingType)}
-          onContextMenu={() => modRowSorting.onSubbedTimeSort(setSortingType)}
+          onClick={() => setSortingType(SortingType.LastUpdated)}
+          onContextMenu={() => setSortingType(SortingType.LastUpdated)}
         >
           {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
