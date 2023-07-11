@@ -278,7 +278,7 @@ const appSlice = createSlice({
         }
       }
 
-      if (!dataMod && removedMod.isEnabled) {
+      if (removedMod.isEnabled) {
         state.removedEnabledModPaths.push(removedMod.path);
       }
       state.removedModsCategories[removedMod.path] = removedMod.categories ?? [];
