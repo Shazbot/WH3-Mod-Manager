@@ -589,7 +589,7 @@ export default function ModRows() {
         <div
           className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl"
           onClick={() => setSortingType(SortingType.LastUpdated)}
-          onContextMenu={() => setSortingType(SortingType.LastUpdated)}
+          onContextMenu={() => setSortingType(SortingType.SubbedTime)}
         >
           {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
