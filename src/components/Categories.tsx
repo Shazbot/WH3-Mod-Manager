@@ -538,7 +538,7 @@ const Categories = React.memo(() => {
         </div>
       </FloatingOverlay>
 
-      <div className="-mt-6">
+      <div className="-mt-6 mx-10">
         <div className="mt-5 flex">
           <span className="relative ml-4">
             <input
@@ -664,7 +664,7 @@ const Categories = React.memo(() => {
           setCurrentlySelectedMods(selectedMods);
           setIsContextMenuOpen(true);
         }}
-        className="overflow-hidden"
+        className="overflow-hidden mx-10"
       >
         <HotTable
           className={(isContextMenuOpen && "disable-border") || ""}
@@ -675,7 +675,7 @@ const Categories = React.memo(() => {
           width="100%"
           ref={hotRef}
           stretchH="last"
-          height={"90vh"}
+          height={"88vh"}
           nestedRows={true}
           // preventOverflow={"vertical"}
           licenseKey="non-commercial-and-evaluation"

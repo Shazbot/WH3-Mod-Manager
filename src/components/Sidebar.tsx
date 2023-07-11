@@ -255,7 +255,7 @@ const Sidebar = React.memo(() => {
         setIsOpen={setIsShowingRequiredMods}
         modDependencies={missingModDependencies}
       />
-      <div className="fixed">
+      <div className="fixed h-[90vh]">
         <div id="presetSection">
           <Tooltip
             placement="left"
@@ -351,7 +351,7 @@ const Sidebar = React.memo(() => {
           </span>
         </div>
 
-        <div className="fixed right-[5%] bottom-[4%] z-10">
+        <div className="absolute w-full bottom-0 z-10">
           {missingModDependencies.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div
