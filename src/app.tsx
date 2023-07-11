@@ -35,7 +35,7 @@ function render() {
       >
         <TopBar />
         {(window.location.pathname.includes("/main_window") && (
-          <div className="m-auto px-8 pb-4 pt-11 max-w-[100rem]">
+          <div className="m-auto pb-4 pt-11 height-without-topbar scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
             <Onboarding></Onboarding>
             <LeftSidebar />
             <Main />

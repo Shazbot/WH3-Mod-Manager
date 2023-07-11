@@ -9,7 +9,7 @@ const Main = () => {
   return (
     <>
       {(currentTab == "categories" && <Categories></Categories>) || (
-        <div className="grid grid-cols-12 text-white">
+        <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">
           <div className="col-span-10">
             <ModRows />
           </div>

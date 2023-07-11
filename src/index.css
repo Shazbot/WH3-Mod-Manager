@@ -109,7 +109,7 @@ body:not(.disable-row-hover) .row:hover > div:not(.drop-ghost) {
   background-color: #404040;
   padding: 0.5rem;
   position: sticky;
-  top: 1.25rem;
+  top: -2.75rem;
 }
 
 #top-bar {
@@ -184,4 +184,8 @@ body:not(.disable-row-hover) .row:hover > div:not(.drop-ghost) {
 
 .icon-color-on-hover:hover > svg {
   color: #394250;
+}
+
+.height-without-topbar {
+  max-height: calc(100vh - 28px);
 }
