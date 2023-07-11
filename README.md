@@ -9,8 +9,9 @@ Features not present in the CA launcher:
 - options to skip into videos or enable script logging
 - view database tables of mods or the base game
 - merge mods to get around the mod limit
-- compatiblity checker to inpect which mod will have priority and overwrite another
+- compatibility checker to inspect which mod will have priority and overwrite another
 - can also update your mods directly like the CA launcher
+- add tags/categories to organize your mods
   
 &nbsp;
 
