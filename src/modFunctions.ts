@@ -10,7 +10,12 @@ import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
 import * as os from "os";
 
-export function fetchModData(ids: string[], cb: (modData: ModData) => void, log: (msg: string) => void) {
+export function fetchModData(
+  ids: string[],
+  cb: (modData: ModData) => void,
+  log: (msg: string) => void,
+  retryIndex = 0
+) {
   ids.forEach(async (workshopId) => {
     fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
       .then((res) => res.text())
@@ -137,7 +142,13 @@ export function fetchModData(ids: string[], cb: (modData: ModData) => void, log:
           cb(modData);
         }
       })
-      .catch();
+      .catch(async () => {
+        if (retryIndex < 3) {
+          log(`Retrying fetching mod data for mod with id ${workshopId}, retry number ${retryIndex}`);
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          fetchModData([workshopId], cb, log, retryIndex + 1);
+        }
+      });
   });
 }
 
