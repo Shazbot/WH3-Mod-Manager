@@ -31,7 +31,7 @@ const ModDropdown = memo((props: ModDropdownProps) => {
       }
     }, 10);
     return () => clearInterval(interval);
-  }, [props.referenceElement, modDropdownRef.current]);
+  }, [props.positionX, props.positionY, props.referenceElement, modDropdownRef.current]);
 
   return (
     (props.mod == null && <></>) || (
