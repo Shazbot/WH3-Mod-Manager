@@ -47,10 +47,11 @@ const Sidebar = React.memo(() => {
   const allMods = useAppSelector((state) => state.app.allMods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
+  const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
   const playGameClicked = () => {
     dispatch(createOnGameStartPreset());
-    window.api?.startGame(mods, {
+    window.api?.startGame(mods, areModsInOrder, {
       isMakeUnitsGeneralsEnabled,
       isSkipIntroMoviesEnabled,
       isScriptLoggingEnabled,
@@ -117,6 +118,7 @@ const Sidebar = React.memo(() => {
   const onContinueGameClicked = () => {
     window.api?.startGame(
       mods,
+      areModsInOrder,
       {
         isMakeUnitsGeneralsEnabled,
         isSkipIntroMoviesEnabled,

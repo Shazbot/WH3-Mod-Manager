@@ -1,6 +1,6 @@
 import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { memo } from "react";
+import React, { memo, useCallback } from "react";
 import { useAppSelector } from "../hooks";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
@@ -67,6 +67,14 @@ const ModRow = memo(
     const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
     const isDev = useAppSelector((state) => state.app.isDev);
     const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+    const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
+
+    const getGhostClass = useCallback(() => {
+      if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-7";
+      if (isAuthorEnabled) return "grid-column-6";
+      if (areThumbnailsEnabled) return "grid-column-6";
+      return "grid-column-5";
+    }, [isAuthorEnabled, areThumbnailsEnabled]);
 
     const timeColumnValue =
       (isSubbedTimeSort(sortingType) &&
@@ -91,7 +99,7 @@ const ModRow = memo(
         id={mod.name}
         data-load-order={mod.loadOrder}
       >
-        {index != 0 && <div className="drop-ghost grid-column-7 h-10 hidden"></div>}
+        <div className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
           <span className={mod.loadOrder === undefined ? "" : "text-red-600 font-bold"}>{loadOrder}</span>
         </div>

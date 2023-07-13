@@ -8,6 +8,8 @@ import {
   withoutDataAndContentDuplicates,
 } from "./modsHelpers";
 import { SortingType } from "./utility/modRowSorting";
+import { compareModNames, sortAsInPreset, sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { index } from "handsontable/helpers/dom";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -87,8 +89,9 @@ const appSlice = createSlice({
     // before we make symbolic links in data queue those mods to be re-enabled
     dataModsToEnableByName: [],
     // if a enabled mod was removed it's possible it was updated, re-enabled it then
-    removedEnabledModPaths: [],
+    removedModsData: [],
     modRowsSortingType: SortingType.Ordered,
+    importedMods: [],
   } as AppState,
   reducers: {
     // when mutating mods make sure you get the same mod from state.currentPreset.mods and don't change the mod that's from the payload
@@ -126,6 +129,38 @@ const appSlice = createSlice({
         }
       });
     },
+    orderImportedMods: (state: AppState) => {
+      console.log("ordering imported mods");
+      for (let i = 0; i < state.importedMods.length; i++) {
+        const importedMod = state.importedMods[i];
+        if (importedMod.loadOrder != undefined) {
+          const currentMod = state.currentPreset.mods.find(
+            (mod) => mod.workshopId == state.importedMods[i].workshopId
+          );
+          if (!currentMod) continue;
+
+          const currentModIndex = currentMod && state.currentPreset.mods.indexOf(currentMod);
+          if (currentModIndex == -1) continue;
+
+          if (i == 0) {
+            // no previous siblings so put it at start of all mods
+            state.currentPreset.mods.splice(currentModIndex, 1);
+            state.currentPreset.mods.splice(0, 0, currentMod);
+          } else {
+            const previousSiblingModIndex = state.currentPreset.mods.findIndex(
+              (mod) => mod.workshopId == state.importedMods[i - 1].workshopId
+            );
+            if (previousSiblingModIndex != -1) {
+              // put the mod with the load order after the previous sibling
+              state.currentPreset.mods.splice(currentModIndex, 1);
+              state.currentPreset.mods.splice(0, 0, currentMod);
+            }
+          }
+        }
+      }
+
+      state.importedMods = [];
+    },
     enableAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = true));
 
@@ -151,6 +186,9 @@ const appSlice = createSlice({
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
     },
+    setImportedMods: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
+      state.importedMods = action.payload;
+    },
     setMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       console.log("appSlice/setMods: SETTING CURRENT PRESET");
       const mods = action.payload;
@@ -162,6 +200,15 @@ const appSlice = createSlice({
           mod.isInData ||
           (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
       );
+
+      if (state.dataFromConfig && state.dataFromConfig.currentPreset.version != undefined) {
+        state.currentPreset.version = state.dataFromConfig.currentPreset.version;
+        console.log("sorting as in preset from config in setMods");
+        state.currentPreset.mods = sortAsInPreset(
+          state.currentPreset.mods,
+          state.dataFromConfig.currentPreset.mods
+        );
+      }
 
       if (state.dataFromConfig) {
         state.currentPreset.mods
@@ -184,7 +231,11 @@ const appSlice = createSlice({
       }
 
       const appStartIndex = state.presets.findIndex((preset) => preset.name === "On App Start");
-      const newPreset = { name: "On App Start", mods: [...state.currentPreset.mods] };
+      const newPreset = {
+        name: "On App Start",
+        mods: [...state.currentPreset.mods],
+        version: state.currentPreset.version,
+      };
       if (appStartIndex != -1) {
         state.presets.splice(appStartIndex, 1, newPreset);
       } else {
@@ -201,19 +252,21 @@ const appSlice = createSlice({
       if (!alreadyExistsByName) {
         state.currentPreset.mods.push(mod);
       } else if (mod.isInData) {
-        state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(alreadyExistsByName), 1);
-        state.currentPreset.mods.push(mod);
+        const previousIndex = state.currentPreset.mods.indexOf(alreadyExistsByName);
+        state.currentPreset.mods.splice(previousIndex, 1, mod);
+        mod.isEnabled = alreadyExistsByName.isEnabled;
       }
 
       if (!state.allMods.find((iterMod) => iterMod.path == mod.path)) {
         state.allMods.push(mod);
       }
 
-      if (state.removedEnabledModPaths.find((path) => path === mod.path)) {
-        mod.isEnabled = true;
-        state.removedEnabledModPaths = state.removedEnabledModPaths.filter(
-          (pathOfRemoved) => pathOfRemoved != mod.path
-        );
+      const removedModData = state.removedModsData.find(({ modPath }) => modPath === mod.path);
+      if (removedModData) {
+        mod.isEnabled = removedModData.isEnabled;
+        state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(mod), 1);
+        state.currentPreset.mods.splice(removedModData.indexInMods, 0, mod);
+        state.removedModsData = state.removedModsData.filter(({ modPath }) => modPath != mod.path);
       }
 
       if (state.removedModsCategories[mod.path]) {
@@ -278,9 +331,11 @@ const appSlice = createSlice({
         }
       }
 
-      if (removedMod.isEnabled) {
-        state.removedEnabledModPaths.push(removedMod.path);
-      }
+      state.removedModsData.push({
+        modPath: removedMod.path,
+        isEnabled: removedMod.isEnabled,
+        indexInMods: state.currentPreset.mods.indexOf(removedMod),
+      });
       state.removedModsCategories[removedMod.path] = removedMod.categories ?? [];
 
       state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
@@ -372,6 +427,16 @@ const appSlice = createSlice({
             if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
           }
         });
+
+      if (fromConfigAppState.currentPreset.version != undefined) {
+        state.currentPreset.version = fromConfigAppState.currentPreset.version;
+        console.log("sorting as in preset from config");
+        state.currentPreset.mods = sortAsInPreset(
+          state.currentPreset.mods,
+          fromConfigAppState.currentPreset.mods
+        );
+      }
+
       fromConfigAppState.presets.forEach((preset) => {
         if (!state.presets.find((existingPreset) => existingPreset.name === preset.name)) {
           state.presets.push(preset);
@@ -413,6 +478,12 @@ const appSlice = createSlice({
     addPreset: (state: AppState, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;
       if (state.presets.find((preset) => preset.name === newPreset.name)) return;
+
+      console.log("current preset version is ", state.currentPreset.version);
+      newPreset.mods =
+        (state.currentPreset.version != undefined && newPreset.mods) ||
+        sortByNameAndLoadOrder(newPreset.mods);
+      newPreset.version = 1;
       state.presets.push(newPreset);
       state.lastSelectedPreset = newPreset;
     },
@@ -421,6 +492,7 @@ const appSlice = createSlice({
       const newPreset = {
         name: "On Last Game Launch",
         mods: [...state.currentPreset.mods],
+        version: state.currentPreset.version,
       };
       if (appStartIndex != -1) {
         state.presets.splice(appStartIndex, 1, newPreset);
@@ -442,6 +514,7 @@ const appSlice = createSlice({
         });
 
         const newPresetMods = withoutDataAndContentDuplicates(newPreset.mods);
+        if (newPreset.version == undefined) newPreset.mods = sortByNameAndLoadOrder(newPreset.mods);
 
         state.currentPreset.mods.forEach((mod) => {
           const modToChange = findMod(newPresetMods, mod);
@@ -450,6 +523,9 @@ const appSlice = createSlice({
             mod.loadOrder = modToChange.loadOrder;
           }
         });
+
+        state.currentPreset.mods = sortAsInPreset(state.currentPreset.mods, newPresetMods);
+        state.currentPreset.version = 1;
       } else if (presetSelection === "addition" || presetSelection === "subtraction") {
         newPreset.mods.forEach((mod) => {
           if (mod.isEnabled) {
@@ -471,7 +547,12 @@ const appSlice = createSlice({
     replacePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
       const preset = state.presets.find((preset) => preset.name === name);
-      if (preset) preset.mods = state.currentPreset.mods;
+      if (!preset) return;
+
+      preset.mods =
+        (state.currentPreset.version != undefined && state.currentPreset.mods) ||
+        sortByNameAndLoadOrder(state.currentPreset.mods);
+      preset.version = 1;
     },
     setFilter: (state: AppState, action: PayloadAction<string>) => {
       const filter = action.payload;
@@ -512,12 +593,51 @@ const appSlice = createSlice({
 
       // printLoadOrders(state.currentPreset.mods);
     },
+
+    setModLoadOrderRelativeTo: (state: AppState, action: PayloadAction<ModLoadOrderRelativeTo>) => {
+      const payload = action.payload;
+      const { modNameToChange, modNameRelativeTo } = payload;
+      const modToChange = state.currentPreset.mods.find((mod) => mod.name === modNameToChange);
+      const modRelativeTo = state.currentPreset.mods.find((mod) => mod.name === modNameRelativeTo);
+
+      if (!modToChange || !modRelativeTo) return;
+
+      state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(modToChange), 1);
+      const newIndex = state.currentPreset.mods.indexOf(modRelativeTo);
+      state.currentPreset.mods.splice(newIndex, 0, modToChange);
+
+      modToChange.loadOrder = newIndex;
+    },
+    resetModLoadOrderAll: (state: AppState) => {
+      state.currentPreset.mods.forEach((mod) => {
+        mod.loadOrder = undefined;
+      });
+      state.currentPreset.mods = sortByNameAndLoadOrder(state.currentPreset.mods);
+    },
     resetModLoadOrder: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
       mods.forEach((mod) => {
         const stateMod = state.currentPreset.mods.find((stateMod) => stateMod.name === mod.name);
         if (stateMod) stateMod.loadOrder = undefined;
       });
+
+      if (state.currentPreset.version != undefined) {
+        for (const mod of mods) {
+          const modToChange = state.currentPreset.mods.find((iterMod) => mod.name === iterMod.name);
+          if (!modToChange) continue;
+
+          const siblingMod = state.currentPreset.mods.find(
+            (iterMod) =>
+              iterMod.path != mod.path &&
+              iterMod.loadOrder == undefined &&
+              compareModNames(iterMod.name, mod.name) >= 0
+          );
+          if (!siblingMod) continue;
+
+          state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(modToChange), 1);
+          state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(siblingMod), 0, modToChange);
+        }
+      }
     },
     toggleAlwaysEnabledMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
@@ -685,6 +805,7 @@ export const {
   setModData,
   setFromConfig,
   enableAll,
+  setImportedMods,
   disableAllMods,
   addPreset,
   selectPreset,
@@ -693,7 +814,9 @@ export const {
   deletePreset,
   setFilter,
   setModLoadOrder,
+  setModLoadOrderRelativeTo,
   resetModLoadOrder,
+  resetModLoadOrderAll,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
   setSaves,
@@ -712,6 +835,7 @@ export const {
   toggleIsSkipIntroMoviesEnabled,
   toggleIsAutoStartCustomBattleEnabled,
   setSharedMod,
+  orderImportedMods,
   addMod,
   removeMod,
   createdMergedPack,
