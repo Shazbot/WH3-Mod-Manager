@@ -64,6 +64,7 @@ declare global {
   interface Preset {
     mods: Mod[];
     name: string;
+    version?: number;
   }
   interface NewMergedPack {
     path: string;
@@ -73,6 +74,7 @@ declare global {
   interface AppState {
     categories: string[];
     currentPreset: Preset;
+    importedMods: ModIdAndLoadOrder[];
     presets: Preset[];
     lastSelectedPreset: Preset | null;
     filter: string;
@@ -109,7 +111,7 @@ declare global {
     toasts: Toast[];
     removedModsCategories: Record<string, string[]>;
     dataModsToEnableByName: string[];
-    removedEnabledModPaths: string[];
+    removedModsData: RemovedModData[];
     modRowsSortingType: SortingType;
   }
 
@@ -145,6 +147,11 @@ declare global {
     modName: string;
     loadOrder: number;
     originalOrder?: number;
+  }
+
+  interface ModLoadOrderRelativeTo {
+    modNameToChange: string;
+    modNameRelativeTo: string;
   }
 
   interface ModUpdateExists {
@@ -234,6 +241,12 @@ declare global {
   interface SetIsModEnabledPayload {
     mod: Mod;
     isEnabled: boolean;
+  }
+
+  interface RemovedModData {
+    isEnabled: boolean;
+    modPath: string;
+    indexInMods: number;
   }
 
   type ToastType = "success" | "warning" | "info";

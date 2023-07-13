@@ -15,6 +15,18 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
   return newMods;
 }
 
+export function sortAsInPreset(mods: Mod[], modsInPreset: Mod[]) {
+  const newMods = [...mods].sort((modF, modS) => {
+    const modInPresetIndexF = modsInPreset.findIndex((iterMod) => iterMod.name == modF.name);
+    const modInPresetIndexS = modsInPreset.findIndex((iterMod) => iterMod.name == modS.name);
+
+    if (modInPresetIndexF != -1 && modInPresetIndexS != -1) return modInPresetIndexF - modInPresetIndexS;
+
+    return compareModNames(modF.name, modS.name);
+  });
+  return newMods;
+}
+
 export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
   return [...mods].sort(
     (firstMod, secondMod) => orderedMods.indexOf(firstMod) - orderedMods.indexOf(secondMod)

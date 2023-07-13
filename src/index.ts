@@ -1413,7 +1413,13 @@ if (!gotTheLock) {
 
   ipcMain.on(
     "startGame",
-    async (event, mods: Mod[], startGameOptions: StartGameOptions, saveName?: string) => {
+    async (
+      event,
+      mods: Mod[],
+      areModsPresorted: boolean,
+      startGameOptions: StartGameOptions,
+      saveName?: string
+    ) => {
       console.log("before start:");
       for (const pack of appData.packsData) {
         console.log(pack.name, pack.readTables);
@@ -1425,7 +1431,7 @@ if (!gotTheLock) {
         const myModsPath = nodePath.join(appData.gamePath, "my_mods.txt");
         const usedModsPath = nodePath.join(appData.gamePath, "used_mods.txt");
 
-        const sortedMods = sortByNameAndLoadOrder(mods);
+        const sortedMods = (areModsPresorted && mods) || sortByNameAndLoadOrder(mods);
         const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
 
         const linuxBit = process.platform === "linux" ? "Z:" : "";

@@ -6,8 +6,8 @@ import { AppFolderPaths } from "./appData";
 console.log("IN PRELOAD");
 
 const api = {
-  startGame: (mods: Mod[], startGameOptions: StartGameOptions, name?: string) =>
-    ipcRenderer.send("startGame", mods, startGameOptions, name),
+  startGame: (mods: Mod[], areModsInOrder: boolean, startGameOptions: StartGameOptions, name?: string) =>
+    ipcRenderer.send("startGame", mods, areModsInOrder, startGameOptions, name),
   exportModsToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModsToClipboard", mods),
   exportModNamesToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModNamesToClipboard", mods),
   createSteamCollection: (mods: Mod[]) => ipcRenderer.send("createSteamCollection", mods),

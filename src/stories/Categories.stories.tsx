@@ -46,8 +46,9 @@ export const MockedState: AppState = {
   toasts: [],
   removedModsCategories: {},
   dataModsToEnableByName: [],
-  removedEnabledModPaths: [],
+  removedModsData: [],
   modRowsSortingType: SortingType.Ordered,
+  importedMods: [],
 };
 
 // A super-simple mock of a redux store
