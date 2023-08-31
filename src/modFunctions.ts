@@ -1,3 +1,4 @@
+import { fork } from "child_process";
 import { parse, getTime } from "date-fns";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
@@ -9,6 +10,7 @@ import { zonedTimeToUtc } from "date-fns-tz";
 import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
 import * as os from "os";
+import { XMLParser } from "fast-xml-parser";
 
 export function fetchModData(
   ids: string[],
@@ -16,6 +18,35 @@ export function fetchModData(
   log: (msg: string) => void,
   retryIndex = 0
 ) {
+  const child = fork(
+    nodePath.join(__dirname, "sub.js"),
+    ["getItems", ids.filter((id) => !isNaN(parseFloat(id))).join(",")],
+    {}
+  );
+  child.on("message", (workshopData: WorkshopItemStringInsteadOfBigInt[]) => {
+    for (const workshopItem of workshopData) {
+      if (workshopItem) {
+        fetch(`https://steamcommunity.com/profiles/${workshopItem.owner.steamId64}?xml=1`)
+          .then((data) => data.buffer())
+          .then((data) => {
+            const steamProfile = new XMLParser().parse(data);
+            const modData = {
+              workshopId: workshopItem.publishedFileId,
+              humanName: workshopItem.title,
+              author: steamProfile?.profile?.steamID?.toString() ?? "",
+              reqModIdToName: [],
+              lastChanged: workshopItem.timeUpdated * 1000,
+              isDeleted: false,
+            } as ModData;
+            cb(modData);
+          })
+          .catch();
+      }
+    }
+  });
+
+  return;
+
   ids.forEach(async (workshopId) => {
     fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
       .then((res) => res.text())
