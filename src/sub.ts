@@ -27,6 +27,39 @@ if (process.argv[2] == "unsubscribe") {
     process.exit();
   }, 200);
 }
+if (process.argv[2] == "getItems") {
+  console.log("getItems");
+  const ids = process.argv[3].split(",").map((id) => BigInt(id));
+  const client = steamworks.init(1142710);
+
+  if (!process.send) {
+    process.exit();
+  }
+
+  client.workshop
+    .getItems(ids)
+    .then((data) => {
+      if (process.send)
+        process.send(
+          data
+            .filter((data) => data)
+            .map(
+              (data) =>
+                data && {
+                  ...data,
+                  owner: { ...data.owner, steamId64: data?.owner.steamId64.toString() },
+                  publishedFileId: data.publishedFileId.toString(),
+                }
+            )
+        );
+      setTimeout(() => {
+        process.exit();
+      }, 200);
+    })
+    .catch(() => {
+      process.exit();
+    });
+}
 if (process.argv[2] == "checkState") {
   console.log("checkState");
   const ids = process.argv[3].split(";"); //"2856936614";

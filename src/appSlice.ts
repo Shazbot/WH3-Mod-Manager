@@ -352,9 +352,10 @@ const appSlice = createSlice({
             (iterMod) => iterMod.isInData && iterMod.name == contentMod.name
           );
           if (dataMod) {
-            dataMod.humanName = data.humanName ?? "";
-            dataMod.author = data.author;
-            dataMod.reqModIdToName = data.reqModIdToName;
+            if (data.humanName && data.humanName != "") dataMod.humanName = data.humanName ?? "";
+            if (data.author && data.author != "") dataMod.author = data.author;
+            if (data.reqModIdToName && data.reqModIdToName.length > 0)
+              dataMod.reqModIdToName = data.reqModIdToName;
           }
         }
 
@@ -363,12 +364,11 @@ const appSlice = createSlice({
         if (data.isDeleted) {
           mod.isDeleted = data.isDeleted;
         } else {
-          mod.humanName = data.humanName ?? "";
-          mod.author = data.author;
-          mod.reqModIdToName = data.reqModIdToName;
+          if (data.humanName && data.humanName != "") mod.humanName = data.humanName ?? "";
+          if (data.author && data.author != "") mod.author = data.author;
+          if (data.reqModIdToName && data.reqModIdToName.length > 0) mod.reqModIdToName = data.reqModIdToName;
         }
 
-        if (mod.isDeleted) console.log(mod.name + " is deleted!");
         if (data.lastChanged) mod.lastChanged = data.lastChanged;
       }
     },

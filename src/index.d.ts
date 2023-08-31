@@ -252,4 +252,32 @@ declare global {
   type ToastType = "success" | "warning" | "info";
 
   type MainWindowTab = "mods" | "enabledMods" | "categories";
+
+  export interface WorkshopItemStringInsteadOfBigInt {
+    publishedFileId: string;
+    creatorAppId?: number;
+    consumerAppId?: number;
+    title: string;
+    description: string;
+    owner: PlayerSteamIdStringInsteadOfBigInt;
+    /** Time created in unix epoch seconds format */
+    timeCreated: number;
+    /** Time updated in unix epoch seconds format */
+    timeUpdated: number;
+    banned: boolean;
+    acceptedForUse: boolean;
+    tags: Array<string>;
+    tagsTruncated: boolean;
+    url: string;
+    numUpvotes: number;
+    numDownvotes: number;
+    numChildren: number;
+    previewUrl?: string;
+  }
+
+  export interface PlayerSteamIdStringInsteadOfBigInt {
+    steamId64: string;
+    steamId32: string;
+    accountId: number;
+  }
 }
