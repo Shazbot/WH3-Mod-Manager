@@ -45,8 +45,6 @@ export function fetchModData(
     }
   });
 
-  return;
-
   ids.forEach(async (workshopId) => {
     fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
       .then((res) => res.text())
