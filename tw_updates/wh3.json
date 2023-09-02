@@ -17,5 +17,15 @@
   {
     "timestamp": "1685109840",
     "version": "3.1"
+  },
+  {
+    "timestamp": "1693499400",
+    "version": "4.0",
+    "files": [
+      {
+        "regex": "^db[/\\\\]character_skill_nodes_tables[/\\\\]",
+        "reason": "New table character_skill_node_set_items_tables required."
+      }
+    ]
   }
 ]
