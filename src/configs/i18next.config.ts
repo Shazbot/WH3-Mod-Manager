@@ -1,10 +1,15 @@
 import i18next from "i18next";
 import i18nextBackend from "i18next-fs-backend";
+import isDev from "electron-is-dev";
 
 const i18nextOptions = {
   backend: {
-    loadPath: "./locales/{{lng}}/{{ns}}.json",
-    addPath: "./locales/{{lng}}/{{ns}}.missing.json",
+    loadPath: isDev
+      ? "./locales/{{lng}}/{{ns}}.json"
+      : "./resources/app/.webpack/main/locales/{{lng}}/{{ns}}.json",
+    addPath: isDev
+      ? "./locales/{{lng}}/{{ns}}.missing.json"
+      : "./resources/app/.webpack/main/locales/{{lng}}/{{ns}}.missing.json",
     jsonIndent: 2,
   },
   interpolation: {
