@@ -1,9 +1,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import ModRows from "./components/ModRows";
 import store from "./store";
 import { Provider } from "react-redux";
-import Sidebar from "./components/Sidebar";
 import Onboarding from "./components/Onboarding";
 import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "./components/TopBar";
@@ -11,6 +9,9 @@ import { Toasts } from "./components/Toasts";
 import ModsViewer from "./components/viewer/ModsViewer";
 import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
+import { StrictMode } from "react";
+import LocalizationContext, { staticTextIds } from "./localizationContext";
+import { useAppSelector } from "./hooks";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -22,11 +23,19 @@ function ErrorFallback({ error }: { error: Error }) {
   );
 }
 
-function render() {
-  // console.log("LOCATION IS ", useLocation());
-  const root = createRoot(document.getElementById("root") as HTMLElement);
-  root.render(
-    <Provider store={store}>
+const App = React.memo(() => {
+  const [localization, setLocalization] = React.useState<Record<string, string>>({});
+  const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
+  const [cachedLanguage, setCachedLanguage] = React.useState<string>(currentLanguage);
+
+  if (Object.keys(localization).length == 0 || cachedLanguage != currentLanguage)
+    window.api?.translateAllStatic(staticTextIds).then((translated) => {
+      setCachedLanguage(currentLanguage);
+      setLocalization(translated);
+    });
+
+  return (
+    <LocalizationContext.Provider value={localization}>
       <ErrorBoundary
         FallbackComponent={ErrorFallback}
         onReset={() => {
@@ -51,7 +60,19 @@ function render() {
           ))}
         <Toasts />
       </ErrorBoundary>
-    </Provider>
+    </LocalizationContext.Provider>
+  );
+});
+
+function render() {
+  // console.log("LOCATION IS ", useLocation());
+  const root = createRoot(document.getElementById("root") as HTMLElement);
+  root.render(
+    <StrictMode>
+      <Provider store={store}>
+        <App />
+      </Provider>
+    </StrictMode>
   );
 }
 

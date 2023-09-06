@@ -1,6 +1,7 @@
 import { Modal } from "../flowbite/components/Modal/index";
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useContext } from "react";
 import { useAppSelector } from "../hooks";
+import localizationContext from "../localizationContext";
 
 export interface SaveGameProps {
   isOpen: boolean;
@@ -45,11 +46,13 @@ const SaveGame = memo((props: SaveGameProps) => {
     [mods, isMakeUnitsGeneralsEnabled, isSkipIntroMoviesEnabled, isScriptLoggingEnabled]
   );
 
+  const localized: Record<string, string> = useContext(localizationContext);
+
   return (
     <>
       {props.isOpen && (
         <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
-          <Modal.Header>Saved Games</Modal.Header>
+          <Modal.Header>{localized.savedGames}</Modal.Header>
           <Modal.Body>
             <div className="grid grid-cols-3 h-full gap-4">
               {saves.map((save) => {
@@ -66,14 +69,14 @@ const SaveGame = memo((props: SaveGameProps) => {
                       disabled={isWH3Running}
                       onClick={() => onLoadClick(save.name)}
                     >
-                      Load Save
+                      {localized.loadSave}
                     </button>
                     <button
                       className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm m-auto "
                       type="button"
                       onClick={() => onEnableModsInSave(save.name)}
                     >
-                      Load Mods From Save
+                      {localized.loadModsFromSave}
                     </button>
                   </React.Fragment>
                 );

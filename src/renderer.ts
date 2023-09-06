@@ -26,6 +26,8 @@ import {
   setIsWH3Running,
   setOutdatedPackFiles,
   addToast,
+  setAvailableLanguages,
+  setCurrentLanguage,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -233,6 +235,16 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
 
 window.api?.setDataModLastChangedLocal((event, dataModLastChangedLocal: number) => {
   store.dispatch(setDataModLastChangedLocal(dataModLastChangedLocal));
+});
+
+window.api?.setAvailableLanguages((event, languages: string[]) => {
+  console.log("SETTING LANGUAGES", languages);
+  store.dispatch(setAvailableLanguages(languages));
+});
+
+window.api?.setCurrentLanguage((event, language: string) => {
+  console.log("SETTING LANGUAGE", language);
+  store.dispatch(setCurrentLanguage(language));
 });
 
 window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {

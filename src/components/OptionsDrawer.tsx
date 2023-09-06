@@ -1,5 +1,5 @@
 import Select, { ActionMeta, SingleValue } from "react-select";
-import React, { memo, useCallback, useState } from "react";
+import React, { memo, useCallback, useContext, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
@@ -22,6 +22,7 @@ import { createSelector } from "@reduxjs/toolkit";
 import GamePathsSetup from "./GamePathsSetup";
 import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
+import localizationContext from "../localizationContext";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -56,6 +57,10 @@ const OptionsDrawer = memo(() => {
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
+  const availableLanguages = useAppSelector((state) => state.app.availableLanguages);
+  const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   const enabledModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -78,6 +83,15 @@ const OptionsDrawer = memo(() => {
   );
   const options: OptionType[] = useSelector(hiddenModsToOptionViewDataSelector);
 
+  const availableLanguagesToOptionsSelector = createSelector(
+    (state: { app: AppState }) => state.app.availableLanguages,
+    (availableLanguages) =>
+      availableLanguages.map((language) => {
+        return { value: language, label: language };
+      })
+  );
+  const languageOptions = useSelector(availableLanguagesToOptionsSelector);
+
   const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
 
   const forceDownloadMods = useCallback(() => {
@@ -93,6 +107,19 @@ const OptionsDrawer = memo(() => {
       if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([mod]));
     },
     [alwaysHidden]
+  );
+
+  const onLanguageChange = useCallback(
+    (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+      if (!newValue) return;
+      console.log(newValue.label, newValue.value, actionMeta.action);
+      const language = availableLanguages.find((language) => language == newValue.value);
+      if (!language) return;
+      if (actionMeta.action === "select-option") {
+        window.api?.requestLanguageChange(language);
+      }
+    },
+    [availableLanguages]
   );
 
   const copyToData = useCallback(
@@ -137,7 +164,7 @@ const OptionsDrawer = memo(() => {
           type="button"
           aria-controls="drawer-example"
         >
-          Other Options
+          {localized.otherOptions}
         </button>
       </div>
 
@@ -155,7 +182,7 @@ const OptionsDrawer = memo(() => {
               id="drawer-label"
               className="inline-flex items-center mb-4 text-base font-semibold text-gray-500 dark:text-gray-400 mt-6"
             >
-              Other Options
+              {localized.otherOptions}
             </h5>
 
             <div className="flex ">
@@ -163,8 +190,22 @@ const OptionsDrawer = memo(() => {
                 className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[50%]"
                 onClick={() => setIsShowingAboutScreen(true)}
               >
-                <span className="uppercase">About</span>
+                <span className="uppercase">{localized.about}</span>
               </button>
+            </div>
+
+            <div className="flex justify-center items-center mt-6">
+              <label className="" htmlFor="languageSelect">
+                {localized.language}
+              </label>
+              <Select
+                className="ml-2"
+                id="languageSelect"
+                options={languageOptions}
+                styles={selectStyle}
+                onChange={onLanguageChange}
+                defaultValue={{ value: currentLanguage, label: currentLanguage }}
+              ></Select>
             </div>
 
             <div className="flex items-center ml-1 mt-6">
@@ -176,11 +217,11 @@ const OptionsDrawer = memo(() => {
                 onChange={() => dispatch(toggleIsClosedOnPlay())}
               ></input>
               <label className="ml-2 mt-1" htmlFor="enable-closed-on-play">
-                Close Mananger On Play
+                {localized.closeOnPlay}
               </label>
             </div>
 
-            <h6 className="mt-6">Extra Columns</h6>
+            <h6 className="mt-6">{localized.extraColumns}</h6>
             <div className="flex items-center ml-1">
               <input
                 className="mt-1"
@@ -190,7 +231,7 @@ const OptionsDrawer = memo(() => {
                 onChange={() => dispatch(toggleAreThumbnailsEnabled())}
               ></input>
               <label className="ml-2 mt-1" htmlFor="enable-thumbnails">
-                Mod Thumbnail Column
+                {localized.modThumbnailColumn}
               </label>
             </div>
 
@@ -203,29 +244,24 @@ const OptionsDrawer = memo(() => {
                 onChange={() => dispatch(toggleIsAuthorEnabled())}
               ></input>
               <label className="ml-2 mt-1" htmlFor="enable-mod-author">
-                Mod Author Column
+                {localized.modAuthorColumn}
               </label>
             </div>
 
-            <h6 className="mt-10">Force Re-download</h6>
-            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-              Force steam to download the latest version of all mods:
-            </p>
+            <h6 className="mt-10">{localized.forceReDownload}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{localized.forceDownloadMsg}</p>
 
             <div className="flex mt-2">
               <button
                 className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={() => forceDownloadMods()}
               >
-                <span className="uppercase">Force Re-Download</span>
+                <span className="uppercase">{localized.forceReDownload}</span>
               </button>
             </div>
 
-            <h6 className="mt-8">Content Mods Vs Data Mods</h6>
-            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-              Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from
-              the data folder. Don't touch unless you know what you're doing!
-            </p>
+            <h6 className="mt-8">{localized.contentVsData}</h6>
+            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.contentVsDataMsg}</p>
 
             <div className="flex mt-2">
               <button
@@ -237,17 +273,14 @@ const OptionsDrawer = memo(() => {
                   style="light"
                   content={
                     <>
-                      <div>Copies currently enabled mods from content into data.</div>
-                      <div>Hold Shift if you want to copy all mods.</div>
-                      <div>
-                        As a modder this can overwrite your mod in data with an older version you have in
-                        content!
-                      </div>
-                      <div>Mods that are in data will have a red name in the manager.</div>
+                      <div>{localized.copyToDataMsg1}</div>
+                      <div>{localized.copyToDataMsg2}</div>
+                      <div>{localized.copyToDataMsg3}</div>
+                      <div>{localized.copyToDataMsg4}</div>
                     </>
                   }
                 >
-                  <span className="uppercase">Copy to data</span>
+                  <span className="uppercase">{localized.copyToData}</span>
                 </Tooltip>
               </button>
             </div>
@@ -257,21 +290,13 @@ const OptionsDrawer = memo(() => {
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={() => cleanData()}
               >
-                <Tooltip
-                  placement="bottom"
-                  style="light"
-                  content="Removes all mods in data if such mod already exists in content. As a modder this can remove a newer version of your mod in data!"
-                >
-                  <span className="uppercase">Clean data</span>
+                <Tooltip placement="bottom" style="light" content={localized.cleanDataMsg}>
+                  <span className="uppercase">{localized.cleanData}</span>
                 </Tooltip>
               </button>
             </div>
 
-            <p className="mt-6 mb-4 text-sm text-gray-500 dark:text-gray-400">
-              You can also copy them as symbolic links (basically a shortcut) so they don't take up duplicate
-              space. They will also always be up-to-date with the content mod since they're just a shortcut to
-              the actual mod.
-            </p>
+            <p className="mt-6 mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.symLink}</p>
 
             <div className="flex mt-2">
               <button
@@ -289,17 +314,15 @@ const OptionsDrawer = memo(() => {
                   style="light"
                   content={
                     <>
-                      {!isAdmin && (
-                        <div className="text-red-700 font-bold">Requires running as administrator!</div>
-                      )}
-                      <div>Creates Symbolic Links of currently enabled mods from content into data.</div>
-                      <div>Hold Shift if you want to create links of all mods.</div>
-                      <div>This won't create links of mods that already exist in data.</div>
-                      <div>Mods that are symbolic links will have a blue name in the manager.</div>
+                      {!isAdmin && <div className="text-red-700 font-bold">{localized.reqAdmin}</div>}
+                      <div>{localized.symLinkMsg1}</div>
+                      <div>{localized.symLinkMsg2}</div>
+                      <div>{localized.symLinkMsg3}</div>
+                      <div>{localized.symLinkMsg4}</div>
                     </>
                   }
                 >
-                  <span className="uppercase">Create symbolic links in data</span>
+                  <span className="uppercase">{localized.createSymLinks}</span>
                 </Tooltip>
               </button>
             </div>
@@ -308,62 +331,52 @@ const OptionsDrawer = memo(() => {
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={() => cleanSymbolicLinksInData()}
               >
-                <Tooltip
-                  placement="bottom"
-                  style="light"
-                  content="Removes all symbolic links in data. Won't touch real mods that aren't symbolic links."
-                >
-                  <span className="uppercase">Clean symbolic links in data</span>
+                <Tooltip placement="bottom" style="light" content={localized.cleanSymLinksMsg}>
+                  <span className="uppercase">{localized.createSymLinks}</span>
                 </Tooltip>
               </button>
             </div>
 
-            <h6 className="mt-10">Hidden mods</h6>
-            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-              Unhide mods you've previously hidden:
-            </p>
+            <h6 className="mt-10">{localized.hiddenMods}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{localized.unhideMods}</p>
 
             <div>
               <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
             </div>
 
-            <h6 className="mt-10">Share mods</h6>
-            <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
-              Share current mod list with other people for multiplayer:
-            </p>
+            <h6 className="mt-10">{localized.shareMods}</h6>
+            <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">{localized.shareModsMsg}</p>
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={() => setIsShowingShareMods(true)}
               >
-                <span className="uppercase">Share Mod List</span>
+                <span className="uppercase">{localized.shareModLists}</span>
               </button>
             </div>
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              Copy names of enabled mods to clipboard:
-            </p>
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{localized.copyModNames}</p>
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={() => exportModNamesToClipboard(enabledMods)}
               >
-                <span className="uppercase">Copy Mod List</span>
+                <span className="uppercase">{localized.copyModList}</span>
               </button>
             </div>
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              Create a Steam collection from enabled mods:
+              {localized.createSteamCollectionMsg}
             </p>
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={() => dispatch(setIsCreateSteamCollectionOpen(true))}
               >
-                <span className="uppercase">Create Steam Collection</span>
+                <span className="uppercase">{localized.createSteamCollection}</span>
               </button>
             </div>
 
-            <h6 className="mt-10">For Modders</h6>
-            <p className="mb-1 text-sm text-gray-500 dark:text-gray-400">Keep these in sync for MP.</p>
+            <h6 className="mt-10">{localized.forModders}</h6>
+            <p className="mb-1 text-sm text-gray-500 dark:text-gray-400">{localized.keepInSync}</p>
             <div className="flex items-center ml-1">
               <input
                 className="mt-1"
@@ -378,11 +391,11 @@ const OptionsDrawer = memo(() => {
                   style="light"
                   content={
                     <>
-                      <div>For 1v1 testing in custom battles.</div>
+                      <div>{localized.forCustomBattleTesting}</div>
                     </>
                   }
                 >
-                  Make all units custom battle generals
+                  {localized.makeCustomBattleGenerals}
                 </Tooltip>
               </label>
             </div>
@@ -400,12 +413,12 @@ const OptionsDrawer = memo(() => {
                   style="light"
                   content={
                     <>
-                      <div>Enables WH3 script logging.</div>
-                      <div>Logs are created in the WH3 folder.</div>
+                      <div>{localized.enableScriptLogging1}</div>
+                      <div>{localized.enableScriptLogging2}</div>
                     </>
                   }
                 >
-                  Enable script logging
+                  {localized.enableScriptLogging}
                 </Tooltip>
               </label>
             </div>
@@ -418,7 +431,7 @@ const OptionsDrawer = memo(() => {
                 onChange={() => dispatch(toggleIsSkipIntroMoviesEnabled())}
               ></input>
               <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
-                Skip intro movies
+                {localized.skipIntroMovies}
               </label>
             </div>
             <div className="flex items-center ml-1">
@@ -435,26 +448,24 @@ const OptionsDrawer = memo(() => {
                   style="light"
                   content={
                     <>
-                      <div>For repetitive visual testing that involves restarting the game.</div>
-                      <div>Set up a custom battle once and enable this to auto-enter it.</div>
+                      <div>{localized.autoStartCustomBattles1}</div>
+                      <div>{localized.autoStartCustomBattles2}</div>
                     </>
                   }
                 >
-                  Auto-start custom battle
+                  {localized.autoStartCustomBattles}
                 </Tooltip>
               </label>
             </div>
 
-            <h6 className="mt-10">Set Folder Paths</h6>
-            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-              Set WH3 and Steam Workshop content folder paths.
-            </p>
+            <h6 className="mt-10">{localized.setFolderPaths}</h6>
+            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.setFolderPathsMsg}</p>
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={() => setIsShowingSetFolderPaths(true)}
               >
-                <span className="uppercase">Set Folder Paths</span>
+                <span className="uppercase">{localized.setFolderPaths}</span>
               </button>
             </div>
           </div>

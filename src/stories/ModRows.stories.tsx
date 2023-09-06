@@ -50,6 +50,8 @@ export const MockedState: AppState = {
   removedModsData: [],
   modRowsSortingType: SortingType.Ordered,
   importedMods: [],
+  availableLanguages: ["en"],
+  currentLanguage: "en",
 };
 
 // A super-simple mock of a redux store

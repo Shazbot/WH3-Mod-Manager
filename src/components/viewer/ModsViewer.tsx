@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
@@ -6,6 +6,7 @@ import PackTablesTreeView from "./PackTablesTreeView";
 import PackTablesTableView from "./PackTablesTableView";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
+import localizationContext from "../../localizationContext";
 
 const ModsViewer = React.memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
@@ -13,6 +14,8 @@ const ModsViewer = React.memo(() => {
   const packPath = currentDBTableSelection?.packPath ?? "data.pack";
 
   const [isOpen, setIsOpen] = React.useState(true);
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   const [dbTableFilter, setDBTableFilter] = useState("");
   const debouncedFilterChange = debounce((val: string) => setDBTableFilter(val), 150);
@@ -102,7 +105,7 @@ const ModsViewer = React.memo(() => {
           </div> */}
 
           <div className="flex items-center">
-            <span className="text-slate-100">Filter:</span>
+            <span className="text-slate-100">{localized.filter}</span>
             <span className="relative">
               <input
                 id="dbTableFilter"

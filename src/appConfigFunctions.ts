@@ -27,6 +27,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isClosedOnPlay: appState.isClosedOnPlay,
     categories: appState.categories,
     modRowsSortingType: appState.modRowsSortingType,
+    currentLanguage: appState.currentLanguage,
   };
 };
 

@@ -1,6 +1,6 @@
 import Creatable from "react-select/creatable";
 import Select, { ActionMeta, SingleValue } from "react-select";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
   addPreset,
@@ -20,6 +20,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import CompatScreen from "./CompatScreen";
 import RequiredMods from "./RequiredMods";
 import ModsMerger from "./ModsMerger";
+import localizationContext from "../localizationContext";
 
 const Sidebar = React.memo(() => {
   const dispatch = useAppDispatch();
@@ -42,6 +43,8 @@ const Sidebar = React.memo(() => {
   const [downloadURL, setDownloadURL] = useState<string>("");
   const [isShowingSavedGames, setIsShowingSavedGames] = useState<boolean>(false);
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const allMods = useAppSelector((state) => state.app.allMods);
@@ -264,14 +267,14 @@ const Sidebar = React.memo(() => {
             style="light"
             content={
               <>
-                <p>Create a new preset by typing its name.</p>
-                <p className="mt-3">When selecting existing preset:</p>
-                <p>Hold Shift to add mods in preset to current mods.</p>
-                <p>Hold Ctrl to remove mods in preset from current mods.</p>
+                <p>{localized.presetsTooltip1}</p>
+                <p className="mt-3">{localized.presetsTooltip2}</p>
+                <p>{localized.presetsTooltip3}</p>
+                <p>{localized.presetsTooltip4}</p>
               </>
             }
           >
-            <span className="text-slate-100 select-none">Select or create preset:</span>
+            <span className="text-slate-100 select-none">{localized.selectOrCreatePreset}</span>
           </Tooltip>
           <Creatable
             id="createOrSelectPreset"
@@ -306,12 +309,12 @@ const Sidebar = React.memo(() => {
                 <path d="M5.536 21.886a1.004 1.004 0 0 0 1.033-.064l13-9a1 1 0 0 0 0-1.644l-13-9A1 1 0 0 0 5 3v18a1 1 0 0 0 .536.886z"></path>
               )}
             </svg>
-            <span className="ml-1">Edit presets</span>
+            <span className="ml-1">{localized.editPresets}</span>
           </div>
           {isEditPresetsPanelOpen && (
             <div className="expandable-panel-rounded-border border-slate-100-opacity-6">
               <div className="">
-                <span className="text-slate-100 select-none">Replace preset:</span>
+                <span className="text-slate-100 select-none">{localized.replacePreset}</span>
                 <Select
                   id="replacePreset"
                   options={options}
@@ -321,7 +324,7 @@ const Sidebar = React.memo(() => {
                 ></Select>
               </div>
               <div className="mt-4">
-                <span className="text-slate-100 select-none">Delete preset:</span>
+                <span className="text-slate-100 select-none">{localized.deletePreset}</span>
                 <Select
                   id="deletePreset"
                   options={options}
@@ -335,7 +338,7 @@ const Sidebar = React.memo(() => {
         </div>
 
         <div className="mt-5 static">
-          <span className="text-slate-100 select-none">Filter:</span>
+          <span className="text-slate-100 select-none">{localized.filter}</span>
           <span className="relative">
             <input
               id="filterInput"
@@ -364,7 +367,7 @@ const Sidebar = React.memo(() => {
                   placement="left"
                   content={missingModDependencies.map(([mod, reqs]) => (
                     <div key={mod.path}>
-                      <span className="">{mod.humanName + ` missing:`}</span>
+                      <span className="">{mod.humanName + ` ${localized.missing}`}</span>
                       {
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         reqs.map(([reqId, reqHumanName]) => (
@@ -376,7 +379,7 @@ const Sidebar = React.memo(() => {
                     </div>
                   ))}
                 >
-                  Missing Required Mods!
+                  {localized.missingReqMods}
                 </Tooltip>
               </div>
             </div>
@@ -389,11 +392,11 @@ const Sidebar = React.memo(() => {
                   placement="left"
                   content={
                     <>
-                      <p>These packs overwrite CA data and should not be used when outdated:</p>
+                      <p>{localized.outdatedOverwritingPacksTooltip}</p>
                       {Object.entries(timeCheckedOverwrittenDataPackedFiles).map(
                         ([packName, overwrittenFileNames]) => (
                           <div key={packName}>
-                            <span className="">{packName + ` overwrites:`}</span>
+                            <span className="">{packName + ` ${localized.overwrites}`}</span>
                             {overwrittenFileNames.map((packedFileName) => (
                               <div key={`${packName}_${packedFileName}`} className="text-red-600">
                                 {packedFileName}
@@ -405,7 +408,7 @@ const Sidebar = React.memo(() => {
                     </>
                   }
                 >
-                  Outdated overwriting packs!
+                  {localized.outdatedOverwritingPacks}
                 </Tooltip>
               </div>
             </div>
@@ -418,7 +421,7 @@ const Sidebar = React.memo(() => {
                   placement="left"
                   content={
                     <>
-                      <p>Packs that contain outdated files that have since been changed in a patch:</p>
+                      <p>{localized.packsWithOutdatedFiles}</p>
                       {Object.entries(outdatedPackFiles).map(([packName, overwrittenFileNames]) => (
                         <div key={packName}>
                           <span className="">{`${packName}:`}</span>
@@ -432,7 +435,7 @@ const Sidebar = React.memo(() => {
                     </>
                   }
                 >
-                  Outdated packs!
+                  {localized.outdatedPacks}
                 </Tooltip>
               </div>
             </div>
@@ -445,10 +448,7 @@ const Sidebar = React.memo(() => {
                   placement="left"
                   content={
                     <>
-                      <div>
-                        Some merged mods contain outdated mods, update them (right click) or create a new
-                        merged mod!
-                      </div>
+                      <div>{localized.outdatedMergedModsTooltip}</div>
                       {outdatedMergedPacks.map((mod) => (
                         <div key={mod.path}>
                           <span className="">{mod.name + ` is not up to date`}</span>
@@ -457,7 +457,7 @@ const Sidebar = React.memo(() => {
                     </>
                   }
                 >
-                  Outdated Merged Mods!
+                  {localized.outdatedMergedMods}
                 </Tooltip>
               </div>
             </div>
@@ -471,7 +471,7 @@ const Sidebar = React.memo(() => {
                     <div key={mod.path}>{mod.name.replace(".pack", "")}</div>
                   ))}
                 >
-                  Enabled Mods: {enabledMods.length}
+                  {localized.enabledMods} {enabledMods.length}
                 </Tooltip>
               </div>
             </div>
@@ -490,11 +490,11 @@ const Sidebar = React.memo(() => {
               {(isWH3Running && (
                 <div className="make-tooltip-w-full">
                   <Tooltip placement="left" content={"Game is currently running!"}>
-                    <span>Play</span>
+                    <span>{localized.play}</span>
                   </Tooltip>
                 </div>
               )) ||
-                "Play"}
+                localized.play}
             </button>
 
             <div className="mt-2 w-36 relative">
@@ -513,7 +513,7 @@ const Sidebar = React.memo(() => {
                     placement="left"
                     content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}
                   >
-                    <span className="ml-[-25%]">Continue</span>
+                    <span className="ml-[-25%]">{localized.continue}</span>
                   </Tooltip>
                 </div>
               </button>
@@ -565,7 +565,7 @@ const Sidebar = React.memo(() => {
               className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
             >
-              DB Viewer
+              {localized.dbViewer}
             </button>
           </div>
         </div>

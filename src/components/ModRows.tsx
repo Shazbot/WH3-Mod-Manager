@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useRef, useState } from "react";
 import "../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
@@ -19,6 +19,7 @@ import { isModAlwaysEnabled } from "../modsHelpers";
 import * as modRowSorting from "../utility/modRowSorting";
 import { SortingType } from "../utility/modRowSorting";
 import ModRow from "./ModRow";
+import localizationContext from "../localizationContext";
 
 let currentDragTarget: Element;
 let dropOutlineElement: HTMLDivElement;
@@ -115,6 +116,8 @@ const ModRows = memo(() => {
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   const rowsParentRef = useRef<HTMLDivElement>(null);
 
@@ -530,18 +533,16 @@ const ModRows = memo(() => {
             style="light"
             content={
               <>
-                <div>Mods with lower order have higher priority.</div>
-                <div>Right click on mod number to reset or here to reset all.</div>
-                <div className="text-red-600 font-bold">
-                  Don't change mod priority unless you really know what you're doing!
-                </div>
+                <div>{localized.priorityTooltipOne}</div>
+                <div>{localized.priorityTooltipTwo}</div>
+                <div className="text-red-600 font-bold">{localized.priorityTooltipThree}</div>
               </>
             }
           >
             <span
               className={`text-center w-full ${modRowSorting.isOrderSort(sortingType) && "font-semibold"}`}
             >
-              Order
+              {localized.order}
             </span>
           </Tooltip>
         </div>
@@ -552,11 +553,11 @@ const ModRows = memo(() => {
           id="enabledHeader"
         >
           {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip placement="right" style="light" content="Right click to enable or disable all mods">
+          <Tooltip placement="right" style="light" content={localized.enableOrDisableAll}>
             <span
               className={`text-center w-full ${modRowSorting.isEnabledSort(sortingType) && "font-semibold"}`}
             >
-              Enabled
+              {localized.enabled}
             </span>
           </Tooltip>
         </div>
@@ -566,7 +567,7 @@ const ModRows = memo(() => {
             (areThumbnailsEnabled ? "" : "hidden")
           }
         >
-          Thumbnail
+          {localized.thumbnail}
         </div>
         <div
           className="flex grid-area-packName place-items-center pl-1 mod-row-header"
@@ -575,14 +576,14 @@ const ModRows = memo(() => {
         >
           {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip placement="right" style="light" content="Right click to switch to sorting by data packs">
+          <Tooltip placement="right" style="light" content={localized.sortByDataPacks}>
             <span
               className={`${
                 (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
                 "font-semibold"
               }`}
             >
-              {(modRowSorting.isDataPackSort(sortingType) && "Data Packs") || "Pack"}
+              {(modRowSorting.isDataPackSort(sortingType) && localized.dataPacks) || localized.pack}
             </span>
           </Tooltip>
         </div>
@@ -592,7 +593,9 @@ const ModRows = memo(() => {
           onClick={() => setSortingType(SortingType.HumanName)}
         >
           {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>Name</span>
+          <span className={`${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>
+            {localized.name}
+          </span>
         </div>
         <div
           className={
@@ -602,7 +605,9 @@ const ModRows = memo(() => {
           onClick={() => setSortingType(SortingType.Author)}
         >
           {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>Author</span>
+          <span className={`${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>
+            {localized.author}
+          </span>
         </div>
         <div
           className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl"
@@ -611,11 +616,7 @@ const ModRows = memo(() => {
         >
           {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
             modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip
-            placement="left"
-            style="light"
-            content="Right click to switch to sorting by subscribed date"
-          >
+          <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
             <span
               className={`${
                 (modRowSorting.isLastUpdatedSort(sortingType) ||
@@ -623,7 +624,8 @@ const ModRows = memo(() => {
                 "font-semibold"
               }`}
             >
-              {(modRowSorting.isSubbedTimeSort(sortingType) && "Subscription Time") || "Last Updated"}
+              {(modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) ||
+                localized.lastUpdated}
             </span>
           </Tooltip>
         </div>

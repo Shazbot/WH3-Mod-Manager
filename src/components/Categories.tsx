@@ -1,5 +1,5 @@
 import Creatable from "react-select/creatable";
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import "@silevis/reactgrid/styles.css";
 import "handsontable/dist/handsontable.full.min.css";
@@ -18,6 +18,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import ModDropdownOptions from "./ModDropdownOptions";
 import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
 import { Tooltip } from "../flowbite";
+import localizationContext from "../localizationContext";
 
 type CategorySelectType = {
   value: string;
@@ -53,8 +54,6 @@ let selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }] as {
   row2: number;
   column2: number;
 }[];
-
-const headerNames = ["Category", "Enabled", "Name", "Categories"];
 
 const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
   const dispatch = useAppDispatch();
@@ -146,6 +145,13 @@ const Categories = React.memo(() => {
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const categories = useAppSelector((state) => state.app.categories);
+
+  const localized: Record<string, string> = useContext(localizationContext);
+
+  const headerNames = useMemo(
+    () => [localized.category, localized.enabled, localized.name, localized.categories],
+    [localized]
+  );
 
   const setNewCategoryFilter = useMemo(
     () =>
@@ -545,7 +551,7 @@ const Categories = React.memo(() => {
               id="categoryFilterInput"
               type="text"
               defaultValue={categoryFilter}
-              placeholder="Category filter"
+              placeholder={localized.categoryFilter}
               onChange={(e) => {
                 setNewCategoryFilter(e.target.value);
               }}
@@ -569,7 +575,7 @@ const Categories = React.memo(() => {
               id="nameFilterInput"
               type="text"
               defaultValue={nameFilter}
-              placeholder="Name filter"
+              placeholder={localized.nameFilter}
               onChange={(e) => {
                 setNewNameFilter(e.target.value);
               }}
@@ -593,7 +599,7 @@ const Categories = React.memo(() => {
               id="categoriesFilterInput"
               type="text"
               defaultValue={categoriesFilter}
-              placeholder="Categories filter"
+              placeholder={localized.categoriesFilter}
               onChange={(e) => {
                 setNewCategoriesFilter(e.target.value);
               }}

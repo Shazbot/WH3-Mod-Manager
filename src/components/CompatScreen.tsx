@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useContext } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { Modal } from "../flowbite/components/Modal/index";
 import { Spinner, Tabs, Tooltip } from "../flowbite";
@@ -7,6 +7,7 @@ import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { PackTableCollision } from "../packFileTypes";
 import { setPackCollisions } from "../appSlice";
+import localizationContext from "../localizationContext";
 
 const CompatScreen = memo(() => {
   const dispatch = useAppDispatch();
@@ -19,6 +20,10 @@ const CompatScreen = memo(() => {
   const [isCompatOpen, setIsCompatOpen] = React.useState(false);
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
+
+  const localized: Record<string, string> = useContext(localizationContext);
+  const compatHelpTwo = ((localized.compatHelpTwo ?? "").includes("STAR_ICON") &&
+    localized.compatHelpTwo.split("STAR_ICON")) || ["", ""];
 
   const isPackProcessingDone = ((useEnabledModsOnly && enabledMods) || mods).every((mod) =>
     pathsOfReadPacks.some((path) => path == mod.path)
@@ -113,7 +118,7 @@ const CompatScreen = memo(() => {
           className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
           type="button"
         >
-          Check Compat
+          {localized.checkCompat}
         </button>
       </div>
 
@@ -133,10 +138,10 @@ const CompatScreen = memo(() => {
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
           ]}
         >
-          <Modal.Header>Mod Compatibility</Modal.Header>
+          <Modal.Header>{localized.modCompatibility}</Modal.Header>
           <Modal.Body>
             <Tabs.Group style="underline">
-              <Tabs.Item active={true} title="Files">
+              <Tabs.Item active={true} title={localized.files}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
                   <span className="absolute top-[-4rem] right-0 flex items-center">
                     <input
@@ -146,7 +151,7 @@ const CompatScreen = memo(() => {
                       onChange={() => toggleUseEnabledModsOnly()}
                     ></input>
                     <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      Enabled Mods Only
+                      {localized.enabledModsOnly}
                     </label>
                   </span>
                   {packCollisions &&
@@ -209,7 +214,7 @@ const CompatScreen = memo(() => {
                       })}
                 </div>
               </Tabs.Item>
-              <Tabs.Item title="Tables">
+              <Tabs.Item title={localized.tables}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
                   <span className="absolute top-[-4rem] right-0 flex items-center">
                     <input
@@ -219,7 +224,7 @@ const CompatScreen = memo(() => {
                       onChange={() => toggleUseEnabledModsOnly()}
                     ></input>
                     <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      Enabled Mods Only
+                      {localized.enabledModsOnly}
                     </label>
                   </span>
                   {packCollisions &&
@@ -281,7 +286,7 @@ const CompatScreen = memo(() => {
                                     {!doneSecondFileName && (
                                       <div className="ml-12">
                                         <span className="make-tooltip-inline">
-                                          <Tooltip content={<p>DB Table</p>}>
+                                          <Tooltip content={<p>{localized.dbTable}</p>}>
                                             <span className="text-center w-full">{dbName}</span>
                                           </Tooltip>
                                         </span>
@@ -290,9 +295,11 @@ const CompatScreen = memo(() => {
                                           <Tooltip
                                             content={
                                               <>
-                                                <p>Collision with</p>
+                                                <p>{localized.collisionWith}</p>
                                                 <p>{firstBaseName}</p>
-                                                <p>in {firstPackName}</p>
+                                                <p>
+                                                  {localized.in} {firstPackName}
+                                                </p>
                                               </>
                                             }
                                           >
@@ -300,7 +307,7 @@ const CompatScreen = memo(() => {
                                           </Tooltip>
                                         </span>
                                         <span className="ml-3 font-normal make-tooltip-inline">
-                                          <Tooltip content={<p>Table Column</p>}>
+                                          <Tooltip content={<p>{localized.tableColumn}</p>}>
                                             <span className="text-center w-full">{collision.key}</span>
                                           </Tooltip>
                                         </span>
@@ -324,29 +331,17 @@ const CompatScreen = memo(() => {
                       })}
                 </div>
               </Tabs.Item>
-              <Tabs.Item title="Help">
+              <Tabs.Item title={localized.help}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
+                  <p>{localized.compatHelpOne}</p>
                   <p>
-                    The Files tab covers whole files that overwrite each other, these are usually related to
-                    unit visuals: .dds textures, .wsmodel and .variantmeshdefinition files that define how a
-                    unit's look is constructed ingame. The game will use the file from the mod with higher
-                    load order priority, so between two mod that apply visual changes the ingame result will
-                    depend on the relative priority of the two mods.
-                  </p>
-                  <p>
-                    In the panel the "parent" (underlined) mod will have priority unless a
+                    {compatHelpTwo[0]}
                     <span className="mx-1 text-green-700">
                       <FontAwesomeIcon fill="green" icon={faStar} />
                     </span>
-                    is next to the "child" mod name.
+                    {compatHelpTwo[1]}
                   </p>
-                  <p className="mt-6">
-                    The Tables tab covers keys in database tables that conflict with each other. Database
-                    tables usually are related to units stats. For example overhaul submods that affect unit
-                    stats will always have collisions here. Unlike in the Files tab, here the actual table
-                    names are compared to determine priority, not pack names. So changing load order won't
-                    affect anything here.
-                  </p>
+                  <p className="mt-6">{localized.compatHelpThree}</p>
                 </div>
               </Tabs.Item>
             </Tabs.Group>
@@ -360,10 +355,10 @@ const CompatScreen = memo(() => {
         size="2xl"
         position="center"
       >
-        <Modal.Header>Reading And Comparing Packs...</Modal.Header>
+        <Modal.Header>{localized.readingAndComparingPacks}</Modal.Header>
         <Modal.Body>
           <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-            Wait until all the mod packs have been read and compared with each other...
+            {localized.waitForReadingAndComparingPacks}
           </p>
           <div className="text-center mt-8">
             <Spinner color="purple" size="xl" />

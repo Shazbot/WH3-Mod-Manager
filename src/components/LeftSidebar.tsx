@@ -1,10 +1,11 @@
-import React, { memo, useEffect } from "react";
+import React, { memo, useContext, useEffect } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-tabs";
 import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
+import localizationContext from "../localizationContext";
 
 // const Tab = () => {}
 
@@ -18,6 +19,8 @@ const LeftSidebar = memo(() => {
     console.log("setting tab", tabType);
     dispatch(setCurrentTab(tabType));
   };
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -55,21 +58,21 @@ const LeftSidebar = memo(() => {
           <Tab>
             <div className="flex items-center h-full relative">
               <IoIosList size="1.5rem" />
-              <span className="ml-2 mr-2 hidden-child">All Mods</span>
+              <span className="ml-2 mr-2 hidden-child">{localized.allMods}</span>
               <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+1</span>
             </div>
           </Tab>
           <Tab>
             <div className="flex items-center h-full parent-unhide-child relative">
               <IoMdCheckboxOutline size="1.5rem" />
-              <span className="ml-2 mr-2 hidden-child">Enabled Mods</span>
+              <span className="ml-2 mr-2 hidden-child">{localized.enabledModsCapitalized}</span>
               <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+2</span>
             </div>
           </Tab>
           <Tab>
             <div className="flex items-center h-full parent-unhide-child relative">
               <MdCategory size="1.5rem" />
-              <span className="ml-2 mr-2 hidden-child">Categories</span>
+              <span className="ml-2 mr-2 hidden-child">{localized.categories}</span>
               <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+3</span>
             </div>
           </Tab>

@@ -1,8 +1,9 @@
 import { Modal } from "../flowbite/components/Modal/index";
-import React, { memo } from "react";
+import React, { memo, useContext } from "react";
 import { FaGithub, FaSteam, FaPaypal, FaPatreon } from "react-icons/fa";
 import { Tooltip } from "flowbite-react";
 import appPackage from "../../package.json";
+import localizationContext from "../localizationContext";
 
 export interface AboutScreenProps {
   isOpen: boolean;
@@ -10,6 +11,8 @@ export interface AboutScreenProps {
 }
 
 const AboutScreen = memo(({ isOpen, setIsOpen }: AboutScreenProps) => {
+  const localized: Record<string, string> = useContext(localizationContext);
+
   return (
     <>
       {isOpen && (
@@ -22,15 +25,13 @@ const AboutScreen = memo(({ isOpen, setIsOpen }: AboutScreenProps) => {
           position="center"
           explicitClasses={["!max-w-7xl"]}
         >
-          <Modal.Header>About</Modal.Header>
+          <Modal.Header>{localized.about}</Modal.Header>
           <Modal.Body>
             <div className="flex flex-col gap-y-6 gap-x-4 z-10 leading-relaxed dark:text-gray-300 relative font-normal items-center">
               <div className="w-full flex flex-col gap-y-6">
                 <div className="text-gray-100 font-bold m-auto text-2xl">Warhammer 3 Mod Manager</div>
                 <div className="text-gray-200 font-semibold m-auto text-xl -my-2">{`Version ${appPackage.version}`}</div>
-                <div className="text-gray-200 font-semibold m-auto text-xl">
-                  by Prop Joe (Steam) / Shazbot (GitHub)
-                </div>
+                <div className="text-gray-200 font-semibold m-auto text-xl">{localized.byAuthor}</div>
                 <div className="flex m-auto gap-x-4">
                   <div>
                     <Tooltip
@@ -56,7 +57,7 @@ const AboutScreen = memo(({ isOpen, setIsOpen }: AboutScreenProps) => {
               </div>
               <div className="border border-gray-600 w-[75%]"></div>
               <div className="w-full flex flex-col gap-y-4">
-                <p className="m-auto text-gray-300 font-medium text-l">Buy me a coffee:</p>
+                <p className="m-auto text-gray-300 font-medium text-l">{localized.coffee}</p>
                 <div className="flex gap-x-4 m-auto">
                   <div>
                     <Tooltip style={"light"} content={<p>https://www.patreon.com/propjoe</p>}>
