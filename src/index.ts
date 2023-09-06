@@ -1099,7 +1099,8 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
 
       try {
-        const availableLocalizations = (await fs.readdir("./locales/", { withFileTypes: true }))
+        const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";
+        const availableLocalizations = (await fs.readdir(localesPath, { withFileTypes: true }))
           .filter((dirent) => dirent.isDirectory())
           .map((dirent) => dirent.name);
 

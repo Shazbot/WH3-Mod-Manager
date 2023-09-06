@@ -18,6 +18,7 @@ module.exports = {
     new CopyPlugin({
       patterns: [
         { from: "./temp/sub.js", to: "sub.js" },
+        { from: "./locales/**/*" },
         { from: "./temp/readPacksWorker.js", to: "readPacksWorker.js" },
         { from: "./temp/schema.js", to: "schema.js" },
         { from: "./temp/schema/schema_wh3.json", to: "../schema/schema_wh3.json" },
