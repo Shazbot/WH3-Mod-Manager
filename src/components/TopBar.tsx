@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { useAppSelector } from "../hooks";
 import appPackage from "../../package.json";
 
@@ -10,6 +10,8 @@ const TopBar = memo(() => {
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const isHardwareAccelerationDisabled = startArgs.some((arg) => arg == "-nogpu");
 
+  const [translated, setTranslated] = useState<Record<string, string>>({});
+
   const enabledMods = mods.filter(
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
   );
@@ -17,10 +19,21 @@ const TopBar = memo(() => {
     enabledMods.find((mod) => mod.name === iterMod.name)
   );
   const title =
-    `WH3 Mod Manager v${appPackage.version}: ${enabledMods.length} mods enabled` +
-    (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "") +
+    `WH3 Mod Manager v${appPackage.version}: ${translated["numModsEnabled"]}` +
+    (hiddenAndEnabledMods.length > 0 ? ` (${translated["numModsHidden"]})` : "") +
     ((isHardwareAccelerationDisabled && " nogpu") || "") +
     ((isAdmin && " admin") || "");
+
+  useEffect(() => {
+    const forTranslation = {
+      numModsEnabled: { count: enabledMods.length },
+      numModsHidden: { count: hiddenAndEnabledMods.length },
+    };
+    window.api?.translateAll(forTranslation).then((translated) => {
+      console.log("TRANSLATED IS", translated);
+      setTranslated(translated);
+    });
+  }, [enabledMods.length, hiddenAndEnabledMods.length]);
 
   return (
     <>

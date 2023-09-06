@@ -1,7 +1,8 @@
 import { Modal } from "../flowbite/components/Modal/index";
-import React, { memo, useEffect } from "react";
+import React, { memo, useContext, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { toggleMod } from "../appSlice";
+import localizationContext from "../localizationContext";
 
 const subbedModIdsToWaitFor: string[] = [];
 
@@ -13,6 +14,9 @@ export interface RequiredModsProps {
 
 const RequiredMods = memo((props: RequiredModsProps) => {
   const dispatch = useAppDispatch();
+
+  const localized: Record<string, string> = useContext(localizationContext);
+
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const allMods = useAppSelector((state) => state.app.allMods);
   const saves = [...useAppSelector((state) => state.app.saves)];
@@ -74,7 +78,7 @@ const RequiredMods = memo((props: RequiredModsProps) => {
     <>
       {props.isOpen && (
         <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
-          <Modal.Header>Missing Required Mods</Modal.Header>
+          <Modal.Header>{localized.missingRequiredMods}</Modal.Header>
           <Modal.Body>
             <div className="grid grid-cols-2 h-full gap-4">
               {[...modNameToIdLookup.entries()].map(([modId, modName]) => {

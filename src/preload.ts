@@ -58,6 +58,12 @@ const api = {
   readMods: (mods: Mod[], skipCollisionCheck = true) =>
     ipcRenderer.send("readMods", mods, skipCollisionCheck),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
+  translate: (translationId: string, options?: Record<string, string | number>) =>
+    ipcRenderer.invoke("translate", translationId, options),
+  translateAll: (translationIdsWithOptions: Record<string, Record<string, string | number>>) =>
+    ipcRenderer.invoke("translateAll", translationIdsWithOptions),
+  translateAllStatic: (translationIds: Record<string, string | number>) =>
+    ipcRenderer.invoke("translateAllStatic", translationIds),
   fromAppConfig: (callback: (event: Electron.IpcRendererEvent, appState: AppState) => void) =>
     ipcRenderer.on("fromAppConfig", callback),
   failedReadingConfig: (callback: (event: Electron.IpcRendererEvent) => void) =>
@@ -101,6 +107,11 @@ const api = {
   setDataModLastChangedLocal: (
     callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void
   ) => ipcRenderer.on("setDataModLastChangedLocal", callback),
+  setAvailableLanguages: (callback: (event: Electron.IpcRendererEvent, languages: string[]) => void) =>
+    ipcRenderer.on("setAvailableLanguages", callback),
+  requestLanguageChange: (language: string) => ipcRenderer.send("requestLanguageChange", language),
+  setCurrentLanguage: (callback: (event: Electron.IpcRendererEvent, language: string) => void) =>
+    ipcRenderer.on("setCurrentLanguage", callback),
   electronLog,
 };
 

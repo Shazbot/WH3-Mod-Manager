@@ -1,6 +1,7 @@
 import { Modal } from "../flowbite/components/Modal/index";
-import React, { memo } from "react";
+import React, { memo, useContext } from "react";
 import { useAppSelector } from "../hooks";
+import localizationContext from "../localizationContext";
 
 export interface GamePathsSetupProps {
   isOpen: boolean;
@@ -19,6 +20,8 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
   const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
   const isAnyPathEmpty = appFolderPaths.contentFolder == "" || appFolderPaths.gamePath == "";
 
+  const localized: Record<string, string> = useContext(localizationContext);
+
   return (
     <>
       {(isOpen || (isSetAppFolderPathsDone && isAnyPathEmpty)) && (
@@ -31,30 +34,19 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
           position="center"
           explicitClasses={["!max-w-7xl"]}
         >
-          <Modal.Header>Configure Folder Locations</Modal.Header>
+          <Modal.Header>{localized.configureFolderLocations}</Modal.Header>
           <Modal.Body>
             <div className="flex flex-col gap-y-8 gap-x-4 z-10 leading-relaxed dark:text-gray-300 relative font-normal items-center">
               <div>
                 {(isAnyPathEmpty && (
-                  <p className="m-auto text-center">
-                    The mod manager tried to get WH3 folder locations from Windows Registry, but it couldn't
-                    find them! You'll have to set them manually!
-                  </p>
-                )) || (
-                  <p className="m-auto text-center">
-                    The mod manager automatically found WH3 folder paths from the Windows Registry, but you
-                    can set them manually here.
-                  </p>
-                )}
+                  <p className="m-auto text-center">{localized.setFolderPathsManually}</p>
+                )) || <p className="m-auto text-center">{localized.setFolderPathsManuallyOptionally}</p>}
               </div>
               <div className="border w-full border-gray-600"></div>
               <div>
-                <p className="m-auto text-center">
-                  The main Warhammer 3 folder that contains Warhammer3.exe, for example C:\Program Files
-                  (x86)\Steam\steamapps\common\Total War WARHAMMER III
-                </p>
+                <p className="m-auto text-center">{localized.mainWH3Folder}</p>
                 <div className="flex gap-x-4 items-center w-full mt-4">
-                  <span className="whitespace-nowrap">WH3 folder:</span>
+                  <span className="whitespace-nowrap">{localized.wh3Folder}</span>
                   <span className="w-full">
                     <input
                       type="text"
@@ -69,19 +61,15 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
                       onSelectWarhammer3Folder();
                     }}
                   >
-                    <span className="uppercase">Select WH3 Folder</span>
+                    <span className="uppercase">{localized.selectWH3Folder}</span>
                   </button>
                 </div>
               </div>
               <div className="border w-full border-gray-600"></div>
               <div className="max-w-[90%]">
-                <p className="m-auto max-w-[95%] text-center">
-                  The Warhammer 3 Steam Workshop content folder named 1142710 (which is the steam ID for WH3)
-                  that contains mods, for example C:\Program Files
-                  (x86)\Steam\steamapps\workshop\content\1142710
-                </p>
+                <p className="m-auto max-w-[95%] text-center">{localized.wh3ContentFolder}</p>
                 <div className="flex gap-x-4 items-center w-full mt-4">
-                  <span className="whitespace-nowrap">Content folder:</span>
+                  <span className="whitespace-nowrap">{localized.contentFolder}</span>
                   <span className="w-full">
                     <input
                       type="text"
@@ -96,7 +84,7 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
                       onSelectContentFolder();
                     }}
                   >
-                    <span className="uppercase">Select Content Folder</span>
+                    <span className="uppercase">{localized.selectContentFolder}</span>
                   </button>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Modal } from "../flowbite/components/Modal/index";
 import { Spinner, Tabs, Tooltip } from "../flowbite";
 import {
@@ -14,6 +14,7 @@ import { useSelector } from "react-redux";
 import { useAppSelector } from "../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
+import localizationContext from "../localizationContext";
 
 type ModsMergeSorts = "Merge" | "MergeDesc" | "Pack" | "PackDesc" | "Name" | "NameDesc" | "Size" | "SizeDesc";
 type NumModsOptionType = {
@@ -33,6 +34,8 @@ const ModsMerger = React.memo(() => {
     (mods) => mods.filter((mod) => isDev || !mod.isInData)
   );
   const mods = useSelector(modsNotInDataSelector);
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   const allDependencyPacks =
     mods
@@ -258,7 +261,7 @@ const ModsMerger = React.memo(() => {
           className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
           type="button"
         >
-          Merge Mods
+          {localized.mergeMods}
         </button>
       </div>
 
@@ -276,20 +279,20 @@ const ModsMerger = React.memo(() => {
           ]}
         >
           <Modal.Header>
-            <span>Merge Mods{modsToMerge.size > 0 && ` - ${modsToMerge.size} selected`}</span>
+            <span>
+              {localized.mergeMods}
+              {modsToMerge.size > 0 && ` - ${modsToMerge.size} selected`}
+            </span>
           </Modal.Header>
           <Modal.Body>
             <Tabs.Group style="underline">
-              <Tabs.Item active={true} title="Merge">
+              <Tabs.Item active={true} title={localized.merge}>
                 <span className="absolute top-[6rem] right-0 flex items-center leading-relaxed dark:text-gray-300">
                   {mergerMods.length > 0 && (
                     <>
                       <span className="make-tooltip-inline">
-                        <Tooltip
-                          style={"light"}
-                          content={<p>Load mods that are in an existing merged mod.</p>}
-                        >
-                          <span className="text-center w-full">Load existing:</span>
+                        <Tooltip style={"light"} content={<p>{localized.mergeLoadExistingMsg}</p>}>
+                          <span className="text-center w-full">{localized.mergeLoadExisting}</span>
                         </Tooltip>
                       </span>
                       <Select
@@ -313,11 +316,8 @@ const ModsMerger = React.memo(() => {
                     ></input>
                     <label className="ml-2" htmlFor="merge-hide-already-merged">
                       <span className="make-tooltip-inline">
-                        <Tooltip
-                          style={"light"}
-                          content={<p>Don't show a mod if it's inside an enabled merged pack.</p>}
-                        >
-                          <span className="text-center w-full">Hide Already Merged</span>
+                        <Tooltip style={"light"} content={<p>{localized.hideAlreadyMergedMsg}</p>}>
+                          <span className="text-center w-full">{localized.hideAlreadyMerged}</span>
                         </Tooltip>
                       </span>
                     </label>
@@ -334,10 +334,10 @@ const ModsMerger = React.memo(() => {
                       }}
                     ></input>
                     <label className="ml-2" htmlFor="merge-enabled-mod-only">
-                      Enabled Mods Only
+                      {localized.enabledModsOnly}
                     </label>
                   </span>
-                  <span className="ml-2">Select first</span>
+                  <span className="ml-2">{localized.selectFirst}</span>
                   <Select
                     options={options}
                     styles={selectStyle}
@@ -345,18 +345,18 @@ const ModsMerger = React.memo(() => {
                     value={null}
                     className="mx-2"
                   ></Select>
-                  <span>mods to merge</span>
+                  <span>{localized.modsToMerge}</span>
                   <button
                     id="playGame"
                     className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-12 w-20 ml-6 mr-10"
                     onClick={() => mergeMods()}
                   >
-                    Merge
+                    {localized.merge}
                   </button>
                 </span>
 
                 <div className="flex items-center">
-                  <span className="text-slate-100">Filter:</span>
+                  <span className="text-slate-100">{localized.filter}</span>
                   <span className="relative">
                     <input
                       id="modMergingFilter"
@@ -384,7 +384,7 @@ const ModsMerger = React.memo(() => {
                       }
                       onClick={() => toggleMergeSorting()}
                     >
-                      Merge
+                      {localized.merge}
                     </div>
                     <div
                       className={
@@ -393,7 +393,7 @@ const ModsMerger = React.memo(() => {
                       }
                       onClick={() => togglePackSorting()}
                     >
-                      Pack
+                      {localized.pack}
                     </div>
                     <div
                       className={
@@ -402,7 +402,7 @@ const ModsMerger = React.memo(() => {
                       }
                       onClick={() => toggleNameSorting()}
                     >
-                      Name
+                      {localized.name}
                     </div>
                     <div
                       className={
@@ -411,7 +411,7 @@ const ModsMerger = React.memo(() => {
                       }
                       onClick={() => toggleSizeSorting()}
                     >
-                      Size
+                      {localized.size}
                     </div>
                   </div>
                   {getFilteredMods(modsToUse, modFilter, true).map((mod) => (
@@ -420,14 +420,7 @@ const ModsMerger = React.memo(() => {
                         {(((mod.dependencyPacks && mod.dependencyPacks.length > 0) ||
                           allDependencyPacks.some((packName) => packName == mod.name)) && (
                           <span className="make-tooltip-inline">
-                            <Tooltip
-                              style={"light"}
-                              content={
-                                <p>
-                                  Mod cannot be merged since it has a pack-level dependency with another mod.
-                                </p>
-                              }
-                            >
+                            <Tooltip style={"light"} content={<p>{localized.cannotBeMergedDep}</p>}>
                               <div className="col-span-1 justify-center flex">
                                 <input
                                   type="checkbox"
@@ -456,15 +449,7 @@ const ModsMerger = React.memo(() => {
                           <label htmlFor={mod.name + "_merge_checkbox"}>
                             {(((mod.dependencyPacks && mod.dependencyPacks.length > 0) ||
                               allDependencyPacks.some((packName) => packName == mod.name)) && (
-                              <Tooltip
-                                style={"light"}
-                                content={
-                                  <p>
-                                    Mod cannot be merged since it has a pack-level dependency with another
-                                    mod.
-                                  </p>
-                                }
-                              >
+                              <Tooltip style={"light"} content={<p>{localized.cannotBeMergedDep}</p>}>
                                 <div className="line-through">{`${mod.name}`}</div>
                               </Tooltip>
                             )) || <div>{`${mod.name}`}</div>}
@@ -474,15 +459,7 @@ const ModsMerger = React.memo(() => {
                           <label htmlFor={mod.name + "_merge_checkbox"}>
                             {(((mod.dependencyPacks && mod.dependencyPacks.length > 0) ||
                               allDependencyPacks.some((packName) => packName == mod.name)) && (
-                              <Tooltip
-                                style={"light"}
-                                content={
-                                  <p>
-                                    Mod cannot be merged since it has a pack-level dependency with another
-                                    mod.
-                                  </p>
-                                }
-                              >
+                              <Tooltip style={"light"} content={<p>{localized.cannotBeMergedDep}</p>}>
                                 <div className="line-through">{`${mod.humanName}`}</div>
                               </Tooltip>
                             )) || <div>{`${mod.humanName}`}</div>}
@@ -496,33 +473,12 @@ const ModsMerger = React.memo(() => {
                   ))}
                 </div>
               </Tabs.Item>
-              <Tabs.Item title="Help">
+              <Tabs.Item title={localized.help}>
                 <div className="leading-relaxed dark:text-gray-300 relative font-normal">
-                  <p>
-                    This panel allows you to merge mods to get around the mod limit. It merges selected mods
-                    into a new mod .pack and puts it inside the WH3/data folder. Merged mods also have an
-                    accompanying .json file with the same name, if you rename or move the merged mod also
-                    rename or move the json file. Mods are pre-sorted by size for quicker merging.
-                  </p>
-                  <p className="mt-6">
-                    The merged mod won't have the same file names as the merged mods which can affect load
-                    order priority, so skip merging mods that require manual load order fiddling. That said,
-                    those kind of mods should be incredibly rare and as a rule you should never manually touch
-                    load order anyway!
-                  </p>
-                  <p className="mt-6">
-                    When mods get updated the merged pack will have the old outdated mod inside it. You should
-                    get a warning in red (it'll be above the Play button) warning you about this and you can
-                    then right click the merged pack and use the Update (Re-merge) option which will update
-                    the merged pack. The warning can appear when you start the app but disappears once we get
-                    newer info from the workshop, you don't have to update it in that case.
-                  </p>
-                  <p className="mt-6">
-                    You can leave the mods that have been merged enabled in the mod manager, the manager will
-                    automatically skip them if they're already present in a merged mod you have enabled. This
-                    is reliant on the .json file, if it's missing you'll have to disable those mods or the
-                    game will crash since it doesn't like duplicate files in mods.
-                  </p>
+                  <p>{localized.mergeModsHelp1}</p>
+                  <p className="mt-6">{localized.mergeModsHelp2}</p>
+                  <p className="mt-6">{localized.mergeModsHelp3}</p>
+                  <p className="mt-6">{localized.mergeModsHelp4}</p>
                 </div>
               </Tabs.Item>
             </Tabs.Group>
@@ -536,10 +492,10 @@ const ModsMerger = React.memo(() => {
         size="2xl"
         position="center"
       >
-        <Modal.Header>Reading And Comparing Packs...</Modal.Header>
+        <Modal.Header>{localized.readingAndComparingPacks}</Modal.Header>
         <Modal.Body>
           <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-            Wait until all the mod packs have been read and compared with each other...
+            {localized.waitForReadingAndComparingPacks}
           </p>
           <div className="text-center mt-8">
             <Spinner color="purple" size="xl" />

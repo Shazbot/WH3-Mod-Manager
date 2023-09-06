@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "1.38.1",
+  "version": "1.39.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
@@ -162,6 +162,8 @@
     "fs-extra": "^10.1.0",
     "gh-release-fetch": "^3.0.2",
     "handsontable": "^12.3.3",
+    "i18next": "^23.4.6",
+    "i18next-fs-backend": "^2.1.5",
     "just-clone": "^6.1.1",
     "just-debounce-it": "^3.1.1",
     "path-browserify": "^1.0.1",

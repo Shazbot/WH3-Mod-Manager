@@ -113,6 +113,8 @@ declare global {
     dataModsToEnableByName: string[];
     removedModsData: RemovedModData[];
     modRowsSortingType: SortingType;
+    availableLanguages: string[];
+    currentLanguage: string;
   }
 
   type AppStateToWrite = Pick<
@@ -132,6 +134,7 @@ declare global {
     | "isClosedOnPlay"
     | "categories"
     | "modRowsSortingType"
+    | "currentLanguage"
   >;
 
   type StartGameOptions = Pick<

@@ -40,6 +40,7 @@ import electronLog from "electron-log";
 import * as fsExtra from "fs-extra";
 import { getCompatData } from "./packFileDataManager";
 import steamCollectionScript from "./utility/steamCollectionScript";
+import i18n from "./configs/i18next.config";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -521,6 +522,13 @@ if (!gotTheLock) {
   };
 
   const createWindow = (): void => {
+    i18n.on("loaded", async () => {
+      i18n.changeLanguage("en");
+      i18n.off("loaded");
+
+      console.log("I18 ON");
+    });
+
     const mainWindowState = windowStateKeeper({
       file: "main_window.json",
       defaultWidth: 1280,
@@ -604,7 +612,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("getAllModData", (event, ids: string[]) => {
-      // if (isDev) return;
+      if (isDev) return;
 
       fetchModData(
         ids.filter((id) => id !== ""),
@@ -628,6 +636,9 @@ if (!gotTheLock) {
         try {
           const appState = await readConfig();
           mainWindow?.webContents.send("fromAppConfig", appState);
+
+          const languageInConfig = appState.currentLanguage || "en";
+          if (i18n.language != languageInConfig) i18n.changeLanguage(languageInConfig);
         } catch (err) {
           mainWindow?.webContents.send("failedReadingConfig");
           console.log(err);
@@ -701,6 +712,29 @@ if (!gotTheLock) {
       } catch (e) {
         console.log(e);
       }
+    });
+
+    ipcMain.handle("translate", (event, translationId: string, options?: Record<string, string | number>) => {
+      return i18n.t(translationId, options);
+    });
+
+    ipcMain.handle(
+      "translateAll",
+      (event, translationIdsWithOptions: Record<string, Record<string, string | number>>) => {
+        const translated: Record<string, string> = {};
+        for (const id of Object.keys(translationIdsWithOptions)) {
+          translated[id] = i18n.t(id, translationIdsWithOptions[id]);
+        }
+        return translated;
+      }
+    );
+
+    ipcMain.handle("translateAllStatic", (event, translationIds: Record<string, string | number>) => {
+      const translated: Record<string, string> = {};
+      for (const id of Object.keys(translationIds)) {
+        translated[id] = i18n.t(id);
+      }
+      return translated;
     });
 
     ipcMain.on("getCompatData", async (event, mods: Mod[]) => {
@@ -984,6 +1018,11 @@ if (!gotTheLock) {
       }
     });
 
+    ipcMain.on("requestLanguageChange", async (event, language: string) => {
+      await i18n.changeLanguage(language);
+      mainWindow?.webContents.send("setCurrentLanguage", language);
+    });
+
     const readMods = async (mods: Mod[], skipParsingTables = true, skipCollisionCheck = true) => {
       if (!skipParsingTables) {
         appData.packsData = appData.packsData.filter((pack) => !mods.some((mod) => mod.path == pack.path));
@@ -1058,6 +1097,14 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("setIsDev", isDev);
       mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
+
+      try {
+        const availableLocalizations = (await fs.readdir("./locales/", { withFileTypes: true }))
+          .filter((dirent) => dirent.isDirectory())
+          .map((dirent) => dirent.name);
+
+        mainWindow?.webContents.send("setAvailableLanguages", availableLocalizations);
+      } catch (e) {}
 
       if (!checkWH3RunningInterval) {
         checkWH3RunningInterval = setInterval(async () => {

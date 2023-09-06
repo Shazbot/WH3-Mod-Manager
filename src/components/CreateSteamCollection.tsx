@@ -1,7 +1,8 @@
 import { Modal, Tooltip } from "../flowbite";
-import React, { memo } from "react";
+import React, { memo, useContext } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setIsCreateSteamCollectionOpen } from "../appSlice";
+import localizationContext from "../localizationContext";
 
 const CreateSteamCollection = memo(() => {
   const dispatch = useAppDispatch();
@@ -14,6 +15,8 @@ const CreateSteamCollection = memo(() => {
   const presetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const allMods = useAppSelector((state) => state.app.allMods);
   const enabledMods = presetMods.filter((mod) => mod.isEnabled);
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   const enabledPresetWorkshopMods = enabledMods
     .map(
@@ -51,7 +54,7 @@ const CreateSteamCollection = memo(() => {
           ]}
         >
           <Modal.Header>
-            <span className="max-w-5xl">Create Steam Collection</span>
+            <span className="max-w-5xl">{localized.createSteamCollection}</span>
           </Modal.Header>
 
           <Modal.Body>
@@ -66,13 +69,11 @@ const CreateSteamCollection = memo(() => {
                     style="light"
                     content={
                       <>
-                        <div>
-                          Will open the web page for creating a WH3 Steam Workshop collection in the browser.
-                        </div>
+                        <div>{localized.openSteamCollectionsPageTooltip}</div>
                       </>
                     }
                   >
-                    <span className="uppercase">Open Steam Page For Creating WH3 Collections</span>
+                    <span className="uppercase">{localized.openSteamCollectionsPage}</span>
                   </Tooltip>
                 </button>
               </div>
@@ -87,41 +88,24 @@ const CreateSteamCollection = memo(() => {
                     style="light"
                     content={
                       <>
-                        <div>
-                          Will paste into clipboard a script for populating currently enabled mods into a
-                          collection.
-                        </div>
-                        <div>Hold Shift if you want to copy all mods, not just enabled mods.</div>
+                        <div>{localized.copyCollectionScriptTooltip1}</div>
+                        <div>{localized.copyCollectionScriptTooltip2}</div>
                       </>
                     }
                   >
-                    <span className="uppercase">Copy Collection Script To Clipboard</span>
+                    <span className="uppercase">{localized.copyCollectionScript}</span>
                   </Tooltip>
                 </button>
               </div>
 
-              <h6 className="mt-10 -mb-5">Instructions</h6>
+              <h6 className="mt-10 -mb-5">{localized.instructions}</h6>
               <div className="border border-gray-600 w-[80%]"></div>
-              <div className="">
-                This is a way to export mods into a Steam collection. It's not automatic and relies on running
-                a console script in your browser to automate button presses in the browser.
-              </div>
-              <div className="">
-                Open the create new Steam Workshop collection page in a browser. In the first page a
-                collection name and an image thumbnail are mandatory. In the second page where you select what
-                mods to add to the collection press Ctrl+Shift+I and switch to the console tab from the tabs
-                in upper right:
-              </div>
+              <div className="">{localized.createSteamCollectionHelp1}</div>
+              <div className="">{localized.createSteamCollectionHelp2}</div>
               <img className="" src={require("../assets/steam_collection_open_console.png")}></img>
-              <div className="">
-                Paste the script you recieved from pressing the "Copy Creation Script To Clipboard" button
-                into the console and press enter:
-              </div>
+              <div className="">{localized.createSteamCollectionHelp3}</div>
               <img className="" src={require("../assets/steam_collection_pasted_script.png")}></img>
-              <div className="">
-                Two buttons will appear, one to add mods to the collection and a reset button that removes any
-                added mods. Click the green + button that appears and wait for the page to reload.
-              </div>
+              <div className="">{localized.createSteamCollectionHelp4}</div>
               <img className="" src={require("../assets/steam_collection_buttons.png")}></img>
             </div>
           </Modal.Body>

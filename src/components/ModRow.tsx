@@ -1,12 +1,13 @@
 import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useContext, useEffect, useState } from "react";
 import { useAppSelector } from "../hooks";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
 import { HiOutlineCollection } from "react-icons/hi";
 import { formatDistanceToNow } from "date-fns";
 import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
+import localizationContext from "../localizationContext";
 
 type ModRowProps = {
   mod: Mod;
@@ -67,7 +68,6 @@ const ModRow = memo(
     const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
     const isDev = useAppSelector((state) => state.app.isDev);
     const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
-    const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
     const getGhostClass = useCallback(() => {
       if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-7";
@@ -75,6 +75,20 @@ const ModRow = memo(
       if (areThumbnailsEnabled) return "grid-column-6";
       return "grid-column-5";
     }, [isAuthorEnabled, areThumbnailsEnabled]);
+
+    // const [translated, setTranslated] = useState<Record<string, string>>({});
+    const localization: Record<string, string> = useContext(localizationContext);
+
+    // useEffect(() => {
+    //   const forTranslation = {
+    //     priorityTooltipOne: {},
+    //     priorityTooltipTwo: {},
+    //     priorityTooltipThree: {},
+    //   };
+    //   window.api?.translateAll(forTranslation).then((translated) => {
+    //     setTranslated(translated);
+    //   });
+    // }, []);
 
     const timeColumnValue =
       (isSubbedTimeSort(sortingType) &&
@@ -163,9 +177,9 @@ const ModRow = memo(
                   placement="bottom"
                   content={
                     <>
-                      <p>Mod is of a movie mod type.</p>
-                      <p>Movie mods always have high priority!</p>
-                      {mod.isInData && <p>Always enabled since it's located in the WH3/data folder!</p>}
+                      <p>{localization.movieModOne}</p>
+                      <p>{localization.movieModTwo}</p>
+                      {mod.isInData && <p>{localization.movieModThree}</p>}
                     </>
                   }
                 >

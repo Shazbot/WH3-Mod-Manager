@@ -92,6 +92,8 @@ const appSlice = createSlice({
     removedModsData: [],
     modRowsSortingType: SortingType.Ordered,
     importedMods: [],
+    availableLanguages: ["en"],
+    currentLanguage: "en",
   } as AppState,
   reducers: {
     // when mutating mods make sure you get the same mod from state.currentPreset.mods and don't change the mod that's from the payload
@@ -453,6 +455,7 @@ const appSlice = createSlice({
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
+      state.currentLanguage = fromConfigAppState.currentLanguage || "en";
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -683,6 +686,10 @@ const appSlice = createSlice({
       const saves = action.payload;
       state.saves = saves;
     },
+    setCurrentLanguage: (state: AppState, action: PayloadAction<string>) => {
+      const language = action.payload;
+      state.currentLanguage = language;
+    },
     setIsOnboardingToRun: (state: AppState, action: PayloadAction<boolean>) => {
       state.isOnboardingToRun = action.payload;
     },
@@ -757,6 +764,9 @@ const appSlice = createSlice({
     setDataModLastChangedLocal: (state: AppState, action: PayloadAction<number>) => {
       state.dataModLastChangedLocal = action.payload;
     },
+    setAvailableLanguages: (state: AppState, action: PayloadAction<string[]>) => {
+      state.availableLanguages = action.payload;
+    },
     selectDBTable: (state: AppState, action: PayloadAction<DBTableSelection>) => {
       state.currentDBTableSelection = action.payload;
     },
@@ -815,6 +825,7 @@ export const {
   setFilter,
   setModLoadOrder,
   setModLoadOrderRelativeTo,
+  setCurrentLanguage,
   resetModLoadOrder,
   resetModLoadOrderAll,
   toggleAlwaysEnabledMods,
@@ -859,6 +870,7 @@ export const {
   addCategory,
   removeCategory,
   setModRowsSortingType,
+  setAvailableLanguages,
 } = appSlice.actions;
 
 export default appSlice.reducer;

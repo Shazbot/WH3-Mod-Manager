@@ -1,8 +1,9 @@
 import { Tooltip } from "flowbite-react";
-import React, { memo, useCallback, useState } from "react";
+import React, { memo, useCallback, useContext, useState } from "react";
 import { setModLoadOrder, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "../appSlice";
 import { Modal } from "../flowbite";
 import { useAppDispatch, useAppSelector } from "../hooks";
+import localizationContext from "../localizationContext";
 
 type ModDropdownOptionsProps = {
   isOpen: boolean;
@@ -39,6 +40,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
   const [loadOrderHasError, setLoadOrderHasError] = useState(false);
   const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
+
+  const localized: Record<string, string> = useContext(localizationContext);
 
   const onGoToWorkshopPageClick = useCallback(
     (mod: Mod) => {
@@ -115,14 +118,13 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
           size="2xl"
           position="center"
         >
-          <Modal.Header>Set Load Order For {props.mod?.name}</Modal.Header>
+          <Modal.Header>
+            {localized.setLoadOrderFor} {props.mod?.name}
+          </Modal.Header>
           <Modal.Body>
             <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-              Set load order for this mod. Changing load orders is very rarely needed in WH3 and can cause
-              unintended compatibility issues between mods.{" "}
-              <span className="text-red-600 font-semibold">
-                Always leave load order at default unless you have a very good reason!
-              </span>
+              {`${localized.setLoadOrderMessage1} `}
+              <span className="text-red-600 font-semibold">{localized.setLoadOrderMessage2}</span>
             </p>
             <div className="flex mt-4 justify-center items-center">
               <input
@@ -156,7 +158,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     setIsSetLoadOrderOpen(false);
                   }}
                 >
-                  <span className="uppercase">Set Load Order</span>
+                  <span className="uppercase">{localized.setLoadOrder}</span>
                 </button>
               </div>
             </div>
@@ -170,7 +172,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                Set Load Order
+                {localized.setLoadOrder}
               </a>
             </li>
             {props.mod &&
@@ -189,7 +191,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                         "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       }
                     >
-                      Go to workshop page
+                      {localized.goToWorkshopPage}
                     </a>
                   </li>
                   <li>
@@ -204,7 +206,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                         "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       }
                     >
-                      Open in Steam
+                      {localized.openInSteam}
                     </a>
                   </li>
                 </>
@@ -220,9 +222,9 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <Tooltip
                   placement="right"
                   style="light"
-                  content={<div className="min-w-[10rem]">Mod will always be enabled, even when hidden.</div>}
+                  content={<div className="min-w-[10rem]">{localized.keepAlwaysEnabledTooltip}</div>}
                 >
-                  Keep always enabled
+                  {localized.keepAlwaysEnabled}
                 </Tooltip>
               </a>
             </li>
@@ -237,13 +239,9 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <Tooltip
                   placement="right"
                   style="light"
-                  content={
-                    <div className="min-w-[10rem]">
-                      Mod will be hidden from the list and disabled (except when always enabled).
-                    </div>
-                  }
+                  content={<div className="min-w-[10rem]">{localized.hideFromListTooltip}</div>}
                 >
-                  Hide from list
+                  {localized.hideFromList}
                 </Tooltip>
               </a>
             </li>
@@ -255,7 +253,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                Show in explorer
+                {localized.showInExplorer}
               </a>
             </li>
             <li>
@@ -266,7 +264,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                Open in RPFM
+                {localized.showInRPFM}
               </a>
             </li>
             <li>
@@ -277,7 +275,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                Open in Viewer
+                {localized.openInViewer}
               </a>
             </li>
             <li>
@@ -288,7 +286,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                Copy path to clipboard
+                {localized.copyPathToClipboard}
               </a>
             </li>
             {props.mod?.isInData &&
@@ -305,13 +303,9 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                       <Tooltip
                         placement="right"
                         style="light"
-                        content={
-                          <div className="min-w-[10rem]">
-                            Uploads update to the workshop. Must already exist on the workshop.
-                          </div>
-                        }
+                        content={<div className="min-w-[10rem]">{localized.updateModTooltip}</div>}
                       >
-                        Update Mod
+                        {localized.updateMod}
                       </Tooltip>
                     </a>
                   </li>
@@ -326,14 +320,9 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                       <Tooltip
                         placement="right"
                         style="light"
-                        content={
-                          <div className="min-w-[10rem]">
-                            Adds a whmm_update.txt file to the pack filled with random hex numbers, or changes
-                            the numbers if the file already exists. UPDATE PLZ
-                          </div>
-                        }
+                        content={<div className="min-w-[10rem]">{localized.fakeUpdatePackTooltip}</div>}
                       >
-                        Fake Update Pack
+                        {localized.fakeUpdatePack}
                       </Tooltip>
                     </a>
                   </li>
@@ -350,14 +339,9 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <Tooltip
                   placement="right"
                   style="light"
-                  content={
-                    <div className="min-w-[10rem]">
-                      Creates a backup of the pack in a whmm_backups folder that is in the same location as
-                      the pack.
-                    </div>
-                  }
+                  content={<div className="min-w-[10rem]">{localized.createBackupTooltip}</div>}
                 >
-                  Create Backup
+                  {localized.createBackup}
                 </Tooltip>
               </a>
             </li>
@@ -373,10 +357,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">Force Steam to re-download the mod.</div>}
+                    content={<div className="min-w-[10rem]">{localized.forceDownloadTooltip}</div>}
                     style="light"
                   >
-                    Force Download
+                    {localized.forceDownload}
                   </Tooltip>
                 </a>
               </li>
@@ -393,10 +377,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">Unsubscribe from the mod in Steam.</div>}
+                    content={<div className="min-w-[10rem]">{localized.unsubscribeTooltip}</div>}
                     style="light"
                   >
-                    Unsubscribe
+                    {localized.unsubscribe}
                   </Tooltip>
                 </a>
               </li>
@@ -412,14 +396,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={
-                      <div className="min-w-[10rem]">
-                        Merge mods again to update the merged pack with latest versions of mods.
-                      </div>
-                    }
+                    content={<div className="min-w-[10rem]">{localized.reMergeTooltip}</div>}
                     style="light"
                   >
-                    Update (Re-merge)
+                    {localized.reMerge}
                   </Tooltip>
                 </a>
               </li>
@@ -435,10 +415,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">Delete the merged pack.</div>}
+                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip}</div>}
                     style="light"
                   >
-                    Delete
+                    {localized.deleteMod}
                   </Tooltip>
                 </a>
               </li>
