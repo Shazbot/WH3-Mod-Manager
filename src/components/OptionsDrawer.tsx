@@ -23,6 +23,7 @@ import GamePathsSetup from "./GamePathsSetup";
 import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
 import localizationContext from "../localizationContext";
+import ISO6391 from "iso-639-1";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -87,7 +88,7 @@ const OptionsDrawer = memo(() => {
     (state: { app: AppState }) => state.app.availableLanguages,
     (availableLanguages) =>
       availableLanguages.map((language) => {
-        return { value: language, label: language };
+        return { value: language, label: ISO6391.getName(language) };
       })
   );
   const languageOptions = useSelector(availableLanguagesToOptionsSelector);
@@ -204,7 +205,7 @@ const OptionsDrawer = memo(() => {
                 options={languageOptions}
                 styles={selectStyle}
                 onChange={onLanguageChange}
-                defaultValue={{ value: currentLanguage, label: currentLanguage }}
+                defaultValue={{ value: currentLanguage, label: ISO6391.getName(currentLanguage) }}
               ></Select>
             </div>
 
