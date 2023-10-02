@@ -8,6 +8,7 @@ export const staticTextIds: Record<string, string | number> = {
   priorityTooltipOne: "Mods with lower order have higher priority.",
   priorityTooltipTwo: "Right click on mod number to reset or here to reset all.",
   priorityTooltipThree: "Don't change mod priority unless you really know what you're doing!",
+  order: "Order",
   pack: "Pack",
   dataPacks: "Data Packs",
   enabled: "Enabled",
