@@ -8,11 +8,13 @@ import {
   PackHeader,
   SchemaField,
   SCHEMA_FIELD_TYPE,
+  AmendedSchemaField,
+  DBField,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, introMoviePaths, autoStartCustomBattleScript } from "./helperPackData";
 import { app } from "electron";
-import { DBNameToDBVersions } from "./schema";
+import { DBNameToDBVersions, LocVersion, locFields } from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
 import { format } from "date-fns";
@@ -21,6 +23,8 @@ import * as fsExtra from "fs-extra";
 import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
 import { getDBName } from "./utility/packFileHelpers";
+import getPackTableData, { isSchemaFieldNumber } from "./utility/packDataHandling";
+import deepClone from "clone-deep";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -96,6 +100,96 @@ function getDataSize(data: SchemaField[]): number {
     }
   }
   return size;
+}
+
+async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackDataTypes): Promise<Buffer> {
+  switch (type) {
+    case "Boolean":
+      {
+        // console.log('boolean');
+        const view = new DataView(new ArrayBuffer(1));
+        view.setUint8(0, Number(value));
+        return Buffer.from(view.buffer);
+      }
+      break;
+    case "ColourRGB":
+      {
+        const view = new DataView(new ArrayBuffer(4));
+        view.setInt32(0, Number(value));
+        return Buffer.from(view.buffer);
+      }
+      break;
+    case "StringU16":
+      {
+        const len = (value as string).length;
+        const strLenView = new DataView(new ArrayBuffer(2));
+        strLenView.setInt16(0, Number(len), true);
+        const strLenBuffer = Buffer.from(strLenView.buffer);
+
+        return Buffer.concat([strLenBuffer, Buffer.from(value as string, "utf16le")]);
+      }
+      break;
+    case "StringU8":
+      {
+        const len = (value as string).length;
+        const strLenView = new DataView(new ArrayBuffer(2));
+        strLenView.setInt16(0, Number(len), true);
+        const strLenBuffer = Buffer.from(strLenView.buffer);
+
+        return Buffer.concat([strLenBuffer, Buffer.from(value as string, "ascii")]);
+      }
+      break;
+    case "OptionalStringU8":
+      {
+        const strLenView = new DataView(new ArrayBuffer(1));
+        const doesExist = value && value != "";
+        strLenView.setUint8(0, doesExist ? 1 : 0);
+        const itExistsBuffer = Buffer.from(strLenView.buffer);
+
+        if (itExistsBuffer && doesExist) {
+          const len = (value as string).length;
+          const strLenView = new DataView(new ArrayBuffer(2));
+          strLenView.setInt16(0, Number(len), true);
+          const strLenBuffer = Buffer.from(strLenView.buffer);
+
+          return Buffer.concat([itExistsBuffer, strLenBuffer, Buffer.from(value as string, "ascii")]);
+        }
+        return itExistsBuffer;
+      }
+      break;
+    case "F32":
+      {
+        const view = new DataView(new ArrayBuffer(4));
+        view.setFloat32(0, Number(value), true);
+        return Buffer.from(view.buffer);
+      }
+      break;
+    case "I32":
+      {
+        const view = new DataView(new ArrayBuffer(4));
+        view.setInt32(0, Number(value), true);
+        return Buffer.from(view.buffer);
+      }
+      break;
+    case "F64":
+      {
+        const view = new DataView(new ArrayBuffer(4));
+        view.setFloat64(0, Number(value), true);
+        return Buffer.from(view.buffer);
+      }
+      break;
+    case "I64":
+      {
+        const view = new DataView(new ArrayBuffer(4));
+        view.setBigInt64(0, BigInt(value), true);
+        return Buffer.from(view.buffer);
+      }
+      break;
+    default:
+      console.log("NO WAY TO RESOLVE " + type);
+      throw new Error("NO WAY TO RESOLVE " + type);
+      break;
+  }
 }
 
 async function parseType(
@@ -228,7 +322,7 @@ function parseTypeBuffer(
         try {
           const length = buffer.readInt16LE(pos); //await file.readInt16();
           pos += 2;
-          const val = buffer.subarray(pos, pos + length * 2).toString("utf8"); //(await file.read(length * 2)).toString("utf8");
+          const val = buffer.subarray(pos, pos + length * 2).toString("utf16le"); //(await file.read(length * 2)).toString("utf8");
           pos += length * 2;
           fields.push({ type: "String", val });
           return [fields, pos];
@@ -410,6 +504,9 @@ export const getDBVersion = (packFile: PackedFile) => {
   const dbName = getDBName(packFile);
   // console.log("GETTING DB VERSION, DBNAME IS", dbName);
   if (!dbName) return;
+
+  if (packFile.name.endsWith(".loc")) return LocVersion;
+
   const dbversions = DBNameToDBVersions[dbName];
   // console.log("GETTING DB VERSIONS, dbversions IS", dbversions);
   if (!dbversions) return;
@@ -424,6 +521,92 @@ export const getDBVersion = (packFile: PackedFile) => {
   if (packFile.version == null) return dbversion;
   if (dbversion.version < packFile.version) return;
   return dbversion;
+};
+
+export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: boolean) => {
+  const tables = pack.packedFiles.map((packedFile) => packedFile.name);
+  const locFiles: Record<string, PackedFile> = {};
+  if (getLocs) {
+    for (const packedFile of pack.packedFiles) {
+      if (packedFile.name.endsWith(".loc")) {
+        // console.log("found loc pack file", packedFile.name);
+        locFiles[packedFile.name] = packedFile;
+      }
+    }
+  }
+
+  const result = { packName: pack.name, packPath: pack.path, tables } as PackViewData;
+  result.packedFiles = result.packedFiles || {};
+  if (table) {
+    let packedFiles = [];
+    if (typeof table === "string") {
+      packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name == table);
+    } else {
+      packedFiles = pack.packedFiles.filter((packedFile) =>
+        packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`)
+      );
+    }
+    if (getLocs) {
+      packedFiles = packedFiles.concat(Object.values(locFiles));
+    }
+    for (const packedFile of packedFiles) {
+      const amendedSchemaFields: AmendedSchemaField[] = [];
+      const dbversion = locFiles[packedFile.name] ? LocVersion : getDBVersion(packedFile);
+      if (!dbversion) {
+        return;
+      }
+
+      const chunkedSchemaIntoRows =
+        packedFile.schemaFields?.reduce<SchemaField[][]>((resultArray, item, index) => {
+          const chunkIndex = Math.floor(index / dbversion.fields.length);
+
+          if (!resultArray[chunkIndex]) {
+            resultArray[chunkIndex] = []; // start a new chunk
+          }
+
+          resultArray[chunkIndex].push(item as SchemaField);
+
+          return resultArray;
+        }, []) ?? [];
+
+      // console.log("chunked into ", chunkedSchemaIntoRows.length);
+      // console.log("num fields in row is ", dbversion.fields.length);
+      // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
+      // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
+
+      for (const chunkedSchemaIntoRow of chunkedSchemaIntoRows) {
+        for (const dbFieldsIndex of dbversion.fields.keys()) {
+          const { name, field_type } = dbversion.fields[dbFieldsIndex];
+          const fields = chunkedSchemaIntoRow[dbFieldsIndex].fields;
+          if (!fields) {
+            console.log("MISSING FIELD ", name);
+          }
+          const resolvedKeyValue = isSchemaFieldNumber(field_type)
+            ? (fields[0].val as number).toFixed(3).toString()
+            : field_type == "OptionalStringU8" && fields[0] && fields[0].val
+            ? // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              (fields[2] && fields[2].val!.toString()) ||
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              fields[1].val!.toString() ||
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              fields[0].val!.toString()
+            : // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              (fields[1] && fields[1].val!.toString()) || fields[0].val!.toString();
+
+          amendedSchemaFields.push({ name, resolvedKeyValue, ...chunkedSchemaIntoRow[dbFieldsIndex] });
+
+          // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
+          //   console.log("AMENDING ", name, resolvedKeyValue);
+          // }
+        }
+      }
+      packedFile.schemaFields = amendedSchemaFields;
+      packedFile.tableSchema = dbversion;
+      result.packedFiles[packedFile.name] = packedFile;
+    }
+  }
+
+  return result;
 };
 
 const createScriptLoggingData = (pack_files: PackedFile[]) => {
@@ -580,22 +763,150 @@ export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
   await writeCopyPack(pathSource, pathTarget, toAdd);
 };
 
-export const writeCopyPack = async (pathSource: string, pathTarget: string, packFilesToAdd: PackedFile[]) => {
+export const createOverwritePack = async (
+  pathSource: string,
+  pathTarget: string,
+  overwrites: PackDataOverwrite[]
+) => {
+  if (overwrites.length == 0) return;
+  const tablesToRead = overwrites.map((overwrite) => overwrite.packFilePath);
+  console.log("to read for new overwrite pack:", tablesToRead);
+  const sourceMod = await readPack(pathSource, { tablesToRead });
+
+  const packFilesToAdd: PackedFile[] = [];
+
+  for (const packedFile of sourceMod.packedFiles) {
+    if (tablesToRead.includes(packedFile.name)) {
+      const packViewData = getPackViewData(sourceMod, packedFile.name);
+      if (packViewData) {
+        const packTableDatas = getPackTableData(packedFile.name, packViewData);
+        if (!packTableDatas) continue;
+        const packTableData = packTableDatas[packedFile.name];
+        console.log("PARSED packTableData for", packedFile.name, packTableData);
+
+        const currentTableOverwrites = overwrites.filter(
+          (iterOverwrite) => iterOverwrite.packFilePath == packedFile.name
+        );
+        if (currentTableOverwrites.length == 0) continue;
+
+        const dbversion = getDBVersion(packedFile);
+        if (!dbversion) {
+          continue;
+        }
+
+        let clonedTableData = deepClone(packTableData) as PlainPackFileData;
+
+        for (const overwrite of currentTableOverwrites) {
+          if (overwrite.operation == "EDIT" || overwrite.operation == "REMOVE") {
+            clonedTableData = clonedTableData.reduce<PlainPackFileData>((acc, item) => {
+              const isMatch = overwrite.columnIndices.reduce((isMatch, columnIndex, index) => {
+                return isMatch && overwrite.columnValues[index] == item[columnIndex];
+              }, true);
+              if (isMatch) {
+                console.log("isMatch FOR", overwrite.columnValues);
+                console.log("item is", item);
+                console.log("operation is", overwrite.operation);
+                if (overwrite.operation == "REMOVE") return acc;
+                if (
+                  overwrite.operation == "EDIT" &&
+                  overwrite.overwriteIndex &&
+                  overwrite.overwriteData != undefined
+                ) {
+                  const clonedRow = deepClone(item);
+                  clonedRow[overwrite.overwriteIndex] = overwrite.overwriteData;
+                  acc.push(clonedRow);
+                  return acc;
+                }
+              }
+              acc.push(item);
+              return acc;
+            }, [] as PlainPackFileData);
+          }
+        }
+
+        console.log("NEW clonedTableData is:", clonedTableData);
+
+        const newPackFile = deepClone(packedFile) as PackedFile;
+        packFilesToAdd.push(newPackFile);
+
+        // console.log("chunked into ", chunkedSchemaIntoRows.length);
+        // console.log("num fields in row is ", dbversion.fields.length);
+        // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
+        // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
+
+        newPackFile.schemaFields = [];
+        newPackFile.file_size = 0;
+        let newTableDataAsBuffer: Buffer = Buffer.from([]);
+        for (const clonedTableDataRow of clonedTableData) {
+          for (const dbFieldsIndex of dbversion.fields.keys()) {
+            const { name, field_type, is_key } = dbversion.fields[dbFieldsIndex];
+
+            const buffer = await typeToBuffer(field_type, clonedTableDataRow[dbFieldsIndex]);
+
+            newPackFile.file_size += buffer.length;
+            // newPackFile.schemaFields.push({ type: "Buffer", fields: [{ type: "Buffer", val: buffer }] });
+            newTableDataAsBuffer = Buffer.concat([newTableDataAsBuffer, buffer]);
+
+            // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
+            //   console.log("AMENDING ", name, resolvedKeyValue);
+            // }
+          }
+        }
+
+        if (newPackFile.guid) newPackFile.file_size += newPackFile.guid.length + 4 + 2;
+        if (newPackFile.version) newPackFile.file_size += 8;
+        newPackFile.file_size += 1; // marker after guid and version
+        newPackFile.file_size += 4; // entry count
+        console.log("ORIGINAL PACK file_size is:", packedFile.file_size);
+        console.log("NEW PACK file_size is:", newPackFile.file_size);
+        newPackFile.entryCount = clonedTableData.length;
+        console.log("NEW entry count is:", clonedTableData.length);
+        console.log("NEW buffer length is:", newTableDataAsBuffer.length);
+        if (newTableDataAsBuffer.length > 0)
+          newPackFile.schemaFields.push({
+            type: "Buffer",
+            fields: [{ type: "Buffer", val: newTableDataAsBuffer }],
+          });
+      }
+    }
+  }
+  console.log("packFilesToAdd:", packFilesToAdd);
+  console.log("tableSchema:", packFilesToAdd[0].tableSchema);
+
+  // const randomHexString = [...Array(100)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+  // const toAdd = [
+  //   {
+  //     name: "whmm_update.txt",
+  //     file_size: randomHexString.length,
+  //     start_pos: 0,
+  //     // is_compressed: 0,
+  //     schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from(randomHexString) }] }],
+  //   } as PackedFile,
+  // ];
+  await writeCopyPack(pathSource, pathTarget, packFilesToAdd, sourceMod);
+};
+
+export const writeCopyPack = async (
+  pathSource: string,
+  pathTarget: string,
+  packFilesToAdd: PackedFile[],
+  sourceMod?: Pack
+) => {
   let outFile: BinaryFile | undefined;
   try {
     // console.log(pathSource);
-    const sourceMod = await readPack(pathSource, { skipParsingTables: true });
+    sourceMod = sourceMod || (await readPack(pathSource, { skipParsingTables: true }));
     // console.log(sourceMod);
 
     const packFiles = sourceMod.packedFiles;
     const packFilesWithAdded = sourceMod.packedFiles.concat(
       packFilesToAdd.filter((packFiletoAdd) =>
-        sourceMod.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
+        sourceMod?.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
       )
     );
 
     const packFilesToAddWithoutReplaced = packFilesToAdd.filter((packFiletoAdd) =>
-      sourceMod.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
+      sourceMod?.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
     );
 
     if (packFiles.length < 1) return;
@@ -615,6 +926,14 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
     await outFile.writeInt32(index_size);
     await outFile.writeInt32(0x7fffffff); // header_buffer
 
+    console.log("DEP PACKS:", sourceMod.dependencyPacks);
+    if (sourceMod.dependencyPacks) {
+      for (const dependencyPack of sourceMod.dependencyPacks) {
+        await outFile.writeString(dependencyPack);
+        await outFile.writeUInt8(0);
+      }
+    }
+
     for (const packFile of packFilesWithAdded) {
       const { name, file_size } = packFile;
       // console.log("file size is " + file_size);
@@ -626,18 +945,45 @@ export const writeCopyPack = async (pathSource: string, pathTarget: string, pack
       await outFile.writeString(name + "\0");
     }
 
-    let startPosOffset = 0; // if we replace files with different lenght change the writing position
     for (const packFile of packFiles) {
       let data: Buffer | undefined;
       const fileToReplaceWith = packFilesToAdd.find((packFileToAdd) => packFileToAdd.name == packFile.name);
       if (fileToReplaceWith && fileToReplaceWith.schemaFields) {
-        data = fileToReplaceWith.schemaFields[0].fields[0].val as Buffer;
-        startPosOffset += fileToReplaceWith.file_size - packFile.file_size;
+        if (fileToReplaceWith.guid) {
+          const view = new DataView(new ArrayBuffer(2));
+          console.log("GUID LENGTS IS", fileToReplaceWith.guid.length / 2);
+          view.setInt16(0, fileToReplaceWith.guid.length / 2, true);
+
+          await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff]));
+          await outFile.write(Buffer.from(view.buffer));
+          await outFile.write(Buffer.from(fileToReplaceWith.guid, "utf8"));
+        }
+        if (fileToReplaceWith.version) {
+          await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff]));
+          await outFile.writeInt32(fileToReplaceWith.version);
+        }
+        if (fileToReplaceWith.guid || fileToReplaceWith.version) {
+          // marker after guid and version
+          const view = new DataView(new ArrayBuffer(1));
+          view.setUint8(0, 1);
+          await outFile.write(Buffer.from(view.buffer));
+        }
+        if (fileToReplaceWith.entryCount != undefined) {
+          await outFile.writeInt32(fileToReplaceWith.entryCount);
+        }
+        console.log("fileToReplaceWith IS:", fileToReplaceWith.name);
+        console.log("fileToReplaceWith IS:", fileToReplaceWith);
+        // create an empty buffer if there isn't one (the table is now empty)
+        data =
+          fileToReplaceWith.schemaFields[0] &&
+          fileToReplaceWith.schemaFields[0].fields &&
+          (fileToReplaceWith.schemaFields[0].fields[0].val as Buffer);
+        // startPosOffset += fileToReplaceWith.file_size - packFile.file_size;
       } else {
-        data = await sourceFile.read(packFile.file_size, packFile.start_pos + startPosOffset);
+        data = await sourceFile.read(packFile.file_size, packFile.start_pos);
       }
 
-      await outFile.write(data);
+      if (data) await outFile.write(data);
     }
 
     for (const packFile of packFilesToAddWithoutReplaced) {
@@ -947,6 +1293,7 @@ const readDBPackedFiles = async (
         // console.log("guid is " + readUTF[0]);
         pack_file.guid = readUTF[0];
         currentPos = readUTF[1];
+        // console.log("current pos after guid is:", currentPos);
       } else if (marker.toString("hex") === "fcfdfeff") {
         // console.log("found version marker");
         version = buffer.readInt32LE(currentPos); // await file.readInt32();
@@ -990,8 +1337,8 @@ const readDBPackedFiles = async (
 
     const entryCount = buffer.readInt32LE(currentPos); //await file.readInt32();
     currentPos += 4;
-    // console.log("entry count is " + entryCount);
-    // console.log("pos is " + file.tell());
+    // console.log("entry count is ", entryCount);
+    // console.log("pos is ", currentPos);
 
     // console.log(dbName);
     // outFile.seek(file.tell());
@@ -1068,12 +1415,103 @@ const readDBPackedFiles = async (
   }
 };
 
+const readLoc = async (
+  packReadingOptions: PackReadingOptions,
+  locPackFile: PackedFile,
+  buffer: Buffer,
+  startPos: number,
+  modPath: string
+) => {
+  let currentPos = 0;
+
+  console.log("READING LOC file", locPackFile.name);
+
+  const marker = await buffer.subarray(currentPos, currentPos + 2);
+  currentPos += 2;
+
+  if (marker.toString("hex") != "fffe") {
+    console.log("FF FE marker is wrong!");
+    return;
+  }
+
+  const locMarker = await buffer.subarray(currentPos, currentPos + 3);
+  currentPos += 3;
+  if (locMarker.toString("hex") != "4c4f43") {
+    console.log("LOC marker is wrong!");
+    return;
+  }
+
+  currentPos += 1; // null byte
+  currentPos += 4; // pack file version, loc is always 1
+
+  const entryCount = buffer.readInt32LE(currentPos);
+  currentPos += 4;
+
+  try {
+    for (let i = 0; i < entryCount; i++) {
+      for (const field of locFields) {
+        const { name, field_type, is_key } = field;
+
+        // console.log("reading", name, field_type, currentPos);
+        const lastPos = currentPos;
+        try {
+          const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+          const fields = fieldsRet[0];
+          currentPos = fieldsRet[1];
+
+          // console.log("after read:", fieldsRet);
+          // console.log("fields 0:", fields[0] && fields[0].val);
+          // console.log("fields 1:", fields[1] && fields[1].val);
+
+          if (!fields[1] && !fields[0]) {
+            console.log(name);
+            console.log(field_type);
+          }
+          if (fields[0].val == undefined) {
+            console.log(name);
+            console.log(field_type);
+          }
+          if (fields.length == 0) {
+            console.log(name);
+            console.log(field_type);
+          }
+
+          const schemaField: SchemaField = {
+            // name,
+            type: field_type,
+            fields,
+          };
+          if (is_key) {
+            schemaField.isKey = true;
+          }
+          locPackFile.schemaFields = locPackFile.schemaFields || [];
+          locPackFile.schemaFields.push(schemaField);
+        } catch (e) {
+          console.log(e);
+          console.log("ERROR PARSING DB FIELD");
+          console.log(modPath);
+          console.log(locPackFile.name);
+          console.log(name, field_type);
+          console.log("lastPos:", lastPos);
+          console.log("currentPos:", currentPos);
+          console.log("real_pos:", currentPos + startPos);
+
+          throw e;
+        }
+      }
+    }
+  } catch {
+    console.log(`cannot read ${locPackFile.name} in ${modPath}, skipping it`);
+  }
+};
+
 export const readPack = async (
   modPath: string,
   packReadingOptions: PackReadingOptions = { skipParsingTables: false }
 ): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
   let packHeader: PackHeader | undefined;
+  const dependencyPacks: string[] = [];
 
   let lastChangedLocal = -1;
   try {
@@ -1098,8 +1536,6 @@ export const readPack = async (
     const pack_file_index_size = await file.readInt32();
     const pack_file_count = await file.readInt32();
     const packed_file_index_size = await file.readInt32();
-
-    const dependencyPacks: string[] = [];
 
     // console.log(`modPath is ${modPath}`);
     // console.log(`header is ${header}`);
@@ -1190,7 +1626,6 @@ export const readPack = async (
         file_size,
         start_pos: file_pos,
         // is_compressed,
-        dependencyPacks,
       });
       file_pos += file_size;
     }
@@ -1224,6 +1659,7 @@ export const readPack = async (
         packHeader,
         lastChangedLocal,
         readTables: [],
+        dependencyPacks,
       } as Pack;
     }
 
@@ -1247,6 +1683,19 @@ export const readPack = async (
     // console.log("startPos:", startPos);
 
     await readDBPackedFiles(packReadingOptions, dbPackFiles, buffer, startPos, modPath);
+
+    if (packReadingOptions.readLocs) {
+      const locPackFiles = pack_files.filter((packFile) => {
+        const locNameMatch = packFile.name.match(/\.loc$/);
+        return locNameMatch != null;
+      });
+
+      for (const locPackFile of locPackFiles) {
+        // console.log("LOC file to read:", locPackFile);
+        const buffer = await file.read(locPackFile.file_size, locPackFile.start_pos);
+        await readLoc(packReadingOptions, locPackFile, buffer, startPos, modPath);
+      }
+    }
   } catch (e) {
     console.log(e);
   } finally {
@@ -1271,6 +1720,7 @@ export const readPack = async (
     packHeader,
     lastChangedLocal,
     readTables,
+    dependencyPacks,
   } as Pack;
 };
 

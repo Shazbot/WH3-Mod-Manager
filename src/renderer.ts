@@ -28,6 +28,7 @@ import {
   addToast,
   setAvailableLanguages,
   setCurrentLanguage,
+  setCustomizableMods,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -214,6 +215,11 @@ window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
   store.dispatch(setPackHeaderData(packHeaderData));
 });
 
+window.api?.setCustomizableMods((event, customizableMods: Record<string, string[]>) => {
+  // console.log("INVOKED: MOD PACK DATA RECIEVED");
+  store.dispatch(setCustomizableMods(customizableMods));
+});
+
 window.api?.setPacksData((event, packsData: PackViewData[]) => {
   console.log(
     `INVOKED: MOD PACK DATA RECIEVED FOR ${packsData.map((packData) => packData.packName).join(",")}`
@@ -231,6 +237,24 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
 
 window.api?.setPacksDataRead((event, packPaths: string[]) => {
   store.dispatch(setPacksDataRead(packPaths));
+
+  const appState = store.getState().app;
+  const presetMods = appState.currentPreset.mods;
+  const alwaysEnabledMods = appState.alwaysEnabledMods;
+  const enabledMods = presetMods.filter(
+    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+  );
+  const customizableTables = [
+    "units_to_groupings_military_permissions_tables",
+    // "units_to_exclusive_faction_permissions_tables",
+    "building_culture_variants_tables",
+    "faction_agent_permitted_subtypes_tables",
+    "campaign_group_unique_agents_tables",
+  ];
+  window.api?.getCustomizableMods(
+    enabledMods.map((mod) => mod.path),
+    customizableTables
+  );
 });
 
 window.api?.setDataModLastChangedLocal((event, dataModLastChangedLocal: number) => {

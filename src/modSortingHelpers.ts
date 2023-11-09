@@ -100,6 +100,14 @@ export function getModsSortedByAuthor(mods: Mod[]) {
   });
 }
 
+export function getModsSortedByCustomizable(mods: Mod[], customizableMods: Record<string, string[]>) {
+  return [...mods].sort((firstMod, secondMod) => {
+    if (customizableMods[firstMod.path] && !customizableMods[secondMod.path]) return -1;
+    if (!customizableMods[firstMod.path] && customizableMods[secondMod.path]) return 1;
+    return firstMod.author.localeCompare(secondMod.author);
+  });
+}
+
 export function getModsSortedByLastUpdated(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
     const firstModLastChanged = firstMod.lastChanged || firstMod.lastChangedLocal;

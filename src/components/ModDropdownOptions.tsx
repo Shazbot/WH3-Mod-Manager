@@ -1,6 +1,11 @@
 import { Tooltip } from "flowbite-react";
 import React, { memo, useCallback, useContext, useState } from "react";
-import { setModLoadOrder, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "../appSlice";
+import {
+  setModLoadOrder,
+  setModLoadOrderRelativeTo,
+  toggleAlwaysEnabledMods,
+  toggleAlwaysHiddenMods,
+} from "../appSlice";
 import { Modal } from "../flowbite";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
@@ -8,6 +13,7 @@ import localizationContext from "../localizationContext";
 type ModDropdownOptionsProps = {
   isOpen: boolean;
   mod?: Mod;
+  mods: Mod[];
 };
 
 const openInExplorer = (mod: Mod) => {
@@ -37,6 +43,7 @@ const unsubscribe = (mod: Mod) => {
 const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const dispatch = useAppDispatch();
   const allMods = useAppSelector((state) => state.app.allMods);
+  const currentTab = useAppSelector((state) => state.app.currentTab);
   const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
   const [loadOrderHasError, setLoadOrderHasError] = useState(false);
   const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
@@ -148,13 +155,23 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     const numLordOrder = Number(currentModLoadOrder) - 1;
                     if (numLordOrder == null || isNaN(numLordOrder)) return;
                     if (numLordOrder < 0) return;
+                    console.log(numLordOrder);
+                    const relativeMod = props.mods.filter((mod) => mod != props.mod)[numLordOrder];
+                    if (!relativeMod) return;
                     dispatch(
-                      setModLoadOrder({
-                        modName: props.mod?.name ?? "",
-                        loadOrder: numLordOrder,
-                        originalOrder: props.mod?.loadOrder,
-                      })
+                      setModLoadOrderRelativeTo({
+                        modNameToChange: props.mod?.name,
+                        modNameRelativeTo: relativeMod.name,
+                      } as ModLoadOrderRelativeTo)
                     );
+
+                    // dispatch(
+                    //   setModLoadOrder({
+                    //     modName: props.mod?.name ?? "",
+                    //     loadOrder: numLordOrder,
+                    //     originalOrder: props.mod?.loadOrder,
+                    //   })
+                    // );
                     setIsSetLoadOrderOpen(false);
                   }}
                 >
@@ -166,15 +183,17 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
         </Modal>
         <div>
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
-            <li>
-              <a
-                onClick={() => setIsSetLoadOrderOpen(true)}
-                href="#"
-                className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-              >
-                {localized.setLoadOrder}
-              </a>
-            </li>
+            {currentTab != "categories" && (
+              <li>
+                <a
+                  onClick={() => setIsSetLoadOrderOpen(true)}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  {localized.setLoadOrder}
+                </a>
+              </li>
+            )}
             {props.mod &&
               (!props.mod?.isInData ||
                 allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData)) && (

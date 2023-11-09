@@ -1,6 +1,5 @@
 import { PackedFile, PackCollisions } from "./packFileTypes";
 import { AppFolderPaths } from "./appData";
-import { DBVersion } from "./schema";
 import { api } from "./preload";
 export {};
 
@@ -115,6 +114,9 @@ declare global {
     modRowsSortingType: SortingType;
     availableLanguages: string[];
     currentLanguage: string;
+    packDataOverwrites: Record<string, PackDataOverwrite[]>;
+    modBeingCustomized: Mod | undefined;
+    customizableMods: Record<string, string[]>;
   }
 
   type AppStateToWrite = Pick<
@@ -135,6 +137,7 @@ declare global {
     | "categories"
     | "modRowsSortingType"
     | "currentLanguage"
+    | "packDataOverwrites"
   >;
 
   type StartGameOptions = Pick<
@@ -144,6 +147,7 @@ declare global {
     | "isScriptLoggingEnabled"
     | "isAutoStartCustomBattleEnabled"
     | "isClosedOnPlay"
+    | "packDataOverwrites"
   >;
 
   interface ModLoadOrderPayload {
@@ -203,13 +207,13 @@ declare global {
     packName: string;
     packPath: string;
     tables: string[];
-    currentTable?: PackedFile;
-    currentTableSchema?: DBVersion;
+    packedFiles: Record<string, PackedFile>;
   }
 
   interface PackReadingOptions {
     skipParsingTables?: boolean;
     tablesToRead?: string[];
+    readLocs?: boolean;
   }
 
   interface Toast {
@@ -239,6 +243,33 @@ declare global {
     mods: Mod[];
     category: string;
     selectOperation: SelectOperation;
+  }
+
+  interface PackDataOverwrite {
+    packFilePath: string;
+    columnsId: string;
+    columnIndices: number[];
+    columnValues: PlainPackDataTypes[];
+    operation: PackDataOverwriteOperation;
+    overwriteIndex?: number;
+    overwriteData?: PlainPackDataTypes;
+  }
+
+  type PackDataOverwriteOperation = "REMOVE" | "APPEND" | "EDIT";
+
+  type PlainPackDataTypes = string | boolean;
+  type PlainPackFileDataRow = PlainPackDataTypes[];
+  type PlainPackFileData = PlainPackFileDataRow[];
+
+  interface PackDataOverwritePayload {
+    packName: string;
+    packFilePath: string;
+    columnsId: string;
+    columnIndices: number[];
+    columnValues: PlainPackDataTypes[];
+    operation: PackDataOverwriteOperation;
+    overwriteIndex?: number;
+    overwriteData?: PlainPackDataTypes;
   }
 
   interface SetIsModEnabledPayload {
@@ -282,5 +313,14 @@ declare global {
     steamId64: string;
     steamId32: string;
     accountId: number;
+  }
+
+  interface TreeNode {
+    children: TreeNode[];
+    key: string;
+    value?: string;
+  }
+  interface Tree {
+    node: TreeNode;
   }
 }

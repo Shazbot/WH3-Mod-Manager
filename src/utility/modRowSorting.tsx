@@ -9,6 +9,7 @@ import {
   getModsSortedByAuthor,
   getModsSortedBySubbedTime,
   getModsSortedByIsDataPack,
+  getModsSortedByCustomizable,
 } from "../modSortingHelpers";
 
 export enum SortingType {
@@ -28,6 +29,7 @@ export enum SortingType {
   SubbedTimeReverse,
   IsDataPack,
   IsDataPackReverse,
+  IsCustomizable,
 }
 
 export function isOrderSort(sortingType: SortingType) {
@@ -53,6 +55,9 @@ export function isSubbedTimeSort(sortingType: SortingType) {
 }
 export function isAuthorSort(sortingType: SortingType) {
   return sortingType === SortingType.Author || sortingType === SortingType.AuthorReverse;
+}
+export function isCustomizableSort(sortingType: SortingType) {
+  return sortingType === SortingType.IsCustomizable;
 }
 
 const sortingArrowClassNames = "inline h-4 overflow-visible";
@@ -105,11 +110,19 @@ export function getSortingArrow(sortingType: SortingType) {
     )) ||
     (sortingType === SortingType.AuthorReverse && (
       <HiArrowNarrowUp className={sortingArrowClassNames}></HiArrowNarrowUp>
+    )) ||
+    (sortingType === SortingType.IsCustomizable && (
+      <HiArrowNarrowDown className={sortingArrowClassNames}></HiArrowNarrowDown>
     )) || <></>
   );
 }
 
-export function getSortedMods(presetMods: Mod[], orderedMods: Mod[], sortingType: SortingType) {
+export function getSortedMods(
+  presetMods: Mod[],
+  orderedMods: Mod[],
+  sortingType: SortingType,
+  customizableMods: Record<string, string[]>
+) {
   let mods: Mod[] = [];
 
   switch (sortingType) {
@@ -176,6 +189,9 @@ export function getSortedMods(presetMods: Mod[], orderedMods: Mod[], sortingType
         mods = mods.reverse();
       }
       break;
+    case SortingType.IsCustomizable:
+      mods = getModsSortedByCustomizable(presetMods, customizableMods);
+      break;
   }
   return mods;
 }
@@ -189,6 +205,7 @@ const sortTypeToReverseType: { [key in SortingType]?: SortingType } = {
   [SortingType.LastUpdated]: SortingType.LastUpdatedReverse,
   [SortingType.SubbedTime]: SortingType.SubbedTimeReverse,
   [SortingType.Author]: SortingType.AuthorReverse,
+  [SortingType.IsCustomizable]: SortingType.IsCustomizable,
 };
 
 export const getNewSortType = (newSortingType: SortingType, currentSortingType: SortingType) => {

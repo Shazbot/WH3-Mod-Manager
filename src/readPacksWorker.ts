@@ -1,3 +1,5 @@
+// FOR MULTITHREADED READING OF FILES, CURRENTLY NOT USED
+
 import {
   SCHEMA_FIELD_TYPE,
   Field,
@@ -258,7 +260,6 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
         schemaFields: [],
         version: undefined,
         guid: undefined,
-        dependencyPacks,
       });
       file_pos += file_size;
     }

@@ -17,9 +17,10 @@ export interface PackedFile {
   start_pos: number;
   // is_compressed: number;
   schemaFields?: SchemaField[];
+  entryCount?: number;
   version?: number;
   guid?: string;
-  dependencyPacks?: string[];
+  tableSchema?: DBVersion;
 }
 
 export interface PackHeader {
@@ -37,6 +38,7 @@ export interface Pack {
   packedFiles: PackedFile[];
   packHeader: PackHeader;
   lastChangedLocal: number;
+  dependencyPacks?: string[];
   readTables: string[] | "all";
 }
 

@@ -35,4 +35,8 @@ export const getPackNameFromPath = (packPath: string) => {
   return packName;
 };
 
+export const getDBPackedFilePath = (dbTableSelection: DBTableSelection) => {
+  return `db\\${dbTableSelection.dbName}\\${dbTableSelection.dbSubname}`;
+};
+
 export const currentPackData = {} as { data?: Pack };

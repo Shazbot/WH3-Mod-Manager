@@ -1,6 +1,6 @@
 import debounce from "just-debounce-it";
 import psList from "ps-list";
-import { AmendedSchemaField, Pack, PackCollisions, SCHEMA_FIELD_TYPE, SchemaField } from "./packFileTypes";
+import { Pack, PackCollisions } from "./packFileTypes";
 import { execFile, exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
@@ -24,8 +24,9 @@ import {
   mergeMods,
   readPack,
   writePack,
-  getDBVersion,
   readFromExistingPack,
+  createOverwritePack,
+  getPackViewData,
 } from "./packFileSerializer";
 import * as nodePath from "path";
 import { format } from "date-fns";
@@ -41,6 +42,7 @@ import * as fsExtra from "fs-extra";
 import { getCompatData } from "./packFileDataManager";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import i18n from "./configs/i18next.config";
+import { tryOpenFile } from "./utility/fileHelpers";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -627,6 +629,34 @@ if (!gotTheLock) {
       );
     });
 
+    ipcMain.on("getCustomizableMods", (event, modPaths: string[], tables: string[]) => {
+      const packs = appData.packsData.filter((pack) => modPaths.includes(pack.path));
+
+      // console.log("modPaths:", modPaths);
+      // console.log(
+      //   "modPaths packsdata:",
+      //   appData.packsData.map((pd) => pd.name)
+      // );
+      // console.log(packs.map((pack) => pack.packedFiles.map((pf) => pf.name).join(",")));
+
+      // console.log("tables for matching:", tables);
+
+      const tablesForMatching = tables.map((table) => `db\\${table}\\`);
+      // console.log("tables for matching 2:", tablesForMatching);
+      const customizableMods = packs.reduce((acc, currentPack) => {
+        const foundTables = tablesForMatching.filter((tableForMatching) =>
+          currentPack.packedFiles.some((packedFile) => packedFile.name.includes(tableForMatching))
+        );
+        if (foundTables.length > 0) {
+          acc[currentPack.path] = foundTables;
+        }
+        return acc;
+      }, {} as Record<string, string[]>);
+      // console.log("customizable mods:", customizableMods);
+
+      mainWindow?.webContents.send("setCustomizableMods", customizableMods);
+    });
+
     ipcMain.on("getPacksInSave", async (event, saveName: string) => {
       mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
     });
@@ -865,75 +895,11 @@ if (!gotTheLock) {
       writeAppConfig(data);
     });
 
-    const isSchemaFieldNumber = (fieldType: SCHEMA_FIELD_TYPE) => {
-      return fieldType === "I32" || fieldType === "I64" || fieldType === "F32" || fieldType === "F64";
-    };
-
-    const getPackViewData = (pack: Pack, table?: DBTable) => {
-      const tables = pack.packedFiles.map((packedFile) => packedFile.name);
-      const result = { packName: pack.name, packPath: pack.path, tables } as PackViewData;
-      if (table) {
-        const packedFile = pack.packedFiles.find((packedFile) =>
-          packedFile.name.endsWith(`\\${table.dbName}\\${table.dbSubname}`)
-        );
-        if (packedFile) {
-          const amendedSchemaFields: AmendedSchemaField[] = [];
-          const dbversion = getDBVersion(packedFile);
-          if (!dbversion) {
-            return;
-          }
-
-          const chunkedSchemaIntoRows =
-            packedFile.schemaFields?.reduce<SchemaField[][]>((resultArray, item, index) => {
-              const chunkIndex = Math.floor(index / dbversion.fields.length);
-
-              if (!resultArray[chunkIndex]) {
-                resultArray[chunkIndex] = []; // start a new chunk
-              }
-
-              resultArray[chunkIndex].push(item as SchemaField);
-
-              return resultArray;
-            }, []) ?? [];
-
-          // console.log("chunked into ", chunkedSchemaIntoRows.length);
-          // console.log("num fields in row is ", dbversion.fields.length);
-          // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
-          // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
-
-          for (const chunkedSchemaIntoRow of chunkedSchemaIntoRows) {
-            for (const dbFieldsIndex of dbversion.fields.keys()) {
-              const { name, field_type } = dbversion.fields[dbFieldsIndex];
-              const fields = chunkedSchemaIntoRow[dbFieldsIndex].fields;
-              if (!fields) {
-                console.log("MISSING FIELD ", name);
-              }
-              const resolvedKeyValue = isSchemaFieldNumber(field_type)
-                ? (fields[0].val as number).toFixed(3).toString()
-                : // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                  (fields[1] && fields[1].val!.toString()) || fields[0].val!.toString();
-
-              amendedSchemaFields.push({ name, resolvedKeyValue, ...chunkedSchemaIntoRow[dbFieldsIndex] });
-
-              // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
-              //   console.log("AMENDING ", name, resolvedKeyValue);
-              // }
-            }
-          }
-          packedFile.schemaFields = amendedSchemaFields;
-          result.currentTableSchema = dbversion;
-        }
-        result.currentTable = packedFile;
-      }
-
-      return result;
-    };
-
     const dbTableToString = (dbTable: DBTable) => {
       return `db\\${dbTable.dbName}\\${dbTable.dbSubname}`;
     };
 
-    const getPackData = async (packPath: string, table?: DBTable) => {
+    const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
       console.log(`getPackData ${packPath}`);
       if (table) console.log("GETTING TABLE ", table.dbName, table.dbSubname);
       if (packPath == "data.pack" || nodePath.basename(packPath) == "data.pack") {
@@ -941,7 +907,7 @@ if (!gotTheLock) {
           console.log("WAIT FOR DATAFOLDER TO BE SET");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           console.log("DONE WAITING FOR DATAFOLDER");
-          getPackData(packPath, table);
+          getPackData(packPath, table, getLocs);
           return;
         }
         if (packPath == "data.pack") {
@@ -949,10 +915,25 @@ if (!gotTheLock) {
           packPath = nodePath.join(appData.dataFolder as string, "data.pack");
         }
       }
-      console.log("CURRENTLY READING:");
-      console.log(appData.currentlyReadingModPaths);
+      console.log("CURRENTLY READING:", appData.currentlyReadingModPaths);
 
+      console.log("before join", appData.dataFolder, packPath);
+      if (!packPath.includes("\\")) {
+        // if we provided pack name instead of pack path as argument
+        if (!appData.dataFolder) {
+          console.log("WAIT FOR DATAFOLDER TO BE SET");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          console.log("DONE WAITING FOR DATAFOLDER");
+          getPackData(packPath, table, getLocs);
+          return;
+        }
+        packPath = nodePath.join(appData.dataFolder as string, packPath);
+      }
       const packData = appData.packsData.find((pack) => pack.path === packPath);
+
+      // console.log("packsdata is", appData.packsData);
+      // console.log("to read:", packPath);
+      // console.log("found packs for reading:", packData);
       if (
         appData.currentlyReadingModPaths.every((path) => path != packPath) &&
         (!packData ||
@@ -963,15 +944,20 @@ if (!gotTheLock) {
       ) {
         appData.currentlyReadingModPaths.push(packPath);
         console.log(`READING ${packPath}`);
-        const newPack = await readPack(packPath, table && { tablesToRead: [dbTableToString(table)] });
+        const newPack = await readPack(
+          packPath,
+          table && { tablesToRead: [dbTableToString(table)], readLocs: getLocs }
+        );
         appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
           (path) => path != packPath
         );
         if (appData.packsData.every((pack) => pack.path != packPath)) {
+          console.log("APPENDING packsData", packPath);
           appendPacksData(newPack);
         }
 
-        const toSend = [getPackViewData(newPack, table)];
+        const toSend = [getPackViewData(newPack, table, getLocs)];
+        mainWindow?.webContents.send("setPacksData", toSend);
         viewerWindow?.webContents.send("setPacksData", toSend);
         if (!isViewerReady) {
           console.log("VIEWER NOT READY, QUEUEING");
@@ -982,14 +968,15 @@ if (!gotTheLock) {
           console.log("WAIT");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           console.log("DONE WAITING");
-          getPackData(packPath, table);
+          getPackData(packPath, table, getLocs);
           return;
         }
         const packData = appData.packsData.find((pack) => pack.path === packPath);
 
         if (packData) {
-          const toSend = [getPackViewData(packData, table)];
+          const toSend = [getPackViewData(packData, table, getLocs)];
 
+          mainWindow?.webContents.send("setPacksData", toSend);
           viewerWindow?.webContents.send("setPacksData", toSend);
           if (!isViewerReady) {
             console.log("VIEWER NOT READY, QUEUEING");
@@ -1001,6 +988,10 @@ if (!gotTheLock) {
 
     ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
       getPackData(packPath, table);
+    });
+
+    ipcMain.on("getPackDataWithLocs", async (event, packPath: string, table?: DBTable) => {
+      getPackData(packPath, table, true);
     });
 
     ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
@@ -1271,23 +1262,23 @@ if (!gotTheLock) {
   });
   ipcMain.on("fakeUpdatePack", async (event, mod: Mod) => {
     try {
-      const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_backups");
+      const backupFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_backups");
       const backupFilePath = nodePath.join(
-        uploadFolderPath,
+        backupFolderPath,
         nodePath.parse(mod.name).name +
           "-" +
           format(new Date(), "dd-MM-yyyy-HH-mm") +
           nodePath.parse(mod.name).ext
       );
       const uploadFilePath = nodePath.join(
-        uploadFolderPath,
+        backupFolderPath,
         nodePath.parse(mod.name).name +
           "-NEW-" +
           format(new Date(), "dd-MM-yyyy-HH-mm") +
           nodePath.parse(mod.name).ext
       );
 
-      await fs.mkdir(uploadFolderPath, { recursive: true });
+      await fs.mkdir(backupFolderPath, { recursive: true });
       await fs.copyFile(mod.path, backupFilePath);
       await addFakeUpdate(mod.path, uploadFilePath);
 
@@ -1527,7 +1518,7 @@ if (!gotTheLock) {
           let failedWriting = true;
           for (let i = 0; i < 10; i++) {
             try {
-              await (await fs.open(tempPackPath, "w")).close();
+              tryOpenFile(tempPackPath);
               await writePack(appData.packsData, tempPackPath, enabledMods.concat(dataMod), startGameOptions);
               failedWriting = false;
               break;
@@ -1558,9 +1549,40 @@ if (!gotTheLock) {
           .map((mod) => (mod.mergedModsData as MergedModsData[]).map((mod) => mod.path))
           .flatMap((paths) => paths);
 
-        const enabledModsWithoutMergedInMods = enabledMods.filter(
+        let enabledModsWithoutMergedInMods = enabledMods.filter(
           (mod) => !modPathsInsideMergedMods.some((path) => path == mod.path)
         );
+
+        const enabledModsWithOverwrites = enabledModsWithoutMergedInMods.filter(
+          (iterMod) => startGameOptions.packDataOverwrites[iterMod.path]
+        );
+        enabledModsWithoutMergedInMods = enabledModsWithoutMergedInMods.filter(
+          (iterMod) => !startGameOptions.packDataOverwrites[iterMod.path]
+        );
+        console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
+
+        if (enabledModsWithOverwrites.length > 0) {
+          const mergedDirPath = nodePath.join(appData.gamePath, "/whmm_overwrites/");
+
+          if (!fsExtra.existsSync(mergedDirPath)) {
+            exec(`mkdir "${mergedDirPath}"`);
+            await new Promise((resolve) => {
+              setTimeout(resolve, 100);
+            });
+          }
+
+          extraEnabledMods += `\nadd_working_directory "${linuxBit + mergedDirPath}";`;
+
+          for (const pack of enabledModsWithOverwrites) {
+            await createOverwritePack(
+              pack.path,
+              nodePath.join(mergedDirPath, pack.name),
+              startGameOptions.packDataOverwrites[pack.path]
+            );
+
+            extraEnabledMods += `\nmod "${pack.name}";`;
+          }
+        }
 
         const text =
           enabledModsWithoutMergedInMods

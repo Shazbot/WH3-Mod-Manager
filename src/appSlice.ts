@@ -1,6 +1,7 @@
 import { AppFolderPaths } from "./appData";
 import { PackCollisions } from "./packFileTypes";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import hash from "object-hash";
 import {
   adjustDuplicates,
   findAlwaysEnabledMods,
@@ -9,7 +10,7 @@ import {
 } from "./modsHelpers";
 import { SortingType } from "./utility/modRowSorting";
 import { compareModNames, sortAsInPreset, sortByNameAndLoadOrder } from "./modSortingHelpers";
-import { index } from "handsontable/helpers/dom";
+import initialState from "./initialAppState";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -48,53 +49,7 @@ const removeCategoryByPayload = (state: AppState, payload: RemoveCategoryPayload
 
 const appSlice = createSlice({
   name: "app",
-  initialState: {
-    currentPreset: {
-      mods: [],
-      name: "",
-    },
-    categories: [],
-    lastSelectedPreset: null,
-    presets: [],
-    filter: "",
-    alwaysEnabledMods: [],
-    hiddenMods: [],
-    saves: [],
-    isOnboardingToRun: false,
-    wasOnboardingEverRun: false,
-    isDev: false,
-    isAdmin: false,
-    areThumbnailsEnabled: false,
-    isClosedOnPlay: false,
-    isAuthorEnabled: false,
-    isMakeUnitsGeneralsEnabled: false,
-    isScriptLoggingEnabled: false,
-    isSkipIntroMoviesEnabled: false,
-    isAutoStartCustomBattleEnabled: false,
-    allMods: [],
-    packsData: {},
-    packCollisions: { packTableCollisions: [], packFileCollisions: [] },
-    newMergedPacks: [],
-    pathsOfReadPacks: [],
-    appFolderPaths: { gamePath: "", contentFolder: "" },
-    isSetAppFolderPathsDone: false,
-    overwrittenDataPackedFiles: {},
-    outdatedPackFiles: {},
-    startArgs: [],
-    currentTab: "mods",
-    isCreateSteamCollectionOpen: false,
-    isWH3Running: false,
-    toasts: [],
-    removedModsCategories: {},
-    // before we make symbolic links in data queue those mods to be re-enabled
-    dataModsToEnableByName: [],
-    // if a enabled mod was removed it's possible it was updated, re-enabled it then
-    removedModsData: [],
-    modRowsSortingType: SortingType.Ordered,
-    importedMods: [],
-    availableLanguages: ["en"],
-    currentLanguage: "en",
-  } as AppState,
+  initialState: initialState,
   reducers: {
     // when mutating mods make sure you get the same mod from state.currentPreset.mods and don't change the mod that's from the payload
     setModRowsSortingType: (state: AppState, action: PayloadAction<SortingType>) => {
@@ -388,8 +343,17 @@ const appSlice = createSlice({
       const packsData = action.payload;
 
       for (const packData of packsData) {
-        state.packsData[packData.packPath] = packData;
+        if (!state.packsData[packData.packPath]) {
+          state.packsData[packData.packPath] = packData;
+        } else if (packData.packedFiles) {
+          state.packsData[packData.packPath].packedFiles =
+            state.packsData[packData.packPath].packedFiles || {};
+          for (const [packedFilePath, packedFile] of Object.entries(packData.packedFiles))
+            state.packsData[packData.packPath].packedFiles[packedFilePath] = packedFile;
+        }
       }
+
+      console.log("APPSLICE set setPacksData:", packsData);
     },
     setPacksDataRead: (state: AppState, action: PayloadAction<string[]>) => {
       const packPaths = action.payload;
@@ -456,6 +420,7 @@ const appSlice = createSlice({
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
       state.currentLanguage = fromConfigAppState.currentLanguage || "en";
+      state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -605,10 +570,17 @@ const appSlice = createSlice({
 
       if (!modToChange || !modRelativeTo) return;
 
-      state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(modToChange), 1);
-      const newIndex = state.currentPreset.mods.indexOf(modRelativeTo);
-      state.currentPreset.mods.splice(newIndex, 0, modToChange);
+      console.log("mod to change:", modToChange.name);
+      console.log("mod relative to:", modRelativeTo.name);
 
+      let newIndex = state.currentPreset.mods.indexOf(modToChange);
+      if (modToChange != modRelativeTo) {
+        state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(modToChange), 1);
+        newIndex = state.currentPreset.mods.indexOf(modRelativeTo);
+        state.currentPreset.mods.splice(newIndex, 0, modToChange);
+      }
+
+      console.log("new load order for:", modToChange.name, newIndex);
       modToChange.loadOrder = newIndex;
     },
     resetModLoadOrderAll: (state: AppState) => {
@@ -767,7 +739,44 @@ const appSlice = createSlice({
     setAvailableLanguages: (state: AppState, action: PayloadAction<string[]>) => {
       state.availableLanguages = action.payload;
     },
+    setPackDataOverwrites: (state: AppState, action: PayloadAction<PackDataOverwritePayload>) => {
+      const overwrite = action.payload;
+      state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName] || [];
+      state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName].filter(
+        (iterOverwrite) =>
+          iterOverwrite.packFilePath != overwrite.packFilePath ||
+          iterOverwrite.columnsId != overwrite.columnsId
+      );
+      state.packDataOverwrites[overwrite.packName].push({
+        packFilePath: overwrite.packFilePath,
+        columnsId: overwrite.columnsId,
+        operation: overwrite.operation,
+        overwriteData: overwrite.overwriteData,
+        overwriteIndex: overwrite.overwriteIndex,
+        columnIndices: overwrite.columnIndices,
+        columnValues: overwrite.columnValues,
+      });
+    },
+    removePackDataOverwrite: (state: AppState, action: PayloadAction<PackDataOverwritePayload>) => {
+      const overwrite = action.payload;
+      state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName] || [];
+      state.packDataOverwrites[overwrite.packName] = state.packDataOverwrites[overwrite.packName].filter(
+        (iterOverwrite) =>
+          iterOverwrite.packFilePath != overwrite.packFilePath ||
+          iterOverwrite.columnsId != overwrite.columnsId
+      );
+      if (state.packDataOverwrites[overwrite.packName].length == 0)
+        delete state.packDataOverwrites[overwrite.packName];
+    },
+    removeAllPackDataOverwrites: (state: AppState, action: PayloadAction<string>) => {
+      const packName = action.payload;
+      delete state.packDataOverwrites[packName];
+    },
     selectDBTable: (state: AppState, action: PayloadAction<DBTableSelection>) => {
+      if (state.currentDBTableSelection == action.payload) {
+        console.log("selectDBTable for same selection, not updating app state");
+        return;
+      }
       state.currentDBTableSelection = action.payload;
     },
     setCurrentTab: (state: AppState, action: PayloadAction<MainWindowTab>) => {
@@ -782,6 +791,17 @@ const appSlice = createSlice({
     },
     addToast: (state: AppState, action: PayloadAction<Toast>) => {
       state.toasts.push(action.payload);
+    },
+    setModBeingCustomized: (state: AppState, action: PayloadAction<Mod | undefined>) => {
+      state.modBeingCustomized = action.payload;
+    },
+    setCustomizableMods: (state: AppState, action: PayloadAction<Record<string, string[]>>) => {
+      if (hash(state.customizableMods) == hash(action.payload)) {
+        console.log("setCustomizableMods for same mods, not updating app state");
+        return;
+      }
+      state.customizableMods = action.payload;
+      console.log("setCustomizableMods:", state.customizableMods);
     },
     selectCategory: (state: AppState, action: PayloadAction<CategorySelectionPayload>) => {
       const { mods, category, selectOperation } = action.payload;
@@ -871,6 +891,11 @@ export const {
   removeCategory,
   setModRowsSortingType,
   setAvailableLanguages,
+  setPackDataOverwrites,
+  removePackDataOverwrite,
+  removeAllPackDataOverwrites,
+  setModBeingCustomized,
+  setCustomizableMods,
 } = appSlice.actions;
 
 export default appSlice.reducer;

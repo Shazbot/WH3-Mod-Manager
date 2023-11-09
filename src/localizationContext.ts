@@ -236,6 +236,30 @@ export const staticTextIds: Record<string, string | number> = {
   mergeModsHelp4:
     "You can leave the mods that have been merged enabled in the mod manager, the manager will automatically skip them if they're already present in a merged mod you have enabled. This is reliant on the .json file, if it's missing you'll have to disable those mods or the game will crash since it doesn't like duplicate files in mods.",
   language: "Language:",
+  customizeMod: "Customize Mod",
+  groupingsUnitPermissions: "Units, Per Group",
+  buildingsPermissions: "Buildings",
+  unit: "Unit",
+  unitKeySortTableOrder: "(Default Order)",
+  owner: "Owner",
+  group: "Group",
+  allowed: "Allowed",
+  factionsUnitPermissions: "Units, Per Faction",
+  uniqueAgentsPermissions: "Legendary Lords And Heroes",
+  agentSubtype: "Agent Subtype",
+  campaignGroup: "Campaign Group",
+  agentsPermissions: "Lords And Heroes",
+  agentSubtypeAndType: "Agent Subtype (Type)",
+  faction: "Faction",
+  Building: "Building",
+  cultureSubcultureFaction: "Culture, Subculture, Faction",
+  modCustomizationHelp1:
+    "This panel allows you to customize mods, currently you can disable units, buildings and agents (lords and heroes).",
+  modCustomizationHelp2:
+    "The way the game handles unit permissions, a unit can have a group permission (which can affect multiple factions) or a per-faction permission, or both.",
+  modCustomizationHelp3:
+    "Agents (lords and heroes) are tied to campaign groups, except for legendary agents which have a different tab.",
+  modCustomizationHelp4: "",
 };
 
 const context = createContext({});

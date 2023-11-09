@@ -3247,6 +3247,11 @@
     "@types/node" "*"
     "@types/responselike" "^1.0.0"
 
+"@types/clone-deep@^4.0.3":
+  version "4.0.3"
+  resolved "https://registry.yarnpkg.com/@types/clone-deep/-/clone-deep-4.0.3.tgz#190856c90175504f0d8ec78405687dc2f62eeff7"
+  integrity sha512-cFVh3Z2whgGDyXLOa6yuClOXIxBBx6E4vCaj12Jl2Vq18dGXUylQkoEA02MUtXtq4lPA1ofdyER+P+PjR4JlJw==
+
 "@types/connect-history-api-fallback@^1.3.5":
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/@types/connect-history-api-fallback/-/connect-history-api-fallback-1.5.0.tgz#9fd20b3974bdc2bcd4ac6567e2e0f6885cb2cf41"
