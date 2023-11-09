@@ -10,6 +10,8 @@ import {
   setModRowsSortingType,
   setModLoadOrderRelativeTo,
   resetModLoadOrderAll,
+  setModBeingCustomized,
+  removeAllPackDataOverwrites,
 } from "../appSlice";
 import { Alert, Tooltip } from "flowbite-react";
 import { getFilteredMods, sortByNameAndLoadOrder } from "../modSortingHelpers";
@@ -20,10 +22,12 @@ import * as modRowSorting from "../utility/modRowSorting";
 import { SortingType } from "../utility/modRowSorting";
 import ModRow from "./ModRow";
 import localizationContext from "../localizationContext";
+import { GoGear } from "react-icons/go";
+import ModCustomization from "./ModCustomization";
 
 let currentDragTarget: Element;
 let dropOutlineElement: HTMLDivElement;
-let isBottomDrop = false;
+const isBottomDrop = false;
 let idOfDragged = "";
 
 const onDragEnd = (e?: React.DragEvent<HTMLDivElement>) => {
@@ -112,8 +116,11 @@ const ModRows = memo(() => {
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
+  const customizableMods = useAppSelector((state) => state.app.customizableMods);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+  const [isCustomizeModOpen, setIsCustomizeModOpen] = useState<boolean>(false);
+  // const [modBeingCustomized, setModBeingCustomized] = useState<Mod>();
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
 
@@ -137,7 +144,7 @@ const ModRows = memo(() => {
   });
   const orderedMods = (areModsInOrder && modsToOrder) || sortByNameAndLoadOrder(modsToOrder);
 
-  let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType);
+  let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
 
   if (filter !== "") {
     mods = getFilteredMods(mods, filter.toLowerCase(), isAuthorEnabled);
@@ -314,10 +321,10 @@ const ModRows = memo(() => {
   }, []);
 
   const getGhostClass = useCallback(() => {
-    if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-7";
-    if (isAuthorEnabled) return "grid-column-6";
-    if (areThumbnailsEnabled) return "grid-column-6";
-    return "grid-column-5";
+    if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-8";
+    if (isAuthorEnabled) return "grid-column-7";
+    if (areThumbnailsEnabled) return "grid-column-7";
+    return "grid-column-6";
   }, [isAuthorEnabled, areThumbnailsEnabled]);
 
   const onDragEnter = useCallback(
@@ -385,36 +392,62 @@ const ModRows = memo(() => {
 
   const onDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      console.log("onDrop");
-      // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
-      const droppedId = e.dataTransfer.getData("text/plain");
-      if (droppedId === "") return;
-      idOfDragged = droppedId;
+      try {
+        console.log("onDrop");
+        // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
+        const droppedId = e.dataTransfer.getData("text/plain");
+        if (droppedId === "") return;
+        idOfDragged = droppedId;
 
-      // if(areModsInOrder) return dispatch(setModLoadOrderRelativeTo())
+        // if(areModsInOrder) return dispatch(setModLoadOrderRelativeTo())
 
-      console.log("in ondrop droppedID", droppedId);
+        console.log("in ondrop droppedID", droppedId);
 
-      const t = e.currentTarget as HTMLDivElement;
-      console.log(`DROPPED ONTO ${t.id}`);
+        const t = e.currentTarget as HTMLDivElement;
+        console.log(`DROPPED ONTO ${t.id}`);
+        // console.log(`DROPPED ONTO`, t);
 
-      if (droppedId === t.id) return;
+        if (t.classList.contains("drop-ghost")) {
+          if (!t.parentElement || t.parentElement?.id != droppedId) return;
 
-      // console.log("isBottomDrop: " + isBottomDrop);
-      if (!t.nextElementSibling) return;
-      const rowId = (isBottomDrop ? (t.nextElementSibling.nextElementSibling as HTMLElement) : t).id;
+          // console.log("droppend on top ghost");
+          // console.log("first", t.parentElement?.id);
+          // console.log("first", droppedId);
+          // console.log(22);
+          // console.log("nextElementSibling:", t.parentElement?.nextElementSibling);
+          // console.log(2233);
+          const modNameRelativeTo = t.parentElement?.nextElementSibling?.id || t.parentElement?.id;
+          if (modNameRelativeTo && areModsInOrder) {
+            e.defaultPrevented = true;
+            e.stopPropagation();
+            dispatch(
+              setModLoadOrderRelativeTo({
+                modNameToChange: droppedId,
+                modNameRelativeTo,
+              } as ModLoadOrderRelativeTo)
+            );
+            afterDrop(droppedId, modNameRelativeTo);
+          }
+          return;
+        }
 
-      if (areModsInOrder) {
-        dispatch(
-          setModLoadOrderRelativeTo({
-            modNameToChange: droppedId,
-            modNameRelativeTo: t.id,
-          } as ModLoadOrderRelativeTo)
-        );
-        return;
+        if (droppedId === t.id) return;
+        // console.log("isBottomDrop: " + isBottomDrop);
+        // if (!t.nextElementSibling) return;
+        const rowId = t.id; // (isBottomDrop ? (t.nextElementSibling.nextElementSibling as HTMLElement) : t).id;
+        if (areModsInOrder) {
+          dispatch(
+            setModLoadOrderRelativeTo({
+              modNameToChange: droppedId,
+              modNameRelativeTo: t.id,
+            } as ModLoadOrderRelativeTo)
+          );
+          return;
+        }
+        afterDrop(droppedId, rowId);
+      } catch (e) {
+        console.log(e);
       }
-
-      afterDrop(droppedId, rowId);
       // onDragEnd();
       // e.stopPropagation();
     },
@@ -481,6 +514,31 @@ const ModRows = memo(() => {
     [isDropdownOpen]
   );
 
+  const onCustomizeModClicked = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => {
+    if (isDropdownOpen) return;
+    console.log("onCustomizeModClicked:", mod);
+    dispatch(setModBeingCustomized(mod));
+    // setModBeingCustomized(mod);
+
+    setIsCustomizeModOpen(true);
+
+    e.defaultPrevented = true;
+    e.stopPropagation();
+  }, []);
+
+  const onCustomizeModRightClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => {
+      if (isDropdownOpen) return;
+      console.log("onCustomizeModRightClick:", mod);
+      dispatch(removeAllPackDataOverwrites(mod.path));
+      // setModBeingCustomized(mod);
+
+      e.defaultPrevented = true;
+      e.stopPropagation();
+    },
+    []
+  );
+
   const onDropdownOverlayClick = useCallback(() => {
     const modRowsScroll = document.getElementById("mod-rows-scroll");
     if (!modRowsScroll) return;
@@ -498,6 +556,20 @@ const ModRows = memo(() => {
     if (areThumbnailsEnabled) return "grid-mods-thumbs";
     return "grid-mods";
   }, [isAuthorEnabled, areThumbnailsEnabled]);
+
+  useEffect(() => {
+    const customizableTables = [
+      "units_to_groupings_military_permissions_tables",
+      // "units_to_exclusive_faction_permissions_tables",
+      "building_culture_variants_tables",
+      "faction_agent_permitted_subtypes_tables",
+      "campaign_group_unique_agents_tables",
+    ];
+    window.api?.getCustomizableMods(
+      enabledMods.map((mod) => mod.path),
+      customizableTables
+    );
+  }, [enabledMods]);
 
   return (
     <div
@@ -518,8 +590,16 @@ const ModRows = memo(() => {
           positionY={positionY}
           mod={contextMenuMod}
           referenceElement={dropdownReferenceElement}
+          mods={mods}
         ></ModDropdown>
       </FloatingOverlay>
+      <ModCustomization
+      // modPath={modBeingCustomized && modBeingCustomized.path}
+      // isOpen={isCustomizeModOpen}
+      // setIsOpen={(isOpen: boolean) => {
+      //   setIsCustomizeModOpen(isOpen);
+      // }}
+      />
       <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
         <div
           id="sortHeader"
@@ -587,7 +667,6 @@ const ModRows = memo(() => {
             </span>
           </Tooltip>
         </div>
-
         <div
           className="flex grid-area-humanName place-items-center pl-1 mod-row-header"
           onClick={() => setSortingType(SortingType.HumanName)}
@@ -610,7 +689,7 @@ const ModRows = memo(() => {
           </span>
         </div>
         <div
-          className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl"
+          className="flex grid-area-autohide place-items-center pl-1 mod-row-header"
           onClick={() => setSortingType(SortingType.LastUpdated)}
           onContextMenu={() => setSortingType(SortingType.SubbedTime)}
         >
@@ -629,7 +708,15 @@ const ModRows = memo(() => {
             </span>
           </Tooltip>
         </div>
-
+        <div
+          className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl justify-center"
+          onClick={() => setSortingType(SortingType.IsCustomizable)}
+        >
+          {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+          <span className={`${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}>
+            <GoGear></GoGear>
+          </span>
+        </div>
         {mods
           .filter(
             (mod) =>
@@ -654,6 +741,8 @@ const ModRows = memo(() => {
                 onDragEnd,
                 onModToggled,
                 onModRightClick,
+                onCustomizeModClicked,
+                onCustomizeModRightClick,
                 onRemoveModOrder,
                 sortingType,
                 isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),

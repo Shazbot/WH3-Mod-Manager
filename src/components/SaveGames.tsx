@@ -20,6 +20,7 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const saves = [...useAppSelector((state) => state.app.saves)];
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
@@ -39,6 +40,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           isScriptLoggingEnabled,
           isAutoStartCustomBattleEnabled,
           isClosedOnPlay,
+          packDataOverwrites,
         },
         name
       );

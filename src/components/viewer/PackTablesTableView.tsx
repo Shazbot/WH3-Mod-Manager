@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
-import { getPackNameFromPath } from "../../utility/packFileHelpers";
+import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 
 import "handsontable/dist/handsontable.full.min.css";
@@ -39,7 +39,7 @@ const PackTablesTableView = React.memo(() => {
   // registerPlugin(Filters);
   registerAllModules();
 
-  console.log(currentDBTableSelection);
+  console.log("currentDBTableSelection:", currentDBTableSelection);
   if (!currentDBTableSelection) {
     return <></>;
   }
@@ -54,17 +54,35 @@ const PackTablesTableView = React.memo(() => {
   }
 
   const packData = packsData[packPath];
+  // console.log("packData:", packData);
   if (!packData) {
     return <></>;
   }
 
-  const packFile = packData.currentTable;
-  const currentSchema = packData.currentTableSchema;
+  const packedFilePath = getDBPackedFilePath(currentDBTableSelection);
+  console.log("packedFilePath:", packedFilePath);
+
+  if (!packData.packedFiles) {
+    return <></>;
+  }
+  let packFile = packData.packedFiles[packedFilePath];
+  if (!packFile) {
+    // check case where we have just the pack file name as instead of full path (e.g. 'data.pack')
+    for (const [iterPackedFilePath, iterPackedFile] of Object.entries(packData.packedFiles)) {
+      if (iterPackedFilePath.endsWith(`\\${packedFilePath}`)) {
+        packFile = iterPackedFile;
+      }
+    }
+
+    if (!packFile) return <></>;
+  }
+  const currentSchema = packFile.tableSchema;
 
   // console.log("PACKFILE IS ", packFile);
   // console.log("CURRENT SCHEMA IS ", currentSchema);
 
-  if (!packFile || !currentSchema) {
+  if (!currentSchema) {
+    console.log("NO current schema");
     return <></>;
   }
 

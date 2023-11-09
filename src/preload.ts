@@ -54,6 +54,8 @@ const api = {
   cleanData: () => ipcRenderer.send("cleanData"),
   cleanSymbolicLinksInData: () => ipcRenderer.send("cleanSymbolicLinksInData"),
   getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
+  getPackDataWithLocs: (packPath: string, table?: DBTable) =>
+    ipcRenderer.send("getPackDataWithLocs", packPath, table),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
   readMods: (mods: Mod[], skipCollisionCheck = true) =>
     ipcRenderer.send("readMods", mods, skipCollisionCheck),
@@ -89,6 +91,11 @@ const api = {
   setAppFolderPaths: (callback: (event: Electron.IpcRendererEvent, appFolderPaths: AppFolderPaths) => void) =>
     ipcRenderer.on("setAppFolderPaths", callback),
   getAllModData: (ids: string[]) => ipcRenderer.send("getAllModData", ids),
+  getCustomizableMods: (modPaths: string[], tables: string[]) =>
+    ipcRenderer.send("getCustomizableMods", modPaths, tables),
+  setCustomizableMods: (
+    callback: (event: Electron.IpcRendererEvent, customizableMods: Record<string, string[]>) => void
+  ) => ipcRenderer.on("setCustomizableMods", callback),
   getCompatData: (mods: Mod[]) => ipcRenderer.send("getCompatData", mods),
   selectContentFolder: () => ipcRenderer.send("selectContentFolder"),
   selectWarhammer3Folder: () => ipcRenderer.send("selectWarhammer3Folder"),

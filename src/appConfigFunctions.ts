@@ -28,6 +28,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     categories: appState.categories,
     modRowsSortingType: appState.modRowsSortingType,
     currentLanguage: appState.currentLanguage,
+    packDataOverwrites: appState.packDataOverwrites,
   };
 };
 

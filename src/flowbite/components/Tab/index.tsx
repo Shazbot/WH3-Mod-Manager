@@ -44,7 +44,11 @@ export const TabsComponent: FC<TabsProps> = ({ children, style = "default", ...r
 
   const id = useId();
   const tabs = useMemo(
-    () => Children.map(children as ReactElement<PropsWithChildren<TabProps>>[], ({ props }) => props),
+    () =>
+      Children.map(
+        (children as ReactElement<PropsWithChildren<TabProps>>[]).filter((child) => child),
+        ({ props }) => props
+      ),
     [children]
   );
   const tabRefs = useRef<HTMLButtonElement[]>([]);

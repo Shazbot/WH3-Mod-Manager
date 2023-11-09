@@ -8,6 +8,7 @@ import { HiOutlineCollection } from "react-icons/hi";
 import { formatDistanceToNow } from "date-fns";
 import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
+import { GoGear } from "react-icons/go";
 
 type ModRowProps = {
   mod: Mod;
@@ -23,6 +24,8 @@ type ModRowProps = {
   onDragEnd: (e: React.DragEvent<HTMLDivElement>) => void;
   onModToggled: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
+  onCustomizeModClicked: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
+  onCustomizeModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
   onRemoveModOrder: (mod: Mod) => void;
   loadOrder: number;
   isEnabledInMergedMod: boolean;
@@ -64,16 +67,20 @@ const ModRow = memo(
     isEnabledInMergedMod,
     loadOrder,
     sortingType,
+    onCustomizeModClicked,
+    onCustomizeModRightClick,
   }: ModRowProps) => {
     const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
     const isDev = useAppSelector((state) => state.app.isDev);
     const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+    const customizableMods = useAppSelector((state) => state.app.customizableMods);
+    const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
 
     const getGhostClass = useCallback(() => {
-      if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-7";
-      if (isAuthorEnabled) return "grid-column-6";
-      if (areThumbnailsEnabled) return "grid-column-6";
-      return "grid-column-5";
+      if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-8";
+      if (isAuthorEnabled) return "grid-column-7";
+      if (areThumbnailsEnabled) return "grid-column-7";
+      return "grid-column-6";
     }, [isAuthorEnabled, areThumbnailsEnabled]);
 
     // const [translated, setTranslated] = useState<Record<string, string>>({});
@@ -113,7 +120,7 @@ const ModRow = memo(
         id={mod.name}
         data-load-order={mod.loadOrder}
       >
-        <div className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
+        <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
           <span className={mod.loadOrder === undefined ? "" : "text-red-600 font-bold"}>{loadOrder}</span>
         </div>
@@ -248,6 +255,20 @@ const ModRow = memo(
           onContextMenu={(e) => onModRightClick(e, mod)}
         >
           <label htmlFor={mod.workshopId + "enabled"}>{timeColumnValue}</label>
+        </div>
+        <div
+          className="flex place-items-center justify-center"
+          onClick={(e) => {
+            onCustomizeModClicked(e, mod);
+          }}
+          onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
+        >
+          {customizableMods[mod.path] && (
+            <GoGear
+              className="bigger-gear-icon pointer-events-auto"
+              color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
+            ></GoGear>
+          )}
         </div>
         {/* <div className="drop-ghost grid-column-7 h-10 hidden"></div> */}
       </div>
