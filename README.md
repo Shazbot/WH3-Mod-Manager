@@ -12,6 +12,7 @@ Features not present in the CA launcher:
 - compatibility checker to inspect which mod will have priority and overwrite another
 - can also update your mods directly like the CA launcher
 - add tags/categories to organize your mods
+- customize individual mods by disabling units, buildings or agents (lords and heroes)
   
 &nbsp;
 
@@ -28,3 +29,5 @@ yarn start
 ```bash
 yarn make
 ```
+
+Note that yarn start does hot-reloading, but hot-reloading files related to the main Electron process (basically index.ts, the stuff related to the OS and files) won't work but hot-reloading the renderer process works (basically everything user facing).
