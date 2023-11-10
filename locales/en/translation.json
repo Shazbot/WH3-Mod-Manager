@@ -201,7 +201,7 @@
   "mergeModsHelp3": "When mods get updated the merged pack will have the old outdated mod inside it. You should get a warning in red (it'll be above the Play button) warning you about this and you can then right click the merged pack and use the Update (Re-merge) option which will update the merged pack. The warning can appear when you start the app but disappears once we get newer info from the workshop, you don't have to update it in that case.",
   "mergeModsHelp4": "You can leave the mods that have been merged enabled in the mod manager, the manager will automatically skip them if they're already present in a merged mod you have enabled. This is reliant on the .json file, if it's missing you'll have to disable those mods or the game will crash since it doesn't like duplicate files in mods.",
   "language": "Language:",
-  "customizeMod": "Customize Mod",
+  "customize": "Customize",
   "groupingsUnitPermissions": "Units, Per Group",
   "buildingsPermissions": "Buildings",
   "unit": "Unit",

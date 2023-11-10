@@ -229,7 +229,7 @@ const ModCustomization = React.memo(() => {
           ]}
         >
           <Modal.Header>
-            <span>{localized.customizeMod}</span>
+            <span>{`${localized.customize} ${modBeingCustomized.name}`}</span>
           </Modal.Header>
           <Modal.Body>
             <Tabs.Group style="underline">

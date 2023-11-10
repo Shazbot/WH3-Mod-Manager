@@ -201,7 +201,7 @@
   "mergeModsHelp3": "当模组有新的更新时，合并模组包中将会存在过期的模组。你会在启动游戏按钮上得到红色的警告，你可以通过右键点击合并模组包，并且使用更新（重新合并）选项，这将会更新合并包。这个警告可能会在你启动app时出现，同时也会随着软件更新创意工坊内容后消失，这种情况下你不必执行更新。",
   "mergeModsHelp4": "你可以在管理器中保持那些已被合并过的（单个）模组的启用状态，管理器如果发现已启用的模组被包含在一个合并包中，会自动跳过他们。这个功能依赖于.json文件，如果json文件缺失，那你就必须得手动禁用那些模组，否则游戏将可能由于重复文件而崩溃。",
   "language": "语言:",
-  "customizeMod": "Customize Mod",
+  "customize": "Customize",
   "groupingsUnitPermissions": "Units, Per Group",
   "buildingsPermissions": "Buildings",
   "unit": "Unit",
