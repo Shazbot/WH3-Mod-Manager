@@ -236,7 +236,7 @@ export const staticTextIds: Record<string, string | number> = {
   mergeModsHelp4:
     "You can leave the mods that have been merged enabled in the mod manager, the manager will automatically skip them if they're already present in a merged mod you have enabled. This is reliant on the .json file, if it's missing you'll have to disable those mods or the game will crash since it doesn't like duplicate files in mods.",
   language: "Language:",
-  customizeMod: "Customize Mod",
+  customize: "Customize",
   groupingsUnitPermissions: "Units, Per Group",
   buildingsPermissions: "Buildings",
   unit: "Unit",
