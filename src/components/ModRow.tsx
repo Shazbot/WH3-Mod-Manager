@@ -154,7 +154,7 @@ const ModRow = memo(
           onContextMenu={(e) => onModRightClick(e, mod)}
           className={"flex place-items-center grid-area-autohide " + (areThumbnailsEnabled ? "" : "hidden")}
         >
-          <label htmlFor={mod.workshopId + "enabled"}>
+          <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
             <img
               className="max-w-[6rem] aspect-square"
               src={((isDev || mod.imgPath === "") && require("../assets/modThumbnail.png")) || mod.imgPath}
@@ -162,7 +162,10 @@ const ModRow = memo(
           </label>
         </div>
         <div className="flex place-items-center w-min-[0px]" onContextMenu={(e) => onModRightClick(e, mod)}>
-          <label className="max-w-full inline-block break-words" htmlFor={mod.workshopId + "enabled"}>
+          <label
+            className="max-w-full inline-block break-words cursor-pointer"
+            htmlFor={mod.workshopId + "enabled"}
+          >
             <span
               className={classNames("break-all", "flex", "items-center", {
                 ["text-orange-500"]: mod.isInData,
@@ -240,13 +243,15 @@ const ModRow = memo(
           </label>
         </div>
         <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
-          <label htmlFor={mod.workshopId + "enabled"}>{decodeHTML(decodeHTML(mod.humanName) ?? "")}</label>
+          <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
+            {decodeHTML(decodeHTML(mod.humanName) ?? "")}
+          </label>
         </div>
         <div
           onContextMenu={(e) => onModRightClick(e, mod)}
           className={"flex place-items-center grid-area-autohide " + (isAuthorEnabled ? "" : "hidden")}
         >
-          <label htmlFor={mod.workshopId + "enabled"}>
+          <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
             <span className="break-all">{decodeHTML(decodeHTML(mod.author) ?? "")}</span>
           </label>
         </div>
@@ -254,7 +259,9 @@ const ModRow = memo(
           className="flex place-items-center grid-area-autohide"
           onContextMenu={(e) => onModRightClick(e, mod)}
         >
-          <label htmlFor={mod.workshopId + "enabled"}>{timeColumnValue}</label>
+          <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
+            {timeColumnValue}
+          </label>
         </div>
         <div
           className="flex place-items-center justify-center"
@@ -265,7 +272,7 @@ const ModRow = memo(
         >
           {customizableMods[mod.path] && (
             <GoGear
-              className="bigger-gear-icon pointer-events-auto"
+              className="bigger-gear-icon cursor-pointer"
               color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
             ></GoGear>
           )}
