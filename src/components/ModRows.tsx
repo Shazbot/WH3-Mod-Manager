@@ -620,7 +620,9 @@ const ModRows = memo(() => {
             }
           >
             <span
-              className={`text-center w-full ${modRowSorting.isOrderSort(sortingType) && "font-semibold"}`}
+              className={`text-center w-full cursor-pointer ${
+                modRowSorting.isOrderSort(sortingType) && "font-semibold"
+              }`}
             >
               {localized.order}
             </span>
@@ -635,7 +637,9 @@ const ModRows = memo(() => {
           {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
           <Tooltip placement="right" style="light" content={localized.enableOrDisableAll}>
             <span
-              className={`text-center w-full ${modRowSorting.isEnabledSort(sortingType) && "font-semibold"}`}
+              className={`text-center cursor-pointer w-full ${
+                modRowSorting.isEnabledSort(sortingType) && "font-semibold"
+              }`}
             >
               {localized.enabled}
             </span>
@@ -658,7 +662,7 @@ const ModRows = memo(() => {
             modRowSorting.getSortingArrow(sortingType)}
           <Tooltip placement="right" style="light" content={localized.sortByDataPacks}>
             <span
-              className={`${
+              className={`cursor-pointer ${
                 (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
                 "font-semibold"
               }`}
@@ -672,7 +676,7 @@ const ModRows = memo(() => {
           onClick={() => setSortingType(SortingType.HumanName)}
         >
           {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>
+          <span className={`cursor-pointer ${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>
             {localized.name}
           </span>
         </div>
@@ -684,7 +688,7 @@ const ModRows = memo(() => {
           onClick={() => setSortingType(SortingType.Author)}
         >
           {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>
+          <span className={`cursor-pointer ${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>
             {localized.author}
           </span>
         </div>
@@ -697,7 +701,7 @@ const ModRows = memo(() => {
             modRowSorting.getSortingArrow(sortingType)}
           <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
             <span
-              className={`${
+              className={`cursor-pointer ${
                 (modRowSorting.isLastUpdatedSort(sortingType) ||
                   modRowSorting.isSubbedTimeSort(sortingType)) &&
                 "font-semibold"
@@ -709,11 +713,13 @@ const ModRows = memo(() => {
           </Tooltip>
         </div>
         <div
-          className="flex grid-area-autohide place-items-center pl-1 mod-row-header rounded-tr-xl justify-center"
+          className="flex place-items-center pl-1 mod-row-header rounded-tr-xl justify-center"
           onClick={() => setSortingType(SortingType.IsCustomizable)}
         >
           {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}>
+          <span
+            className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}
+          >
             <GoGear></GoGear>
           </span>
         </div>
