@@ -698,7 +698,7 @@ if (!gotTheLock) {
       try {
         if (!mainWindow) return;
         const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
-          properties: ["openDirectory"],
+          properties: ["openDirectory", "showHiddenFiles"],
         });
 
         if (!dialogReturnValue.canceled) {
@@ -716,7 +716,7 @@ if (!gotTheLock) {
       try {
         if (!mainWindow) return;
         const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
-          properties: ["openDirectory"],
+          properties: ["openDirectory", "showHiddenFiles"],
         });
 
         if (!dialogReturnValue.canceled) {

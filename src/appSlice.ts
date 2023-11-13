@@ -90,12 +90,14 @@ const appSlice = createSlice({
       console.log("ordering imported mods");
       for (let i = 0; i < state.importedMods.length; i++) {
         const importedMod = state.importedMods[i];
-        if (importedMod.loadOrder != undefined) {
-          const currentMod = state.currentPreset.mods.find(
-            (mod) => mod.workshopId == state.importedMods[i].workshopId
-          );
-          if (!currentMod) continue;
+        console.log("imported mod:", importedMod.workshopId, importedMod.loadOrder);
 
+        const currentMod = state.currentPreset.mods.find(
+          (mod) => mod.workshopId == state.importedMods[i].workshopId
+        );
+        if (!currentMod) continue;
+
+        if (importedMod.loadOrder == undefined) {
           const currentModIndex = currentMod && state.currentPreset.mods.indexOf(currentMod);
           if (currentModIndex == -1) continue;
 
@@ -110,9 +112,15 @@ const appSlice = createSlice({
             if (previousSiblingModIndex != -1) {
               // put the mod with the load order after the previous sibling
               state.currentPreset.mods.splice(currentModIndex, 1);
-              state.currentPreset.mods.splice(0, 0, currentMod);
+              state.currentPreset.mods.splice(previousSiblingModIndex, 0, currentMod);
             }
           }
+        } else {
+          const currentModIndex = currentMod && state.currentPreset.mods.indexOf(currentMod);
+          if (currentModIndex == -1) continue;
+          state.currentPreset.mods.splice(currentModIndex, 1);
+          state.currentPreset.mods.splice(importedMod.loadOrder, 0, currentMod);
+          currentMod.loadOrder = importedMod.loadOrder;
         }
       }
 
@@ -207,7 +215,16 @@ const appSlice = createSlice({
 
       const alreadyExistsByName = state.currentPreset.mods.find((iterMod) => iterMod.name === mod.name);
       if (!alreadyExistsByName) {
-        state.currentPreset.mods.push(mod);
+        for (const iterMod of state.currentPreset.mods.filter((mod) => mod.loadOrder == undefined)) {
+          if (compareModNames(mod.name, iterMod.name) < 1) {
+            state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(mod), 1);
+            state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(iterMod), 0, mod);
+            break;
+          }
+        }
+
+        // if we couldn't find a place for it
+        if (!state.currentPreset.mods.find((iterMod) => iterMod == mod)) state.currentPreset.mods.push(mod);
       } else if (mod.isInData) {
         const previousIndex = state.currentPreset.mods.indexOf(alreadyExistsByName);
         state.currentPreset.mods.splice(previousIndex, 1, mod);
