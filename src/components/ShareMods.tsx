@@ -46,6 +46,7 @@ const ShareMods = memo((props: ShareModsProps) => {
         return { workshopId: idAndOrder, loadOrder: undefined };
       });
 
+    console.log("imported mods:", imported);
     dispatch(setImportedMods(imported));
 
     const onlyIds = imported.map((idAndOrder) => idAndOrder.workshopId);
@@ -89,7 +90,7 @@ const ShareMods = memo((props: ShareModsProps) => {
       dispatch(setSharedMod(newMods));
     }, 100);
     return () => clearInterval(interval);
-  }, [subbedModIdsToWaitFor, mods]);
+  }, [importedMods, subbedModIdsToWaitFor, mods]);
 
   return (
     <>
