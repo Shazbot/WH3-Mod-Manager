@@ -1,4 +1,12 @@
-import { SupportedGames, gameToGameName, gameToProcessName, gameToSteamId } from "./supportedGames";
+import {
+  SupportedGames,
+  gameToGameName,
+  gameToProcessName,
+  gameToSteamId,
+  gameToSupportedGameOptions,
+  supportedGameOptionToStartGameOption,
+  supportedGameOptions,
+} from "./supportedGames";
 import debounce from "just-debounce-it";
 import psList from "ps-list";
 import { Pack, PackCollisions } from "./packFileTypes";
@@ -1610,6 +1618,14 @@ if (!gotTheLock) {
         console.log(pack.name, pack.readTables);
       }
       try {
+        for (const supportedGameOption of supportedGameOptions) {
+          if (!gameToSupportedGameOptions[appData.currentGame].includes(supportedGameOption)) {
+            const startGameOption = supportedGameOptionToStartGameOption[supportedGameOption];
+            console.log(`setting startGameOption ${startGameOption} to false`);
+            startGameOptions[startGameOption] = false;
+          }
+        }
+
         const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
         const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
         if (!gamePath) return;

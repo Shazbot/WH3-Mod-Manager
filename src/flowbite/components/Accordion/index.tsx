@@ -1,7 +1,6 @@
 import classNames from "classnames";
 import type { ComponentProps, FC, PropsWithChildren, ReactElement } from "react";
-import React from "react";
-import { Children, cloneElement, useMemo, useState } from "react";
+import React, { Children, cloneElement, useMemo, useState } from "react";
 import { HiChevronDown } from "react-icons/hi";
 import { excludeClassName } from "../../helpers/exclude";
 import { useTheme } from "../Flowbite/ThemeContext";
