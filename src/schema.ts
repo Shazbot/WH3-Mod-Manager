@@ -69,9 +69,7 @@ export const LocVersion: DBVersion = {
 export const schema = wh3Schema;
 export const DBNameToDBVersions: Record<string, DBVersion[]> = {};
 
-const vf = (schema as { versioned_files: any[] }).versioned_files as any[];
-for (const versioned_file of vf) {
-  if ("DB" in versioned_file) {
-    DBNameToDBVersions[versioned_file.DB[0]] = versioned_file.DB[1];
-  }
+const vf = (schema as { definitions: any }).definitions as any;
+for (const table_name in vf) {
+  DBNameToDBVersions[table_name] = vf[table_name];
 }
