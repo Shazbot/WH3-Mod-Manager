@@ -1,10 +1,13 @@
 import { Pack, PackCollisions } from "./packFileTypes";
+import { SupportedGames, supportedGames } from "./supportedGames";
 
 interface AppData {
   presets: Preset[];
-  gamePath: string | undefined;
-  contentFolder: string | undefined;
-  dataFolder: string | undefined;
+
+  // gamePaths: Record<string, string>;
+  // contentFolders: Record<string, string>;
+  // dataFolders: Record<string, string>;
+  gamesToGameFolderPaths: Record<string, GameFolderPaths>;
   gameSaves: GameSave[];
   saveSetupDone: boolean;
   isMakeUnitsGeneralsEnabled: boolean;
@@ -20,15 +23,23 @@ interface AppData {
   isAdmin: boolean;
   gameUpdates: GameUpdateData[];
   isWH3Running: boolean;
+  currentGame: SupportedGames;
+  gameToCurrentPreset: Record<SupportedGames, Preset | undefined>;
+  gameToPresets: Record<SupportedGames, Preset[]>;
 }
 
-export type AppFolderPaths = { gamePath: string; contentFolder: string };
+export type GameFolderPaths = {
+  gamePath: string | undefined;
+  contentFolder: string | undefined;
+  dataFolder: string | undefined;
+};
 
-export default {
+const appData = {
   presets: [],
-  gamePath: undefined,
-  contentFolder: undefined,
-  dataFolder: undefined,
+  // gamePaths: {},
+  // contentFolders: {},
+  // dataFolders: {},
+  gamesToGameFolderPaths: {},
   gameSaves: [],
   saveSetupDone: false,
   isMakeUnitsGeneralsEnabled: false,
@@ -43,4 +54,25 @@ export default {
   isAdmin: false,
   gameUpdates: [],
   isWH3Running: false,
-} as AppData;
+  currentGame: "wh3",
+} as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
+for (const supportedGame of supportedGames) {
+  appData.gamesToGameFolderPaths[supportedGame] = {
+    gamePath: undefined,
+    dataFolder: undefined,
+    contentFolder: undefined,
+  };
+}
+
+(appData as AppData).gameToCurrentPreset = {
+  wh2: undefined,
+  wh3: undefined,
+  threeKingdoms: undefined,
+};
+(appData as AppData).gameToPresets = {
+  wh2: [],
+  wh3: [],
+  threeKingdoms: [],
+};
+
+export default appData as AppData;

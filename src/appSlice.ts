@@ -1,4 +1,4 @@
-import { AppFolderPaths } from "./appData";
+import { GameFolderPaths } from "./appData";
 import { PackCollisions } from "./packFileTypes";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import hash from "object-hash";
@@ -45,6 +45,56 @@ const removeCategoryByPayload = (state: AppState, payload: RemoveCategoryPayload
 
   if (state.currentPreset.mods.every((mod) => !mod.categories || !mod.categories.includes(category)))
     state.categories = state.categories.filter((iterCategory) => iterCategory != category);
+};
+
+const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
+  state.currentPreset.mods = mods;
+  state.allMods = mods;
+
+  state.currentPreset.mods = state.currentPreset.mods.filter(
+    (mod) =>
+      mod.isInData ||
+      (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
+  );
+
+  if (state.dataFromConfig && state.dataFromConfig.currentPreset.version != undefined) {
+    state.currentPreset.version = state.dataFromConfig.currentPreset.version;
+    console.log("sorting as in preset from config in setMods");
+    state.currentPreset.mods = sortAsInPreset(
+      state.currentPreset.mods,
+      state.dataFromConfig.currentPreset.mods
+    );
+  }
+
+  if (state.dataFromConfig) {
+    state.currentPreset.mods
+      .filter((iterMod) => state.dataFromConfig?.alwaysEnabledMods.some((mod) => mod.name == iterMod.name))
+      .forEach((mod) => (mod.isEnabled = true));
+
+    state.dataFromConfig.currentPreset.mods
+      .filter((mod) => mod !== undefined)
+      .forEach((mod) => {
+        const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
+        if (existingMod) {
+          existingMod.isEnabled = mod.isEnabled;
+          existingMod.categories = mod.categories;
+          if (mod.humanName !== "") existingMod.humanName = mod.humanName;
+          if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
+        }
+      });
+  }
+
+  const appStartIndex = state.presets.findIndex((preset) => preset.name === "On App Start");
+  const newPreset = {
+    name: "On App Start",
+    mods: [...state.currentPreset.mods],
+    version: state.currentPreset.version,
+  };
+  if (appStartIndex != -1) {
+    state.presets.splice(appStartIndex, 1, newPreset);
+  } else {
+    state.presets.push(newPreset);
+  }
 };
 
 const appSlice = createSlice({
@@ -157,55 +207,7 @@ const appSlice = createSlice({
     setMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       console.log("appSlice/setMods: SETTING CURRENT PRESET");
       const mods = action.payload;
-      state.currentPreset.mods = mods;
-      state.allMods = mods;
-
-      state.currentPreset.mods = state.currentPreset.mods.filter(
-        (mod) =>
-          mod.isInData ||
-          (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
-      );
-
-      if (state.dataFromConfig && state.dataFromConfig.currentPreset.version != undefined) {
-        state.currentPreset.version = state.dataFromConfig.currentPreset.version;
-        console.log("sorting as in preset from config in setMods");
-        state.currentPreset.mods = sortAsInPreset(
-          state.currentPreset.mods,
-          state.dataFromConfig.currentPreset.mods
-        );
-      }
-
-      if (state.dataFromConfig) {
-        state.currentPreset.mods
-          .filter((iterMod) =>
-            state.dataFromConfig?.alwaysEnabledMods.some((mod) => mod.name == iterMod.name)
-          )
-          .forEach((mod) => (mod.isEnabled = true));
-
-        state.dataFromConfig.currentPreset.mods
-          .filter((mod) => mod !== undefined)
-          .forEach((mod) => {
-            const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
-            if (existingMod) {
-              existingMod.isEnabled = mod.isEnabled;
-              existingMod.categories = mod.categories;
-              if (mod.humanName !== "") existingMod.humanName = mod.humanName;
-              if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
-            }
-          });
-      }
-
-      const appStartIndex = state.presets.findIndex((preset) => preset.name === "On App Start");
-      const newPreset = {
-        name: "On App Start",
-        mods: [...state.currentPreset.mods],
-        version: state.currentPreset.version,
-      };
-      if (appStartIndex != -1) {
-        state.presets.splice(appStartIndex, 1, newPreset);
-      } else {
-        state.presets.push(newPreset);
-      }
+      setCurrentPresetToMods(state, mods);
     },
     addMod: (state: AppState, action: PayloadAction<Mod>) => {
       const mod = action.payload;
@@ -346,15 +348,17 @@ const appSlice = createSlice({
         if (data.lastChanged) mod.lastChanged = data.lastChanged;
       }
     },
-    setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData>) => {
-      const data = action.payload;
-      const mod = state.currentPreset.mods.find((mod) => mod.path == data.path);
-      if (mod) {
-        mod.isMovie = data.isMovie;
-        mod.dependencyPacks = data.dependencyPacks;
-      }
+    setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData | PackHeaderData[]>) => {
+      const headers = (Array.isArray(action.payload) && action.payload) || [action.payload];
+      for (const header of headers) {
+        const mod = state.currentPreset.mods.find((mod) => mod.path == header.path);
+        if (mod) {
+          mod.isMovie = header.isMovie;
+          mod.dependencyPacks = header.dependencyPacks;
+        }
 
-      if (data.isMovie) console.log(`${data.path} is movie!`);
+        if (header.isMovie) console.log(`${header.path} is movie!`);
+      }
     },
     setPacksData: (state: AppState, action: PayloadAction<PackViewData[]>) => {
       const packsData = action.payload;
@@ -391,11 +395,11 @@ const appSlice = createSlice({
     setPackCollisions: (state: AppState, action: PayloadAction<PackCollisions>) => {
       state.packCollisions = action.payload;
     },
-    setAppFolderPaths: (state: AppState, action: PayloadAction<AppFolderPaths>) => {
+    setAppFolderPaths: (state: AppState, action: PayloadAction<GameFolderPaths>) => {
       state.appFolderPaths = action.payload;
       state.isSetAppFolderPathsDone = true;
     },
-    setFromConfig: (state: AppState, action: PayloadAction<AppStateToWrite>) => {
+    setFromConfig: (state: AppState, action: PayloadAction<AppStateToRead>) => {
       const fromConfigAppState = action.payload;
 
       state.dataFromConfig = fromConfigAppState;
@@ -438,6 +442,7 @@ const appSlice = createSlice({
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
       state.currentLanguage = fromConfigAppState.currentLanguage || "en";
       state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
+      state.currentGame = fromConfigAppState.currentGame || "wh3";
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -679,6 +684,20 @@ const appSlice = createSlice({
       const language = action.payload;
       state.currentLanguage = language;
     },
+    setCurrentGame: (state: AppState, action: PayloadAction<SetCurrentGamePayload>) => {
+      const { game, currentPreset, presets } = action.payload;
+      state.currentGame = game;
+
+      if (presets) state.presets = presets;
+
+      if (currentPreset) {
+        if (state.dataFromConfig) {
+          state.dataFromConfig.currentPreset = currentPreset;
+          state.dataFromConfig.presets = presets;
+        }
+        if (currentPreset.mods) setCurrentPresetToMods(state, currentPreset.mods);
+      }
+    },
     setIsOnboardingToRun: (state: AppState, action: PayloadAction<boolean>) => {
       state.isOnboardingToRun = action.payload;
     },
@@ -863,6 +882,7 @@ export const {
   setModLoadOrder,
   setModLoadOrderRelativeTo,
   setCurrentLanguage,
+  setCurrentGame,
   resetModLoadOrder,
   resetModLoadOrderAll,
   toggleAlwaysEnabledMods,

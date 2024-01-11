@@ -1,3 +1,4 @@
+import deepClone from "clone-deep";
 import { app } from "electron";
 import * as fs from "fs/promises";
 import equal from "fast-deep-equal";
@@ -11,39 +12,53 @@ let dataToWrite: AppStateToWrite | undefined;
 let isWriting = false;
 
 const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
-  return {
+  const gameToCurrentPreset = deepClone(appData.gameToCurrentPreset);
+  gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
+
+  const gameToPresets = deepClone(appData.gameToPresets);
+  gameToPresets[appState.currentGame] = appState.presets;
+
+  const configAppState = {
     alwaysEnabledMods: appState.alwaysEnabledMods,
     hiddenMods: appState.hiddenMods,
     wasOnboardingEverRun: appState.wasOnboardingEverRun,
-    presets: appState.presets,
-    currentPreset: appState.currentPreset,
     isAuthorEnabled: appState.isAuthorEnabled,
     areThumbnailsEnabled: appState.areThumbnailsEnabled,
     isMakeUnitsGeneralsEnabled: appState.isMakeUnitsGeneralsEnabled,
     isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,
     isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
-    appFolderPaths: appState.appFolderPaths,
     isClosedOnPlay: appState.isClosedOnPlay,
     categories: appState.categories,
     modRowsSortingType: appState.modRowsSortingType,
     currentLanguage: appState.currentLanguage,
+    currentGame: appState.currentGame,
     packDataOverwrites: appState.packDataOverwrites,
+    // from appData
+    gameFolderPaths: appData.gamesToGameFolderPaths,
+    gameToCurrentPreset,
+    gameToPresets,
   };
+
+  return configAppState;
 };
 
 export function setStartingAppState(startingAppState: AppStateToWrite) {
-  dataToWrite = startingAppState;
+  dataToWrite = deepClone(startingAppState);
 }
 
 export function writeAppConfig(data: AppState) {
   const toWrite: AppStateToWrite = appStateToConfigAppState(data);
 
   if (!appData.hasReadConfig) return;
-  if (equal(dataToWrite, toWrite)) return;
+
+  if (equal(dataToWrite, toWrite)) {
+    console.log("same appConfig, don't save it");
+    return;
+  }
   const userData = app.getPath("userData");
 
-  dataToWrite = toWrite;
+  dataToWrite = deepClone(toWrite);
   if (writeConfigTimeout) {
     writeConfigTimeout.refresh();
   } else {
@@ -84,7 +99,7 @@ export function writeAppConfig(data: AppState) {
   }
 }
 
-export async function readAppConfig(): Promise<AppStateToWrite> {
+export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProperties> {
   let data: string | undefined;
   try {
     const userData = app.getPath("userData");

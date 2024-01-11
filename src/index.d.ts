@@ -1,6 +1,7 @@
 import { PackedFile, PackCollisions } from "./packFileTypes";
-import { AppFolderPaths } from "./appData";
+import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
+import { SupportedGames } from "./supportedGames";
 export {};
 
 declare global {
@@ -95,10 +96,10 @@ declare global {
     allMods: Mod[];
     packsData: Record<string, PackViewData>;
     packCollisions: PackCollisions;
-    dataFromConfig?: AppStateToWrite;
+    dataFromConfig?: AppStateToRead;
     newMergedPacks: NewMergedPack[];
     pathsOfReadPacks: string[];
-    appFolderPaths: AppFolderPaths;
+    appFolderPaths: GameFolderPaths;
     isSetAppFolderPathsDone: boolean;
     overwrittenDataPackedFiles: Record<string, string[]>;
     outdatedPackFiles: Record<string, string[]>;
@@ -117,28 +118,50 @@ declare global {
     packDataOverwrites: Record<string, PackDataOverwrite[]>;
     modBeingCustomized: Mod | undefined;
     customizableMods: Record<string, string[]>;
+    currentGame: SupportedGames;
   }
+
+  type;
 
   type AppStateToWrite = Pick<
     AppState,
-    | "currentPreset"
     | "alwaysEnabledMods"
     | "hiddenMods"
     | "wasOnboardingEverRun"
-    | "presets"
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
     | "isMakeUnitsGeneralsEnabled"
     | "isScriptLoggingEnabled"
     | "isSkipIntroMoviesEnabled"
-    | "appFolderPaths"
     | "isAutoStartCustomBattleEnabled"
     | "isClosedOnPlay"
     | "categories"
     | "modRowsSortingType"
     | "currentLanguage"
+    | "currentGame"
     | "packDataOverwrites"
-  >;
+  > &
+    AppStateMainProcessExtras;
+
+  // main process (index.ts) specific properties that are writtend and read from the app config file
+  type AppStateMainProcessExtras = {
+    gameFolderPaths: Record<SupportedGames, GameFolderPaths>;
+    gameToCurrentPreset: Record<SupportedGames, Preset | undefined>;
+    gameToPresets: Record<SupportedGames, Preset[]>;
+  };
+
+  // renderer redux app state specific properties
+  type AppStateRendererExtras = {
+    appFolderPaths: GameFolderPaths;
+    presets: Preset[];
+    currentPreset: Preset;
+  };
+
+  type AppStateToWriteWithDeprecatedProperties = AppStateToWrite & AppStateRendererExtras;
+
+  type AppStateWithRendererExtras = AppStateToWrite & AppStateRendererExtras;
+
+  type AppStateToRead = Omit<AppStateWithRendererExtras, keyof AppStateMainProcessExtras>;
 
   type StartGameOptions = Pick<
     AppState,
@@ -154,6 +177,12 @@ declare global {
     modName: string;
     loadOrder: number;
     originalOrder?: number;
+  }
+
+  interface SetCurrentGamePayload {
+    game: SupportedGames;
+    currentPreset: Preset;
+    presets: Preset[];
   }
 
   interface ModLoadOrderRelativeTo {
@@ -323,4 +352,6 @@ declare global {
   interface Tree {
     node: TreeNode;
   }
+
+  // type SupportedGames = "wh3" | "wh2";
 }

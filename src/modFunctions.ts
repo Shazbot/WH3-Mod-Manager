@@ -11,6 +11,7 @@ import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
 import * as os from "os";
 import { XMLParser } from "fast-xml-parser";
+import { gameToGameFolder, gameToManifest, gameToSteamId } from "./supportedGames";
 
 export function fetchModData(
   ids: string[],
@@ -20,7 +21,7 @@ export function fetchModData(
 ) {
   const child = fork(
     nodePath.join(__dirname, "sub.js"),
-    ["getItems", ids.filter((id) => !isNaN(parseFloat(id))).join(",")],
+    [gameToSteamId[appData.currentGame], "getItems", ids.filter((id) => !isNaN(parseFloat(id))).join(",")],
     {}
   );
   child.on("message", (workshopData: WorkshopItemStringInsteadOfBigInt[]) => {
@@ -182,10 +183,10 @@ export function fetchModData(
 }
 
 async function getDataPath(log: (msg: string) => void): Promise<string> {
-  if (!appData.dataFolder) {
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].dataFolder) {
     await getFolderPaths(log);
   }
-  return appData.dataFolder as string;
+  return appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
 }
 
 export async function getDataMod(filePath: string, log: (msg: string) => void): Promise<Mod> {
@@ -248,7 +249,8 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
   if (!dataPath) throw new Error("Data folder not found");
 
   const vanillaPacks: string[] = [];
-  return fsPromises.readFile(nodePath.join(gameDir, "data", "manifest.txt"), "utf8").then(async (data) => {
+  try {
+    const data = await fsPromises.readFile(nodePath.join(gameDir, "data", "manifest.txt"), "utf8");
     const re = /([^\s]+)/;
     data.split("\n").map((line) => {
       const found = line.match(re);
@@ -256,26 +258,29 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
         vanillaPacks.push(found[1]);
       }
     });
+  } catch (e) {
+    if (gameToManifest[appData.currentGame])
+      vanillaPacks.splice(0, 0, ...(gameToManifest[appData.currentGame] as string[]));
+  }
 
-    const files = await fsPromises.readdir(dataPath, { withFileTypes: true });
+  const files = await fsPromises.readdir(dataPath, { withFileTypes: true });
 
-    const dataModsPromises = files
-      .filter(
-        (file) =>
-          !file.isDirectory() &&
-          file.name.endsWith(".pack") &&
-          !vanillaPacks.find((vanillaPack) => file.name === vanillaPack)
-      )
-      .map(async (file) => {
-        return getDataMod(nodePath.join(dataPath, file.name), log);
-      });
-
-    const fulfilled = await Promise.allSettled(dataModsPromises);
-
-    return (fulfilled.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
-      const mod = r.value;
-      return mod;
+  const dataModsPromises = files
+    .filter(
+      (file) =>
+        !file.isDirectory() &&
+        file.name.endsWith(".pack") &&
+        !vanillaPacks.find((vanillaPack) => file.name === vanillaPack)
+    )
+    .map(async (file) => {
+      return getDataMod(nodePath.join(dataPath, file.name), log);
     });
+
+  const fulfilled = await Promise.allSettled(dataModsPromises);
+
+  return (fulfilled.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
+    const mod = r.value;
+    return mod;
   });
 };
 
@@ -317,17 +322,31 @@ export const getFolderPaths = async (log: (msg: string) => void) => {
 
   for (const basepath of paths) {
     const path = basepath.replaceAll("\\\\", "\\").replaceAll("//", "/");
-    const worshopFilePath = nodePath.join(path, "steamapps", "appmanifest_1142710.acf");
+    const worshopFilePath = nodePath.join(
+      path,
+      "steamapps",
+      `appmanifest_${gameToSteamId[appData.currentGame]}.acf`
+    );
     try {
       await fsPromises.readFile(worshopFilePath);
-      log(`Found appmanifest_1142710.acf at ${worshopFilePath}`);
-      const contentFolder = nodePath.join(path, "steamapps", "workshop", "content", "1142710");
-      appData.contentFolder = contentFolder;
-      appData.gamePath = nodePath.join(path, "steamapps", "common", "Total War WARHAMMER III");
-      appData.dataFolder = nodePath.join(appData.gamePath, "data");
+      log(`Found appmanifest_${gameToSteamId[appData.currentGame]}.acf at ${worshopFilePath}`);
+      const contentFolder = nodePath.join(
+        path,
+        "steamapps",
+        "workshop",
+        "content",
+        gameToSteamId[appData.currentGame]
+      );
+      appData.gamesToGameFolderPaths[appData.currentGame] =
+        appData.gamesToGameFolderPaths[appData.currentGame] || {};
+      appData.gamesToGameFolderPaths[appData.currentGame].contentFolder = contentFolder;
 
-      log(`Content folder is at ${appData.contentFolder}`);
-      log(`Game path is at ${appData.gamePath}`);
+      const gamePath = nodePath.join(path, "steamapps", "common", gameToGameFolder[appData.currentGame]);
+      appData.gamesToGameFolderPaths[appData.currentGame].gamePath = gamePath;
+      appData.gamesToGameFolderPaths[appData.currentGame].dataFolder = nodePath.join(gamePath, "data");
+
+      log(`Content folder is at ${appData.gamesToGameFolderPaths[appData.currentGame].contentFolder}`);
+      log(`Game path is at ${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}`);
       // eslint-disable-next-line no-empty
     } catch (err) {}
   }
@@ -346,11 +365,12 @@ export async function getContentModInFolder(
   contentSubFolderName: string,
   log: (msg: string) => void
 ): Promise<Mod> {
-  if (!appData.contentFolder) {
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.contentFolder) throw new Error("Content folder not found");
-  const contentFolder = appData.contentFolder;
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder)
+    throw new Error("Content folder not found");
+  const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
   const contentSubfolder = nodePath.join(contentFolder, contentSubFolderName);
 
   let subbedTime = -1;
@@ -411,14 +431,18 @@ export async function getContentModInFolder(
 export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const mods: Mod[] = [];
 
-  if (!appData.contentFolder) {
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
   }
-  if (!appData.contentFolder) throw new Error("Content folder not found");
-  const contentFolder = appData.contentFolder;
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder)
+    throw new Error("Content folder not found");
+  const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
 
-  if (!appData.gamePath) throw new Error("Game folder not found");
-  const dataMods = await getDataMods(appData.gamePath, log);
+  if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) throw new Error("Game folder not found");
+  const dataMods = await getDataMods(
+    appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+    log
+  );
   mods.push(...dataMods);
 
   console.log(

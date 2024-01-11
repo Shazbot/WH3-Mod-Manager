@@ -273,6 +273,7 @@ const ModsMerger = React.memo(() => {
           size="2xl"
           position="top-center"
           explicitClasses={[
+            "mt-8",
             "!max-w-7xl",
             "md:!h-full",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),

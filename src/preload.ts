@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 import electronLog from "electron-log";
 import { PackCollisions } from "./packFileTypes";
-import { AppFolderPaths } from "./appData";
+import { GameFolderPaths } from "./appData";
+import { SupportedGames } from "./supportedGames";
+import debounce from "just-debounce-it";
 
 console.log("IN PRELOAD");
 
@@ -57,8 +59,10 @@ const api = {
   getPackDataWithLocs: (packPath: string, table?: DBTable) =>
     ipcRenderer.send("getPackDataWithLocs", packPath, table),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
-  readMods: (mods: Mod[], skipCollisionCheck = true) =>
-    ipcRenderer.send("readMods", mods, skipCollisionCheck),
+  readMods: debounce(
+    (mods: Mod[], skipCollisionCheck = true) => ipcRenderer.send("readMods", mods, skipCollisionCheck),
+    100
+  ),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
   translate: (translationId: string, options?: Record<string, string | number>) =>
     ipcRenderer.invoke("translate", translationId, options),
@@ -88,11 +92,14 @@ const api = {
     ipcRenderer.on("setPackCollisions", callback),
   addToast: (callback: (event: Electron.IpcRendererEvent, toast: Toast) => void) =>
     ipcRenderer.on("addToast", callback),
-  setAppFolderPaths: (callback: (event: Electron.IpcRendererEvent, appFolderPaths: AppFolderPaths) => void) =>
-    ipcRenderer.on("setAppFolderPaths", callback),
+  setAppFolderPaths: (
+    callback: (event: Electron.IpcRendererEvent, appFolderPaths: GameFolderPaths) => void
+  ) => ipcRenderer.on("setAppFolderPaths", callback),
   getAllModData: (ids: string[]) => ipcRenderer.send("getAllModData", ids),
-  getCustomizableMods: (modPaths: string[], tables: string[]) =>
-    ipcRenderer.send("getCustomizableMods", modPaths, tables),
+  getCustomizableMods: debounce(
+    (modPaths: string[], tables: string[]) => ipcRenderer.send("getCustomizableMods", modPaths, tables),
+    100
+  ),
   setCustomizableMods: (
     callback: (event: Electron.IpcRendererEvent, customizableMods: Record<string, string[]>) => void
   ) => ipcRenderer.on("setCustomizableMods", callback),
@@ -117,8 +124,18 @@ const api = {
   setAvailableLanguages: (callback: (event: Electron.IpcRendererEvent, languages: string[]) => void) =>
     ipcRenderer.on("setAvailableLanguages", callback),
   requestLanguageChange: (language: string) => ipcRenderer.send("requestLanguageChange", language),
+  requestGameChange: (game: string, appState: AppState) =>
+    ipcRenderer.send("requestGameChange", game, appState),
   setCurrentLanguage: (callback: (event: Electron.IpcRendererEvent, language: string) => void) =>
     ipcRenderer.on("setCurrentLanguage", callback),
+  setCurrentGame: (
+    callback: (
+      event: Electron.IpcRendererEvent,
+      game: SupportedGames,
+      currentPreset: Preset,
+      presets: Preset[]
+    ) => void
+  ) => ipcRenderer.on("setCurrentGame", callback),
   electronLog,
 };
 

@@ -1,3 +1,4 @@
+import { SupportedGames } from "./supportedGames";
 import { SortingType } from "./utility/modRowSorting";
 
 const initialState = {
@@ -28,7 +29,7 @@ const initialState = {
   packCollisions: { packTableCollisions: [], packFileCollisions: [] },
   newMergedPacks: [],
   pathsOfReadPacks: [],
-  appFolderPaths: { gamePath: "", contentFolder: "" },
+  appFolderPaths: { gamePath: "", contentFolder: "", dataFolder: "" },
   isSetAppFolderPathsDone: false,
   overwrittenDataPackedFiles: {},
   outdatedPackFiles: {},
@@ -49,6 +50,7 @@ const initialState = {
   packDataOverwrites: {},
   modBeingCustomized: undefined,
   customizableMods: {},
+  currentGame: "wh3",
 } as AppState;
 
 export default initialState;

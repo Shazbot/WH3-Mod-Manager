@@ -12,7 +12,7 @@ import {
   DBField,
 } from "./packFileTypes";
 import clone from "just-clone";
-import { emptyMovie, introMoviePaths, autoStartCustomBattleScript } from "./helperPackData";
+import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
 import { app } from "electron";
 import { DBNameToDBVersions, LocVersion, locFields } from "./schema";
 import * as nodePath from "path";
@@ -25,6 +25,7 @@ import { compareModNames } from "./modSortingHelpers";
 import { getDBName } from "./utility/packFileHelpers";
 import getPackTableData, { isSchemaFieldNumber } from "./utility/packDataHandling";
 import deepClone from "clone-deep";
+import { gameToIntroMovies } from "./supportedGames";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -488,7 +489,7 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
 };
 
 const createIntroMoviesData = (pack_files: PackedFile[]) => {
-  for (const moviePath of introMoviePaths) {
+  for (const moviePath of gameToIntroMovies[appData.currentGame]) {
     pack_files.push({
       name: moviePath,
       file_size: emptyMovie.length,
@@ -640,12 +641,13 @@ const sortByPackName = (packFirst: Pack, packSecond: Pack) => {
 };
 
 export const mergeMods = async (mods: Mod[], existingPath?: string) => {
-  if (!appData.dataFolder) return;
+  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+  if (!dataFolder) return;
   let outFile: BinaryFile | undefined;
   try {
     const targetPath =
       existingPath ||
-      nodePath.join(appData.dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
+      nodePath.join(dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
     await fsExtra.ensureDir(nodePath.dirname(targetPath));
 
     const packFieldsSettled = await Promise.allSettled(

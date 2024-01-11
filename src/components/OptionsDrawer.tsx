@@ -1,4 +1,4 @@
-import Select, { ActionMeta, SingleValue } from "react-select";
+import Select, { ActionMeta, SingleValue, SingleValueProps, components } from "react-select";
 import React, { memo, useCallback, useContext, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
@@ -24,6 +24,8 @@ import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
 import localizationContext from "../localizationContext";
 import ISO6391 from "iso-639-1";
+import { SupportedGames, gameToGameFolder, gameToGameName, supportedGames } from "../supportedGames";
+import store from "../store";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -41,6 +43,11 @@ type OptionType = {
   value: string;
   label: string;
 };
+
+const gameToImageSrc = supportedGames.reduce((acc, currentGame) => {
+  acc[currentGame as string] = require(`../assets/game_icons/${currentGame}.png`);
+  return acc;
+}, {} as Record<string, string>);
 
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
@@ -60,6 +67,7 @@ const OptionsDrawer = memo(() => {
   const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
   const availableLanguages = useAppSelector((state) => state.app.availableLanguages);
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
+  const currentGame = useAppSelector((state) => state.app.currentGame);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -93,6 +101,10 @@ const OptionsDrawer = memo(() => {
   );
   const languageOptions = useSelector(availableLanguagesToOptionsSelector);
 
+  const availableGames = Object.keys(gameToGameName).map(
+    (gameKey) => ({ value: gameKey, label: gameToGameName[gameKey as SupportedGames] } as OptionType)
+  );
+
   const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
 
   const forceDownloadMods = useCallback(() => {
@@ -108,6 +120,19 @@ const OptionsDrawer = memo(() => {
       if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([mod]));
     },
     [alwaysHidden]
+  );
+
+  const onGameChange = useCallback(
+    (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+      if (!newValue) return;
+      console.log(newValue.label, newValue.value, actionMeta.action);
+      const game = supportedGames.find((game) => game == newValue.value);
+      if (!game) return;
+      if (actionMeta.action === "select-option") {
+        window.api?.requestGameChange(game, store.getState().app);
+      }
+    },
+    [supportedGames]
   );
 
   const onLanguageChange = useCallback(
@@ -148,6 +173,12 @@ const OptionsDrawer = memo(() => {
     [enabledMods]
   );
 
+  const SingleValue = ({ children, ...props }: SingleValueProps<OptionType, false>) => (
+    <components.SingleValue {...props}>
+      <img className="mt-[5px]" src={gameToImageSrc[props.data.value]} />
+    </components.SingleValue>
+  );
+
   return (
     <div>
       <GamePathsSetup
@@ -186,7 +217,26 @@ const OptionsDrawer = memo(() => {
               {localized.otherOptions}
             </h5>
 
-            <div className="flex ">
+            <div className="flex justify-center relative">
+              <div className="absolute flex font-normal text-lg items-center bg-gray-800 justify-center w-14 h-6 top-[-12px] rounded mt-[-0.05rem]">
+                Game
+              </div>
+              <div className="rounded border border-slate-400 h-32 w-32 flex justify-center items-center">
+                <Select
+                  className="aspect-square m-2 mt-5"
+                  id="languageSelect"
+                  options={availableGames}
+                  styles={selectStyle}
+                  onChange={onGameChange}
+                  isClearable={false}
+                  isSearchable={false}
+                  components={{ SingleValue, DropdownIndicator: null }}
+                  defaultValue={{ value: currentGame, label: currentGame } as OptionType}
+                ></Select>
+              </div>
+            </div>
+
+            <div className="flex mt-8">
               <button
                 className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[50%]"
                 onClick={() => setIsShowingAboutScreen(true)}
@@ -205,6 +255,8 @@ const OptionsDrawer = memo(() => {
                 options={languageOptions}
                 styles={selectStyle}
                 onChange={onLanguageChange}
+                isClearable={false}
+                isSearchable={false}
                 defaultValue={{ value: currentLanguage, label: ISO6391.getName(currentLanguage) }}
               ></Select>
             </div>
@@ -377,7 +429,7 @@ const OptionsDrawer = memo(() => {
             </div>
 
             <h6 className="mt-10">{localized.forModders}</h6>
-            <p className="mb-1 text-sm text-gray-500 dark:text-gray-400">{localized.keepInSync}</p>
+            <p className="mb-1 text-sm text-gray-500 dark:text-red-500">{localized.keepInSync}</p>
             <div className="flex items-center ml-1">
               <input
                 className="mt-1"

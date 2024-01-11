@@ -35,6 +35,7 @@ const Sidebar = React.memo(() => {
   const overwrittenDataPackedFiles = useAppSelector((state) => state.app.overwrittenDataPackedFiles);
   const outdatedPackFiles = useAppSelector((state) => state.app.outdatedPackFiles);
   const dataModLastChangedLocal = useAppSelector((state) => state.app.dataModLastChangedLocal);
+  const currentGame = useAppSelector((state) => state.app.currentGame);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
@@ -395,7 +396,7 @@ const Sidebar = React.memo(() => {
                   placement="left"
                   content={
                     <>
-                      <p>{localized.outdatedOverwritingPacksTooltip}</p>
+                      <p className="cursor-default">{localized.outdatedOverwritingPacksTooltip}</p>
                       {Object.entries(timeCheckedOverwrittenDataPackedFiles).map(
                         ([packName, overwrittenFileNames]) => (
                           <div key={packName}>
@@ -411,7 +412,7 @@ const Sidebar = React.memo(() => {
                     </>
                   }
                 >
-                  {localized.outdatedOverwritingPacks}
+                  <span className="cursor-default">{localized.outdatedOverwritingPacks}</span>
                 </Tooltip>
               </div>
             </div>
@@ -474,7 +475,9 @@ const Sidebar = React.memo(() => {
                     <div key={mod.path}>{mod.name.replace(".pack", "")}</div>
                   ))}
                 >
-                  {localized.enabledMods} {enabledMods.length}
+                  <span className="cursor-default">
+                    {localized.enabledMods} {enabledMods.length}
+                  </span>
                 </Tooltip>
               </div>
             </div>
@@ -493,11 +496,25 @@ const Sidebar = React.memo(() => {
               {(isWH3Running && (
                 <div className="make-tooltip-w-full">
                   <Tooltip placement="left" content={"Game is currently running!"}>
-                    <span>{localized.play}</span>
+                    <div className="flex justify-center items-center gap-[0.4rem]">
+                      <img
+                        style={{ filter: "drop-shadow(0px 0px 7.5px black)" }}
+                        className="aspect-square w-10"
+                        src={require(`../assets/game_icons/${currentGame}.png`)}
+                      />
+                    </div>
                   </Tooltip>
                 </div>
-              )) ||
-                localized.play}
+              )) || (
+                <div className="flex justify-center items-center gap-[0.4rem]">
+                  <img
+                    style={{ filter: "drop-shadow(0px 0px 7.5px black)" }}
+                    className="aspect-square w-10"
+                    src={require(`../assets/game_icons/${currentGame}.png`)}
+                  />
+                  <span className="playButtonText uppercase">{localized.play}</span>
+                </div>
+              )}
             </button>
 
             <div className="mt-2 w-36 relative">
