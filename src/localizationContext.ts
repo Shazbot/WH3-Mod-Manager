@@ -86,16 +86,39 @@ export const staticTextIds: Record<string, string | number> = {
   createSteamCollectionHelp4:
     "Two buttons will appear, one to add mods to the collection and a reset button that removes any added mods. Click the green + button that appears and wait for the page to reload.",
   configureFolderLocations: "Configure Folder Locations",
-  setFolderPathsManually:
+  setFolderPathsManuallyWH2:
+    "The mod manager tried to get WH2 folder locations from Windows Registry, but it couldn't find them! You'll have to set them manually!",
+  setFolderPathsManuallyWH3:
     "The mod manager tried to get WH3 folder locations from Windows Registry, but it couldn't find them! You'll have to set them manually!",
-  setFolderPathsManuallyOptionally:
+  setFolderPathsManuallyThreeKingdoms:
+    "The mod manager tried to get Three Kingdoms folder locations from Windows Registry, but it couldn't find them! You'll have to set them manually!",
+  setFolderPathsManuallyOptionallyWH2:
+    "The mod manager automatically found WH2 folder paths from the Windows Registry, but you can set them manually here.",
+  setFolderPathsManuallyOptionallyWH3:
     "The mod manager automatically found WH3 folder paths from the Windows Registry, but you can set them manually here.",
+  setFolderPathsManuallyOptionallyThreeKingdoms:
+    "The mod manager automatically found Three Kingdoms folder paths from the Windows Registry, but you can set them manually here.",
+  wh2: "Warhammer 2",
+  wh3: "Warhammer 3",
+  threeKingdoms: "Three Kingdoms",
   mainWH3Folder:
     "The main Warhammer 3 folder that contains Warhammer3.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War WARHAMMER III",
+  mainWH2Folder:
+    "The main Warhammer 2 folder that contains Warhammer2.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War WARHAMMER II",
+  mainThreeKingdomsFolder:
+    "The main Three Kingdoms folder that contains Three_Kingdoms.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War THREE KINGDOMS",
   wh3Folder: "WH3 folder:",
+  wh2Folder: "WH2 folder:",
+  threeKingdomsFolder: "Three Kingdoms folder:",
   selectWH3Folder: "Select WH3 Folder",
+  selectWH2Folder: "Select WH2 Folder",
+  selectThreeKingdomsFolder: "Select Three Kingdoms Folder",
   wh3ContentFolder:
     "The Warhammer 3 Steam Workshop content folder named 1142710 (which is the steam ID for WH3) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\1142710",
+  wh2ContentFolder:
+    "The Warhammer 2 Steam Workshop content folder named 594570 (which is the steam ID for WH2) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\594570",
+  threeKingdomsContentFolder:
+    "The Three Kingdoms Steam Workshop content folder named 779340 (which is the steam ID for 3K) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\779340",
   contentFolder: "Content folder:",
   selectContentFolder: "Select Content Folder",
   setLoadOrderFor: "Set Load Order For",
@@ -212,7 +235,7 @@ export const staticTextIds: Record<string, string | number> = {
   autoStartCustomBattles1: "For repetitive visual testing that involves restarting the game.",
   autoStartCustomBattles2: "Set up a custom battle once and enable this to auto-enter it.",
   setFolderPaths: "Set Folder Paths",
-  setFolderPathsMsg: "Set WH3 and Steam Workshop content folder paths.",
+  setFolderPathsMsg: "Set Game and Steam Workshop content folder paths.",
   categoryFilter: "Category filter",
   categoriesFilter: "Categories filter",
   nameFilter: "Name filter",
@@ -249,17 +272,18 @@ export const staticTextIds: Record<string, string | number> = {
   agentSubtype: "Agent Subtype",
   campaignGroup: "Campaign Group",
   agentsPermissions: "Lords And Heroes",
-  agentSubtypeAndType: "Agent Subtype (Type)",
+  agentSubtypeAndType: "Agent Subtype (Agent Type)",
   faction: "Faction",
   Building: "Building",
-  cultureSubcultureFaction: "Culture, Subculture, Faction",
+  cultureSubcultureFaction: "Culture, Subculture, Faction (All 3 Optional)",
   modCustomizationHelp1:
     "This panel allows you to customize mods, currently you can disable units, buildings and agents (lords and heroes).",
   modCustomizationHelp2:
-    "The way the game handles unit permissions, a unit can have a group permission (which can affect multiple factions) or a per-faction permission, or both.",
+    "The way the game handles unit permissions, a unit can have a group permission (which can affect multiple factions) or a per-faction permission, or both. For game stability reasons only group permissions can be disabled. Note this won't affect custom battles since that uses a different system!",
   modCustomizationHelp3:
-    "Agents (lords and heroes) are tied to campaign groups, except for legendary agents which have a different tab.",
-  modCustomizationHelp4: "",
+    "Generic agents (lords and heroes) are tied to campaign groups and you can disable them that way, except for legendary agents which have their own tab.",
+  modCustomizationHelp4:
+    "The manager customizes a mod by creating a copy of the pack, with the necessary changes, inside a new 'whmm_overwrites' subfolder inside your WH3 folder each time you start the game. Note those copies are currently never deleted or cleaned up. I'm not sure how this affects multiplayer but it's likely you'll get 'different versions' warnings since the game thinks your packs are different even when they're not, but I'm not sure. Removing the customization for a mod will also give you a warning when loading a save that the pack is missing since we're now using the original mod pack, not the customized version of it, but you can ignore that.",
 };
 
 const context = createContext({});

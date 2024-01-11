@@ -163,15 +163,15 @@ declare global {
 
   type AppStateToRead = Omit<AppStateWithRendererExtras, keyof AppStateMainProcessExtras>;
 
-  type StartGameOptions = Pick<
+  type StartGameSpecificOptions = Pick<
     AppState,
     | "isMakeUnitsGeneralsEnabled"
     | "isSkipIntroMoviesEnabled"
     | "isScriptLoggingEnabled"
     | "isAutoStartCustomBattleEnabled"
-    | "isClosedOnPlay"
-    | "packDataOverwrites"
   >;
+
+  type StartGameOptions = StartGameSpecificOptions & Pick<AppState, "isClosedOnPlay" | "packDataOverwrites">;
 
   interface ModLoadOrderPayload {
     modName: string;

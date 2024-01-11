@@ -389,7 +389,7 @@ const Sidebar = React.memo(() => {
             </div>
           )}
 
-          {Object.keys(timeCheckedOverwrittenDataPackedFiles).length > 0 && (
+          {currentGame == "wh3" && Object.keys(timeCheckedOverwrittenDataPackedFiles).length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div className="make-tooltip-w-full">
                 <Tooltip
@@ -418,7 +418,7 @@ const Sidebar = React.memo(() => {
             </div>
           )}
 
-          {Object.keys(outdatedPackFiles).length > 0 && (
+          {currentGame == "wh3" && Object.keys(outdatedPackFiles).length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div className="make-tooltip-w-full">
                 <Tooltip

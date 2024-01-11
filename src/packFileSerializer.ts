@@ -9,7 +9,6 @@ import {
   SchemaField,
   SCHEMA_FIELD_TYPE,
   AmendedSchemaField,
-  DBField,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
@@ -508,7 +507,7 @@ export const getDBVersion = (packFile: PackedFile) => {
 
   if (packFile.name.endsWith(".loc")) return LocVersion;
 
-  const dbversions = DBNameToDBVersions[dbName];
+  const dbversions = DBNameToDBVersions[appData.currentGame][dbName];
   // console.log("GETTING DB VERSIONS, dbversions IS", dbversions);
   if (!dbversions) return;
 
@@ -1280,7 +1279,7 @@ const readDBPackedFiles = async (
     const dbName = dbNameMatch[1];
     if (dbName == null) continue;
 
-    const dbversions = DBNameToDBVersions[dbName];
+    const dbversions = DBNameToDBVersions[appData.currentGame][dbName];
     if (!dbversions) continue;
 
     // console.log(`reading ${pack_file.name}`);

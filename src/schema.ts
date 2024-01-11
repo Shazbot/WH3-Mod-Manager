@@ -1,5 +1,8 @@
 import * as wh3Schema from "../schema/schema_wh3.json";
+import * as wh2Schema from "../schema/schema_wh2.json";
+import * as threeKingdomsSchema from "../schema/schema_3k.json";
 import { SCHEMA_FIELD_TYPE } from "./packFileTypes";
+import { SupportedGames } from "./supportedGames";
 
 export interface DBField {
   name: string;
@@ -66,10 +69,23 @@ export const LocVersion: DBVersion = {
   fields: locFields,
 };
 
-export const schema = wh3Schema;
-export const DBNameToDBVersions: Record<string, DBVersion[]> = {};
+export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion[]>> = {
+  wh2: {},
+  wh3: {},
+  threeKingdoms: {},
+};
 
-const vf = (schema as { definitions: any }).definitions as any;
-for (const table_name in vf) {
-  DBNameToDBVersions[table_name] = vf[table_name];
+const wh3Definitions = (wh3Schema as { definitions: any }).definitions as any;
+for (const table_name in wh3Definitions) {
+  DBNameToDBVersions["wh3"][table_name] = wh3Definitions[table_name];
+}
+
+const wh2Definitions = (wh2Schema as { definitions: any }).definitions as any;
+for (const table_name in wh2Definitions) {
+  DBNameToDBVersions["wh2"][table_name] = wh2Definitions[table_name];
+}
+
+const threeKingdomsDefinitions = (threeKingdomsSchema as { definitions: any }).definitions as any;
+for (const table_name in threeKingdomsDefinitions) {
+  DBNameToDBVersions["threeKingdoms"][table_name] = threeKingdomsDefinitions[table_name];
 }

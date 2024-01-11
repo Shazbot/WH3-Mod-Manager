@@ -24,7 +24,12 @@ import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
 import localizationContext from "../localizationContext";
 import ISO6391 from "iso-639-1";
-import { SupportedGames, gameToGameFolder, gameToGameName, supportedGames } from "../supportedGames";
+import {
+  SupportedGames,
+  gameToSupportedGameOptions,
+  gameToGameName,
+  supportedGames,
+} from "../supportedGames";
 import store from "../store";
 
 const cleanData = () => {
@@ -101,8 +106,8 @@ const OptionsDrawer = memo(() => {
   );
   const languageOptions = useSelector(availableLanguagesToOptionsSelector);
 
-  const availableGames = Object.keys(gameToGameName).map(
-    (gameKey) => ({ value: gameKey, label: gameToGameName[gameKey as SupportedGames] } as OptionType)
+  const availableGames = supportedGames.map(
+    (gameKey) => ({ value: gameKey, label: localized[gameKey] } as OptionType)
   );
 
   const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
@@ -428,88 +433,100 @@ const OptionsDrawer = memo(() => {
               </button>
             </div>
 
-            <h6 className="mt-10">{localized.forModders}</h6>
-            <p className="mb-1 text-sm text-gray-500 dark:text-red-500">{localized.keepInSync}</p>
-            <div className="flex items-center ml-1">
-              <input
-                className="mt-1"
-                type="checkbox"
-                id="make-general-units"
-                checked={!!isMakeUnitsGeneralsEnabled}
-                onChange={() => dispatch(toggleMakeUnitsGenerals())}
-              ></input>
-              <label className="ml-2 mt-1" htmlFor="make-general-units">
-                <Tooltip
-                  placement="left"
-                  style="light"
-                  content={
-                    <>
-                      <div>{localized.forCustomBattleTesting}</div>
-                    </>
-                  }
-                >
-                  {localized.makeCustomBattleGenerals}
-                </Tooltip>
-              </label>
-            </div>
-            <div className="flex items-center ml-1">
-              <input
-                className="mt-1"
-                type="checkbox"
-                id="toggle-script-logging"
-                checked={!!isScriptLoggingEnabled}
-                onChange={() => dispatch(toggleIsScriptLoggingEnabled())}
-              ></input>
-              <label className="ml-2 mt-1" htmlFor="toggle-script-logging">
-                <Tooltip
-                  placement="left"
-                  style="light"
-                  content={
-                    <>
-                      <div>{localized.enableScriptLogging1}</div>
-                      <div>{localized.enableScriptLogging2}</div>
-                    </>
-                  }
-                >
-                  {localized.enableScriptLogging}
-                </Tooltip>
-              </label>
-            </div>
-            <div className="flex items-center ml-1">
-              <input
-                className="mt-1"
-                type="checkbox"
-                id="toggle-intro-movies"
-                checked={!!isSkipIntroMoviesEnabled}
-                onChange={() => dispatch(toggleIsSkipIntroMoviesEnabled())}
-              ></input>
-              <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
-                {localized.skipIntroMovies}
-              </label>
-            </div>
-            <div className="flex items-center ml-1">
-              <input
-                className="mt-1"
-                type="checkbox"
-                id="toggleIsAutoStartCustomBattleEnabled"
-                checked={!!isAutoStartCustomBattleEnabled}
-                onChange={() => dispatch(toggleIsAutoStartCustomBattleEnabled())}
-              ></input>
-              <label className="ml-2 mt-1" htmlFor="toggleIsAutoStartCustomBattleEnabled">
-                <Tooltip
-                  placement="bottom"
-                  style="light"
-                  content={
-                    <>
-                      <div>{localized.autoStartCustomBattles1}</div>
-                      <div>{localized.autoStartCustomBattles2}</div>
-                    </>
-                  }
-                >
-                  {localized.autoStartCustomBattles}
-                </Tooltip>
-              </label>
-            </div>
+            {gameToSupportedGameOptions[currentGame].length > 0 && (
+              <>
+                <h6 className="mt-10">{localized.forModders}</h6>
+                <p className="mb-1 text-sm text-gray-500 dark:text-red-500">{localized.keepInSync}</p>
+                {gameToSupportedGameOptions[currentGame].includes("MakeUnitsGenerals") && (
+                  <div className="flex items-center ml-1">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="make-general-units"
+                      checked={!!isMakeUnitsGeneralsEnabled}
+                      onChange={() => dispatch(toggleMakeUnitsGenerals())}
+                    ></input>
+                    <label className="ml-2 mt-1" htmlFor="make-general-units">
+                      <Tooltip
+                        placement="left"
+                        style="light"
+                        content={
+                          <>
+                            <div>{localized.forCustomBattleTesting}</div>
+                          </>
+                        }
+                      >
+                        {localized.makeCustomBattleGenerals}
+                      </Tooltip>
+                    </label>
+                  </div>
+                )}
+                {gameToSupportedGameOptions[currentGame].includes("ScriptLogging") && (
+                  <div className="flex items-center ml-1">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="toggle-script-logging"
+                      checked={!!isScriptLoggingEnabled}
+                      onChange={() => dispatch(toggleIsScriptLoggingEnabled())}
+                    ></input>
+                    <label className="ml-2 mt-1" htmlFor="toggle-script-logging">
+                      <Tooltip
+                        placement="left"
+                        style="light"
+                        content={
+                          <>
+                            <div>{localized.enableScriptLogging1}</div>
+                            <div>{localized.enableScriptLogging2}</div>
+                          </>
+                        }
+                      >
+                        {localized.enableScriptLogging}
+                      </Tooltip>
+                    </label>
+                  </div>
+                )}
+                {gameToSupportedGameOptions[currentGame].includes("SkipIntroMovies") && (
+                  <div className="flex items-center ml-1">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="toggle-intro-movies"
+                      checked={!!isSkipIntroMoviesEnabled}
+                      onChange={() => dispatch(toggleIsSkipIntroMoviesEnabled())}
+                    ></input>
+                    <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
+                      {localized.skipIntroMovies}
+                    </label>
+                  </div>
+                )}
+                {gameToSupportedGameOptions[currentGame].includes("AutoStartCustomBattle") && (
+                  <div className="flex items-center ml-1">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="toggleIsAutoStartCustomBattleEnabled"
+                      checked={!!isAutoStartCustomBattleEnabled}
+                      onChange={() => dispatch(toggleIsAutoStartCustomBattleEnabled())}
+                    ></input>
+                    <label className="ml-2 mt-1" htmlFor="toggleIsAutoStartCustomBattleEnabled">
+                      <Tooltip
+                        placement="bottom"
+                        style="light"
+                        content={
+                          <>
+                            <div>{localized.autoStartCustomBattles1}</div>
+                            <div>{localized.autoStartCustomBattles2}</div>
+                          </>
+                        }
+                      >
+                        {localized.autoStartCustomBattles}
+                      </Tooltip>
+                    </label>
+                  </div>
+                )}
+              </>
+            )}
 
             <h6 className="mt-10">{localized.setFolderPaths}</h6>
             <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.setFolderPathsMsg}</p>
