@@ -17,12 +17,6 @@ export type ModCustomizationSorts =
   | "Enabled"
   | "EnabledDesc";
 
-export interface ModCustomizationProps {
-  isOpen: boolean;
-  setIsOpen: (isOpen: boolean) => void;
-  modPath: string | undefined;
-}
-
 const ModCustomization = React.memo(() => {
   const dispatch = useAppDispatch();
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
@@ -223,6 +217,7 @@ const ModCustomization = React.memo(() => {
           size="2xl"
           position="top-center"
           explicitClasses={[
+            "mt-8",
             "!max-w-7xl",
             "md:!h-full",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),

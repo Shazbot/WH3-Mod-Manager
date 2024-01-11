@@ -29,12 +29,14 @@ import {
   setAvailableLanguages,
   setCurrentLanguage,
   setCustomizableMods,
+  setCurrentGame,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
-import { AppFolderPaths } from "./appData";
+import { GameFolderPaths } from "./appData";
 import debounce from "just-debounce-it";
 import { api } from "./preload";
+import { SupportedGames } from "./supportedGames";
 
 console.log("IN RENDERER");
 
@@ -140,14 +142,14 @@ const subscribeToStoreChanges = () => {
   }
 };
 
-window.api?.fromAppConfig((event, appState: AppStateToWrite) => {
+window.api?.fromAppConfig((event, appState: AppStateToRead) => {
   console.log("INVOKED: FROM API CONFIG");
   store.dispatch(setFromConfig(appState));
 
   subscribeToStoreChanges();
 });
 
-window.api?.setAppFolderPaths((event, appFolderPaths: AppFolderPaths) => {
+window.api?.setAppFolderPaths((event, appFolderPaths: GameFolderPaths) => {
   console.log("INVOKED: SET APP FOLDER PATHS");
   store.dispatch(setAppFolderPaths(appFolderPaths));
 });
@@ -210,9 +212,15 @@ window.api?.setModData((event, modDatas: ModData[]) => {
   store.dispatch(setModData(modDatas));
 });
 
+const packHeaders: PackHeaderData[] = [];
+const setPackHeaderDataLimited = debounce(() => {
+  store.dispatch(setPackHeaderData(packHeaders));
+  packHeaders.splice(0, packHeaders.length);
+}, 250);
 window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
   // console.log("INVOKED: MOD PACK DATA RECIEVED");
-  store.dispatch(setPackHeaderData(packHeaderData));
+  packHeaders.push(packHeaderData);
+  setPackHeaderDataLimited();
 });
 
 window.api?.setCustomizableMods((event, customizableMods: Record<string, string[]>) => {
@@ -269,6 +277,11 @@ window.api?.setAvailableLanguages((event, languages: string[]) => {
 window.api?.setCurrentLanguage((event, language: string) => {
   console.log("SETTING LANGUAGE", language);
   store.dispatch(setCurrentLanguage(language));
+});
+
+window.api?.setCurrentGame((event, game: SupportedGames, currentPreset: Preset, presets: Preset[]) => {
+  console.log("SETTING GAME", game);
+  store.dispatch(setCurrentGame({ game, currentPreset, presets } as SetCurrentGamePayload));
 });
 
 window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {

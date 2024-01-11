@@ -201,7 +201,7 @@ export const staticTextIds: Record<string, string | number> = {
   copyModList: "Copy Mod List",
   createSteamCollectionMsg: "Create a Steam collection from enabled mods:",
   forModders: "For Modders",
-  keepInSync: "Keep these in sync for MP.",
+  keepInSync: "Keep these in sync for MP!",
   forCustomBattleTesting: "For 1v1 testing in custom battles.",
   makeCustomBattleGenerals: "Make all units custom battle generals",
   enableScriptLogging: "Enable script logging",

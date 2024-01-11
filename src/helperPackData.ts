@@ -35,15 +35,6 @@ export const emptyMovie: Buffer = Buffer.from([
   0x01,
 ]);
 
-export const introMoviePaths = [
-  "movies\\epilepsy_warning\\epilepsy_warning_en.ca_vp8",
-  "movies\\gam_int.ca_vp8",
-  "movies\\startup_movie_01.ca_vp8",
-  "movies\\startup_movie_02.ca_vp8",
-  "movies\\startup_movie_03.ca_vp8",
-  "movies\\startup_movie_04.ca_vp8",
-];
-
 export const autoStartCustomBattleScript = `core:remove_listener("pj_auto_custom_battles_FrontendScreenTransition")
 core:add_listener(
 	"pj_auto_custom_battles_FrontendScreenTransition",

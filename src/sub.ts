@@ -1,36 +1,36 @@
 import * as steamworks from "steamworks.js";
 
-if (process.argv[2] == "justRun") {
+if (process.argv[3] == "justRun") {
   console.log("justRun");
-  steamworks.init(1142710);
+  steamworks.init(Number(process.argv[2]));
   setTimeout(() => {
     process.exit();
   }, 200);
 }
-if (process.argv[2] == "download") {
+if (process.argv[3] == "download") {
   console.log("download");
-  const ids = process.argv[3].split(";"); //"2856936614";
-  const client = steamworks.init(1142710);
+  const ids = process.argv[4].split(";"); //"2856936614";
+  const client = steamworks.init(Number(process.argv[2]));
 
   ids.forEach((id) => client.workshop.download(BigInt(id), true));
   setTimeout(() => {
     process.exit();
   }, 300);
 }
-if (process.argv[2] == "unsubscribe") {
+if (process.argv[3] == "unsubscribe") {
   console.log("unsubscribe");
-  const id = process.argv[3];
-  const client = steamworks.init(1142710);
+  const id = process.argv[4];
+  const client = steamworks.init(Number(process.argv[2]));
 
   client.workshop.unsubscribe(BigInt(id));
   setTimeout(() => {
     process.exit();
   }, 200);
 }
-if (process.argv[2] == "getItems") {
+if (process.argv[3] == "getItems") {
   console.log("getItems");
-  const ids = process.argv[3].split(",").map((id) => BigInt(id));
-  const client = steamworks.init(1142710);
+  const ids = process.argv[4].split(",").map((id) => BigInt(id));
+  const client = steamworks.init(Number(process.argv[2]));
 
   if (!process.send) {
     process.exit();
@@ -60,10 +60,10 @@ if (process.argv[2] == "getItems") {
       process.exit();
     });
 }
-if (process.argv[2] == "checkState") {
+if (process.argv[3] == "checkState") {
   console.log("checkState");
-  const ids = process.argv[3].split(";"); //"2856936614";
-  const client = steamworks.init(1142710);
+  const ids = process.argv[4].split(";"); //"2856936614";
+  const client = steamworks.init(Number(process.argv[2]));
 
   const idsThatNeedUpdates = ids
     .map((id) => [id, client.workshop.state(BigInt(id))] as [string, number])
@@ -79,11 +79,11 @@ if (process.argv[2] == "checkState") {
     process.exit();
   }, timeoutValue);
 }
-if (process.argv[2] == "update") {
+if (process.argv[3] == "update") {
   console.log("update");
-  const id = process.argv[3]; //"2856936614";
-  const path = process.argv[4]; //"2856936614";
-  const client = steamworks.init(1142710);
+  const id = process.argv[4]; //"2856936614";
+  const path = process.argv[5]; //"2856936614";
+  const client = steamworks.init(Number(process.argv[2]));
 
   console.log(id);
   console.log(path);
@@ -99,10 +99,10 @@ if (process.argv[2] == "update") {
     process.exit();
   });
 }
-if (process.argv[2] == "sub") {
+if (process.argv[3] == "sub") {
   console.log("SUB");
-  const ids = process.argv[3].split(";"); //"2856936614";
-  const client = steamworks.init(1142710);
+  const ids = process.argv[4].split(";"); //"2856936614";
+  const client = steamworks.init(Number(process.argv[2]));
 
   const promises = ids.map((id) => client.workshop.subscribe(BigInt(id)));
 

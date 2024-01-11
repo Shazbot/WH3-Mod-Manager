@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useState } from "react";
 import { useAppSelector } from "../hooks";
 import appPackage from "../../package.json";
+import { gameToGameName } from "../supportedGames";
 
 const TopBar = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -8,6 +9,7 @@ const TopBar = memo(() => {
   const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
   const startArgs = useAppSelector((state) => state.app.startArgs);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
+  const currentGame = useAppSelector((state) => state.app.currentGame);
   const isHardwareAccelerationDisabled = startArgs.some((arg) => arg == "-nogpu");
 
   const [translated, setTranslated] = useState<Record<string, string>>({});
@@ -21,6 +23,7 @@ const TopBar = memo(() => {
   const title =
     `WH3 Mod Manager v${appPackage.version}: ${translated["numModsEnabled"]}` +
     (hiddenAndEnabledMods.length > 0 ? ` (${translated["numModsHidden"]})` : "") +
+    ` for ${gameToGameName[currentGame]}` +
     ((isHardwareAccelerationDisabled && " nogpu") || "") +
     ((isAdmin && " admin") || "");
 

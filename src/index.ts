@@ -1,3 +1,4 @@
+import { SupportedGames, gameToGameName, gameToProcessName, gameToSteamId } from "./supportedGames";
 import debounce from "just-debounce-it";
 import psList from "ps-list";
 import { Pack, PackCollisions } from "./packFileTypes";
@@ -13,7 +14,7 @@ import { version } from "../package.json";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
 import { fetchModData, getContentModInFolder, getDataMod, getFolderPaths, getMods } from "./modFunctions";
-import appData, { AppFolderPaths } from "./appData";
+import appData, { GameFolderPaths } from "./appData";
 import chokidar from "chokidar";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import windowStateKeeper from "electron-window-state";
@@ -104,14 +105,15 @@ if (!gotTheLock) {
     tempModDatas.splice(0, tempModDatas.length);
   }, 200);
 
-  const readConfig = async (): Promise<AppStateToWrite> => {
+  const readConfig = async (): Promise<AppStateToRead> => {
     try {
       const appState = await readAppConfig();
       if (!appData.hasReadConfig) {
-        fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {}); // forces steam workshop to download mods
+        fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {}); // forces steam workshop to download mods
         setStartingAppState(appState);
       }
 
+      // appFolderPaths is deprecated in the config since we moved from only supporting wh3, this is migration code
       if (appState.appFolderPaths) {
         if (
           appState.appFolderPaths.contentFolder &&
@@ -119,15 +121,53 @@ if (!gotTheLock) {
         ) {
           appState.appFolderPaths.contentFolder = "";
         } else {
-          appData.contentFolder = appState.appFolderPaths.contentFolder;
+          appData.gamesToGameFolderPaths["wh3"].contentFolder = appState.appFolderPaths.contentFolder;
         }
 
         if (appState.appFolderPaths.gamePath && !fsdumb.existsSync(appState.appFolderPaths.gamePath)) {
           appState.appFolderPaths.gamePath = "";
         } else {
-          appData.gamePath = appState.appFolderPaths.gamePath;
-          appData.dataFolder = nodePath.join(appState.appFolderPaths.gamePath, "/data/");
+          appData.gamesToGameFolderPaths["wh3"].gamePath = appState.appFolderPaths.gamePath;
+
+          if (appState.appFolderPaths.gamePath)
+            appData.gamesToGameFolderPaths["wh3"].dataFolder = nodePath.join(
+              appState.appFolderPaths.gamePath,
+              "/data/"
+            );
         }
+      }
+
+      if (appState.gameFolderPaths) {
+        appData.gamesToGameFolderPaths = appState.gameFolderPaths;
+      }
+
+      if (appState.currentGame) {
+        appData.currentGame = appState.currentGame;
+      } else {
+        appState.currentGame = appData.currentGame;
+      }
+
+      if (appState.gameToCurrentPreset) {
+        appData.gameToCurrentPreset = appState.gameToCurrentPreset;
+      } else {
+        appState.gameToCurrentPreset = appData.gameToCurrentPreset;
+      }
+      if (appState.gameToPresets) {
+        appData.gameToPresets = appState.gameToPresets;
+      } else {
+        appState.gameToPresets = appData.gameToPresets;
+      }
+
+      // presets and currentPreset is also deprecated and now in gameToPresets and gameToCurrentPreset, migration code
+      if (appState.currentPreset) {
+        appData.gameToCurrentPreset["wh3"] = appState.currentPreset;
+      } else if (appData.gameToCurrentPreset[appState.currentGame]) {
+        appState.currentPreset = appData.gameToCurrentPreset[appState.currentGame] as Preset;
+      }
+      if (appState.presets) {
+        appData.gameToPresets["wh3"] = appState.presets;
+      } else {
+        appState.presets = appData.gameToPresets[appState.currentGame];
       }
 
       return appState;
@@ -148,7 +188,7 @@ if (!gotTheLock) {
   const getMod = async (mainWindow: BrowserWindow, modPath: string) => {
     let mod: Mod | undefined;
     try {
-      if (modPath.includes("\\content\\1142710\\")) {
+      if (modPath.includes(`\\content\\${gameToSteamId[appData.currentGame]}\\`)) {
         const modSubfolderName = nodePath.dirname(modPath).replace(/.*\\/, "");
         console.log("looking for ", modSubfolderName);
         mod = await getContentModInFolder(modSubfolderName, log);
@@ -185,7 +225,7 @@ if (!gotTheLock) {
         }
 
         const outdatedPackFiles = new Set<string>();
-        if (mod && (mod.lastChangedLocal || mod.lastChanged)) {
+        if (appData.currentGame == "wh3" && mod && (mod.lastChangedLocal || mod.lastChanged)) {
           const lastChanged = mod.lastChanged || mod.lastChangedLocal;
           if (lastChanged) {
             appData.gameUpdates
@@ -283,9 +323,10 @@ if (!gotTheLock) {
       appData.packsData = appData.packsData.filter((pack) => pack.path != path);
     }
 
-    if (isDeletedFromContent && appData.dataFolder) {
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+    if (isDeletedFromContent && dataFolder) {
       try {
-        const potentialSymlinkDataPath = nodePath.join(appData.dataFolder, nodePath.basename(path));
+        const potentialSymlinkDataPath = nodePath.join(dataFolder, nodePath.basename(path));
         await fs.readlink(potentialSymlinkDataPath);
         await fs.unlink(potentialSymlinkDataPath);
         await removeMod(mainWindow, path);
@@ -341,8 +382,9 @@ if (!gotTheLock) {
           .catch();
       }
 
-      if (appData.dataFolder) {
-        const dataPackPath = nodePath.join(appData.dataFolder, "data.pack");
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      if (dataFolder) {
+        const dataPackPath = nodePath.join(dataFolder, "data.pack");
         const dataMod: Mod = {
           humanName: "",
           name: "data.pack",
@@ -350,7 +392,7 @@ if (!gotTheLock) {
           imgPath: "",
           workshopId: "",
           isEnabled: true,
-          modDirectory: `${appData.dataFolder}`,
+          modDirectory: `${dataFolder}`,
           isInData: true,
           lastChanged: undefined,
           loadOrder: undefined,
@@ -406,6 +448,7 @@ if (!gotTheLock) {
         fork(
           nodePath.join(__dirname, "sub.js"),
           [
+            gameToSteamId[appData.currentGame],
             "checkState",
             mods
               .filter(
@@ -429,13 +472,17 @@ if (!gotTheLock) {
       await downloadsWatcher?.close();
       await mergedWatcher?.close();
     }
-    if (!appData.contentFolder || !appData.dataFolder || !appData.gamePath) return;
+
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+    const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+    if (!contentFolder || !dataFolder || !gamePath) return;
 
     if (!contentWatcher || isDev) {
-      const contentFolder = appData.contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
+      const sanitizedContentFolder = contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
       console.log("content folder:", contentFolder);
       contentWatcher = chokidar
-        .watch(`${contentFolder}/**/*.pack`, {
+        .watch(`${sanitizedContentFolder}/**/*.pack`, {
           ignoreInitial: true,
           ignored: /whmm_backups/,
         })
@@ -449,7 +496,7 @@ if (!gotTheLock) {
         });
     }
     if (!downloadsWatcher || isDev) {
-      const downloadsFolder = appData.contentFolder
+      const downloadsFolder = contentFolder
         .replaceAll("\\", "/")
         .replaceAll("//", "/")
         .replace("/content/", "/downloads/");
@@ -462,16 +509,16 @@ if (!gotTheLock) {
         })
         .on("add", async (path) => {
           console.log("NEW DOWNLOADS ADD", path);
-          fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {});
+          fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
         })
         .on("unlink", async (path) => {
           console.log("NEW DOWNLOADS UNLINK", path);
         });
     }
     if (!dataWatcher || isDev) {
-      const dataFolder = appData.dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
+      const sanitizedDataFolder = dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
       dataWatcher = chokidar
-        .watch([`${dataFolder}/*.pack`], {
+        .watch([`${sanitizedDataFolder}/*.pack`], {
           ignoreInitial: true,
           awaitWriteFinish: true,
           followSymlinks: false,
@@ -489,7 +536,7 @@ if (!gotTheLock) {
         });
     }
     if (!mergedWatcher || isDev) {
-      const mergedDirPath = nodePath.join(appData.gamePath, "/merged/");
+      const mergedDirPath = nodePath.join(gamePath, "/merged/");
       exec(`mkdir "${mergedDirPath}"`);
 
       while (!fsExtra.existsSync(mergedDirPath)) {
@@ -498,10 +545,10 @@ if (!gotTheLock) {
         });
       }
 
-      // await fsExtra.ensureDir(nodePath.join(appData.gamePath, "/merged/"));
-      const gamePath = appData.gamePath.replaceAll("\\", "/").replaceAll("//", "/");
+      // await fsExtra.ensureDir(nodePath.join(gamePath, "/merged/"));
+      const sanitizedGamePath = gamePath.replaceAll("\\", "/").replaceAll("//", "/");
       mergedWatcher = chokidar
-        .watch([`${gamePath}/merged/*.pack`], {
+        .watch([`${sanitizedGamePath}/merged/*.pack`], {
           ignoreInitial: false,
           awaitWriteFinish: {
             stabilityThreshold: 3000,
@@ -614,7 +661,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("getAllModData", (event, ids: string[]) => {
-      if (isDev) return;
+      // if (isDev) return;
 
       fetchModData(
         ids.filter((id) => id !== ""),
@@ -674,22 +721,31 @@ if (!gotTheLock) {
           console.log(err);
         }
 
-        if (!appData.gamePath || !appData.contentFolder || !appData.dataFolder) {
+        const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+        const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+        if (!gamePath || !contentFolder || !dataFolder) {
           await getFolderPaths(log);
         }
 
         getAllMods();
       } finally {
+        const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+        console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
         mainWindow?.webContents.send("setAppFolderPaths", {
-          gamePath: appData.gamePath || "",
-          contentFolder: appData.contentFolder || "",
-        } as AppFolderPaths);
+          gamePath: gamePath || "",
+          contentFolder: contentFolder || "",
+        } as GameFolderPaths);
       }
     });
 
     const refreshModsIfFoldersValid = () => {
-      if (appData.contentFolder && appData.gamePath && appData.dataFolder) {
-        console.log(appData.contentFolder, appData.gamePath, appData.dataFolder);
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+      const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+      if (contentFolder && gamePath && dataFolder) {
+        console.log(contentFolder, gamePath, dataFolder);
         getAllMods();
       }
     };
@@ -703,7 +759,7 @@ if (!gotTheLock) {
 
         if (!dialogReturnValue.canceled) {
           const contentFolderPath = dialogReturnValue.filePaths[0];
-          appData.contentFolder = contentFolderPath;
+          appData.gamesToGameFolderPaths[appData.currentGame].contentFolder = contentFolderPath;
           mainWindow?.webContents.send("setContentFolder", contentFolderPath);
           refreshModsIfFoldersValid();
         }
@@ -721,20 +777,25 @@ if (!gotTheLock) {
 
         if (!dialogReturnValue.canceled) {
           const wh3FolderPath = dialogReturnValue.filePaths[0];
-          appData.gamePath = wh3FolderPath;
-          appData.dataFolder = nodePath.join(wh3FolderPath, "/data/");
+          appData.gamesToGameFolderPaths[appData.currentGame].gamePath = wh3FolderPath;
+          appData.gamesToGameFolderPaths[appData.currentGame].dataFolder = nodePath.join(
+            wh3FolderPath,
+            "/data/"
+          );
           mainWindow?.webContents.send("setWarhammer3Folder", wh3FolderPath);
 
+          if (appData.gamesToGameFolderPaths[appData.currentGame].gamePath == undefined) return;
+
           const calculatedContentPath = nodePath.join(
-            appData.gamePath,
+            appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "..",
             "..",
             "workshop",
             "content",
-            "1142710"
+            gameToSteamId[appData.currentGame]
           );
           if (fsdumb.existsSync(calculatedContentPath)) {
-            appData.contentFolder = calculatedContentPath;
+            appData.gamesToGameFolderPaths[appData.currentGame].contentFolder = calculatedContentPath;
             mainWindow?.webContents.send("setContentFolder", calculatedContentPath);
           }
           refreshModsIfFoldersValid();
@@ -786,7 +847,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
-      if (!appData.gamePath) return;
+      if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) return;
       console.log("copyToData: modPathsToCopy:", modPathsToCopy);
       const mods = await getMods(log);
       let withoutDataMods = mods.filter((mod) => !mod.isInData);
@@ -798,11 +859,21 @@ if (!gotTheLock) {
       const copyPromises = withoutDataMods.map((mod) => {
         mainWindow?.webContents.send(
           "handleLog",
-          `COPYING ${mod.path} to ${appData.gamePath}\\data\\${mod.name}`
+          `COPYING ${mod.path} to ${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}\\data\\${
+            mod.name
+          }`
         );
 
-        if (!appData.gamePath) throw new Error("game path not set");
-        return fs.copyFile(mod.path, nodePath.join(appData.gamePath, "/data/", mod.name));
+        if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath)
+          throw new Error("game path not set");
+        return fs.copyFile(
+          mod.path,
+          nodePath.join(
+            appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+            "/data/",
+            mod.name
+          )
+        );
       });
 
       await Promise.allSettled(copyPromises);
@@ -819,18 +890,19 @@ if (!gotTheLock) {
         );
       }
 
-      if (!appData.gamePath) return;
+      const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+      if (!gamePath) return;
       const pathsOfNewSymLinks = withoutDataMods.map((mod) =>
-        nodePath.join(appData.gamePath ?? "", "/data/", mod.name)
+        nodePath.join(gamePath ?? "", "/data/", mod.name)
       );
       const copyPromises = withoutDataMods.map((mod) => {
         mainWindow?.webContents.send(
           "handleLog",
-          `CREATING SYMLINK of ${mod.path} to ${appData.gamePath}\\data\\${mod.name}`
+          `CREATING SYMLINK of ${mod.path} to ${gamePath}\\data\\${mod.name}`
         );
 
-        if (!appData.gamePath) throw new Error("game path not set");
-        return fsExtra.symlink(mod.path, nodePath.join(appData.gamePath, "/data/", mod.name));
+        if (!gamePath) throw new Error("game path not set");
+        return fsExtra.symlink(mod.path, nodePath.join(gamePath, "/data/", mod.name));
       });
 
       await Promise.allSettled(copyPromises);
@@ -890,8 +962,17 @@ if (!gotTheLock) {
       );
       mainWindow?.setTitle(
         `WH3 Mod Manager v${version}: ${enabledMods.length} mods enabled` +
-          (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "")
+          (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "") +
+          ` for ${gameToGameName[appData.currentGame]}`
       );
+      // console.log(
+      //   "BEFORE saveconfig",
+      //   appData.gameToCurrentPreset["wh2"]?.mods[0].name,
+      //   appData.gameToCurrentPreset["wh3"]?.mods[0].name,
+      //   data.currentGame,
+      //   data.currentPreset.mods[0].name
+      // );
+
       writeAppConfig(data);
     });
 
@@ -901,9 +982,10 @@ if (!gotTheLock) {
 
     const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
       console.log(`getPackData ${packPath}`);
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
       if (table) console.log("GETTING TABLE ", table.dbName, table.dbSubname);
       if (packPath == "data.pack" || nodePath.basename(packPath) == "data.pack") {
-        if (!appData.dataFolder) {
+        if (!dataFolder) {
           console.log("WAIT FOR DATAFOLDER TO BE SET");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           console.log("DONE WAITING FOR DATAFOLDER");
@@ -911,23 +993,23 @@ if (!gotTheLock) {
           return;
         }
         if (packPath == "data.pack") {
-          console.log("data folder is", appData.dataFolder);
-          packPath = nodePath.join(appData.dataFolder as string, "data.pack");
+          console.log("data folder is", dataFolder);
+          packPath = nodePath.join(dataFolder as string, "data.pack");
         }
       }
       console.log("CURRENTLY READING:", appData.currentlyReadingModPaths);
 
-      console.log("before join", appData.dataFolder, packPath);
+      console.log("before join", dataFolder, packPath);
       if (!packPath.includes("\\")) {
         // if we provided pack name instead of pack path as argument
-        if (!appData.dataFolder) {
+        if (!dataFolder) {
           console.log("WAIT FOR DATAFOLDER TO BE SET");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           console.log("DONE WAITING FOR DATAFOLDER");
           getPackData(packPath, table, getLocs);
           return;
         }
-        packPath = nodePath.join(appData.dataFolder as string, packPath);
+        packPath = nodePath.join(dataFolder as string, packPath);
       }
       const packData = appData.packsData.find((pack) => pack.path === packPath);
 
@@ -996,7 +1078,10 @@ if (!gotTheLock) {
 
     ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
       if (modPath == "data.pack") {
-        modPath = nodePath.join(appData.dataFolder as string, "data.pack");
+        modPath = nodePath.join(
+          appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string,
+          "data.pack"
+        );
       }
       console.log("ON requestOpenModInViewer", modPath);
       viewerWindow?.webContents.send("openModInViewer", modPath);
@@ -1012,6 +1097,46 @@ if (!gotTheLock) {
     ipcMain.on("requestLanguageChange", async (event, language: string) => {
       await i18n.changeLanguage(language);
       mainWindow?.webContents.send("setCurrentLanguage", language);
+    });
+
+    const setCurrentGame = async (newGame: SupportedGames) => {
+      try {
+        appData.currentGame = newGame;
+        if (!appData.gamesToGameFolderPaths[appData.currentGame]) {
+          await getFolderPaths(log);
+        }
+        const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+        const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+        if (!gamePath || !contentFolder || !dataFolder) {
+          await getFolderPaths(log);
+        }
+
+        appData.packsData = [];
+        appData.saveSetupDone = false;
+        await getAllMods();
+      } finally {
+        const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+        console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
+        mainWindow?.webContents.send("setAppFolderPaths", {
+          gamePath: gamePath || "",
+          contentFolder: contentFolder || "",
+        } as GameFolderPaths);
+      }
+    };
+
+    ipcMain.on("requestGameChange", async (event, game: SupportedGames, appState: AppState) => {
+      // console.log("game before change is", appData.currentGame, "to", game);
+
+      appData.gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
+      appData.gameToPresets[appState.currentGame] = appState.presets;
+
+      await setCurrentGame(game);
+      const currentPreset = appData.gameToCurrentPreset[game];
+      // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
+      const presets = appData.gameToPresets[game];
+      mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
     });
 
     const readMods = async (mods: Mod[], skipParsingTables = true, skipCollisionCheck = true) => {
@@ -1096,12 +1221,15 @@ if (!gotTheLock) {
           .map((dirent) => dirent.name);
 
         mainWindow?.webContents.send("setAvailableLanguages", availableLocalizations);
+        // eslint-disable-next-line no-empty
       } catch (e) {}
 
       if (!checkWH3RunningInterval) {
         checkWH3RunningInterval = setInterval(async () => {
           const processes = await psList();
-          const isWH3Running = processes.some((process) => process.name == "Warhammer3.exe");
+          const isWH3Running = processes.some(
+            (process) => process.name == gameToProcessName[appData.currentGame]
+          );
           if (appData.isWH3Running != isWH3Running) {
             appData.isWH3Running = isWH3Running;
             mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
@@ -1252,7 +1380,7 @@ if (!gotTheLock) {
 
     const child = fork(
       nodePath.join(__dirname, "sub.js"),
-      ["update", contentMod.workshopId, uploadFolderPath],
+      [gameToSteamId[appData.currentGame], "update", contentMod.workshopId, uploadFolderPath],
       {}
     );
     child.on("message", (folderPath: string) => {
@@ -1311,7 +1439,11 @@ if (!gotTheLock) {
   });
   ipcMain.on("forceModDownload", async (event, mod: Mod) => {
     try {
-      fork(nodePath.join(__dirname, "sub.js"), ["download", mod.workshopId], {});
+      fork(
+        nodePath.join(__dirname, "sub.js"),
+        [gameToSteamId[appData.currentGame], "download", mod.workshopId],
+        {}
+      );
     } catch (e) {
       console.log(e);
     }
@@ -1332,14 +1464,22 @@ if (!gotTheLock) {
   });
   ipcMain.on("forceDownloadMods", async (event, modIds: string[]) => {
     try {
-      fork(nodePath.join(__dirname, "sub.js"), ["download", modIds.join(";")], {});
+      fork(
+        nodePath.join(__dirname, "sub.js"),
+        [gameToSteamId[appData.currentGame], "download", modIds.join(";")],
+        {}
+      );
     } catch (e) {
       console.log(e);
     }
   });
   ipcMain.on("unsubscribeToMod", async (event, mod: Mod) => {
     try {
-      fork(nodePath.join(__dirname, "sub.js"), ["unsubscribe", mod.workshopId], {});
+      fork(
+        nodePath.join(__dirname, "sub.js"),
+        [gameToSteamId[appData.currentGame], "unsubscribe", mod.workshopId],
+        {}
+      );
       await fsExtra.remove(mod.path);
     } catch (e) {
       console.log(e);
@@ -1356,11 +1496,15 @@ if (!gotTheLock) {
   });
 
   ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
-    fork(nodePath.join(__dirname, "sub.js"), ["sub", ids.join(";")], {});
+    fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "sub", ids.join(";")], {});
     await new Promise((resolve) => setTimeout(resolve, 500));
-    fork(nodePath.join(__dirname, "sub.js"), ["download", ids.join(";")], {});
+    fork(
+      nodePath.join(__dirname, "sub.js"),
+      [gameToSteamId[appData.currentGame], "download", ids.join(";")],
+      {}
+    );
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    fork(nodePath.join(__dirname, "sub.js"), ["justRun"], {});
+    fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
     await new Promise((resolve) => setTimeout(resolve, 500));
     mainWindow?.webContents.send("subscribedToMods", ids);
   });
@@ -1466,11 +1610,13 @@ if (!gotTheLock) {
         console.log(pack.name, pack.readTables);
       }
       try {
-        if (!appData.gamePath) return;
+        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+        const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+        if (!gamePath) return;
 
         const appDataPath = app.getPath("userData");
-        const myModsPath = nodePath.join(appData.gamePath, "my_mods.txt");
-        const usedModsPath = nodePath.join(appData.gamePath, "used_mods.txt");
+        const myModsPath = nodePath.join(gamePath, "my_mods.txt");
+        const usedModsPath = nodePath.join(gamePath, "used_mods.txt");
 
         const sortedMods = (areModsPresorted && mods) || sortByNameAndLoadOrder(mods);
         const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
@@ -1479,11 +1625,11 @@ if (!gotTheLock) {
         const dataMod: Mod = {
           humanName: "",
           name: "data.pack",
-          path: nodePath.join(appData.dataFolder as string, "data.pack"),
+          path: nodePath.join(dataFolder as string, "data.pack"),
           imgPath: "",
           workshopId: "",
           isEnabled: true,
-          modDirectory: `${appData.dataFolder}`,
+          modDirectory: `${dataFolder}`,
           isInData: true,
           lastChanged: undefined,
           loadOrder: undefined,
@@ -1562,7 +1708,10 @@ if (!gotTheLock) {
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
 
         if (enabledModsWithOverwrites.length > 0) {
-          const mergedDirPath = nodePath.join(appData.gamePath, "/whmm_overwrites/");
+          const mergedDirPath = nodePath.join(
+            appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+            "/whmm_overwrites/"
+          );
 
           if (!fsExtra.existsSync(mergedDirPath)) {
             exec(`mkdir "${mergedDirPath}"`);
@@ -1586,7 +1735,13 @@ if (!gotTheLock) {
 
         const text =
           enabledModsWithoutMergedInMods
-            .filter((mod) => nodePath.relative(appData.dataFolder as string, mod.modDirectory) != "")
+            .filter(
+              (mod) =>
+                nodePath.relative(
+                  appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string,
+                  mod.modDirectory
+                ) != ""
+            )
             .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
             .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
             .join("\n") + extraEnabledMods;
@@ -1601,7 +1756,9 @@ if (!gotTheLock) {
           await fs.writeFile(myModsPath, text);
         }
         const batPath = nodePath.join(appDataPath, "game.bat");
-        let batData = `start /d "${appData.gamePath}" Warhammer3.exe`;
+        let batData = `start /d "${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}" ${
+          gameToProcessName[appData.currentGame]
+        }`;
         if (saveName) {
           batData += ` game_startup_mode campaign_load "${saveName}" ;`;
         }

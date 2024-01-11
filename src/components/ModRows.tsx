@@ -117,6 +117,7 @@ const ModRows = memo(() => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
   const customizableMods = useAppSelector((state) => state.app.customizableMods);
+  const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isCustomizeModOpen, setIsCustomizeModOpen] = useState<boolean>(false);
@@ -593,13 +594,7 @@ const ModRows = memo(() => {
           mods={mods}
         ></ModDropdown>
       </FloatingOverlay>
-      <ModCustomization
-      // modPath={modBeingCustomized && modBeingCustomized.path}
-      // isOpen={isCustomizeModOpen}
-      // setIsOpen={(isOpen: boolean) => {
-      //   setIsCustomizeModOpen(isOpen);
-      // }}
-      />
+      {modBeingCustomized && modBeingCustomized.path && <ModCustomization />}
       <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
         <div
           id="sortHeader"
