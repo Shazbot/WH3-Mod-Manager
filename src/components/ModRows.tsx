@@ -108,7 +108,6 @@ const onDragEnd = (e?: React.DragEvent<HTMLDivElement>) => {
 
 const ModRows = memo(() => {
   const dispatch = useAppDispatch();
-  const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
   const filter = useAppSelector((state) => state.app.filter);
   const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
@@ -118,6 +117,7 @@ const ModRows = memo(() => {
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
   const customizableMods = useAppSelector((state) => state.app.customizableMods);
   const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
+  const isDev = useAppSelector((state) => state.app.isDev);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isCustomizeModOpen, setIsCustomizeModOpen] = useState<boolean>(false);
@@ -143,21 +143,24 @@ const ModRows = memo(() => {
     const isAlwaysEnabled = alwaysEnabledMods.find((mod) => iterMod.name === mod.name);
     return !isHidden || (isHidden && isAlwaysEnabled);
   });
-  const orderedMods = (areModsInOrder && modsToOrder) || sortByNameAndLoadOrder(modsToOrder);
+  const orderedMods = sortByNameAndLoadOrder(modsToOrder);
 
   let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
 
+  if (isDev) {
+    // duplicates happen when we hot-reload in dev
+    const modsWithoutDuplicates: Mod[] = [];
+    mods.forEach((mod) => {
+      if (!modsWithoutDuplicates.find((modNoDupes) => modNoDupes.name == mod.name))
+        modsWithoutDuplicates.push(mod);
+    });
+    mods = modsWithoutDuplicates;
+  }
+
+  const unfilteredMods = mods;
   if (filter !== "") {
     mods = getFilteredMods(mods, filter.toLowerCase(), isAuthorEnabled);
   }
-
-  // duplicates happen when we hot-reload in dev
-  const modsWithoutDuplicates: Mod[] = [];
-  mods.forEach((mod) => {
-    if (!modsWithoutDuplicates.find((modNoDupes) => modNoDupes.name == mod.name))
-      modsWithoutDuplicates.push(mod);
-  });
-  mods = modsWithoutDuplicates;
 
   const onModToggled = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -266,7 +269,7 @@ const ModRows = memo(() => {
     // console.log(`loadOrder is ${loadOrder}`);
     // console.log(`originalOrder is ${originalOrder}`);
 
-    dispatch(setModLoadOrder({ modName: originalId, loadOrder, originalOrder }));
+    // dispatch(setModLoadOrder({ modName: originalId, loadOrder, originalOrder }));
   }, []);
 
   const onDragStart = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -391,16 +394,14 @@ const ModRows = memo(() => {
     // return false;
   }, []);
 
-  const onDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
+  const onDrop = useCallback((visualModList: Mod[]) => {
+    return (e: React.DragEvent<HTMLDivElement>, setAfterMod = false) => {
       try {
         console.log("onDrop");
         // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
         const droppedId = e.dataTransfer.getData("text/plain");
         if (droppedId === "") return;
         idOfDragged = droppedId;
-
-        // if(areModsInOrder) return dispatch(setModLoadOrderRelativeTo())
 
         console.log("in ondrop droppedID", droppedId);
 
@@ -409,7 +410,9 @@ const ModRows = memo(() => {
         // console.log(`DROPPED ONTO`, t);
 
         if (t.classList.contains("drop-ghost")) {
-          if (!t.parentElement || t.parentElement?.id != droppedId) return;
+          console.log("dropped onto ghost");
+          // if (!t.parentElement || t.parentElement?.id != droppedId) return;
+          if (!t.parentElement) return;
 
           // console.log("droppend on top ghost");
           // console.log("first", t.parentElement?.id);
@@ -417,14 +420,16 @@ const ModRows = memo(() => {
           // console.log(22);
           // console.log("nextElementSibling:", t.parentElement?.nextElementSibling);
           // console.log(2233);
-          const modNameRelativeTo = t.parentElement?.nextElementSibling?.id || t.parentElement?.id;
-          if (modNameRelativeTo && areModsInOrder) {
+          const modNameRelativeTo = t.parentElement?.id;
+          if (modNameRelativeTo) {
             e.defaultPrevented = true;
             e.stopPropagation();
             dispatch(
               setModLoadOrderRelativeTo({
                 modNameToChange: droppedId,
                 modNameRelativeTo,
+                visualModList,
+                setAfterMod,
               } as ModLoadOrderRelativeTo)
             );
             afterDrop(droppedId, modNameRelativeTo);
@@ -435,25 +440,21 @@ const ModRows = memo(() => {
         if (droppedId === t.id) return;
         // console.log("isBottomDrop: " + isBottomDrop);
         // if (!t.nextElementSibling) return;
-        const rowId = t.id; // (isBottomDrop ? (t.nextElementSibling.nextElementSibling as HTMLElement) : t).id;
-        if (areModsInOrder) {
-          dispatch(
-            setModLoadOrderRelativeTo({
-              modNameToChange: droppedId,
-              modNameRelativeTo: t.id,
-            } as ModLoadOrderRelativeTo)
-          );
-          return;
-        }
-        afterDrop(droppedId, rowId);
+        dispatch(
+          setModLoadOrderRelativeTo({
+            modNameToChange: droppedId,
+            modNameRelativeTo: t.id,
+            visualModList,
+            setAfterMod,
+          } as ModLoadOrderRelativeTo)
+        );
       } catch (e) {
         console.log(e);
       }
       // onDragEnd();
       // e.stopPropagation();
-    },
-    [areModsInOrder]
-  );
+    };
+  }, []);
 
   const onDrag = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
@@ -502,8 +503,9 @@ const ModRows = memo(() => {
       setPositionX(e.clientX);
       setPositionY(e.clientY);
 
-      if (innerHeight - 300 < e.clientY) {
-        setPositionY(e.clientY - 300);
+      const yCutoff = 425; // if too close to bottom window edge move the context menu up a bit
+      if (innerHeight - yCutoff < e.clientY) {
+        setPositionY(e.clientY - yCutoff);
       }
 
       setIsDropdownOpen(true);
@@ -572,6 +574,22 @@ const ModRows = memo(() => {
     );
   }, [enabledMods]);
 
+  const visibleMods = mods
+    .filter(
+      (mod) =>
+        mod.isInData ||
+        (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
+    )
+    .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name));
+
+  const unfilteredVisibleMods = unfilteredMods
+    .filter(
+      (mod) =>
+        mod.isInData ||
+        (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
+    )
+    .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name));
+
   return (
     <div
       onDragEnd={(e) => onDragEnd(e)}
@@ -603,25 +621,27 @@ const ModRows = memo(() => {
           onContextMenu={onOrderRightClick}
         >
           {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip
-            placement="bottom"
-            style="light"
-            content={
-              <>
-                <div>{localized.priorityTooltipOne}</div>
-                <div>{localized.priorityTooltipTwo}</div>
-                <div className="text-red-600 font-bold">{localized.priorityTooltipThree}</div>
-              </>
-            }
-          >
-            <span
-              className={`text-center w-full cursor-pointer ${
-                modRowSorting.isOrderSort(sortingType) && "font-semibold"
-              }`}
+          <span className="tooltip-width-20">
+            <Tooltip
+              placement="bottom"
+              style="light"
+              content={
+                <>
+                  <div>{localized.priorityTooltipOne}</div>
+                  <div>{localized.priorityTooltipTwo}</div>
+                  <div className="text-red-600 font-bold">{localized.priorityTooltipThree}</div>
+                </>
+              }
             >
-              {localized.order}
-            </span>
-          </Tooltip>
+              <span
+                className={`text-center w-full cursor-pointer ${
+                  modRowSorting.isOrderSort(sortingType) && "font-semibold"
+                }`}
+              >
+                {localized.order}
+              </span>
+            </Tooltip>
+          </span>
         </div>
         <div
           className="flex place-items-center w-full justify-center z-10 mod-row-header"
@@ -630,15 +650,17 @@ const ModRows = memo(() => {
           id="enabledHeader"
         >
           {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip placement="right" style="light" content={localized.enableOrDisableAll}>
-            <span
-              className={`text-center cursor-pointer w-full ${
-                modRowSorting.isEnabledSort(sortingType) && "font-semibold"
-              }`}
-            >
-              {localized.enabled}
-            </span>
-          </Tooltip>
+          <span className="tooltip-width-15">
+            <Tooltip placement="bottom" style="light" content={localized.enableOrDisableAll}>
+              <span
+                className={`text-center cursor-pointer w-full ${
+                  modRowSorting.isEnabledSort(sortingType) && "font-semibold"
+                }`}
+              >
+                {localized.enabled}
+              </span>
+            </Tooltip>
+          </span>
         </div>
         <div
           className={
@@ -718,44 +740,39 @@ const ModRows = memo(() => {
             <GoGear></GoGear>
           </span>
         </div>
-        {mods
-          .filter(
-            (mod) =>
-              mod.isInData ||
-              (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
-          )
-          .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name))
-          .map((mod, i) => (
-            <ModRow
-              key={mod.path}
-              {...{
-                index: i,
-                mod,
-                onRowHoverStart,
-                onRowHoverEnd,
-                onDrop,
-                onDrag,
-                onDragStart,
-                onDragLeave,
-                onDragEnter,
-                onDragOver,
-                onDragEnd,
-                onModToggled,
-                onModRightClick,
-                onCustomizeModClicked,
-                onCustomizeModRightClick,
-                onRemoveModOrder,
-                sortingType,
-                isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
-                isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
-                  (mergeMod.mergedModsData as MergedModsData[]).some(
-                    (mergeModData) => mergeModData.path == mod.path
-                  )
-                ),
-                loadOrder: orderedMods.indexOf(mod) + 1,
-              }}
-            ></ModRow>
-          ))}
+        {visibleMods.map((mod, i) => (
+          <ModRow
+            key={mod.path}
+            {...{
+              index: i,
+              mod,
+              onRowHoverStart,
+              onRowHoverEnd,
+              onDrop: onDrop(unfilteredVisibleMods),
+              onDrag,
+              onDragStart,
+              onDragLeave,
+              onDragEnter,
+              onDragOver,
+              onDragEnd,
+              onModToggled,
+              onModRightClick,
+              onCustomizeModClicked,
+              onCustomizeModRightClick,
+              onRemoveModOrder,
+              sortingType,
+              currentTab,
+              isLast: visibleMods.length == i + 1,
+              isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
+              isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
+                (mergeMod.mergedModsData as MergedModsData[]).some(
+                  (mergeModData) => mergeModData.path == mod.path
+                )
+              ),
+              loadOrder: orderedMods.indexOf(mod) + 1,
+            }}
+          ></ModRow>
+        ))}
       </div>
 
       <div className="fixed bottom-5 hidden">

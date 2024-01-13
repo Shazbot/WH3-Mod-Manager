@@ -188,6 +188,8 @@ declare global {
   interface ModLoadOrderRelativeTo {
     modNameToChange: string;
     modNameRelativeTo: string;
+    visualModList: Mods[];
+    setAfterMod?: boolean;
   }
 
   interface ModUpdateExists {
@@ -310,6 +312,7 @@ declare global {
     isEnabled: boolean;
     modPath: string;
     indexInMods: number;
+    loadOrder?: number;
   }
 
   type ToastType = "success" | "warning" | "info";

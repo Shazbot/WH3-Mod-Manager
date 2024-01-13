@@ -1,6 +1,6 @@
 import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { memo, useCallback, useContext, useEffect, useState } from "react";
+import React, { memo, useCallback, useContext } from "react";
 import { useAppSelector } from "../hooks";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
@@ -15,7 +15,7 @@ type ModRowProps = {
   index: number;
   onRowHoverStart: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
   onRowHoverEnd: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>, setAfterMod?: boolean) => void;
   onDrag: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
@@ -31,6 +31,8 @@ type ModRowProps = {
   isEnabledInMergedMod: boolean;
   isAlwaysEnabled: boolean;
   sortingType: SortingType;
+  currentTab: MainWindowTab;
+  isLast: boolean;
 };
 
 const domParser = new DOMParser();
@@ -66,7 +68,9 @@ const ModRow = memo(
     isAlwaysEnabled,
     isEnabledInMergedMod,
     loadOrder,
+    isLast,
     sortingType,
+    currentTab,
     onCustomizeModClicked,
     onCustomizeModRightClick,
   }: ModRowProps) => {
@@ -122,16 +126,43 @@ const ModRow = memo(
       >
         <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
-          <span className={mod.loadOrder === undefined ? "" : "text-red-600 font-bold"}>{loadOrder}</span>
+          {mod.loadOrder == undefined && <span>{index + 1}</span>}
+          {mod.loadOrder != undefined && (
+            <>
+              <span className="text-blue-500 font-bold">{mod.loadOrder + 1}</span>
+            </>
+          )}
         </div>
         <div className="relative grid" onDragStart={(e) => onDragStart(e)}>
-          <div
-            draggable="true"
-            className="hidden absolute left-0 self-center cursor-grab first:p-0 z-10"
-            id={`drag-icon-${mod.name}`}
-          >
-            <FontAwesomeIcon icon={faGrip} />
-          </div>
+          {(currentTab != "enabledMods" && (
+            <span className="make-tooltip-inline absolute self-center tooltip-width-20">
+              <Tooltip
+                placement="right"
+                style="light"
+                content={
+                  <span className="text-slate-200">
+                    Mod order can only be changed in the Enabled Mods tab. List of tabs is located in the
+                    top-left of the window. You can also use the Ctrl+2 shortcut.
+                  </span>
+                }
+              >
+                <div
+                  className="hidden absolute left-0 self-center cursor-not-allowed first:p-0 z-10"
+                  id={`drag-icon-${mod.name}`}
+                >
+                  <FontAwesomeIcon opacity={0.5} icon={faGrip} />
+                </div>
+              </Tooltip>
+            </span>
+          )) || (
+            <div
+              draggable="true"
+              className="hidden absolute left-0 self-center cursor-grab first:p-0 z-10"
+              id={`drag-icon-${mod.name}`}
+            >
+              <FontAwesomeIcon icon={faGrip} />
+            </div>
+          )}
           <form
             className={"grid place-items-center h-full " + (areThumbnailsEnabled ? "bigger-checkbox" : "")}
           >
@@ -277,7 +308,9 @@ const ModRow = memo(
             ></GoGear>
           )}
         </div>
-        {/* <div className="drop-ghost grid-column-7 h-10 hidden"></div> */}
+        {isLast && (
+          <div onDrop={(e) => onDrop(e, true)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
+        )}
       </div>
     );
   }

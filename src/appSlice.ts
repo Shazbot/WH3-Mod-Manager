@@ -240,8 +240,9 @@ const appSlice = createSlice({
       const removedModData = state.removedModsData.find(({ modPath }) => modPath === mod.path);
       if (removedModData) {
         mod.isEnabled = removedModData.isEnabled;
-        state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(mod), 1);
-        state.currentPreset.mods.splice(removedModData.indexInMods, 0, mod);
+        mod.loadOrder = removedModData.loadOrder;
+        // state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(mod), 1);
+        // state.currentPreset.mods.splice(removedModData.indexInMods, 0, mod);
         state.removedModsData = state.removedModsData.filter(({ modPath }) => modPath != mod.path);
       }
 
@@ -311,6 +312,7 @@ const appSlice = createSlice({
         modPath: removedMod.path,
         isEnabled: removedMod.isEnabled,
         indexInMods: state.currentPreset.mods.indexOf(removedMod),
+        loadOrder: removedMod.loadOrder,
       });
       state.removedModsCategories[removedMod.path] = removedMod.categories ?? [];
 
@@ -415,14 +417,14 @@ const appSlice = createSlice({
           }
         });
 
-      if (fromConfigAppState.currentPreset.version != undefined) {
-        state.currentPreset.version = fromConfigAppState.currentPreset.version;
+      if (fromConfigAppState.currentPreset.version == 1) {
         console.log("sorting as in preset from config");
         state.currentPreset.mods = sortAsInPreset(
           state.currentPreset.mods,
           fromConfigAppState.currentPreset.mods
         );
       }
+      state.currentPreset.version = 2;
 
       fromConfigAppState.presets.forEach((preset) => {
         if (!state.presets.find((existingPreset) => existingPreset.name === preset.name)) {
@@ -473,7 +475,7 @@ const appSlice = createSlice({
       newPreset.mods =
         (state.currentPreset.version != undefined && newPreset.mods) ||
         sortByNameAndLoadOrder(newPreset.mods);
-      newPreset.version = 1;
+      newPreset.version = 2;
       state.presets.push(newPreset);
       state.lastSelectedPreset = newPreset;
     },
@@ -515,7 +517,7 @@ const appSlice = createSlice({
         });
 
         state.currentPreset.mods = sortAsInPreset(state.currentPreset.mods, newPresetMods);
-        state.currentPreset.version = 1;
+        state.currentPreset.version = 2;
       } else if (presetSelection === "addition" || presetSelection === "subtraction") {
         newPreset.mods.forEach((mod) => {
           if (mod.isEnabled) {
@@ -542,7 +544,7 @@ const appSlice = createSlice({
       preset.mods =
         (state.currentPreset.version != undefined && state.currentPreset.mods) ||
         sortByNameAndLoadOrder(state.currentPreset.mods);
-      preset.version = 1;
+      preset.version = 2;
     },
     setFilter: (state: AppState, action: PayloadAction<string>) => {
       const filter = action.payload;
@@ -586,24 +588,30 @@ const appSlice = createSlice({
 
     setModLoadOrderRelativeTo: (state: AppState, action: PayloadAction<ModLoadOrderRelativeTo>) => {
       const payload = action.payload;
-      const { modNameToChange, modNameRelativeTo } = payload;
-      const modToChange = state.currentPreset.mods.find((mod) => mod.name === modNameToChange);
-      const modRelativeTo = state.currentPreset.mods.find((mod) => mod.name === modNameRelativeTo);
+      const { modNameToChange, modNameRelativeTo, visualModList } = payload;
+      const modToChange = visualModList.find((mod) => mod.name === modNameToChange);
+      const modRelativeTo = visualModList.find((mod) => mod.name === modNameRelativeTo);
 
       if (!modToChange || !modRelativeTo) return;
 
       console.log("mod to change:", modToChange.name);
       console.log("mod relative to:", modRelativeTo.name);
+      console.log("setAfterMod:", payload.setAfterMod);
 
-      let newIndex = state.currentPreset.mods.indexOf(modToChange);
+      let newIndex = visualModList.indexOf(modToChange);
       if (modToChange != modRelativeTo) {
-        state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(modToChange), 1);
-        newIndex = state.currentPreset.mods.indexOf(modRelativeTo);
-        state.currentPreset.mods.splice(newIndex, 0, modToChange);
+        visualModList.splice(visualModList.indexOf(modToChange), 1);
+        newIndex = visualModList.indexOf(modRelativeTo);
+        visualModList.splice(payload.setAfterMod ? newIndex + 1 : newIndex, 0, modToChange);
       }
 
       console.log("new load order for:", modToChange.name, newIndex);
-      modToChange.loadOrder = newIndex;
+      // modToChange.loadOrder = newIndex;
+
+      for (const mod of visualModList.filter((mod) => mod.loadOrder != undefined || mod == modToChange)) {
+        const modToSetLoadOrderOf = state.currentPreset.mods.find((modIter) => mod.name === modIter.name);
+        if (modToSetLoadOrderOf) modToSetLoadOrderOf.loadOrder = visualModList.indexOf(mod);
+      }
     },
     resetModLoadOrderAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => {

@@ -624,11 +624,6 @@ if (!gotTheLock) {
       return { action: "deny" };
     });
 
-    // Open the DevTools.
-    if (isDev) {
-      mainWindow.webContents.openDevTools();
-    }
-
     // const server = "https://hazel-neon-gamma.vercel.app";
     // const url = `${server}/update/${process.platform}/${app.getVersion()}`;
 
@@ -1221,6 +1216,8 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("setIsDev", isDev);
       mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
+
+      if (isDev) mainWindow?.webContents.openDevTools();
 
       try {
         const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";
