@@ -1,6 +1,6 @@
 # Warhammer 3 Mod Manager
 
-Mod manager for the Steam version of Total War: Warhammer 3.
+Mod manager for the Steam version of Total War: Warhammer 3, Total War: Three Kingdoms and Total War: Warhammer 2.
 
 Features not present in the CA launcher:
 
