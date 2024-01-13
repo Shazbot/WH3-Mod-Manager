@@ -77,7 +77,13 @@ const RequiredMods = memo((props: RequiredModsProps) => {
   return (
     <>
       {props.isOpen && (
-        <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
+        <Modal
+          show={props.isOpen}
+          onClose={onClose}
+          size="2xl"
+          position="top-center"
+          explicitClasses={["mt-8"]}
+        >
           <Modal.Header>{localized.missingRequiredMods}</Modal.Header>
           <Modal.Body>
             <div className="grid grid-cols-2 h-full gap-4">

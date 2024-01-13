@@ -159,7 +159,7 @@
   "onbSorting1": "Mods have priority based on their order, by default this is based on the name of the packs.",
   "onbSorting2": "You usually don't want to manually change order since modders already name their packs to accomplish this automatically, such as when they put exclamation marks at the start of the pack name.",
   "onbSorting3": "You can right click on the Order header to reset order to default, and left click to sort mods by mod order.",
-  "onbSorting4": "Using the grip icon you can drag individual mods to change their order.",
+  "onbSorting4": "When in the Enabled Mods tab you can use the grip icon you can drag individual mods to change their order.",
   "onbSorting5": "The grip is visible when hovering over a mod, and only when all the mods are sorted by order!",
   "onbSorting6": "When a mod is manually reordered its order number will be colored red. You can right click on that mod's order number to reset it.",
   "onbSorting7": "Left click to sort by enabled mods.",

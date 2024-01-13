@@ -575,9 +575,9 @@ const Sidebar = React.memo(() => {
         <div className="mt-4">
           <CompatScreen />
         </div>
-        <div className="mt-4">
+        {/* <div className="mt-4">
           <ModsMerger />
-        </div>
+        </div> */}
         <div className="mt-4">
           <div className="text-center mt-4">
             <button

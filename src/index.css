@@ -116,6 +116,14 @@ body:not(.disable-row-hover) .row:hover > div:not(.drop-ghost) {
   display: inline;
 }
 
+.tooltip-width-20 > div:nth-of-type(2) {
+  min-width: 20rem;
+}
+
+.tooltip-width-15 > div:nth-of-type(2) {
+  min-width: 15rem;
+}
+
 .mod-row-header {
   background-color: #404040;
   padding: 0.5rem;
