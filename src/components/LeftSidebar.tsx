@@ -50,7 +50,7 @@ const LeftSidebar = memo(() => {
     <>
       <Tabs
         id="left-sidebar"
-        className="fixed top-8 z-[200] left-0 outline-transparent parent-unhide-child"
+        className="fixed top-8 z-[200] left-0 outline-transparent parent-unhide-child select-none"
         onSelect={(index) => onTabSelected(index)}
         selectedIndex={tabIndexToTabType.findIndex((tabType) => tabType == currentTab)}
       >
