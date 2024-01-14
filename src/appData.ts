@@ -8,6 +8,7 @@ interface AppData {
   // contentFolders: Record<string, string>;
   // dataFolders: Record<string, string>;
   gamesToGameFolderPaths: Record<string, GameFolderPaths>;
+  gamesToSteamAppsFolderPaths: Record<string, string>;
   gameSaves: GameSave[];
   saveSetupDone: boolean;
   isMakeUnitsGeneralsEnabled: boolean;
@@ -40,6 +41,7 @@ const appData = {
   // contentFolders: {},
   // dataFolders: {},
   gamesToGameFolderPaths: {},
+  gamesToSteamAppsFolderPaths: {},
   gameSaves: [],
   saveSetupDone: false,
   isMakeUnitsGeneralsEnabled: false,

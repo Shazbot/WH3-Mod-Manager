@@ -19,7 +19,6 @@ import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import CompatScreen from "./CompatScreen";
 import RequiredMods from "./RequiredMods";
-import ModsMerger from "./ModsMerger";
 import localizationContext from "../localizationContext";
 
 const Sidebar = React.memo(() => {

@@ -21,7 +21,14 @@ import { updateAvailable } from "gh-release-fetch";
 import { version } from "../package.json";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
-import { fetchModData, getContentModInFolder, getDataMod, getFolderPaths, getMods } from "./modFunctions";
+import {
+  fetchModData,
+  getContentModInFolder,
+  getDataMod,
+  getFolderPaths,
+  getLastUpdated,
+  getMods,
+} from "./modFunctions";
 import appData, { GameFolderPaths } from "./appData";
 import chokidar from "chokidar";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
@@ -360,6 +367,41 @@ if (!gotTheLock) {
     }
   };
 
+  const setLastGameUpdateTimeUsingAppManifest = async () => {
+    try {
+      const timeOfLastGameUpdate = await getLastUpdated();
+      if (timeOfLastGameUpdate) {
+        mainWindow?.webContents.send("setDataModLastChangedLocal", parseInt(timeOfLastGameUpdate) * 1000);
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
+  const fetchGameUpdates = async () => {
+    try {
+      if (appData.currentGame != "wh3") return await setLastGameUpdateTimeUsingAppManifest();
+
+      const res = await fetch(
+        `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`
+      );
+      // eslint-disable-next-line prefer-const
+      let gameUpdates = (await res.json()) as GameUpdateData[];
+      // if (isDev) {
+      //   gameUpdates = JSON.parse(fsdumb.readFileSync("./test/wh3.json", "utf-8")) as GameUpdateData[];
+      // }
+      appData.gameUpdates = gameUpdates;
+      console.log("gameUpdates", gameUpdates);
+      gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
+
+      if (gameUpdates[0]) {
+        mainWindow?.webContents.send("setDataModLastChangedLocal", parseInt(gameUpdates[0].timestamp) * 1000);
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
   const getAllMods = async () => {
     try {
       const mods = await getMods(log);
@@ -423,28 +465,7 @@ if (!gotTheLock) {
           if (dataPackData) {
             appData.dataPack = dataPackData;
 
-            try {
-              const res = await fetch(
-                `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`
-              );
-              // eslint-disable-next-line prefer-const
-              let gameUpdates = (await res.json()) as GameUpdateData[];
-              // if (isDev) {
-              //   gameUpdates = JSON.parse(fsdumb.readFileSync("./test/wh3.json", "utf-8")) as GameUpdateData[];
-              // }
-              appData.gameUpdates = gameUpdates;
-              console.log("gameUpdates", gameUpdates);
-              gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
-
-              if (gameUpdates[0]) {
-                mainWindow?.webContents.send(
-                  "setDataModLastChangedLocal",
-                  parseInt(gameUpdates[0].timestamp) * 1000
-                );
-              }
-            } catch (e) {
-              console.log(e);
-            }
+            await fetchGameUpdates();
           }
           if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
             appendPacksData(dataPackData);
