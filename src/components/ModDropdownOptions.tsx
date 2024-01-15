@@ -14,6 +14,7 @@ type ModDropdownOptionsProps = {
   isOpen: boolean;
   mod?: Mod;
   mods: Mod[];
+  visibleMods: Mod[];
 };
 
 const openInExplorer = (mod: Mod) => {
@@ -152,16 +153,23 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <button
                   className="make-tooltip-w-full px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
                   onClick={() => {
-                    const numLordOrder = Number(currentModLoadOrder) - 1;
+                    const numLordOrder = Number(currentModLoadOrder);
                     if (numLordOrder == null || isNaN(numLordOrder)) return;
                     if (numLordOrder < 0) return;
-                    console.log(numLordOrder);
-                    const relativeMod = props.mods.filter((mod) => mod != props.mod)[numLordOrder];
+                    console.log("set numLordOrder:", numLordOrder);
+                    let relativeMod = props.visibleMods[numLordOrder];
+                    let setAfterMod = false;
+                    if (!relativeMod) {
+                      relativeMod = props.visibleMods[numLordOrder - 1];
+                      setAfterMod = true;
+                    }
                     if (!relativeMod) return;
                     dispatch(
                       setModLoadOrderRelativeTo({
                         modNameToChange: props.mod?.name,
                         modNameRelativeTo: relativeMod.name,
+                        visualModList: props.visibleMods,
+                        setAfterMod: setAfterMod,
                       } as ModLoadOrderRelativeTo)
                     );
 

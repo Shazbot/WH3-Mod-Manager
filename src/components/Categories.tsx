@@ -540,6 +540,7 @@ const Categories = React.memo(() => {
               isOpen={isContextMenuOpen}
               mod={currentlySelectedMods[0]}
               mods={mods}
+              visibleMods={mods}
             ></ModDropdownOptions>
           )}
         </div>

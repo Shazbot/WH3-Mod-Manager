@@ -1652,7 +1652,7 @@ if (!gotTheLock) {
         const myModsPath = nodePath.join(gamePath, "my_mods.txt");
         const usedModsPath = nodePath.join(gamePath, "used_mods.txt");
 
-        const sortedMods = (areModsPresorted && mods) || sortByNameAndLoadOrder(mods);
+        const sortedMods = sortByNameAndLoadOrder(mods);
         const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
 
         const linuxBit = process.platform === "linux" ? "Z:" : "";

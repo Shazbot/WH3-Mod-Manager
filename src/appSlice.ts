@@ -219,7 +219,6 @@ const appSlice = createSlice({
       if (!alreadyExistsByName) {
         for (const iterMod of state.currentPreset.mods.filter((mod) => mod.loadOrder == undefined)) {
           if (compareModNames(mod.name, iterMod.name) < 1) {
-            state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(mod), 1);
             state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(iterMod), 0, mod);
             break;
           }

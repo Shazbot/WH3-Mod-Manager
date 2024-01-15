@@ -608,6 +608,7 @@ const ModRows = memo(() => {
           positionX={positionX}
           positionY={positionY}
           mod={contextMenuMod}
+          visibleMods={unfilteredVisibleMods}
           referenceElement={dropdownReferenceElement}
           mods={mods}
         ></ModDropdown>
