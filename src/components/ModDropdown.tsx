@@ -8,6 +8,7 @@ type ModDropdownProps = {
   mod?: Mod;
   referenceElement: HTMLElement | undefined;
   mods: Mod[];
+  visibleMods: Mod[];
 };
 
 const ModDropdown = memo((props: ModDropdownProps) => {
@@ -49,7 +50,12 @@ const ModDropdown = memo((props: ModDropdownProps) => {
           }}
           ref={modDropdownRef}
         >
-          <ModDropdownOptions isOpen={props.isOpen} mod={props.mod} mods={props.mods}></ModDropdownOptions>
+          <ModDropdownOptions
+            isOpen={props.isOpen}
+            mod={props.mod}
+            mods={props.mods}
+            visibleMods={props.visibleMods}
+          ></ModDropdownOptions>
         </div>
       </>
     )
