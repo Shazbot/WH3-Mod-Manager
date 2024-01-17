@@ -154,6 +154,17 @@ if (!gotTheLock) {
 
       if (appState.gameFolderPaths) {
         appData.gamesToGameFolderPaths = appState.gameFolderPaths;
+
+        if (appState.currentGame) {
+          const gameFolderPaths = appData.gamesToGameFolderPaths[appState.currentGame];
+
+          if (gameFolderPaths.contentFolder && !fsdumb.existsSync(gameFolderPaths.contentFolder)) {
+            gameFolderPaths.contentFolder = "";
+          }
+          if (gameFolderPaths.gamePath && !fsdumb.existsSync(gameFolderPaths.gamePath)) {
+            gameFolderPaths.gamePath = "";
+          }
+        }
       }
 
       if (appState.currentGame) {
