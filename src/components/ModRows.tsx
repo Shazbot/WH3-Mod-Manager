@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import "../index.css";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
@@ -574,21 +574,29 @@ const ModRows = memo(() => {
     );
   }, [enabledMods]);
 
-  const visibleMods = mods
-    .filter(
-      (mod) =>
-        mod.isInData ||
-        (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
-    )
-    .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name));
+  const visibleMods = useMemo(
+    () =>
+      mods
+        .filter(
+          (mod) =>
+            mod.isInData ||
+            (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
+        )
+        .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name)),
+    [mods, hiddenMods]
+  );
 
-  const unfilteredVisibleMods = unfilteredMods
-    .filter(
-      (mod) =>
-        mod.isInData ||
-        (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
-    )
-    .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name));
+  const unfilteredVisibleMods = useMemo(
+    () =>
+      unfilteredMods
+        .filter(
+          (mod) =>
+            mod.isInData ||
+            (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
+        )
+        .filter((iterMod) => !hiddenMods.find((mod) => mod.name === iterMod.name)),
+    [unfilteredMods, hiddenMods]
+  );
 
   return (
     <div
