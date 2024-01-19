@@ -3497,11 +3497,9 @@
     form-data "^3.0.0"
 
 "@types/node@*":
-  version "20.11.4"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-20.11.4.tgz#c724a5d6723182af758b91b994209336f4439cb7"
-  integrity sha512-6I0fMH8Aoy2lOejL3s4LhyIYX34DPwY8bl5xlNjBvUEk8OHrcuzsFt+Ied4LvJihbtXPM+8zUqdydfIti86v9g==
-  dependencies:
-    undici-types "~5.26.4"
+  version "20.2.5"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-20.2.5.tgz#26d295f3570323b2837d322180dfbf1ba156fefb"
+  integrity sha512-JJulVEQXmiY9Px5axXHeYGLSjhkZEnD+MDPDGbCbIAbMslkKwmygtZFy1X6s/075Yo94sf8GuSlFfPzysQrWZQ==
 
 "@types/node@^12.0.12":
   version "12.20.55"
@@ -15760,9 +15758,9 @@ statuses@2.0.1:
   integrity sha512-OpZ3zP+jT1PI7I8nemJX4AKmAX070ZkYPVWV/AaKTJl+tXCTGyVdC1a4SL8RUQYEwk/f34ZX8UTykN68FwrqAA==
 
 steamworks.js@^0.3.0:
-  version "0.3.1"
-  resolved "https://registry.yarnpkg.com/steamworks.js/-/steamworks.js-0.3.1.tgz#1d066504835a3a942607ce9c89998909226fd5ca"
-  integrity sha512-vI1rnXwUwEV6kb4C76KASJhY+ikeoEBY1r0jhpAhyCJPw/EqGHZ1ldP4MZEghyq7edoRrMwErZ/KKAE3tIut9w==
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/steamworks.js/-/steamworks.js-0.3.0.tgz#f3a2734cf4cd9912bb4ac045d8480eb93911ecab"
+  integrity sha512-Q8A54ciDb9aDZCD8KXi8eMWgL+O5o8l/PZr3SAeMoOFVHg84AePw4i8gIGa8ONqC3yJKQK+6pHpzThqzsejLiA==
   dependencies:
     "@types/node" "*"
 
@@ -16738,11 +16736,6 @@ unbzip2-stream@^1.0.9:
   dependencies:
     buffer "^5.2.1"
     through "^2.3.8"
-
-undici-types@~5.26.4:
-  version "5.26.5"
-  resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-5.26.5.tgz#bcd539893d00b56e964fd2657a4866b221a65617"
-  integrity sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==
 
 unfetch@^4.2.0:
   version "4.2.0"
