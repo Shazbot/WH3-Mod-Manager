@@ -1,12 +1,20 @@
 import { Tooltip } from "flowbite-react";
 import React, { memo, useCallback, useContext, useState } from "react";
+import { setModLoadOrderRelativeTo, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "../appSlice";
 import {
-  setModLoadOrder,
-  setModLoadOrderRelativeTo,
-  toggleAlwaysEnabledMods,
-  toggleAlwaysHiddenMods,
-} from "../appSlice";
+  FaFolderOpen,
+  FaExternalLinkAlt,
+  FaCopy,
+  FaTable,
+  FaSteam,
+  FaRegClipboard,
+  FaDownload,
+} from "react-icons/fa";
+import { GoListOrdered } from "react-icons/go";
+import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
+
 import { Modal } from "../flowbite";
+
 import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
 
@@ -198,7 +206,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
-                  {localized.setLoadOrder}
+                  <span className="flex items-center gap-2">
+                    <GoListOrdered className="w-5 h-5"></GoListOrdered>
+                    {localized.setLoadOrder}
+                  </span>
                 </a>
               </li>
             )}
@@ -218,7 +229,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                         "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       }
                     >
-                      {localized.goToWorkshopPage}
+                      <span className="flex items-center gap-2">
+                        <FaExternalLinkAlt className="w-5 h-5"></FaExternalLinkAlt>
+                        {localized.goToWorkshopPage}
+                      </span>
                     </a>
                   </li>
                   <li>
@@ -233,7 +247,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                         "block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       }
                     >
-                      {localized.openInSteam}
+                      <span className="flex items-center gap-2">
+                        <FaSteam className="w-5 h-5"></FaSteam>
+                        {localized.openInSteam}
+                      </span>
                     </a>
                   </li>
                 </>
@@ -251,7 +268,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   style="light"
                   content={<div className="min-w-[10rem]">{localized.keepAlwaysEnabledTooltip}</div>}
                 >
-                  {localized.keepAlwaysEnabled}
+                  <span className="flex items-center gap-2">
+                    <MdOutlineCheckBox className="w-5 h-5"></MdOutlineCheckBox>
+                    {localized.keepAlwaysEnabled}
+                  </span>
                 </Tooltip>
               </a>
             </li>
@@ -268,7 +288,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   style="light"
                   content={<div className="min-w-[10rem]">{localized.hideFromListTooltip}</div>}
                 >
-                  {localized.hideFromList}
+                  <span className="flex items-center gap-2">
+                    <MdHideImage className="w-5 h-5"></MdHideImage>
+                    {localized.hideFromList}
+                  </span>
                 </Tooltip>
               </a>
             </li>
@@ -280,7 +303,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                {localized.showInExplorer}
+                <span className="flex items-center gap-2">
+                  <FaFolderOpen className="w-5 h-5"></FaFolderOpen>
+                  {localized.showInExplorer}
+                </span>
               </a>
             </li>
             <li>
@@ -291,7 +317,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                {localized.showInRPFM}
+                <span className="flex items-center gap-2">
+                  <MdOutlineModeEdit className="w-5 h-5"></MdOutlineModeEdit>
+                  {localized.showInRPFM}
+                </span>
               </a>
             </li>
             <li>
@@ -302,7 +331,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                {localized.openInViewer}
+                <span className="flex items-center gap-2">
+                  <FaTable className="w-5 h-5"></FaTable>
+                  {localized.openInViewer}
+                </span>
               </a>
             </li>
             <li>
@@ -313,7 +345,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
               >
-                {localized.copyPathToClipboard}
+                <span className="flex items-center gap-2">
+                  <FaRegClipboard className="w-5 h-5"></FaRegClipboard>
+                  {localized.copyPathToClipboard}
+                </span>
               </a>
             </li>
             {props.mod?.isInData &&
@@ -368,7 +403,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   style="light"
                   content={<div className="min-w-[10rem]">{localized.createBackupTooltip}</div>}
                 >
-                  {localized.createBackup}
+                  <span className="flex items-center gap-2">
+                    <FaCopy className="w-5 h-5"></FaCopy>
+                    {localized.createBackup}
+                  </span>
                 </Tooltip>
               </a>
             </li>
@@ -387,7 +425,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     content={<div className="min-w-[10rem]">{localized.forceDownloadTooltip}</div>}
                     style="light"
                   >
-                    {localized.forceDownload}
+                    <span className="flex items-center gap-2">
+                      <FaDownload className="w-5 h-5"></FaDownload>
+                      {localized.forceDownload}
+                    </span>
                   </Tooltip>
                 </a>
               </li>
@@ -407,7 +448,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     content={<div className="min-w-[10rem]">{localized.unsubscribeTooltip}</div>}
                     style="light"
                   >
-                    {localized.unsubscribe}
+                    <span className="flex items-center gap-2">
+                      <MdPlaylistRemove className="w-5 h-5"></MdPlaylistRemove>
+                      {localized.unsubscribe}
+                    </span>
                   </Tooltip>
                 </a>
               </li>
