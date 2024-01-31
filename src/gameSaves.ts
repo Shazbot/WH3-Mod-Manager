@@ -2,6 +2,8 @@ import * as chokidar from "chokidar";
 import { app } from "electron";
 import * as path from "path";
 import * as fs from "fs/promises";
+import { gameToAppDataFolderName } from "./supportedGames";
+import appData from "./appData";
 
 let savesWatcher: chokidar.FSWatcher | undefined;
 
@@ -9,9 +11,15 @@ let saves: GameSave[] = [];
 
 export const getSavesFolderPath = () => {
   const appDataPath = app.getPath("appData");
-  return path.join(appDataPath, "The Creative Assembly/Warhammer3/save_games/");
+  return path.join(
+    appDataPath,
+    "The Creative Assembly",
+    gameToAppDataFolderName[appData.currentGame],
+    "save_games"
+  );
 };
 export const getSaveFiles = async () => {
+  saves = [];
   const folderPath = getSavesFolderPath();
   const files = await fs.readdir(folderPath, { withFileTypes: true });
 
@@ -52,19 +60,21 @@ const removeSave = function (savePath: string) {
   saves = saves.filter((iterSave) => iterSave.name !== basename);
 };
 
-export const setupSavesWatcher = (cb: (saves: GameSave[]) => void) => {
-  if (!savesWatcher) {
-    savesWatcher = chokidar
-      .watch(`${getSavesFolderPath()}/*.save`, { ignoreInitial: true })
-      .on("add", async (path: string) => {
-        await addNewSave(path);
-        console.log("Save added: " + path);
-        cb(saves);
-      })
-      .on("unlink", (path: string) => {
-        removeSave(path);
-        console.log("Save removed: " + path);
-        cb(saves);
-      });
+export const setupSavesWatcher = async (cb: (saves: GameSave[]) => void) => {
+  if (savesWatcher) {
+    await savesWatcher.close();
   }
+
+  savesWatcher = chokidar
+    .watch(`${getSavesFolderPath()}/*.save`, { ignoreInitial: true })
+    .on("add", async (path: string) => {
+      await addNewSave(path);
+      console.log("Save added: " + path);
+      cb(saves);
+    })
+    .on("unlink", (path: string) => {
+      removeSave(path);
+      console.log("Save removed: " + path);
+      cb(saves);
+    });
 };

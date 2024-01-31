@@ -43,6 +43,12 @@ export const gameToProcessName: Record<SupportedGames, string> = {
   threeKingdoms: "Three_Kingdoms.exe",
 };
 
+export const gameToAppDataFolderName: Record<SupportedGames, string> = {
+  wh2: "Warhammer2",
+  wh3: "Warhammer3",
+  threeKingdoms: "ThreeKingdoms",
+};
+
 export const gameToIntroMovies: Record<SupportedGames, string[]> = {
   wh2: [
     // "movies\\startup_movie_01.ca_vp8",
