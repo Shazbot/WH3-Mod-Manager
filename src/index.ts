@@ -436,8 +436,8 @@ if (!gotTheLock) {
       if (!appData.saveSetupDone) {
         appData.saveSetupDone = true;
         getSaveFiles()
-          .then((saves) => {
-            setupSavesWatcher((saves) => mainWindow?.webContents.send("savesPopulated", saves));
+          .then(async (saves) => {
+            await setupSavesWatcher((saves) => mainWindow?.webContents.send("savesPopulated", saves));
             mainWindow?.webContents.send("savesPopulated", saves);
           })
           .catch();
@@ -506,19 +506,21 @@ if (!gotTheLock) {
       console.log(err);
     }
 
-    if (isDev) {
-      await contentWatcher?.close();
-      await dataWatcher?.close();
-      await downloadsWatcher?.close();
-      await mergedWatcher?.close();
-    }
+    await contentWatcher?.close();
+    contentWatcher = undefined;
+    await dataWatcher?.close();
+    dataWatcher = undefined;
+    await downloadsWatcher?.close();
+    downloadsWatcher = undefined;
+    await mergedWatcher?.close();
+    mergedWatcher = undefined;
 
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
     if (!contentFolder || !dataFolder || !gamePath) return;
 
-    if (!contentWatcher || isDev) {
+    if (!contentWatcher) {
       const sanitizedContentFolder = contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
       console.log("content folder:", contentFolder);
       contentWatcher = chokidar
@@ -535,7 +537,7 @@ if (!gotTheLock) {
           onPackDeleted(path, true);
         });
     }
-    if (!downloadsWatcher || isDev) {
+    if (!downloadsWatcher) {
       const downloadsFolder = contentFolder
         .replaceAll("\\", "/")
         .replaceAll("//", "/")
@@ -555,7 +557,7 @@ if (!gotTheLock) {
           console.log("NEW DOWNLOADS UNLINK", path);
         });
     }
-    if (!dataWatcher || isDev) {
+    if (!dataWatcher) {
       const sanitizedDataFolder = dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
       dataWatcher = chokidar
         .watch([`${sanitizedDataFolder}/*.pack`], {
@@ -575,7 +577,7 @@ if (!gotTheLock) {
           onNewPackFound(path);
         });
     }
-    if (!mergedWatcher || isDev) {
+    if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
       exec(`mkdir "${mergedDirPath}"`);
 
