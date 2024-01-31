@@ -52,6 +52,7 @@ const CreateSteamCollection = memo(() => {
             "!max-w-5xl",
             "md:!h-full",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
+            "modalDontOverflowWindowHeight",
           ]}
         >
           <Modal.Header>

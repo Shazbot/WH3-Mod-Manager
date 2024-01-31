@@ -213,3 +213,7 @@ body:not(.disable-row-hover) .row:hover > div:not(.drop-ghost) {
   font-size: 1.3rem;
   letter-spacing: 0.15rem;
 }
+
+.modalDontOverflowWindowHeight {
+  max-height: calc(100% - 2rem);
+}
