@@ -137,6 +137,7 @@ const CompatScreen = memo(() => {
             "!max-w-7xl",
             "md:!h-full",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
+            "modalDontOverflowWindowHeight",
           ]}
         >
           <Modal.Header>{localized.modCompatibility}</Modal.Header>

@@ -53,7 +53,19 @@ const SaveGame = memo((props: SaveGameProps) => {
   return (
     <>
       {props.isOpen && (
-        <Modal show={props.isOpen} onClose={onClose} size="2xl" position="top-center">
+        <Modal
+          show={props.isOpen}
+          onClose={onClose}
+          size="2xl"
+          position="top-center"
+          explicitClasses={[
+            "mt-8",
+            "!max-w-7xl",
+            "md:!h-full",
+            ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
+            "modalDontOverflowWindowHeight",
+          ]}
+        >
           <Modal.Header>{localized.savedGames}</Modal.Header>
           <Modal.Body>
             <div className="grid grid-cols-3 h-full gap-4">

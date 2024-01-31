@@ -25,6 +25,7 @@ import { getDBName } from "./utility/packFileHelpers";
 import getPackTableData, { isSchemaFieldNumber } from "./utility/packDataHandling";
 import deepClone from "clone-deep";
 import { gameToIntroMovies } from "./supportedGames";
+import { getSavesFolderPath } from "./gameSaves";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -1132,8 +1133,7 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
 
 export const getPacksInSave = async (saveName: string): Promise<string[]> => {
   console.log("Getting packs from save: ", saveName);
-  const appDataPath = app.getPath("appData");
-  const savePath = nodePath.join(appDataPath, "The Creative Assembly/Warhammer3/save_games/", saveName);
+  const savePath = nodePath.join(getSavesFolderPath(), saveName);
 
   let file: BinaryFile;
   try {
