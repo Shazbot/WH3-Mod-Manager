@@ -2,7 +2,7 @@ import * as path from "path";
 import { Worker } from "worker_threads";
 import * as schema from "../schema/schema_wh3.json";
 import { PackCollisions, Pack } from "./packFileTypes";
-import { findPackFileCollisions, findPackTableCollisions } from "./readPacksWorker";
+import { findPackFileCollisions, findPackTableCollisions } from "./packFileSerializer";
 
 export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCollisions> {
   return await new Promise<PackCollisions>((resolve, reject) => {

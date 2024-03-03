@@ -43,15 +43,13 @@ import {
   readFromExistingPack,
   createOverwritePack,
   getPackViewData,
-} from "./packFileSerializer";
-import * as nodePath from "path";
-import { format } from "date-fns";
-import {
   appendPackFileCollisions,
   appendPackTableCollisions,
   removeFromPackFileCollisions,
   removeFromPackTableCollisions,
-} from "./readPacksWorker";
+} from "./packFileSerializer";
+import * as nodePath from "path";
+import { format } from "date-fns";
 import { isMainThread } from "worker_threads";
 import electronLog from "electron-log";
 import * as fsExtra from "fs-extra";
