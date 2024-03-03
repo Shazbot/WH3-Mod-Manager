@@ -1691,7 +1691,8 @@ if (!gotTheLock) {
         if (
           startGameOptions.isMakeUnitsGeneralsEnabled ||
           startGameOptions.isScriptLoggingEnabled ||
-          startGameOptions.isSkipIntroMoviesEnabled
+          startGameOptions.isSkipIntroMoviesEnabled ||
+          startGameOptions.isAutoStartCustomBattleEnabled
         ) {
           log("making temp dir");
           await fs.mkdir(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
