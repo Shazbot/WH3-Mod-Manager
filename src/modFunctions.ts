@@ -477,7 +477,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   mods.push(...dataMods);
 
   console.log(
-    "DATa MODS THAT ARE SIMLINKS:",
+    "DATA MODS THAT ARE SIMLINKS:",
     dataMods.filter((mod) => mod.isSymbolicLink)
   );
 
@@ -497,6 +497,16 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
       mods.push(mod);
     }
   });
+
+  // if a mod in data is missing a thumbnail, use the content mod's thumbnail
+  for (const mod of mods) {
+    if (mod.isInData && mod.imgPath == "") {
+      const contentMod = mods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      if (contentMod && contentMod.imgPath != "") {
+        mod.imgPath = contentMod.imgPath;
+      }
+    }
+  }
 
   return mods;
 }

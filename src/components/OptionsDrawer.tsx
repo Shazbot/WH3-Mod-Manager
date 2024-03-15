@@ -10,6 +10,7 @@ import {
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
   setIsCreateSteamCollectionOpen,
+  setIsImportSteamCollectionOpen,
   setDataModsToEnableByName,
 } from "../appSlice";
 import Drawer from "./Drawer";
@@ -22,14 +23,10 @@ import { createSelector } from "@reduxjs/toolkit";
 import GamePathsSetup from "./GamePathsSetup";
 import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
+import ImportSteamCollection from "./ImportSteamCollection";
 import localizationContext from "../localizationContext";
 import ISO6391 from "iso-639-1";
-import {
-  SupportedGames,
-  gameToSupportedGameOptions,
-  gameToGameName,
-  supportedGames,
-} from "../supportedGames";
+import { gameToSupportedGameOptions, supportedGames } from "../supportedGames";
 import store from "../store";
 
 const cleanData = () => {
@@ -112,9 +109,9 @@ const OptionsDrawer = memo(() => {
 
   const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
 
-  const forceDownloadMods = useCallback(() => {
+  const forceDownloadMods = useCallback((contentModsWorshopIds: string[]) => {
     window.api?.forceDownloadMods(contentModsWorshopIds);
-  }, [contentModsWorshopIds]);
+  }, []);
 
   const onDeleteChange = useCallback(
     (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
@@ -193,6 +190,7 @@ const OptionsDrawer = memo(() => {
       <AboutScreen isOpen={isShowingAboutScreen} setIsOpen={setIsShowingAboutScreen}></AboutScreen>
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <CreateSteamCollection />
+      <ImportSteamCollection />
 
       <div className="text-center">
         <button
@@ -224,7 +222,7 @@ const OptionsDrawer = memo(() => {
 
             <div className="flex justify-center relative">
               <div className="absolute flex font-normal text-lg items-center bg-gray-800 justify-center w-14 h-6 top-[-12px] rounded mt-[-0.05rem]">
-                Game
+                {localized.Game}
               </div>
               <div className="rounded border border-slate-400 h-32 w-32 flex justify-center items-center">
                 <Select
@@ -312,7 +310,14 @@ const OptionsDrawer = memo(() => {
             <div className="flex mt-2">
               <button
                 className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-                onClick={() => forceDownloadMods()}
+                onClick={(e) => {
+                  const modIds = e.shiftKey
+                    ? contentModsWorshopIds
+                    : contentModsWorshopIds.filter((modId) =>
+                        enabledMods.some((enabledMod) => enabledMod.workshopId == modId)
+                      );
+                  forceDownloadMods(modIds);
+                }}
               >
                 <span className="uppercase">{localized.forceReDownload}</span>
               </button>
@@ -390,7 +395,7 @@ const OptionsDrawer = memo(() => {
                 onClick={() => cleanSymbolicLinksInData()}
               >
                 <Tooltip placement="bottom" style="light" content={localized.cleanSymLinksMsg}>
-                  <span className="uppercase">{localized.createSymLinks}</span>
+                  <span className="uppercase">{localized.cleanSymLinks}</span>
                 </Tooltip>
               </button>
             </div>
@@ -430,6 +435,17 @@ const OptionsDrawer = memo(() => {
                 onClick={() => dispatch(setIsCreateSteamCollectionOpen(true))}
               >
                 <span className="uppercase">{localized.createSteamCollection}</span>
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.importSteamCollectionOptionsMsg}
+            </p>
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => dispatch(setIsImportSteamCollectionOpen(true))}
+              >
+                <span className="uppercase">{localized.importSteamCollection}</span>
               </button>
             </div>
 

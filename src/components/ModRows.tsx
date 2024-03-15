@@ -194,7 +194,7 @@ const ModRows = memo(() => {
   );
 
   const onEnabledRightClick = useCallback(() => {
-    if (mods.every((mod) => mod.isEnabled)) {
+    if (mods.some((mod) => mod.isEnabled)) {
       dispatch(disableAllMods());
     } else {
       dispatch(enableAll());
@@ -673,7 +673,7 @@ const ModRows = memo(() => {
         </div>
         <div
           className={
-            "flex grid-area-autohide place-items-center pl-1 mod-row-header " +
+            "flex grid-area-autohide place-items-center pl-1 mod-row-header cursor-default " +
             (areThumbnailsEnabled ? "" : "hidden")
           }
         >

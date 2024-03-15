@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
@@ -146,6 +146,7 @@
     "@silevis/reactgrid": "^4.0.4",
     "@types/binary-file": "^0.2.0",
     "binary-file": "^0.2.3",
+    "cheerio": "^1.0.0-rc.12",
     "chokidar": "^3.5.3",
     "classnames": "^2.3.2",
     "clone-deep": "^4.0.1",

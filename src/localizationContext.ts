@@ -41,6 +41,7 @@ export const staticTextIds: Record<string, string | number> = {
   help: "Help",
   collisionWith: "Collision with",
   in: "in",
+  key: "key",
   readingAndComparingPacks: "Reading And Comparing Packs...",
   waitForReadingAndComparingPacks:
     "Wait until all the mod packs have been read and compared with each other...",
@@ -155,7 +156,8 @@ export const staticTextIds: Record<string, string | number> = {
   otherOptions: "Other Options",
   modAuthorColumn: "Mod Author Column",
   forceReDownload: "Force Re-download",
-  forceDownloadMsg: "Force steam to download the latest version of all mods:",
+  forceDownloadMsg:
+    "Force steam to download the latest version of enabled mods. Hold Shift to download all mods.",
   contentVsData: "Content Mods Vs Data Mods",
   contentVsDataMsg:
     "Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from the data folder. Don't touch unless you know what you're doing!",
@@ -196,7 +198,8 @@ export const staticTextIds: Record<string, string | number> = {
     "You usually don't want to manually change order since modders already name their packs to accomplish this automatically, such as when they put exclamation marks at the start of the pack name.",
   onbSorting3:
     "You can right click on the Order header to reset order to default, and left click to sort mods by mod order.",
-  onbSorting4: "Using the grip icon you can drag individual mods to change their order.",
+  onbSorting4:
+    "When in the Enabled Mods tab you can use the grip icon you can drag individual mods to change their order.",
   onbSorting5:
     "The grip is visible when hovering over a mod, and only when all the mods are sorted by order!",
   onbSorting6:
@@ -275,6 +278,7 @@ export const staticTextIds: Record<string, string | number> = {
   agentSubtypeAndType: "Agent Subtype (Agent Type)",
   faction: "Faction",
   Building: "Building",
+  Game: "Game",
   cultureSubcultureFaction: "Culture, Subculture, Faction (All 3 Optional)",
   modCustomizationHelp1:
     "This panel allows you to customize mods, currently you can disable units, buildings and agents (lords and heroes).",
@@ -284,6 +288,27 @@ export const staticTextIds: Record<string, string | number> = {
     "Generic agents (lords and heroes) are tied to campaign groups and you can disable them that way, except for legendary agents which have their own tab.",
   modCustomizationHelp4:
     "The manager customizes a mod by creating a copy of the pack, with the necessary changes, inside a new 'whmm_overwrites' subfolder inside your WH3 folder each time you start the game. Note those copies are currently never deleted or cleaned up. I'm not sure how this affects multiplayer but it's likely you'll get 'different versions' warnings since the game thinks your packs are different even when they're not, but I'm not sure. Removing the customization for a mod will also give you a warning when loading a save that the pack is missing since we're now using the original mod pack, not the customized version of it, but you can ignore that.",
+  importSteamCollection: "Import Steam Collection",
+  importSteamCollectionMsg1: "URL of the Steam collection, for example",
+  importSteamCollectionMsg2: "https://steamcommunity.com/sharedfiles/filedetails/?id=3137780509",
+  Import: "Import",
+  importSteamCollectionDisableOtherMods: "Disable mods not in collection",
+  importSteamCollectionDisableOtherModsMsg: "Disable the currently enabled mods.",
+  importSteamCollectionUseLoadOrder: "Import with explicit load order",
+  importSteamCollectionUseLoadOrderMsg:
+    "Import with the explicit load order as ordered in the collection. This should be heavily avoided since you usually don't want to mess with the load order of all mods, only those who really need it. Using Share Mods codes is recommended since those allow you to set which individual mods require a custom load order. Only recommended if you plan on only using the mods in the collection, and not adding other mods.",
+  importSteamCollectionPresetName: "Name of the preset:",
+  importSteamCollectionUsePresetLoadOrderMsg:
+    "Import with the explicit load order as ordered in the collection. Same notes as above, avoid in most cases.",
+  importSteamCollectionImportIntoPreset: "Import Into Preset",
+  importSteamCollectionPresetNameMsg1: "Name of the new preset, leave blank to use the collection name.",
+  importSteamCollectionPresetNameMsg2: "Preset with this name already exists and will be overwritten.",
+  importSteamCollectionEnableCollectionMods: "Import Into Current Mod List",
+  importSteamCollectionOptionsMsg: "Import mods from a Steam collection:",
+  createdPreset: "Created preset:",
+  failedFetchingSteamCollection: "Failed fetching Steam collection!",
+  importedModsFromSteamCollection: "Imported mods from Steam collection!",
+  releaseNotes: "Release notes",
 };
 
 const context = createContext({});

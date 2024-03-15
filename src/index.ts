@@ -7,6 +7,7 @@ import {
   supportedGameOptionToStartGameOption,
   supportedGameOptions,
 } from "./supportedGames";
+import * as cheerio from "cheerio";
 import debounce from "just-debounce-it";
 import psList from "ps-list";
 import { Pack, PackCollisions } from "./packFileTypes";
@@ -840,6 +841,21 @@ if (!gotTheLock) {
       }
     });
 
+    ipcMain.handle("getSteamCollectionName", async (event, steamCollectionURL: string) => {
+      try {
+        console.log("getting steamCollectionURL name:", steamCollectionURL);
+        const res = await fetch(steamCollectionURL);
+        const cheerioObj = cheerio.load(await res.text());
+        const collectionTitle = cheerioObj(".collectionHeaderContent").find(".workshopItemTitle").text();
+        console.log("collection title:", collectionTitle);
+        return collectionTitle;
+      } catch (e) {
+        console.log(e);
+      }
+
+      return "";
+    });
+
     ipcMain.handle("translate", (event, translationId: string, options?: Record<string, string | number>) => {
       return i18n.t(translationId, options);
     });
@@ -1237,6 +1253,8 @@ if (!gotTheLock) {
               } as ModUpdateExists;
             }
           });
+
+          if (body.html_url) modUpdatedExists.releaseNotesURL = body.html_url;
         })
         .catch();
 
@@ -1474,6 +1492,45 @@ if (!gotTheLock) {
       console.log(e);
     }
   });
+  ipcMain.on(
+    "importSteamCollection",
+    async (
+      event,
+      steamCollectionURL: string,
+      isImmediateImport: boolean,
+      doDisableOtherMods: boolean,
+      isLoadOrdered: boolean,
+      doCreatePreset: boolean,
+      presetName: string,
+      isPresetLoadOrdered: boolean
+    ) => {
+      try {
+        console.log("getting steamCollectionURL:", steamCollectionURL);
+        const res = await fetch(steamCollectionURL);
+        const cheerioObj = cheerio.load(await res.text());
+        const collectionTitle = cheerioObj(".collectionHeaderContent").find(".workshopItemTitle").text();
+        console.log("collection title:", collectionTitle);
+        const modIds = cheerioObj(".collectionItem")
+          .map((_, elem) => elem.attribs["id"].replace("sharedfile_", ""))
+          .toArray();
+        if (!collectionTitle) return;
+        mainWindow?.webContents.send("importSteamCollectionResponse", {
+          name: collectionTitle,
+          modIds,
+          isImmediateImport,
+          doDisableOtherMods,
+          isLoadOrdered,
+          doCreatePreset,
+          presetName,
+          isPresetLoadOrdered,
+        } as ImportSteamCollection);
+
+        console.log(modIds);
+      } catch (e) {
+        console.log(e);
+      }
+    }
+  );
   ipcMain.on("forceModDownload", async (event, mod: Mod) => {
     try {
       fork(
@@ -1532,9 +1589,9 @@ if (!gotTheLock) {
     }
   });
 
-  ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
+  const subscribeToMods = async (ids: string[]) => {
     fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "sub", ids.join(";")], {});
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     fork(
       nodePath.join(__dirname, "sub.js"),
       [gameToSteamId[appData.currentGame], "download", ids.join(";")],
@@ -1544,6 +1601,10 @@ if (!gotTheLock) {
     fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
     await new Promise((resolve) => setTimeout(resolve, 500));
     mainWindow?.webContents.send("subscribedToMods", ids);
+  };
+
+  ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
+    await subscribeToMods(ids);
   });
 
   ipcMain.on("exportModsToClipboard", async (event, mods: Mod[]) => {
