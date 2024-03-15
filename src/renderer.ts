@@ -30,6 +30,7 @@ import {
   setCurrentLanguage,
   setCustomizableMods,
   setCurrentGame,
+  importSteamCollection,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -73,6 +74,10 @@ window.api?.subscribedToMods((event, ids: string[]) => {
 
 window.api?.createdMergedPack((event, filePath: string) => {
   store.dispatch(createdMergedPack(filePath));
+});
+
+window.api?.importSteamCollectionResponse((event, importSteamCollectionData: ImportSteamCollection) => {
+  store.dispatch(importSteamCollection(importSteamCollectionData));
 });
 
 window.api?.setIsDev((event, isDev) => {

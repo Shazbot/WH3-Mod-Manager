@@ -1,4 +1,3 @@
-import { SupportedGames } from "./supportedGames";
 import { SortingType } from "./utility/modRowSorting";
 
 const initialState = {
@@ -36,6 +35,7 @@ const initialState = {
   startArgs: [],
   currentTab: "mods",
   isCreateSteamCollectionOpen: false,
+  isImportSteamCollectionOpen: false,
   isWH3Running: false,
   toasts: [],
   removedModsCategories: {},
@@ -51,6 +51,7 @@ const initialState = {
   modBeingCustomized: undefined,
   customizableMods: {},
   currentGame: "wh3",
+  steamCollectionsToImport: {},
 } as AppState;
 
 export default initialState;

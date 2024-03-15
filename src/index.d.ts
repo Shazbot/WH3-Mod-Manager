@@ -107,6 +107,7 @@ declare global {
     currentDBTableSelection?: DBTableSelection;
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
+    isImportSteamCollectionOpen: boolean;
     isWH3Running: boolean;
     toasts: Toast[];
     removedModsCategories: Record<string, string[]>;
@@ -119,6 +120,7 @@ declare global {
     modBeingCustomized: Mod | undefined;
     customizableMods: Record<string, string[]>;
     currentGame: SupportedGames;
+    steamCollectionsToImport: Record<string, ImportSteamCollection>;
   }
 
   type;
@@ -195,6 +197,7 @@ declare global {
   interface ModUpdateExists {
     updateExists: boolean;
     downloadURL?: string;
+    releaseNotesURL?: string;
   }
 
   type ModIdAndLoadOrder = Pick<Mod, "workshopId" | "loadOrder">;
@@ -253,6 +256,17 @@ declare global {
     duration?: number;
     startTime: number;
     isDismissed?: boolean;
+  }
+
+  interface ImportSteamCollection {
+    name: string;
+    modIds: string[];
+    isImmediateImport: boolean;
+    doDisableOtherMods: boolean;
+    isLoadOrdered: boolean;
+    doCreatePreset: boolean;
+    presetName: string;
+    isPresetLoadOrdered: boolean;
   }
 
   interface AddCategoryPayload {

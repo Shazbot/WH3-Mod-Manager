@@ -42,6 +42,7 @@ const Sidebar = React.memo(() => {
   const [isUpdateCheckDone, setIsUpdateCheckDone] = useState<boolean>(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
   const [downloadURL, setDownloadURL] = useState<string>("");
+  const [releaseNotesURL, setReleaseNotesURL] = useState<string>("");
   const [isShowingSavedGames, setIsShowingSavedGames] = useState<boolean>(false);
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
 
@@ -151,6 +152,10 @@ const Sidebar = React.memo(() => {
         console.log("UPDATE EXITS");
         setIsUpdateAvailable(true);
         setDownloadURL(appUpdateData.downloadURL);
+
+        if (appUpdateData.releaseNotesURL) {
+          setReleaseNotesURL(appUpdateData.releaseNotesURL);
+        }
 
         setTimeout(() => {
           setIsUpdateAvailable(false);
@@ -594,7 +599,10 @@ const Sidebar = React.memo(() => {
         <div
           className={"dark fixed w-80 mx-auto inset-x-0 bottom-[1%] " + (isUpdateAvailable ? "" : "hidden")}
         >
-          <UpdateNotification downloadURL={downloadURL}></UpdateNotification>
+          <UpdateNotification
+            downloadURL={downloadURL}
+            releaseNotesURL={releaseNotesURL}
+          ></UpdateNotification>
         </div>
       )}
     </div>

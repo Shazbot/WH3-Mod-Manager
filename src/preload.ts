@@ -13,6 +13,25 @@ const api = {
   exportModsToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModsToClipboard", mods),
   exportModNamesToClipboard: (mods: Mod[]) => ipcRenderer.send("exportModNamesToClipboard", mods),
   createSteamCollection: (mods: Mod[]) => ipcRenderer.send("createSteamCollection", mods),
+  importSteamCollection: (
+    steamCollectionURL: string,
+    isImmediateImport: boolean,
+    doDisableOtherMods: boolean,
+    isLoadOrdered: boolean,
+    doCreatePreset: boolean,
+    presetName: string,
+    isPresetLoadOrdered: boolean
+  ) =>
+    ipcRenderer.send(
+      "importSteamCollection",
+      steamCollectionURL,
+      isImmediateImport,
+      doDisableOtherMods,
+      isLoadOrdered,
+      doCreatePreset,
+      presetName,
+      isPresetLoadOrdered
+    ),
   subscribeToMods: (ids: string[]) => ipcRenderer.send("subscribeToMods", ids),
   openFolderInExplorer: (path: string) => ipcRenderer.send("openFolderInExplorer", path),
   openInSteam: (url: string) => ipcRenderer.send("openInSteam", url),
@@ -34,6 +53,9 @@ const api = {
     ipcRenderer.on("subscribedToMods", callback),
   createdMergedPack: (callback: (event: Electron.IpcRendererEvent, filePath: string) => void) =>
     ipcRenderer.on("createdMergedPack", callback),
+  importSteamCollectionResponse: (
+    callback: (event: Electron.IpcRendererEvent, importSteamCollection: ImportSteamCollection) => void
+  ) => ipcRenderer.on("importSteamCollectionResponse", callback),
   setIsDev: (callback: (event: Electron.IpcRendererEvent, isDev: boolean) => void) =>
     ipcRenderer.on("setIsDev", callback),
   setIsAdmin: (callback: (event: Electron.IpcRendererEvent, isAdmin: boolean) => void) =>
@@ -123,6 +145,7 @@ const api = {
   ) => ipcRenderer.on("setDataModLastChangedLocal", callback),
   setAvailableLanguages: (callback: (event: Electron.IpcRendererEvent, languages: string[]) => void) =>
     ipcRenderer.on("setAvailableLanguages", callback),
+  getSteamCollectionName: (url: string): Promise<string> => ipcRenderer.invoke("getSteamCollectionName", url),
   requestLanguageChange: (language: string) => ipcRenderer.send("requestLanguageChange", language),
   requestGameChange: (game: string, appState: AppState) =>
     ipcRenderer.send("requestGameChange", game, appState),

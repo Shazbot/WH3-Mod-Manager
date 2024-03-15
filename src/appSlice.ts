@@ -97,6 +97,181 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   }
 };
 
+const setModLoadOrderInternal = (
+  ourMod: Mod,
+  state: AppState,
+  modName: string,
+  newLoadOrder: number,
+  originalLoadOrder?: number
+) => {
+  console.log(`orig order is ${originalLoadOrder}`);
+  console.log(`new order is ${newLoadOrder}`);
+
+  state.currentPreset.mods.forEach((mod) => {
+    if (mod.name === modName) {
+      // console.log(`setting loadOrder to ${newLoadOrder}`);
+    } else if (mod.loadOrder) {
+      if (originalLoadOrder != null && mod.loadOrder > originalLoadOrder && mod.loadOrder <= newLoadOrder) {
+        mod.loadOrder -= 1;
+      }
+    }
+  });
+
+  ourMod.loadOrder = newLoadOrder;
+  // console.log(
+  //   state.currentPreset.mods
+  //     .filter((mod) => mod.loadOrder != null)
+  //     .map((mod) => [mod.name, mod.loadOrder])
+  // );
+  adjustDuplicates(state.currentPreset.mods, ourMod);
+};
+
+const disableAllModsInternal = (state: AppState) => {
+  console.log("disabling all mods");
+  state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
+};
+
+const enableModsByWorkshopIdsInternal = (state: AppState, ids: string[]) => {
+  console.log("ENABLING ALL MODS WITH ids: ", ids);
+  state.currentPreset.mods
+    .filter((mod) => ids.some((id) => id == mod.workshopId))
+    .forEach((mod) => (mod.isEnabled = true));
+};
+
+const addPresetInternal = (state: AppState, newPreset: Preset) => {
+  console.log("current preset version is ", state.currentPreset.version);
+  newPreset.mods =
+    (state.currentPreset.version != undefined && newPreset.mods) || sortByNameAndLoadOrder(newPreset.mods);
+  newPreset.version = 2;
+  state.presets.push(newPreset);
+  state.lastSelectedPreset = newPreset;
+
+  state.toasts.push({
+    type: "success",
+    messages: ["loc:createdPreset", newPreset.name],
+    startTime: Date.now(),
+  } as Toast);
+};
+
+const selectPresetInternal = (state: AppState, presetSelection: SelectOperation, newPreset: Preset) => {
+  state.lastSelectedPreset = newPreset;
+
+  if (presetSelection === "unary") {
+    state.currentPreset.mods.forEach((mod) => {
+      mod.isEnabled = false;
+    });
+
+    const newPresetMods = withoutDataAndContentDuplicates(newPreset.mods);
+    if (newPreset.version == undefined) newPreset.mods = sortByNameAndLoadOrder(newPreset.mods);
+
+    state.currentPreset.mods.forEach((mod) => {
+      const modToChange = findMod(newPresetMods, mod);
+      if (modToChange) {
+        mod.isEnabled = modToChange.isEnabled;
+        mod.loadOrder = modToChange.loadOrder;
+      }
+    });
+
+    state.currentPreset.mods = sortAsInPreset(state.currentPreset.mods, newPresetMods);
+    state.currentPreset.version = 2;
+  } else if (presetSelection === "addition" || presetSelection === "subtraction") {
+    newPreset.mods.forEach((mod) => {
+      if (mod.isEnabled) {
+        const modToChange = findMod(state.currentPreset.mods, mod);
+        if (modToChange) modToChange.isEnabled = presetSelection !== "subtraction";
+      }
+    });
+  }
+
+  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
+    (mod) => (mod.isEnabled = true)
+  );
+};
+
+const createPresetFromCollection = (state: AppState, importSteamCollection: ImportSteamCollection) => {
+  const modsIds = importSteamCollection.modIds;
+
+  console.log("all mods in collection are already subbed to");
+  const presetMods: Mod[] = [];
+  for (const modId of modsIds) {
+    const currentPresetMod = state.currentPreset.mods.find(
+      (currentPresetMod) => currentPresetMod.workshopId == modId
+    );
+    if (currentPresetMod) {
+      const newMod = { ...currentPresetMod };
+      newMod.isEnabled = true;
+      presetMods.push(newMod);
+    } else {
+      const modInAllMods = state.allMods.find((modInAllMods) => modInAllMods.workshopId == modId);
+      if (modInAllMods) {
+        const newMod = { ...modInAllMods };
+        newMod.isEnabled = true;
+        presetMods.push(newMod);
+      }
+    }
+  }
+
+  const newPresetName =
+    importSteamCollection.presetName && importSteamCollection.presetName != ""
+      ? importSteamCollection.presetName
+      : importSteamCollection.name;
+
+  const newPreset = { name: newPresetName, mods: presetMods };
+
+  const existingPreset = state.presets.find((preset) => preset.name == newPreset.name);
+  if (existingPreset) {
+    existingPreset.mods = presetMods;
+  } else {
+    addPresetInternal(state, newPreset);
+  }
+
+  const preset = existingPreset || newPreset;
+  if (importSteamCollection.isPresetLoadOrdered) {
+    for (let i = 0; i < importSteamCollection.modIds.length; i++) {
+      const mod = preset.mods.find((mod) => mod.workshopId == importSteamCollection.modIds[i]);
+      if (mod) mod.loadOrder = i;
+    }
+  }
+};
+
+const handleImportSteamCollection = (state: AppState, importSteamCollection: ImportSteamCollection) => {
+  console.log("handleImportSteamCollection:", importSteamCollection);
+  if (importSteamCollection.doCreatePreset) {
+    createPresetFromCollection(state, importSteamCollection);
+  }
+  if (importSteamCollection.isImmediateImport) {
+    if (importSteamCollection.doDisableOtherMods) {
+      disableAllModsInternal(state);
+    }
+    enableModsByWorkshopIdsInternal(state, importSteamCollection.modIds);
+    if (importSteamCollection.isLoadOrdered) {
+      for (let i = 0; i < importSteamCollection.modIds.length; i++) {
+        const mod = state.currentPreset.mods.find((mod) => mod.workshopId == importSteamCollection.modIds[i]);
+        if (mod) setModLoadOrderInternal(mod, state, mod.name, i);
+      }
+    }
+
+    state.toasts.push({
+      messages: ["loc:importedModsFromSteamCollection"],
+      startTime: Date.now(),
+      type: "success",
+    });
+  }
+};
+
+const checkImportedSteamCollections = (state: AppState) => {
+  for (const [name, importSteamCollection] of Object.entries(state.steamCollectionsToImport)) {
+    if (
+      importSteamCollection.modIds.every((modId) =>
+        state.allMods.some((modInAllMods) => modInAllMods.workshopId == modId)
+      )
+    ) {
+      handleImportSteamCollection(state, importSteamCollection);
+      delete state.steamCollectionsToImport[importSteamCollection.name];
+    }
+  }
+};
+
 const appSlice = createSlice({
   name: "app",
   initialState: initialState,
@@ -230,6 +405,9 @@ const appSlice = createSlice({
         const previousIndex = state.currentPreset.mods.indexOf(alreadyExistsByName);
         state.currentPreset.mods.splice(previousIndex, 1, mod);
         mod.isEnabled = alreadyExistsByName.isEnabled;
+        mod.author = alreadyExistsByName.author;
+        mod.imgPath = alreadyExistsByName.imgPath;
+        mod.humanName = alreadyExistsByName.humanName;
       }
 
       if (!state.allMods.find((iterMod) => iterMod.path == mod.path)) {
@@ -269,6 +447,8 @@ const appSlice = createSlice({
       if (state.alwaysEnabledMods.some((iterMod) => iterMod.name == mod.name)) {
         mod.isEnabled = true;
       }
+
+      checkImportedSteamCollections(state);
     },
     removeMod: (state: AppState, action: PayloadAction<string>) => {
       const modPath = action.payload;
@@ -470,13 +650,7 @@ const appSlice = createSlice({
       const newPreset = action.payload;
       if (state.presets.find((preset) => preset.name === newPreset.name)) return;
 
-      console.log("current preset version is ", state.currentPreset.version);
-      newPreset.mods =
-        (state.currentPreset.version != undefined && newPreset.mods) ||
-        sortByNameAndLoadOrder(newPreset.mods);
-      newPreset.version = 2;
-      state.presets.push(newPreset);
-      state.lastSelectedPreset = newPreset;
+      addPresetInternal(state, newPreset);
     },
     createOnGameStartPreset: (state: AppState) => {
       const appStartIndex = state.presets.findIndex((preset) => preset.name === "On Last Game Launch");
@@ -497,38 +671,7 @@ const appSlice = createSlice({
       const newPreset = state.presets.find((preset) => preset.name === name);
       if (!newPreset) return;
 
-      state.lastSelectedPreset = newPreset;
-
-      if (presetSelection === "unary") {
-        state.currentPreset.mods.forEach((mod) => {
-          mod.isEnabled = false;
-        });
-
-        const newPresetMods = withoutDataAndContentDuplicates(newPreset.mods);
-        if (newPreset.version == undefined) newPreset.mods = sortByNameAndLoadOrder(newPreset.mods);
-
-        state.currentPreset.mods.forEach((mod) => {
-          const modToChange = findMod(newPresetMods, mod);
-          if (modToChange) {
-            mod.isEnabled = modToChange.isEnabled;
-            mod.loadOrder = modToChange.loadOrder;
-          }
-        });
-
-        state.currentPreset.mods = sortAsInPreset(state.currentPreset.mods, newPresetMods);
-        state.currentPreset.version = 2;
-      } else if (presetSelection === "addition" || presetSelection === "subtraction") {
-        newPreset.mods.forEach((mod) => {
-          if (mod.isEnabled) {
-            const modToChange = findMod(state.currentPreset.mods, mod);
-            if (modToChange) modToChange.isEnabled = presetSelection !== "subtraction";
-          }
-        });
-      }
-
-      findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
-        (mod) => (mod.isEnabled = true)
-      );
+      selectPresetInternal(state, presetSelection, newPreset);
     },
     deletePreset: (state: AppState, action: PayloadAction<string>) => {
       const name = action.payload;
@@ -555,32 +698,8 @@ const appSlice = createSlice({
       const newLoadOrder = payload.loadOrder;
       const originalLoadOrder = payload.originalOrder;
 
-      console.log(`orig order is ${originalLoadOrder}`);
-      console.log(`new order is ${newLoadOrder}`);
-
-      if (ourMod) {
-        state.currentPreset.mods.forEach((mod) => {
-          if (mod.name === payload.modName) {
-            // console.log(`setting loadOrder to ${newLoadOrder}`);
-          } else if (mod.loadOrder) {
-            if (
-              originalLoadOrder != null &&
-              mod.loadOrder > originalLoadOrder &&
-              mod.loadOrder <= newLoadOrder
-            ) {
-              mod.loadOrder -= 1;
-            }
-          }
-        });
-
-        ourMod.loadOrder = newLoadOrder;
-        // console.log(
-        //   state.currentPreset.mods
-        //     .filter((mod) => mod.loadOrder != null)
-        //     .map((mod) => [mod.name, mod.loadOrder])
-        // );
-        adjustDuplicates(state.currentPreset.mods, ourMod);
-      }
+      if (!ourMod) return;
+      setModLoadOrderInternal(ourMod, state, payload.modName, newLoadOrder, originalLoadOrder);
 
       // printLoadOrders(state.currentPreset.mods);
     },
@@ -759,6 +878,23 @@ const appSlice = createSlice({
         startTime: Date.now(),
       } as Toast);
     },
+    importSteamCollection: (state: AppState, action: PayloadAction<ImportSteamCollection>) => {
+      const importSteamCollection = action.payload;
+      const steamCollectionsToImport = state.steamCollectionsToImport;
+      const modsIds = importSteamCollection.modIds;
+
+      console.log("to import mods from collection:", modsIds);
+
+      if (modsIds.every((modId) => state.allMods.some((modInAllMods) => modInAllMods.workshopId == modId))) {
+        handleImportSteamCollection(state, importSteamCollection);
+      } else {
+        const missingModIds = modsIds.filter((modId) =>
+          state.allMods.every((modInAllMods) => modInAllMods.workshopId != modId)
+        );
+        steamCollectionsToImport[importSteamCollection.name] = importSteamCollection;
+        window.api?.subscribeToMods(missingModIds);
+      }
+    },
     setToastDismissed: (state: AppState, action: PayloadAction<Toast>) => {
       const targetToast = action.payload;
       const toast = state.toasts.find((curToast) => curToast === targetToast);
@@ -831,6 +967,9 @@ const appSlice = createSlice({
     },
     setIsCreateSteamCollectionOpen: (state: AppState, action: PayloadAction<boolean>) => {
       state.isCreateSteamCollectionOpen = action.payload;
+    },
+    setIsImportSteamCollectionOpen: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isImportSteamCollectionOpen = action.payload;
     },
     addToast: (state: AppState, action: PayloadAction<Toast>) => {
       state.toasts.push(action.payload);
@@ -914,6 +1053,7 @@ export const {
   addMod,
   removeMod,
   createdMergedPack,
+  importSteamCollection,
   enableModsByName,
   setPacksData,
   setPacksDataRead,
@@ -929,6 +1069,7 @@ export const {
   setCurrentTab,
   setAreModsEnabled,
   setIsCreateSteamCollectionOpen,
+  setIsImportSteamCollectionOpen,
   setToastDismissed,
   setDataModsToEnableByName,
   addCategory,

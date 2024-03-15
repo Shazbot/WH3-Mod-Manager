@@ -12,7 +12,13 @@ if (process.argv[3] == "download") {
   const ids = process.argv[4].split(";"); //"2856936614";
   const client = steamworks.init(Number(process.argv[2]));
 
-  ids.forEach((id) => client.workshop.download(BigInt(id), true));
+  ids.forEach((id) => {
+    try {
+      client.workshop.download(BigInt(id), true);
+    } catch (e) {
+      /* empty */
+    }
+  });
   setTimeout(() => {
     process.exit();
   }, 300);
