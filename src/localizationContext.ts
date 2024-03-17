@@ -38,6 +38,7 @@ export const staticTextIds: Record<string, string | number> = {
   files: "Files",
   tables: "Tables",
   dbTable: "DB Table",
+  tableColumn: "Table column",
   help: "Help",
   collisionWith: "Collision with",
   in: "in",

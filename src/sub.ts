@@ -76,8 +76,9 @@ if (process.argv[3] == "checkState") {
     .filter((num) => num[1] & 8)
     .map((num) => num[0]);
 
-  idsThatNeedUpdates.forEach((id) => {
+  idsThatNeedUpdates.forEach(async (id) => {
     client.workshop.download(BigInt(id), true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
   const timeoutValue = (idsThatNeedUpdates.length > 0 && 200) || 0;

@@ -28,6 +28,7 @@ import getPackTableData, { isSchemaFieldNumber } from "./utility/packDataHandlin
 import deepClone from "clone-deep";
 import { gameToIntroMovies } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
+import * as fs from "fs";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -897,6 +898,9 @@ export const writeCopyPack = async (
   sourceMod?: Pack
 ) => {
   let outFile: BinaryFile | undefined;
+  let sourceFile: BinaryFile | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-inferrable-types
+  let sourceFileId: number = -1;
   try {
     // console.log(pathSource);
     sourceMod = sourceMod || (await readPack(pathSource, { skipParsingTables: true }));
@@ -916,8 +920,9 @@ export const writeCopyPack = async (
     if (packFiles.length < 1) return;
 
     outFile = new BinaryFile(pathTarget, "w", true);
-    const sourceFile = new BinaryFile(pathSource, "r", true);
+    sourceFile = new BinaryFile(pathSource, "r", true);
     await sourceFile.open();
+    sourceFileId = fs.openSync(pathSource, "r");
     await outFile.open();
     await outFile.write(sourceMod.packHeader.header);
     await outFile.writeInt32(sourceMod.packHeader.byteMask);
@@ -984,7 +989,10 @@ export const writeCopyPack = async (
           (fileToReplaceWith.schemaFields[0].fields[0].val as Buffer);
         // startPosOffset += fileToReplaceWith.file_size - packFile.file_size;
       } else {
-        data = await sourceFile.read(packFile.file_size, packFile.start_pos);
+        data = Buffer.alloc(packFile.file_size);
+        fs.readSync(sourceFileId, data, 0, data.length, packFile.start_pos);
+
+        // data = await sourceFile.read(packFile.file_size, packFile.start_pos);
       }
 
       if (data) await outFile.write(data);
@@ -997,6 +1005,8 @@ export const writeCopyPack = async (
     console.log(e);
   } finally {
     if (outFile) await outFile.close();
+    if (sourceFile) await sourceFile.close();
+    if (sourceFileId >= 0) fs.closeSync(sourceFileId);
   }
 };
 
@@ -1177,10 +1187,13 @@ export const readFromExistingPack = async (
     console.log(e);
   }
 
-  let file: BinaryFile | undefined;
+  // let file: BinaryFile | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-inferrable-types
+  let fileId: number = -1;
   try {
-    file = new BinaryFile(modPath, "r", true);
-    await file.open();
+    // file = new BinaryFile(modPath, "r", true);
+    fileId = fs.openSync(modPath, "r");
+    // await file.open();
 
     console.log(`${modPath} file opened`);
     if (packReadingOptions.tablesToRead) console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead);
@@ -1215,7 +1228,9 @@ export const readFromExistingPack = async (
       startOfLastPack;
     // console.log("endPos is ", endPos);
 
-    const buffer = await file.read(endPos - startPos, startPos);
+    const buffer = Buffer.alloc(endPos - startPos);
+    fs.readSync(fileId, buffer, 0, buffer.length, startPos);
+    // const buffer = await file.read(endPos - startPos, startPos);
 
     // console.log("len:", endPos - startPos);
     // console.log("startPos:", startPos);
@@ -1224,7 +1239,8 @@ export const readFromExistingPack = async (
   } catch (e) {
     console.log(e);
   } finally {
-    if (file) await file.close();
+    // if (file) await file.close();
+    if (fileId >= 0) fs.closeSync(fileId);
   }
 
   console.log("done reading");
@@ -1524,8 +1540,11 @@ export const readPack = async (
   }
 
   let file: BinaryFile | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-inferrable-types
+  let fileId: number = -1;
   try {
     file = new BinaryFile(modPath, "r", true);
+    fileId = fs.openSync(modPath, "r");
     await file.open();
 
     console.log(`${modPath} file opened`);
@@ -1587,7 +1606,10 @@ export const readPack = async (
     let file_pos = dataStart;
 
     const headerSize = dataStart - file.tell();
-    const headerBuffer = await file.read(headerSize);
+    // const headerBuffer = await file.read(headerSize);
+
+    const headerBuffer = Buffer.alloc(headerSize);
+    fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, file.tell());
 
     // console.log("header size is: " + headerSize);
 
@@ -1680,7 +1702,10 @@ export const readPack = async (
       startOfLastPack;
     // console.log("endPos is ", endPos);
 
-    const buffer = await file.read(endPos - startPos, startPos);
+    // const buffer = await file.read(endPos - startPos, startPos);
+
+    const buffer = Buffer.alloc(endPos - startPos);
+    fs.readSync(fileId, buffer, 0, buffer.length, startPos);
 
     // console.log("len:", endPos - startPos);
     // console.log("startPos:", startPos);
@@ -1695,7 +1720,11 @@ export const readPack = async (
 
       for (const locPackFile of locPackFiles) {
         // console.log("LOC file to read:", locPackFile);
-        const buffer = await file.read(locPackFile.file_size, locPackFile.start_pos);
+        // const buffer = await file.read(locPackFile.file_size, locPackFile.start_pos);
+
+        const buffer = Buffer.alloc(locPackFile.file_size);
+        fs.readSync(fileId, buffer, 0, buffer.length, locPackFile.start_pos);
+
         await readLoc(packReadingOptions, locPackFile, buffer, startPos, modPath);
       }
     }
@@ -1703,6 +1732,7 @@ export const readPack = async (
     console.log(e);
   } finally {
     if (file) await file.close();
+    if (fileId >= 0) fs.closeSync(fileId);
   }
 
   // console.log("read " + modName);
