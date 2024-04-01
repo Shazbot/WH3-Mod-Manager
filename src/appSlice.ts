@@ -971,6 +971,9 @@ const appSlice = createSlice({
     setIsImportSteamCollectionOpen: (state: AppState, action: PayloadAction<boolean>) => {
       state.isImportSteamCollectionOpen = action.payload;
     },
+    setIsHelpOpen: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isHelpOpen = action.payload;
+    },
     addToast: (state: AppState, action: PayloadAction<Toast>) => {
       state.toasts.push(action.payload);
     },
@@ -1070,6 +1073,7 @@ export const {
   setAreModsEnabled,
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,
+  setIsHelpOpen,
   setToastDismissed,
   setDataModsToEnableByName,
   addCategory,

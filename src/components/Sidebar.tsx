@@ -9,6 +9,7 @@ import {
   selectPreset,
   setFilter,
   createOnGameStartPreset,
+  setIsHelpOpen,
 } from "../appSlice";
 import { Tooltip } from "flowbite-react";
 import { UpdateNotification } from "./UpdateNotification";
@@ -20,6 +21,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import CompatScreen from "./CompatScreen";
 import RequiredMods from "./RequiredMods";
 import localizationContext from "../localizationContext";
+import Help from "./Help";
 
 const Sidebar = React.memo(() => {
   const dispatch = useAppDispatch();
@@ -262,6 +264,7 @@ const Sidebar = React.memo(() => {
   return (
     <div>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
+      <Help></Help>
 
       <RequiredMods
         isOpen={isShowingRequiredMods}
@@ -590,6 +593,18 @@ const Sidebar = React.memo(() => {
               type="button"
             >
               {localized.dbViewer}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-center mt-4">
+            <button
+              onClick={() => dispatch(setIsHelpOpen(true))}
+              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+              type="button"
+            >
+              {localized.faqAbbreviated}
             </button>
           </div>
         </div>

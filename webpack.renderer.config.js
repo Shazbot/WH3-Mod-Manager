@@ -1,5 +1,6 @@
 const rules = require("./webpack.rules");
 const plugins = require("./webpack.plugins");
+const path = require("path");
 
 rules.push(
   {
@@ -20,5 +21,8 @@ module.exports = {
   resolve: {
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css"],
     fallback: { path: require.resolve("path-browserify") },
+    alias: {
+      "@": path.resolve(__dirname, "./"),
+    },
   },
 };

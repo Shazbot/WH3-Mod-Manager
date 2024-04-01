@@ -13,6 +13,7 @@
     "strict": true,
     "resolveJsonModule": true,
     "paths": {
+      "@/*": ["./*"],
       "*": ["node_modules/*"]
     },
     "jsx": "react"
