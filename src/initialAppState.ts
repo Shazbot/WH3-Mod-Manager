@@ -52,6 +52,7 @@ const initialState = {
   customizableMods: {},
   currentGame: "wh3",
   steamCollectionsToImport: {},
+  isHelpOpen: false,
 } as AppState;
 
 export default initialState;

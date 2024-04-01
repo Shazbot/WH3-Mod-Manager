@@ -108,6 +108,7 @@ declare global {
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;
+    isHelpOpen: boolean;
     isWH3Running: boolean;
     toasts: Toast[];
     removedModsCategories: Record<string, string[]>;

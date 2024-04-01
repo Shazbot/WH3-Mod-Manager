@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 const CopyPlugin = require("copy-webpack-plugin");
+const path = require("path");
 
 module.exports = {
   /**
@@ -13,6 +14,9 @@ module.exports = {
   },
   resolve: {
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css", ".json"],
+    alias: {
+      // "@": path.resolve(__dirname, "./"),
+    },
   },
   plugins: [
     new CopyPlugin({
