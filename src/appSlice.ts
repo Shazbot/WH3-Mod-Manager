@@ -11,6 +11,7 @@ import {
 import { SortingType } from "./utility/modRowSorting";
 import { compareModNames, sortAsInPreset, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import initialState from "./initialAppState";
+import equal from "fast-deep-equal";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -509,9 +510,15 @@ const appSlice = createSlice({
             (iterMod) => iterMod.isInData && iterMod.name == contentMod.name
           );
           if (dataMod) {
-            if (data.humanName && data.humanName != "") dataMod.humanName = data.humanName ?? "";
-            if (data.author && data.author != "") dataMod.author = data.author;
-            if (data.reqModIdToName && data.reqModIdToName.length > 0)
+            if (data.humanName && data.humanName != "" && dataMod.humanName != data.humanName)
+              dataMod.humanName = data.humanName ?? "";
+            if (data.author && data.author != "" && dataMod.author != data.author)
+              dataMod.author = data.author;
+            if (
+              data.reqModIdToName &&
+              data.reqModIdToName.length > 0 &&
+              !equal(dataMod.reqModIdToName, data.reqModIdToName)
+            )
               dataMod.reqModIdToName = data.reqModIdToName;
           }
         }
@@ -521,12 +528,18 @@ const appSlice = createSlice({
         if (data.isDeleted) {
           mod.isDeleted = data.isDeleted;
         } else {
-          if (data.humanName && data.humanName != "") mod.humanName = data.humanName ?? "";
-          if (data.author && data.author != "") mod.author = data.author;
-          if (data.reqModIdToName && data.reqModIdToName.length > 0) mod.reqModIdToName = data.reqModIdToName;
+          if (data.humanName && data.humanName != "" && mod.humanName != data.humanName)
+            mod.humanName = data.humanName ?? "";
+          if (data.author && data.author != "" && mod.author != data.author) mod.author = data.author;
+          if (
+            data.reqModIdToName &&
+            data.reqModIdToName.length > 0 &&
+            !equal(mod.reqModIdToName, data.reqModIdToName)
+          )
+            mod.reqModIdToName = data.reqModIdToName;
         }
 
-        if (data.lastChanged) mod.lastChanged = data.lastChanged;
+        // if (data.lastChanged && mod.lastChanged != data.lastChanged) mod.lastChanged = data.lastChanged;
       }
     },
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData | PackHeaderData[]>) => {
@@ -593,6 +606,15 @@ const appSlice = createSlice({
             existingMod.isEnabled = mod.isEnabled;
             if (mod.humanName !== "") existingMod.humanName = mod.humanName;
             if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
+            if (
+              mod.reqModIdToName &&
+              mod.reqModIdToName.length > 0 &&
+              !equal(mod.reqModIdToName, existingMod.reqModIdToName)
+            )
+              existingMod.reqModIdToName = mod.reqModIdToName;
+            if (mod.author && mod.author != "" && existingMod.author != mod.author)
+              existingMod.author = mod.author;
+            // if (mod.lastChanged != null) existingMod.lastChanged = mod.lastChanged;
           }
         });
 

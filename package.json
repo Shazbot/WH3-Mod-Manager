@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
@@ -154,12 +154,14 @@
     "clone-deep": "^4.0.1",
     "date-fns": "^2.29.3",
     "date-fns-tz": "^1.3.7",
+    "deep-object-diff": "^1.1.9",
     "electron-fetch": "^1.9.1",
     "electron-is-dev": "^2.0.0",
     "electron-log": "^4.4.8",
     "electron-prebuilt-compile": "^8.2.0",
     "electron-squirrel-startup": "^1.0.0",
     "electron-window-state": "^5.0.3",
+    "entities": "^4.5.0",
     "fast-deep-equal": "^3.1.3",
     "fast-xml-parser": "^4.2.7",
     "flowbite": "^1.5.3",

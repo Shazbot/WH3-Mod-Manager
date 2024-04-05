@@ -1,6 +1,6 @@
 import deepClone from "clone-deep";
 import { app } from "electron";
-import * as fs from "fs/promises";
+import * as fs from "fs";
 import equal from "fast-deep-equal";
 import { copy, move } from "fs-extra";
 import appData from "./appData";
@@ -49,6 +49,12 @@ export function setStartingAppState(startingAppState: AppStateToWrite) {
 
 export function writeAppConfig(data: AppState) {
   const toWrite: AppStateToWrite = appStateToConfigAppState(data);
+  // we don't care about saving this since we want to fetch or calculate the real time state of these anyway
+  toWrite.gameToCurrentPreset[toWrite.currentGame]?.mods.forEach((mod) => {
+    mod.lastChanged = undefined;
+    mod.reqModIdToName = [];
+    mod.isDeleted = false;
+  });
 
   if (!appData.hasReadConfig) return;
 
@@ -56,9 +62,9 @@ export function writeAppConfig(data: AppState) {
     console.log("same appConfig, don't save it");
     return;
   }
-  const userData = app.getPath("userData");
 
-  dataToWrite = deepClone(toWrite);
+  dataToWrite = deepClone(toWrite, true);
+
   if (writeConfigTimeout) {
     writeConfigTimeout.refresh();
   } else {
@@ -75,7 +81,7 @@ export function writeAppConfig(data: AppState) {
           const exeDirPath = nodePath.dirname(app.getPath("exe"));
           const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
           const exeDirConfigPath = nodePath.join(exeDirPath, "config.json");
-          await fs.writeFile(exeDirTempConfigPath, stringifiedData);
+          await fs.writeFileSync(exeDirTempConfigPath, stringifiedData);
           const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
           await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
           await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
@@ -83,14 +89,16 @@ export function writeAppConfig(data: AppState) {
           console.log(err);
         }
 
+        const userData = app.getPath("userData");
         const tempFilePath = nodePath.join(userData, "config_temp.json");
-        await fs.writeFile(tempFilePath, stringifiedData);
+        await fs.writeFileSync(tempFilePath, stringifiedData);
 
         const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
         await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
         const configFilePath = nodePath.join(userData, "config.json");
         await move(tempFilePath, configFilePath, { overwrite: true });
 
+        console.log("done writing config file");
         isWriting = false;
       } catch (e) {
         console.log(e);
@@ -104,14 +112,14 @@ export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProp
   try {
     const userData = app.getPath("userData");
     const userDataConfigFilePath = nodePath.join(userData, "config.json");
-    data = await fs.readFile(userDataConfigFilePath, "utf8");
+    data = await fs.readFileSync(userDataConfigFilePath, "utf8");
     // eslint-disable-next-line no-empty
   } catch (err) {}
 
   try {
     if (!data) {
       const exeDirConfigPath = nodePath.join(nodePath.dirname(app.getPath("exe")), "config.json");
-      data = await fs.readFile(exeDirConfigPath, "utf8");
+      data = await fs.readFileSync(exeDirConfigPath, "utf8");
     }
     // eslint-disable-next-line no-empty
   } catch (err) {}

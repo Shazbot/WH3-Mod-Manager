@@ -100,7 +100,7 @@ const CreateSteamCollection = memo(() => {
                 </button>
               </div>
 
-              <h6 className="mt-10 -mb-5">{localized.instructions}</h6>
+              <h6 className="mt-8 -mb-5 font-semibold text-xl">{localized.instructions}</h6>
               <div className="border border-gray-600 w-[80%]"></div>
               <div className="">{localized.createSteamCollectionHelp1}</div>
               <div className="">{localized.createSteamCollectionHelp2}</div>

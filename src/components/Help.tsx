@@ -15,6 +15,14 @@ const helpLocs = [
   ["faqNinthH", "faqNinthC1", "faqNinthC2"],
   ["faqEightH", "faqEightC"],
   ["faqFifthH", "faqFifthC1", "faqFifthC2", "faqFifthC3", "faqFifthC4", "faqFifthC5", "faqFifthC6"],
+  ["faqTenthH", "faqTenthC"],
+  ["faqEleventhsH", "faqEleventhsC"],
+];
+
+const knownIssuesLocs = [
+  ["faqIssuesFirstH", "faqIssuesFirstC"],
+  ["faqIssuesSecondH", "faqIssuesSecondC"],
+  ["faqIssuesThirdH", "faqIssuesThirdC"],
 ];
 
 const Help = memo(() => {
@@ -47,6 +55,24 @@ const Help = memo(() => {
             <div className="flex justify-center">
               <Accordion type="single" collapsible className="w-11/12">
                 {helpLocs.map((locHeaderAndContent, i) => (
+                  <AccordionItem key={`item-${i}`} value={`item-${i}`}>
+                    <AccordionTrigger>{localized[locHeaderAndContent[0]]}</AccordionTrigger>
+                    <AccordionContent>
+                      {locHeaderAndContent.slice(1).map((loc, ii) => (
+                        <p key={`${i}_${ii}`} className="[&:not(:first-child)]:mt-4">
+                          {localized[loc]}
+                        </p>
+                      ))}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
+
+            <div className="text-gray-100 font-semibold m-auto text-xl mt-12">{localized.knownIssues}</div>
+            <div className="flex justify-center mt-4">
+              <Accordion type="single" collapsible className="w-11/12">
+                {knownIssuesLocs.map((locHeaderAndContent, i) => (
                   <AccordionItem key={`item-${i}`} value={`item-${i}`}>
                     <AccordionTrigger>{localized[locHeaderAndContent[0]]}</AccordionTrigger>
                     <AccordionContent>
