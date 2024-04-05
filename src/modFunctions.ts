@@ -12,6 +12,7 @@ import * as fsExtra from "fs-extra";
 import * as os from "os";
 import { XMLParser } from "fast-xml-parser";
 import { gameToGameFolder, gameToManifest, gameToSteamId } from "./supportedGames";
+import { decodeHTML } from "entities";
 
 export function fetchModData(
   ids: string[],
@@ -56,7 +57,7 @@ export function fetchModData(
           const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
           const match = body.match(regexpSize);
           if (match && match[1] != null) {
-            humanName = match[1];
+            humanName = decodeHTML(match[1]);
           } else {
             log(`failed reading humanName for ${workshopId}`);
 
@@ -77,7 +78,7 @@ export function fetchModData(
             const breadcrumbs = regexBreadcrumbsMatch[1];
             const match = breadcrumbs && breadcrumbs.match(/.*>(.+?)'s .*?<\/a>/);
             if (match && match[1] != null) {
-              author = match[1];
+              author = decodeHTML(decodeHTML(match[1])); // the author is already encoded in the steam page here for some reason
             } else {
               log(`failed reading author for ${workshopId}`);
             }

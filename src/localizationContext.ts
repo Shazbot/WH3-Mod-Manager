@@ -1,4 +1,3 @@
-import { faSquareVirus } from "@fortawesome/free-solid-svg-icons";
 import { createContext } from "react";
 
 export const staticTextIds: Record<string, string | number> = {
@@ -359,8 +358,25 @@ export const staticTextIds: Record<string, string | number> = {
     "You can change load order in the Enabled Mods Tab. You can switch to that tab using the button in the top left or using Ctrl+2. It's not great UI, but required due to load order being relative to other enabled mods, also why most mod managers use 2 lists of mods.",
   faqNinthC2:
     "Also remember load order is something that you shouldn't tinker with manually in WH3, except in some very rare circumstances. If you're unsure you're much better off leaving it at default, changing load order isn't something that will fix mod issues or bugs in WH3.",
+  faqTenthH: "Why don't you flag mods as outdated like the CA Launcher?",
+  faqTenthC:
+    "The CA Launcher auto-flags all mods as outdated after every major patch. This way is completely meaningless, as a modder most of my mods have never actually been affected at all by any of the patches. This mod manager has a smarter checker that looks inside mods to see if they have files/tables that could be outdated. This can't catch all issues but can catch big breaking changes by patches.",
+  faqEleventhsH: "The mod manager uses a lot of memory?",
+  faqEleventhsC:
+    "The mod manager runs analysis of enabled mods to check if they have files/tables that could be outdated or to power other features like mod customization, and that can consume a lot of memory depending on what mods you have enabled. All this memory is discarded when the game is launched to avoid performance issues.",
   faq: "Frequently Asked Questions",
   faqAbbreviated: "FAQ",
+  instructions: "Instructions",
+  knownIssues: "Known Issues",
+  faqIssuesFirstH: "Game doesn't launch when clicking Play",
+  faqIssuesFirstC:
+    "This is caused by file permission issues, the mod manager doesn't have permissions to launch WH3. Put the mod manager folder inside the WH3 folder or change the owner of the mod manager folder.",
+  faqIssuesSecondH: "Play launches the CA Launcher instead of the game",
+  faqIssuesSecondC:
+    "Not sure of the cause. I've had reports this issue goes away so try restarting the PC or Steam. Try adding the mod manager exe into Steam as a non-Steam game and launching it that way. Please report if you have more information.",
+  faqIssuesThirdH: "Attempting to launch with the optional parameters Steam error when launching",
+  faqIssuesThirdC:
+    "Not sure of the cause, I believe adding the mod manager exe into Steam as a non-Steam game and launching it that way fixes this.",
 };
 
 const context = createContext({});
