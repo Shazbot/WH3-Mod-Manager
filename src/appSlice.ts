@@ -539,7 +539,7 @@ const appSlice = createSlice({
             mod.reqModIdToName = data.reqModIdToName;
         }
 
-        // if (data.lastChanged && mod.lastChanged != data.lastChanged) mod.lastChanged = data.lastChanged;
+        if (data.lastChanged && mod.lastChanged != data.lastChanged) mod.lastChanged = data.lastChanged;
       }
     },
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData | PackHeaderData[]>) => {
@@ -596,6 +596,7 @@ const appSlice = createSlice({
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToRead>) => {
       const fromConfigAppState = action.payload;
 
+      state.hasConfigBeenRead = true;
       state.dataFromConfig = fromConfigAppState;
 
       fromConfigAppState.currentPreset.mods
@@ -849,6 +850,9 @@ const appSlice = createSlice({
     setIsOnboardingToRun: (state: AppState, action: PayloadAction<boolean>) => {
       state.isOnboardingToRun = action.payload;
     },
+    setHasConfigBeenRead: (state: AppState, action: PayloadAction<boolean>) => {
+      state.hasConfigBeenRead = action.payload;
+    },
     setWasOnboardingEverRun: (state: AppState, action: PayloadAction<boolean>) => {
       state.wasOnboardingEverRun = action.payload;
     },
@@ -1084,6 +1088,7 @@ export const {
   setPacksDataRead,
   setPackCollisions,
   setAppFolderPaths,
+  setHasConfigBeenRead,
   setWarhammer3Folder,
   setContentFolder,
   setOverwrittenDataPackedFiles,

@@ -72,6 +72,7 @@ declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
+  console.log("ONLY ONE INSTANCE ALLOWED!");
   app.quit();
 } else {
   console.log("ARGVS:", process.argv);

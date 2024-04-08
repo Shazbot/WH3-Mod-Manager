@@ -13,6 +13,7 @@ const initialState = {
   hiddenMods: [],
   saves: [],
   isOnboardingToRun: false,
+  hasConfigBeenRead: false,
   wasOnboardingEverRun: false,
   isDev: false,
   isAdmin: false,

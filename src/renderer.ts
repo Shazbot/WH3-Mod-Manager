@@ -31,6 +31,7 @@ import {
   setCustomizableMods,
   setCurrentGame,
   importSteamCollection,
+  setHasConfigBeenRead,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -160,10 +161,11 @@ window.api?.setAppFolderPaths((event, appFolderPaths: GameFolderPaths) => {
 });
 
 window.api?.failedReadingConfig(() => {
-  console.log("INVOKED: FROM API CONFIG");
+  console.log("INVOKED: failedReadingConfig");
   if (!isSubscribedToStoreChanges) {
     store.dispatch(setIsOnboardingToRun(true));
   }
+  store.dispatch(setHasConfigBeenRead(true));
 
   subscribeToStoreChanges();
 });

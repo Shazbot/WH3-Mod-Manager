@@ -6,10 +6,12 @@ import { copy, move } from "fs-extra";
 import appData from "./appData";
 import * as nodePath from "path";
 import { version } from "../package.json";
+import { diff } from "deep-object-diff";
 
 let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
 let isWriting = false;
+let hasConfigBeenRead = false;
 
 const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
   const gameToCurrentPreset = deepClone(appData.gameToCurrentPreset);
@@ -47,21 +49,58 @@ export function setStartingAppState(startingAppState: AppStateToWrite) {
   dataToWrite = deepClone(startingAppState);
 }
 
-export function writeAppConfig(data: AppState) {
-  const toWrite: AppStateToWrite = appStateToConfigAppState(data);
-  // we don't care about saving this since we want to fetch or calculate the real time state of these anyway
-  toWrite.gameToCurrentPreset[toWrite.currentGame]?.mods.forEach((mod) => {
+const removeModDataWeDontSave = (mods: Mod[] | undefined) => {
+  if (!mods) return;
+
+  // we don't care about saving these since we want to fetch or calculate the real time state of them anyway
+  for (const mod of mods) {
     mod.lastChanged = undefined;
+    mod.lastChangedLocal = undefined;
     mod.reqModIdToName = [];
     mod.isDeleted = false;
-  });
+    mod.isMovie = false;
+    mod.dependencyPacks = [];
+  }
+};
 
-  if (!appData.hasReadConfig) return;
+export function writeAppConfig(data: AppState) {
+  const toWrite: AppStateToWrite = appStateToConfigAppState(data);
+
+  if (!appData.hasReadConfig) {
+    return;
+  }
+
+  // remove mod data we don't want to save from
+  removeModDataWeDontSave(toWrite.gameToCurrentPreset[toWrite.currentGame]?.mods);
+
+  const onLastGameLaunchPreset = toWrite.gameToPresets[toWrite.currentGame]?.find(
+    (preset) => preset.name == "On Last Game Launch"
+  );
+  removeModDataWeDontSave(onLastGameLaunchPreset?.mods);
+
+  const onAppStartPreset = toWrite.gameToPresets[toWrite.currentGame]?.find(
+    (preset) => preset.name == "On App Start"
+  );
+  removeModDataWeDontSave(onAppStartPreset?.mods);
+
+  if (!data.hasConfigBeenRead) {
+    dataToWrite = deepClone(toWrite, true);
+    console.log("config yet to be read, skip writing new config");
+    return;
+  }
+  if (!hasConfigBeenRead && data.hasConfigBeenRead) {
+    console.log("CONFIG HAS BEEN READ IN THIS WRITE REQUEST");
+    hasConfigBeenRead = true;
+    dataToWrite = deepClone(toWrite, true);
+    return;
+  }
 
   if (equal(dataToWrite, toWrite)) {
     console.log("same appConfig, don't save it");
     return;
   }
+
+  if (dataToWrite) console.log("diff in config:", JSON.stringify(diff(dataToWrite, toWrite), null, 2));
 
   dataToWrite = deepClone(toWrite, true);
 

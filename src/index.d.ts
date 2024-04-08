@@ -82,6 +82,7 @@ declare global {
     hiddenMods: Mod[];
     saves: GameSave[];
     isOnboardingToRun: boolean;
+    hasConfigBeenRead: boolean;
     wasOnboardingEverRun: boolean;
     areThumbnailsEnabled: boolean;
     isClosedOnPlay: boolean;
