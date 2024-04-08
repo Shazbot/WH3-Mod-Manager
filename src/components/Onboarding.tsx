@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useContext, useMemo, useRef } from "react";
+import React, { memo, useCallback, useContext, useMemo } from "react";
 import Joyride, { Placement, CallBackProps } from "react-joyride";
 import { faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -23,70 +23,70 @@ const Onboarding = memo(() => {
       [
         {
           target: "body",
-          content: localized.onbWelcome,
+          content: <span className="font-medium">{localized.onbWelcome}</span>,
           disableBeacon: true,
           placement: "center" as Placement | "auto" | "center",
         },
         {
           target: "#presetSection",
-          content: localized.onbPresets,
+          content: <span className="font-medium">{localized.onbPresets}</span>,
         },
         {
           target: "#createOrSelectPreset",
           content: (
-            <>
+            <span className="font-medium">
               <p>{localized.onbPresets1}</p>
               <p className="mt-2">{localized.onbPresets2}</p>
               <p className="mt-2">{localized.onbPresets3}</p>
-            </>
+            </span>
           ),
         },
         {
           target: "#replacePreset",
-          content: localized.onbReplacePreset,
+          content: <span className="font-medium">{localized.onbReplacePreset}</span>,
         },
         {
           target: "#deletePreset",
-          content: localized.onbDeletePreset,
+          content: <span className="font-medium">{localized.onbDeletePreset}</span>,
         },
 
         {
           target: "#sortHeader",
           content: (
-            <>
+            <span className="font-medium">
               <p>{localized.onbSorting1}</p>
               <p className="mt-2">{localized.onbSorting2}</p>
-            </>
+            </span>
           ),
         },
         {
           target: "#sortHeader",
           content: (
-            <>
+            <span className="font-medium">
               <p>{localized.onbSorting3}</p>
-            </>
+            </span>
           ),
         },
         {
           target: "#sortHeader",
           content: (
-            <>
+            <span className="font-medium">
               <p>
                 <FontAwesomeIcon icon={faGrip} /> {localized.onbSorting4}
               </p>
               <p className="mt-2">{localized.onbSorting5}</p>
               <p className="mt-2">{localized.onbSorting6}</p>
-            </>
+            </span>
           ),
         },
         {
           target: "#enabledHeader",
           content: (
-            <>
+            <span className="font-medium">
               <p>{localized.onbSorting7}</p>
               <p className="mt-2">{localized.onbSorting8}</p>
               <p className="mt-2">{localized.onbSorting9}</p>
-            </>
+            </span>
           ),
         },
         {
@@ -94,9 +94,9 @@ const Onboarding = memo(() => {
           isFixed: true,
           placement: "left" as Placement | "auto" | "center",
           content: (
-            <>
+            <span className="font-medium">
               <p>{localized.onbPlay}</p>
-            </>
+            </span>
           ),
         },
         {
@@ -104,9 +104,9 @@ const Onboarding = memo(() => {
           isFixed: true,
           placement: "left" as Placement | "auto" | "center",
           content: (
-            <>
+            <span className="font-medium">
               <p>{localized.onbContinue}</p>
-            </>
+            </span>
           ),
         },
         {
@@ -114,9 +114,9 @@ const Onboarding = memo(() => {
           isFixed: true,
           placement: "left" as Placement | "auto" | "center",
           content: (
-            <>
+            <span className="font-medium">
               <p>{localized.onbSaves}</p>
-            </>
+            </span>
           ),
         },
       ].map((step) => {
@@ -127,7 +127,7 @@ const Onboarding = memo(() => {
   );
 
   const onJoyrideStateChange = useCallback((data: CallBackProps) => {
-    console.log(data);
+    console.log("joyride:", data.action);
     if (data.action === "reset" || data.action === "skip") {
       dispatch(setIsOnboardingToRun(false));
       dispatch(setWasOnboardingEverRun(true));
