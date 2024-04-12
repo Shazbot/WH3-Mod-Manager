@@ -309,7 +309,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     let currentPos = 0;
     for (const pack_file of pack_files) {
       if (
-        nodePath.basename(modPath) == "data.pack" &&
+        nodePath.basename(modPath) == "db.pack" &&
         !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
       )
         continue;

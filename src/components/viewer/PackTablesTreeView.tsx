@@ -17,10 +17,11 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
 
   const packsData = useAppSelector((state) => state.app.packsData);
 
-  const packPath = currentDBTableSelection?.packPath ?? "data.pack";
+  const packPath = currentDBTableSelection?.packPath ?? "db.pack";
   const packData = packsData[packPath];
   // const packData = currentPackData.data;
   if (!packData) {
+    console.log("PackTablesTreeView: no pack data");
     return <></>;
   }
 
@@ -134,6 +135,8 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
       isAnyNodeParentShown(element)
     );
   };
+
+  // console.log("TREE DATA is", data);
 
   return (
     <div>

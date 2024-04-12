@@ -27,6 +27,13 @@ const initialState = {
   allMods: [],
   packsData: {},
   packCollisions: { packTableCollisions: [], packFileCollisions: [] },
+  packCollisionsCheckProgress: {
+    currentIndex: -1,
+    maxIndex: 0,
+    firstPackName: "",
+    secondPackName: "",
+    type: "Files",
+  },
   newMergedPacks: [],
   pathsOfReadPacks: [],
   appFolderPaths: { gamePath: "", contentFolder: "", dataFolder: "" },
@@ -54,6 +61,8 @@ const initialState = {
   currentGame: "wh3",
   steamCollectionsToImport: {},
   isHelpOpen: false,
+  lastModThatWasRead: undefined,
+  currentlyReadingMod: undefined,
 } as AppState;
 
 export default initialState;

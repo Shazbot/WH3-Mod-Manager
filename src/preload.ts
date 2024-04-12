@@ -108,6 +108,9 @@ const api = {
     ipcRenderer.on("setPackHeaderData", callback),
   setPacksData: (callback: (event: Electron.IpcRendererEvent, packsData: PackViewData[]) => void) =>
     ipcRenderer.on("setPacksData", callback),
+  setPackCollisionsCheckProgress: (
+    callback: (event: Electron.IpcRendererEvent, progressData: PackCollisionsCheckProgressData) => void
+  ) => ipcRenderer.on("setPackCollisionsCheckProgress", callback),
   setPacksDataRead: (callback: (event: Electron.IpcRendererEvent, packPaths: string[]) => void) =>
     ipcRenderer.on("setPacksDataRead", callback),
   setPackCollisions: (callback: (event: Electron.IpcRendererEvent, packCollisions: PackCollisions) => void) =>
@@ -143,6 +146,12 @@ const api = {
   setDataModLastChangedLocal: (
     callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void
   ) => ipcRenderer.on("setDataModLastChangedLocal", callback),
+
+  setCurrentlyReadingMod: (callback: (event: Electron.IpcRendererEvent, modName: string) => void) =>
+    ipcRenderer.on("setCurrentlyReadingMod", callback),
+  setLastModThatWasRead: (callback: (event: Electron.IpcRendererEvent, modName: string) => void) =>
+    ipcRenderer.on("setLastModThatWasRead", callback),
+
   setAvailableLanguages: (callback: (event: Electron.IpcRendererEvent, languages: string[]) => void) =>
     ipcRenderer.on("setAvailableLanguages", callback),
   getSteamCollectionName: (url: string): Promise<string> => ipcRenderer.invoke("getSteamCollectionName", url),

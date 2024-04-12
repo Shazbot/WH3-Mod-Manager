@@ -32,6 +32,9 @@ import {
   setCurrentGame,
   importSteamCollection,
   setHasConfigBeenRead,
+  setPackCollisionsCheckProgress,
+  setCurrentlyReadingMod,
+  setLastModThatWasRead,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -291,6 +294,15 @@ window.api?.setCurrentGame((event, game: SupportedGames, currentPreset: Preset, 
   store.dispatch(setCurrentGame({ game, currentPreset, presets } as SetCurrentGamePayload));
 });
 
+window.api?.setCurrentlyReadingMod((event, modName: string) => {
+  console.log("INVOKED: setCurrentlyReadingMod", modName);
+  store.dispatch(setCurrentlyReadingMod(modName));
+});
+window.api?.setLastModThatWasRead((event, modName: string) => {
+  console.log("INVOKED: setLastModThatWasRead", modName);
+  store.dispatch(setLastModThatWasRead(modName));
+});
+
 window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {
   // console.log("INVOKED: MOD PACK DATA RECIEVED");
   store.dispatch(setPackCollisions(packCollisions));
@@ -299,6 +311,11 @@ window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {
   //   console.log("GOT COMPAT DATA");
   //   store.dispatch(setPackCollisions(data));
   // });
+});
+
+window.api?.setPackCollisionsCheckProgress((event, progressData: PackCollisionsCheckProgressData) => {
+  console.log("INVOKED: setPackCollisionsCheckProgress");
+  store.dispatch(setPackCollisionsCheckProgress(progressData));
 });
 
 if (isMain) {

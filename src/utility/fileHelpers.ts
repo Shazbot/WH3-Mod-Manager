@@ -1,5 +1,6 @@
-import * as fs from "fs/promises";
+import * as fs from "fs";
 
 export async function tryOpenFile(path: string) {
-  await (await fs.open(path, "r+")).close();
+  const fd = fs.openSync(path, "r+");
+  fs.closeSync(fd);
 }

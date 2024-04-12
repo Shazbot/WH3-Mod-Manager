@@ -16,7 +16,7 @@ interface AppData {
   packsData: Pack[];
   compatData: PackCollisions;
   currentlyReadingModPaths: string[];
-  dataPack?: Pack;
+  vanillaPacks: Pack[];
   overwrittenDataPackedFiles: Record<string, string[]>;
   outdatedPackFiles: Record<string, string[]>;
   enabledMods: Mod[];
@@ -57,6 +57,7 @@ const appData = {
   gameUpdates: [],
   isWH3Running: false,
   currentGame: "wh3",
+  vanillaPacks: [],
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {

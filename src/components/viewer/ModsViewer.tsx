@@ -11,7 +11,7 @@ import localizationContext from "../../localizationContext";
 const ModsViewer = React.memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
-  const packPath = currentDBTableSelection?.packPath ?? "data.pack";
+  const packPath = currentDBTableSelection?.packPath ?? "db.pack";
 
   const [isOpen, setIsOpen] = React.useState(true);
 
@@ -58,6 +58,7 @@ const ModsViewer = React.memo(() => {
   }, []);
 
   if (!packsData[packPath]) {
+    console.log(`ModsViewer: no ${packPath} in packsData`);
     return <></>;
   }
 

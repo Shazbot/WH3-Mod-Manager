@@ -39,7 +39,7 @@
   "in": "in",
   "key": "key",
   "readingAndComparingPacks": "Reading And Comparing Packs...",
-  "waitForReadingAndComparingPacks": "Wait until all the mod packs have been read and compared with each other...",
+  "waitForReadingAndComparingPacks": "Please wait until all the mod packs have been read and compared with each other...",
   "presetsTooltip1": "Create a new preset by typing its name.",
   "presetsTooltip2": "When selecting existing preset:",
   "presetsTooltip3": "Hold Shift to add mods in preset to current mods.",
@@ -301,5 +301,9 @@
   "faqIssuesSecondH": "Play launches the CA Launcher instead of the game",
   "faqIssuesSecondC": "Not sure of the cause. I've had reports this issue goes away so try restarting the PC or Steam. Try adding the mod manager exe into Steam as a non-Steam game and launching it that way. Please report if you have more information.",
   "faqIssuesThirdH": "Attempting to launch with the optional parameters Steam error when launching",
-  "faqIssuesThirdC": "Not sure of the cause, I believe adding the mod manager exe into Steam as a non-Steam game and launching it that way fixes this."
+  "faqIssuesThirdC": "Not sure of the cause, I believe adding the mod manager exe into Steam as a non-Steam game and launching it that way fixes this.",
+  "readingPack": "Reading pack:",
+  "finishedReadingPack": "Finished reading pack:",
+  "comparingFilesInPacks": "Comparing <firstPackName> files with <secondPackName>...",
+  "comparingKeysInPacks": "Comparing <firstPackName> table keys with other mods..."
 }
