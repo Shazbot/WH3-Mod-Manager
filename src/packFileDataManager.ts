@@ -3,6 +3,7 @@ import { Worker } from "worker_threads";
 import * as schema from "../schema/schema_wh3.json";
 import { PackCollisions, Pack } from "./packFileTypes";
 import { findPackFileCollisions, findPackTableCollisions } from "./packFileSerializer";
+import equal from "fast-deep-equal";
 
 export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCollisions> {
   return await new Promise<PackCollisions>((resolve, reject) => {
@@ -17,9 +18,18 @@ export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCo
   });
 }
 
-export function getCompatData(packsData: Pack[]): PackCollisions {
+export function getCompatData(
+  packsData: Pack[],
+  onPackChecked?: (
+    currentIndex: number,
+    maxIndex: number,
+    firstPackName: string,
+    secondPackName: string,
+    type: "Files" | "TableKeys"
+  ) => void
+): PackCollisions {
   return {
-    packFileCollisions: findPackFileCollisions(packsData),
-    packTableCollisions: findPackTableCollisions(packsData),
+    packFileCollisions: findPackFileCollisions(packsData, onPackChecked),
+    packTableCollisions: findPackTableCollisions(packsData, onPackChecked),
   };
 }

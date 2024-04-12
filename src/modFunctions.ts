@@ -2,7 +2,6 @@ import { fork } from "child_process";
 import { parse, getTime } from "date-fns";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
-import * as fsPromises from "fs/promises";
 import * as dumbfs from "fs";
 import appData from "./appData";
 import fetch from "electron-fetch";
@@ -59,7 +58,7 @@ export function fetchModData(
           if (match && match[1] != null) {
             humanName = decodeHTML(match[1]);
           } else {
-            log(`failed reading humanName for ${workshopId}`);
+            log(`failed fetching humanName for ${workshopId}`);
 
             const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
             const match = body.match(regexpDeleted);
@@ -80,10 +79,10 @@ export function fetchModData(
             if (match && match[1] != null) {
               author = decodeHTML(decodeHTML(match[1])); // the author is already encoded in the steam page here for some reason
             } else {
-              log(`failed reading author for ${workshopId}`);
+              log(`failed fetching author for ${workshopId}`);
             }
           } else {
-            log(`failed reading author for ${workshopId}`);
+            log(`failed fetching author for ${workshopId}`);
           }
         } catch (err) {
           log(`failed fetching mod page for ${workshopId}`);
@@ -201,9 +200,10 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   let size = -1;
   let isSymbolicLink = false;
   try {
-    [lastChangedLocal, size, isSymbolicLink] = await fsPromises.lstat(filePath).then((stats) => {
-      return [stats.mtimeMs, stats.size, stats.isSymbolicLink()] as [number, number, boolean];
-    });
+    const stats = await dumbfs.lstatSync(filePath);
+    lastChangedLocal = stats.mtimeMs;
+    size = stats.size;
+    isSymbolicLink = stats.isSymbolicLink();
   } catch (err) {
     log(`ERROR: ${err}`);
   }
@@ -211,7 +211,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   let doesThumbnailExist = false;
   const thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".png"));
   try {
-    await fsPromises.access(thumbnailPath, dumbfs.constants.R_OK);
+    await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
     doesThumbnailExist = true;
     // eslint-disable-next-line no-empty
   } catch {}
@@ -251,7 +251,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
 
   const vanillaPacks: string[] = [];
   try {
-    const data = await fsPromises.readFile(nodePath.join(gameDir, "data", "manifest.txt"), "utf8");
+    const data = await dumbfs.readFileSync(nodePath.join(gameDir, "data", "manifest.txt"), "utf8");
     const re = /([^\s]+)/;
     data.split("\n").map((line) => {
       const found = line.match(re);
@@ -264,7 +264,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
       vanillaPacks.splice(0, 0, ...(gameToManifest[appData.currentGame] as string[]));
   }
 
-  const files = await fsPromises.readdir(dataPath, { withFileTypes: true });
+  const files = await dumbfs.readdirSync(dataPath, { withFileTypes: true });
 
   const dataModsPromises = files
     .filter(
@@ -324,7 +324,7 @@ const getSteamAppsFolder = async () => {
   if (!dumbfs.existsSync(libFoldersPath)) return;
   console.log(`Found libraryfolders.vdf at ${libFoldersPath}`);
 
-  const data = await fsPromises.readFile(libFoldersPath, "utf8");
+  const data = await dumbfs.readFileSync(libFoldersPath, "utf8");
   const object = VDF.parse(data).libraryfolders;
   const paths = [];
   for (const property in object) {
@@ -339,7 +339,7 @@ const getSteamAppsFolder = async () => {
       `appmanifest_${gameToSteamId[appData.currentGame]}.acf`
     );
     try {
-      await fsPromises.readFile(worshopFilePath, "utf8"); // try to read the file to check for its existence
+      await dumbfs.readFileSync(worshopFilePath, "utf8"); // try to read the file to check for its existence
       console.log(`Found appmanifest_${gameToSteamId[appData.currentGame]}.acf at ${worshopFilePath}`);
 
       const steamAppsFolderPath = nodePath.join(path, "steamapps");
@@ -361,7 +361,7 @@ export const getLastUpdated = async () => {
       `appmanifest_${gameToSteamId[appData.currentGame]}.acf`
     );
 
-    const appmanifest = await fsPromises.readFile(appmanifestFilePath, "utf8");
+    const appmanifest = await dumbfs.readFileSync(appmanifestFilePath, "utf8");
     const lastUpdated = VDF.parse(appmanifest).AppState.LastUpdated;
     console.log("lastUpdated:", lastUpdated);
     return lastUpdated;
@@ -407,14 +407,12 @@ export async function getContentModInFolder(
 
   let subbedTime = -1;
   try {
-    [subbedTime] = await fsPromises.stat(contentSubfolder).then((stats) => {
-      return [stats.birthtimeMs];
-    });
+    subbedTime = dumbfs.statSync(contentSubfolder).birthtimeMs;
   } catch (err) {
     log(`ERROR: ${err}`);
   }
 
-  const files = await fsPromises.readdir(contentSubfolder, {
+  const files = await dumbfs.readdirSync(contentSubfolder, {
     withFileTypes: true,
   });
 
@@ -427,11 +425,10 @@ export async function getContentModInFolder(
   let size = -1;
   let isSymbolicLink = false;
   try {
-    [lastChangedLocal, size, isSymbolicLink] = await fsPromises
-      .lstat(nodePath.join(contentSubfolder, pack.name))
-      .then((stats) => {
-        return [stats.mtimeMs, stats.size, stats.isSymbolicLink()] as [number, number, boolean];
-      });
+    const stats = await dumbfs.lstatSync(nodePath.join(contentSubfolder, pack.name));
+    lastChangedLocal = stats.mtimeMs;
+    size = stats.size;
+    isSymbolicLink = stats.isSymbolicLink();
   } catch (err) {
     log(`ERROR: ${err}`);
   }
@@ -482,7 +479,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
     dataMods.filter((mod) => mod.isSymbolicLink)
   );
 
-  const files = await fsPromises.readdir(contentFolder, { withFileTypes: true });
+  const files = await dumbfs.readdirSync(contentFolder, { withFileTypes: true });
   const newMods = files
     .filter((file) => file.isDirectory())
     .map(async (contentSubFolder) => {

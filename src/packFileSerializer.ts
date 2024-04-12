@@ -418,9 +418,9 @@ const getGUID = () => {
 const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[], enabledMods: Mod[]) => {
   // console.log(packsData);
   // console.log(packsData.filter((packData) => packData == null));
-  const dataPack = packsData.find((packData) => packData.name === "data.pack");
-  if (!dataPack) return;
-  const vanillaBattlePersmission = dataPack.packedFiles.find((pf) =>
+  const dataDBPack = packsData.find((packData) => packData.name === "db.pack");
+  if (!dataDBPack) return;
+  const vanillaBattlePersmission = dataDBPack.packedFiles.find((pf) =>
     pf.name.startsWith("db\\units_custom_battle_permissions_tables\\")
   );
   if (!vanillaBattlePersmission) return;
@@ -528,6 +528,7 @@ export const getDBVersion = (packFile: PackedFile) => {
 };
 
 export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: boolean) => {
+  console.log("getPackViewData:", pack.name, table);
   const tables = pack.packedFiles.map((packedFile) => packedFile.name);
   const locFiles: Record<string, PackedFile> = {};
   if (getLocs) {
@@ -553,10 +554,12 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
     if (getLocs) {
       packedFiles = packedFiles.concat(Object.values(locFiles));
     }
+    // console.log("getpackviewdata packedFiles:", packedFiles);
     for (const packedFile of packedFiles) {
       const amendedSchemaFields: AmendedSchemaField[] = [];
       const dbversion = locFiles[packedFile.name] ? LocVersion : getDBVersion(packedFile);
       if (!dbversion) {
+        console.log("no dbversion for", packedFile.name);
         return;
       }
 
@@ -1735,7 +1738,7 @@ export const readPack = async (
     if (fileId >= 0) fs.closeSync(fileId);
   }
 
-  // console.log("read " + modName);
+  // console.log("readPack:", modPath);
   // const mod = toRead.find((iterMod) => modName === iterMod.name);
   // if (mod) {
   //   toRead.splice(toRead.indexOf(mod), 1);
@@ -1958,6 +1961,7 @@ export function appendPackTableCollisions(
     if (pack === newPack) continue;
     if (pack.name === newPack.name) continue;
     if (pack.name === "data.pack" || newPack.name === "data.pack") continue;
+    if (pack.name === "db.pack" || newPack.name === "db.pack") continue;
 
     findPackTableCollisionsBetweenPacks(pack, newPack, packTableCollisions);
   }
@@ -1966,9 +1970,10 @@ export function appendPackTableCollisions(
   return packTableCollisions;
 }
 
-export function findPackTableCollisions(packsData: Pack[]) {
+export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
   const packTableCollisions: PackTableCollision[] = [];
-  console.time("compareKeys");
+  console.time("findPackTableCollisions");
+  if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     for (let j = i + 1; j < packsData.length; j++) {
@@ -1976,12 +1981,14 @@ export function findPackTableCollisions(packsData: Pack[]) {
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
       if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
+      if (pack.name === "db.pack" || packTwo.name === "db.pack") continue;
 
       findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
     }
+    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "Files");
   }
 
-  console.timeEnd("compareKeys");
+  console.timeEnd("findPackTableCollisions");
 
   return packTableCollisions;
 }
@@ -2005,6 +2012,7 @@ export function appendPackFileCollisions(
     if (pack === newPack) continue;
     if (pack.name === newPack.name) continue;
     if (pack.name === "data.pack" || newPack.name === "data.pack") continue;
+    if (pack.name === "db.pack" || newPack.name === "db.pack") continue;
 
     findPackFileCollisionsBetweenPacks(pack, newPack, packFileCollisions);
   }
@@ -2036,20 +2044,19 @@ function findPackFileCollisionsBetweenPacks(pack: Pack, packTwo: Pack, conflicts
   }
 }
 
-export function findPackFileCollisions(packsData: Pack[]) {
+export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
   console.time("findPackFileCollisions");
   const conflicts: PackFileCollision[] = [];
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     for (let j = i + 1; j < packsData.length; j++) {
-      // for (let j = 0; j < packsData.length; j++) {
       const packTwo = packsData[j];
-      // for (const pack of packsData) {
-      // for (const packTwo of packsData) {
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
       if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
+      if (pack.name === "db.pack" || packTwo.name === "db.pack") continue;
 
+      if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");
       findPackFileCollisionsBetweenPacks(pack, packTwo, conflicts);
     }
   }

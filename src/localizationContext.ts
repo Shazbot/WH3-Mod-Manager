@@ -45,7 +45,7 @@ export const staticTextIds: Record<string, string | number> = {
   key: "key",
   readingAndComparingPacks: "Reading And Comparing Packs...",
   waitForReadingAndComparingPacks:
-    "Wait until all the mod packs have been read and compared with each other...",
+    "Please wait until all the mod packs have been read and compared with each other...",
   presetsTooltip1: "Create a new preset by typing its name.",
   presetsTooltip2: "When selecting existing preset:",
   presetsTooltip3: "Hold Shift to add mods in preset to current mods.",
@@ -315,7 +315,7 @@ export const staticTextIds: Record<string, string | number> = {
     "The Mod Manager functions the same as the CA Launcher, it creates a text file with a list of enabled mods and then launches WH3.exe with a launch argument: the name of said text file. Both the CA Launcher and the mod manager use used_mods.txt which is in the same folder where wh3.exe is.",
   faqSecondH: "How does multiplayer compatibility work?",
   faqSecondC:
-    "Both games need to have the same mods enabled, with the same load order. If any of the mods are outdated the game will also complain. The mods also need to be in the same location, so you can't have mods in the data folder with the other player having them in the content folder. A quick check would be comparing your used_mods.txt files, they should be the same.",
+    "Both players need to have the same mods enabled, with the same load order. If any of the mods are outdated due to Steam not downloading a mod update for one of the players the game will also complain. The mods also need to be in the same location, so you can't have mods in the data folder with the other player having them in the content folder. A quick check would be comparing your used_mods.txt files, they should be the same.",
   faqThirdH: "Content mods vs data mods?",
   faqThirdC1: "These refer to the 2 folders from which the mods are usually loaded.",
   faqThirdC2:
@@ -323,7 +323,7 @@ export const staticTextIds: Record<string, string | number> = {
   faqThirdC3:
     "Data folder is mostly used by modders who put their .pack files there when working on their mods. There is a performance benefit in loading time if you put all your mods in the data folder instead of content subfolders, my guess is due to having fewer folder lookup locations for assets, it's something CA should hopefully fix. That is why there are options for this in Other Options.",
   faqThirdC4:
-    "Using the Copy To Data button in Other Options will copy mods to data and they'll have a red color in the manager. But if a mod gets updated the updated version will be in the content folder so you'll have to use the button again. This can be used as a way to keep all your mods un-updated when a game update hits.",
+    "Using the Copy To Data button in Other Options will copy mods to data and they'll have a red color in the manager. But if a mod gets updated the updated version will be in the content folder so you'll have to use the button again. This can also be used as a way to keep all your mods un-updated when a game update hits.",
   faqThirdC5:
     "Using Create symbolic links in data is a way to have mods in data, while also having them in sync with the content mods, so they're always up-to-date but you get some performance benefits. Symbolic links are a Windows feature, basically advanced shortcuts.",
   faqFourthH: "Should I change my load order?",
@@ -337,7 +337,7 @@ export const staticTextIds: Record<string, string | number> = {
   faqFifthC2:
     "(See What is a pack file? above) Database files in a pack have priority based on the name the modder gave that file. This is an INTERNAL name for a specific file inside the mod that has nothing to do with the mod name. So if you have 2 mods that change the unit stats of Empire swordsmen the mod with the higher DATABASE FILE priority (dictated by comparing the names of the 2 files) will be the one that applies its unit stats. This uses the INTERNAL name of the database file, NOT THE NAME OF THE MOD/PACK. Changing the load order of those 2 mods does NOTHING in this case! Load order is the same as changing the EXTERNAL name of the mod file, but here we'd have to change the INTERNAL file of the mod specific database file, something lord order cannot do anything about.",
   faqFifthC3:
-    "On the other hand, for individual files that aren't database files mod priority matters. Here they can change for example the same texture or the same UI file and the mod with the higher priority (lower order) will be the one that applies its changes.",
+    "On the other hand, for individual files that aren't database files mod priority matters. Here two mods can change for example the same texture or the same UI file and the mod with the higher priority (lower order) will be the one that applies its changes.",
   faqFifthC4:
     "A lot of such individual files are related to how the unit visuals are constructed ingame, so if you have 2 visual mods that both change the visuals of the Empire swordsmen changing load order for them could dictate what visuals you end up with ingame.",
   faqFifthC5:
@@ -377,6 +377,10 @@ export const staticTextIds: Record<string, string | number> = {
   faqIssuesThirdH: "Attempting to launch with the optional parameters Steam error when launching",
   faqIssuesThirdC:
     "Not sure of the cause, I believe adding the mod manager exe into Steam as a non-Steam game and launching it that way fixes this.",
+  readingPack: "Reading pack:",
+  finishedReadingPack: "Finished reading pack:",
+  comparingFilesInPacks: "Comparing <firstPackName> files with <secondPackName>...",
+  comparingKeysInPacks: "Comparing <firstPackName> table keys with other mods...",
 };
 
 const context = createContext({});

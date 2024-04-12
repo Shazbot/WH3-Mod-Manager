@@ -85,6 +85,8 @@ declare global {
     hasConfigBeenRead: boolean;
     wasOnboardingEverRun: boolean;
     areThumbnailsEnabled: boolean;
+    lastModThatWasRead: ModReadingInfo | undefined;
+    currentlyReadingMod: ModReadingInfo | undefined;
     isClosedOnPlay: boolean;
     isAuthorEnabled: boolean;
     isDev: boolean;
@@ -97,6 +99,7 @@ declare global {
     allMods: Mod[];
     packsData: Record<string, PackViewData>;
     packCollisions: PackCollisions;
+    packCollisionsCheckProgress: PackCollisionsCheckProgressData;
     dataFromConfig?: AppStateToRead;
     newMergedPacks: NewMergedPack[];
     pathsOfReadPacks: string[];
@@ -258,6 +261,7 @@ declare global {
     duration?: number;
     startTime: number;
     isDismissed?: boolean;
+    staticToastId?: string;
   }
 
   interface ImportSteamCollection {
@@ -329,6 +333,7 @@ declare global {
     modPath: string;
     indexInMods: number;
     loadOrder?: number;
+    time: number;
   }
 
   type ToastType = "success" | "warning" | "info";
@@ -371,6 +376,27 @@ declare global {
   interface Tree {
     node: TreeNode;
   }
+
+  interface PackCollisionsCheckProgressData {
+    currentIndex: number;
+    maxIndex: number;
+    firstPackName: string;
+    secondPackName: string;
+    type: "Files" | "TableKeys";
+  }
+
+  interface ModReadingInfo {
+    name: string;
+    time: number;
+  }
+
+  type OnPackChecked = (
+    currentIndex: number,
+    maxIndex: number,
+    firstPackName: string,
+    secondPackName: string,
+    type: "Files" | "TableKeys"
+  ) => void;
 
   // type SupportedGames = "wh3" | "wh2";
 }

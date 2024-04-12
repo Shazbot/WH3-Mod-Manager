@@ -1,6 +1,6 @@
 import Creatable from "react-select/creatable";
 import Select, { ActionMeta, SingleValue } from "react-select";
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
   addPreset,
@@ -23,6 +23,11 @@ import RequiredMods from "./RequiredMods";
 import localizationContext from "../localizationContext";
 import Help from "./Help";
 
+type OptionType = {
+  value: string;
+  label: string;
+};
+
 const Sidebar = React.memo(() => {
   const dispatch = useAppDispatch();
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
@@ -37,6 +42,8 @@ const Sidebar = React.memo(() => {
   const outdatedPackFiles = useAppSelector((state) => state.app.outdatedPackFiles);
   const dataModLastChangedLocal = useAppSelector((state) => state.app.dataModLastChangedLocal);
   const currentGame = useAppSelector((state) => state.app.currentGame);
+  const removedModsData = useAppSelector((state) => state.app.removedModsData);
+
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
@@ -56,7 +63,32 @@ const Sidebar = React.memo(() => {
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
-  const playGameClicked = () => {
+  const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  const playGameClicked = async () => {
+    console.log("playGameClicked: play game clicked");
+    if (removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)) {
+      console.log(
+        `playGameClicked: An enabled mod was recently removed. Waiting 3.5 seconds before starting.`,
+        Date.now()
+      );
+      if (!playDelayTimeoutId.current) {
+        playDelayTimeoutId.current = setTimeout(() => {
+          console.log("playGameClicked: triggering delayed plya game", Date.now());
+          playDelayTimeoutId.current = undefined;
+          dispatch(createOnGameStartPreset());
+          window.api?.startGame(mods, areModsInOrder, {
+            isMakeUnitsGeneralsEnabled,
+            isSkipIntroMoviesEnabled,
+            isScriptLoggingEnabled,
+            isAutoStartCustomBattleEnabled,
+            isClosedOnPlay,
+            packDataOverwrites,
+          });
+        }, 3500);
+      }
+      return;
+    }
     dispatch(createOnGameStartPreset());
     window.api?.startGame(mods, areModsInOrder, {
       isMakeUnitsGeneralsEnabled,
@@ -66,11 +98,6 @@ const Sidebar = React.memo(() => {
       isClosedOnPlay,
       packDataOverwrites,
     });
-  };
-
-  type OptionType = {
-    value: string;
-    label: string;
   };
 
   const options: OptionType[] = useAppSelector((state) =>
@@ -498,7 +525,7 @@ const Sidebar = React.memo(() => {
                   "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
                 ""
               }`}
-              onClick={() => playGameClicked()}
+              onClick={async () => await playGameClicked()}
             >
               {(isWH3Running && (
                 <div className="make-tooltip-w-full">
@@ -588,7 +615,7 @@ const Sidebar = React.memo(() => {
         <div className="mt-4">
           <div className="text-center mt-4">
             <button
-              onClick={() => window.api?.requestOpenModInViewer("data.pack")}
+              onClick={() => window.api?.requestOpenModInViewer("db.pack")}
               className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
             >

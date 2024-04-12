@@ -12,6 +12,7 @@ import { SortingType } from "./utility/modRowSorting";
 import { compareModNames, sortAsInPreset, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import initialState from "./initialAppState";
 import equal from "fast-deep-equal";
+import { MdSplitscreen } from "react-icons/md";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -493,6 +494,7 @@ const appSlice = createSlice({
         isEnabled: removedMod.isEnabled,
         indexInMods: state.currentPreset.mods.indexOf(removedMod),
         loadOrder: removedMod.loadOrder,
+        time: Date.now(),
       });
       state.removedModsCategories[removedMod.path] = removedMod.categories ?? [];
 
@@ -588,6 +590,12 @@ const appSlice = createSlice({
     // },
     setPackCollisions: (state: AppState, action: PayloadAction<PackCollisions>) => {
       state.packCollisions = action.payload;
+    },
+    setPackCollisionsCheckProgress: (
+      state: AppState,
+      action: PayloadAction<PackCollisionsCheckProgressData>
+    ) => {
+      state.packCollisionsCheckProgress = action.payload;
     },
     setAppFolderPaths: (state: AppState, action: PayloadAction<GameFolderPaths>) => {
       state.appFolderPaths = action.payload;
@@ -847,6 +855,32 @@ const appSlice = createSlice({
         if (currentPreset.mods) setCurrentPresetToMods(state, currentPreset.mods);
       }
     },
+    setCurrentlyReadingMod: (state: AppState, action: PayloadAction<string>) => {
+      state.currentlyReadingMod = { name: action.payload, time: Date.now() };
+
+      const existingToast = state.toasts.find((toast) => toast.staticToastId == "modReadingInfo");
+      if (existingToast) state.toasts.splice(state.toasts.indexOf(existingToast), 1);
+
+      state.toasts.push({
+        type: "info",
+        messages: ["loc:readingPack", action.payload],
+        startTime: Date.now(),
+        staticToastId: "modReadingInfo",
+      } as Toast);
+    },
+    setLastModThatWasRead: (state: AppState, action: PayloadAction<string>) => {
+      state.lastModThatWasRead = { name: action.payload, time: Date.now() };
+
+      const existingToast = state.toasts.find((toast) => toast.staticToastId == "modReadingInfo");
+      if (existingToast) state.toasts.splice(state.toasts.indexOf(existingToast), 1);
+
+      state.toasts.push({
+        type: "info",
+        messages: ["loc:finishedReadingPack", action.payload],
+        startTime: Date.now(),
+        staticToastId: "modReadingInfo",
+      } as Toast);
+    },
     setIsOnboardingToRun: (state: AppState, action: PayloadAction<boolean>) => {
       state.isOnboardingToRun = action.payload;
     },
@@ -1087,6 +1121,7 @@ export const {
   setPacksData,
   setPacksDataRead,
   setPackCollisions,
+  setPackCollisionsCheckProgress,
   setAppFolderPaths,
   setHasConfigBeenRead,
   setWarhammer3Folder,
@@ -1095,6 +1130,8 @@ export const {
   setOutdatedPackFiles,
   setDataModLastChangedLocal,
   setIsModEnabled,
+  setCurrentlyReadingMod,
+  setLastModThatWasRead,
   selectDBTable,
   setCurrentTab,
   setAreModsEnabled,

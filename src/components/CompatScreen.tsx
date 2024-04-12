@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useContext } from "react";
+import React, { memo, useCallback, useContext, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { Modal } from "../flowbite/components/Modal/index";
 import { Spinner, Tabs, Tooltip } from "../flowbite";
@@ -9,25 +9,72 @@ import { PackTableCollision } from "../packFileTypes";
 import { setPackCollisions } from "../appSlice";
 import localizationContext from "../localizationContext";
 
+let cachedIsCompatOpen = false;
+
 const CompatScreen = memo(() => {
   const dispatch = useAppDispatch();
   const packCollisions = useAppSelector((state) => state.app.packCollisions);
   const pathsOfReadPacks = useAppSelector((state) => state.app.pathsOfReadPacks);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const packCollisionsCheckProgress = useAppSelector((state) => state.app.packCollisionsCheckProgress);
   const sortedMods = sortByNameAndLoadOrder(mods);
   const enabledMods = sortedMods.filter((iterMod) => iterMod.isEnabled);
 
+  const [lastPackCollisionCheckProgressIndex, setLastPackCollisionCheckProgressIndex] = React.useState(-1);
   const [isCompatOpen, setIsCompatOpen] = React.useState(false);
-  const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
+  const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(true);
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
+
+  useEffect(() => {
+    if (!cachedIsCompatOpen && isCompatOpen) {
+      console.log(
+        "Compat Panel is opened, getCompatData called with useEnabledModsOnly:",
+        useEnabledModsOnly
+      );
+      if (useEnabledModsOnly) {
+        window.api?.getCompatData(enabledMods);
+      } else {
+        window.api?.getCompatData(mods);
+      }
+    }
+    if (cachedIsCompatOpen && !isCompatOpen) {
+      console.log("Compat Panel is closed, getting rid of compat data");
+      dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
+    }
+    cachedIsCompatOpen = isCompatOpen;
+  });
+
+  if (
+    lastPackCollisionCheckProgressIndex == -1 &&
+    lastPackCollisionCheckProgressIndex != packCollisionsCheckProgress.currentIndex &&
+    packCollisionsCheckProgress.currentIndex != packCollisionsCheckProgress.maxIndex
+  ) {
+    console.log(
+      "in CompatScreen, first if",
+      lastPackCollisionCheckProgressIndex,
+      packCollisionsCheckProgress.currentIndex,
+      packCollisionsCheckProgress.maxIndex
+    );
+    setLastPackCollisionCheckProgressIndex(packCollisionsCheckProgress.currentIndex);
+    setIsSpinnerClosed(false);
+  }
+  if (
+    lastPackCollisionCheckProgressIndex != -1 &&
+    packCollisionsCheckProgress.currentIndex == packCollisionsCheckProgress.maxIndex
+  ) {
+    console.log(
+      "in CompatScreen, second if",
+      lastPackCollisionCheckProgressIndex,
+      packCollisionsCheckProgress.currentIndex,
+      packCollisionsCheckProgress.maxIndex
+    );
+    setIsSpinnerClosed(true);
+    setLastPackCollisionCheckProgressIndex(-1);
+  }
 
   const localized: Record<string, string> = useContext(localizationContext);
   const compatHelpTwo = ((localized.compatHelpTwo ?? "").includes("STAR_ICON") &&
     localized.compatHelpTwo.split("STAR_ICON")) || ["", ""];
-
-  const isPackProcessingDone = ((useEnabledModsOnly && enabledMods) || mods).every((mod) =>
-    pathsOfReadPacks.some((path) => path == mod.path)
-  );
 
   const groupedPackFileCollisions: Record<string, Record<string, string[]>> = {};
   if (packCollisions.packFileCollisions) {
@@ -102,16 +149,7 @@ const CompatScreen = memo(() => {
       <div className="text-center mt-4">
         <button
           onClick={() =>
-            setIsCompatOpen((wasOpen) => {
-              if (!wasOpen) {
-                if (useEnabledModsOnly) {
-                  window.api?.getCompatData(enabledMods);
-                } else {
-                  window.api?.getCompatData(mods);
-                }
-              } else {
-                dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
-              }
+            setIsCompatOpen(() => {
               return !isCompatOpen;
             })
           }
@@ -353,15 +391,44 @@ const CompatScreen = memo(() => {
 
       <Modal
         onClose={() => setIsSpinnerClosed(true)}
-        show={!isSpinnerClosed && isCompatOpen && !isPackProcessingDone}
+        show={!isSpinnerClosed && isCompatOpen}
+        // show={true}
         size="2xl"
         position="center"
       >
         <Modal.Header>{localized.readingAndComparingPacks}</Modal.Header>
         <Modal.Body>
-          <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
+          <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300 mb-4">
             {localized.waitForReadingAndComparingPacks}
           </p>
+          {packCollisionsCheckProgress.firstPackName != "" &&
+            packCollisionsCheckProgress.secondPackName != "" && (
+              <p className="mb-4">
+                {localized.comparingFilesInPacks &&
+                  localized.comparingFilesInPacks
+                    .replace("<firstPackName>", packCollisionsCheckProgress.firstPackName)
+                    .replace("<secondPackName>", packCollisionsCheckProgress.secondPackName)}
+              </p>
+            )}
+          {packCollisionsCheckProgress.firstPackName != "" &&
+            packCollisionsCheckProgress.secondPackName == "" && (
+              <p className="mb-4">
+                {localized.comparingKeysInPacks.replace(
+                  "<firstPackName>",
+                  packCollisionsCheckProgress.firstPackName
+                )}
+              </p>
+            )}
+          <div className="w-full h-5 bg-gray-200 rounded-full dark:bg-gray-600">
+            <div
+              className="h-5 bg-blue-600 rounded-full dark:bg-blue-500"
+              style={{
+                width: `${
+                  (packCollisionsCheckProgress.currentIndex / packCollisionsCheckProgress.maxIndex) * 100
+                }%`,
+              }}
+            ></div>
+          </div>
           <div className="text-center mt-8">
             <Spinner color="purple" size="xl" />
           </div>

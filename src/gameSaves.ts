@@ -1,7 +1,7 @@
 import * as chokidar from "chokidar";
 import { app } from "electron";
 import * as path from "path";
-import * as fs from "fs/promises";
+import * as fs from "fs";
 import { gameToAppDataFolderName } from "./supportedGames";
 import appData from "./appData";
 
@@ -21,15 +21,13 @@ export const getSavesFolderPath = () => {
 export const getSaveFiles = async () => {
   saves = [];
   const folderPath = getSavesFolderPath();
-  const files = await fs.readdir(folderPath, { withFileTypes: true });
+  const files = await fs.readdirSync(folderPath, { withFileTypes: true });
 
   for (const saveFile of files) {
     if (!saves.find((iterSave) => iterSave.name === saveFile.name)) {
       let lastChanged: number | undefined;
       try {
-        lastChanged = await fs.stat(path.join(folderPath, saveFile.name)).then((stats) => {
-          return stats.mtimeMs;
-        });
+        lastChanged = await fs.statSync(path.join(folderPath, saveFile.name)).mtimeMs;
       } catch (e) {
         console.log(e);
       }
@@ -45,9 +43,7 @@ const addNewSave = async function (savePath: string) {
   if (!saves.find((iterSave) => iterSave.name === basename)) {
     let lastChanged: number | undefined;
     try {
-      lastChanged = await fs.stat(savePath).then((stats) => {
-        return stats.mtimeMs;
-      });
+      lastChanged = await fs.statSync(savePath).mtimeMs;
     } catch (e) {
       console.log(e);
     }
