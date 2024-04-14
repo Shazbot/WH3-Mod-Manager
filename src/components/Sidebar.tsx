@@ -22,6 +22,7 @@ import CompatScreen from "./CompatScreen";
 import RequiredMods from "./RequiredMods";
 import localizationContext from "../localizationContext";
 import Help from "./Help";
+import { gameToPackWithDBTablesName } from "../supportedGames";
 
 type OptionType = {
   value: string;
@@ -615,7 +616,9 @@ const Sidebar = React.memo(() => {
         <div className="mt-4">
           <div className="text-center mt-4">
             <button
-              onClick={() => window.api?.requestOpenModInViewer("db.pack")}
+              onClick={() =>
+                window.api?.requestOpenModInViewer(gameToPackWithDBTablesName[currentGame] || "db.pack")
+              }
               className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
             >

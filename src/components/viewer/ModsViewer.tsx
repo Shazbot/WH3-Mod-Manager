@@ -7,11 +7,14 @@ import PackTablesTableView from "./PackTablesTableView";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
 import localizationContext from "../../localizationContext";
+import { gameToPackWithDBTablesName } from "../../supportedGames";
 
 const ModsViewer = React.memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
-  const packPath = currentDBTableSelection?.packPath ?? "db.pack";
+  const currentGame = useAppSelector((state) => state.app.currentGame);
+  const packPath =
+    currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
 
   const [isOpen, setIsOpen] = React.useState(true);
 

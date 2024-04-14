@@ -167,5 +167,3 @@ export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProp
 
   return JSON.parse(data);
 }
-
-export { dataToWrite };

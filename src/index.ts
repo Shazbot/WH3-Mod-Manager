@@ -6,6 +6,7 @@ import {
   gameToSupportedGameOptions,
   supportedGameOptionToStartGameOption,
   supportedGameOptions,
+  gameToVanillaPacksData,
 } from "./supportedGames";
 import * as cheerio from "cheerio";
 import debounce from "just-debounce-it";
@@ -20,7 +21,7 @@ import * as fs from "fs";
 import { updateAvailable } from "gh-release-fetch";
 import { version } from "../package.json";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
-import { readAppConfig, setStartingAppState, writeAppConfig, dataToWrite } from "./appConfigFunctions";
+import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
 import {
   fetchModData,
   getContentModInFolder,
@@ -57,7 +58,6 @@ import { getCompatData } from "./packFileDataManager";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import i18n from "./configs/i18next.config";
 import { tryOpenFile } from "./utility/fileHelpers";
-import vanillaPacksData from "./data/vanillaPacks";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -234,7 +234,7 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
 
       if (
-        appData.vanillaPacks.length == vanillaPacksData.length &&
+        appData.vanillaPacks.length == gameToVanillaPacksData[appData.currentGame].length &&
         !appData.vanillaPacks.find((vanillaPack) => vanillaPack == newPack)
       ) {
         const overwrittenFileNames = newPack.packedFiles
@@ -452,7 +452,7 @@ if (!gotTheLock) {
 
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
       if (dataFolder) {
-        for (const vanillaPackData of vanillaPacksData) {
+        for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
           const baseVanillaPackName = vanillaPackData.name;
           const dataPackPath = nodePath.join(dataFolder, baseVanillaPackName);
           const dataMod: Mod = {
@@ -1068,7 +1068,7 @@ if (!gotTheLock) {
       console.log(`getPackData ${packPath}`);
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
       if (table) console.log("GETTING TABLE ", table.dbName, table.dbSubname);
-      for (const vanillaPackData of vanillaPacksData) {
+      for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
         const baseVanillaPackName = vanillaPackData.name;
         if (packPath == baseVanillaPackName || nodePath.basename(packPath) == baseVanillaPackName) {
           if (!dataFolder) {
@@ -1178,7 +1178,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
-      for (const vanillaPackData of vanillaPacksData) {
+      for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
         const baseVanillaPackName = vanillaPackData.name;
         if (modPath == baseVanillaPackName) {
           modPath = nodePath.join(
@@ -1784,7 +1784,7 @@ if (!gotTheLock) {
 
         const linuxBit = process.platform === "linux" ? "Z:" : "";
         const vanillaPacks = [];
-        for (const vanillaPackData of vanillaPacksData) {
+        for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
           const baseVanillaPackName = vanillaPackData.name;
           const dataMod: Mod = {
             humanName: "",
