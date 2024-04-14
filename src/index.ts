@@ -484,14 +484,14 @@ if (!gotTheLock) {
             );
             if (dataPackData) {
               appData.vanillaPacks.push(dataPackData);
-
-              await fetchGameUpdates();
             }
             if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
               appendPacksData(dataPackData);
             }
           }
         }
+
+        await fetchGameUpdates();
       }
 
       try {
@@ -776,7 +776,7 @@ if (!gotTheLock) {
           if (i18n.language != languageInConfig) i18n.changeLanguage(languageInConfig);
         } catch (err) {
           mainWindow?.webContents.send("failedReadingConfig");
-          console.log(err);
+          if (err instanceof Error) console.log(err.message);
         }
 
         const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
