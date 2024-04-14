@@ -6,6 +6,7 @@ import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
 import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
 import { selectDBTable } from "../../appSlice";
+import { gameToPackWithDBTablesName } from "../../supportedGames";
 
 type PackTablesTreeViewProps = {
   tableFilter: string;
@@ -14,10 +15,12 @@ type PackTablesTreeViewProps = {
 const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
+  const currentGame = useAppSelector((state) => state.app.currentGame);
 
   const packsData = useAppSelector((state) => state.app.packsData);
 
-  const packPath = currentDBTableSelection?.packPath ?? "db.pack";
+  const packPath =
+    currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const packData = packsData[packPath];
   // const packData = currentPackData.data;
   if (!packData) {

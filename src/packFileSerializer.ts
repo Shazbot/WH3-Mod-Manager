@@ -14,7 +14,6 @@ import {
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
-import { app } from "electron";
 import { DBNameToDBVersions, LocVersion, locFields } from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
@@ -26,7 +25,7 @@ import { compareModNames } from "./modSortingHelpers";
 import { getDBName } from "./utility/packFileHelpers";
 import getPackTableData, { isSchemaFieldNumber } from "./utility/packDataHandling";
 import deepClone from "clone-deep";
-import { gameToIntroMovies } from "./supportedGames";
+import { gameToIntroMovies, vanillaPackNames } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
 
@@ -1734,8 +1733,12 @@ export const readPack = async (
   } catch (e) {
     console.log(e);
   } finally {
-    if (file) await file.close();
-    if (fileId >= 0) fs.closeSync(fileId);
+    try {
+      if (file) await file.close();
+      if (fileId >= 0) fs.closeSync(fileId);
+    } catch (e) {
+      console.log(e);
+    }
   }
 
   // console.log("readPack:", modPath);
@@ -1960,8 +1963,7 @@ export function appendPackTableCollisions(
     const pack = packsData[i];
     if (pack === newPack) continue;
     if (pack.name === newPack.name) continue;
-    if (pack.name === "data.pack" || newPack.name === "data.pack") continue;
-    if (pack.name === "db.pack" || newPack.name === "db.pack") continue;
+    if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(newPack.name)) continue;
 
     findPackTableCollisionsBetweenPacks(pack, newPack, packTableCollisions);
   }
@@ -1980,8 +1982,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
-      if (pack.name === "db.pack" || packTwo.name === "db.pack") continue;
+      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
 
       findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
     }
@@ -2011,8 +2012,7 @@ export function appendPackFileCollisions(
     const pack = packsData[i];
     if (pack === newPack) continue;
     if (pack.name === newPack.name) continue;
-    if (pack.name === "data.pack" || newPack.name === "data.pack") continue;
-    if (pack.name === "db.pack" || newPack.name === "db.pack") continue;
+    if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(newPack.name)) continue;
 
     findPackFileCollisionsBetweenPacks(pack, newPack, packFileCollisions);
   }
@@ -2053,8 +2053,7 @@ export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPack
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (pack.name === "data.pack" || packTwo.name === "data.pack") continue;
-      if (pack.name === "db.pack" || packTwo.name === "db.pack") continue;
+      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
 
       if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");
       findPackFileCollisionsBetweenPacks(pack, packTwo, conflicts);

@@ -49,6 +49,42 @@ export const gameToAppDataFolderName: Record<SupportedGames, string> = {
   threeKingdoms: "ThreeKingdoms",
 };
 
+export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
+  wh2: "data.pack",
+  wh3: "db.pack",
+  threeKingdoms: "database.pack",
+};
+
+export const gameToVanillaPacksData = {
+  wh2: [
+    {
+      name: "data.pack",
+    },
+  ],
+  wh3: [
+    {
+      name: "data.pack",
+    },
+    { name: "db.pack" },
+    { name: "data_script.pack" },
+  ],
+  threeKingdoms: [
+    {
+      name: "data.pack",
+    },
+    {
+      name: "database.pack",
+    },
+  ],
+};
+
+export const vanillaPackNames: string[] = [];
+for (const vanillaPacksData of Object.values(gameToVanillaPacksData)) {
+  for (const vanillaPackData of vanillaPacksData) {
+    if (!vanillaPackNames.includes(vanillaPackData.name)) vanillaPackNames.push(vanillaPackData.name);
+  }
+}
+
 export const gameToIntroMovies: Record<SupportedGames, string[]> = {
   wh2: [
     // "movies\\startup_movie_01.ca_vp8",

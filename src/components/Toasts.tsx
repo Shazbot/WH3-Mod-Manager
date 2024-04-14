@@ -96,7 +96,11 @@ export const Toasts = memo(() => {
                 const localizedMessage = message.startsWith("loc:")
                   ? localized[message.substring(4)]
                   : message;
-                return <p key={i}>{localizedMessage}</p>;
+                return (
+                  <p className="break-all" key={i}>
+                    {localizedMessage}
+                  </p>
+                );
               })}
             </div>
             <Toast.Toggle onClick={() => onToastClicked(toast)} />
