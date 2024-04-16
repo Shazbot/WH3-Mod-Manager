@@ -58,7 +58,7 @@ export interface PackTableCollision extends PackFileCollision {
 export type DBFileName = string;
 export type DBFieldName = string;
 
-interface DBRefOrigin {
+export interface DBRefOrigin {
   originDBFileName: DBFileName;
   targetDBFileName: DBFileName;
   value: string;
