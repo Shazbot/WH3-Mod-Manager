@@ -27,6 +27,7 @@ interface AppData {
   currentGame: SupportedGames;
   gameToCurrentPreset: Record<SupportedGames, Preset | undefined>;
   gameToPresets: Record<SupportedGames, Preset[]>;
+  vanillaPacksDBFileNames: string[];
 }
 
 export type GameFolderPaths = {
@@ -58,6 +59,7 @@ const appData = {
   isWH3Running: false,
   currentGame: "wh3",
   vanillaPacks: [],
+  vanillaPacksDBFileNames: [],
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
