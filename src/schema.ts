@@ -1,7 +1,7 @@
 import * as wh3Schema from "../schema/schema_wh3.json";
 import * as wh2Schema from "../schema/schema_wh2.json";
 import * as threeKingdomsSchema from "../schema/schema_3k.json";
-import { SCHEMA_FIELD_TYPE } from "./packFileTypes";
+import { SCHEMA_FIELD_TYPE, DBFieldName, DBFileName } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 
 export interface DBField {
@@ -88,4 +88,92 @@ for (const table_name in wh2Definitions) {
 const threeKingdomsDefinitions = (threeKingdomsSchema as { definitions: any }).definitions as any;
 for (const table_name in threeKingdomsDefinitions) {
   DBNameToDBVersions["threeKingdoms"][table_name] = threeKingdomsDefinitions[table_name];
+}
+
+// gameToReferences stores all the tables and their keys that are referenced by at least 1 other table field
+// these are all the fields that are BEING referenced by other fields
+// for example:
+// {
+//   "wh3": {
+//     "agent_ability_categories_tables": ["category"],
+//     "unit_abilities_tables": ["key"],
+// ...
+
+export const gameToReferences: Record<SupportedGames, Record<string, string[]>> = {
+  wh3: {},
+  wh2: {},
+  threeKingdoms: {},
+};
+for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
+  for (const [tableName, versions] of Object.entries(tableVersions)) {
+    for (const version of versions) {
+      for (const field of version.fields) {
+        if (field.is_reference) {
+          const dbFileNameRef = `${field.is_reference[0]}_tables`;
+          const dbFieldNameRef = field.is_reference[1];
+
+          // if a table is referenced but doesn't have a schema skip it
+          if (!tableVersions[dbFileNameRef]) {
+            // if (gameName == "wh3") console.log("REFERENCED TABLE DOESN'T EXIST:", dbFileNameRef);
+            continue;
+          }
+
+          gameToReferences[gameName as SupportedGames][dbFileNameRef] =
+            gameToReferences[gameName as SupportedGames][dbFileNameRef] || [];
+
+          if (!gameToReferences[gameName as SupportedGames][dbFileNameRef].includes(dbFieldNameRef))
+            gameToReferences[gameName as SupportedGames][dbFileNameRef].push(dbFieldNameRef);
+        }
+      }
+    }
+  }
+}
+
+// gameToDBFieldsThatReference stores all the tables and their keys that reference another table field
+// these are all the fields that are DOING THE REFERENCING
+// for example:
+// {
+//   "wh3": {
+//     "abilities_tables": { "category": ["agent_ability_categories_tables", "category"] },
+//     "ability_to_ui_collection_junctions_tables": {
+//       "ability": ["unit_abilities_tables", "key"],
+//       "collection": ["ability_ui_collections_tables", "ability_collection"]
+//     },
+//     "achievement_agent_condition_junctions_tables": {
+//       "achievement_key": ["achievements_tables", "key"],
+//       "condition_key": ["agent_conditions_tables", "condition_key"]
+//     },
+
+export const gameToDBFieldsThatReference: Record<
+  SupportedGames,
+  Record<DBFileName, Record<DBFieldName, string[]>>
+> = {
+  wh3: {},
+  wh2: {},
+  threeKingdoms: {},
+};
+for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
+  for (const [tableName, versions] of Object.entries(tableVersions)) {
+    for (const version of versions) {
+      for (const field of version.fields) {
+        if (field.is_reference) {
+          const dbFileNameRef = `${field.is_reference[0]}_tables`;
+          const dbFieldNameRef = field.is_reference[1];
+
+          // if a table is referenced but doesn't have a schema skip it
+          if (!tableVersions[dbFileNameRef]) {
+            // if (gameName == "wh3") console.log("REFERENCED TABLE DOESN'T EXIST:", dbFileNameRef);
+            continue;
+          }
+
+          gameToDBFieldsThatReference[gameName as SupportedGames][tableName] =
+            gameToDBFieldsThatReference[gameName as SupportedGames][tableName] || {};
+          gameToDBFieldsThatReference[gameName as SupportedGames][tableName][field.name] = [
+            dbFileNameRef,
+            dbFieldNameRef,
+          ];
+        }
+      }
+    }
+  }
 }

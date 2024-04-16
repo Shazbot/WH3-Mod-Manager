@@ -11,10 +11,19 @@ import {
   AmendedSchemaField,
   PackFileCollision,
   PackTableCollision,
+  PackTableReferences,
+  DBField,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
-import { DBNameToDBVersions, LocVersion, locFields } from "./schema";
+import {
+  DBNameToDBVersions,
+  DBVersion,
+  LocVersion,
+  gameToDBFieldsThatReference,
+  gameToReferences,
+  locFields,
+} from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
 import { format } from "date-fns";
@@ -77,6 +86,11 @@ function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE): number {
     case "I32":
       {
         return 4;
+      }
+      break;
+    case "I16":
+      {
+        return 2;
       }
       break;
     case "I64":
@@ -171,6 +185,13 @@ async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackDataTypes):
       {
         const view = new DataView(new ArrayBuffer(4));
         view.setInt32(0, Number(value), true);
+        return Buffer.from(view.buffer);
+      }
+      break;
+    case "I16":
+      {
+        const view = new DataView(new ArrayBuffer(2));
+        view.setInt16(0, Number(value), true);
         return Buffer.from(view.buffer);
       }
       break;
@@ -270,6 +291,13 @@ async function parseType(
       {
         const doesExist = await file.readInt32();
         fields.push({ type: "I32", val: doesExist });
+        return fields;
+      }
+      break;
+    case "I16":
+      {
+        const doesExist = await file.readInt16();
+        fields.push({ type: "I16", val: doesExist });
         return fields;
       }
       break;
@@ -383,6 +411,14 @@ function parseTypeBuffer(
         const doesExist = buffer.readInt32LE(pos); //await file.readInt32();
         pos += 4;
         fields.push({ type: "I32", val: doesExist });
+        return [fields, pos];
+      }
+      break;
+    case "I16":
+      {
+        const doesExist = buffer.readInt16LE(pos); //await file.readInt32();
+        pos += 2;
+        fields.push({ type: "I16", val: doesExist });
         return [fields, pos];
       }
       break;
@@ -526,6 +562,42 @@ export const getDBVersion = (packFile: PackedFile) => {
   return dbversion;
 };
 
+const chunkSchemaIntoRows = (schemaFields: SchemaField[], dbversion: DBVersion) => {
+  return (
+    schemaFields?.reduce<SchemaField[][]>((resultArray, item, index) => {
+      const chunkIndex = Math.floor(index / dbversion.fields.length);
+
+      if (!resultArray[chunkIndex]) {
+        resultArray[chunkIndex] = []; // start a new chunk
+      }
+
+      resultArray[chunkIndex].push(item as SchemaField);
+
+      return resultArray;
+    }, []) ?? []
+  );
+};
+
+const resolveKeyValue = (field_type: SCHEMA_FIELD_TYPE, fields: Field[]) => {
+  if (isSchemaFieldNumber(field_type)) return (fields[0].val as number).toFixed(3).toString();
+  if (field_type == "OptionalStringU8" || field_type == "StringU8")
+    if (fields[0] && fields[0].val) {
+      return (
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        (fields[2] && fields[2].val!.toString()) ||
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        fields[1].val!.toString() ||
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        fields[0].val!.toString()
+      );
+    } else {
+      return "";
+    }
+
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  return (fields[1] && fields[1].val!.toString()) || fields[0].val!.toString();
+};
+
 export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: boolean) => {
   console.log("getPackViewData:", pack.name, table);
   const tables = pack.packedFiles.map((packedFile) => packedFile.name);
@@ -562,18 +634,7 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
         return;
       }
 
-      const chunkedSchemaIntoRows =
-        packedFile.schemaFields?.reduce<SchemaField[][]>((resultArray, item, index) => {
-          const chunkIndex = Math.floor(index / dbversion.fields.length);
-
-          if (!resultArray[chunkIndex]) {
-            resultArray[chunkIndex] = []; // start a new chunk
-          }
-
-          resultArray[chunkIndex].push(item as SchemaField);
-
-          return resultArray;
-        }, []) ?? [];
+      const chunkedSchemaIntoRows = chunkSchemaIntoRows(packedFile.schemaFields || [], dbversion);
 
       // console.log("chunked into ", chunkedSchemaIntoRows.length);
       // console.log("num fields in row is ", dbversion.fields.length);
@@ -587,17 +648,7 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
           if (!fields) {
             console.log("MISSING FIELD ", name);
           }
-          const resolvedKeyValue = isSchemaFieldNumber(field_type)
-            ? (fields[0].val as number).toFixed(3).toString()
-            : field_type == "OptionalStringU8" && fields[0] && fields[0].val
-            ? // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              (fields[2] && fields[2].val!.toString()) ||
-              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              fields[1].val!.toString() ||
-              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              fields[0].val!.toString()
-            : // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              (fields[1] && fields[1].val!.toString()) || fields[0].val!.toString();
+          const resolvedKeyValue = resolveKeyValue(field_type, fields);
 
           amendedSchemaFields.push({ name, resolvedKeyValue, ...chunkedSchemaIntoRow[dbFieldsIndex] });
 
@@ -1829,9 +1880,9 @@ function findPackTableCollisionsBetweenPacks(
 ) {
   for (const packFile of pack.packedFiles) {
     if (!packFile.schemaFields) continue;
-    if (packFile.name.includes(".rpfm_reserved")) continue;
+    if (packFile.name.endsWith(".rpfm_reserved")) continue;
 
-    const dbNameMatch1 = packFile.name.match(/db\\(.*?)\\/);
+    const dbNameMatch1 = packFile.name.match(/^db\\(.*?)\\/);
     // console.log("dbNameMatch1", dbNameMatch1);
     if (dbNameMatch1 == null) continue;
     const dbName1 = dbNameMatch1[1];
@@ -1840,9 +1891,9 @@ function findPackTableCollisionsBetweenPacks(
 
     for (const packTwoFile of packTwo.packedFiles) {
       if (!packTwoFile.schemaFields) continue;
-      if (packTwoFile.name.includes(".rpfm_reserved")) continue;
+      if (packTwoFile.name.endsWith(".rpfm_reserved")) continue;
 
-      const dbNameMatch2 = packTwoFile.name.match(/db\\(.*?)\\/);
+      const dbNameMatch2 = packTwoFile.name.match(/^db\\(.*?)\\/);
       // console.log("dbNameMatch2", dbNameMatch2);
       if (dbNameMatch2 == null) continue;
       const dbName2 = dbNameMatch2[1];
@@ -1994,6 +2045,252 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
   return packTableCollisions;
 }
 
+export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPackChecked) {
+  const packsTableReferences: Record<string, PackTableReferences> = {};
+  console.time("packTableReferences");
+  const tablesToReferenceFieldNames = gameToReferences[appData.currentGame];
+  const tablesAndDBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
+
+  // fs.writeFileSync("tablesToReferenceFieldNames.json", JSON.stringify(tablesToReferenceFieldNames));
+  // fs.writeFileSync("tablesAndDBFieldsThatReference.json", JSON.stringify(tablesAndDBFieldsThatReference));
+
+  // if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
+  for (let i = 0; i < packsData.length; i++) {
+    const pack = packsData[i];
+    const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: [] };
+    packsTableReferences[pack.name] = packTableReferences;
+
+    // console.log("findPackTableReferences: number of packedFiles:", pack.packedFiles.length);
+    // console.log("with schemaFields:", pack.packedFiles.filter((pF) => pF.schemaFields).length);
+    for (const packFile of pack.packedFiles) {
+      if (!packFile.schemaFields) {
+        continue;
+      }
+      if (packFile.name.endsWith(".rpfm_reserved")) continue;
+
+      const dbNameMatch1 = packFile.name.match(/^db\\(.*?)\\/);
+      // console.log("dbNameMatch1", dbNameMatch1);
+      if (dbNameMatch1 == null) continue;
+      const dbName1 = dbNameMatch1[1];
+      // console.log("dbName1", dbName1);
+      if (dbName1 == null) continue;
+
+      try {
+        // console.log("MATCHED", dbName1, dbName2);
+        const dbversion = getDBVersion(packFile);
+
+        if (!dbversion) {
+          console.log("findPackTableReferences: cannot find dbversion for", packFile.name);
+          continue;
+        }
+
+        const dbName = getDBName(packFile);
+        if (!dbName) {
+          console.log("findPackTableReferences: cannot find db name for", packFile.name);
+          continue;
+        }
+
+        // console.log("length:");
+        // console.log(firstVer.fields.filter((field) => field.is_key).length);
+        // console.log(secondVer.fields.filter((field) => field.is_key).length);
+
+        const chunkedSchemaIntoRows = chunkSchemaIntoRows(packFile.schemaFields || [], dbversion);
+
+        for (let i = 0; i < chunkedSchemaIntoRows.length; i++) {
+          for (let j = 0; j < chunkedSchemaIntoRows[i].length; j++) {
+            const dbField = dbversion.fields[j];
+            if (
+              tablesToReferenceFieldNames[dbName] &&
+              tablesToReferenceFieldNames[dbName].includes(dbField.name)
+            ) {
+              packTableReferences.ownKeys[dbName] = packTableReferences.ownKeys[dbName] || {};
+              packTableReferences.ownKeys[dbName][dbField.name] =
+                packTableReferences.ownKeys[dbName][dbField.name] || [];
+
+              const resolvedKeyValue = resolveKeyValue(
+                dbField.field_type,
+                chunkedSchemaIntoRows[i][j].fields
+              );
+
+              if (
+                resolvedKeyValue != "" &&
+                !packTableReferences.ownKeys[dbName][dbField.name].includes(resolvedKeyValue)
+              )
+                packTableReferences.ownKeys[dbName][dbField.name].push(resolvedKeyValue);
+            }
+
+            if (
+              // don't build refs for vanilla Packs
+              !appData.vanillaPacks.some((vanillaPack) => vanillaPack.name == pack.name) &&
+              tablesAndDBFieldsThatReference[dbName] &&
+              tablesAndDBFieldsThatReference[dbName][dbField.name]
+            ) {
+              const [dbNameReferenceTo, dbFieldNameReferenceTo] =
+                tablesAndDBFieldsThatReference[dbName][dbField.name];
+              packTableReferences.refs[dbNameReferenceTo] = packTableReferences.refs[dbNameReferenceTo] || {};
+              packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo] =
+                packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo] || [];
+
+              const resolvedKeyValue = resolveKeyValue(
+                dbField.field_type,
+                chunkedSchemaIntoRows[i][j].fields
+              );
+
+              if (resolvedKeyValue != "")
+                if (appData.vanillaPacksDBFileNames.includes(dbNameReferenceTo)) {
+                  // if it's an Assembly Kit table ignore it
+                  if (
+                    !packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].includes(
+                      resolvedKeyValue
+                    )
+                  )
+                    packTableReferences.refs[dbNameReferenceTo][dbFieldNameReferenceTo].push(
+                      resolvedKeyValue
+                    );
+
+                  const newRefOrigin = {
+                    originDBFileName: dbName,
+                    targetDBFileName: dbNameReferenceTo,
+                    value: resolvedKeyValue,
+                    originFieldName: dbField.name,
+                    targetFieldName: dbFieldNameReferenceTo,
+                  };
+
+                  if (
+                    !packTableReferences.refOrigins.some(
+                      (refOrigin) =>
+                        refOrigin.originDBFileName === newRefOrigin.originDBFileName &&
+                        refOrigin.targetDBFileName === newRefOrigin.targetDBFileName &&
+                        refOrigin.value === newRefOrigin.value &&
+                        refOrigin.originFieldName === newRefOrigin.originFieldName &&
+                        refOrigin.targetFieldName === newRefOrigin.targetFieldName
+                    )
+                  )
+                    packTableReferences.refOrigins.push(newRefOrigin);
+                } else {
+                  console.log("NOT IN VANILLA PACKS:", dbNameReferenceTo);
+                }
+            }
+            // if (dbField.is_key) {
+            //   const refTypes =
+            //     (!dbField.is_reference && packTableReferences.ownKeys) || packTableReferences.refs;
+
+            //   refTypes[dbName] = refTypes[dbName] || {};
+            //   refTypes[dbName][dbField.name] = refTypes[dbName][dbField.name] || [];
+            //   const resolvedKeyValue = resolveKeyValue(
+            //     dbField.field_type,
+            //     chunkedSchemaIntoRows[i][j].fields
+            //   );
+            //   if (resolvedKeyValue != "" && !refTypes[dbName][dbField.name].includes(resolvedKeyValue))
+            //     refTypes[dbName][dbField.name].push(resolvedKeyValue);
+            // }
+          }
+        }
+
+        // console.log("FOUND CONFLICT");
+        // console.log(pack.name, packTwo.name, packFile.name, packTwoFile.name, v1);
+      } catch (e) {
+        console.log(e);
+      }
+    }
+  }
+
+  // fs.writeFileSync("vanillaPacksDBFileNames.json", JSON.stringify(appData.vanillaPacksDBFileNames));
+  // fs.writeFileSync("gameToReferences.json", JSON.stringify(gameToReferences));
+  // fs.writeFileSync("gameToDBFieldsThatReference.json", JSON.stringify(gameToDBFieldsThatReference));
+  // fs.writeFileSync(
+  //   "findPackTableReferences_db_ownKeys.json",
+  //   JSON.stringify(packsTableReferences["db.pack"].ownKeys)
+  // );
+  // fs.writeFileSync(
+  //   "findPackTableReferences_db_refs.json",
+  //   JSON.stringify(packsTableReferences["db.pack"].refs)
+  // );
+  // fs.writeFileSync(
+  //   "pj_advisor_TESTrefs.json",
+  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].refs)
+  // );
+  // fs.writeFileSync(
+  //   "pj_advisor_TESTownKeys.json",
+  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].ownKeys)
+  // );
+  // fs.writeFileSync(
+  //   "pj_advisor_TESTrefOrigins.json",
+  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].refOrigins)
+  // );
+
+  // console.log("findPackTableReferences_db_ownKeys:", packsTableReferences['db.pack'].ownKeys);
+  // console.log("findPackTableReferences_db_refs:", packsTableReferences["db.pack"].refs);
+  // fs.writeFileSync("findPackTableReferences.json", JSON.stringify(packsTableReferences));
+
+  for (const [packName, packTableReferences] of Object.entries(packsTableReferences)) {
+    // don't check vanilla packs for missing refs
+    if (appData.vanillaPacks.some((vanillaPack) => vanillaPack.name == packName)) continue;
+
+    for (const [dbFileName, dbFieldNameToRefKeys] of Object.entries(packTableReferences.refs)) {
+      for (const [dbFieldName, refKeys] of Object.entries(dbFieldNameToRefKeys)) {
+        let reference: DBField | undefined = undefined;
+        console.log("dbFileName:", dbFileName);
+        for (const version of DBNameToDBVersions[appData.currentGame][dbFileName]) {
+          reference = version.fields.find((field) => field.name == dbFieldName && field.is_reference);
+          if (reference) break;
+        }
+        if (!reference) continue;
+
+        console.log("dbFieldName is", dbFieldName);
+        console.log("ref is", reference.is_reference);
+        const dbFileNameToSearch = `${reference.is_reference[0]}_tables`;
+        const dbFieldNameToSearch = reference.is_reference[1];
+
+        // if it's an Assembly Kit table ignore it
+        if (!appData.vanillaPacksDBFileNames.includes(dbFileNameToSearch)) continue;
+
+        for (const refKey of refKeys) {
+          let foundRef = false;
+          for (const packTableReferenceForRefSearch of Object.values(packsTableReferences)) {
+            foundRef =
+              packTableReferenceForRefSearch.ownKeys[dbFileNameToSearch] &&
+              !!packTableReferenceForRefSearch.ownKeys[dbFileNameToSearch][dbFieldNameToSearch]?.find(
+                (ownKeyInOtherPack) => ownKeyInOtherPack == refKey
+              );
+            if (foundRef) {
+              console.log(
+                "FOUND",
+                packName,
+                dbFileName,
+                refKey,
+                "IN",
+                dbFileNameToSearch,
+                dbFieldNameToSearch
+              );
+              break;
+            }
+          }
+          if (!foundRef) {
+            console.log(
+              `DIDN'T FIND ${refKey} IN ${dbFileNameToSearch} ${dbFieldNameToSearch}, source is ${dbFieldName} from ${dbFileName}`
+            );
+
+            const refs = packTableReferences.refOrigins.filter(
+              (refOrigin) =>
+                refOrigin.targetDBFileName === dbFileNameToSearch &&
+                refOrigin.value === refKey &&
+                refOrigin.targetFieldName === dbFieldNameToSearch
+            );
+            for (const ref of refs) {
+              console.log(
+                `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  console.timeEnd("packTableReferences");
+}
+
 export function removeFromPackFileCollisions(
   packFileCollisions: PackFileCollision[],
   removedPackName: string
@@ -2022,9 +2319,9 @@ export function appendPackFileCollisions(
 
 function findPackFileCollisionsBetweenPacks(pack: Pack, packTwo: Pack, conflicts: PackFileCollision[]) {
   for (const packFile of pack.packedFiles) {
-    if (packFile.name.includes(".rpfm_reserved")) continue;
+    if (packFile.name.endsWith(".rpfm_reserved")) continue;
     for (const packTwoFile of packTwo.packedFiles) {
-      if (packTwoFile.name.includes(".rpfm_reserved")) continue;
+      if (packTwoFile.name.endsWith(".rpfm_reserved")) continue;
       if (packFile.name === packTwoFile.name) {
         conflicts.push({
           firstPackName: pack.name,
@@ -2045,6 +2342,13 @@ function findPackFileCollisionsBetweenPacks(pack: Pack, packTwo: Pack, conflicts
 }
 
 export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
+  console.log(
+    "PACKSDATA IS",
+    packsData.map((pack) => pack.name)
+  );
+  findPackTableReferences(packsData);
+  return [];
+
   console.time("findPackFileCollisions");
   const conflicts: PackFileCollision[] = [];
   for (let i = 0; i < packsData.length; i++) {
@@ -2060,5 +2364,6 @@ export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPack
     }
   }
   console.timeEnd("findPackFileCollisions");
+
   return conflicts;
 }

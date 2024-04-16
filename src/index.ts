@@ -228,6 +228,8 @@ if (!gotTheLock) {
 
   const appendPacksData = (newPack: Pack, mod?: Mod) => {
     const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
+    console.log("appendPacksData: appending", newPack.name);
+    console.log("appendPacksData: is existingPack:", !!existingPack);
 
     if (!existingPack) {
       appData.packsData.push(newPack);
@@ -240,7 +242,7 @@ if (!gotTheLock) {
         const overwrittenFileNames = newPack.packedFiles
           .map((packedFile) => packedFile.name)
           .filter(
-            (packedFileName) => packedFileName.match(/db\\.*\\data__/) || packedFileName.endsWith(".lua")
+            (packedFileName) => packedFileName.match(/^db\\.*\\data__/) || packedFileName.endsWith(".lua")
           )
           .filter((packedFileName) => {
             let foundMatchingFile = false;
@@ -484,6 +486,16 @@ if (!gotTheLock) {
             );
             if (dataPackData) {
               appData.vanillaPacks.push(dataPackData);
+
+              const vanillaDBFileNames = dataPackData.packedFiles
+                .map((vanillaDBFileName) => vanillaDBFileName.name.match(/^db\\(.*?)\\data__/))
+                .filter((matchResult) => matchResult)
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                .map((matchResult) => matchResult![1]);
+
+              appData.vanillaPacksDBFileNames = Array.from(
+                new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values()
+              );
             }
             if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
               appendPacksData(dataPackData);
@@ -905,11 +917,20 @@ if (!gotTheLock) {
       console.log("SET PACK COLLISIONS");
 
       await readMods(mods, false, true);
+      await readModsByPath(
+        appData.vanillaPacks.map((pack) => pack.path),
+        false,
+        true
+      );
       // if (pathsToUse) {
       mainWindow?.webContents.send(
         "setPackCollisions",
         getCompatData(
-          appData.packsData.filter((pack) => mods.some((mod) => mod.path == pack.path)),
+          appData.packsData.filter(
+            (pack) =>
+              mods.some((mod) => mod.path == pack.path) ||
+              appData.vanillaPacks.some((vanillaPack) => vanillaPack.path == pack.path)
+          ),
           (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
             mainWindow?.webContents.send("setPackCollisionsCheckProgress", {
               currentIndex,
@@ -1242,6 +1263,50 @@ if (!gotTheLock) {
       const presets = appData.gameToPresets[game];
       mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
     });
+
+    const readModsByPath = async (
+      modPaths: string[],
+      skipParsingTables = true,
+      skipCollisionCheck = true
+    ) => {
+      console.log("readModsByPath:", modPaths);
+      console.log("readModsByPath skipParsingTables:", skipParsingTables);
+      console.log("readModsByPath skipCollisionCheck:", skipCollisionCheck);
+      if (!skipParsingTables) {
+        appData.packsData = appData.packsData.filter(
+          (pack) => !modPaths.some((modPath) => modPath == pack.path)
+        );
+      }
+      for (const modPath of modPaths) {
+        if (
+          appData.currentlyReadingModPaths.every((path) => path != modPath) &&
+          appData.packsData.every((pack) => pack.path != modPath)
+        ) {
+          console.log("READING " + modPath);
+          appData.currentlyReadingModPaths.push(modPath);
+          mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
+          const newPack = await readPack(modPath, {
+            skipParsingTables,
+          });
+          mainWindow?.webContents.send("setLastModThatWasRead", modPath);
+          appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
+            (path) => path != modPath
+          );
+          if (appData.packsData.every((pack) => pack.path != modPath)) {
+            appendPacksData(newPack);
+          }
+          if (!skipCollisionCheck) {
+            appendCollisions(newPack);
+          }
+        }
+      }
+      if (!skipCollisionCheck) {
+        mainWindow?.webContents.send("setPackCollisions", {
+          packFileCollisions: appData.compatData.packFileCollisions,
+          packTableCollisions: appData.compatData.packTableCollisions,
+        } as PackCollisions);
+      }
+    };
 
     const readMods = async (mods: Mod[], skipParsingTables = true, skipCollisionCheck = true) => {
       if (!skipParsingTables) {

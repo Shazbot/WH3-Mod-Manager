@@ -123,6 +123,7 @@ const PackTablesTableView = React.memo(() => {
       case "I64":
       case "F32":
       case "I32":
+      case "I16":
       case "F64":
         return "numeric";
       case "Boolean":

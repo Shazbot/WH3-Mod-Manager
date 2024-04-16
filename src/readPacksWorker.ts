@@ -267,7 +267,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     // console.log("DONE READING FILE");
 
     // pack_files.forEach((pack_file) => {
-    //   const db_name = pack_file.name.match(/db\\(.*?)\\/);
+    //   const db_name = pack_file.name.match(/^db\\(.*?)\\/);
     //   if (db_name != null) {
     //     console.log(db_name);
     //     // console.log(pack_file.name);
@@ -279,7 +279,7 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     // );
 
     const dbPackFiles = pack_files.filter((packFile) => {
-      const dbNameMatch = packFile.name.match(/db\\(.*?)\\/);
+      const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
       return dbNameMatch != null && dbNameMatch[1];
     });
 
@@ -310,14 +310,14 @@ export const readPack = async (modPath: string, skipParsingTables = false): Prom
     for (const pack_file of pack_files) {
       if (
         nodePath.basename(modPath) == "db.pack" &&
-        !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
+        !pack_file.name.startsWith("db\\units_custom_battle_permissions_tables\\")
       )
         continue;
       if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
       currentPos = pack_file.start_pos - startPos;
       // console.log(currentPos);
 
-      const dbNameMatch = pack_file.name.match(/db\\(.*?)\\/);
+      const dbNameMatch = pack_file.name.match(/^db\\(.*?)\\/);
       if (dbNameMatch == null) continue;
       const dbName = dbNameMatch[1];
       if (dbName == null) continue;

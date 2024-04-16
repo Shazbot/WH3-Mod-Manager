@@ -2,7 +2,13 @@ import { LocVersion } from "../schema";
 import { PackedFile, AmendedSchemaField, SCHEMA_FIELD_TYPE, DBVersion } from "../packFileTypes";
 
 export const isSchemaFieldNumber = (fieldType: SCHEMA_FIELD_TYPE) => {
-  return fieldType === "I32" || fieldType === "I64" || fieldType === "F32" || fieldType === "F64";
+  return (
+    fieldType === "I16" ||
+    fieldType === "I32" ||
+    fieldType === "I64" ||
+    fieldType === "F32" ||
+    fieldType === "F64"
+  );
 };
 
 const addToLocTreeNode = (leafNode: TreeNode, subKeys: string[], value: string) => {

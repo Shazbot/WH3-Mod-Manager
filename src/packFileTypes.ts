@@ -54,6 +54,25 @@ export interface PackTableCollision extends PackFileCollision {
   value: string;
 }
 
+// e.g. unit_ability_superseded_abilities_set_elements_tables
+export type DBFileName = string;
+export type DBFieldName = string;
+
+interface DBRefOrigin {
+  originDBFileName: DBFileName;
+  targetDBFileName: DBFileName;
+  value: string;
+  originFieldName: DBFieldName;
+  targetFieldName: DBFieldName;
+}
+
+// DB Table can have its own ID field (key) and a foreign table field (key with is_reference)
+export interface PackTableReferences {
+  ownKeys: Record<DBFileName, Record<DBFieldName, string[]>>;
+  refs: Record<DBFileName, Record<DBFieldName, string[]>>;
+  refOrigins: DBRefOrigin[];
+}
+
 export interface PackCollisions {
   packFileCollisions: PackFileCollision[];
   packTableCollisions: PackTableCollision[];
@@ -64,13 +83,24 @@ export type SCHEMA_FIELD_TYPE =
   | "OptionalStringU8"
   | "StringU8"
   | "F32"
+  | "I16"
   | "I32"
   | "I64"
   | "F64"
   | "ColourRGB"
   | "StringU16";
 
-export type FIELD_TYPE = "Int16" | "Int8" | "UInt8" | "String" | "Buffer" | "F32" | "I32" | "I64" | "F64";
+export type FIELD_TYPE =
+  | "Int16"
+  | "Int8"
+  | "UInt8"
+  | "String"
+  | "Buffer"
+  | "F32"
+  | "I32"
+  | "I16"
+  | "I64"
+  | "F64";
 export type FIELD_VALUE = number | string | Buffer | undefined;
 
 export interface Field {
