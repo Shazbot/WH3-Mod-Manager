@@ -10,6 +10,8 @@ import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
 import { GoGear } from "react-icons/go";
 
+const FontAwesomeIconMemo = memo(FontAwesomeIcon);
+
 type ModRowProps = {
   mod: Mod;
   index: number;
@@ -22,7 +24,7 @@ type ModRowProps = {
   onDragEnter: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd: (e: React.DragEvent<HTMLDivElement>) => void;
-  onModToggled: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onModToggled: (mod: Mod) => void;
   onModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
   onCustomizeModClicked: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
   onCustomizeModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
@@ -150,7 +152,7 @@ const ModRow = memo(
                   className="hidden absolute left-0 self-center cursor-not-allowed first:p-0 z-10"
                   id={`drag-icon-${mod.name}`}
                 >
-                  <FontAwesomeIcon opacity={0.5} icon={faGrip} />
+                  <FontAwesomeIconMemo opacity={0.5} icon={faGrip} />
                 </div>
               </Tooltip>
             </span>
@@ -160,7 +162,7 @@ const ModRow = memo(
               className="hidden absolute left-0 self-center cursor-grab first:p-0 z-10"
               id={`drag-icon-${mod.name}`}
             >
-              <FontAwesomeIcon icon={faGrip} />
+              <FontAwesomeIconMemo icon={faGrip} />
             </div>
           )}
           <form
@@ -177,7 +179,7 @@ const ModRow = memo(
               name={mod.workshopId}
               id={mod.workshopId + "enabled"}
               checked={mod.isEnabled}
-              onChange={(event) => onModToggled(event)}
+              onChange={(event) => onModToggled(mod)}
             ></input>
           </form>
         </div>
@@ -209,7 +211,7 @@ const ModRow = memo(
                   content="Failed fetching steam workshop page, mod was deleted from the workshop or is hidden."
                 >
                   <span className="text-red-800">
-                    <FontAwesomeIcon fill="red" icon={faEraser} />
+                    <FontAwesomeIconMemo fill="red" icon={faEraser} />
                   </span>
                 </Tooltip>
               )}
@@ -225,7 +227,7 @@ const ModRow = memo(
                   }
                 >
                   <span className="text-red-800">
-                    <FontAwesomeIcon fill="red" icon={faCamera} />
+                    <FontAwesomeIconMemo fill="red" icon={faCamera} />
                   </span>
                 </Tooltip>
               )}
@@ -247,7 +249,7 @@ const ModRow = memo(
                   }
                 >
                   <span className="text-gray-300">
-                    <FontAwesomeIcon icon={faFileArchive} />
+                    <FontAwesomeIconMemo icon={faFileArchive} />
                   </span>
                 </Tooltip>
               )}

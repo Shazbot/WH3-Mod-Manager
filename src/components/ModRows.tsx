@@ -162,29 +162,21 @@ const ModRows = memo(() => {
     mods = getFilteredMods(mods, filter.toLowerCase(), isAuthorEnabled);
   }
 
-  const onModToggled = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>): void => {
-      const target = event.target as HTMLInputElement;
-      const name = target.name;
-      const mod = mods.find((mod) => mod.workshopId == name);
-      if (!mod) return;
+  const onModToggled = useCallback((mod: Mod): void => {
+    const modRowsScroll = document.getElementById("mod-rows-scroll");
+    const lastScrollTop = modRowsScroll?.scrollTop;
 
-      const modRowsScroll = document.getElementById("mod-rows-scroll");
-      const lastScrollTop = modRowsScroll?.scrollTop;
+    // if always enabled don't allow unchecking
+    if (isModAlwaysEnabled(mod, alwaysEnabledMods)) {
+      return;
+    }
 
-      // if always enabled don't allow unchecking
-      if (isModAlwaysEnabled(mod, alwaysEnabledMods)) {
-        return;
-      }
+    dispatch(toggleMod(mod));
 
-      dispatch(toggleMod(mod));
-
-      setTimeout(() => {
-        if (lastScrollTop && modRowsScroll) modRowsScroll.scrollTop = lastScrollTop;
-      }, 1);
-    },
-    [mods]
-  );
+    setTimeout(() => {
+      if (lastScrollTop && modRowsScroll) modRowsScroll.scrollTop = lastScrollTop;
+    }, 1);
+  }, []);
 
   const setSortingType = useCallback(
     (newSortingType: SortingType) => {
@@ -598,6 +590,10 @@ const ModRows = memo(() => {
     [unfilteredMods, hiddenMods]
   );
 
+  const onDropWithVisibleMods = useCallback(() => {
+    return onDrop(unfilteredVisibleMods);
+  }, [unfilteredVisibleMods, onDrop]);
+
   return (
     <div
       onDragEnd={(e) => onDragEnd(e)}
@@ -611,15 +607,17 @@ const ModRows = memo(() => {
         className={`${isDropdownOpen ? "" : "hidden"} z-50 dark`}
         id="modDropdownOverlay"
       >
-        <ModDropdown
-          isOpen={isDropdownOpen}
-          positionX={positionX}
-          positionY={positionY}
-          mod={contextMenuMod}
-          visibleMods={unfilteredVisibleMods}
-          referenceElement={dropdownReferenceElement}
-          mods={mods}
-        ></ModDropdown>
+        {isDropdownOpen && (
+          <ModDropdown
+            isOpen={isDropdownOpen}
+            positionX={positionX}
+            positionY={positionY}
+            mod={contextMenuMod}
+            visibleMods={unfilteredVisibleMods}
+            referenceElement={dropdownReferenceElement}
+            mods={mods}
+          ></ModDropdown>
+        )}
       </FloatingOverlay>
       {modBeingCustomized && modBeingCustomized.path && <ModCustomization />}
       <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
@@ -757,7 +755,7 @@ const ModRows = memo(() => {
               mod,
               onRowHoverStart,
               onRowHoverEnd,
-              onDrop: onDrop(unfilteredVisibleMods),
+              onDrop: onDropWithVisibleMods,
               onDrag,
               onDragStart,
               onDragLeave,

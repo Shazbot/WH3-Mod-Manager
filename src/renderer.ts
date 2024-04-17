@@ -314,7 +314,7 @@ window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {
 });
 
 window.api?.setPackCollisionsCheckProgress((event, progressData: PackCollisionsCheckProgressData) => {
-  console.log("INVOKED: setPackCollisionsCheckProgress");
+  // console.log("INVOKED: setPackCollisionsCheckProgress");
   store.dispatch(setPackCollisionsCheckProgress(progressData));
 });
 
