@@ -1585,7 +1585,7 @@
         "localised_fields": [
           {
             "name": "advice_item_title",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -2990,7 +2990,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "equipement_theme",
+            "name": "equipment_theme",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -2999,7 +2999,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 8,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -3230,7 +3230,7 @@
         "localised_fields": [
           {
             "name": "name_override",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -3245,7 +3245,7 @@
           },
           {
             "name": "description_override",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -3374,7 +3374,7 @@
         "localised_fields": [
           {
             "name": "name_override",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -3389,7 +3389,7 @@
           },
           {
             "name": "description_override",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -3963,7 +3963,10 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0,
+          1
+        ]
       }
     ],
     "agent_to_agent_attributes_tables": [
@@ -6720,7 +6723,7 @@
           },
           {
             "name": "explanation_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -6735,7 +6738,7 @@
           },
           {
             "name": "exclusion_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -25736,7 +25739,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "left_arm_node",
+            "name": "leftarm_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25745,13 +25748,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 16,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "left_foot_node",
+            "name": "leftfoot_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25760,13 +25763,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 24,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "left_hand_node",
+            "name": "lefthand_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25775,13 +25778,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 18,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "left_leg_node",
+            "name": "leftleg_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25790,13 +25793,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 22,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "left_shoulder_node",
+            "name": "leftshoulder_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25805,13 +25808,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 14,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "left_upleg_node",
+            "name": "leftupleg_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25820,13 +25823,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 20,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "left_wheel_node",
+            "name": "leftwheel_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25835,7 +25838,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 30,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -25871,7 +25874,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "right_arm_node",
+            "name": "rightarm_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25880,13 +25883,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 17,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_foot_node",
+            "name": "rightfoot_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25895,13 +25898,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 25,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_hand_node",
+            "name": "righthand_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25910,13 +25913,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 19,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_leg_node",
+            "name": "rightleg_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25925,13 +25928,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 23,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_shoulder_node",
+            "name": "rightshoulder_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25940,13 +25943,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 15,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_upleg_node",
+            "name": "rightupleg_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25955,13 +25958,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 21,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_wheel_node",
+            "name": "rightwheel_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -25970,7 +25973,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 31,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -26111,7 +26114,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "left_finger_node",
+            "name": "leftfinger_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -26120,13 +26123,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 26,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_finger_node",
+            "name": "rightfinger_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -26135,13 +26138,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 27,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "left_toe_node",
+            "name": "lefttoe_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -26150,13 +26153,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 28,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "right_toe_node",
+            "name": "righttoe_node",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -26165,7 +26168,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 29,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -26810,7 +26813,7 @@
         "localised_fields": [
           {
             "name": "onscreen",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -28054,16 +28057,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "naval_appropiate",
+            "name": "naval_appropriate",
             "field_type": "Boolean",
             "is_key": false,
-            "default_value": null,
+            "default_value": "false",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 8,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -28072,7 +28075,7 @@
         "localised_fields": [
           {
             "name": "onscreen",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -28255,7 +28258,7 @@
           },
           {
             "name": "global_effects_description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -28270,7 +28273,7 @@
           },
           {
             "name": "local_effects_description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -29709,16 +29712,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "rally_nearby_civilian_radius",
+            "name": "rally_nearby_civilians_radius",
             "field_type": "F32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 8,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -31653,7 +31656,7 @@
         "localised_fields": [
           {
             "name": "onscreen_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": "PLACEHOLDER",
             "is_filename": false,
@@ -31668,7 +31671,7 @@
           },
           {
             "name": "description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": "PLACEHOLDER",
             "is_filename": false,
@@ -36122,16 +36125,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "xp",
+            "name": "XP",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -41554,7 +41557,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "religion_change_management_policy",
+            "name": "religion_chanage_management_policy",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
@@ -41566,7 +41569,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 23,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -49792,7 +49795,7 @@
         "localised_fields": [
           {
             "name": "onscreen_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": "PLACEHOLDER PRESET",
             "is_filename": false,
@@ -49807,7 +49810,7 @@
           },
           {
             "name": "description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -51559,10 +51562,7 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": [
-              "agent_attributes",
-              "key"
-            ],
+            "is_reference": null,
             "lookup": null,
             "description": "",
             "ca_order": 2,
@@ -52634,7 +52634,7 @@
         "localised_fields": [
           {
             "name": "localised_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -53091,7 +53091,7 @@
         "localised_fields": [
           {
             "name": "onscreen_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -55837,7 +55837,7 @@
         "localised_fields": [
           {
             "name": "campaign_map_tooltip",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -55852,7 +55852,7 @@
           },
           {
             "name": "unit_card_tooltip",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -55867,7 +55867,7 @@
           },
           {
             "name": "unit_immunity_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -58156,7 +58156,7 @@
         "localised_fields": [
           {
             "name": "description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -59703,7 +59703,7 @@
         "version": 0,
         "fields": [
           {
-            "name": "rigid_lookup_tree",
+            "name": "rigid_lookup_key",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -59712,7 +59712,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -61342,7 +61342,7 @@
         "localised_fields": [
           {
             "name": "optional_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -63477,9 +63477,9 @@
             "is_part_of_colour": null
           },
           {
-            "name": "followup_dilemma_key",
+            "name": "followup_dliemma_key",
             "field_type": "StringU8",
-            "is_key": false,
+            "is_key": true,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
@@ -63489,7 +63489,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -65299,7 +65299,7 @@
         "localised_fields": [
           {
             "name": "localised_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -65314,7 +65314,7 @@
           },
           {
             "name": "localised_description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -67285,7 +67285,7 @@
           },
           {
             "name": "epithet_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -67300,7 +67300,7 @@
           },
           {
             "name": "gain_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -67330,7 +67330,7 @@
           },
           {
             "name": "explanation_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -67345,7 +67345,7 @@
           },
           {
             "name": "removal_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -68130,7 +68130,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "price_elasticy_of_demand",
+            "name": "price_elasticity_of_demand",
             "field_type": "F32",
             "is_key": false,
             "default_value": null,
@@ -68139,7 +68139,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -69100,7 +69100,7 @@
           },
           {
             "name": "confederation_screen_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -69115,7 +69115,7 @@
           },
           {
             "name": "confederation_summary_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -69797,31 +69797,31 @@
             "is_part_of_colour": null
           },
           {
-            "name": "hotspotx",
+            "name": "hotspotX",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 4,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "hotspoty",
+            "name": "hotspotY",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 5,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -70828,10 +70828,7 @@
             "default_value": "12",
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": [
-              "models_deployables",
-              "key"
-            ],
+            "is_reference": null,
             "lookup": null,
             "description": "",
             "ca_order": 4,
@@ -72379,7 +72376,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "religion_a",
+            "name": "religion_A",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -72391,13 +72388,13 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "religion_b",
+            "name": "religion_B",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -72409,7 +72406,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -75101,7 +75098,7 @@
         "localised_fields": [
           {
             "name": "description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -75296,9 +75293,9 @@
             "is_part_of_colour": null
           },
           {
-            "name": "parent",
+            "name": "parent_key",
             "field_type": "OptionalStringU8",
-            "is_key": true,
+            "is_key": false,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
@@ -75308,7 +75305,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -76441,7 +76438,7 @@
         "localised_fields": [
           {
             "name": "localised_description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -76762,7 +76759,7 @@
         "localised_fields": [
           {
             "name": "faction_name_override_primary_high",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -76777,7 +76774,7 @@
           },
           {
             "name": "faction_name_override_primary_low",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -76792,7 +76789,7 @@
           },
           {
             "name": "faction_name_override_secondary_high",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -76807,7 +76804,7 @@
           },
           {
             "name": "faction_name_override_secondary_low",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -76822,7 +76819,7 @@
           },
           {
             "name": "faction_name_override_victory",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -76837,7 +76834,7 @@
           },
           {
             "name": "faction_leader_title_override_victory",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -79904,7 +79901,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "icon_path_units",
+            "name": "icons_path_units",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
@@ -79913,7 +79910,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 10,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -79976,7 +79973,7 @@
             "ca_order": 14,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 1
           },
           {
             "name": "primary_colour_g",
@@ -79991,7 +79988,7 @@
             "ca_order": 15,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 1
           },
           {
             "name": "primary_colour_b",
@@ -80006,7 +80003,7 @@
             "ca_order": 16,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 1
           },
           {
             "name": "alt_primary_colour_r",
@@ -80021,7 +80018,7 @@
             "ca_order": 17,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 2
           },
           {
             "name": "alt_primary_colour_g",
@@ -80036,7 +80033,7 @@
             "ca_order": 18,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 2
           },
           {
             "name": "alt_primary_colour_b",
@@ -80051,7 +80048,7 @@
             "ca_order": 19,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 2
           },
           {
             "name": "secondary_colour_r",
@@ -80066,7 +80063,7 @@
             "ca_order": 20,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 3
           },
           {
             "name": "secondary_colour_g",
@@ -80081,7 +80078,7 @@
             "ca_order": 21,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 3
           },
           {
             "name": "secondary_colour_b",
@@ -80096,7 +80093,7 @@
             "ca_order": 22,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 3
           },
           {
             "name": "alt_secondary_colour_r",
@@ -80111,7 +80108,7 @@
             "ca_order": 23,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 4
           },
           {
             "name": "alt_secondary_colour_g",
@@ -80126,7 +80123,7 @@
             "ca_order": 24,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 4
           },
           {
             "name": "alt_secondary_colour_b",
@@ -80141,7 +80138,7 @@
             "ca_order": 25,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 4
           },
           {
             "name": "uniform_colour_r",
@@ -80156,7 +80153,7 @@
             "ca_order": 29,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 6
           },
           {
             "name": "uniform_colour_g",
@@ -80171,7 +80168,7 @@
             "ca_order": 30,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 6
           },
           {
             "name": "uniform_colour_b",
@@ -80186,7 +80183,7 @@
             "ca_order": 31,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 6
           },
           {
             "name": "alt_uniform_colour_r",
@@ -80201,7 +80198,7 @@
             "ca_order": 32,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 7
           },
           {
             "name": "alt_uniform_colour_g",
@@ -80216,7 +80213,7 @@
             "ca_order": 33,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 7
           },
           {
             "name": "alt_uniform_colour_b",
@@ -80231,7 +80228,7 @@
             "ca_order": 34,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 7
           },
           {
             "name": "military_group",
@@ -80282,7 +80279,7 @@
             "ca_order": 26,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 5
           },
           {
             "name": "rebel_colour_g",
@@ -80297,7 +80294,7 @@
             "ca_order": 27,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 5
           },
           {
             "name": "rebel_colour_b",
@@ -80312,7 +80309,7 @@
             "ca_order": 28,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 5
           },
           {
             "name": "movie_death_event",
@@ -80498,7 +80495,7 @@
             "ca_order": 53,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 8
           },
           {
             "name": "card_colour_g",
@@ -80513,7 +80510,7 @@
             "ca_order": 54,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 8
           },
           {
             "name": "card_colour_b",
@@ -80528,7 +80525,7 @@
             "ca_order": 55,
             "is_bitwise": 0,
             "enum_values": {},
-            "is_part_of_colour": null
+            "is_part_of_colour": 8
           },
           {
             "name": "senator_total",
@@ -80546,16 +80543,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "use_legion_names",
+            "name": "uses_legion_names",
             "field_type": "Boolean",
             "is_key": false,
-            "default_value": null,
+            "default_value": "false",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 64,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -80738,7 +80735,7 @@
           },
           {
             "name": "clan_summary_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -80753,7 +80750,7 @@
           },
           {
             "name": "clan_summary_name_when_shogun",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -80768,7 +80765,7 @@
           },
           {
             "name": "senator_text_n_out_of_n",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -80783,7 +80780,7 @@
           },
           {
             "name": "senator_text_lose_n",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -80798,7 +80795,7 @@
           },
           {
             "name": "senator_text_lose_1",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -80813,7 +80810,7 @@
           },
           {
             "name": "senator_text_gain_n",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -80828,7 +80825,7 @@
           },
           {
             "name": "senator_text_gain_1",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -81243,7 +81240,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "dignatary_cap",
+            "name": "dignitary_cap",
             "field_type": "I32",
             "is_key": false,
             "default_value": null,
@@ -81252,7 +81249,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 6,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -82635,7 +82632,7 @@
         "localised_fields": [
           {
             "name": "name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -82650,7 +82647,7 @@
           },
           {
             "name": "tooltip",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -82665,7 +82662,7 @@
           },
           {
             "name": "description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -84743,7 +84740,7 @@
         "localised_fields": [
           {
             "name": "tooltip",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -87561,16 +87558,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "dismounted_melee_defense",
+            "name": "dismounted_melee_defence",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 31,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -87876,7 +87873,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "strengths_&_weaknesses_text",
+            "name": "strengths_weaknesses_text",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
@@ -87888,7 +87885,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 6,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -92033,16 +92030,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "min_pool_culture_percentaje",
+            "name": "min_pool_culture_percentage",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -96865,7 +96862,7 @@
         "localised_fields": [
           {
             "name": "title",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -97676,7 +97673,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "strengths_&_weaknesses_text",
+            "name": "strengths_weaknesses_text",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
@@ -97688,7 +97685,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 6,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -98445,7 +98442,7 @@
         "version": 3,
         "fields": [
           {
-            "name": "id",
+            "name": "ID",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -98454,13 +98451,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "steamid",
+            "name": "SteamID",
             "field_type": "I32",
             "is_key": false,
             "default_value": null,
@@ -98469,7 +98466,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -98508,7 +98505,7 @@
         "localised_fields": [
           {
             "name": "description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -98715,10 +98712,10 @@
             "is_part_of_colour": null
           },
           {
-            "name": "political_action",
+            "name": "politiical_action",
             "field_type": "StringU8",
             "is_key": true,
-            "default_value": null,
+            "default_value": "default",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": [
@@ -98727,7 +98724,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -99317,7 +99314,7 @@
           },
           {
             "name": "associated_surname",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -99754,7 +99751,7 @@
         "localised_fields": [
           {
             "name": "onscreen_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -105108,16 +105105,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "below_waterline_damage_modifier",
+            "name": "below_waterline_damage_modifer",
             "field_type": "F32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "1",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 21,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -105501,7 +105498,7 @@
           },
           {
             "name": "description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -105516,7 +105513,7 @@
           },
           {
             "name": "subtitle",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -106029,7 +106026,7 @@
           },
           {
             "name": "negative_tooltip",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -107687,7 +107684,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "resource",
+            "name": "resource_key",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -107699,7 +107696,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -108171,7 +108168,7 @@
           },
           {
             "name": "long_description",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -110985,7 +110982,7 @@
         "localised_fields": [
           {
             "name": "onscreen",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -111000,7 +110997,7 @@
           },
           {
             "name": "toolitp",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -111180,16 +111177,19 @@
         "version": 0,
         "fields": [
           {
-            "name": "port",
+            "name": "slot",
             "field_type": "StringU8",
-            "is_key": false,
+            "is_key": true,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "slots",
+              "slot"
+            ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -111257,9 +111257,7 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": [
-          1
-        ]
+        "localised_key_order": []
       }
     ],
     "slots_tables": [
@@ -113689,7 +113687,7 @@
         "localised_fields": [
           {
             "name": "onscreen_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -113713,7 +113711,7 @@
         "version": 0,
         "fields": [
           {
-            "name": "deactivate_flag",
+            "name": "invalid_usage_flag",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -113725,13 +113723,13 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "special_ability",
+            "name": "special_ability_key",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -113743,7 +113741,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -114358,7 +114356,7 @@
         "version": 8,
         "fields": [
           {
-            "name": "id",
+            "name": "ID",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -114367,7 +114365,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -114394,91 +114392,110 @@
             "is_part_of_colour": null
           },
           {
-            "name": "name",
+            "name": "Name",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
-            "lookup": null,
+            "is_reference": [
+              "names",
+              "id"
+            ],
+            "lookup": [
+              "type",
+              "name",
+              "names_group",
+              "gender"
+            ],
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "surname",
+            "name": "Surname",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
-            "lookup": null,
+            "is_reference": [
+              "names",
+              "id"
+            ],
+            "lookup": [
+              "type",
+              "name",
+              "names_group",
+              "gender"
+            ],
             "description": "",
-            "ca_order": -1,
+            "ca_order": 3,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "age",
+            "name": "Age",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "18",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 4,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "type",
+            "name": "Type",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "agents",
+              "key"
+            ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 5,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "start_x",
+            "name": "startx",
             "field_type": "F32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 6,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "start_y",
+            "name": "starty",
             "field_type": "F32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 7,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -115170,16 +115187,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "non_agression_pact",
+            "name": "non_aggression_pact",
             "field_type": "Boolean",
             "is_key": false,
-            "default_value": null,
+            "default_value": "false",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 7,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -115338,7 +115355,7 @@
         "version": 17,
         "fields": [
           {
-            "name": "id",
+            "name": "ID",
             "field_type": "StringU8",
             "is_key": true,
             "default_value": null,
@@ -115347,7 +115364,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -115689,16 +115706,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "prestige_enlightment",
+            "name": "prestige_enlightenment",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 23,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -116630,24 +116647,6 @@
             "is_part_of_colour": null
           },
           {
-            "name": "slot_type",
-            "field_type": "StringU8",
-            "is_key": true,
-            "default_value": null,
-            "is_filename": false,
-            "filename_relative_path": null,
-            "is_reference": [
-              "slot_types",
-              "key"
-            ],
-            "lookup": null,
-            "description": "",
-            "ca_order": 3,
-            "is_bitwise": 0,
-            "enum_values": {},
-            "is_part_of_colour": null
-          },
-          {
             "name": "slot_template",
             "field_type": "StringU8",
             "is_key": true,
@@ -116661,6 +116660,24 @@
             "lookup": null,
             "description": "",
             "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "slot_type",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "slot_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -117401,7 +117418,7 @@
           },
           {
             "name": "roads",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -117419,7 +117436,7 @@
           },
           {
             "name": "fortifications",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -117436,8 +117453,23 @@
             "is_part_of_colour": null
           },
           {
-            "name": "unknown",
-            "field_type": "I32",
+            "name": "unknown_1",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "unknown_2",
+            "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -121272,7 +121304,7 @@
           },
           {
             "name": "negative_tooltip",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -124527,7 +124559,7 @@
         "localised_fields": [
           {
             "name": "tooltip_text",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -124799,7 +124831,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "bonus_vs_missiles",
+            "name": "bonus_v_missiles",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -124808,7 +124840,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -124829,7 +124861,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "weak_vs_missiles",
+            "name": "weak_v_missiles",
             "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
@@ -124838,7 +124870,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 3,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -125368,7 +125400,7 @@
         "localised_fields": [
           {
             "name": "localised_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -125507,7 +125539,7 @@
         "localised_fields": [
           {
             "name": "localised_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -125628,16 +125660,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "can_assault_settlement",
+            "name": "can_assault_settlment",
             "field_type": "Boolean",
             "is_key": false,
-            "default_value": null,
+            "default_value": "true",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 5,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -125661,7 +125693,7 @@
           },
           {
             "name": "tooltip",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -126100,16 +126132,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "speed",
+            "name": "speed_modifier",
             "field_type": "F32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "1.0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -129516,16 +129548,16 @@
             "is_part_of_colour": null
           },
           {
-            "name": "melee_defense",
+            "name": "melee_defence",
             "field_type": "I32",
             "is_key": false,
-            "default_value": null,
+            "default_value": "0",
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -131507,7 +131539,7 @@
         "localised_fields": [
           {
             "name": "display_name",
-            "field_type": "OptionalStringU8",
+            "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -132003,16 +132035,16 @@
         "version": 1,
         "fields": [
           {
-            "name": "lod_id",
+            "name": "LOD_id",
             "field_type": "StringU8",
-            "is_key": false,
+            "is_key": true,
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 0,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -132144,7 +132176,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "building_category",
+            "name": "category",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
@@ -132156,7 +132188,7 @@
             ],
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -132255,7 +132287,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "file_path",
+            "name": "filepath",
             "field_type": "StringU8",
             "is_key": false,
             "default_value": null,
@@ -132264,7 +132296,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 2,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -132327,7 +132359,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "magnitudex",
+            "name": "magnitudeX",
             "field_type": "F32",
             "is_key": false,
             "default_value": null,
@@ -132336,13 +132368,13 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 3,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
           },
           {
-            "name": "magnitudey",
+            "name": "magnitudeY",
             "field_type": "F32",
             "is_key": false,
             "default_value": null,
@@ -132351,7 +132383,7 @@
             "is_reference": null,
             "lookup": null,
             "description": "",
-            "ca_order": -1,
+            "ca_order": 4,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
