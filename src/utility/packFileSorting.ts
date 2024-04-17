@@ -54,13 +54,13 @@ export const binarySearchIncludes = (input: string[], match: string) => {
   return bs(input, match, (a: string, b: string) => collator.compare(a, b)) > -1;
 };
 
-export const getInsertionIndexInPresortedArray = <T>(array: Array<T>, value: T) => {
+export const getInsertionIndexInPresortedArray = (array: Array<string>, value: string) => {
   let low = 0,
     high = array.length;
 
   while (low < high) {
     const mid = (low + high) >>> 1;
-    if (array[mid] < value) low = mid + 1;
+    if (collator.compare(array[mid], value) < 0) low = mid + 1;
     else high = mid;
   }
   return low;

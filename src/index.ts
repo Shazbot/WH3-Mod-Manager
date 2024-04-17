@@ -14,7 +14,7 @@ import psList from "ps-list";
 import { Pack, PackCollisions } from "./packFileTypes";
 import { execFile, exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
-import installExtension, { REDUX_DEVTOOLS } from "electron-devtools-installer";
+import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-extension-installer";
 import fetch from "electron-fetch";
 import isDev from "electron-is-dev";
 import * as fs from "fs";
@@ -708,6 +708,8 @@ if (!gotTheLock) {
     //   autoUpdater.checkForUpdates();
     // } catch {}
 
+    // if (isDev) mainWindow?.webContents.openDevTools();
+
     autoUpdater.on("update-downloaded", (event, releaseNotes, releaseName) => {
       const dialogOpts = {
         type: "info",
@@ -728,6 +730,10 @@ if (!gotTheLock) {
 
     mainWindow.on("page-title-updated", (evt) => {
       evt.preventDefault();
+    });
+
+    mainWindow.on("show", () => {
+      if (isDev) mainWindow?.webContents.openDevTools();
     });
 
     mainWindow.on("closed", () => {
@@ -1348,11 +1354,15 @@ if (!gotTheLock) {
       }
     };
 
+    let lastReadModsReceived = [];
     ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true) => {
-      console.log(
-        "READ MODS RECEIVED",
-        mods.map((mod) => mod.name)
-      );
+      if (lastReadModsReceived.length != mods.length) {
+        console.log(
+          "READ MODS RECEIVED",
+          mods.map((mod) => mod.name)
+        );
+        lastReadModsReceived = [...mods];
+      }
       readMods(mods, skipCollisionCheck, skipCollisionCheck);
     });
 
@@ -1391,7 +1401,7 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
 
-      if (isDev) mainWindow?.webContents.openDevTools();
+      // if (isDev) mainWindow?.webContents.openDevTools();
 
       try {
         const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";
@@ -1476,6 +1486,10 @@ if (!gotTheLock) {
   app.on("ready", createWindow);
 
   app.whenReady().then(() => {
+    installExtension(REACT_DEVELOPER_TOOLS)
+      .then((name) => console.log(`Added Extension:  ${name}`))
+      .catch((err) => console.log("An error occurred: ", err));
+
     installExtension(REDUX_DEVTOOLS)
       .then((name) => console.log(`Added Extension:  ${name}`))
       .catch((err) => console.log("An error occurred: ", err));
