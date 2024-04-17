@@ -2172,19 +2172,11 @@ function findPackTableCollisionsBetweenPacksOptimized(
       i++;
       continue;
     }
-    // if (packFile.name.endsWith(".rpfm_reserved")) {
-    //   i++;
-    //   continue;
-    // }
 
     if (!packTwoFile.schemaFields) {
       j++;
       continue;
     }
-    // if (packTwoFile.name.endsWith(".rpfm_reserved")) {
-    //   j++;
-    //   continue;
-    // }
 
     const dbNameOne = getDBName(packFile);
     if (!dbNameOne) {
@@ -2243,15 +2235,6 @@ function findPackTableCollisionsBetweenPacksOptimized(
                 );
               }
             }
-            // getCollisionsBetweenSameTables(
-            //   packFile,
-            //   packTwoFile,
-            //   pack,
-            //   packTwo,
-            //   packTableCollisions,
-            //   dbNameOne,
-            //   dbNameTwo
-            // );
           } catch (e) {
             console.log(e);
           }
@@ -2292,8 +2275,7 @@ export function appendPackTableCollisions(
 export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
   const packTableCollisions: PackTableCollision[] = [];
 
-  const packTableCollisions2: PackTableCollision[] = [];
-  console.time("findPackTableCollisions2");
+  console.time("findPackTableCollisionsBetweenPacksOptimized");
   if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
@@ -2303,15 +2285,16 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
       if (pack.name === packTwo.name) continue;
       if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
 
-      findPackTableCollisionsBetweenPacksOptimized(pack, packTwo, packTableCollisions2);
+      findPackTableCollisionsBetweenPacksOptimized(pack, packTwo, packTableCollisions);
     }
     if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "Files");
   }
-  console.timeEnd("findPackTableCollisions2");
+  console.timeEnd("findPackTableCollisionsBetweenPacksOptimized");
 
   return packTableCollisions;
 }
 
+// TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
 export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
   packsData: Pack[],
   onPackChecked?: OnPackChecked
@@ -2349,7 +2332,6 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
       )
     );
   console.log("findPackTableCollisions are EQUAL:", areCollisionsEqual);
-  // if (!areCollisionsEqual) console.log(diff(packTableCollisions, packTableCollisions2));
 
   const packTableCollisionsSort = (a: PackTableCollision, b: PackTableCollision) => {
     const fileNameCompare = a.fileName.localeCompare(b.fileName);
@@ -2387,25 +2369,17 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
   const tablesToReferenceFieldNames = gameToReferences[appData.currentGame];
   const tablesAndDBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
 
-  // fs.writeFileSync("tablesToReferenceFieldNames.json", JSON.stringify(tablesToReferenceFieldNames));
-  // fs.writeFileSync("tablesAndDBFieldsThatReference.json", JSON.stringify(tablesAndDBFieldsThatReference));
-
-  // if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: {} };
     packsTableReferences[pack.name] = packTableReferences;
 
-    // console.log("findPackTableReferences: number of packedFiles:", pack.packedFiles.length);
-    // console.log("with schemaFields:", pack.packedFiles.filter((pF) => pF.schemaFields).length);
     for (const packFile of pack.packedFiles) {
       if (!packFile.schemaFields) {
         continue;
       }
-      // if (packFile.name.endsWith(".rpfm_reserved")) continue;
 
       try {
-        // console.log("MATCHED", dbName1, dbName2);
         const dbName = getDBName(packFile);
         if (!dbName) {
           console.log("findPackTableReferences: cannot find db name for", packFile.name);
@@ -2418,10 +2392,6 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
           console.log("findPackTableReferences: cannot find dbversion for", packFile.name);
           continue;
         }
-
-        // console.log("length:");
-        // console.log(firstVer.fields.filter((field) => field.is_key).length);
-        // console.log(secondVer.fields.filter((field) => field.is_key).length);
 
         const chunkedSchemaIntoRows = chunkSchemaIntoRows(packFile.schemaFields || [], dbversion);
 
@@ -2513,19 +2483,6 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                   // console.log("NOT IN VANILLA PACKS:", dbNameReferenceTo);
                 }
             }
-            // if (dbField.is_key) {
-            //   const refTypes =
-            //     (!dbField.is_reference && packTableReferences.ownKeys) || packTableReferences.refs;
-
-            //   refTypes[dbName] = refTypes[dbName] || {};
-            //   refTypes[dbName][dbField.name] = refTypes[dbName][dbField.name] || [];
-            //   const resolvedKeyValue = resolveKeyValue(
-            //     dbField.field_type,
-            //     chunkedSchemaIntoRows[i][j].fields
-            //   );
-            //   if (resolvedKeyValue != "" && !refTypes[dbName][dbField.name].includes(resolvedKeyValue))
-            //     refTypes[dbName][dbField.name].push(resolvedKeyValue);
-            // }
           }
         }
 
@@ -2536,34 +2493,6 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
       }
     }
   }
-
-  // fs.writeFileSync("vanillaPacksDBFileNames.json", JSON.stringify(appData.vanillaPacksDBFileNames));
-  // fs.writeFileSync("gameToReferences.json", JSON.stringify(gameToReferences));
-  // fs.writeFileSync("gameToDBFieldsThatReference.json", JSON.stringify(gameToDBFieldsThatReference));
-  // fs.writeFileSync(
-  //   "findPackTableReferences_db_ownKeys.json",
-  //   JSON.stringify(packsTableReferences["db.pack"].ownKeys)
-  // );
-  // fs.writeFileSync(
-  //   "findPackTableReferences_db_refs.json",
-  //   JSON.stringify(packsTableReferences["db.pack"].refs)
-  // );
-  // fs.writeFileSync(
-  //   "pj_advisor_TESTrefs.json",
-  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].refs)
-  // );
-  // fs.writeFileSync(
-  //   "pj_advisor_TESTownKeys.json",
-  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].ownKeys)
-  // );
-  // fs.writeFileSync(
-  //   "pj_advisor_TESTrefOrigins.json",
-  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].refOrigins)
-  // );
-
-  // console.log("findPackTableReferences_db_ownKeys:", packsTableReferences['db.pack'].ownKeys);
-  // console.log("findPackTableReferences_db_refs:", packsTableReferences["db.pack"].refs);
-  // fs.writeFileSync("findPackTableReferences.json", JSON.stringify(packsTableReferences));
 
   const foundMissingRefs: DBRefOrigin[] = [];
   for (const [packName, packTableReferences] of Object.entries(packsTableReferences)) {
@@ -2644,25 +2573,17 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
   const tablesToReferenceFieldNames = gameToReferences[appData.currentGame];
   const tablesAndDBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
 
-  // fs.writeFileSync("tablesToReferenceFieldNames.json", JSON.stringify(tablesToReferenceFieldNames));
-  // fs.writeFileSync("tablesAndDBFieldsThatReference.json", JSON.stringify(tablesAndDBFieldsThatReference));
-
-  // if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: {} };
     packsTableReferences[pack.name] = packTableReferences;
 
-    // console.log("findPackTableReferences: number of packedFiles:", pack.packedFiles.length);
-    // console.log("with schemaFields:", pack.packedFiles.filter((pF) => pF.schemaFields).length);
     for (const packFile of pack.packedFiles) {
       if (!packFile.schemaFields) {
         continue;
       }
-      // if (packFile.name.endsWith(".rpfm_reserved")) continue;
 
       try {
-        // console.log("MATCHED", dbName1, dbName2);
         const dbName = getDBName(packFile);
         if (!dbName) {
           console.log("findPackTableReferences: cannot find db name for", packFile.name);
@@ -2675,10 +2596,6 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
           console.log("findPackTableReferences: cannot find dbversion for", packFile.name);
           continue;
         }
-
-        // console.log("length:");
-        // console.log(firstVer.fields.filter((field) => field.is_key).length);
-        // console.log(secondVer.fields.filter((field) => field.is_key).length);
 
         const chunkedSchemaIntoRows = chunkSchemaIntoRows(packFile.schemaFields || [], dbversion);
 
@@ -2697,31 +2614,6 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                 dbField.field_type,
                 chunkedSchemaIntoRows[i][j].fields
               );
-
-              // if (resolvedKeyValue != "") {
-              //   const withIncludes =
-              //     !packTableReferences.ownKeys[dbName][dbField.name].includes(resolvedKeyValue);
-              //   const withBS = !binarySearchIncludes(
-              //     packTableReferences.ownKeys[dbName][dbField.name],
-              //     resolvedKeyValue
-              //   );
-              //   if (withIncludes != withBS) {
-              //     console.log("DIFFERENT");
-              //     fs.writeFileSync(
-              //       "binarySearchIncludesData",
-              //       JSON.stringify(packTableReferences.ownKeys[dbName][dbField.name])
-              //     );
-              //     console.log("VALUE IS:", resolvedKeyValue);
-              //     console.log(
-              //       "BS is:",
-              //       bs(
-              //         packTableReferences.ownKeys[dbName][dbField.name],
-              //         resolvedKeyValue,
-              //         (a: string, b: string) => collator.compare(a, b)
-              //       )
-              //     );
-              //   }
-              // }
 
               if (
                 resolvedKeyValue != "" &&
@@ -2801,19 +2693,6 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                   // console.log("NOT IN VANILLA PACKS:", dbNameReferenceTo);
                 }
             }
-            // if (dbField.is_key) {
-            //   const refTypes =
-            //     (!dbField.is_reference && packTableReferences.ownKeys) || packTableReferences.refs;
-
-            //   refTypes[dbName] = refTypes[dbName] || {};
-            //   refTypes[dbName][dbField.name] = refTypes[dbName][dbField.name] || [];
-            //   const resolvedKeyValue = resolveKeyValue(
-            //     dbField.field_type,
-            //     chunkedSchemaIntoRows[i][j].fields
-            //   );
-            //   if (resolvedKeyValue != "" && !refTypes[dbName][dbField.name].includes(resolvedKeyValue))
-            //     refTypes[dbName][dbField.name].push(resolvedKeyValue);
-            // }
           }
         }
 
@@ -2824,45 +2703,6 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
       }
     }
   }
-
-  // for (const packTableReferences of Object.values(packsTableReferences)) {
-  //   // for (const refsOrOwnKeys of [packTableReferences.refs, packTableReferences.ownKeys]) {
-  //   for (const refsOrOwnKeys of [packTableReferences.ownKeys]) {
-  //     for (const dbFieldNameToRefKeys of Object.values(Object.values(refsOrOwnKeys))) {
-  //       for (const refKeys of Object.values(dbFieldNameToRefKeys)) {
-  //         refKeys.sort((a: string, b: string) => collator.compare(a, b));
-  //       }
-  //     }
-  //   }
-  // }
-
-  // fs.writeFileSync("vanillaPacksDBFileNames.json", JSON.stringify(appData.vanillaPacksDBFileNames));
-  // fs.writeFileSync("gameToReferences.json", JSON.stringify(gameToReferences));
-  // fs.writeFileSync("gameToDBFieldsThatReference.json", JSON.stringify(gameToDBFieldsThatReference));
-  // fs.writeFileSync(
-  //   "findPackTableReferences_db_ownKeys.json",
-  //   JSON.stringify(packsTableReferences["db.pack"].ownKeys)
-  // );
-  // fs.writeFileSync(
-  //   "findPackTableReferences_db_refs.json",
-  //   JSON.stringify(packsTableReferences["db.pack"].refs)
-  // );
-  // fs.writeFileSync(
-  //   "pj_advisor_TESTrefs.json",
-  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].refs)
-  // );
-  // fs.writeFileSync(
-  //   "pj_advisor_TESTownKeys.json",
-  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].ownKeys)
-  // );
-  // fs.writeFileSync(
-  //   "pj_advisor_TESTrefOrigins.json",
-  //   JSON.stringify(packsTableReferences["pj_advisor_TEST.pack"].refOrigins)
-  // );
-
-  // console.log("findPackTableReferences_db_ownKeys:", packsTableReferences['db.pack'].ownKeys);
-  // console.log("findPackTableReferences_db_refs:", packsTableReferences["db.pack"].refs);
-  // fs.writeFileSync("findPackTableReferences.json", JSON.stringify(packsTableReferences));
 
   const foundMissingRefs: DBRefOrigin[] = [];
   for (const [packName, packTableReferences] of Object.entries(packsTableReferences)) {
@@ -3037,13 +2877,10 @@ function findPackFileCollisionsBetweenPacksOptimized(
 }
 
 export function findPackTableMissingReferences(packsData: Pack[], onPackChecked?: OnPackChecked) {
-  console.log(
-    "PACKSDATA IS",
-    packsData.map((pack) => pack.name)
-  );
   return findPackTableReferencesOptimized(packsData);
 }
 
+// TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
 export function findPackTableMissingReferencesAndCompareWithUnoptimizedMethod(
   packsData: Pack[],
   onPackChecked?: OnPackChecked

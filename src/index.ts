@@ -1329,11 +1329,11 @@ if (!gotTheLock) {
         ) {
           console.log("READING " + mod.name);
           appData.currentlyReadingModPaths.push(mod.path);
-          mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
+          if (!skipParsingTables) mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
           const newPack = await readPack(mod.path, {
             skipParsingTables,
           });
-          mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
+          if (!skipParsingTables) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
           appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
             (path) => path != mod.path
           );

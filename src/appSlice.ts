@@ -859,29 +859,29 @@ const appSlice = createSlice({
       state.currentlyReadingMod = { name: action.payload, time: Date.now() };
 
       // send toast when starting to read a pack
-      // const existingToast = state.toasts.find((toast) => toast.staticToastId == "modReadingInfo");
-      // if (existingToast) state.toasts.splice(state.toasts.indexOf(existingToast), 1);
+      const existingToast = state.toasts.find((toast) => toast.staticToastId == "modReadingInfo");
+      if (existingToast) state.toasts.splice(state.toasts.indexOf(existingToast), 1);
 
-      // state.toasts.push({
-      //   type: "info",
-      //   messages: ["loc:readingPack", action.payload],
-      //   startTime: Date.now(),
-      //   staticToastId: "modReadingInfo",
-      // } as Toast);
+      state.toasts.push({
+        type: "info",
+        messages: ["loc:readingPack", action.payload],
+        startTime: Date.now(),
+        staticToastId: "modReadingInfo",
+      } as Toast);
     },
     setLastModThatWasRead: (state: AppState, action: PayloadAction<string>) => {
       state.lastModThatWasRead = { name: action.payload, time: Date.now() };
 
       // send toast when finished reading a pack
-      // const existingToast = state.toasts.find((toast) => toast.staticToastId == "modReadingInfo");
-      // if (existingToast) state.toasts.splice(state.toasts.indexOf(existingToast), 1);
+      const existingToast = state.toasts.find((toast) => toast.staticToastId == "modReadingInfo");
+      if (existingToast) state.toasts.splice(state.toasts.indexOf(existingToast), 1);
 
-      // state.toasts.push({
-      //   type: "info",
-      //   messages: ["loc:finishedReadingPack", action.payload],
-      //   startTime: Date.now(),
-      //   staticToastId: "modReadingInfo",
-      // } as Toast);
+      state.toasts.push({
+        type: "info",
+        messages: ["loc:finishedReadingPack", action.payload],
+        startTime: Date.now(),
+        staticToastId: "modReadingInfo",
+      } as Toast);
     },
     setIsOnboardingToRun: (state: AppState, action: PayloadAction<boolean>) => {
       state.isOnboardingToRun = action.payload;
