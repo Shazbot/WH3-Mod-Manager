@@ -470,7 +470,7 @@ const Categories = React.memo(() => {
           id="categoriesContextMenu"
           className={
             `${isContextMenuOpen ? "" : "hidden"}` +
-            ` fixed w-44 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 z-[300]`
+            ` fixed w-52 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 z-[300]`
           }
           style={{
             left: 111,
@@ -483,12 +483,12 @@ const Categories = React.memo(() => {
               <Tooltip
                 content={
                   <>
-                    <p>Hold Ctrl to remove category.</p>
-                    <p>Hold Ctrl+Shift to replace all categories.</p>
+                    <p>{localized.addCategoryHelp1}</p>
+                    <p>{localized.addCategoryHelp2}</p>
                   </>
                 }
               >
-                <div className="mt-1 mb-2">Add category:</div>
+                <div className="mt-1 mb-2">{localized.addCategory}</div>
               </Tooltip>
               <Creatable
                 className=" w-10/12"
@@ -513,7 +513,7 @@ const Categories = React.memo(() => {
                     href="#"
                     className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                   >
-                    Enable All
+                    {localized.enableAll}
                   </a>
                 </li>
                 <li>
@@ -529,7 +529,7 @@ const Categories = React.memo(() => {
                     href="#"
                     className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                   >
-                    Disable All
+                    {localized.disableAll}
                   </a>
                 </li>
               </ul>
@@ -557,7 +557,7 @@ const Categories = React.memo(() => {
               onChange={(e) => {
                 setNewCategoryFilter(e.target.value);
               }}
-              className="bg-gray-50 w-40 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
             ></input>
 
             <span className="absolute right-2 top-2 text-gray-400">

@@ -2,7 +2,11 @@ import * as path from "path";
 import { Worker } from "worker_threads";
 import * as schema from "../schema/schema_wh3.json";
 import { PackCollisions, Pack } from "./packFileTypes";
-import { findPackFileCollisions, findPackTableCollisions } from "./packFileSerializer";
+import {
+  findPackFileCollisions,
+  findPackTableCollisions,
+  findPackTableMissingReferences,
+} from "./packFileSerializer";
 import equal from "fast-deep-equal";
 
 export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCollisions> {
@@ -25,11 +29,12 @@ export function getCompatData(
     maxIndex: number,
     firstPackName: string,
     secondPackName: string,
-    type: "Files" | "TableKeys"
+    type: PackCollisionCheckType
   ) => void
 ): PackCollisions {
   return {
     packFileCollisions: findPackFileCollisions(packsData, onPackChecked),
     packTableCollisions: findPackTableCollisions(packsData, onPackChecked),
+    missingTableReferences: findPackTableMissingReferences(packsData, onPackChecked),
   };
 }

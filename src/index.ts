@@ -710,6 +710,13 @@ if (!gotTheLock) {
 
     // if (isDev) mainWindow?.webContents.openDevTools();
 
+    if (isDev) {
+      // no idea why but openDevTools is really uncooperative, this isn't great but it works
+      setTimeout(() => {
+        mainWindow?.webContents.openDevTools();
+      }, 45000);
+    }
+
     autoUpdater.on("update-downloaded", (event, releaseNotes, releaseName) => {
       const dialogOpts = {
         type: "info",
@@ -730,10 +737,6 @@ if (!gotTheLock) {
 
     mainWindow.on("page-title-updated", (evt) => {
       evt.preventDefault();
-    });
-
-    mainWindow.on("show", () => {
-      if (isDev) mainWindow?.webContents.openDevTools();
     });
 
     mainWindow.on("closed", () => {
@@ -932,7 +935,7 @@ if (!gotTheLock) {
         false,
         true
       );
-      // if (pathsToUse) {
+
       mainWindow?.webContents.send(
         "setPackCollisions",
         getCompatData(
@@ -952,13 +955,6 @@ if (!gotTheLock) {
           }
         )
       );
-      // } else {
-      //   mainWindow?.webContents.send("setPackCollisions", getCompatData(appData.packsData));
-      // }
-      // mainWindow?.webContents.send("setPackCollisions", {
-      // packFileCollisions: appData.compatData.packFileCollisions,
-      // packTableCollisions: appData.compatData.packTableCollisions,
-      // } as PackCollisions);
     });
 
     ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
@@ -1401,8 +1397,6 @@ if (!gotTheLock) {
       mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
 
-      // if (isDev) mainWindow?.webContents.openDevTools();
-
       try {
         const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";
         const availableLocalizations = (await fs.readdirSync(localesPath, { withFileTypes: true }))
@@ -1486,11 +1480,19 @@ if (!gotTheLock) {
   app.on("ready", createWindow);
 
   app.whenReady().then(() => {
-    installExtension(REACT_DEVELOPER_TOOLS)
+    installExtension(REACT_DEVELOPER_TOOLS, {
+      loadExtensionOptions: {
+        allowFileAccess: true,
+      },
+    })
       .then((name) => console.log(`Added Extension:  ${name}`))
       .catch((err) => console.log("An error occurred: ", err));
 
-    installExtension(REDUX_DEVTOOLS)
+    installExtension(REDUX_DEVTOOLS, {
+      loadExtensionOptions: {
+        allowFileAccess: true,
+      },
+    })
       .then((name) => console.log(`Added Extension:  ${name}`))
       .catch((err) => console.log("An error occurred: ", err));
   });

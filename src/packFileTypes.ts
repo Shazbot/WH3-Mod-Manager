@@ -57,6 +57,8 @@ export interface PackTableCollision extends PackFileCollision {
 // e.g. unit_ability_superseded_abilities_set_elements_tables
 export type DBFileName = string;
 export type DBFieldName = string;
+export type PackName = string;
+export type PackedFileSuffix = string;
 
 export interface DBRefOrigin {
   originDBFileName: DBFileName;
@@ -64,6 +66,7 @@ export interface DBRefOrigin {
   value: string;
   originFieldName: DBFieldName;
   targetFieldName: DBFieldName;
+  originFileSuffix: PackedFileSuffix;
 }
 
 // DB Table can have its own ID field (key) and a foreign table field (key with is_reference)
@@ -76,6 +79,7 @@ export interface PackTableReferences {
 export interface PackCollisions {
   packFileCollisions: PackFileCollision[];
   packTableCollisions: PackTableCollision[];
+  missingTableReferences: Record<PackName, DBRefOrigin[]>;
 }
 
 export type SCHEMA_FIELD_TYPE =

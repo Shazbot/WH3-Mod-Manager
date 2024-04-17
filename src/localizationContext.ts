@@ -381,6 +381,20 @@ export const staticTextIds: Record<string, string | number> = {
   finishedReadingPack: "Finished reading pack:",
   comparingFilesInPacks: "Comparing <firstPackName> files with <secondPackName>...",
   comparingKeysInPacks: "Comparing <firstPackName> table keys with other mods...",
+  missingKeys: "Missing Keys",
+  missingKeyTableAndColumn: "Table and column of the missing key",
+  missingDBKey: "Missing DB key",
+  missingKeyIsReferencedIn: "is referenced in <originFileSuffix>, column <originFieldName>",
+  compatHelpFour:
+    "The Missing Keys tab searches for missing database references (keys) in mods. DB tables reference each other by key columns, so for example there is a database table that gives attributes like unbreakable to units, so that table needs to reference both the units table and the attributes table. So if that table has a row that says give the unit 'Empire Swordsmen' unbreakable then that means in the units table the Empire Swordsmen need to exist. Missing DB keys can be caused by game updates or missing dependency mods. If they're missing the game won't start at all.",
+  noFileCollisionsFound: "No file collisions found!",
+  noDBKeyCollisionsFound: "No database key collisions found!",
+  noMissingDBKeysFound: "No missing database keys found!",
+  enableAll: "Enable All",
+  disableAll: "Disable All",
+  addCategory: "Add category:",
+  addCategoryHelp1: "Hold Ctrl to remove category.",
+  addCategoryHelp2: "Hold Ctrl+Shift to replace all categories.",
 };
 
 const context = createContext({});
