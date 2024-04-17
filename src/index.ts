@@ -58,6 +58,7 @@ import { getCompatData } from "./packFileDataManager";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import i18n from "./configs/i18next.config";
 import { tryOpenFile } from "./utility/fileHelpers";
+import { collator } from "./utility/packFileSorting";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -493,15 +494,18 @@ if (!gotTheLock) {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 .map((matchResult) => matchResult![1]);
 
-              appData.vanillaPacksDBFileNames = Array.from(
-                new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values()
-              );
+              if (vanillaDBFileNames.length > 0) {
+                appData.vanillaPacksDBFileNames = Array.from(
+                  new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values()
+                );
+              }
             }
             if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
               appendPacksData(dataPackData);
             }
           }
         }
+        appData.vanillaPacksDBFileNames.sort((a, b) => collator.compare(a, b));
 
         await fetchGameUpdates();
       }
@@ -731,7 +735,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("getAllModData", (event, ids: string[]) => {
-      // if (isDev) return;
+      if (isDev) return;
 
       fetchModData(
         ids.filter((id) => id !== ""),
