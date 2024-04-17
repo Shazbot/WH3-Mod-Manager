@@ -1,3 +1,5 @@
+const collator = new Intl.Collator("en");
+
 export function sortByNameAndLoadOrder(mods: Mod[]) {
   const newMods = getModsSortedByName(mods);
   [...newMods]
@@ -71,14 +73,14 @@ export function getModsSortedBySize(mods: Mod[]) {
 }
 
 export function getModsSortedByHumanName(mods: Mod[]) {
-  return [...mods].sort((firstMod, secondMod) => firstMod.humanName.localeCompare(secondMod.humanName));
+  return [...mods].sort((firstMod, secondMod) => collator.compare(firstMod.humanName, secondMod.humanName));
 }
 
 export function getModsSortedByHumanNameAndName(mods: Mod[]) {
   return [...mods].sort((firstMod, secondMod) => {
     const firstModValue = (firstMod.humanName != "" && firstMod.humanName) || firstMod.name;
     const secondModValue = (secondMod.humanName != "" && secondMod.humanName) || secondMod.name;
-    return firstModValue.localeCompare(secondModValue);
+    return collator.compare(firstModValue, secondModValue);
   });
 }
 
@@ -96,7 +98,7 @@ export function getModsSortedByAuthor(mods: Mod[]) {
     if (firstMod.author == secondMod.author) {
       return compareModNames(firstMod.name, secondMod.name);
     }
-    return firstMod.author.localeCompare(secondMod.author);
+    return collator.compare(firstMod.author, secondMod.author);
   });
 }
 
@@ -104,7 +106,7 @@ export function getModsSortedByCustomizable(mods: Mod[], customizableMods: Recor
   return [...mods].sort((firstMod, secondMod) => {
     if (customizableMods[firstMod.path] && !customizableMods[secondMod.path]) return -1;
     if (!customizableMods[firstMod.path] && customizableMods[secondMod.path]) return 1;
-    return firstMod.author.localeCompare(secondMod.author);
+    return collator.compare(firstMod.author, secondMod.author);
   });
 }
 

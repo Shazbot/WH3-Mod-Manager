@@ -47,3 +47,27 @@ export const checkIfPackedFilesAreSorted = (packedFiles: PackedFile[]) => {
   }
   return true;
 };
+
+export const collator = new Intl.Collator("en");
+
+export const binarySearchIncludes = (input: string[], match: string) => {
+  return bs(input, match, (a: string, b: string) => collator.compare(a, b)) > -1;
+};
+
+export const getInsertionIndexInPresortedArray = <T>(array: Array<T>, value: T) => {
+  let low = 0,
+    high = array.length;
+
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (array[mid] < value) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+};
+
+export const insertIntoPresortedArray = <T>(array: Array<T>, value: T) => {
+  const insertionIndex = getInsertionIndexInPresortedArray(array, value);
+  array.splice(insertionIndex, 0, value);
+  return array;
+};
