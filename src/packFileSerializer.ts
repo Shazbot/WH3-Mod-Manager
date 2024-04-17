@@ -717,7 +717,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
     const targetPath =
       existingPath ||
       nodePath.join(dataFolder, "merged-" + format(new Date(), "dd-MM-yyyy-HH-mm-ss") + ".pack");
-    await fsExtra.ensureDir(nodePath.dirname(targetPath));
+    await fsExtra.ensureDirSync(nodePath.dirname(targetPath));
 
     const packFieldsSettled = await Promise.allSettled(
       mods.map((mod) => readPack(mod.path, { skipParsingTables: true }))
@@ -795,7 +795,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
         } as MergedModsData)
     );
     const parsedTargetPath = nodePath.parse(targetPath);
-    await fsExtra.writeJSON(
+    await fsExtra.writeJSONSync(
       nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"),
       mergedMetaData
     );
@@ -1248,7 +1248,7 @@ export const readFromExistingPack = async (
 
   let lastChangedLocal = -1;
   try {
-    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
+    lastChangedLocal = (await fsExtra.statSync(modPath)).mtimeMs;
   } catch (e) {
     console.log(e);
   }
@@ -1600,30 +1600,69 @@ export const readPack = async (
 
   let lastChangedLocal = -1;
   try {
-    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
+    lastChangedLocal = (await fsExtra.statSync(modPath)).mtimeMs;
   } catch (e) {
     console.log(e);
   }
 
-  let file: BinaryFile | undefined;
+  // let file: BinaryFile | undefined;
   // eslint-disable-next-line @typescript-eslint/no-inferrable-types
   let fileId: number = -1;
   try {
-    file = new BinaryFile(modPath, "r", true);
+    // file = new BinaryFile(modPath, "r", true);
     fileId = fs.openSync(modPath, "r");
-    await file.open();
+    // await file.open();
 
     console.log(`${modPath} file opened`);
     if (packReadingOptions.tablesToRead) console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead);
 
-    const header = await file.read(4);
+    // header 4
+    // byteMask 4
+    // refFileCount 4
+    // pack_file_index_size 4
+    // pack_file_count 4
+    // packed_file_index_size 4
+    // headerBuffer 4
+    // header_buffer_len 4;
+    const packedFileHeaderSize = 8 * 4;
+    const packedFileHeader = Buffer.alloc(packedFileHeaderSize);
+    fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
+
+    let packedFileHeaderPosition = 0;
+    const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
+    packedFileHeaderPosition += 4;
     if (header === null) throw new Error("header missing");
 
-    const byteMask = await file.readInt32();
-    const refFileCount = await file.readInt32();
-    const pack_file_index_size = await file.readInt32();
-    const pack_file_count = await file.readInt32();
-    const packed_file_index_size = await file.readInt32();
+    const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+    packedFileHeaderPosition += 4;
+
+    const refFileCount = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+    packedFileHeaderPosition += 4;
+
+    const pack_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+    packedFileHeaderPosition += 4;
+
+    const pack_file_count = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+    packedFileHeaderPosition += 4;
+
+    const packed_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+    packedFileHeaderPosition += 4;
+
+    const header_buffer_len = 4;
+    const header_buffer = await packedFileHeader.subarray(
+      packedFileHeaderPosition,
+      packedFileHeaderPosition + header_buffer_len
+    );
+    packedFileHeaderPosition += header_buffer_len;
+
+    // const header = await file.read(4);
+    // if (header === null) throw new Error("header missing");
+
+    // const byteMask = await file.readInt32();
+    // const refFileCount = await file.readInt32();
+    // const pack_file_index_size = await file.readInt32();
+    // const pack_file_count = await file.readInt32();
+    // const packed_file_index_size = await file.readInt32();
 
     // console.log(`modPath is ${modPath}`);
     // console.log(`header is ${header}`);
@@ -1633,8 +1672,8 @@ export const readPack = async (
     // console.log(`pack_file_count is ${pack_file_count}`);
     // console.log(`packed_file_index_size is ${packed_file_index_size}`);
 
-    const header_buffer_len = 4;
-    const header_buffer = await file.read(4); // header_buffer
+    // const header_buffer_len = 4;
+    // const header_buffer = await file.read(4); // header_buffer
 
     packHeader = {
       header,
@@ -1649,7 +1688,12 @@ export const readPack = async (
       let chunk;
       let bufPos = 0;
       let lastDependencyStart = 0;
-      const packIndexBuffer = await file.read(pack_file_index_size);
+      // const packIndexBuffer = await file.read(pack_file_index_size);
+      const packIndexBuffer = await packedFileHeader.subarray(
+        packedFileHeaderPosition,
+        packedFileHeaderPosition + pack_file_index_size
+      );
+      packedFileHeaderPosition += pack_file_index_size;
 
       while (null !== (chunk = packIndexBuffer.readInt8(bufPos))) {
         bufPos += 1;
@@ -1671,11 +1715,11 @@ export const readPack = async (
     let chunk;
     let file_pos = dataStart;
 
-    const headerSize = dataStart - file.tell();
+    const headerSize = dataStart - packedFileHeaderPosition;
     // const headerBuffer = await file.read(headerSize);
 
     const headerBuffer = Buffer.alloc(headerSize);
-    fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, file.tell());
+    fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, packedFileHeaderPosition);
 
     // console.log("header size is: " + headerSize);
 
@@ -1800,7 +1844,7 @@ export const readPack = async (
     console.log(e);
   } finally {
     try {
-      if (file) await file.close();
+      // if (file) await file.close();
       if (fileId >= 0) fs.closeSync(fileId);
     } catch (e) {
       console.log(e);
