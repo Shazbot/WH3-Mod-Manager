@@ -2164,8 +2164,6 @@ function findPackTableCollisionsBetweenPacksOptimized(
   let i = 0,
     j = 0;
 
-  let firstIndexOfSameTablesFirstPack = -1;
-  let firstIndexOfSameTablesSecondPack = -1;
   while (i < pack.packedFiles.length && j < packTwo.packedFiles.length) {
     const packFile = pack.packedFiles[i];
     const packTwoFile = packTwo.packedFiles[j];
@@ -2293,21 +2291,6 @@ export function appendPackTableCollisions(
 
 export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
   const packTableCollisions: PackTableCollision[] = [];
-  console.time("findPackTableCollisions1");
-  if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
-  for (let i = 0; i < packsData.length; i++) {
-    const pack = packsData[i];
-    for (let j = i + 1; j < packsData.length; j++) {
-      const packTwo = packsData[j];
-      if (pack === packTwo) continue;
-      if (pack.name === packTwo.name) continue;
-      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
-
-      findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
-    }
-    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "Files");
-  }
-  console.timeEnd("findPackTableCollisions1");
 
   const packTableCollisions2: PackTableCollision[] = [];
   console.time("findPackTableCollisions2");
@@ -2326,6 +2309,32 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
   }
   console.timeEnd("findPackTableCollisions2");
 
+  return packTableCollisions;
+}
+
+export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
+  packsData: Pack[],
+  onPackChecked?: OnPackChecked
+) {
+  const packTableCollisions: PackTableCollision[] = [];
+  console.time("findPackTableCollisions1");
+  if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
+  for (let i = 0; i < packsData.length; i++) {
+    const pack = packsData[i];
+    for (let j = i + 1; j < packsData.length; j++) {
+      const packTwo = packsData[j];
+      if (pack === packTwo) continue;
+      if (pack.name === packTwo.name) continue;
+      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
+
+      findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
+    }
+    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "Files");
+  }
+  console.timeEnd("findPackTableCollisions1");
+
+  const packTableCollisions2: PackTableCollision[] = findPackTableCollisions(packsData, onPackChecked);
+
   const areCollisionsEqual =
     packTableCollisions.length == packTableCollisions2.length &&
     packTableCollisions.every((collision) =>
@@ -2342,7 +2351,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
   console.log("findPackTableCollisions are EQUAL:", areCollisionsEqual);
   // if (!areCollisionsEqual) console.log(diff(packTableCollisions, packTableCollisions2));
 
-  const packTableCollisionsSort = (a, b) => {
+  const packTableCollisionsSort = (a: PackTableCollision, b: PackTableCollision) => {
     const fileNameCompare = a.fileName.localeCompare(b.fileName);
     if (fileNameCompare !== 0) return fileNameCompare;
     const secondFileNameCompare = a.secondFileName.localeCompare(b.secondFileName);
@@ -2384,7 +2393,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
   // if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
-    const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: [] };
+    const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: {} };
     packsTableReferences[pack.name] = packTableReferences;
 
     // console.log("findPackTableReferences: number of packedFiles:", pack.packedFiles.length);
@@ -2486,8 +2495,11 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                     targetFieldName: dbFieldNameReferenceTo,
                   };
 
+                  packTableReferences.refOrigins[dbNameReferenceTo] =
+                    packTableReferences.refOrigins[dbNameReferenceTo] || [];
+
                   if (
-                    !packTableReferences.refOrigins.some(
+                    !packTableReferences.refOrigins[dbNameReferenceTo].some(
                       (refOrigin) =>
                         refOrigin.originDBFileName === newRefOrigin.originDBFileName &&
                         refOrigin.targetDBFileName === newRefOrigin.targetDBFileName &&
@@ -2496,7 +2508,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                         refOrigin.targetFieldName === newRefOrigin.targetFieldName
                     )
                   )
-                    packTableReferences.refOrigins.push(newRefOrigin);
+                    packTableReferences.refOrigins[dbNameReferenceTo].push(newRefOrigin);
                 } else {
                   // console.log("NOT IN VANILLA PACKS:", dbNameReferenceTo);
                 }
@@ -2602,17 +2614,19 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
             //   `DIDN'T FIND ${refKey} IN ${dbFileNameToSearch} ${dbFieldNameToSearch}, source is ${dbFieldName} from ${dbFileName}`
             // );
 
-            const refs = packTableReferences.refOrigins.filter(
-              (refOrigin) =>
-                refOrigin.targetDBFileName === dbFileNameToSearch &&
-                refOrigin.value === refKey &&
-                refOrigin.targetFieldName === dbFieldNameToSearch
-            );
-            for (const ref of refs) {
-              foundMissingRefs.push(ref);
-              // console.log(
-              //   `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
-              // );
+            if (packTableReferences.refOrigins[dbFileNameToSearch]) {
+              const refs = packTableReferences.refOrigins[dbFileNameToSearch].filter(
+                (refOrigin) =>
+                  refOrigin.targetDBFileName === dbFileNameToSearch &&
+                  refOrigin.value === refKey &&
+                  refOrigin.targetFieldName === dbFieldNameToSearch
+              );
+              for (const ref of refs) {
+                foundMissingRefs.push(ref);
+                // console.log(
+                //   `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
+                // );
+              }
             }
           }
         }
@@ -2636,7 +2650,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
   // if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
-    const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: [] };
+    const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: {} };
     packsTableReferences[pack.name] = packTableReferences;
 
     // console.log("findPackTableReferences: number of packedFiles:", pack.packedFiles.length);
@@ -2769,8 +2783,11 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                     targetFieldName: dbFieldNameReferenceTo,
                   };
 
+                  packTableReferences.refOrigins[dbNameReferenceTo] =
+                    packTableReferences.refOrigins[dbNameReferenceTo] || [];
+
                   if (
-                    !packTableReferences.refOrigins.some(
+                    !packTableReferences.refOrigins[dbNameReferenceTo].some(
                       (refOrigin) =>
                         refOrigin.originDBFileName === newRefOrigin.originDBFileName &&
                         refOrigin.targetDBFileName === newRefOrigin.targetDBFileName &&
@@ -2779,7 +2796,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                         refOrigin.targetFieldName === newRefOrigin.targetFieldName
                     )
                   )
-                    packTableReferences.refOrigins.push(newRefOrigin);
+                    packTableReferences.refOrigins[dbNameReferenceTo].push(newRefOrigin);
                 } else {
                   // console.log("NOT IN VANILLA PACKS:", dbNameReferenceTo);
                 }
@@ -2898,17 +2915,19 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
             //   `DIDN'T FIND ${refKey} IN ${dbFileNameToSearch} ${dbFieldNameToSearch}, source is ${dbFieldName} from ${dbFileName}`
             // );
 
-            const refs = packTableReferences.refOrigins.filter(
-              (refOrigin) =>
-                refOrigin.targetDBFileName === dbFileNameToSearch &&
-                refOrigin.value === refKey &&
-                refOrigin.targetFieldName === dbFieldNameToSearch
-            );
-            for (const ref of refs) {
-              foundMissingRefs.push(ref);
-              // console.log(
-              //   `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
-              // );
+            if (packTableReferences.refOrigins[dbFileNameToSearch]) {
+              const refs = packTableReferences.refOrigins[dbFileNameToSearch].filter(
+                (refOrigin) =>
+                  refOrigin.targetDBFileName === dbFileNameToSearch &&
+                  refOrigin.value === refKey &&
+                  refOrigin.targetFieldName === dbFieldNameToSearch
+              );
+              for (const ref of refs) {
+                foundMissingRefs.push(ref);
+                // console.log(
+                //   `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
+                // );
+              }
             }
           }
         }
@@ -3022,10 +3041,17 @@ export function findPackTableMissingReferences(packsData: Pack[], onPackChecked?
     "PACKSDATA IS",
     packsData.map((pack) => pack.name)
   );
-  const missingRefs1 = findPackTableReferences(packsData);
-  const missingRefs2 = findPackTableReferencesOptimized(packsData);
+  return findPackTableReferencesOptimized(packsData);
+}
 
-  const refSorting = (a, b) => {
+export function findPackTableMissingReferencesAndCompareWithUnoptimizedMethod(
+  packsData: Pack[],
+  onPackChecked?: OnPackChecked
+) {
+  const missingRefs1 = findPackTableReferences(packsData, onPackChecked);
+  const missingRefs2 = findPackTableMissingReferences(packsData, onPackChecked);
+
+  const refSorting = (a: DBRefOrigin, b: DBRefOrigin) => {
     const c = a.originDBFileName.localeCompare(b.originDBFileName);
     if (c !== 0) return c;
     const d = a.originFieldName.localeCompare(b.originFieldName);
@@ -3047,13 +3073,15 @@ export function findPackTableMissingReferences(packsData: Pack[], onPackChecked?
     fs.writeFileSync("findPackTableMissingReferencesFIRST.json", JSON.stringify(missingRefs1));
     fs.writeFileSync("findPackTableMissingReferencesSECOND.json", JSON.stringify(missingRefs2));
   }
-  return [];
+  return missingRefs1;
 }
 
-export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
-  findPackTableMissingReferences(packsData, onPackChecked);
-
-  console.time("findPackFileCollisions1");
+// TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
+export function findPackFileCollisionsAndCompareWithUnoptimizedMethod(
+  packsData: Pack[],
+  onPackChecked?: OnPackChecked
+) {
+  console.time("findPackFileCollisionsBetweenPacks");
   const conflicts: PackFileCollision[] = [];
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
@@ -3067,23 +3095,9 @@ export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPack
       findPackFileCollisionsBetweenPacks(pack, packTwo, conflicts);
     }
   }
-  console.timeEnd("findPackFileCollisions1");
+  console.timeEnd("findPackFileCollisionsBetweenPacks");
 
-  console.time("findPackFileCollisions2");
-  const conflicts2: PackFileCollision[] = [];
-  for (let i = 0; i < packsData.length; i++) {
-    const pack = packsData[i];
-    for (let j = i + 1; j < packsData.length; j++) {
-      const packTwo = packsData[j];
-      if (pack === packTwo) continue;
-      if (pack.name === packTwo.name) continue;
-      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
-
-      if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");
-      findPackFileCollisionsBetweenPacksOptimized(pack, packTwo, conflicts2);
-    }
-  }
-  console.timeEnd("findPackFileCollisions2");
+  const conflicts2 = findPackFileCollisions(packsData, onPackChecked);
 
   const areConflictsEqual =
     conflicts.length == conflicts2.length &&
@@ -3096,10 +3110,30 @@ export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPack
       )
     );
   console.log("findPackFileCollisions are EQUAL:", areConflictsEqual);
-  // if (!areConflictsEqual) console.log(diff(conflicts, conflicts2));
-
   const diffData = diff(conflicts, conflicts2);
   if (!areConflictsEqual) fs.writeFileSync("findPackFileCollisions.json", JSON.stringify(diffData));
+
+  return conflicts2;
+}
+
+export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
+  findPackTableMissingReferences(packsData, onPackChecked);
+
+  console.time("findPackFileCollisionsBetweenPacksOptimized");
+  const conflicts: PackFileCollision[] = [];
+  for (let i = 0; i < packsData.length; i++) {
+    const pack = packsData[i];
+    for (let j = i + 1; j < packsData.length; j++) {
+      const packTwo = packsData[j];
+      if (pack === packTwo) continue;
+      if (pack.name === packTwo.name) continue;
+      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
+
+      if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");
+      findPackFileCollisionsBetweenPacksOptimized(pack, packTwo, conflicts);
+    }
+  }
+  console.timeEnd("findPackFileCollisionsBetweenPacksOptimized");
 
   return conflicts;
 }

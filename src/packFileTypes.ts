@@ -70,7 +70,7 @@ export interface DBRefOrigin {
 export interface PackTableReferences {
   ownKeys: Record<DBFileName, Record<DBFieldName, string[]>>;
   refs: Record<DBFileName, Record<DBFieldName, string[]>>;
-  refOrigins: DBRefOrigin[];
+  refOrigins: Record<DBFileName, DBRefOrigin[]>;
 }
 
 export interface PackCollisions {

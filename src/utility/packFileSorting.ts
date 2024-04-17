@@ -66,7 +66,7 @@ export const getInsertionIndexInPresortedArray = (array: Array<string>, value: s
   return low;
 };
 
-export const insertIntoPresortedArray = <T>(array: Array<T>, value: T) => {
+export const insertIntoPresortedArray = (array: Array<string>, value: string) => {
   const insertionIndex = getInsertionIndexInPresortedArray(array, value);
   array.splice(insertionIndex, 0, value);
   return array;
