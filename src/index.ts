@@ -1780,7 +1780,7 @@ if (!gotTheLock) {
       const existingPack = appData.packsData.find((pack) => pack.path == mod.path);
       let needsReRead = false;
       if (existingPack) {
-        const lastChangedLocal = (await fsExtra.stat(mod.path)).mtimeMs;
+        const lastChangedLocal = (await fsExtra.statSync(mod.path)).mtimeMs;
         if (lastChangedLocal != existingPack.lastChangedLocal) {
           needsReRead = true;
           appData.packsData = appData.packsData.filter((pack) => pack.path != mod.path);
