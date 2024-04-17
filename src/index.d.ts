@@ -382,7 +382,7 @@ declare global {
     maxIndex: number;
     firstPackName: string;
     secondPackName: string;
-    type: "Files" | "TableKeys";
+    type: PackCollisionCheckType;
   }
 
   interface ModReadingInfo {
@@ -395,8 +395,10 @@ declare global {
     maxIndex: number,
     firstPackName: string,
     secondPackName: string,
-    type: "Files" | "TableKeys"
+    type: PackCollisionCheckType
   ) => void;
+
+  type PackCollisionCheckType = "Files" | "TableKeys" | "MissingKeys";
 
   // type SupportedGames = "wh3" | "wh2";
 }

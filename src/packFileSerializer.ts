@@ -14,6 +14,7 @@ import {
   PackTableReferences,
   DBField,
   DBRefOrigin,
+  PackName,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
@@ -2463,6 +2464,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                     value: resolvedKeyValue,
                     originFieldName: dbField.name,
                     targetFieldName: dbFieldNameReferenceTo,
+                    originFileSuffix: packFile.name,
                   };
 
                   packTableReferences.refOrigins[dbNameReferenceTo] =
@@ -2475,7 +2477,8 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                         refOrigin.targetDBFileName === newRefOrigin.targetDBFileName &&
                         refOrigin.value === newRefOrigin.value &&
                         refOrigin.originFieldName === newRefOrigin.originFieldName &&
-                        refOrigin.targetFieldName === newRefOrigin.targetFieldName
+                        refOrigin.targetFieldName === newRefOrigin.targetFieldName &&
+                        refOrigin.originFileSuffix === newRefOrigin.originFileSuffix
                     )
                   )
                     packTableReferences.refOrigins[dbNameReferenceTo].push(newRefOrigin);
@@ -2494,7 +2497,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
     }
   }
 
-  const foundMissingRefs: DBRefOrigin[] = [];
+  const foundMissingRefs: Record<PackName, DBRefOrigin[]> = {};
   for (const [packName, packTableReferences] of Object.entries(packsTableReferences)) {
     // don't check vanilla packs for missing refs
     if (appData.vanillaPacks.some((vanillaPack) => vanillaPack.name == packName)) continue;
@@ -2551,7 +2554,8 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                   refOrigin.targetFieldName === dbFieldNameToSearch
               );
               for (const ref of refs) {
-                foundMissingRefs.push(ref);
+                foundMissingRefs[packName] = foundMissingRefs[packName] || [];
+                foundMissingRefs[packName].push(ref);
                 // console.log(
                 //   `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
                 // );
@@ -2575,6 +2579,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
 
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
+    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "MissingKeys");
     const packTableReferences: PackTableReferences = { ownKeys: {}, refs: {}, refOrigins: {} };
     packsTableReferences[pack.name] = packTableReferences;
 
@@ -2649,7 +2654,8 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                   dbField.name,
                   chunkedSchemaIntoRows[i][j].fields
                 );
-                throw e;
+                continue;
+                // throw e;
               }
 
               if (resolvedKeyValue != "")
@@ -2673,6 +2679,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                     value: resolvedKeyValue,
                     originFieldName: dbField.name,
                     targetFieldName: dbFieldNameReferenceTo,
+                    originFileSuffix: packFile.name,
                   };
 
                   packTableReferences.refOrigins[dbNameReferenceTo] =
@@ -2685,7 +2692,8 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                         refOrigin.targetDBFileName === newRefOrigin.targetDBFileName &&
                         refOrigin.value === newRefOrigin.value &&
                         refOrigin.originFieldName === newRefOrigin.originFieldName &&
-                        refOrigin.targetFieldName === newRefOrigin.targetFieldName
+                        refOrigin.targetFieldName === newRefOrigin.targetFieldName &&
+                        refOrigin.originFileSuffix === newRefOrigin.originFileSuffix
                     )
                   )
                     packTableReferences.refOrigins[dbNameReferenceTo].push(newRefOrigin);
@@ -2704,7 +2712,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
     }
   }
 
-  const foundMissingRefs: DBRefOrigin[] = [];
+  const foundMissingRefs: Record<PackName, DBRefOrigin[]> = {};
   for (const [packName, packTableReferences] of Object.entries(packsTableReferences)) {
     // don't check vanilla packs for missing refs
     if (appData.vanillaPacks.some((vanillaPack) => vanillaPack.name == packName)) continue;
@@ -2763,7 +2771,8 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                   refOrigin.targetFieldName === dbFieldNameToSearch
               );
               for (const ref of refs) {
-                foundMissingRefs.push(ref);
+                foundMissingRefs[packName] = foundMissingRefs[packName] || [];
+                foundMissingRefs[packName].push(ref);
                 // console.log(
                 //   `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
                 // );
@@ -2876,8 +2885,26 @@ function findPackFileCollisionsBetweenPacksOptimized(
   }
 }
 
+const refSorting = (a: DBRefOrigin, b: DBRefOrigin) => {
+  const f = a.targetDBFileName.localeCompare(b.targetDBFileName);
+  if (f !== 0) return f;
+  const c = a.targetFieldName.localeCompare(b.targetFieldName);
+  if (c !== 0) return c;
+  const e = a.value.localeCompare(b.value);
+  if (e !== 0) return e;
+  const d = a.originFieldName.localeCompare(b.originFieldName);
+  if (d !== 0) return d;
+  const g = a.originDBFileName.localeCompare(b.originDBFileName);
+  if (g !== 0) return d;
+  return a.originFileSuffix.localeCompare(b.originFileSuffix);
+};
+
 export function findPackTableMissingReferences(packsData: Pack[], onPackChecked?: OnPackChecked) {
-  return findPackTableReferencesOptimized(packsData);
+  const missingRefs = findPackTableReferencesOptimized(packsData, onPackChecked);
+
+  Object.values(missingRefs).forEach((refs) => refs.sort(refSorting));
+
+  return missingRefs;
 }
 
 // TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
@@ -2888,20 +2915,8 @@ export function findPackTableMissingReferencesAndCompareWithUnoptimizedMethod(
   const missingRefs1 = findPackTableReferences(packsData, onPackChecked);
   const missingRefs2 = findPackTableMissingReferences(packsData, onPackChecked);
 
-  const refSorting = (a: DBRefOrigin, b: DBRefOrigin) => {
-    const c = a.originDBFileName.localeCompare(b.originDBFileName);
-    if (c !== 0) return c;
-    const d = a.originFieldName.localeCompare(b.originFieldName);
-    if (d !== 0) return d;
-    const e = a.value.localeCompare(b.value);
-    if (e !== 0) return e;
-    const f = a.targetDBFileName.localeCompare(b.targetDBFileName);
-    if (f !== 0) return f;
-    return a.targetFieldName.localeCompare(b.targetFieldName);
-  };
-
-  missingRefs1.sort(refSorting);
-  missingRefs2.sort(refSorting);
+  Object.values(missingRefs1).forEach((refs) => refs.sort(refSorting));
+  Object.values(missingRefs2).forEach((refs) => refs.sort(refSorting));
   const areEqual = equals(missingRefs1, missingRefs2);
   console.log("missingRefs1 and missingRefs2 EQUAL:", areEqual);
   const diffData = diff(missingRefs1, missingRefs2);
@@ -2954,8 +2969,6 @@ export function findPackFileCollisionsAndCompareWithUnoptimizedMethod(
 }
 
 export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPackChecked) {
-  findPackTableMissingReferences(packsData, onPackChecked);
-
   console.time("findPackFileCollisionsBetweenPacksOptimized");
   const conflicts: PackFileCollision[] = [];
   for (let i = 0; i < packsData.length; i++) {

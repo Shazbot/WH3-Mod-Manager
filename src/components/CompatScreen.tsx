@@ -5,8 +5,9 @@ import { Spinner, Tabs, Tooltip } from "../flowbite";
 import { compareModNames, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { PackTableCollision } from "../packFileTypes";
+import { DBRefOrigin, PackTableCollision } from "../packFileTypes";
 import { setPackCollisions } from "../appSlice";
+import groupBy from "object.groupby";
 import localizationContext from "../localizationContext";
 
 let cachedIsCompatOpen = false;
@@ -39,7 +40,9 @@ const CompatScreen = memo(() => {
     }
     if (cachedIsCompatOpen && !isCompatOpen) {
       console.log("Compat Panel is closed, getting rid of compat data");
-      dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
+      dispatch(
+        setPackCollisions({ packFileCollisions: [], packTableCollisions: [], missingTableReferences: {} })
+      );
     }
     cachedIsCompatOpen = isCompatOpen;
   });
@@ -136,6 +139,27 @@ const CompatScreen = memo(() => {
     });
   }
 
+  // for(const [packName, refs] of Object.entries(packCollisions.missingTableReferences)){
+  //   groupBy(refs,(ref)=>{return `${ref.targetDBFileName}/${ref.targetFieldName}`})
+
+  // }
+
+  const groupedMissingTableReferences: Record<string, Record<string, DBRefOrigin[]>> = {};
+  for (const [packName, refs] of Object.entries(packCollisions.missingTableReferences)) {
+    if (useEnabledModsOnly) {
+      const mod = enabledMods.find((iterMod) => iterMod.name == packName);
+      if (!mod) continue;
+    }
+
+    groupedMissingTableReferences[packName] = groupBy(refs, (ref) => {
+      return `${ref.targetDBFileName}/${ref.targetFieldName}`;
+    });
+  }
+
+  // const a = Object.entries(packCollisions.missingTableReferences).map(([packName, refs])=>{
+  //   return groupBy(refs,(ref)=>{return `${ref.targetDBFileName}/${ref.targetFieldName}`})
+  // })
+
   const toggleUseEnabledModsOnly = useCallback(() => {
     if (useEnabledModsOnly) {
       console.log("READ ALL MODS");
@@ -166,7 +190,13 @@ const CompatScreen = memo(() => {
           // show={true}
           onClose={() => {
             setIsCompatOpen(false);
-            dispatch(setPackCollisions({ packFileCollisions: [], packTableCollisions: [] }));
+            dispatch(
+              setPackCollisions({
+                packFileCollisions: [],
+                packTableCollisions: [],
+                missingTableReferences: {},
+              })
+            );
           }}
           size="2xl"
           position="top-center"
@@ -194,6 +224,11 @@ const CompatScreen = memo(() => {
                       {localized.enabledModsOnly}
                     </label>
                   </span>
+                  {packCollisions.packFileCollisions.length == 0 && (
+                    <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
+                      {localized.noFileCollisionsFound}
+                    </p>
+                  )}
                   {packCollisions &&
                     packCollisions.packFileCollisions &&
                     Object.keys(groupedPackFileCollisions)
@@ -267,6 +302,11 @@ const CompatScreen = memo(() => {
                       {localized.enabledModsOnly}
                     </label>
                   </span>
+                  {packCollisions.packTableCollisions.length == 0 && (
+                    <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
+                      {localized.noDBKeyCollisionsFound}
+                    </p>
+                  )}
                   {packCollisions &&
                     packCollisions.packTableCollisions &&
                     Object.keys(groupedPackTableCollisions)
@@ -371,6 +411,116 @@ const CompatScreen = memo(() => {
                       })}
                 </div>
               </Tabs.Item>
+              <Tabs.Item title={localized.missingKeys}>
+                <div className="leading-relaxed dark:text-gray-300 relative">
+                  <span className="absolute top-[-4rem] right-0 flex items-center">
+                    <input
+                      type="checkbox"
+                      id="compat-enabled-mod-only"
+                      checked={useEnabledModsOnly}
+                      onChange={() => toggleUseEnabledModsOnly()}
+                    ></input>
+                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      {localized.enabledModsOnly}
+                    </label>
+                  </span>
+                  {Object.keys(groupedMissingTableReferences).length == 0 && (
+                    <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
+                      {localized.noMissingDBKeysFound}
+                    </p>
+                  )}
+                  <div className="text-lg">
+                    {Object.keys(groupedMissingTableReferences)
+                      .sort((firstPackName, secondPackName) => {
+                        const firstPackIndex = sortedMods.indexOf(
+                          sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                        );
+                        const secondPackIndex = sortedMods.indexOf(
+                          sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                        );
+
+                        return firstPackIndex - secondPackIndex;
+                      })
+                      .map((firstPackName) => {
+                        const tableKeyGroupToRefs = groupedMissingTableReferences[firstPackName];
+                        return Object.keys(tableKeyGroupToRefs).map((tableKeyGroup) => {
+                          const refs = tableKeyGroupToRefs[tableKeyGroup];
+                          let donePackName = false;
+                          let doneTableKeyGroup = false;
+                          return refs.map((ref) => {
+                            const targetDBFileName = ref.targetDBFileName;
+                            const targetFieldName = ref.targetFieldName;
+                            const value = ref.value;
+                            const originFieldName = ref.originFieldName;
+                            const originDBFileName = ref.originDBFileName;
+                            const originFileSuffix = ref.originFileSuffix;
+
+                            const fragment = (
+                              <React.Fragment
+                                key={
+                                  firstPackName +
+                                  targetDBFileName +
+                                  targetFieldName +
+                                  value +
+                                  originFieldName +
+                                  originDBFileName +
+                                  originFileSuffix +
+                                  donePackName +
+                                  doneTableKeyGroup
+                                }
+                              >
+                                {!donePackName && <div className="mt-4 font-normal">{firstPackName}</div>}
+                                {!doneTableKeyGroup && (
+                                  <div className="ml-8">
+                                    <span className="make-tooltip-inline">
+                                      <Tooltip
+                                        content={
+                                          <>
+                                            <p>{localized.missingKeyTableAndColumn}</p>
+                                          </>
+                                        }
+                                      >
+                                        <span className="text-center w-full ">{tableKeyGroup}</span>
+                                      </Tooltip>
+                                    </span>
+                                  </div>
+                                )}
+
+                                <div className="ml-16">
+                                  <span className="make-tooltip-inline">
+                                    <Tooltip
+                                      content={
+                                        <>
+                                          <p>{localized.missingDBKey}</p>
+                                        </>
+                                      }
+                                    >
+                                      <span className="text-center w-full decoration-red-700 underline decoration-2 underline-offset-4">
+                                        {value}
+                                      </span>
+                                    </Tooltip>
+                                  </span>
+
+                                  <span className="ml-2 make-tooltip-inline">
+                                    <span className="text-center w-full">
+                                      {localized.missingKeyIsReferencedIn &&
+                                        localized.missingKeyIsReferencedIn
+                                          .replace("<originFileSuffix>", originFileSuffix)
+                                          .replace("<originFieldName>", originFieldName)}
+                                    </span>
+                                  </span>
+                                </div>
+                              </React.Fragment>
+                            );
+                            donePackName = true;
+                            doneTableKeyGroup = true;
+                            return fragment;
+                          });
+                        });
+                      })}
+                  </div>
+                </div>
+              </Tabs.Item>
               <Tabs.Item title={localized.help}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
                   <p>{localized.compatHelpOne}</p>
@@ -382,6 +532,7 @@ const CompatScreen = memo(() => {
                     {compatHelpTwo[1]}
                   </p>
                   <p className="mt-6">{localized.compatHelpThree}</p>
+                  <p className="mt-6">{localized.compatHelpFour}</p>
                 </div>
               </Tabs.Item>
             </Tabs.Group>
