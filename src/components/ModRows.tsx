@@ -607,17 +607,15 @@ const ModRows = memo(() => {
         className={`${isDropdownOpen ? "" : "hidden"} z-50 dark`}
         id="modDropdownOverlay"
       >
-        {isDropdownOpen && (
-          <ModDropdown
-            isOpen={isDropdownOpen}
-            positionX={positionX}
-            positionY={positionY}
-            mod={contextMenuMod}
-            visibleMods={unfilteredVisibleMods}
-            referenceElement={dropdownReferenceElement}
-            mods={mods}
-          ></ModDropdown>
-        )}
+        <ModDropdown
+          isOpen={isDropdownOpen}
+          positionX={positionX}
+          positionY={positionY}
+          mod={contextMenuMod}
+          visibleMods={unfilteredVisibleMods}
+          referenceElement={dropdownReferenceElement}
+          mods={mods}
+        ></ModDropdown>
       </FloatingOverlay>
       {modBeingCustomized && modBeingCustomized.path && <ModCustomization />}
       <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
@@ -755,7 +753,7 @@ const ModRows = memo(() => {
               mod,
               onRowHoverStart,
               onRowHoverEnd,
-              onDrop: onDropWithVisibleMods,
+              onDrop: onDropWithVisibleMods(),
               onDrag,
               onDragStart,
               onDragLeave,
