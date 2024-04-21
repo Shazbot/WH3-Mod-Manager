@@ -622,6 +622,7 @@ const CompatScreen = memo(() => {
                                 const tableName = uniqueIdCollision.tableName;
                                 const fieldName = uniqueIdCollision.fieldName;
                                 const value = uniqueIdCollision.value;
+                                const valueTwo = uniqueIdCollision.valueTwo;
 
                                 const fragment = (
                                   <React.Fragment
@@ -683,39 +684,79 @@ const CompatScreen = memo(() => {
                                         </Tooltip>
                                       </div>
 
-                                      {(uniqueIdCollision.valueTwo &&
-                                        ((uniqueIdCollision.secondPackName == secondPackName && (
+                                      {(valueTwo &&
+                                        ((valueTwo.packName == secondPackName && (
                                           <div className="ml-6 mb-4">
                                             <div>
                                               {value.packFileName} in {firstPackName}
                                             </div>
-                                            <div className="ml-4">{value.tableRow.join(" ")}</div>
-                                            <div>
-                                              {uniqueIdCollision.valueTwo.packFileName} in {secondPackName}
+                                            <div className="ml-4 flex gap-2 flex-wrap">
+                                              {value.tableRow.map((field, i) => {
+                                                if (field != valueTwo.tableRow[i])
+                                                  return (
+                                                    <span key={i} className="text-blue-500">
+                                                      {field}
+                                                    </span>
+                                                  );
+                                                return <span key={i}>{field}</span>;
+                                              })}
                                             </div>
-                                            <div className="ml-4">
-                                              {uniqueIdCollision.valueTwo.tableRow.join(" ")}
+                                            <div>
+                                              {valueTwo.packFileName} in {secondPackName}
+                                            </div>
+                                            <div className="ml-4 flex gap-2 flex-wrap">
+                                              {valueTwo.tableRow.map((field, i) => {
+                                                if (field != value.tableRow[i])
+                                                  return (
+                                                    <span key={i} className="text-blue-500">
+                                                      {field}
+                                                    </span>
+                                                  );
+                                                return <span key={i}>{field}</span>;
+                                              })}
                                             </div>
                                           </div>
                                         )) || (
                                           <div className="ml-6 mb-4">
                                             <div>
-                                              {uniqueIdCollision.valueTwo.packFileName} in {firstPackName}
+                                              {valueTwo.packFileName} in {firstPackName}
                                             </div>
-                                            <div className="ml-4">
-                                              {uniqueIdCollision.valueTwo.tableRow.join(" ")}
+                                            <div className="ml-4 flex gap-2 flex-wrap">
+                                              {valueTwo.tableRow.map((field, i) => {
+                                                if (field != value.tableRow[i])
+                                                  return (
+                                                    <span key={i} className="text-blue-500">
+                                                      {field}
+                                                    </span>
+                                                  );
+                                                return <span key={i}>{field}</span>;
+                                              })}
                                             </div>
                                             <div>
                                               {value.packFileName} in {secondPackName}
                                             </div>
-                                            <div className="ml-4">{value.tableRow.join(" ")}</div>
+                                            <div className="ml-4 flex gap-2 flex-wrap">
+                                              {value.tableRow.map((field, i) => {
+                                                if (field != valueTwo.tableRow[i])
+                                                  return (
+                                                    <span key={i} className="text-blue-500">
+                                                      {field}
+                                                    </span>
+                                                  );
+                                                return <span key={i}>{field}</span>;
+                                              })}
+                                            </div>
                                           </div>
                                         ))) || (
                                         <div className="ml-6 mb-4">
                                           <div>
                                             {value.packFileName} in {firstPackName}
                                           </div>
-                                          <div className="ml-4">{value.tableRow.join(" ")}</div>
+                                          <div className="ml-4 flex gap-2 flex-wrap">
+                                            {value.tableRow.map((field, i) => {
+                                              return <span key={i}>{field}</span>;
+                                            })}
+                                          </div>
                                         </div>
                                       )}
                                       {/* <span className="ml-2 make-tooltip-inline">
