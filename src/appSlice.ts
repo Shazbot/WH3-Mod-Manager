@@ -12,7 +12,7 @@ import { SortingType } from "./utility/modRowSorting";
 import { compareModNames, sortAsInPreset, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import initialState from "./initialAppState";
 import equal from "fast-deep-equal";
-import { MdSplitscreen } from "react-icons/md";
+import { format } from "date-fns";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -140,13 +140,13 @@ const enableModsByWorkshopIdsInternal = (state: AppState, ids: string[]) => {
     .forEach((mod) => (mod.isEnabled = true));
 };
 
-const addPresetInternal = (state: AppState, newPreset: Preset) => {
+const addPresetInternal = (state: AppState, newPreset: Preset, showAsLastSelected = true) => {
   console.log("current preset version is ", state.currentPreset.version);
   newPreset.mods =
     (state.currentPreset.version != undefined && newPreset.mods) || sortByNameAndLoadOrder(newPreset.mods);
   newPreset.version = 2;
   state.presets.push(newPreset);
-  state.lastSelectedPreset = newPreset;
+  if (showAsLastSelected) state.lastSelectedPreset = newPreset;
 
   state.toasts.push({
     type: "success",
@@ -271,6 +271,70 @@ const checkImportedSteamCollections = (state: AppState) => {
       handleImportSteamCollection(state, importSteamCollection);
       delete state.steamCollectionsToImport[importSteamCollection.name];
     }
+  }
+};
+
+const createBisectedModListPresetsInternal = (state: AppState, isModSelectionRandom: boolean) => {
+  const enabledMods = state.currentPreset.mods.filter((mod) => mod.isEnabled);
+  const isLoadOrderPreset = enabledMods.some((mod) => mod.loadOrder != undefined);
+
+  const orderedMods = sortByNameAndLoadOrder(enabledMods);
+
+  const presetMods: Mod[] = orderedMods.map((mod, i) => {
+    const newMod = { ...mod };
+    if (isLoadOrderPreset) newMod.loadOrder = i;
+    return newMod;
+  });
+
+  const cutoff = Math.ceil(presetMods.length / 2);
+
+  let firstPresetMods = [];
+  let secondPresetMods = [];
+
+  if (isModSelectionRandom) {
+    const modsToPickFrom = [...presetMods];
+    for (let i = 0; i < cutoff; i++) {
+      const modIndex = Math.floor(Math.random() * modsToPickFrom.length);
+      firstPresetMods.push(modsToPickFrom[modIndex]);
+      modsToPickFrom.splice(modIndex, 1);
+    }
+
+    for (let i = modsToPickFrom.length - 1; i >= 0; i--) {
+      const modIndex = Math.floor(Math.random() * modsToPickFrom.length);
+      secondPresetMods.push(modsToPickFrom[modIndex]);
+      modsToPickFrom.splice(modIndex, 1);
+    }
+
+    firstPresetMods = sortByNameAndLoadOrder(firstPresetMods).map((mod, i) => {
+      const newMod = { ...mod };
+      if (isLoadOrderPreset) newMod.loadOrder = i;
+      return newMod;
+    });
+    secondPresetMods = sortByNameAndLoadOrder(secondPresetMods).map((mod, i) => {
+      const newMod = { ...mod };
+      if (isLoadOrderPreset) newMod.loadOrder = i;
+      return newMod;
+    });
+  } else {
+    firstPresetMods = presetMods.slice(0, cutoff);
+    secondPresetMods = presetMods.slice(cutoff);
+  }
+
+  const timeStamp = format(new Date(), "dd-MM-yyyy-HH.mm.ss");
+  const newPresetNameFirst = `${timeStamp}_${firstPresetMods.length}_First`;
+  const newPresetNameSecond = `${timeStamp}_${secondPresetMods.length}_Second`;
+
+  const newPresetFirst = { name: newPresetNameFirst, mods: firstPresetMods };
+  const newPresetSecond = { name: newPresetNameSecond, mods: secondPresetMods };
+
+  for (const newPreset of [newPresetFirst, newPresetSecond]) {
+    let existingPreset = state.presets.find((preset) => preset.name == newPreset.name);
+    while (existingPreset) {
+      newPreset.name = newPreset.name + "_";
+      existingPreset = state.presets.find((preset) => preset.name == newPreset.name);
+    }
+
+    addPresetInternal(state, newPreset, false);
   }
 };
 
@@ -724,6 +788,7 @@ const appSlice = createSlice({
       state.filter = filter;
     },
     setModLoadOrder: (state: AppState, action: PayloadAction<ModLoadOrderPayload>) => {
+      console.log("in setModLoadOrder");
       const payload = action.payload;
       const ourMod = state.currentPreset.mods.find((mod) => mod.name === payload.modName);
       const newLoadOrder = payload.loadOrder;
@@ -741,6 +806,8 @@ const appSlice = createSlice({
       const modToChange = visualModList.find((mod) => mod.name === modNameToChange);
       const modRelativeTo = visualModList.find((mod) => mod.name === modNameRelativeTo);
 
+      console.log("modToChange:", modToChange);
+      console.log("modRelativeTo:", modRelativeTo);
       if (!modToChange || !modRelativeTo) return;
 
       console.log("mod to change:", modToChange.name);
@@ -1050,6 +1117,9 @@ const appSlice = createSlice({
       state.customizableMods = action.payload;
       console.log("setCustomizableMods:", state.customizableMods);
     },
+    createBisectedModListPresets: (state: AppState, action: PayloadAction<boolean>) => {
+      createBisectedModListPresetsInternal(state, action.payload);
+    },
     selectCategory: (state: AppState, action: PayloadAction<CategorySelectionPayload>) => {
       const { mods, category, selectOperation } = action.payload;
 
@@ -1151,6 +1221,7 @@ export const {
   removeAllPackDataOverwrites,
   setModBeingCustomized,
   setCustomizableMods,
+  createBisectedModListPresets,
 } = appSlice.actions;
 
 export default appSlice.reducer;

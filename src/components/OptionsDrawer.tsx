@@ -12,6 +12,7 @@ import {
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,
   setDataModsToEnableByName,
+  createBisectedModListPresets,
 } from "../appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -160,6 +161,10 @@ const OptionsDrawer = memo(() => {
     },
     [enabledMods]
   );
+
+  const bisectModList = useCallback((isModSelectionRandom = false) => {
+    dispatch(createBisectedModListPresets(isModSelectionRandom));
+  }, []);
 
   const copyToDataAsSymbolicLink = useCallback(
     (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
@@ -552,6 +557,28 @@ const OptionsDrawer = memo(() => {
                 onClick={() => setIsShowingSetFolderPaths(true)}
               >
                 <span className="uppercase">{localized.setFolderPaths}</span>
+              </button>
+            </div>
+
+            <h6 className="mt-10">{localized.bisectModList}</h6>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{localized.bisectModListMsg}</p>
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => bisectModList()}
+              >
+                <span className="uppercase">{localized.bisectModList}</span>
+              </button>
+            </div>
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+              {localized.bisectModListRandomMsg}
+            </p>
+            <div className="flex mt-2 mb-4 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => bisectModList(true)}
+              >
+                <span className="uppercase">{localized.bisectModListRandomly}</span>
               </button>
             </div>
           </div>
