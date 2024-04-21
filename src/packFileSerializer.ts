@@ -2623,6 +2623,7 @@ function appendToUniqueIdKeysRegistry(
       value: resolvedKeyValue,
       tableRow,
       packFileName: getDBSubnameFromString(packFileName) || "",
+      packName: pack.name,
     });
   }
 }
@@ -3084,9 +3085,9 @@ export function findPackTableMissingReferencesAndUniqueIds(packsData: Pack[], on
 
   Object.values(missingRefs).forEach((refs) => refs.sort(refSorting));
 
-  fs.writeFileSync("dumps/packToTablesWithUniqueIds.json", JSON.stringify(packToTablesWithUniqueIds));
+  // fs.writeFileSync("dumps/packToTablesWithUniqueIds.json", JSON.stringify(packToTablesWithUniqueIds));
   const uniqueIdsCollisions = processPackToTablesWithUniqueIds();
-  fs.writeFileSync("dumps/uniqueIdsCollisions.json", JSON.stringify(uniqueIdsCollisions));
+  // fs.writeFileSync("dumps/uniqueIdsCollisions.json", JSON.stringify(uniqueIdsCollisions));
 
   return [missingRefs, uniqueIdsCollisions] as [typeof missingRefs, typeof uniqueIdsCollisions];
 }

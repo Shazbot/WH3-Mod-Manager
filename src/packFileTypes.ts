@@ -89,6 +89,7 @@ export interface UniqueId {
   value: string;
   packFileName: string;
   tableRow: string[];
+  packName: string;
 }
 
 export interface PackCollisions {
