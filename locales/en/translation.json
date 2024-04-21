@@ -179,8 +179,8 @@
   "cleanSymLinks": "Clean symbolic links in data",
   "cleanSymLinksMsg": "Removes all symbolic links in data. Won't touch real mods that aren't symbolic links.",
   "unhideMods": "Unhide mods you've previously hidden:",
-  "hiddenMods": "Hidden mods",
-  "shareMods": "Share mods",
+  "hiddenMods": "Hidden Mods",
+  "shareMods": "Share Mods",
   "shareModsMsg": "Share current mod list with other people for multiplayer:",
   "shareModLists": "Share Mod List",
   "copyModNames": "Copy names of enabled mods to clipboard:",
@@ -311,7 +311,7 @@
   "missingDBKey": "Missing DB key",
   "missingKeyIsReferencedIn": "is referenced in <originFileSuffix>, column <originFieldName>",
   "compatHelpFour": "The Missing Keys tab searches for missing database references (keys) in mods. DB tables reference each other by key columns, so for example there is a database table that gives attributes like unbreakable to units, so that table needs to reference both the units table and the attributes table. So if that table has a row that says give the unit 'Empire Swordsmen' unbreakable then that means in the units table the Empire Swordsmen need to exist. Missing DB keys can be caused by game updates or missing dependency mods. If they're missing the game won't start at all.",
-  "compatHelpFive": "The Duplicate Keys tab searches for duplicate Id keys among all the mods. If a mod replaces the whole row such a duplicate is fine, for example for a mod and its submod.",
+  "compatHelpFive": "The Duplicate Keys tab searches for duplicate Id keys among all the mods. If a mod replaces the whole row with changed data such a duplicate is fine and intended, for example for a mod and its submod or a mod that wants to change vanilla game data. But these can also be a case of modders copy-pasting a row and forgetting to change the id.",
   "noFileCollisionsFound": "No file collisions found!",
   "noDBKeyCollisionsFound": "No database key collisions found!",
   "noMissingDBKeysFound": "No missing database keys found!",
@@ -323,5 +323,9 @@
   "duplicateKeys": "Duplicate Keys",
   "noDuplicateKeysFound": "No duplicate keys found!",
   "packName": "Pack Name",
-  "duplicateDBKey": "Duplicate DB Key"
+  "duplicateDBKey": "Duplicate DB Key",
+  "bisectModList": "Bisect Mod List",
+  "bisectModListRandomly": "Bisect Mod List Randomly",
+  "bisectModListMsg": "For testing your mod list. Split current mod list into 2 new presets. You can then select a preset and test with it, as well as bisect it again. Note that if any of your mods have custom load order all the mods in the new presets will have load order.",
+  "bisectModListRandomMsg": "Selects mods at random for the new presets."
 }
