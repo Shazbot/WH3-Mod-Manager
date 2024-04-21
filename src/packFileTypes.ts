@@ -76,10 +76,26 @@ export interface PackTableReferences {
   refOrigins: Record<DBFileName, DBRefOrigin[]>;
 }
 
+export interface UniqueIdsCollision {
+  tableName: string;
+  fieldName: string;
+  value: UniqueId;
+  valueTwo: UniqueId;
+  firstPackName: string;
+  secondPackName?: string;
+}
+
+export interface UniqueId {
+  value: string;
+  packFileName: string;
+  tableRow: string[];
+}
+
 export interface PackCollisions {
   packFileCollisions: PackFileCollision[];
   packTableCollisions: PackTableCollision[];
   missingTableReferences: Record<PackName, DBRefOrigin[]>;
+  uniqueIdsCollisions: Record<PackName, UniqueIdsCollision[]>;
 }
 
 export type SCHEMA_FIELD_TYPE =

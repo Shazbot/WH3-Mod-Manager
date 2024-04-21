@@ -48,7 +48,12 @@ const appData = {
   isMakeUnitsGeneralsEnabled: false,
   hasReadConfig: false,
   packsData: [],
-  compatData: { packTableCollisions: [], packFileCollisions: [], missingTableReferences: {} },
+  compatData: {
+    packTableCollisions: [],
+    packFileCollisions: [],
+    missingTableReferences: {},
+    uniqueIdsCollisions: {},
+  },
   currentlyReadingModPaths: [],
   overwrittenDataPackedFiles: {},
   outdatedPackFiles: {},

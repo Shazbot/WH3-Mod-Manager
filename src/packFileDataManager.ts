@@ -5,9 +5,8 @@ import { PackCollisions, Pack } from "./packFileTypes";
 import {
   findPackFileCollisions,
   findPackTableCollisions,
-  findPackTableMissingReferences,
+  findPackTableMissingReferencesAndUniqueIds,
 } from "./packFileSerializer";
-import equal from "fast-deep-equal";
 
 export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCollisions> {
   return await new Promise<PackCollisions>((resolve, reject) => {
@@ -32,9 +31,15 @@ export function getCompatData(
     type: PackCollisionCheckType
   ) => void
 ): PackCollisions {
+  const [missingTableReferences, uniqueIdsCollisions] = findPackTableMissingReferencesAndUniqueIds(
+    packsData,
+    onPackChecked
+  );
+
   return {
     packFileCollisions: findPackFileCollisions(packsData, onPackChecked),
     packTableCollisions: findPackTableCollisions(packsData, onPackChecked),
-    missingTableReferences: findPackTableMissingReferences(packsData, onPackChecked),
+    missingTableReferences,
+    uniqueIdsCollisions,
   };
 }

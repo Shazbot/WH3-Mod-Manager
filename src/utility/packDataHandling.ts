@@ -11,6 +11,10 @@ export const isSchemaFieldNumber = (fieldType: SCHEMA_FIELD_TYPE) => {
   );
 };
 
+export const isSchemaFieldNumberInteger = (fieldType: SCHEMA_FIELD_TYPE) => {
+  return fieldType === "I16" || fieldType === "I32" || fieldType === "I64";
+};
+
 const addToLocTreeNode = (leafNode: TreeNode, subKeys: string[], value: string) => {
   if (subKeys.length == 0) {
     leafNode.value = value;
