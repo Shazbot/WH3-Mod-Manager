@@ -26,7 +26,12 @@ const initialState = {
   isAutoStartCustomBattleEnabled: false,
   allMods: [],
   packsData: {},
-  packCollisions: { packTableCollisions: [], packFileCollisions: [], missingTableReferences: {} },
+  packCollisions: {
+    packTableCollisions: [],
+    packFileCollisions: [],
+    missingTableReferences: {},
+    uniqueIdsCollisions: {},
+  },
   packCollisionsCheckProgress: {
     currentIndex: -1,
     maxIndex: 0,

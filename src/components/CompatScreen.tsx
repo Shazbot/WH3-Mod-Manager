@@ -5,10 +5,11 @@ import { Spinner, Tabs, Tooltip } from "../flowbite";
 import { compareModNames, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { DBRefOrigin, PackTableCollision } from "../packFileTypes";
+import { DBFileName, DBRefOrigin, PackName, PackTableCollision, UniqueIdsCollision } from "../packFileTypes";
 import { setPackCollisions } from "../appSlice";
 import groupBy from "object.groupby";
 import localizationContext from "../localizationContext";
+import { vanillaPackNames } from "../supportedGames";
 
 let cachedIsCompatOpen = false;
 
@@ -18,6 +19,7 @@ const CompatScreen = memo(() => {
   const pathsOfReadPacks = useAppSelector((state) => state.app.pathsOfReadPacks);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const packCollisionsCheckProgress = useAppSelector((state) => state.app.packCollisionsCheckProgress);
+  const currentGame = useAppSelector((state) => state.app.currentGame);
   const sortedMods = sortByNameAndLoadOrder(mods);
   const enabledMods = sortedMods.filter((iterMod) => iterMod.isEnabled);
 
@@ -41,7 +43,12 @@ const CompatScreen = memo(() => {
     if (cachedIsCompatOpen && !isCompatOpen) {
       console.log("Compat Panel is closed, getting rid of compat data");
       dispatch(
-        setPackCollisions({ packFileCollisions: [], packTableCollisions: [], missingTableReferences: {} })
+        setPackCollisions({
+          packFileCollisions: [],
+          packTableCollisions: [],
+          missingTableReferences: {},
+          uniqueIdsCollisions: {},
+        })
       );
     }
     cachedIsCompatOpen = isCompatOpen;
@@ -156,9 +163,46 @@ const CompatScreen = memo(() => {
     });
   }
 
-  // const a = Object.entries(packCollisions.missingTableReferences).map(([packName, refs])=>{
-  //   return groupBy(refs,(ref)=>{return `${ref.targetDBFileName}/${ref.targetFieldName}`})
-  // })
+  const groupedUniqueIdsCollisions: Record<
+    PackName,
+    Record<DBFileName, Record<PackName, UniqueIdsCollision[]>>
+  > = {};
+  for (const [packName, uniqueIdsCollisions] of Object.entries(packCollisions.uniqueIdsCollisions)) {
+    if (useEnabledModsOnly) {
+      const mod =
+        enabledMods.find((iterMod) => iterMod.name == packName) || vanillaPackNames.includes(packName);
+      if (!mod) continue;
+    }
+
+    const groupedByTableName = groupBy(uniqueIdsCollisions, (uniqueIdsCollision) => {
+      return uniqueIdsCollision.tableName;
+    });
+
+    for (const [tableName, uniqueIdsCollisions] of Object.entries(groupedByTableName)) {
+      const subGroupedBySecondPackName = groupBy(uniqueIdsCollisions, (uniqueIdsCollision) => {
+        if (!uniqueIdsCollision.secondPackName) return uniqueIdsCollision.firstPackName;
+        return uniqueIdsCollision.secondPackName == packName
+          ? uniqueIdsCollision.firstPackName
+          : uniqueIdsCollision.secondPackName;
+      });
+      groupedUniqueIdsCollisions[packName] = groupedUniqueIdsCollisions[packName] || {};
+      groupedUniqueIdsCollisions[packName][tableName] = groupedUniqueIdsCollisions[packName][tableName] || {};
+      groupedUniqueIdsCollisions[packName][tableName] = subGroupedBySecondPackName;
+
+      if (useEnabledModsOnly) {
+        for (const secondPackName of Object.keys(subGroupedBySecondPackName)) {
+          const mod =
+            enabledMods.find((iterMod) => iterMod.name == secondPackName) ||
+            vanillaPackNames.includes(secondPackName);
+          if (!mod) {
+            delete groupedUniqueIdsCollisions[packName][tableName][secondPackName];
+          }
+        }
+      }
+    }
+  }
+
+  // console.log("groupedUniqueIdsCollisions", groupedUniqueIdsCollisions);
 
   const toggleUseEnabledModsOnly = useCallback(() => {
     if (useEnabledModsOnly) {
@@ -195,6 +239,7 @@ const CompatScreen = memo(() => {
                 packFileCollisions: [],
                 packTableCollisions: [],
                 missingTableReferences: {},
+                uniqueIdsCollisions: {},
               })
             );
           }}
@@ -521,9 +566,184 @@ const CompatScreen = memo(() => {
                   </div>
                 </div>
               </Tabs.Item>
+
+              <Tabs.Item title={localized.duplicateKeys}>
+                <div className="leading-relaxed dark:text-gray-300 relative">
+                  <span className="absolute top-[-4rem] right-0 flex items-center">
+                    <input
+                      type="checkbox"
+                      id="compat-enabled-mod-only"
+                      checked={useEnabledModsOnly}
+                      onChange={() => toggleUseEnabledModsOnly()}
+                    ></input>
+                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      {localized.enabledModsOnly}
+                    </label>
+                  </span>
+                  {Object.keys(groupedUniqueIdsCollisions).length == 0 && (
+                    <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
+                      {localized.noDuplicateKeysFound}
+                    </p>
+                  )}
+                  <div className="text-lg">
+                    {Object.keys(groupedUniqueIdsCollisions)
+                      .sort((firstPackName, secondPackName) => {
+                        const firstPackIndex = sortedMods.indexOf(
+                          sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                        );
+                        const secondPackIndex = sortedMods.indexOf(
+                          sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                        );
+
+                        return firstPackIndex - secondPackIndex;
+                      })
+                      .map((firstPackName) => {
+                        const tableToUniqueIdCollisions = groupedUniqueIdsCollisions[firstPackName];
+                        let donePackName = false;
+                        return Object.keys(tableToUniqueIdCollisions).map((tableName) => {
+                          const secondPackToUniqueIdCollisions = tableToUniqueIdCollisions[tableName];
+
+                          let doneTableName = false;
+                          return Object.keys(secondPackToUniqueIdCollisions)
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((secondPackName) => {
+                              let doneSecondPackName = false;
+                              const uniqueIdCollisions = secondPackToUniqueIdCollisions[secondPackName];
+                              return uniqueIdCollisions.map((uniqueIdCollision) => {
+                                const tableName = uniqueIdCollision.tableName;
+                                const fieldName = uniqueIdCollision.fieldName;
+                                const value = uniqueIdCollision.value;
+
+                                const fragment = (
+                                  <React.Fragment
+                                    key={
+                                      tableName +
+                                      fieldName +
+                                      value.value +
+                                      firstPackName +
+                                      secondPackName +
+                                      donePackName +
+                                      doneSecondPackName +
+                                      doneTableName
+                                    }
+                                  >
+                                    {!donePackName && <div className="mt-4 font-normal">{firstPackName}</div>}
+                                    {!doneTableName && (
+                                      <div className="ml-8 font-normal">
+                                        <span className="make-tooltip-inline">
+                                          <Tooltip
+                                            content={
+                                              <>
+                                                <p>{localized.dbTable}</p>
+                                              </>
+                                            }
+                                          >
+                                            <span className="text-center w-full">{tableName}</span>
+                                          </Tooltip>
+                                        </span>
+                                      </div>
+                                    )}
+                                    {!doneSecondPackName && (
+                                      <div className="ml-16">
+                                        <span className="make-tooltip-inline">
+                                          <Tooltip
+                                            content={
+                                              <>
+                                                <p>{localized.packName}</p>
+                                              </>
+                                            }
+                                          >
+                                            <span className="text-center w-full font-normal">
+                                              {secondPackName}
+                                            </span>
+                                          </Tooltip>
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    <div className="ml-24">
+                                      <div className="make-tooltip-inline">
+                                        <Tooltip
+                                          content={
+                                            <>
+                                              <p>{localized.duplicateDBKey}</p>
+                                            </>
+                                          }
+                                        >
+                                          <span className="text-center w-full">{value.value}</span>
+                                        </Tooltip>
+                                      </div>
+
+                                      {(uniqueIdCollision.valueTwo &&
+                                        ((uniqueIdCollision.secondPackName == secondPackName && (
+                                          <div className="ml-6 mb-4">
+                                            <div>
+                                              {value.packFileName} in {firstPackName}
+                                            </div>
+                                            <div className="ml-4">{value.tableRow.join(" ")}</div>
+                                            <div>
+                                              {uniqueIdCollision.valueTwo.packFileName} in {secondPackName}
+                                            </div>
+                                            <div className="ml-4">
+                                              {uniqueIdCollision.valueTwo.tableRow.join(" ")}
+                                            </div>
+                                          </div>
+                                        )) || (
+                                          <div className="ml-6 mb-4">
+                                            <div>
+                                              {uniqueIdCollision.valueTwo.packFileName} in {firstPackName}
+                                            </div>
+                                            <div className="ml-4">
+                                              {uniqueIdCollision.valueTwo.tableRow.join(" ")}
+                                            </div>
+                                            <div>
+                                              {value.packFileName} in {secondPackName}
+                                            </div>
+                                            <div className="ml-4">{value.tableRow.join(" ")}</div>
+                                          </div>
+                                        ))) || (
+                                        <div className="ml-6 mb-4">
+                                          <div>
+                                            {value.packFileName} in {firstPackName}
+                                          </div>
+                                          <div className="ml-4">{value.tableRow.join(" ")}</div>
+                                        </div>
+                                      )}
+                                      {/* <span className="ml-2 make-tooltip-inline">
+                                    <span className="text-center w-full">
+                                      {localized.missingKeyIsReferencedIn &&
+                                        localized.missingKeyIsReferencedIn
+                                          .replace("<originFileSuffix>", originFileSuffix)
+                                          .replace("<originFieldName>", originFieldName)}
+                                    </span>
+                                  </span> */}
+                                    </div>
+                                  </React.Fragment>
+                                );
+
+                                doneTableName = true;
+                                doneSecondPackName = true;
+                                donePackName = true;
+                                return fragment;
+                              });
+                            });
+                        });
+                      })}
+                  </div>
+                </div>
+              </Tabs.Item>
+
               <Tabs.Item title={localized.help}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <p>{localized.compatHelpOne}</p>
                   <p>
                     {compatHelpTwo[0]}
                     <span className="mx-1 text-green-700">
@@ -531,8 +751,10 @@ const CompatScreen = memo(() => {
                     </span>
                     {compatHelpTwo[1]}
                   </p>
+                  <p>{localized.compatHelpOne}</p>
                   <p className="mt-6">{localized.compatHelpThree}</p>
                   <p className="mt-6">{localized.compatHelpFour}</p>
+                  <p className="mt-6">{localized.compatHelpFive}</p>
                 </div>
               </Tabs.Item>
             </Tabs.Group>

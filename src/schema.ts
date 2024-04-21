@@ -177,3 +177,61 @@ for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
     }
   }
 }
+
+export const gameToTablesWithNumericIds: Record<SupportedGames, Record<DBFileName, DBFieldName>> = {
+  wh3: {},
+  wh2: {},
+  threeKingdoms: {},
+};
+gameToTablesWithNumericIds.wh3 = {
+  //main_units_tables: "", // unused by the game
+  warscape_animated_lod_tables: "key",
+  culture_settlement_occupation_options_tables: "id",
+  campaign_post_battle_captive_options_tables: "id",
+  technologies_tables: "unique_index",
+  building_units_allowed_tables: "key",
+  mercenary_pool_to_groups_junctions_tables: "key",
+  faction_set_items_tables: "id",
+  campaign_character_arts_tables: "id",
+  cdir_events_mission_option_junctions_tables: "id",
+  cdir_events_mission_payloads_tables: "id",
+  cdir_events_incident_option_junctions_tables: "id",
+  cdir_events_incident_payloads_tables: "id",
+  cdir_events_dilemma_option_junctions_tables: "id",
+  cdir_events_dilemma_payloads_tables: "id",
+  army_special_abilities_tables: "unique_id",
+  unit_special_abilities_tables: "unique_id",
+  campaign_building_level_factorial_effect_junctions_tables: "key",
+  campaign_agent_subtype_factorial_effect_junctions_tables: "key",
+  armed_citizenry_units_to_unit_groups_junctions_tables: "id",
+  building_level_armed_citizenry_junctions_tables: "id",
+  slot_set_items_tables: "id",
+  names_tables: "id",
+  ritual_payload_spawn_mercenaries_tables: "id",
+  // battle_set_piece_armies_tables: "", // ref to campaign_character_arts/id
+  // units_custom_battle_types_to_factions_tables: "", // ref to units_custom_battle_types/id
+  units_custom_battle_types_tables: "id",
+  building_chain_availabilities_tables: "id",
+  campaign_group_post_battle_casualty_resources_tables: "id",
+};
+
+// check gameToTablesWithNumericIds.wh3 tables and keys exist
+const wh3DBNameToDBVersions = DBNameToDBVersions.wh3;
+for (const [tableName, fieldName] of Object.entries(gameToTablesWithNumericIds.wh3)) {
+  const DBVersions = wh3DBNameToDBVersions[tableName];
+  if (!DBVersions) {
+    console.log("gameToTablesWithNumericIds: TABLE", tableName, "DOESN'T HAVE SCHEMA");
+    continue;
+  }
+
+  let exists = false;
+  for (const version of DBVersions) {
+    if (version.fields.find((field) => field.name == fieldName)) {
+      exists = true;
+      break;
+    }
+  }
+  if (!exists) {
+    console.log("gameToTablesWithNumericIds: TABLE", tableName, "DOESN'T HAVE FIELD", fieldName);
+  }
+}
