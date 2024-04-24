@@ -7,6 +7,13 @@
   resolved "https://registry.yarnpkg.com/@adobe/css-tools/-/css-tools-4.2.0.tgz#e1a84fca468f4b337816fcb7f0964beb620ba855"
   integrity sha512-E09FiIft46CmH5Qnjb0wsW54/YQd69LsxeKUOWawmws1XWvyFGURnAChH0mlr7YPFR1ofwvUQfcL0J3lMxXqPA==
 
+"@ai-zen/steamworks.js@^0.3.6":
+  version "0.3.6"
+  resolved "https://registry.yarnpkg.com/@ai-zen/steamworks.js/-/steamworks.js-0.3.6.tgz#8150ff194827c5e2aa7ef16a84bfe2573b6b03e4"
+  integrity sha512-fdBMKC0atfkkPuJobAwA/XZKCYmZ9rOnDuUsHiHXJmKsjKnEQmHUaFFj9InPJZi3QfXV6EQglEB25iwhKZmk4g==
+  dependencies:
+    "@types/node" "*"
+
 "@alloc/quick-lru@^5.2.0":
   version "5.2.0"
   resolved "https://registry.yarnpkg.com/@alloc/quick-lru/-/quick-lru-5.2.0.tgz#7bf68b20c0a350f936915fcae06f58e32007ce30"
@@ -16474,13 +16481,6 @@ statuses@2.0.1:
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/statuses/-/statuses-1.5.0.tgz#161c7dac177659fd9811f43771fa99381478628c"
   integrity sha512-OpZ3zP+jT1PI7I8nemJX4AKmAX070ZkYPVWV/AaKTJl+tXCTGyVdC1a4SL8RUQYEwk/f34ZX8UTykN68FwrqAA==
-
-steamworks.js@^0.3.0:
-  version "0.3.0"
-  resolved "https://registry.yarnpkg.com/steamworks.js/-/steamworks.js-0.3.0.tgz#f3a2734cf4cd9912bb4ac045d8480eb93911ecab"
-  integrity sha512-Q8A54ciDb9aDZCD8KXi8eMWgL+O5o8l/PZr3SAeMoOFVHg84AePw4i8gIGa8ONqC3yJKQK+6pHpzThqzsejLiA==
-  dependencies:
-    "@types/node" "*"
 
 stop-iteration-iterator@^1.0.0:
   version "1.0.0"
