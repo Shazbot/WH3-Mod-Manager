@@ -1,4 +1,4 @@
-import * as steamworks from "steamworks.js";
+import * as steamworks from "@ai-zen/steamworks.js";
 
 if (process.argv[3] == "justRun") {
   console.log("justRun");
@@ -47,7 +47,7 @@ if (process.argv[3] == "getItems") {
     .then((data) => {
       if (process.send)
         process.send(
-          data
+          data.items
             .filter((data) => data)
             .map(
               (data) =>
