@@ -53,6 +53,8 @@ const appData = {
     packFileCollisions: [],
     missingTableReferences: {},
     uniqueIdsCollisions: {},
+    scriptListenerCollisions: {},
+    packFileAnalysisErrors: {},
   },
   currentlyReadingModPaths: [],
   overwrittenDataPackedFiles: {},

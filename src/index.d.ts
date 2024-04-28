@@ -405,5 +405,6 @@ declare global {
     uniqueIdsCollisions: Record<string, UniqueIdsCollision[]>;
     missingRefs: Record<string, DBRefOrigin[]>;
     scriptListenerCollisions: Record<string, ScriptListenerCollision[]>;
+    packFileAnalysisErrors: Record<string, Record<DBFileName, FileAnalysisError[]>>;
   }
 }

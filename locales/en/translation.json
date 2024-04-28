@@ -327,5 +327,15 @@
   "bisectModList": "Bisect Mod List",
   "bisectModListRandomly": "Bisect Mod List Randomly",
   "bisectModListMsg": "For testing your mod list. Split current mod list into 2 new presets. You can then select a preset and test with it, as well as bisect it again. Note that if any of your mods have custom load order all the mods in the new presets will have load order.",
-  "bisectModListRandomMsg": "Selects mods at random for the new presets."
+  "bisectModListRandomMsg": "Selects mods at random for the new presets.",
+  "duplicateListenerNames": "Duplicate Listener Names",
+  "noDuplicateListenerNamesFound": "No duplicate listener names found!",
+  "fileErrors": "File Errors",
+  "noFileErrorsFound": "No file errors found!",
+  "packFileName": "File Name Inside Mod/Pack",
+  "duplicateListenerName": "Duplicate Listener Name",
+  "line": "Line",
+  "column": "Column",
+  "compatHelpSix": "The Duplicate Listener Names tab searches for duplicate listener names added via 'core:add_listener' inside Lua scripts. This is not usually an issue unless there is also a core:remove_listener involved due to copy-pasting from another script. Still, not having duplicate listener names is always good practice.",
+  "compatHelpSeven": "The File Errors tab parses Lua and XML files (this includes variantmeshdefinitions) for syntax errors. For Lua this can't catch run-time errors but can catch some issuse. Some XML errors can also be a non-issue ingame because the ingame XML parsers is very tolerant of malformed XML."
 }
