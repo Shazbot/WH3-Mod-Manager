@@ -1068,7 +1068,7 @@ export const writeCopyPack = async (
           (fileToReplaceWith.schemaFields[0].fields[0].val as Buffer);
         // startPosOffset += fileToReplaceWith.file_size - packFile.file_size;
       } else {
-        data = Buffer.alloc(packFile.file_size);
+        data = Buffer.allocUnsafe(packFile.file_size);
         fs.readSync(sourceFileId, data, 0, data.length, packFile.start_pos);
 
         // data = await sourceFile.read(packFile.file_size, packFile.start_pos);
@@ -1307,7 +1307,7 @@ export const readFromExistingPack = async (
       startOfLastPack;
     // console.log("endPos is ", endPos);
 
-    const buffer = Buffer.alloc(endPos - startPos);
+    const buffer = Buffer.allocUnsafe(endPos - startPos);
     fs.readSync(fileId, buffer, 0, buffer.length, startPos);
     // const buffer = await file.read(endPos - startPos, startPos);
 
@@ -1638,7 +1638,7 @@ export const readPack = async (
     // headerBuffer 4
     // header_buffer_len 4;
     const packedFileHeaderSize = 8 * 4;
-    const packedFileHeader = Buffer.alloc(packedFileHeaderSize);
+    const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
     fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
 
     let packedFileHeaderPosition = 0;
@@ -1731,7 +1731,7 @@ export const readPack = async (
     const headerSize = dataStart - packedFileHeaderPosition;
     // const headerBuffer = await file.read(headerSize);
 
-    const headerBuffer = Buffer.alloc(headerSize);
+    const headerBuffer = Buffer.allocUnsafe(headerSize);
     fs.readSync(fileId, headerBuffer, 0, headerBuffer.length, packedFileHeaderPosition);
 
     // console.log("header size is: " + headerSize);
@@ -1806,13 +1806,13 @@ export const readPack = async (
       });
 
       for (const scriptFile of scriptFiles) {
-        const buffer = Buffer.alloc(scriptFile.file_size);
+        const buffer = Buffer.allocUnsafe(scriptFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
         scriptFile.text = buffer.toString("utf8");
       }
 
       for (const scriptFile of xmlFiles) {
-        const buffer = Buffer.alloc(scriptFile.file_size);
+        const buffer = Buffer.allocUnsafe(scriptFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
         if (buffer.subarray(0, 2).toString("hex") == "fffe") {
           scriptFile.text = buffer.subarray(2).toString("utf16le");
@@ -1855,7 +1855,7 @@ export const readPack = async (
 
     // const buffer = await file.read(endPos - startPos, startPos);
 
-    const buffer = Buffer.alloc(endPos - startPos);
+    const buffer = Buffer.allocUnsafe(endPos - startPos);
     fs.readSync(fileId, buffer, 0, buffer.length, startPos);
 
     // console.log("len:", endPos - startPos);
@@ -1873,7 +1873,7 @@ export const readPack = async (
         // console.log("LOC file to read:", locPackFile);
         // const buffer = await file.read(locPackFile.file_size, locPackFile.start_pos);
 
-        const buffer = Buffer.alloc(locPackFile.file_size);
+        const buffer = Buffer.allocUnsafe(locPackFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, locPackFile.start_pos);
 
         await readLoc(packReadingOptions, locPackFile, buffer, startPos, modPath);
