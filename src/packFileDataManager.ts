@@ -31,7 +31,7 @@ export function getCompatData(
     type: PackCollisionCheckType
   ) => void
 ): PackCollisions {
-  const { missingRefs, uniqueIdsCollisions, scriptListenerCollisions } =
+  const { missingRefs, uniqueIdsCollisions, scriptListenerCollisions, packFileAnalysisErrors } =
     findPackTableMissingReferencesAndRunAnalysis(packsData, onPackChecked);
 
   return {
@@ -40,5 +40,6 @@ export function getCompatData(
     missingTableReferences: missingRefs,
     uniqueIdsCollisions,
     scriptListenerCollisions,
+    packFileAnalysisErrors,
   };
 }

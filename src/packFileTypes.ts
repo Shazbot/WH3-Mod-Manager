@@ -101,6 +101,14 @@ export interface ScriptListenerCollision {
   secondPackName?: string;
 }
 
+export interface FileAnalysisError {
+  msg: string;
+  lineNum?: number;
+  colNum?: number;
+  packName: string;
+  packFileName: string;
+}
+
 export interface ScriptListener {
   value: string;
   packFileName: string;
@@ -114,6 +122,7 @@ export interface PackCollisions {
   missingTableReferences: Record<PackName, DBRefOrigin[]>;
   uniqueIdsCollisions: Record<PackName, UniqueIdsCollision[]>;
   scriptListenerCollisions: Record<PackName, ScriptListenerCollision[]>;
+  packFileAnalysisErrors: Record<string, Record<DBFileName, FileAnalysisError[]>>;
 }
 
 export type SCHEMA_FIELD_TYPE =

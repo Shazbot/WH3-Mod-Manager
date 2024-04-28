@@ -3627,6 +3627,11 @@
   resolved "https://registry.yarnpkg.com/@types/lodash/-/lodash-4.14.195.tgz#bafc975b252eb6cea78882ce8a7b6bf22a6de632"
   integrity sha512-Hwx9EUgdwf2GLarOjQp5ZH8ZmblzcbTBC2wtQWNKARBSxM9ezRIAUpeDTgoQRAFB0+8CNWXVA9+MaSOzOF3nPg==
 
+"@types/luaparse@^0.2.12":
+  version "0.2.12"
+  resolved "https://registry.yarnpkg.com/@types/luaparse/-/luaparse-0.2.12.tgz#0cb055f57b80cfc663769789074a5679b4b31828"
+  integrity sha512-liSE0OFeTsKejYrWVZHNA+WOPHj+kGjjZwE+xcojPM9SE2k8sdLDXZB4CObQ+uUkVtKKNOC8+m0wg1F7Nlmt8w==
+
 "@types/mdast@^3.0.0":
   version "3.0.11"
   resolved "https://registry.yarnpkg.com/@types/mdast/-/mdast-3.0.11.tgz#dc130f7e7d9306124286f6d6cee40cf4d14a3dc0"
@@ -12408,6 +12413,11 @@ lru-cache@^7.7.1:
   version "7.18.3"
   resolved "https://registry.yarnpkg.com/lru-cache/-/lru-cache-7.18.3.tgz#f793896e0fd0e954a59dfdd82f0773808df6aa89"
   integrity sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==
+
+luaparse@^0.3.1:
+  version "0.3.1"
+  resolved "https://registry.yarnpkg.com/luaparse/-/luaparse-0.3.1.tgz#0899fe5ff5ad3ccd3166632027d150b91291b330"
+  integrity sha512-b21h2bFEbtGXmVqguHogbyrMAA0wOHyp9u/rx+w6Yc9pW1t9YjhGUsp87lYcp7pFRqSWN/PhFkrdIqKEUzRjjQ==
 
 lz-string@^1.4.4:
   version "1.5.0"

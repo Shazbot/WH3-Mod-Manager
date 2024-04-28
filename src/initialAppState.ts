@@ -31,6 +31,8 @@ const initialState = {
     packFileCollisions: [],
     missingTableReferences: {},
     uniqueIdsCollisions: {},
+    scriptListenerCollisions: {},
+    packFileAnalysisErrors: {},
   },
   packCollisionsCheckProgress: {
     currentIndex: -1,

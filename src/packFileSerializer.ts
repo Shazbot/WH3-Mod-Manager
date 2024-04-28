@@ -20,6 +20,7 @@ import {
   UniqueId,
   ScriptListener,
   ScriptListenerCollision,
+  FileAnalysisError,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
@@ -49,15 +50,11 @@ import { gameToIntroMovies, vanillaPackNames } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
 import equals from "fast-deep-equal";
-import {
-  binarySearchIncludes,
-  checkIfPackedFilesAreSorted,
-  collator,
-  findFirstDBFileInPresortedFiles,
-  insertIntoPresortedArray,
-} from "./utility/packFileSorting";
+import { binarySearchIncludes, collator, insertIntoPresortedArray } from "./utility/packFileSorting";
 import { diff } from "deep-object-diff";
 import bs from "binary-search";
+import * as parser from "luaparse";
+import { XMLValidator } from "fast-xml-parser";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -1804,11 +1801,24 @@ export const readPack = async (
         return packFile.name.endsWith(".lua");
       });
 
+      const xmlFiles = pack_files.filter((packFile) => {
+        return packFile.name.endsWith(".xml") || packFile.name.endsWith(".variantmeshdefinition");
+      });
+
       for (const scriptFile of scriptFiles) {
         const buffer = Buffer.alloc(scriptFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
         scriptFile.text = buffer.toString("utf8");
-        // console.log(scriptFile.name, buffer.toString("utf8"));
+      }
+
+      for (const scriptFile of xmlFiles) {
+        const buffer = Buffer.alloc(scriptFile.file_size);
+        fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
+        if (buffer.subarray(0, 2).toString("hex") == "fffe") {
+          scriptFile.text = buffer.subarray(2).toString("utf16le");
+        } else {
+          scriptFile.text = buffer.toString("utf8");
+        }
       }
     }
 
@@ -2599,6 +2609,7 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
 
 const packToTablesWithUniqueIds: Record<string, Record<DBFileName, UniqueId[]>> = {};
 const packToScriptFilesWithListeners: Record<string, Record<DBFileName, ScriptListener[]>> = {};
+const packFileAnalysisErrors: Record<string, Record<DBFileName, FileAnalysisError[]>> = {};
 const emptyPackToTablesWithUniqueIds = () => {
   for (const packName of Object.keys(packToTablesWithUniqueIds)) {
     delete packToTablesWithUniqueIds[packName];
@@ -2607,6 +2618,11 @@ const emptyPackToTablesWithUniqueIds = () => {
 const emptyPackToScriptFilesWithListeners = () => {
   for (const packName of Object.keys(packToScriptFilesWithListeners)) {
     delete packToScriptFilesWithListeners[packName];
+  }
+};
+const emptyPackFileAnalysisErrors = () => {
+  for (const packName of Object.keys(packFileAnalysisErrors)) {
+    delete packFileAnalysisErrors[packName];
   }
 };
 function appendToUniqueIdKeysRegistry(
@@ -2661,6 +2677,7 @@ function appendToAddListenerRegistry(pack: Pack, packFileName: string, scriptTex
   for (const listenerName of listenerNames) {
     if (!listenerName) continue;
     if (!listenerName[1]) continue;
+    if (listenerName.index == undefined) return;
     packToScriptFilesWithListeners[pack.name] = packToScriptFilesWithListeners[pack.name] || {};
     packToScriptFilesWithListeners[pack.name][packFileName] =
       packToScriptFilesWithListeners[pack.name][packFileName] || [];
@@ -2684,6 +2701,100 @@ function appendToAddListenerRegistry(pack: Pack, packFileName: string, scriptTex
   }
 }
 
+function appendScriptToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
+  if (!packFile.text) return;
+
+  try {
+    parser.parse(packFile.text, { luaVersion: "5.2" });
+  } catch (e) {
+    console.log("FAILED PARSING SCRIPT", packFile.name);
+    console.log("pack name:", pack.name);
+    console.log(e);
+
+    if (e instanceof Error) {
+      const error = {
+        msg: e.message,
+        packName: pack.name,
+        packFileName: packFile.name,
+      } as FileAnalysisError;
+
+      packFileAnalysisErrors[pack.name] = packFileAnalysisErrors[pack.name] || {};
+      packFileAnalysisErrors[pack.name][packFile.name] =
+        packFileAnalysisErrors[pack.name][packFile.name] || [];
+
+      if (
+        packFileAnalysisErrors[pack.name][packFile.name].find(
+          (existingError) =>
+            existingError.msg == existingError.msg &&
+            existingError.packName == existingError.packName &&
+            existingError.packFileName == existingError.packFileName
+        )
+      )
+        return;
+
+      packFileAnalysisErrors[pack.name][packFile.name].push(error);
+    }
+  }
+}
+
+function appendToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
+  if (!packFile.text) return;
+  let error = null;
+
+  try {
+    const result = XMLValidator.validate(packFile.text, {
+      allowBooleanAttributes: true,
+    });
+
+    if (result != true) {
+      if (result.err.msg != "Multiple possible root nodes found.") {
+        console.log("FAILED PARSING XML", packFile.name);
+        console.log("pack name:", pack.name);
+        console.log(result.err);
+        error = {
+          msg: result.err.msg,
+          lineNum: result.err.line,
+          colNum: result.err.col,
+          packName: pack.name,
+          packFileName: packFile.name,
+        } as FileAnalysisError;
+      }
+      // console.log(packFile.text);
+    }
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      error = {
+        msg: e.message,
+        packName: pack.name,
+        packFileName: packFile.name,
+      } as FileAnalysisError;
+    }
+    console.log("XMLValidator error when reading", pack.name, packFile.name);
+    console.log(e);
+  }
+
+  if (!error) return;
+  const packFileName = packFile.name;
+
+  packFileAnalysisErrors[pack.name] = packFileAnalysisErrors[pack.name] || {};
+  packFileAnalysisErrors[pack.name][packFileName] = packFileAnalysisErrors[pack.name][packFileName] || [];
+
+  if (
+    packFileAnalysisErrors[pack.name][packFileName].find(
+      (existingError) =>
+        existingError.msg == existingError.msg &&
+        existingError.packName == existingError.packName &&
+        existingError.packFileName == existingError.packFileName
+    )
+  )
+    return;
+
+  // console.log(
+  //   `found ${listenerName[1]} in ${packFileName} in ${pack.name}, position ${listenerName.index}`
+  // );
+  packFileAnalysisErrors[pack.name][packFileName].push(error);
+}
+
 export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecked?: OnPackChecked) {
   const packsTableReferences: Record<string, PackTableReferences> = {};
   console.time("findPackTableReferencesOptimized");
@@ -2699,6 +2810,14 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
     for (const packFile of pack.packedFiles) {
       if (packFile.name.endsWith(".lua") && packFile.text) {
         appendToAddListenerRegistry(pack, packFile.name, packFile.text);
+        appendScriptToFileChecksRegistry(pack, packFile);
+      }
+
+      if (
+        (packFile.name.endsWith(".xml") || packFile.name.endsWith(".variantmeshdefinition")) &&
+        packFile.text
+      ) {
+        appendToFileChecksRegistry(pack, packFile);
       }
 
       if (!packFile.schemaFields) {
@@ -3255,6 +3374,7 @@ export function findPackTableMissingReferencesAndRunAnalysis(
   // keep this at top, these are populated inside findPackTableReferencesOptimized
   emptyPackToTablesWithUniqueIds();
   emptyPackToScriptFilesWithListeners();
+  emptyPackFileAnalysisErrors();
 
   const missingRefs = findPackTableReferencesOptimized(packsData, onPackChecked);
 
@@ -3264,13 +3384,18 @@ export function findPackTableMissingReferencesAndRunAnalysis(
   const uniqueIdsCollisions = processPackToTablesWithUniqueIds();
   const scriptListenerCollisions = processPackToScriptFilesWithListeners();
   // fs.writeFileSync("dumps/uniqueIdsCollisions.json", JSON.stringify(uniqueIdsCollisions));
-  fs.writeFileSync(
-    "dumps/packToScriptFilesWithListeners.json",
-    JSON.stringify(packToScriptFilesWithListeners)
-  );
-  fs.writeFileSync("dumps/scriptListenerCollisions.json", JSON.stringify(scriptListenerCollisions));
+  // fs.writeFileSync(
+  //   "dumps/packToScriptFilesWithListeners.json",
+  //   JSON.stringify(packToScriptFilesWithListeners)
+  // );
+  // fs.writeFileSync("dumps/scriptListenerCollisions.json", JSON.stringify(scriptListenerCollisions));
 
-  return { missingRefs, uniqueIdsCollisions, scriptListenerCollisions } as PacksAnalysisData;
+  return {
+    missingRefs,
+    uniqueIdsCollisions,
+    scriptListenerCollisions,
+    packFileAnalysisErrors,
+  } as PacksAnalysisData;
 }
 
 export function findPackTableMissingReferences(packsData: Pack[], onPackChecked?: OnPackChecked) {
