@@ -929,11 +929,12 @@ if (!gotTheLock) {
     ipcMain.on("getCompatData", async (event, mods: Mod[]) => {
       console.log("SET PACK COLLISIONS");
 
-      await readMods(mods, false, true);
+      await readMods(mods, false, true, true);
       await readModsByPath(
         appData.vanillaPacks.map((pack) => pack.path),
         false,
-        true
+        true,
+        false
       );
 
       mainWindow?.webContents.send(
@@ -1273,7 +1274,8 @@ if (!gotTheLock) {
     const readModsByPath = async (
       modPaths: string[],
       skipParsingTables = true,
-      skipCollisionCheck = true
+      skipCollisionCheck = true,
+      readScripts = false
     ) => {
       console.log("readModsByPath:", modPaths);
       console.log("readModsByPath skipParsingTables:", skipParsingTables);
@@ -1293,6 +1295,7 @@ if (!gotTheLock) {
           mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
           const newPack = await readPack(modPath, {
             skipParsingTables,
+            readScripts,
           });
           mainWindow?.webContents.send("setLastModThatWasRead", modPath);
           appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
@@ -1314,7 +1317,12 @@ if (!gotTheLock) {
       }
     };
 
-    const readMods = async (mods: Mod[], skipParsingTables = true, skipCollisionCheck = true) => {
+    const readMods = async (
+      mods: Mod[],
+      skipParsingTables = true,
+      skipCollisionCheck = true,
+      readScripts = false
+    ) => {
       if (!skipParsingTables) {
         appData.packsData = appData.packsData.filter((pack) => !mods.some((mod) => mod.path == pack.path));
       }
@@ -1328,6 +1336,7 @@ if (!gotTheLock) {
           if (!skipParsingTables) mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
           const newPack = await readPack(mod.path, {
             skipParsingTables,
+            readScripts,
           });
           if (!skipParsingTables) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
           appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(

@@ -253,6 +253,7 @@ declare global {
     skipParsingTables?: boolean;
     tablesToRead?: string[];
     readLocs?: boolean;
+    readScripts?: boolean;
   }
 
   interface Toast {
@@ -400,5 +401,9 @@ declare global {
 
   type PackCollisionCheckType = "Files" | "TableKeys" | "MissingKeys";
 
-  // type SupportedGames = "wh3" | "wh2";
+  interface PacksAnalysisData {
+    uniqueIdsCollisions: Record<string, UniqueIdsCollision[]>;
+    missingRefs: Record<string, DBRefOrigin[]>;
+    scriptListenerCollisions: Record<string, ScriptListenerCollision[]>;
+  }
 }

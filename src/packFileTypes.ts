@@ -21,6 +21,7 @@ export interface PackedFile {
   version?: number;
   guid?: string;
   tableSchema?: DBVersion;
+  text?: string;
 }
 
 export interface PackHeader {
@@ -92,11 +93,27 @@ export interface UniqueId {
   packName: string;
 }
 
+export interface ScriptListenerCollision {
+  packFileName: string;
+  value: ScriptListener;
+  valueTwo: ScriptListener;
+  firstPackName: string;
+  secondPackName?: string;
+}
+
+export interface ScriptListener {
+  value: string;
+  packFileName: string;
+  packName: string;
+  position: number;
+}
+
 export interface PackCollisions {
   packFileCollisions: PackFileCollision[];
   packTableCollisions: PackTableCollision[];
   missingTableReferences: Record<PackName, DBRefOrigin[]>;
   uniqueIdsCollisions: Record<PackName, UniqueIdsCollision[]>;
+  scriptListenerCollisions: Record<PackName, ScriptListenerCollision[]>;
 }
 
 export type SCHEMA_FIELD_TYPE =

@@ -18,6 +18,8 @@ import {
   DBFileName,
   UniqueIdsCollision,
   UniqueId,
+  ScriptListener,
+  ScriptListenerCollision,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
@@ -1797,6 +1799,19 @@ export const readPack = async (
     //   pack.name.startsWith("db\\units_custom_battle_permissions_tables")
     // );
 
+    if (packReadingOptions.readScripts) {
+      const scriptFiles = pack_files.filter((packFile) => {
+        return packFile.name.endsWith(".lua");
+      });
+
+      for (const scriptFile of scriptFiles) {
+        const buffer = Buffer.alloc(scriptFile.file_size);
+        fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
+        scriptFile.text = buffer.toString("utf8");
+        // console.log(scriptFile.name, buffer.toString("utf8"));
+      }
+    }
+
     const dbPackFiles = pack_files.filter((packFile) => {
       const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
       return dbNameMatch != null && dbNameMatch[1];
@@ -2583,9 +2598,15 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
 }
 
 const packToTablesWithUniqueIds: Record<string, Record<DBFileName, UniqueId[]>> = {};
+const packToScriptFilesWithListeners: Record<string, Record<DBFileName, ScriptListener[]>> = {};
 const emptyPackToTablesWithUniqueIds = () => {
   for (const packName of Object.keys(packToTablesWithUniqueIds)) {
     delete packToTablesWithUniqueIds[packName];
+  }
+};
+const emptyPackToScriptFilesWithListeners = () => {
+  for (const packName of Object.keys(packToScriptFilesWithListeners)) {
+    delete packToScriptFilesWithListeners[packName];
   }
 };
 function appendToUniqueIdKeysRegistry(
@@ -2628,6 +2649,41 @@ function appendToUniqueIdKeysRegistry(
   }
 }
 
+function appendToAddListenerRegistry(pack: Pack, packFileName: string, scriptText: string) {
+  if (appData.currentGame != "wh3") return;
+
+  const matchListenerName = /core:add_listener\s*\(\s*['"]\s*([^'"]+)\s*['"]\s*,/g;
+
+  const listenerNames = [...scriptText.matchAll(matchListenerName)];
+
+  if (listenerNames.length == 0) return;
+
+  for (const listenerName of listenerNames) {
+    if (!listenerName) continue;
+    if (!listenerName[1]) continue;
+    packToScriptFilesWithListeners[pack.name] = packToScriptFilesWithListeners[pack.name] || {};
+    packToScriptFilesWithListeners[pack.name][packFileName] =
+      packToScriptFilesWithListeners[pack.name][packFileName] || [];
+
+    if (
+      packToScriptFilesWithListeners[pack.name][packFileName].find(
+        (listener) => listener.value == listenerName[0] && listener.position == listenerName.index
+      )
+    )
+      continue;
+
+    // console.log(
+    //   `found ${listenerName[1]} in ${packFileName} in ${pack.name}, position ${listenerName.index}`
+    // );
+    packToScriptFilesWithListeners[pack.name][packFileName].push({
+      value: listenerName[1],
+      packFileName: packFileName,
+      packName: pack.name,
+      position: listenerName.index,
+    });
+  }
+}
+
 export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecked?: OnPackChecked) {
   const packsTableReferences: Record<string, PackTableReferences> = {};
   console.time("findPackTableReferencesOptimized");
@@ -2641,6 +2697,10 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
     packsTableReferences[pack.name] = packTableReferences;
 
     for (const packFile of pack.packedFiles) {
+      if (packFile.name.endsWith(".lua") && packFile.text) {
+        appendToAddListenerRegistry(pack, packFile.name, packFile.text);
+      }
+
       if (!packFile.schemaFields) {
         continue;
       }
@@ -3079,17 +3139,138 @@ function processPackToTablesWithUniqueIds() {
   return uniqueIdsCollisions;
 }
 
-export function findPackTableMissingReferencesAndUniqueIds(packsData: Pack[], onPackChecked?: OnPackChecked) {
+function processDuplicateListenerNamesInSameTable(
+  packFileName: string,
+  scriptListeners: ScriptListener[],
+  packName: string,
+  scriptListenerCollisions: Record<PackName, ScriptListenerCollision[]>
+) {
+  // compare for duplicate keys in the same pack
+  for (let i = 0; i < scriptListeners.length - 1; i++) {
+    if (scriptListeners[i].value == scriptListeners[i + 1].value) {
+      const newScriptListenerCollision = {
+        packFileName: packFileName,
+        value: scriptListeners[i],
+        valueTwo: scriptListeners[i + 1],
+        firstPackName: packName,
+      } as ScriptListenerCollision;
+      if (
+        !scriptListenerCollisions[packName].find(
+          (collision) =>
+            collision.value == newScriptListenerCollision.value &&
+            collision.packFileName == newScriptListenerCollision.packFileName &&
+            collision.firstPackName == newScriptListenerCollision.firstPackName
+        )
+      ) {
+        scriptListenerCollisions[packName].push(newScriptListenerCollision);
+      }
+    }
+  }
+}
+
+function processPackToScriptFilesWithListeners() {
+  const packToScriptFilesWithListenersSortedKeys = Object.keys(packToScriptFilesWithListeners);
+  packToScriptFilesWithListenersSortedKeys.sort((a, b) => collator.compare(a, b));
+
+  const scriptListenerCollisions: Record<PackName, ScriptListenerCollision[]> = {};
+  for (let packOneIndex = 0; packOneIndex < packToScriptFilesWithListenersSortedKeys.length; packOneIndex++) {
+    const packName = packToScriptFilesWithListenersSortedKeys[packOneIndex];
+    scriptListenerCollisions[packName] = scriptListenerCollisions[packName] || [];
+    for (const [scriptFileName, scriptListeners] of Object.entries(
+      packToScriptFilesWithListeners[packName]
+    )) {
+      processDuplicateListenerNamesInSameTable(
+        scriptFileName,
+        scriptListeners,
+        packName,
+        scriptListenerCollisions
+      );
+
+      for (
+        let packTwoIndex = packOneIndex + 1;
+        packTwoIndex < packToScriptFilesWithListenersSortedKeys.length;
+        packTwoIndex++
+      ) {
+        const packTWoName = packToScriptFilesWithListenersSortedKeys[packTwoIndex];
+        scriptListenerCollisions[packTWoName] = scriptListenerCollisions[packTWoName] || [];
+
+        const scriptListenersInPackTwo = packToScriptFilesWithListeners[packTWoName][scriptFileName];
+        if (scriptListenersInPackTwo) {
+          const scriptListenersToSearch =
+            scriptListeners.length < scriptListenersInPackTwo.length
+              ? scriptListeners
+              : scriptListenersInPackTwo;
+          const scriptListenersToSearchOther =
+            scriptListeners.length < scriptListenersInPackTwo.length
+              ? scriptListenersInPackTwo
+              : scriptListeners;
+
+          for (let i = 0; i < scriptListenersToSearch.length; i++) {
+            // if it's a duplicates value skip it
+            if (
+              i + 1 < scriptListenersToSearch.length &&
+              scriptListenersToSearch[i].value == scriptListenersToSearch[i + 1].value
+            )
+              continue;
+
+            const keyValuesOtherIndex = bs(
+              scriptListenersToSearchOther,
+              scriptListenersToSearch[i],
+              (a: ScriptListener, b: ScriptListener) => collator.compare(a.value, b.value)
+            );
+            if (keyValuesOtherIndex > -1) {
+              const newScriptListenerCollision = {
+                packFileName: scriptFileName,
+                value: scriptListenersToSearch[i],
+                valueTwo: scriptListenersToSearchOther[i],
+                firstPackName: packName,
+                secondPackName: packTWoName,
+              } as ScriptListenerCollision;
+              if (
+                !scriptListenerCollisions[packName].find(
+                  (collision) =>
+                    collision.value == newScriptListenerCollision.value &&
+                    collision.packFileName == newScriptListenerCollision.packFileName &&
+                    collision.firstPackName == newScriptListenerCollision.firstPackName &&
+                    collision.secondPackName == newScriptListenerCollision.secondPackName
+                )
+              ) {
+                scriptListenerCollisions[packName].push(newScriptListenerCollision);
+                scriptListenerCollisions[packTWoName].push(newScriptListenerCollision);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return scriptListenerCollisions;
+}
+
+export function findPackTableMissingReferencesAndRunAnalysis(
+  packsData: Pack[],
+  onPackChecked?: OnPackChecked
+) {
+  // keep this at top, these are populated inside findPackTableReferencesOptimized
   emptyPackToTablesWithUniqueIds();
+  emptyPackToScriptFilesWithListeners();
+
   const missingRefs = findPackTableReferencesOptimized(packsData, onPackChecked);
 
   Object.values(missingRefs).forEach((refs) => refs.sort(refSorting));
 
   // fs.writeFileSync("dumps/packToTablesWithUniqueIds.json", JSON.stringify(packToTablesWithUniqueIds));
   const uniqueIdsCollisions = processPackToTablesWithUniqueIds();
+  const scriptListenerCollisions = processPackToScriptFilesWithListeners();
   // fs.writeFileSync("dumps/uniqueIdsCollisions.json", JSON.stringify(uniqueIdsCollisions));
+  fs.writeFileSync(
+    "dumps/packToScriptFilesWithListeners.json",
+    JSON.stringify(packToScriptFilesWithListeners)
+  );
+  fs.writeFileSync("dumps/scriptListenerCollisions.json", JSON.stringify(scriptListenerCollisions));
 
-  return [missingRefs, uniqueIdsCollisions] as [typeof missingRefs, typeof uniqueIdsCollisions];
+  return { missingRefs, uniqueIdsCollisions, scriptListenerCollisions } as PacksAnalysisData;
 }
 
 export function findPackTableMissingReferences(packsData: Pack[], onPackChecked?: OnPackChecked) {
