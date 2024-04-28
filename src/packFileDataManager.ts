@@ -5,7 +5,7 @@ import { PackCollisions, Pack } from "./packFileTypes";
 import {
   findPackFileCollisions,
   findPackTableCollisions,
-  findPackTableMissingReferencesAndUniqueIds,
+  findPackTableMissingReferencesAndRunAnalysis,
 } from "./packFileSerializer";
 
 export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCollisions> {
@@ -31,15 +31,14 @@ export function getCompatData(
     type: PackCollisionCheckType
   ) => void
 ): PackCollisions {
-  const [missingTableReferences, uniqueIdsCollisions] = findPackTableMissingReferencesAndUniqueIds(
-    packsData,
-    onPackChecked
-  );
+  const { missingRefs, uniqueIdsCollisions, scriptListenerCollisions } =
+    findPackTableMissingReferencesAndRunAnalysis(packsData, onPackChecked);
 
   return {
     packFileCollisions: findPackFileCollisions(packsData, onPackChecked),
     packTableCollisions: findPackTableCollisions(packsData, onPackChecked),
-    missingTableReferences,
+    missingTableReferences: missingRefs,
     uniqueIdsCollisions,
+    scriptListenerCollisions,
   };
 }
