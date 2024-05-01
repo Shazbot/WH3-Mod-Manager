@@ -130,7 +130,7 @@
   "otherOptions": "Other Options",
   "modAuthorColumn": "Mod Author Column",
   "forceReDownload": "Force Re-download",
-  "forceDownloadMsg": "Force steam to download the latest version of enabled mods. Hold Shift to download all mods.",
+  "forceDownloadMsg": "Force steam to check and download the latest version of enabled mods if they're outdated. Hold Shift to download all mods.",
   "contentVsData": "Content Mods Vs Data Mods",
   "contentVsDataMsg": "Mods you've subscribed to reside in the workshop (content) folder, but can also be loaded from the data folder. Don't touch unless you know what you're doing!",
   "extraColumns": "Extra Columns",
@@ -337,5 +337,9 @@
   "line": "Line",
   "column": "Column",
   "compatHelpSix": "The Duplicate Listener Names tab searches for duplicate listener names added via 'core:add_listener' inside Lua scripts. This is not usually an issue unless there is also a core:remove_listener involved due to copy-pasting from another script. Still, not having duplicate listener names is always good practice.",
-  "compatHelpSeven": "The File Errors tab parses Lua and XML files (this includes variantmeshdefinitions) for syntax errors. For Lua this can't catch run-time errors but can catch some issuse. Some XML errors can also be a non-issue ingame because the ingame XML parsers is very tolerant of malformed XML."
+  "compatHelpSeven": "The File Errors tab parses Lua and XML files (this includes variantmeshdefinitions) for syntax errors. For Lua this can't catch run-time errors but can catch some issuse. Some XML errors can also be a non-issue ingame because the ingame XML parsers is very tolerant of malformed XML.",
+  "forceResubscribe": "Force Resubscribe",
+  "forceResubscribeMsg": "Force steam to unsubscribe and then subscribe to the same mods, which deletes and downloads the mods. In cases where Force Re-Download isn't enough. By default this is for enabled mods, hold Shift for all mods.",
+  "collapseAll": "Collapse All",
+  "expandAll": "Expand All"
 }

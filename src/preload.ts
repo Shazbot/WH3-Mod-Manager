@@ -46,6 +46,7 @@ const api = {
   reMerge: (mod: Mod, modsToMerge: Mod[]) => ipcRenderer.send("reMerge", mod, modsToMerge),
   deletePack: (mod: Mod) => ipcRenderer.send("deletePack", mod),
   forceDownloadMods: (modIds: string[]) => ipcRenderer.send("forceDownloadMods", modIds),
+  forceResubscribeMods: (mods: Mod[]) => ipcRenderer.send("forceResubscribeMods", mods),
   mergeMods: (mods: Mod[]) => ipcRenderer.send("mergeMods", mods),
   handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) =>
     ipcRenderer.on("handleLog", callback),
