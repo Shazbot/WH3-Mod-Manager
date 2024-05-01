@@ -12,9 +12,11 @@ if (process.argv[3] == "download") {
   const ids = process.argv[4].split(";"); //"2856936614";
   const client = steamworks.init(Number(process.argv[2]));
 
-  ids.forEach((id) => {
+  ids.forEach(async (id) => {
     try {
-      client.workshop.download(BigInt(id), true);
+      const success = client.workshop.download(BigInt(id), true);
+      if (process.send) process.send("for id: " + success);
+      await new Promise((resolve) => setTimeout(resolve, 300));
     } catch (e) {
       /* empty */
     }
@@ -25,11 +27,18 @@ if (process.argv[3] == "download") {
 }
 if (process.argv[3] == "unsubscribe") {
   console.log("unsubscribe");
-  const id = process.argv[4];
+  const ids = process.argv[4].split(";");
   const client = steamworks.init(Number(process.argv[2]));
 
-  client.workshop.unsubscribe(BigInt(id));
+  ids.forEach((id) => {
+    try {
+      client.workshop.unsubscribe(BigInt(id));
+    } catch (e) {
+      /* empty */
+    }
+  });
   setTimeout(() => {
+    if (process.send) process.send("done");
     process.exit();
   }, 200);
 }
@@ -115,6 +124,7 @@ if (process.argv[3] == "sub") {
 
   Promise.allSettled(promises).then(() => {
     setTimeout(() => {
+      if (process.send) process.send("done");
       process.exit();
     }, 200);
   });

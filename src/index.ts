@@ -59,6 +59,7 @@ import steamCollectionScript from "./utility/steamCollectionScript";
 import i18n from "./configs/i18next.config";
 import { tryOpenFile } from "./utility/fileHelpers";
 import { collator } from "./utility/packFileSorting";
+import { globSync } from "glob";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -742,6 +743,8 @@ if (!gotTheLock) {
     mainWindow.on("closed", () => {
       if (viewerWindow) viewerWindow.close();
     });
+
+    setInterval(waitForModDownloads, 3500);
 
     ipcMain.on("getAllModData", (event, ids: string[]) => {
       if (isDev) return;
@@ -1707,6 +1710,12 @@ if (!gotTheLock) {
   });
   ipcMain.on("forceDownloadMods", async (event, modIds: string[]) => {
     try {
+      for (const id of modIds) {
+        if (!appData.waitForModIds.includes(id)) {
+          appData.waitForModIds.push(id);
+        }
+      }
+
       fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "download", modIds.join(";")],
@@ -1716,14 +1725,45 @@ if (!gotTheLock) {
       console.log(e);
     }
   });
+  ipcMain.on("forceResubscribeMods", async (event, mods: Mod[]) => {
+    console.log(
+      "in forceResubscribeMods, mods are:",
+      mods.map((mod) => mod.name)
+    );
+    try {
+      const child = fork(
+        nodePath.join(__dirname, "sub.js"),
+        [gameToSteamId[appData.currentGame], "unsubscribe", mods.map((mod) => mod.workshopId).join(";")],
+        {}
+      );
+      child.on("message", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        for (const mod of mods) {
+          console.log("unsubscribe finished, deleting file:", mod.path);
+          try {
+            fsExtra.removeSync(mod.path);
+          } catch (e) {
+            /* empty */
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await subscribeToMods(mods.map((mod) => mod.workshopId));
+      });
+    } catch (e) {
+      console.log(e);
+    }
+  });
   ipcMain.on("unsubscribeToMod", async (event, mod: Mod) => {
     try {
-      fork(
+      const child = fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "unsubscribe", mod.workshopId],
         {}
       );
-      await fsExtra.remove(mod.path);
+      child.on("message", () => {
+        console.log("unsubscribe finished, deleting file:", mod.path);
+        fsExtra.removeSync(mod.path);
+      });
     } catch (e) {
       console.log(e);
     }
@@ -1738,14 +1778,54 @@ if (!gotTheLock) {
     }
   });
 
+  const waitForModDownloads = async () => {
+    if (appData.waitForModIds.length == 0) return;
+
+    const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+    if (!contentFolder) return;
+
+    const downloadsFolder = nodePath.join(contentFolder, "..", "..", "downloads");
+    console.log("downloads folder:", downloadsFolder);
+
+    if (globSync("*1142710*", { cwd: downloadsFolder }).length != 0) {
+      console.log("something for wh3 is being downloaded!");
+      return;
+    }
+
+    const toRemoveFromWaitForModIds: string[] = [];
+    const idsToDownload: string[] = [];
+    for (const modId of appData.waitForModIds) {
+      console.log("checking", nodePath.join(contentFolder, modId));
+      if (globSync("*.pack", { cwd: nodePath.join(contentFolder, modId) }).length == 0)
+        idsToDownload.push(modId);
+      else toRemoveFromWaitForModIds.push(modId);
+    }
+
+    fork(
+      nodePath.join(__dirname, "sub.js"),
+      [gameToSteamId[appData.currentGame], "download", idsToDownload.join(";")],
+      {}
+    );
+
+    appData.waitForModIds = appData.waitForModIds.filter(
+      (modId) => !toRemoveFromWaitForModIds.includes(modId)
+    );
+  };
+
   const subscribeToMods = async (ids: string[]) => {
     fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "sub", ids.join(";")], {});
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    fork(
-      nodePath.join(__dirname, "sub.js"),
-      [gameToSteamId[appData.currentGame], "download", ids.join(";")],
-      {}
-    );
+
+    for (const id of ids) {
+      if (!appData.waitForModIds.includes(id)) {
+        appData.waitForModIds.push(id);
+      }
+    }
+
+    for (const modId of ids) {
+      fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "download", modId], {});
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
     await new Promise((resolve) => setTimeout(resolve, 1000));
     fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
     await new Promise((resolve) => setTimeout(resolve, 500));

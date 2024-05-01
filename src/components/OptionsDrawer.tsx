@@ -71,6 +71,7 @@ const OptionsDrawer = memo(() => {
   const availableLanguages = useAppSelector((state) => state.app.availableLanguages);
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
   const currentGame = useAppSelector((state) => state.app.currentGame);
+  const currentMods = useAppSelector((state) => state.app.currentPreset.mods);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -112,6 +113,10 @@ const OptionsDrawer = memo(() => {
 
   const forceDownloadMods = useCallback((contentModsWorshopIds: string[]) => {
     window.api?.forceDownloadMods(contentModsWorshopIds);
+  }, []);
+
+  const forceResubscribeMods = useCallback((mods: Mod[]) => {
+    window.api?.forceResubscribeMods(mods);
   }, []);
 
   const onDeleteChange = useCallback(
@@ -325,6 +330,23 @@ const OptionsDrawer = memo(() => {
                 }}
               >
                 <span className="uppercase">{localized.forceReDownload}</span>
+              </button>
+            </div>
+
+            <h6 className="mt-10">{localized.forceResubscribe}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{localized.forceResubscribeMsg}</p>
+
+            <div className="flex mt-2">
+              <button
+                className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={(e) => {
+                  const mods = e.shiftKey
+                    ? currentMods.filter((mod) => !mod.isInData)
+                    : enabledMods.filter((mod) => !mod.isInData);
+                  forceResubscribeMods(mods);
+                }}
+              >
+                <span className="uppercase">{localized.forceResubscribe}</span>
               </button>
             </div>
 
