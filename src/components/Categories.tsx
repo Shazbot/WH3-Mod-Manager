@@ -145,6 +145,9 @@ const Categories = React.memo(() => {
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const categories = useAppSelector((state) => state.app.categories);
+  const categoriesWithUncategorized = categories.includes("Uncategorized")
+    ? categories
+    : categories.concat(["Uncategorized"]);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -454,6 +457,14 @@ const Categories = React.memo(() => {
     if (isContextMenuOpen && selectedRows.includes(row)) td.style.background = "rgba(0, 94, 255, 0.1)";
   }
 
+  const collapseOrExpandAllCategories = () => {
+    if (hiddenCategories.length == 0) {
+      setHiddenCategories(categoriesWithUncategorized);
+    } else {
+      setHiddenCategories([]);
+    }
+  };
+
   return (
     <>
       <FloatingOverlay
@@ -619,6 +630,17 @@ const Categories = React.memo(() => {
               </button>
             </span>
           </span>
+
+          <div className="text-center ml-auto">
+            <button
+              onClick={() => collapseOrExpandAllCategories()}
+              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+              type="button"
+              aria-controls="drawer-example"
+            >
+              {hiddenCategories.length == 0 ? localized.collapseAll : localized.expandAll}
+            </button>
+          </div>
         </div>
       </div>
       <div
@@ -683,7 +705,7 @@ const Categories = React.memo(() => {
           width="100%"
           ref={hotRef}
           stretchH="last"
-          height={"88vh"}
+          height={"87.5vh"}
           nestedRows={true}
           // preventOverflow={"vertical"}
           licenseKey="non-commercial-and-evaluation"
