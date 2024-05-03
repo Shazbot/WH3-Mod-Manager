@@ -5,10 +5,12 @@ import { Spinner, Tabs, Tooltip } from "../flowbite";
 import { compareModNames, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { PiFiles } from "react-icons/pi";
 import {
   DBFileName,
   DBRefOrigin,
   FileAnalysisError,
+  PackFileCollision,
   PackName,
   PackTableCollision,
   ScriptListenerCollision,
@@ -94,7 +96,7 @@ const CompatScreen = memo(() => {
   const compatHelpTwo = ((localized.compatHelpTwo ?? "").includes("STAR_ICON") &&
     localized.compatHelpTwo.split("STAR_ICON")) || ["", ""];
 
-  const groupedPackFileCollisions: Record<string, Record<string, string[]>> = {};
+  const groupedPackFileCollisions: Record<string, Record<string, PackFileCollision[]>> = {};
   if (packCollisions.packFileCollisions) {
     for (const pfCollision of packCollisions.packFileCollisions) {
       if (!groupedPackFileCollisions[pfCollision.firstPackName])
@@ -103,8 +105,12 @@ const CompatScreen = memo(() => {
         groupedPackFileCollisions[pfCollision.firstPackName][pfCollision.secondPackName] = [];
       const collisionsWithSecond =
         groupedPackFileCollisions[pfCollision.firstPackName][pfCollision.secondPackName];
-      if (collisionsWithSecond.every((collisiosWithSecond) => collisiosWithSecond != pfCollision.fileName)) {
-        collisionsWithSecond.push(pfCollision.fileName);
+      if (
+        collisionsWithSecond.every(
+          (collisiosWithSecond) => collisiosWithSecond.fileName != pfCollision.fileName
+        )
+      ) {
+        collisionsWithSecond.push(pfCollision);
       }
     }
   }
@@ -404,19 +410,33 @@ const CompatScreen = memo(() => {
                             let doneSecondPackName = false;
                             return secondPacks[secondPackName].map((secondPack) => {
                               const fragment = (
-                                <React.Fragment key={firstPackName + secondPackName + secondPack}>
+                                <React.Fragment key={firstPackName + secondPackName + secondPack.fileName}>
                                   {!donePackName && <div className="mt-4 underline">{firstPackName}</div>}
                                   {!doneSecondPackName && (
                                     <div className="ml-8">
                                       {secondPackName}
                                       {firstPackIndex > secondPackIndex && (
-                                        <span className="ml-2 text-green-700">
+                                        <span className="mx-2 text-green-700">
                                           <FontAwesomeIcon fill="green" icon={faStar} />
                                         </span>
                                       )}
+                                      <span className="opacity-50 ml-[1ch]">vs {firstPackName}</span>
                                     </div>
                                   )}
-                                  <div className="ml-16">{secondPack}</div>
+                                  <div className={`ml-16 flex`}>
+                                    <span className={`${secondPack.areSameSize ? "opacity-50" : ""}`}>
+                                      {secondPack.fileName}
+                                    </span>
+                                    {secondPack.areSameSize && (
+                                      <span className="make-tooltip-inline px-2">
+                                        <Tooltip style="light" content={<p>{localized.sameFileSize}</p>}>
+                                          <span className="text-center w-full">
+                                            <PiFiles className="align-middle w-6 h-6 hover:opacity-100 opacity-50" />
+                                          </span>
+                                        </Tooltip>
+                                      </span>
+                                    )}
+                                  </div>
                                 </React.Fragment>
                               );
                               donePackName = true;
@@ -504,13 +524,14 @@ const CompatScreen = memo(() => {
                                     {!doneSecondFileName && (
                                       <div className="ml-12">
                                         <span className="make-tooltip-inline">
-                                          <Tooltip content={<p>{localized.dbTable}</p>}>
+                                          <Tooltip style="light" content={<p>{localized.dbTable}</p>}>
                                             <span className="text-center w-full">{dbName}</span>
                                           </Tooltip>
                                         </span>
 
                                         <span className="ml-2 make-tooltip-inline">
                                           <Tooltip
+                                            style="light"
                                             content={
                                               <>
                                                 <p>{localized.collisionWith}</p>
@@ -525,7 +546,7 @@ const CompatScreen = memo(() => {
                                           </Tooltip>
                                         </span>
                                         <span className="ml-3 font-normal make-tooltip-inline">
-                                          <Tooltip content={<p>{localized.tableColumn}</p>}>
+                                          <Tooltip style="light" content={<p>{localized.tableColumn}</p>}>
                                             <span className="text-center w-full">{collision.key}</span>
                                           </Tooltip>
                                         </span>
@@ -612,6 +633,7 @@ const CompatScreen = memo(() => {
                                   <div className="ml-8">
                                     <span className="make-tooltip-inline">
                                       <Tooltip
+                                        style="light"
                                         content={
                                           <>
                                             <p>{localized.missingKeyTableAndColumn}</p>
@@ -627,6 +649,7 @@ const CompatScreen = memo(() => {
                                 <div className="ml-16">
                                   <span className="make-tooltip-inline">
                                     <Tooltip
+                                      style="light"
                                       content={
                                         <>
                                           <p>{localized.missingDBKey}</p>
@@ -735,6 +758,7 @@ const CompatScreen = memo(() => {
                                       <div className="ml-8 font-normal">
                                         <span className="make-tooltip-inline">
                                           <Tooltip
+                                            style="light"
                                             content={
                                               <>
                                                 <p>{localized.dbTable}</p>
@@ -750,6 +774,7 @@ const CompatScreen = memo(() => {
                                       <div className="ml-16">
                                         <span className="make-tooltip-inline">
                                           <Tooltip
+                                            style="light"
                                             content={
                                               <>
                                                 <p>{localized.packName}</p>
@@ -767,6 +792,7 @@ const CompatScreen = memo(() => {
                                     <div className="ml-24">
                                       <div className="make-tooltip-inline">
                                         <Tooltip
+                                          style="light"
                                           content={
                                             <>
                                               <p>{localized.duplicateDBKey}</p>
@@ -934,6 +960,7 @@ const CompatScreen = memo(() => {
                               <div className="ml-8 font-normal">
                                 <span className="make-tooltip-inline">
                                   <Tooltip
+                                    style="light"
                                     content={
                                       <>
                                         <p>{localized.duplicateListenerName}</p>
@@ -1033,6 +1060,7 @@ const CompatScreen = memo(() => {
                                 <div className="ml-8 font-normal">
                                   <span className="make-tooltip-inline">
                                     <Tooltip
+                                      style="light"
                                       content={
                                         <>
                                           <p>{localized.packFileName}</p>
@@ -1077,6 +1105,7 @@ const CompatScreen = memo(() => {
                     {compatHelpTwo[1]}
                   </p>
                   <p>{localized.compatHelpOne}</p>
+                  <p>{localized.compatHelpFilesOne}</p>
                   <p className="mt-6">{localized.compatHelpThree}</p>
                   <p className="mt-6">{localized.compatHelpFour}</p>
                   <p className="mt-6">{localized.compatHelpFive}</p>

@@ -3102,16 +3102,22 @@ function findPackFileCollisionsBetweenPacksOptimized(
         i++;
         break;
       case 0:
+        // if (packFile.file_size != packTwoFile.file_size) {
+        //   console.log("name:", packFile.name);
+        //   console.log("sizes:", packFile.file_size, packTwoFile.file_size);
+        // }
         conflicts.push({
           firstPackName: pack.name,
           secondPackName: packTwo.name,
           fileName: packFile.name,
+          areSameSize: packFile.file_size == packTwoFile.file_size,
         });
 
         conflicts.push({
           secondPackName: pack.name,
           firstPackName: packTwo.name,
           fileName: packFile.name,
+          areSameSize: packFile.file_size == packTwoFile.file_size,
         });
         i++;
         j++;

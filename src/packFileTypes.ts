@@ -47,6 +47,7 @@ export interface PackFileCollision {
   firstPackName: string;
   secondPackName: string;
   fileName: string;
+  areSameSize?: boolean;
 }
 
 export interface PackTableCollision extends PackFileCollision {

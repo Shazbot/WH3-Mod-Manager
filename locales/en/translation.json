@@ -24,6 +24,7 @@
   "coffee": "Buy me a coffee:",
   "byAuthor": "by Prop Joe (Steam) / Shazbot (GitHub)",
   "about": "About",
+  "compatHelpFilesOne": "It's common for modders to use the same file in multiple mods, so they'll show here even though that's completely fine and intended. If both files are the same size there will be an icon for that. (This is not the same as comparing their content, for example \"aaa\" and \"bbb\" are the same size, but this comparison is much faster and is good enough in the case of files.)",
   "compatHelpTwo": "In the panel the \"parent\" (underlined) mod will have priority unless a STAR_ICON is next to the \"child\" mod name.",
   "compatHelpOne": "The Tables tab covers keys in database tables that conflict with each other. Database tables usually are related to units stats. For example overhaul submods that affect unit stats will always have collisions here. Unlike in the Files tab, here the actual table names are compared to determine priority, not pack names. So changing load order won't affect anything here.",
   "compatHelpThree": "The Files tab covers whole files that overwrite each other, these are usually related to unit visuals: .dds textures, .wsmodel and .variantmeshdefinition files that define how a unit's look is constructed ingame. The game will use the file from the mod with higher load order priority, so between two mod that apply visual changes the ingame result will depend on the relative priority of the two mods.",
@@ -341,5 +342,6 @@
   "forceResubscribe": "Force Resubscribe",
   "forceResubscribeMsg": "Force steam to unsubscribe and then subscribe to the same mods, which deletes and downloads the mods. In cases where Force Re-Download isn't enough. By default this is for enabled mods, hold Shift for all mods.",
   "collapseAll": "Collapse All",
-  "expandAll": "Expand All"
+  "expandAll": "Expand All",
+  "sameFileSize": "Both files are of the same size"
 }
