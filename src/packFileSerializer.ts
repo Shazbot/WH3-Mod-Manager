@@ -563,6 +563,7 @@ export const getDBVersionByTableName = (packFile: PackedFile, dbName: string) =>
   // console.log("GETTING DB VERSIONS, dbversions IS", dbversions);
   if (!dbversions) return;
 
+  console.log("getting db version for", dbName, "version in file is:", packFile.version);
   const dbversion =
     dbversions.find((dbversion) => dbversion.version == packFile.version) ||
     dbversions.find((dbversion) => dbversion.version == 0) ||
