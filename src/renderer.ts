@@ -239,6 +239,10 @@ window.api?.setCustomizableMods((event, customizableMods: Record<string, string[
 });
 
 window.api?.setPacksData((event, packsData: PackViewData[]) => {
+  if (!packsData || packsData.length == 0) {
+    console.log("setPacksData: packsData is invalid:", packsData);
+    return;
+  }
   console.log(
     `INVOKED: MOD PACK DATA RECIEVED FOR ${packsData.map((packData) => packData.packName).join(",")}`
   );

@@ -63,6 +63,7 @@ const PackTablesTableView = React.memo(() => {
   console.log("packedFilePath:", packedFilePath);
 
   if (!packData.packedFiles) {
+    console.log("No packed files!");
     return <></>;
   }
   let packFile = packData.packedFiles[packedFilePath];
