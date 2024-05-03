@@ -29,8 +29,8 @@ module.exports = {
         { from: "./node_modules/binary-file", to: "../node_modules/binary-file" },
         { from: "./node_modules/denodeify", to: "../node_modules/denodeify" },
         {
-          from: "./node_modules/steamworks.js/",
-          to: "../node_modules/steamworks.js/",
+          from: "./node_modules/@ai-zen/steamworks.js/",
+          to: "../node_modules/@ai-zen/steamworks.js/",
         },
       ],
     }),
