@@ -1,6 +1,6 @@
 import type { ComponentProps, FC } from "react";
 import React from "react";
-import { GoThreeBars } from "react-icons/go";
+import { FaBars } from "react-icons/fa";
 import { excludeClassName } from "../../helpers/exclude";
 import { useTheme } from "../Flowbite/ThemeContext";
 import { useNavbarContext } from "./NavbarContext";
@@ -9,7 +9,7 @@ export interface NavbarToggleProps extends Omit<ComponentProps<"button">, "class
   barIcon?: FC<ComponentProps<"svg">>;
 }
 
-export const NavbarToggle: FC<NavbarToggleProps> = ({ barIcon: BarIcon = GoThreeBars, ...props }) => {
+export const NavbarToggle: FC<NavbarToggleProps> = ({ barIcon: BarIcon = FaBars, ...props }) => {
   const { isOpen, setIsOpen } = useNavbarContext();
 
   const handleClick = () => {
