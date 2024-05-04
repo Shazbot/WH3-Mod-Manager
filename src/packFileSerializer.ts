@@ -1803,7 +1803,11 @@ export const readPack = async (
       });
 
       const xmlFiles = pack_files.filter((packFile) => {
-        return packFile.name.endsWith(".xml") || packFile.name.endsWith(".variantmeshdefinition");
+        return (
+          packFile.name.endsWith(".xml") ||
+          packFile.name.endsWith(".variantmeshdefinition") ||
+          packFile.name.endsWith(".wsmodel")
+        );
       });
 
       for (const scriptFile of scriptFiles) {
@@ -2815,7 +2819,9 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
       }
 
       if (
-        (packFile.name.endsWith(".xml") || packFile.name.endsWith(".variantmeshdefinition")) &&
+        (packFile.name.endsWith(".xml") ||
+          packFile.name.endsWith(".variantmeshdefinition") ||
+          packFile.name.endsWith(".wsmodel")) &&
         packFile.text
       ) {
         appendToFileChecksRegistry(pack, packFile);
