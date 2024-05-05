@@ -48,6 +48,7 @@ import {
   appendPackTableCollisions,
   removeFromPackFileCollisions,
   removeFromPackTableCollisions,
+  emptyAllCompatDataCollections,
 } from "./packFileSerializer";
 import * as nodePath from "path";
 import { format } from "date-fns";
@@ -959,6 +960,7 @@ if (!gotTheLock) {
           }
         )
       );
+      emptyAllCompatDataCollections();
     });
 
     ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
@@ -1590,10 +1592,62 @@ if (!gotTheLock) {
       [gameToSteamId[appData.currentGame], "update", contentMod.workshopId, uploadFolderPath],
       {}
     );
-    child.on("message", (folderPath: string) => {
-      console.log("child says delete");
-      fs.rmSync(folderPath, { recursive: true, force: true });
-    });
+    child.on(
+      "message",
+      (response: ModUpdateResponseError | ModUpdateResponseProgress | ModUpdateResponseSuccess) => {
+        console.log("update response:", response);
+        if (response && "type" in response) {
+          switch (response.type) {
+            case "success":
+              mainWindow?.webContents.send("addToast", {
+                type: "success",
+                messages: ["loc:modUpdated"],
+                startTime: Date.now(),
+              } as Toast);
+              if ("needsToAcceptAgreement" in response && response.needsToAcceptAgreement) {
+                mainWindow?.webContents.send("addToast", {
+                  type: "info",
+                  messages: ["loc:needsToAcceptSteamWorkshopAgreement"],
+                  startTime: Date.now(),
+                } as Toast);
+              }
+              fs.rmSync(uploadFolderPath, { recursive: true, force: true });
+              break;
+            case "error":
+              mainWindow?.webContents.send("addToast", {
+                type: "warning",
+                messages: ["loc:failedUpdatingMod"],
+                startTime: Date.now(),
+              } as Toast);
+              if ("err" in response) {
+                try {
+                  console.log(response.err);
+                } catch (e) {
+                  /* empty */
+                }
+              }
+              fs.rmSync(uploadFolderPath, { recursive: true, force: true });
+              break;
+            case "progress":
+              if ("progress" in response && "total" in response && response.total > 0) {
+                mainWindow?.webContents.send("addToast", {
+                  type: "info",
+                  messages: [
+                    "loc:uploadingMod",
+                    `${Math.round(
+                      (<number>response.progress / <number>response.total + Number.EPSILON) * 100
+                    )}%`,
+                  ],
+                  startTime: Date.now(),
+                  staticToastId: uploadFolderPath,
+                } as Toast);
+              }
+              break;
+          }
+        }
+        //
+      }
+    );
   });
   ipcMain.on("fakeUpdatePack", async (event, mod: Mod) => {
     try {
@@ -1877,7 +1931,7 @@ if (!gotTheLock) {
 
     mainWindow?.webContents.send("addToast", {
       type: "info",
-      messages: ["Processing mods..."],
+      messages: ["loc:processingMods"],
       startTime: Date.now(),
     } as Toast);
 
@@ -2116,6 +2170,16 @@ if (!gotTheLock) {
 
         await fs.writeFileSync(batPath, batData);
         execFile(batPath);
+
+        appData.compatData = {
+          packTableCollisions: [],
+          packFileCollisions: [],
+          missingTableReferences: {},
+          uniqueIdsCollisions: {},
+          scriptListenerCollisions: {},
+          packFileAnalysisErrors: {},
+        };
+        appData.packsData = [];
 
         if (startGameOptions.isClosedOnPlay) {
           await new Promise((resolve) => {

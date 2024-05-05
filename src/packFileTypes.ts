@@ -110,6 +110,13 @@ export interface FileAnalysisError {
   packFileName: string;
 }
 
+export interface FileToFileReference {
+  reference: string;
+  lineNum: number;
+  packName: string;
+  packFileName: string;
+}
+
 export interface ScriptListener {
   value: string;
   packFileName: string;

@@ -21,6 +21,7 @@ import {
   ScriptListener,
   ScriptListenerCollision,
   FileAnalysisError,
+  FileToFileReference,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
@@ -54,7 +55,7 @@ import { binarySearchIncludes, collator, insertIntoPresortedArray } from "./util
 import { diff } from "deep-object-diff";
 import bs from "binary-search";
 import * as parser from "luaparse";
-import { XMLValidator } from "fast-xml-parser";
+import { XMLValidator, XMLParser } from "fast-xml-parser";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -563,13 +564,16 @@ export const getDBVersionByTableName = (packFile: PackedFile, dbName: string) =>
   // console.log("GETTING DB VERSIONS, dbversions IS", dbversions);
   if (!dbversions) return;
 
-  console.log("getting db version for", dbName, "version in file is:", packFile.version);
+  // console.log("getting db version for", dbName, "version in file is:", packFile.version);
   const dbversion =
     dbversions.find((dbversion) => dbversion.version == packFile.version) ||
     dbversions.find((dbversion) => dbversion.version == 0) ||
     dbversions[0];
   // console.log("GETTING DB VERSION from dbversions, dbversion IS", dbversion);
-  if (!dbversion) return;
+  if (!dbversion) {
+    console.log("FAILED getting db version for", dbName, "version in file is:", packFile.version);
+    return;
+  }
   // console.log("GETTING DB VERSION packFile version IS", packFile.version);
   if (packFile.version == null) return dbversion;
   if (dbversion.version < packFile.version) return;
@@ -2615,6 +2619,20 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
 const packToTablesWithUniqueIds: Record<string, Record<DBFileName, UniqueId[]>> = {};
 const packToScriptFilesWithListeners: Record<string, Record<DBFileName, ScriptListener[]>> = {};
 const packFileAnalysisErrors: Record<string, Record<DBFileName, FileAnalysisError[]>> = {};
+const packFileToFileReferences: Record<string, Record<DBFileName, FileToFileReference[]>> = {};
+
+let xmlParserAttributesCache: string[] = [];
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeValueProcessor: (attrName, attrValue, jPath) => {
+    console.log(attrName, jPath);
+    if (attrName == "model" || attrName == "definition") {
+      xmlParserAttributesCache.push(attrValue);
+    }
+    return attrValue;
+  },
+});
+
 const emptyPackToTablesWithUniqueIds = () => {
   for (const packName of Object.keys(packToTablesWithUniqueIds)) {
     delete packToTablesWithUniqueIds[packName];
@@ -2629,6 +2647,17 @@ const emptyPackFileAnalysisErrors = () => {
   for (const packName of Object.keys(packFileAnalysisErrors)) {
     delete packFileAnalysisErrors[packName];
   }
+};
+const emptyPackFileToFileReferences = () => {
+  for (const packName of Object.keys(packFileToFileReferences)) {
+    delete packFileToFileReferences[packName];
+  }
+};
+export const emptyAllCompatDataCollections = () => {
+  emptyPackToTablesWithUniqueIds();
+  emptyPackToScriptFilesWithListeners();
+  emptyPackFileAnalysisErrors();
+  emptyPackFileToFileReferences();
 };
 function appendToUniqueIdKeysRegistry(
   pack: Pack,
@@ -2742,15 +2771,39 @@ function appendScriptToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
   }
 }
 
+function appendToFileToFileRegistry(pack: Pack, packFile: PackedFile, referencedFiles: string[]) {
+  // console.log(xmlAsObject);
+  referencedFiles = referencedFiles.map((refFile) => refFile.replaceAll("/", "\\"));
+  console.log("packFile:", packFile.name, "referencedFiles:", referencedFiles);
+  const packedFilesNames = pack.packedFiles.map((pF) => pF.name);
+  // console.log(packedFilesNames);
+  for (const referencedFile of referencedFiles) {
+    if (!binarySearchIncludes(packedFilesNames, referencedFile))
+      console.log(`referenced file ${referencedFile} not found in pack ${pack.name}`);
+  }
+  // if (packFile.name.includes("aarb_alrahem_nomad_bow_sword"))
+  //   fs.writeFileSync("dumps/aarb_alrahem_nomad_bow_sword.json", JSON.stringify(xmlAsObject));
+}
+
 function appendToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
   if (!packFile.text) return;
   let error = null;
 
   try {
+    // if (packFile.name.endsWith(".variantmeshdefinition")) {
+    //   try {
+    //     xmlParserAttributesCache = [];
+    //     xmlParser.parse(packFile.text, true);
+    //     appendToFileToFileRegistry(pack, packFile, xmlParserAttributesCache);
+    //     return;
+    //   } catch (e) {
+    //     /* run it inside XMLValidator.validate */
+    //   }
+    // }
+
     const result = XMLValidator.validate(packFile.text, {
       allowBooleanAttributes: true,
     });
-
     if (result != true) {
       if (result.err.msg != "Multiple possible root nodes found.") {
         console.log("FAILED PARSING XML", packFile.name);
@@ -2765,8 +2818,11 @@ function appendToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
         } as FileAnalysisError;
       }
       // console.log(packFile.text);
+    } else {
+      // appendToFileToFileRegistry(pack, packFile, result);
     }
   } catch (e) {
+    console.log(e);
     if (e instanceof SyntaxError) {
       error = {
         msg: e.message,
@@ -3385,9 +3441,7 @@ export function findPackTableMissingReferencesAndRunAnalysis(
   onPackChecked?: OnPackChecked
 ) {
   // keep this at top, these are populated inside findPackTableReferencesOptimized
-  emptyPackToTablesWithUniqueIds();
-  emptyPackToScriptFilesWithListeners();
-  emptyPackFileAnalysisErrors();
+  emptyAllCompatDataCollections();
 
   const missingRefs = findPackTableReferencesOptimized(packsData, onPackChecked);
 

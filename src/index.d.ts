@@ -369,13 +369,14 @@ declare global {
     accountId: number;
   }
 
-  interface TreeNode {
-    children: TreeNode[];
+  interface TreeNode<T> {
+    children: TreeNode<T>[];
     key: string;
-    value?: string;
+    value?: T;
   }
-  interface Tree {
-    node: TreeNode;
+  type RootNode<T> = Omit<TreeNode<T>, "key">;
+  interface Tree<T> {
+    node: RootNode<T>;
   }
 
   interface PackCollisionsCheckProgressData {
@@ -407,4 +408,20 @@ declare global {
     scriptListenerCollisions: Record<string, ScriptListenerCollision[]>;
     packFileAnalysisErrors: Record<string, Record<DBFileName, FileAnalysisError[]>>;
   }
+
+  type ModUpdateResponse = {
+    type: string;
+  };
+
+  type ModUpdateResponseSuccess = ModUpdateResponse & {
+    needsToAcceptAgreement: boolean;
+  };
+  type ModUpdateResponseError = ModUpdateResponse & {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    err: any;
+  };
+  type ModUpdateResponseProgress = ModUpdateResponse & {
+    progress: number;
+    total: number;
+  };
 }

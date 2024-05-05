@@ -15,7 +15,7 @@ export const isSchemaFieldNumberInteger = (fieldType: SCHEMA_FIELD_TYPE) => {
   return fieldType === "I16" || fieldType === "I32" || fieldType === "I64";
 };
 
-const addToLocTreeNode = (leafNode: TreeNode, subKeys: string[], value: string) => {
+const addToLocTreeNode = (leafNode: TreeNode<string>, subKeys: string[], value: string) => {
   if (subKeys.length == 0) {
     leafNode.value = value;
     return;
@@ -31,7 +31,7 @@ const addToLocTreeNode = (leafNode: TreeNode, subKeys: string[], value: string) 
   addToLocTreeNode(leaf, subKeys.slice(1), value);
 };
 
-const addToLocTree = (locTree: Tree, key: string, value: string) => {
+const addToLocTree = (locTree: Tree<string>, key: string, value: string) => {
   const subKeys = key.split("_");
   let leaf = locTree.node.children.find((child) => child.key == subKeys[0]);
   if (!leaf) {
@@ -47,7 +47,7 @@ const addToLocTree = (locTree: Tree, key: string, value: string) => {
 export const getLocsTree = (packData: PackViewData) => {
   const locPFs = Object.values(packData.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
   const data = getPlainPackData(locPFs, LocVersion);
-  const locTree = { node: { children: [], key: "" } } as Tree;
+  const locTree = { node: { children: [], key: "" } } as Tree<string>;
   for (const rows of Object.values(data)) {
     for (const row of rows) {
       const [locKey, locValue] = [row[0] as string, row[1] as string];
@@ -58,7 +58,10 @@ export const getLocsTree = (packData: PackViewData) => {
   return locTree;
 };
 
-const getTreeNodeForLoc = (leaf: TreeNode, locs: string[]): TreeNode | undefined => {
+const getTreeNodeForLoc = (
+  leaf: TreeNode<string> | RootNode<string>,
+  locs: string[]
+): TreeNode<string> | undefined => {
   if (locs.length == 0) return;
 
   for (const child of leaf.children) {
@@ -71,7 +74,7 @@ const getTreeNodeForLoc = (leaf: TreeNode, locs: string[]): TreeNode | undefined
   }
 };
 
-export const getLocFromTree = (tree: Tree, locPrefix: string, loc: string) => {
+export const getLocFromTree = (tree: Tree<string>, locPrefix: string, loc: string) => {
   const node = getTreeNodeForLoc(tree.node, `${locPrefix}_${loc}`.split("_"));
   if (node) return node.value;
 };

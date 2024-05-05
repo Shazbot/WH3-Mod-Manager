@@ -1104,7 +1104,13 @@ const appSlice = createSlice({
       state.isHelpOpen = action.payload;
     },
     addToast: (state: AppState, action: PayloadAction<Toast>) => {
-      state.toasts.push(action.payload);
+      const newToast = action.payload;
+      if (newToast.staticToastId) {
+        const existingToast = state.toasts.find((toast) => toast.staticToastId == newToast.staticToastId);
+        if (existingToast) state.toasts.splice(state.toasts.indexOf(existingToast), 1);
+      }
+
+      state.toasts.push(newToast);
     },
     setModBeingCustomized: (state: AppState, action: PayloadAction<Mod | undefined>) => {
       state.modBeingCustomized = action.payload;

@@ -104,16 +104,41 @@ if (process.argv[3] == "update") {
   console.log(id);
   console.log(path);
 
-  const promises = [
-    client.workshop.updateItem(BigInt(id), { contentPath: path }).then(() => {
+  client.workshop.updateItemWithCallback(
+    BigInt(id),
+    { contentPath: path },
+    Number(process.argv[2]),
+    (data) => {
+      if (process.send)
+        process.send({
+          type: "success",
+          itemId: Number(data.itemId),
+          needsToAcceptAgreement: data.needsToAcceptAgreement,
+        });
       client.workshop.download(BigInt(id), true);
-    }),
-  ];
-
-  Promise.allSettled(promises).then(() => {
-    if (process.send) process.send(path);
-    process.exit();
-  });
+      setTimeout(() => {
+        process.exit();
+      }, 300);
+    },
+    (err) => {
+      if (process.send) process.send({ type: "error", err });
+      setTimeout(() => {
+        process.exit();
+      }, 300);
+    },
+    (data) => {
+      if (process.send) {
+        if (data.status == 3)
+          process.send({
+            type: "progress",
+            status: data.status,
+            progress: Number(data.progress),
+            total: Number(data.total),
+          });
+      }
+    },
+    100
+  );
 }
 if (process.argv[3] == "sub") {
   console.log("SUB");

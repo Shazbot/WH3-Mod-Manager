@@ -343,5 +343,10 @@
   "forceResubscribeMsg": "Force steam to unsubscribe and then subscribe to the same mods, which deletes and downloads the mods. In cases where Force Re-Download isn't enough. By default this is for enabled mods, hold Shift for all mods.",
   "collapseAll": "Collapse All",
   "expandAll": "Expand All",
-  "sameFileSize": "Both files are of the same size"
+  "sameFileSize": "Both files are of the same size",
+  "processingMods": "Processing mods...",
+  "uploadingMod": "Uploading Mod...",
+  "failedUpdatingMod": "Failed Updating Mod!",
+  "modUpdated": "Mod Updated!",
+  "needsToAcceptSteamWorkshopAgreement": "You need to accept Steam Workshop terms and conditions!"
 }
