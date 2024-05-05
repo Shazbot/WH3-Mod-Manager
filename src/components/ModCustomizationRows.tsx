@@ -31,7 +31,7 @@ export interface ModCustomizationRowsProps {
   firstColumnTableLoc?: string;
   secondColumnTableLoc?: string;
   firstColumnLocBuilder?: (data: PlainPackFileDataRow) => string;
-  locTree: Tree;
+  locTree: Tree<string>;
 }
 
 const ModCustomizationRows = memo(
