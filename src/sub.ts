@@ -95,18 +95,54 @@ if (process.argv[3] == "checkState") {
     process.exit();
   }, timeoutValue);
 }
+if (process.argv[3] == "upload") {
+  console.log("upload");
+  const client = steamworks.init(Number(process.argv[2]));
+
+  try {
+    client.workshop.createItem(Number(process.argv[2])).then((data) => {
+      if (process.send)
+        process.send({
+          type: "success",
+          workshopId: data.itemId.toString(),
+          needsToAcceptAgreement: data.needsToAcceptAgreement,
+        } as ModUploadResponseSuccess);
+      setTimeout(() => {
+        process.exit();
+      }, 300);
+    });
+  } catch (e) {
+    if (process.send) process.send({ type: "error" } as ModUploadResponseError);
+    setTimeout(() => {
+      process.exit();
+    }, 300);
+    console.log(e);
+  }
+}
 if (process.argv[3] == "update") {
   console.log("update");
   const id = process.argv[4]; //"2856936614";
   const path = process.argv[5]; //"2856936614";
+  const previewPath = process.argv[6];
+  const modTitle = process.argv.length > 7 && process.argv[7];
   const client = steamworks.init(Number(process.argv[2]));
 
   console.log(id);
   console.log(path);
 
+  const updateData = { contentPath: path, previewPath } as {
+    contentPath: string;
+    previewPath: string;
+    title?: string;
+  };
+
+  if (modTitle) {
+    updateData.title = modTitle;
+  }
+
   client.workshop.updateItemWithCallback(
     BigInt(id),
-    { contentPath: path },
+    updateData,
     Number(process.argv[2]),
     (data) => {
       if (process.send)
@@ -114,14 +150,14 @@ if (process.argv[3] == "update") {
           type: "success",
           itemId: Number(data.itemId),
           needsToAcceptAgreement: data.needsToAcceptAgreement,
-        });
+        } as ModUpdateResponseSuccess);
       client.workshop.download(BigInt(id), true);
       setTimeout(() => {
         process.exit();
       }, 300);
     },
     (err) => {
-      if (process.send) process.send({ type: "error", err });
+      if (process.send) process.send({ type: "error", err } as ModUpdateResponseError);
       setTimeout(() => {
         process.exit();
       }, 300);
@@ -134,7 +170,7 @@ if (process.argv[3] == "update") {
             status: data.status,
             progress: Number(data.progress),
             total: Number(data.total),
-          });
+          } as ModUpdateResponseProgress);
       }
     },
     100
@@ -154,3 +190,31 @@ if (process.argv[3] == "sub") {
     }, 200);
   });
 }
+
+type ModUpdateResponse = {
+  type: string;
+};
+
+type ModUpdateResponseSuccess = ModUpdateResponse & {
+  type: "success";
+  needsToAcceptAgreement: boolean;
+};
+type ModUpdateResponseError = ModUpdateResponse & {
+  type: "error";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  err: any;
+};
+type ModUpdateResponseProgress = ModUpdateResponse & {
+  type: "progress";
+  progress: number;
+  total: number;
+};
+
+type ModUploadResponseSuccess = ModUpdateResponse & {
+  type: "success";
+  workshopId: string;
+  needsToAcceptAgreement: boolean;
+};
+type ModUploadResponseError = ModUpdateResponse & {
+  type: "error";
+};

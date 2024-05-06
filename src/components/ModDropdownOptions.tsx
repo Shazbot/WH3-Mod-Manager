@@ -45,8 +45,12 @@ const deletePack = (mod: Mod) => {
   if (!mod) return;
   window.api?.deletePack(mod);
 };
-const unsubscribe = (mod: Mod) => {
-  window.api?.unsubscribeToMod(mod);
+const unsubscribe = (mod: Mod, allMods: Mod[]) => {
+  const modInContent = mod.isInData
+    ? allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData)
+    : mod;
+  if (!modInContent) return;
+  window.api?.unsubscribeToMod(modInContent);
 };
 
 const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
@@ -91,6 +95,12 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
       if (contentMod == null) return;
 
       window.api?.updateMod(mod, contentMod);
+    },
+    [allMods]
+  );
+  const uploadMod = useCallback(
+    (mod: Mod) => {
+      window.api?.uploadMod(mod);
     },
     [allMods]
   );
@@ -352,6 +362,26 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
               </a>
             </li>
             {props.mod?.isInData &&
+              !allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) && (
+                <li>
+                  <a
+                    onClick={() => {
+                      if (props.mod) uploadMod(props.mod);
+                    }}
+                    href="#"
+                    className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                  >
+                    <Tooltip
+                      placement="right"
+                      style="light"
+                      content={<div className="min-w-[10rem]">{localized.uploadModTooltip}</div>}
+                    >
+                      {localized.uploadMod}
+                    </Tooltip>
+                  </a>
+                </li>
+              )}
+            {props.mod?.isInData &&
               allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) && (
                 <>
                   <li>
@@ -438,7 +468,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
               <li>
                 <a
                   onClick={() => {
-                    if (props.mod) unsubscribe(props.mod);
+                    if (props.mod) unsubscribe(props.mod, allMods);
                   }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
