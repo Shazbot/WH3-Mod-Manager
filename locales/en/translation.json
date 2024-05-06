@@ -348,5 +348,11 @@
   "uploadingMod": "Uploading Mod...",
   "failedUpdatingMod": "Failed Updating Mod!",
   "modUpdated": "Mod Updated!",
-  "needsToAcceptSteamWorkshopAgreement": "You need to accept Steam Workshop terms and conditions!"
+  "needsToAcceptSteamWorkshopAgreement": "You need to accept Steam Workshop terms and conditions!",
+  "uploadModTooltip": "Uploads the mod to the workshop.",
+  "uploadMod": "Upload Mod",
+  "modCreated": "Mod Created",
+  "failedUploadingMod": "Failed Uploading Mod!",
+  "missingModThumbnail": "Missing mod thumbnail!",
+  "thumbnailTooBig": "Thumbnail size is too big!"
 }

@@ -414,14 +414,26 @@ declare global {
   };
 
   type ModUpdateResponseSuccess = ModUpdateResponse & {
+    type: "success";
     needsToAcceptAgreement: boolean;
   };
   type ModUpdateResponseError = ModUpdateResponse & {
+    type: "error";
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     err: any;
   };
   type ModUpdateResponseProgress = ModUpdateResponse & {
+    type: "progress";
     progress: number;
     total: number;
+  };
+
+  type ModUploadResponseSuccess = ModUpdateResponse & {
+    type: "success";
+    workshopId: string;
+    needsToAcceptAgreement: boolean;
+  };
+  type ModUploadResponseError = ModUpdateResponse & {
+    type: "error";
   };
 }

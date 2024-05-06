@@ -1567,8 +1567,11 @@ if (!gotTheLock) {
     shell.showItemInFolder(path);
   });
 
-  ipcMain.on("openInSteam", (event, url: string) => {
+  const openInSteam = (url: string) => {
     exec(`start steam://openurl/${url}`);
+  };
+  ipcMain.on("openInSteam", (event, url: string) => {
+    openInSteam(url);
   });
 
   ipcMain.on("openPack", (event, path: string) => {
@@ -1577,9 +1580,74 @@ if (!gotTheLock) {
   ipcMain.on("putPathInClipboard", (event, path: string) => {
     clipboard.writeText(path);
   });
-  ipcMain.on("updateMod", async (event, mod: Mod, contentMod: Mod) => {
-    const uploadFolderName = contentMod.workshopId;
+  const checkIsModThumbnailValid = (modThumbnailPath: string) => {
+    if (modThumbnailPath == "" || !fs.existsSync(modThumbnailPath)) {
+      mainWindow?.webContents.send("addToast", {
+        type: "warning",
+        messages: ["loc:missingModThumbnail"],
+        startTime: Date.now(),
+      } as Toast);
+      return false;
+    }
+    if (fs.statSync(modThumbnailPath).size > 1024 * 1024) {
+      mainWindow?.webContents.send("addToast", {
+        type: "warning",
+        messages: ["loc:thumbnailTooBig"],
+        startTime: Date.now(),
+      } as Toast);
+      return false;
+    }
+    return true;
+  };
+  ipcMain.on("uploadMod", async (event, mod: Mod) => {
+    if (!checkIsModThumbnailValid(mod.imgPath)) return;
+
+    const child = fork(
+      nodePath.join(__dirname, "sub.js"),
+      [gameToSteamId[appData.currentGame], "upload"],
+      {}
+    );
+    child.on("message", (response: ModUploadResponseError | ModUploadResponseSuccess) => {
+      console.log("upload response:", response);
+      if (response && "type" in response) {
+        switch (response.type) {
+          case "success":
+            mainWindow?.webContents.send("addToast", {
+              type: "success",
+              messages: ["loc:modCreated"],
+              startTime: Date.now(),
+            } as Toast);
+            if ("needsToAcceptAgreement" in response && response.needsToAcceptAgreement) {
+              mainWindow?.webContents.send("addToast", {
+                type: "info",
+                messages: ["loc:needsToAcceptSteamWorkshopAgreement"],
+                startTime: Date.now(),
+              } as Toast);
+            }
+            updateMod(mod, response.workshopId, mod.name, true);
+            break;
+          case "error":
+            mainWindow?.webContents.send("addToast", {
+              type: "warning",
+              messages: ["loc:failedUploadingMod"],
+              startTime: Date.now(),
+            } as Toast);
+
+            break;
+        }
+      }
+    });
+  });
+  const updateMod = async (
+    mod: Mod,
+    workshopId: string,
+    modTitle?: string,
+    openInSteamAfterUpdate = false
+  ) => {
+    const uploadFolderName = workshopId;
     const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_uploads_" + uploadFolderName);
+
+    if (!checkIsModThumbnailValid(mod.imgPath)) return;
 
     await fs.rmSync(uploadFolderPath, { recursive: true, force: true });
     await fs.mkdirSync(uploadFolderPath, { recursive: true });
@@ -1587,11 +1655,9 @@ if (!gotTheLock) {
     await fs.linkSync(mod.path, nodePath.join(uploadFolderPath, mod.name));
     await fs.linkSync(mod.imgPath, nodePath.join(uploadFolderPath, nodePath.basename(mod.imgPath)));
 
-    const child = fork(
-      nodePath.join(__dirname, "sub.js"),
-      [gameToSteamId[appData.currentGame], "update", contentMod.workshopId, uploadFolderPath],
-      {}
-    );
+    const args = [gameToSteamId[appData.currentGame], "update", workshopId, uploadFolderPath, mod.imgPath];
+    if (modTitle) args.push(modTitle);
+    const child = fork(nodePath.join(__dirname, "sub.js"), args, {});
     child.on(
       "message",
       (response: ModUpdateResponseError | ModUpdateResponseProgress | ModUpdateResponseSuccess) => {
@@ -1612,6 +1678,9 @@ if (!gotTheLock) {
                 } as Toast);
               }
               fs.rmSync(uploadFolderPath, { recursive: true, force: true });
+              if (openInSteamAfterUpdate) {
+                openInSteam(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`);
+              }
               break;
             case "error":
               mainWindow?.webContents.send("addToast", {
@@ -1648,6 +1717,9 @@ if (!gotTheLock) {
         //
       }
     );
+  };
+  ipcMain.on("updateMod", async (event, mod: Mod, contentMod: Mod) => {
+    updateMod(mod, contentMod.workshopId);
   });
   ipcMain.on("fakeUpdatePack", async (event, mod: Mod) => {
     try {
