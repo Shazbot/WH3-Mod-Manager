@@ -106,6 +106,8 @@ const onDragEnd = (e?: React.DragEvent<HTMLDivElement>) => {
   }, 100);
 };
 
+const MemoizedFloatingOverlay = memo(FloatingOverlay);
+
 const ModRows = memo(() => {
   const dispatch = useAppDispatch();
   const filter = useAppSelector((state) => state.app.filter);
@@ -119,6 +121,7 @@ const ModRows = memo(() => {
   const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
   const isDev = useAppSelector((state) => state.app.isDev);
 
+  const [value, setValue] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isCustomizeModOpen, setIsCustomizeModOpen] = useState<boolean>(false);
   // const [modBeingCustomized, setModBeingCustomized] = useState<Mod>();
@@ -594,205 +597,213 @@ const ModRows = memo(() => {
     return onDrop(unfilteredVisibleMods);
   }, [unfilteredVisibleMods, onDrop]);
 
-  return (
-    <div
-      onDragEnd={(e) => onDragEnd(e)}
-      className={`dark:text-slate-100 ` + (areThumbnailsEnabled ? "text-lg" : "")}
-      id="rowsParent"
-      ref={rowsParentRef}
-    >
-      <FloatingOverlay
-        onClick={() => onDropdownOverlayClick()}
-        onContextMenu={() => onDropdownOverlayClick()}
-        className={`${isDropdownOpen ? "" : "hidden"} z-50 dark`}
-        id="modDropdownOverlay"
-      >
-        <ModDropdown
-          isOpen={isDropdownOpen}
-          positionX={positionX}
-          positionY={positionY}
-          mod={contextMenuMod}
-          visibleMods={unfilteredVisibleMods}
-          referenceElement={dropdownReferenceElement}
-          mods={mods}
-        ></ModDropdown>
-      </FloatingOverlay>
-      {modBeingCustomized && modBeingCustomized.path && <ModCustomization />}
-      <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
-        <div
-          id="sortHeader"
-          className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
-          onClick={() => setSortingType(SortingType.Ordered)}
-          onContextMenu={onOrderRightClick}
-        >
-          {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className="tooltip-width-20">
-            <Tooltip
-              placement="bottom"
-              style="light"
-              content={
-                <>
-                  <div>{localized.priorityTooltipOne}</div>
-                  <div>{localized.priorityTooltipTwo}</div>
-                  <div className="text-red-600 font-bold">{localized.priorityTooltipThree}</div>
-                </>
-              }
-            >
-              <span
-                className={`text-center w-full cursor-pointer ${
-                  modRowSorting.isOrderSort(sortingType) && "font-semibold"
-                }`}
-              >
-                {localized.order}
-              </span>
-            </Tooltip>
-          </span>
-        </div>
-        <div
-          className="flex place-items-center w-full justify-center z-10 mod-row-header"
-          onClick={() => setSortingType(SortingType.IsEnabled)}
-          onContextMenu={onEnabledRightClick}
-          id="enabledHeader"
-        >
-          {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className="tooltip-width-15">
-            <Tooltip placement="bottom" style="light" content={localized.enableOrDisableAll}>
-              <span
-                className={`text-center cursor-pointer w-full ${
-                  modRowSorting.isEnabledSort(sortingType) && "font-semibold"
-                }`}
-              >
-                {localized.enabled}
-              </span>
-            </Tooltip>
-          </span>
-        </div>
-        <div
-          className={
-            "flex grid-area-autohide place-items-center pl-1 mod-row-header cursor-default " +
-            (areThumbnailsEnabled ? "" : "hidden")
-          }
-        >
-          {localized.thumbnail}
-        </div>
-        <div
-          className="flex grid-area-packName place-items-center pl-1 mod-row-header"
-          onClick={() => setSortingType(SortingType.PackName)}
-          onContextMenu={() => setSortingType(SortingType.IsDataPack)}
-        >
-          {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
-            modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip placement="right" style="light" content={localized.sortByDataPacks}>
-            <span
-              className={`cursor-pointer ${
-                (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
-                "font-semibold"
-              }`}
-            >
-              {(modRowSorting.isDataPackSort(sortingType) && localized.dataPacks) || localized.pack}
-            </span>
-          </Tooltip>
-        </div>
-        <div
-          className="flex grid-area-humanName place-items-center pl-1 mod-row-header"
-          onClick={() => setSortingType(SortingType.HumanName)}
-        >
-          {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`cursor-pointer ${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}>
-            {localized.name}
-          </span>
-        </div>
-        <div
-          className={
-            "flex grid-area-autohide place-items-center pl-1 mod-row-header " +
-            (isAuthorEnabled ? "" : "hidden")
-          }
-          onClick={() => setSortingType(SortingType.Author)}
-        >
-          {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span className={`cursor-pointer ${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>
-            {localized.author}
-          </span>
-        </div>
-        <div
-          className="flex grid-area-autohide place-items-center pl-1 mod-row-header"
-          onClick={() => setSortingType(SortingType.LastUpdated)}
-          onContextMenu={() => setSortingType(SortingType.SubbedTime)}
-        >
-          {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
-            modRowSorting.getSortingArrow(sortingType)}
-          <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
-            <span
-              className={`cursor-pointer ${
-                (modRowSorting.isLastUpdatedSort(sortingType) ||
-                  modRowSorting.isSubbedTimeSort(sortingType)) &&
-                "font-semibold"
-              }`}
-            >
-              {(modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) ||
-                localized.lastUpdated}
-            </span>
-          </Tooltip>
-        </div>
-        <div
-          className="flex place-items-center pl-1 mod-row-header rounded-tr-xl justify-center"
-          onClick={() => setSortingType(SortingType.IsCustomizable)}
-        >
-          {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
-          <span
-            className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}
-          >
-            <GoGear></GoGear>
-          </span>
-        </div>
-        {visibleMods.map((mod, i) => (
-          <ModRow
-            key={mod.path}
-            {...{
-              index: i,
-              mod,
-              onRowHoverStart,
-              onRowHoverEnd,
-              onDrop: onDropWithVisibleMods(),
-              onDrag,
-              onDragStart,
-              onDragLeave,
-              onDragEnter,
-              onDragOver,
-              onDragEnd,
-              onModToggled,
-              onModRightClick,
-              onCustomizeModClicked,
-              onCustomizeModRightClick,
-              onRemoveModOrder,
-              sortingType,
-              currentTab,
-              isLast: visibleMods.length == i + 1,
-              isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
-              isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
-                (mergeMod.mergedModsData as MergedModsData[]).some(
-                  (mergeModData) => mergeModData.path == mod.path
-                )
-              ),
-              loadOrder: orderedMods.indexOf(mod) + 1,
-            }}
-          ></ModRow>
-        ))}
-      </div>
+  const onDropMemoized = useMemo(() => onDropWithVisibleMods(), [onDropWithVisibleMods]);
 
-      <div className="fixed bottom-5 hidden">
-        <Alert
-          color="success"
-          onDismiss={function onDismiss() {
-            return alert("Alert dismissed!");
-          }}
+  return (
+    <>
+      <div
+        onDragEnd={(e) => onDragEnd(e)}
+        className={`dark:text-slate-100 ` + (areThumbnailsEnabled ? "text-lg" : "")}
+        id="rowsParent"
+        ref={rowsParentRef}
+      >
+        <MemoizedFloatingOverlay
+          onClick={() => onDropdownOverlayClick()}
+          onContextMenu={() => onDropdownOverlayClick()}
+          className={`${isDropdownOpen ? "" : "hidden"} z-50 dark`}
+          id="modDropdownOverlay"
         >
-          <span>
-            <span className="font-medium">Info alert!</span> Change a few things up and try submitting again.
-          </span>
-        </Alert>
+          <ModDropdown
+            isOpen={isDropdownOpen}
+            positionX={positionX}
+            positionY={positionY}
+            mod={contextMenuMod}
+            visibleMods={unfilteredVisibleMods}
+            referenceElement={dropdownReferenceElement}
+            mods={mods}
+          ></ModDropdown>
+        </MemoizedFloatingOverlay>
+        {modBeingCustomized && modBeingCustomized.path && <ModCustomization />}
+
+        <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
+          <div
+            id="sortHeader"
+            className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
+            onClick={() => setSortingType(SortingType.Ordered)}
+            onContextMenu={onOrderRightClick}
+          >
+            {modRowSorting.isOrderSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+            <span className="tooltip-width-20">
+              <Tooltip
+                placement="bottom"
+                style="light"
+                content={
+                  <>
+                    <div>{localized.priorityTooltipOne}</div>
+                    <div>{localized.priorityTooltipTwo}</div>
+                    <div className="text-red-600 font-bold">{localized.priorityTooltipThree}</div>
+                  </>
+                }
+              >
+                <span
+                  className={`text-center w-full cursor-pointer ${
+                    modRowSorting.isOrderSort(sortingType) && "font-semibold"
+                  }`}
+                >
+                  {localized.order}
+                </span>
+              </Tooltip>
+            </span>
+          </div>
+          <div
+            className="flex place-items-center w-full justify-center z-10 mod-row-header"
+            onClick={() => setSortingType(SortingType.IsEnabled)}
+            onContextMenu={onEnabledRightClick}
+            id="enabledHeader"
+          >
+            {modRowSorting.isEnabledSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+            <span className="tooltip-width-15">
+              <Tooltip placement="bottom" style="light" content={localized.enableOrDisableAll}>
+                <span
+                  className={`text-center cursor-pointer w-full ${
+                    modRowSorting.isEnabledSort(sortingType) && "font-semibold"
+                  }`}
+                >
+                  {localized.enabled}
+                </span>
+              </Tooltip>
+            </span>
+          </div>
+          <div
+            className={
+              "flex grid-area-autohide place-items-center pl-1 mod-row-header cursor-default " +
+              (areThumbnailsEnabled ? "" : "hidden")
+            }
+          >
+            {localized.thumbnail}
+          </div>
+          <div
+            className="flex grid-area-packName place-items-center pl-1 mod-row-header"
+            onClick={() => setSortingType(SortingType.PackName)}
+            onContextMenu={() => setSortingType(SortingType.IsDataPack)}
+          >
+            {(modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
+              modRowSorting.getSortingArrow(sortingType)}
+            <Tooltip placement="right" style="light" content={localized.sortByDataPacks}>
+              <span
+                className={`cursor-pointer ${
+                  (modRowSorting.isPackNameSort(sortingType) || modRowSorting.isDataPackSort(sortingType)) &&
+                  "font-semibold"
+                }`}
+              >
+                {(modRowSorting.isDataPackSort(sortingType) && localized.dataPacks) || localized.pack}
+              </span>
+            </Tooltip>
+          </div>
+          <div
+            className="flex grid-area-humanName place-items-center pl-1 mod-row-header"
+            onClick={() => setSortingType(SortingType.HumanName)}
+          >
+            {modRowSorting.isHumanNameSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+            <span
+              className={`cursor-pointer ${modRowSorting.isHumanNameSort(sortingType) && "font-semibold"}`}
+            >
+              {localized.name}
+            </span>
+          </div>
+          <div
+            className={
+              "flex grid-area-autohide place-items-center pl-1 mod-row-header " +
+              (isAuthorEnabled ? "" : "hidden")
+            }
+            onClick={() => setSortingType(SortingType.Author)}
+          >
+            {modRowSorting.isAuthorSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+            <span className={`cursor-pointer ${modRowSorting.isAuthorSort(sortingType) && "font-semibold"}`}>
+              {localized.author}
+            </span>
+          </div>
+          <div
+            className="flex grid-area-autohide place-items-center pl-1 mod-row-header"
+            onClick={() => setSortingType(SortingType.LastUpdated)}
+            onContextMenu={() => setSortingType(SortingType.SubbedTime)}
+          >
+            {(modRowSorting.isLastUpdatedSort(sortingType) || modRowSorting.isSubbedTimeSort(sortingType)) &&
+              modRowSorting.getSortingArrow(sortingType)}
+            <Tooltip placement="left" style="light" content={localized.sortBySubscribedDate}>
+              <span
+                className={`cursor-pointer ${
+                  (modRowSorting.isLastUpdatedSort(sortingType) ||
+                    modRowSorting.isSubbedTimeSort(sortingType)) &&
+                  "font-semibold"
+                }`}
+              >
+                {(modRowSorting.isSubbedTimeSort(sortingType) && localized.subscriptionTime) ||
+                  localized.lastUpdated}
+              </span>
+            </Tooltip>
+          </div>
+          <div
+            className="flex place-items-center pl-1 mod-row-header rounded-tr-xl justify-center"
+            onClick={() => setSortingType(SortingType.IsCustomizable)}
+          >
+            {modRowSorting.isCustomizableSort(sortingType) && modRowSorting.getSortingArrow(sortingType)}
+            <span
+              className={`cursor-pointer ${modRowSorting.isCustomizableSort(sortingType) && "font-semibold"}`}
+            >
+              <GoGear></GoGear>
+            </span>
+          </div>
+          {visibleMods.map((mod, i) => (
+            <ModRow
+              key={mod.path}
+              {...{
+                index: i,
+                mod,
+                onRowHoverStart,
+                onRowHoverEnd,
+                onDrop: onDropMemoized,
+                onDrag,
+                onDragStart,
+                onDragLeave,
+                onDragEnter,
+                onDragOver,
+                onDragEnd,
+                onModToggled,
+                onModRightClick,
+                onCustomizeModClicked,
+                onCustomizeModRightClick,
+                onRemoveModOrder,
+                sortingType,
+                currentTab,
+                isLast: visibleMods.length == i + 1,
+                isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
+                isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
+                  (mergeMod.mergedModsData as MergedModsData[]).some(
+                    (mergeModData) => mergeModData.path == mod.path
+                  )
+                ),
+                loadOrder: orderedMods.indexOf(mod) + 1,
+              }}
+            ></ModRow>
+          ))}
+        </div>
+
+        <div className="fixed bottom-5 hidden">
+          <Alert
+            color="success"
+            onDismiss={function onDismiss() {
+              return alert("Alert dismissed!");
+            }}
+          >
+            <span>
+              <span className="font-medium">Info alert!</span> Change a few things up and try submitting
+              again.
+            </span>
+          </Alert>
+        </div>
       </div>
-    </div>
+    </>
   );
 });
 
