@@ -426,8 +426,35 @@ if (!gotTheLock) {
   };
 
   const getAllMods = async () => {
+    const timeStartedFetchingSubbedIds = Date.now();
     try {
-      const mods = await getMods(log);
+      appData.subscribedModIds = [];
+      const child = fork(
+        nodePath.join(__dirname, "sub.js"),
+        [gameToSteamId[appData.currentGame], "getSubscribedIds"],
+        {}
+      );
+      child.on("message", (workshopIds: string[]) => {
+        appData.subscribedModIds = workshopIds;
+        console.log("getSubscribedIds returned:", workshopIds);
+      });
+    } catch (e) {
+      console.log(e);
+    }
+
+    try {
+      let mods = await getMods(log);
+      while (Date.now() - timeStartedFetchingSubbedIds < 5000 && appData.subscribedModIds.length == 0) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      console.log("before subcription filter:", mods.length);
+      // for (const mod of mods) {
+      //   if (!mod.isInData && !appData.subscribedModIds.includes(mod.workshopId)) console.log(mod.workshopId);
+      // }
+      if (appData.subscribedModIds.length != 0) {
+        mods = mods.filter((mod) => mod.isInData || appData.subscribedModIds.includes(mod.workshopId));
+      }
+      console.log("after subcription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
 
       mods.forEach(async (mod) => {

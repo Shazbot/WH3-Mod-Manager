@@ -1105,8 +1105,8 @@ const CompatScreen = memo(() => {
                     {compatHelpTwo[1]}
                   </p>
                   <p>{localized.compatHelpOne}</p>
-                  <p>{localized.compatHelpFilesOne}</p>
                   <p className="mt-6">{localized.compatHelpThree}</p>
+                  <p>{localized.compatHelpFilesOne}</p>
                   <p className="mt-6">{localized.compatHelpFour}</p>
                   <p className="mt-6">{localized.compatHelpFive}</p>
                   <p className="mt-6">{localized.compatHelpSix}</p>
