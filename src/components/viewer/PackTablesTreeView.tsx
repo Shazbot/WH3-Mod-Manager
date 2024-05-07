@@ -28,8 +28,7 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
     return <></>;
   }
 
-  // console.log("packsData:");
-  // console.log(packData);
+  // console.log("TreeView packsData:", packData);
 
   type TreeData = { name: string; children?: TreeData[] };
   const result = packData.tables.reduce(

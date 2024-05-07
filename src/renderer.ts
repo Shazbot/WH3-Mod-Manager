@@ -35,6 +35,7 @@ import {
   setPackCollisionsCheckProgress,
   setCurrentlyReadingMod,
   setLastModThatWasRead,
+  setCurrentGameNaive,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -296,6 +297,11 @@ window.api?.setCurrentLanguage((event, language: string) => {
 window.api?.setCurrentGame((event, game: SupportedGames, currentPreset: Preset, presets: Preset[]) => {
   console.log("SETTING GAME", game);
   store.dispatch(setCurrentGame({ game, currentPreset, presets } as SetCurrentGamePayload));
+});
+
+window.api?.setCurrentGameNaive((event, game: SupportedGames) => {
+  console.log("SETTING GAME NAIVE", game);
+  store.dispatch(setCurrentGameNaive(game));
 });
 
 window.api?.setCurrentlyReadingMod((event, modName: string) => {

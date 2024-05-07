@@ -1570,6 +1570,7 @@ if (!gotTheLock) {
     }
 
     console.log("SENDING QUEUED DATA TO VIEWER");
+    viewerWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
     viewerWindow?.webContents.send("setPacksData", queuedViewerData);
     viewerWindow?.webContents.send("openModInViewer", queuedViewerData[0]?.packPath);
     if (queuedViewerData[0]?.packPath)

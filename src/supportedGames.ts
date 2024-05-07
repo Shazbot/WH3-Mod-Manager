@@ -1,4 +1,4 @@
-export const supportedGames = ["wh3", "wh2", "threeKingdoms"] as const;
+export const supportedGames = ["wh3", "wh2", "threeKingdoms", "attila"] as const;
 export type SupportedGames = typeof supportedGames[number];
 
 export const supportedGameOptions = [
@@ -23,39 +23,45 @@ export const gameToGameFolder: Record<SupportedGames, string> = {
   wh2: "Total War WARHAMMER II",
   wh3: "Total War WARHAMMER III",
   threeKingdoms: "Total War Three Kingdoms",
+  attila: "Total War Attila",
 };
 
 export const gameToGameName: Record<SupportedGames, string> = {
   wh2: "Warhammer 2",
   wh3: "Warhammer 3",
   threeKingdoms: "Three Kingdoms",
+  attila: "Attila",
 };
 
 export const gameToSteamId: Record<SupportedGames, string> = {
   wh2: "594570",
   wh3: "1142710",
   threeKingdoms: "779340",
+  attila: "325610",
 };
 
 export const gameToProcessName: Record<SupportedGames, string> = {
   wh2: "Warhammer2.exe",
   wh3: "Warhammer3.exe",
   threeKingdoms: "Three_Kingdoms.exe",
+  attila: "Attila.exe",
 };
 
 export const gameToAppDataFolderName: Record<SupportedGames, string> = {
   wh2: "Warhammer2",
   wh3: "Warhammer3",
   threeKingdoms: "ThreeKingdoms",
+  attila: "Attila",
 };
 
 export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
   wh2: "data.pack",
   wh3: "db.pack",
   threeKingdoms: "database.pack",
+  attila: "data.pack",
 };
 
-export const gameToVanillaPacksData = {
+export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> = {
   wh2: [
     {
       name: "data.pack",
@@ -74,6 +80,11 @@ export const gameToVanillaPacksData = {
     },
     {
       name: "database.pack",
+    },
+  ],
+  attila: [
+    {
+      name: "data.pack",
     },
   ],
 };
@@ -100,12 +111,14 @@ export const gameToIntroMovies: Record<SupportedGames, string[]> = {
     "movies\\startup_movie_04.ca_vp8",
   ],
   threeKingdoms: ["movies\\startup_movie_01.ca_vp8", "movies\\startup_movie_02.ca_vp8"],
+  attila: [],
 };
 
 export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOptions[]> = {
   wh2: ["ScriptLogging"],
   wh3: ["MakeUnitsGenerals", "SkipIntroMovies", "ScriptLogging", "AutoStartCustomBattle"],
   threeKingdoms: ["SkipIntroMovies", "ScriptLogging"],
+  attila: ["ScriptLogging"],
 };
 
 export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
@@ -332,5 +345,26 @@ export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
     "variants.pack",
     "variants_dds.pack",
     "vegetation.pack",
+  ],
+  attila: [
+    "boot.pack",
+    "charlemagne.pack",
+    "music_en_shared_rome2.pack",
+    "local_en_shared_rome2.pack",
+    "local_en.pack",
+    "tiles4.pack",
+    "tiles3.pack",
+    "tiles2.pack",
+    "tiles.pack",
+    "terrain2.pack",
+    "terrain.pack",
+    "sound.pack",
+    "slavs.pack",
+    "music.pack",
+    "movies.pack",
+    "models3.pack",
+    "models2.pack",
+    "models.pack",
+    "data.pack",
   ],
 };

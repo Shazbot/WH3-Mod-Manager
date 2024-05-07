@@ -1749,8 +1749,13 @@ export const readPack = async (
 
       const file_size = headerBuffer.readInt32LE(bufPos);
       bufPos += 4;
-      const is_compressed = headerBuffer.readInt8(bufPos);
-      bufPos += 1;
+
+      if (appData.currentGame != "attila") {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const is_compressed = headerBuffer.readInt8(bufPos);
+        bufPos += 1;
+      }
+
       // const file_size = (stream.read(4) as Buffer).readInt32LE();
       // const is_compressed = (stream.read(1) as Buffer).readInt8();
 
@@ -1771,7 +1776,7 @@ export const readPack = async (
       // if (i === 1000) {
       // console.log(console.timeEnd("1000files"));
       // }
-      // console.log("name is " + name);
+      // console.log("name is:", name);
       //   console.log("file_size is " + file_size);
 
       pack_files.push({

@@ -84,11 +84,13 @@ for (const supportedGame of supportedGames) {
   wh2: undefined,
   wh3: undefined,
   threeKingdoms: undefined,
+  attila: undefined,
 };
 (appData as AppData).gameToPresets = {
   wh2: [],
   wh3: [],
   threeKingdoms: [],
+  attila: [],
 };
 
 export default appData as AppData;
