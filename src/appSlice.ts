@@ -13,6 +13,7 @@ import { compareModNames, sortAsInPreset, sortByNameAndLoadOrder } from "./modSo
 import initialState from "./initialAppState";
 import equal from "fast-deep-equal";
 import { format } from "date-fns";
+import { SupportedGames } from "./supportedGames";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -922,6 +923,9 @@ const appSlice = createSlice({
         if (currentPreset.mods) setCurrentPresetToMods(state, currentPreset.mods);
       }
     },
+    setCurrentGameNaive: (state: AppState, action: PayloadAction<SupportedGames>) => {
+      state.currentGame = action.payload;
+    },
     setCurrentlyReadingMod: (state: AppState, action: PayloadAction<string>) => {
       state.currentlyReadingMod = { name: action.payload, time: Date.now() };
 
@@ -1170,6 +1174,7 @@ export const {
   setModLoadOrderRelativeTo,
   setCurrentLanguage,
   setCurrentGame,
+  setCurrentGameNaive,
   resetModLoadOrder,
   resetModLoadOrderAll,
   toggleAlwaysEnabledMods,

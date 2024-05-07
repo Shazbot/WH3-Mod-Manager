@@ -170,6 +170,8 @@ const api = {
       presets: Preset[]
     ) => void
   ) => ipcRenderer.on("setCurrentGame", callback),
+  setCurrentGameNaive: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
+    ipcRenderer.on("setCurrentGameNaive", callback),
   electronLog,
 };
 

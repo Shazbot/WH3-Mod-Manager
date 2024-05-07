@@ -20,31 +20,37 @@ const supportedGameToMainGameFolderLocalization: Record<SupportedGames, string> 
   wh2: "mainWH2Folder",
   wh3: "mainWH3Folder",
   threeKingdoms: "mainThreeKingdomsFolder",
+  attila: "mainAttilaFolder",
 };
 const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2Folder",
   wh3: "wh3Folder",
   threeKingdoms: "threeKingdomsFolder",
+  attila: "attilaFolder",
 };
 const supportedGameToContentFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2ContentFolder",
   wh3: "wh3ContentFolder",
   threeKingdoms: "threeKingdomsContentFolder",
+  attila: "attilaContentFolder",
 };
 const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = {
   wh2: "selectWH2Folder",
   wh3: "selectWH3Folder",
   threeKingdoms: "selectThreeKingdomsFolder",
+  attila: "selectAttilaFolder",
 };
 const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyWH2",
   wh3: "setFolderPathsManuallyWH3",
   threeKingdoms: "setFolderPathsManuallyThreeKingdoms",
+  attila: "setFolderPathsManuallyAttila",
 };
 const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyOptionallyWH2",
   wh3: "setFolderPathsManuallyOptionallyWH3",
   threeKingdoms: "setFolderPathsManuallyOptionallyThreeKingdoms",
+  attila: "setFolderPathsManuallyOptionallyAttila",
 };
 
 const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {

@@ -54,7 +54,7 @@ const PackTablesTableView = React.memo(() => {
   }
 
   const packData = packsData[packPath];
-  // console.log("packData:", packData);
+  // console.log("packData packedFiles:", packData.packedFiles);
   if (!packData) {
     return <></>;
   }
@@ -70,12 +70,15 @@ const PackTablesTableView = React.memo(() => {
   if (!packFile) {
     // check case where we have just the pack file name as instead of full path (e.g. 'data.pack')
     for (const [iterPackedFilePath, iterPackedFile] of Object.entries(packData.packedFiles)) {
-      if (iterPackedFilePath.endsWith(`\\${packedFilePath}`)) {
+      if (iterPackedFilePath.startsWith(`${packedFilePath}`)) {
         packFile = iterPackedFile;
       }
     }
 
-    if (!packFile) return <></>;
+    if (!packFile) {
+      console.log("no packFile found:", packedFilePath);
+      return <></>;
+    }
   }
   const currentSchema = packFile.tableSchema;
 

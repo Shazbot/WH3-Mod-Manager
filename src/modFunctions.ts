@@ -259,6 +259,9 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
         vanillaPacks.push(found[1]);
       }
     });
+    if (appData.currentGame == "attila") {
+      vanillaPacks.push("charlemagne.pack");
+    }
   } catch (e) {
     if (gameToManifest[appData.currentGame])
       vanillaPacks.splice(0, 0, ...(gameToManifest[appData.currentGame] as string[]));
