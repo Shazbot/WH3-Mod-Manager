@@ -7,6 +7,20 @@ if (process.argv[3] == "justRun") {
     process.exit();
   }, 200);
 }
+if (process.argv[3] == "getSubscribedIds") {
+  console.log("getSubscribedIds");
+  const client = steamworks.init(Number(process.argv[2]));
+
+  try {
+    const items = client.workshop.getSubscribedItems();
+    if (process.send) process.send(items.map((item) => item.toString()));
+  } catch (e) {
+    /* empty */
+  }
+  setTimeout(() => {
+    process.exit();
+  }, 300);
+}
 if (process.argv[3] == "download") {
   console.log("download");
   const ids = process.argv[4].split(";"); //"2856936614";
