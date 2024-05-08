@@ -229,6 +229,7 @@ if (!gotTheLock) {
     return mod;
   };
 
+  const matchVanillaDBFiles = /^db\\.*\\data__/;
   const appendPacksData = (newPack: Pack, mod?: Mod) => {
     const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
     console.log("appendPacksData: appending", newPack.name);
@@ -245,7 +246,7 @@ if (!gotTheLock) {
         const overwrittenFileNames = newPack.packedFiles
           .map((packedFile) => packedFile.name)
           .filter(
-            (packedFileName) => packedFileName.match(/^db\\.*\\data__/) || packedFileName.endsWith(".lua")
+            (packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua")
           )
           .filter((packedFileName) => {
             let foundMatchingFile = false;
@@ -425,6 +426,8 @@ if (!gotTheLock) {
     }
   };
 
+  const matchTableNamePart = /^db\\(.*?)\\data__/;
+
   const getAllMods = async () => {
     const timeStartedFetchingSubbedIds = Date.now();
     try {
@@ -518,7 +521,7 @@ if (!gotTheLock) {
               appData.vanillaPacks.push(dataPackData);
 
               const vanillaDBFileNames = dataPackData.packedFiles
-                .map((vanillaDBFileName) => vanillaDBFileName.name.match(/^db\\(.*?)\\data__/))
+                .map((vanillaDBFileName) => vanillaDBFileName.name.match(matchTableNamePart))
                 .filter((matchResult) => matchResult)
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 .map((matchResult) => matchResult![1]);

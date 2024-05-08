@@ -13,6 +13,8 @@ import { XMLParser } from "fast-xml-parser";
 import { gameToGameFolder, gameToManifest, gameToSteamId } from "./supportedGames";
 import { decodeHTML } from "entities";
 
+const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
+const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
 export function fetchModData(
   ids: string[],
   cb: (modData: ModData) => void,
@@ -71,11 +73,10 @@ export function fetchModData(
 
         let author = "";
         try {
-          const regexBreadcrumbs = /<div class="breadcrumbs">(.*?)<\/div>/s;
-          const regexBreadcrumbsMatch = body.match(regexBreadcrumbs);
+          const regexBreadcrumbsMatch = body.match(matchBreadcrumbsInSteamPageHtml);
           if (regexBreadcrumbsMatch && regexBreadcrumbsMatch[1]) {
             const breadcrumbs = regexBreadcrumbsMatch[1];
-            const match = breadcrumbs && breadcrumbs.match(/.*>(.+?)'s .*?<\/a>/);
+            const match = breadcrumbs && breadcrumbs.match(matchAuthorNameInSteamHtmlTag);
             if (match && match[1] != null) {
               author = decodeHTML(decodeHTML(match[1])); // the author is already encoded in the steam page here for some reason
             } else {
