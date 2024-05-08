@@ -23,6 +23,9 @@ import { vanillaPackNames } from "../supportedGames";
 
 let cachedIsCompatOpen = false;
 
+const baseNameOfFile = /.*\\/;
+const matchTablePartOfFileName = /.*?\\(.*?)\\.*?/;
+
 const CompatScreen = memo(() => {
   const dispatch = useAppDispatch();
   const packCollisions = useAppSelector((state) => state.app.packCollisions);
@@ -499,10 +502,10 @@ const CompatScreen = memo(() => {
                               let doneSecondFileName = false;
 
                               return collisions.map((collision) => {
-                                const firstBaseName = collision.fileName.replace(/.*\\/, "");
-                                const secondBaseName = collision.secondFileName.replace(/.*\\/, "");
+                                const firstBaseName = collision.fileName.replace(baseNameOfFile, "");
+                                const secondBaseName = collision.secondFileName.replace(baseNameOfFile, "");
 
-                                const dbNameMatches = collision.fileName.match(/.*?\\(.*?)\\.*?/);
+                                const dbNameMatches = collision.fileName.match(matchTablePartOfFileName);
                                 const dbName = dbNameMatches && dbNameMatches[1];
 
                                 const fragment = (

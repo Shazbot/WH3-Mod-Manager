@@ -1226,7 +1226,7 @@ const readUTFStringFromBuffer = (buffer: Buffer, pos: number): [string, number] 
   // since utf8 is 2 bytes per char
   return [buffer.subarray(pos, pos + length * 2).toString("utf8"), pos + length * 2];
 };
-
+const matchPackNamesInsideSaveFile = /\0[^\0]+?\.pack/g;
 export const getPacksInSave = async (saveName: string): Promise<string[]> => {
   console.log("Getting packs from save: ", saveName);
   const savePath = nodePath.join(getSavesFolderPath(), saveName);
@@ -1240,10 +1240,10 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
 
     console.log(
       "mods in save:",
-      ascii.match(/\0[^\0]+?\.pack/g)?.map((match) => match.replace("\0", ""))
+      ascii.match(matchPackNamesInsideSaveFile)?.map((match) => match.replace("\0", ""))
     );
 
-    const packsInSave = ascii.match(/\0[^\0]+?\.pack/g);
+    const packsInSave = ascii.match(matchPackNamesInsideSaveFile);
     if (packsInSave != null) return packsInSave.map((match) => match.replace("\0", ""));
   } catch (err) {
     console.log(err);
@@ -1283,7 +1283,7 @@ export const readFromExistingPack = async (
     if (packReadingOptions.tablesToRead) console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead);
 
     const dbPackFiles = pack_files.filter((packFile) => {
-      const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
+      const dbNameMatch = packFile.name.match(matchDBFileRegex);
       return dbNameMatch != null && dbNameMatch[1];
     });
 
@@ -1376,7 +1376,7 @@ const readDBPackedFiles = async (
     currentPos = pack_file.start_pos - startPos;
     // console.log(currentPos);
 
-    const dbNameMatch = pack_file.name.match(/^db\\(.*?)\\/);
+    const dbNameMatch = pack_file.name.match(matchDBFileRegex);
     if (dbNameMatch == null) continue;
     const dbName = dbNameMatch[1];
     if (dbName == null) continue;
@@ -1608,6 +1608,8 @@ const readLoc = async (
   }
 };
 
+const matchDBFileRegex = /^db\\(.*?)\\/;
+const matchLocFileRegex = /\.loc$/;
 export const readPack = async (
   modPath: string,
   packReadingOptions: PackReadingOptions = { skipParsingTables: false }
@@ -1795,7 +1797,7 @@ export const readPack = async (
     // console.log("DONE READING FILE");
 
     // pack_files.forEach((pack_file) => {
-    //   const db_name = pack_file.name.match(/^db\\(.*?)\\/);
+    //   const db_name = pack_file.name.match(matchDBFileRegex);
     //   if (db_name != null) {
     //     console.log(db_name);
     //     // console.log(pack_file.name);
@@ -1837,7 +1839,7 @@ export const readPack = async (
     }
 
     const dbPackFiles = pack_files.filter((packFile) => {
-      const dbNameMatch = packFile.name.match(/^db\\(.*?)\\/);
+      const dbNameMatch = packFile.name.match(matchDBFileRegex);
       return dbNameMatch != null && dbNameMatch[1];
     });
 
@@ -1879,7 +1881,7 @@ export const readPack = async (
 
     if (packReadingOptions.readLocs) {
       const locPackFiles = pack_files.filter((packFile) => {
-        const locNameMatch = packFile.name.match(/\.loc$/);
+        const locNameMatch = packFile.name.match(matchLocFileRegex);
         return locNameMatch != null;
       });
 
@@ -1994,7 +1996,7 @@ function findPackTableCollisionsBetweenPacks(
     if (!packFile.schemaFields) continue;
     if (packFile.name.endsWith(".rpfm_reserved")) continue;
 
-    const dbNameMatch1 = packFile.name.match(/^db\\(.*?)\\/);
+    const dbNameMatch1 = packFile.name.match(matchDBFileRegex);
     // console.log("dbNameMatch1", dbNameMatch1);
     if (dbNameMatch1 == null) continue;
     const dbName1 = dbNameMatch1[1];
@@ -2005,7 +2007,7 @@ function findPackTableCollisionsBetweenPacks(
       if (!packTwoFile.schemaFields) continue;
       if (packTwoFile.name.endsWith(".rpfm_reserved")) continue;
 
-      const dbNameMatch2 = packTwoFile.name.match(/^db\\(.*?)\\/);
+      const dbNameMatch2 = packTwoFile.name.match(matchDBFileRegex);
       // console.log("dbNameMatch2", dbNameMatch2);
       if (dbNameMatch2 == null) continue;
       const dbName2 = dbNameMatch2[1];
