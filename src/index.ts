@@ -44,23 +44,20 @@ import {
   readFromExistingPack,
   createOverwritePack,
   getPackViewData,
-  appendPackFileCollisions,
-  appendPackTableCollisions,
-  removeFromPackFileCollisions,
-  removeFromPackTableCollisions,
-  emptyAllCompatDataCollections,
 } from "./packFileSerializer";
 import * as nodePath from "path";
 import { format } from "date-fns";
 import { isMainThread } from "worker_threads";
 import electronLog from "electron-log";
 import * as fsExtra from "fs-extra";
-import { getCompatData } from "./packFileDataManager";
+import { emptyAllCompatDataCollections, getCompatData } from "./modCompat/packFileCompatManager";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import i18n from "./configs/i18next.config";
 import { tryOpenFile } from "./utility/fileHelpers";
 import { collator } from "./utility/packFileSorting";
 import { globSync } from "glob";
+import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
+import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modCompat/packTableCollisions";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -239,63 +236,58 @@ if (!gotTheLock) {
       appData.packsData.push(newPack);
       mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
 
-      if (
-        appData.vanillaPacks.length == gameToVanillaPacksData[appData.currentGame].length &&
-        !appData.vanillaPacks.find((vanillaPack) => vanillaPack == newPack)
-      ) {
-        const overwrittenFileNames = newPack.packedFiles
-          .map((packedFile) => packedFile.name)
-          .filter(
-            (packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua")
-          )
-          .filter((packedFileName) => {
-            let foundMatchingFile = false;
-            for (const vanillaPack of appData.vanillaPacks) {
-              foundMatchingFile ||= vanillaPack.packedFiles.some(
-                (packedFileInData) => packedFileInData.name == packedFileName
-              );
-            }
-            return foundMatchingFile;
-          });
-        if (overwrittenFileNames.length > 0) {
-          appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
-          mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
-        }
-
-        const outdatedPackFiles = new Set<string>();
-        if (appData.currentGame == "wh3" && mod && (mod.lastChangedLocal || mod.lastChanged)) {
-          const lastChanged = mod.lastChanged || mod.lastChangedLocal;
-          if (lastChanged) {
-            appData.gameUpdates
-              .filter((gameUpdate) => parseInt(gameUpdate.timestamp) * 1000 - lastChanged > 0)
-              .reduce((acc, current) => {
-                if (current.files) {
-                  current.files
-                    .filter((fileUpdateRule) => {
-                      const ret = newPack.packedFiles.some((pF) => pF.name.search(fileUpdateRule.regex) > -1);
-                      // if (ret)
-                      //   console.log(
-                      //     "file match",
-                      //     newPack.packedFiles.find((pF) => pF.name.search(fileUpdateRule.regex) > -1)?.name,
-                      //     "regex",
-                      //     fileUpdateRule.regex,
-                      //     "ret",
-                      //     ret
-                      //   );
-                      return ret;
-                    })
-                    .map((updateRule) => `${current.version}: ${updateRule.reason}`)
-                    .forEach((updateStr) => acc.add(updateStr));
-                }
-                return acc;
-              }, outdatedPackFiles);
+      const overwrittenFileNames = newPack.packedFiles
+        .map((packedFile) => packedFile.name)
+        .filter(
+          (packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua")
+        )
+        .filter((packedFileName) => {
+          let foundMatchingFile = false;
+          for (const vanillaPack of appData.vanillaPacks) {
+            foundMatchingFile ||= vanillaPack.packedFiles.some(
+              (packedFileInData) => packedFileInData.name == packedFileName
+            );
           }
+          return foundMatchingFile;
+        });
+      if (overwrittenFileNames.length > 0) {
+        appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
+        mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
+      }
+
+      const outdatedPackFiles = new Set<string>();
+      if (appData.currentGame == "wh3" && mod && (mod.lastChangedLocal || mod.lastChanged)) {
+        const lastChanged = mod.lastChanged || mod.lastChangedLocal;
+        if (lastChanged) {
+          appData.gameUpdates
+            .filter((gameUpdate) => parseInt(gameUpdate.timestamp) * 1000 - lastChanged > 0)
+            .reduce((acc, current) => {
+              if (current.files) {
+                current.files
+                  .filter((fileUpdateRule) => {
+                    const ret = newPack.packedFiles.some((pF) => pF.name.search(fileUpdateRule.regex) > -1);
+                    // if (ret)
+                    //   console.log(
+                    //     "file match",
+                    //     newPack.packedFiles.find((pF) => pF.name.search(fileUpdateRule.regex) > -1)?.name,
+                    //     "regex",
+                    //     fileUpdateRule.regex,
+                    //     "ret",
+                    //     ret
+                    //   );
+                    return ret;
+                  })
+                  .map((updateRule) => `${current.version}: ${updateRule.reason}`)
+                  .forEach((updateStr) => acc.add(updateStr));
+              }
+              return acc;
+            }, outdatedPackFiles);
         }
-        console.log("outdatedPackFiles", outdatedPackFiles);
-        if (outdatedPackFiles.size > 0) {
-          appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
-          mainWindow?.webContents.send("setOutdatedPackFiles", appData.outdatedPackFiles);
-        }
+      }
+      console.log("outdatedPackFiles", outdatedPackFiles);
+      if (outdatedPackFiles.size > 0) {
+        appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
+        mainWindow?.webContents.send("setOutdatedPackFiles", appData.outdatedPackFiles);
       }
     } else {
       console.log("existing pack for", newPack.name, "found");
@@ -962,10 +954,18 @@ if (!gotTheLock) {
 
     ipcMain.on("getCompatData", async (event, mods: Mod[]) => {
       console.log("SET PACK COLLISIONS");
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      if (!dataFolder) return;
 
       await readMods(mods, false, true, true);
       await readModsByPath(
-        appData.vanillaPacks.map((pack) => pack.path),
+        appData.allVanillaPackNames
+          .filter(
+            (packName) =>
+              packName.startsWith("local_en") ||
+              (!packName.startsWith("audio_") && !packName.startsWith("local_"))
+          )
+          .map((packName) => nodePath.join(dataFolder, packName)),
         false,
         true,
         false
@@ -973,22 +973,15 @@ if (!gotTheLock) {
 
       mainWindow?.webContents.send(
         "setPackCollisions",
-        getCompatData(
-          appData.packsData.filter(
-            (pack) =>
-              mods.some((mod) => mod.path == pack.path) ||
-              appData.vanillaPacks.some((vanillaPack) => vanillaPack.path == pack.path)
-          ),
-          (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
-            mainWindow?.webContents.send("setPackCollisionsCheckProgress", {
-              currentIndex,
-              maxIndex,
-              firstPackName,
-              secondPackName,
-              type,
-            } as PackCollisionsCheckProgressData);
-          }
-        )
+        getCompatData(appData.packsData, (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
+          mainWindow?.webContents.send("setPackCollisionsCheckProgress", {
+            currentIndex,
+            maxIndex,
+            firstPackName,
+            secondPackName,
+            type,
+          } as PackCollisionsCheckProgressData);
+        })
       );
       emptyAllCompatDataCollections();
     });

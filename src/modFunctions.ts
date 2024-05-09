@@ -268,6 +268,8 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise
       vanillaPacks.splice(0, 0, ...(gameToManifest[appData.currentGame] as string[]));
   }
 
+  appData.allVanillaPackNames = vanillaPacks.filter((pack) => pack.endsWith(".pack"));
+
   const files = await dumbfs.readdirSync(dataPath, { withFileTypes: true });
 
   const dataModsPromises = files

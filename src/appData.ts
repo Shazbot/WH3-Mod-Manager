@@ -17,6 +17,7 @@ interface AppData {
   compatData: PackCollisions;
   currentlyReadingModPaths: string[];
   vanillaPacks: Pack[];
+  allVanillaPackNames: string[];
   overwrittenDataPackedFiles: Record<string, string[]>;
   outdatedPackFiles: Record<string, string[]>;
   enabledMods: Mod[];
@@ -68,6 +69,7 @@ const appData = {
   isWH3Running: false,
   currentGame: "wh3",
   vanillaPacks: [],
+  allVanillaPackNames: [],
   vanillaPacksDBFileNames: [],
   waitForModIds: [],
   subscribedModIds: [],
