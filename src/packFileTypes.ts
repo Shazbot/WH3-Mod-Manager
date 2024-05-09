@@ -112,7 +112,6 @@ export interface FileAnalysisError {
 
 export interface FileToFileReference {
   reference: string;
-  lineNum: number;
   packName: string;
   packFileName: string;
 }
