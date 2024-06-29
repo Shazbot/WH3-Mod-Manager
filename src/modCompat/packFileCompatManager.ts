@@ -43,9 +43,8 @@ export function getCompatData(
     findPackTableMissingReferencesAndRunAnalysis(packsData, onPackChecked);
 
   const missingFileRefs = findMissingFileReferences(packsData);
-  console.log("missingFileRefs", missingFileRefs);
 
-  fs.writeFileSync("dumps/missingFileRefs.json", JSON.stringify(missingFileRefs));
+  // fs.writeFileSync("dumps/missingRefs.json", JSON.stringify(missingRefs));
   // fs.writeFileSync(
   //   "dumps/allVanillaPackNames.json",
   //   JSON.stringify(
@@ -64,6 +63,7 @@ export function getCompatData(
     uniqueIdsCollisions,
     scriptListenerCollisions,
     packFileAnalysisErrors,
+    missingFileRefs,
   };
 }
 

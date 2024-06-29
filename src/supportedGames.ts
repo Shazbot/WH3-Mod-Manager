@@ -1,4 +1,4 @@
-export const supportedGames = ["wh3", "wh2", "threeKingdoms", "attila"] as const;
+export const supportedGames = ["wh3", "wh2", "threeKingdoms", "attila", "troy", "pharaoh"] as const;
 export type SupportedGames = typeof supportedGames[number];
 
 export const supportedGameOptions = [
@@ -24,6 +24,8 @@ export const gameToGameFolder: Record<SupportedGames, string> = {
   wh3: "Total War WARHAMMER III",
   threeKingdoms: "Total War Three Kingdoms",
   attila: "Total War Attila",
+  troy: "Total War Troy",
+  pharaoh: "Total War Pharaoh",
 };
 
 export const gameToGameName: Record<SupportedGames, string> = {
@@ -31,6 +33,8 @@ export const gameToGameName: Record<SupportedGames, string> = {
   wh3: "Warhammer 3",
   threeKingdoms: "Three Kingdoms",
   attila: "Attila",
+  troy: "Troy",
+  pharaoh: "Pharaoh",
 };
 
 export const gameToSteamId: Record<SupportedGames, string> = {
@@ -38,6 +42,8 @@ export const gameToSteamId: Record<SupportedGames, string> = {
   wh3: "1142710",
   threeKingdoms: "779340",
   attila: "325610",
+  troy: "1099410",
+  pharaoh: "1937780",
 };
 
 export const gameToProcessName: Record<SupportedGames, string> = {
@@ -45,6 +51,8 @@ export const gameToProcessName: Record<SupportedGames, string> = {
   wh3: "Warhammer3.exe",
   threeKingdoms: "Three_Kingdoms.exe",
   attila: "Attila.exe",
+  troy: "Troy.exe",
+  pharaoh: "Pharaoh.exe",
 };
 
 export const gameToAppDataFolderName: Record<SupportedGames, string> = {
@@ -52,6 +60,8 @@ export const gameToAppDataFolderName: Record<SupportedGames, string> = {
   wh3: "Warhammer3",
   threeKingdoms: "ThreeKingdoms",
   attila: "Attila",
+  troy: "Troy",
+  pharaoh: "Pharaoh",
 };
 
 export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
@@ -59,6 +69,8 @@ export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
   wh3: "db.pack",
   threeKingdoms: "database.pack",
   attila: "data.pack",
+  troy: "data.pack",
+  pharaoh: "data.pack",
 };
 
 export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> = {
@@ -83,6 +95,16 @@ export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> 
     },
   ],
   attila: [
+    {
+      name: "data.pack",
+    },
+  ],
+  troy: [
+    {
+      name: "data.pack",
+    },
+  ],
+  pharaoh: [
     {
       name: "data.pack",
     },
@@ -112,6 +134,8 @@ export const gameToIntroMovies: Record<SupportedGames, string[]> = {
   ],
   threeKingdoms: ["movies\\startup_movie_01.ca_vp8", "movies\\startup_movie_02.ca_vp8"],
   attila: [],
+  troy: [],
+  pharaoh: [],
 };
 
 export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOptions[]> = {
@@ -119,10 +143,14 @@ export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOpt
   wh3: ["MakeUnitsGenerals", "SkipIntroMovies", "ScriptLogging", "AutoStartCustomBattle"],
   threeKingdoms: ["SkipIntroMovies", "ScriptLogging"],
   attila: ["ScriptLogging"],
+  troy: ["ScriptLogging"],
+  pharaoh: ["ScriptLogging"],
 };
 
 export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
   wh3: undefined,
+  troy: undefined,
+  pharaoh: undefined,
   wh2: [
     "audio_base.pack",
     "audio_base_2.pack",

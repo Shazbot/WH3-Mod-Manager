@@ -13,6 +13,7 @@ import {
   setIsImportSteamCollectionOpen,
   setDataModsToEnableByName,
   createBisectedModListPresets,
+  toggleIsCompatCheckingVanillaPacks,
 } from "../appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -61,6 +62,7 @@ const OptionsDrawer = memo(() => {
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
@@ -481,15 +483,15 @@ const OptionsDrawer = memo(() => {
                 <h6 className="mt-10">{localized.forModders}</h6>
                 <p className="mb-1 text-sm text-gray-500 dark:text-red-500">{localized.keepInSync}</p>
                 {gameToSupportedGameOptions[currentGame].includes("MakeUnitsGenerals") && (
-                  <div className="flex items-center ml-1">
+                  <div className="flex items-center ml-1 mt-2">
                     <input
-                      className="mt-1"
+                      className=""
                       type="checkbox"
                       id="make-general-units"
                       checked={!!isMakeUnitsGeneralsEnabled}
                       onChange={() => dispatch(toggleMakeUnitsGenerals())}
                     ></input>
-                    <label className="ml-2 mt-1" htmlFor="make-general-units">
+                    <label className="ml-2" htmlFor="make-general-units">
                       <Tooltip
                         placement="left"
                         style="light"
@@ -505,15 +507,15 @@ const OptionsDrawer = memo(() => {
                   </div>
                 )}
                 {gameToSupportedGameOptions[currentGame].includes("ScriptLogging") && (
-                  <div className="flex items-center ml-1">
+                  <div className="flex items-center ml-1 mt-2">
                     <input
-                      className="mt-1"
+                      className=""
                       type="checkbox"
                       id="toggle-script-logging"
                       checked={!!isScriptLoggingEnabled}
                       onChange={() => dispatch(toggleIsScriptLoggingEnabled())}
                     ></input>
-                    <label className="ml-2 mt-1" htmlFor="toggle-script-logging">
+                    <label className="ml-2" htmlFor="toggle-script-logging">
                       <Tooltip
                         placement="left"
                         style="light"
@@ -530,29 +532,29 @@ const OptionsDrawer = memo(() => {
                   </div>
                 )}
                 {gameToSupportedGameOptions[currentGame].includes("SkipIntroMovies") && (
-                  <div className="flex items-center ml-1">
+                  <div className="flex items-center ml-1 mt-2">
                     <input
-                      className="mt-1"
+                      className=""
                       type="checkbox"
                       id="toggle-intro-movies"
                       checked={!!isSkipIntroMoviesEnabled}
                       onChange={() => dispatch(toggleIsSkipIntroMoviesEnabled())}
                     ></input>
-                    <label className="ml-2 mt-1" htmlFor="toggle-intro-movies">
+                    <label className="ml-2" htmlFor="toggle-intro-movies">
                       {localized.skipIntroMovies}
                     </label>
                   </div>
                 )}
                 {gameToSupportedGameOptions[currentGame].includes("AutoStartCustomBattle") && (
-                  <div className="flex items-center ml-1">
+                  <div className="flex items-center ml-1 mt-2">
                     <input
-                      className="mt-1"
+                      className=""
                       type="checkbox"
                       id="toggleIsAutoStartCustomBattleEnabled"
                       checked={!!isAutoStartCustomBattleEnabled}
                       onChange={() => dispatch(toggleIsAutoStartCustomBattleEnabled())}
                     ></input>
-                    <label className="ml-2 mt-1" htmlFor="toggleIsAutoStartCustomBattleEnabled">
+                    <label className="ml-2" htmlFor="toggleIsAutoStartCustomBattleEnabled">
                       <Tooltip
                         placement="bottom"
                         style="light"
@@ -570,6 +572,23 @@ const OptionsDrawer = memo(() => {
                 )}
               </>
             )}
+
+            <h6 className="mt-10">{localized.compatCheckVanillaPacks}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.compatCheckVanillaPacksMsg}
+            </p>
+            <div className="flex mt-3 w-ful items-center">
+              <input
+                className=""
+                type="checkbox"
+                id="enable-compatCheckVanillaPacksMsg"
+                checked={!!isCompatCheckingVanillaPacks}
+                onChange={() => dispatch(toggleIsCompatCheckingVanillaPacks())}
+              ></input>
+              <label className="ml-2" htmlFor="enable-compatCheckVanillaPacksMsg">
+                {localized.compatCheckVanillaPacks}
+              </label>
+            </div>
 
             <h6 className="mt-10">{localized.setFolderPaths}</h6>
             <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.setFolderPathsMsg}</p>

@@ -31,6 +31,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
     isClosedOnPlay: appState.isClosedOnPlay,
+    isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,
     categories: appState.categories,
     modRowsSortingType: appState.modRowsSortingType,
     currentLanguage: appState.currentLanguage,

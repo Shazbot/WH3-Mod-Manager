@@ -5,6 +5,7 @@ import { vanillaPackNames } from "../supportedGames";
 import { getDBName } from "../utility/packFileHelpers";
 import { collator } from "../utility/packFileSorting";
 import * as fs from "fs";
+import appData from "../appData";
 
 export function findPackTableCollisionsBetweenPacks(
   pack: Pack,
@@ -335,7 +336,8 @@ export function appendPackTableCollisions(
     const pack = packsData[i];
     if (pack === newPack) continue;
     if (pack.name === newPack.name) continue;
-    if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(newPack.name)) continue;
+    if (appData.allVanillaPackNames.includes(pack.name) || appData.allVanillaPackNames.includes(newPack.name))
+      continue;
 
     findPackTableCollisionsBetweenPacks(pack, newPack, packTableCollisions);
   }
@@ -355,7 +357,11 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
+      if (
+        appData.allVanillaPackNames.includes(pack.name) ||
+        appData.allVanillaPackNames.includes(packTwo.name)
+      )
+        continue;
 
       findPackTableCollisionsBetweenPacksOptimized(pack, packTwo, packTableCollisions);
     }
@@ -380,7 +386,11 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (vanillaPackNames.includes(pack.name) || vanillaPackNames.includes(packTwo.name)) continue;
+      if (
+        appData.allVanillaPackNames.includes(pack.name) ||
+        appData.allVanillaPackNames.includes(packTwo.name)
+      )
+        continue;
 
       findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
     }

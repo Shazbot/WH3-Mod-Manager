@@ -2,6 +2,7 @@ import bs from "binary-search";
 import { DBFileName, FileToFileReference, Pack, PackedFile } from "../packFileTypes";
 import { vanillaPackNames } from "../supportedGames";
 import { collator, binarySearchIncludes } from "../utility/packFileSorting";
+import appData from "../appData";
 
 const packFileToFileReferences: Record<string, Record<DBFileName, FileToFileReference[]>> = {};
 
@@ -12,15 +13,17 @@ export const emptyPackFileToFileReferences = () => {
 };
 
 export function findMissingFileReferences(packsData: Pack[]) {
-  console.log("packFileToFileReferences:", packFileToFileReferences);
+  // console.log("packFileToFileReferences:", packFileToFileReferences);
   console.time("findMissingFileReferences");
   const foundFileRefs: FileToFileReference[] = [];
   for (const [packName, fileToFileRefs] of Object.entries(packFileToFileReferences)) {
     for (let i = 0; i < packsData.length; i++) {
       const packTwo = packsData[i];
-      console.log("looking:", packTwo.name, packName);
+      // console.log("looking:", packTwo.name, packName);
       if (packTwo.name === packName) continue;
-      // if (vanillaPackNames.includes(packTwo.name) || vanillaPackNames.includes(packName)) continue;
+      if (!appData.isCompatCheckingVanillaPacks) {
+        if (appData.allVanillaPackNames.includes(packName)) continue;
+      }
 
       for (const [fileName, missingFileRefs] of Object.entries(fileToFileRefs)) {
         for (const missingFileRef of missingFileRefs) {
@@ -29,9 +32,9 @@ export function findMissingFileReferences(packsData: Pack[]) {
           );
           if (bsIndex > -1) {
             foundFileRefs.push(missingFileRef);
-            console.log(
-              `findMissingFileReferences: found ${missingFileRef.reference} in ${packName} in ${packTwo.name}`
-            );
+            // console.log(
+            //   `findMissingFileReferences: found ${missingFileRef.reference} in ${packName} in ${packTwo.name}`
+            // );
           }
         }
 
@@ -78,7 +81,7 @@ export function appendToFileToFileRegistry(pack: Pack, packFile: PackedFile, ref
         packName: pack.name,
         packFileName: packFile.name,
       });
-      console.log(`referenced file ${referencedFile} not found in pack ${pack.name}`);
+      // console.log(`referenced file ${referencedFile} not found in pack ${pack.name}`);
     }
   }
   // if (packFile.name.includes("aarb_alrahem_nomad_bow_sword"))

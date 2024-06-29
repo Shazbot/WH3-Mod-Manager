@@ -666,6 +666,9 @@ const appSlice = createSlice({
       state.appFolderPaths = action.payload;
       state.isSetAppFolderPathsDone = true;
     },
+    requestGameFolderPaths: (state: AppState, action: PayloadAction<SupportedGames | undefined>) => {
+      state.requestFolderPathsForGame = action.payload;
+    },
     setFromConfig: (state: AppState, action: PayloadAction<AppStateToRead>) => {
       const fromConfigAppState = action.payload;
 
@@ -709,6 +712,7 @@ const appSlice = createSlice({
 
       state.areThumbnailsEnabled = fromConfigAppState.areThumbnailsEnabled;
       state.isClosedOnPlay = fromConfigAppState.isClosedOnPlay;
+      state.isCompatCheckingVanillaPacks = fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
       state.hiddenMods = fromConfigAppState.hiddenMods;
       state.alwaysEnabledMods = fromConfigAppState.alwaysEnabledMods;
@@ -911,6 +915,7 @@ const appSlice = createSlice({
     },
     setCurrentGame: (state: AppState, action: PayloadAction<SetCurrentGamePayload>) => {
       const { game, currentPreset, presets } = action.payload;
+
       state.currentGame = game;
 
       if (presets) state.presets = presets;
@@ -968,6 +973,9 @@ const appSlice = createSlice({
     },
     toggleIsClosedOnPlay: (state: AppState) => {
       state.isClosedOnPlay = !state.isClosedOnPlay;
+    },
+    toggleIsCompatCheckingVanillaPacks: (state: AppState) => {
+      state.isCompatCheckingVanillaPacks = !state.isCompatCheckingVanillaPacks;
     },
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
@@ -1222,6 +1230,7 @@ export const {
   setIsImportSteamCollectionOpen,
   setIsHelpOpen,
   setToastDismissed,
+  toggleIsCompatCheckingVanillaPacks,
   setDataModsToEnableByName,
   addCategory,
   removeCategory,
@@ -1233,6 +1242,7 @@ export const {
   setModBeingCustomized,
   setCustomizableMods,
   createBisectedModListPresets,
+  requestGameFolderPaths,
 } = appSlice.actions;
 
 export default appSlice.reducer;

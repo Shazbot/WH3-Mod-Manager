@@ -130,6 +130,7 @@ export interface PackCollisions {
   uniqueIdsCollisions: Record<PackName, UniqueIdsCollision[]>;
   scriptListenerCollisions: Record<PackName, ScriptListenerCollision[]>;
   packFileAnalysisErrors: Record<string, Record<DBFileName, FileAnalysisError[]>>;
+  missingFileRefs: Record<PackName, Record<DBFileName, FileToFileReference[]>>;
 }
 
 export type SCHEMA_FIELD_TYPE =

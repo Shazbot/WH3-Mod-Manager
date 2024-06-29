@@ -31,6 +31,8 @@ interface AppData {
   vanillaPacksDBFileNames: string[];
   waitForModIds: string[];
   subscribedModIds: string[];
+  isCompatCheckingVanillaPacks: boolean;
+  modIdsToResubscribeTo: string[];
 }
 
 export type GameFolderPaths = {
@@ -58,6 +60,7 @@ const appData = {
     uniqueIdsCollisions: {},
     scriptListenerCollisions: {},
     packFileAnalysisErrors: {},
+    missingFileRefs: {},
   },
   currentlyReadingModPaths: [],
   overwrittenDataPackedFiles: {},
@@ -73,6 +76,8 @@ const appData = {
   vanillaPacksDBFileNames: [],
   waitForModIds: [],
   subscribedModIds: [],
+  isCompatCheckingVanillaPacks: false,
+  modIdsToResubscribeTo: [],
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
@@ -87,12 +92,16 @@ for (const supportedGame of supportedGames) {
   wh3: undefined,
   threeKingdoms: undefined,
   attila: undefined,
+  troy: undefined,
+  pharaoh: undefined,
 };
 (appData as AppData).gameToPresets = {
   wh2: [],
   wh3: [],
   threeKingdoms: [],
   attila: [],
+  troy: [],
+  pharaoh: [],
 };
 
 export default appData as AppData;

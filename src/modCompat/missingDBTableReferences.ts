@@ -32,6 +32,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
 
       if (
         (packFile.name.endsWith(".xml") ||
+          packFile.name.endsWith(".xml.material") ||
           packFile.name.endsWith(".variantmeshdefinition") ||
           packFile.name.endsWith(".wsmodel")) &&
         packFile.text
@@ -179,15 +180,20 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
         let reference: DBField | undefined = undefined;
         // console.log("dbFileName:", dbFileName);
         for (const version of DBNameToDBVersions[appData.currentGame][dbFileName]) {
-          reference = version.fields.find((field) => field.name == dbFieldName && field.is_reference);
+          reference = version.fields.find((field) => field.name == dbFieldName);
           if (reference) break;
         }
-        if (!reference) continue;
+        if (!reference) {
+          console.log("couldn't find reference for", dbFileName, dbFieldName);
+          continue;
+        }
 
         // console.log("dbFieldName is", dbFieldName);
         // console.log("ref is", reference.is_reference);
-        const dbFileNameToSearch = `${reference.is_reference[0]}_tables`;
-        const dbFieldNameToSearch = reference.is_reference[1];
+        const dbFileNameToSearch = dbFileName;
+        const dbFieldNameToSearch = dbFieldName;
+
+        // console.log("searching for", dbFileNameToSearch, dbFieldNameToSearch);
 
         // if it's an Assembly Kit table ignore it
         if (!binarySearchIncludes(appData.vanillaPacksDBFileNames, dbFileNameToSearch)) continue;
@@ -242,6 +248,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
   }
 
   console.timeEnd("findPackTableReferencesOptimized");
+
   return foundMissingRefs;
 }
 
@@ -417,15 +424,17 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
         let reference: DBField | undefined = undefined;
         // console.log("dbFileName:", dbFileName);
         for (const version of DBNameToDBVersions[appData.currentGame][dbFileName]) {
-          reference = version.fields.find((field) => field.name == dbFieldName && field.is_reference);
+          reference = version.fields.find((field) => field.name == dbFieldName);
           if (reference) break;
         }
         if (!reference) continue;
 
         // console.log("dbFieldName is", dbFieldName);
         // console.log("ref is", reference.is_reference);
-        const dbFileNameToSearch = `${reference.is_reference[0]}_tables`;
-        const dbFieldNameToSearch = reference.is_reference[1];
+        // const dbFileNameToSearch = `${reference.is_reference[0]}_tables`;
+        // const dbFieldNameToSearch = reference.is_reference[1];
+        const dbFileNameToSearch = dbFileName;
+        const dbFieldNameToSearch = dbFieldName;
 
         // if it's an Assembly Kit table ignore it
         if (!appData.vanillaPacksDBFileNames.includes(dbFileNameToSearch)) continue;
