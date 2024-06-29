@@ -63252,7 +63252,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "cdir_events_dilemma_choices",
+              "choice_key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 1,
@@ -63267,7 +63270,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "dilemmas",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 0,
@@ -63282,7 +63288,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "incidents",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 2,
@@ -63306,7 +63315,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "dilemmas",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 1,
@@ -63378,7 +63390,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "cdir_events_dilemma_choices",
+              "choice_key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 2,
@@ -63393,7 +63408,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "dilemmas",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 1,
@@ -63615,7 +63633,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "incidents",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 1,
@@ -64024,7 +64045,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "missions",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 0,
@@ -64255,7 +64279,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "effect_bundles",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 1,
@@ -67241,8 +67268,8 @@
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": [
-              "trait_info",
-              "trait"
+              "character_traits",
+              "key"
             ],
             "lookup": null,
             "description": "",
@@ -74147,10 +74174,7 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": [
-              "effects",
-              "effect"
-            ],
+            "is_reference": null,
             "lookup": null,
             "description": "",
             "ca_order": 0,
@@ -95046,7 +95070,10 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": null,
+            "is_reference": [
+              "mission_types",
+              "key"
+            ],
             "lookup": null,
             "description": "",
             "ca_order": 1,
@@ -103120,10 +103147,7 @@
             "default_value": null,
             "is_filename": false,
             "filename_relative_path": null,
-            "is_reference": [
-              "particle_effects",
-              "key"
-            ],
+            "is_reference": null,
             "lookup": null,
             "description": "",
             "ca_order": 13,
@@ -115395,8 +115419,8 @@
             "is_filename": false,
             "filename_relative_path": null,
             "is_reference": [
-              "campaigns",
-              "campaign_name"
+              "start_pos_calendars",
+              "campaign"
             ],
             "lookup": [
               "onscreen_name"
@@ -117403,7 +117427,7 @@
           },
           {
             "name": "id",
-            "field_type": "I32",
+            "field_type": "I64",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -117418,7 +117442,7 @@
           },
           {
             "name": "roads",
-            "field_type": "StringU8",
+            "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -117436,7 +117460,7 @@
           },
           {
             "name": "fortifications",
-            "field_type": "StringU8",
+            "field_type": "OptionalStringU8",
             "is_key": false,
             "default_value": null,
             "is_filename": false,
@@ -117448,36 +117472,6 @@
             "lookup": null,
             "description": "",
             "ca_order": 12,
-            "is_bitwise": 0,
-            "enum_values": {},
-            "is_part_of_colour": null
-          },
-          {
-            "name": "unknown_1",
-            "field_type": "OptionalStringU8",
-            "is_key": false,
-            "default_value": null,
-            "is_filename": false,
-            "filename_relative_path": null,
-            "is_reference": null,
-            "lookup": null,
-            "description": "",
-            "ca_order": -1,
-            "is_bitwise": 0,
-            "enum_values": {},
-            "is_part_of_colour": null
-          },
-          {
-            "name": "unknown_2",
-            "field_type": "OptionalStringU8",
-            "is_key": false,
-            "default_value": null,
-            "is_filename": false,
-            "filename_relative_path": null,
-            "is_reference": null,
-            "lookup": null,
-            "description": "",
-            "ca_order": -1,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
