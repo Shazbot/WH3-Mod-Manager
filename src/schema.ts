@@ -2,6 +2,8 @@ import * as wh3Schema from "../schema/schema_wh3.json";
 import * as wh2Schema from "../schema/schema_wh2.json";
 import * as threeKingdomsSchema from "../schema/schema_3k.json";
 import * as attilaSchema from "../schema/schema_att.json";
+import * as troySchema from "../schema/schema_troy.json";
+import * as pharaohSchema from "../schema/schema_ph.json";
 import { SCHEMA_FIELD_TYPE, DBFieldName, DBFileName } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 
@@ -75,6 +77,8 @@ export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion
   wh3: {},
   threeKingdoms: {},
   attila: {},
+  troy: {},
+  pharaoh: {},
 };
 
 const wh3Definitions = (wh3Schema as { definitions: any }).definitions as any;
@@ -97,6 +101,16 @@ for (const table_name in attilaDefinitions) {
   DBNameToDBVersions["attila"][table_name] = attilaDefinitions[table_name];
 }
 
+const troyDefinitions = (troySchema as { definitions: any }).definitions as any;
+for (const table_name in troyDefinitions) {
+  DBNameToDBVersions["troy"][table_name] = troyDefinitions[table_name];
+}
+
+const pharaohDefinitions = (pharaohSchema as { definitions: any }).definitions as any;
+for (const table_name in pharaohDefinitions) {
+  DBNameToDBVersions["pharaoh"][table_name] = pharaohDefinitions[table_name];
+}
+
 // gameToReferences stores all the tables and their keys that are referenced by at least 1 other table field
 // these are all the fields that are BEING referenced by other fields
 // for example:
@@ -111,6 +125,8 @@ export const gameToReferences: Record<SupportedGames, Record<string, string[]>> 
   wh2: {},
   threeKingdoms: {},
   attila: {},
+  troy: {},
+  pharaoh: {},
 };
 for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
   for (const [tableName, versions] of Object.entries(tableVersions)) {
@@ -160,6 +176,8 @@ export const gameToDBFieldsThatReference: Record<
   wh2: {},
   threeKingdoms: {},
   attila: {},
+  troy: {},
+  pharaoh: {},
 };
 for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
   for (const [tableName, versions] of Object.entries(tableVersions)) {
@@ -192,6 +210,8 @@ export const gameToTablesWithNumericIds: Record<SupportedGames, Record<DBFileNam
   wh2: {},
   threeKingdoms: {},
   attila: {},
+  troy: {},
+  pharaoh: {},
 };
 gameToTablesWithNumericIds.wh3 = {
   //main_units_tables: "", // unused by the game

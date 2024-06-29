@@ -7,6 +7,7 @@ import {
   supportedGameOptionToStartGameOption,
   supportedGameOptions,
   gameToVanillaPacksData,
+  supportedGames,
 } from "./supportedGames";
 import * as cheerio from "cheerio";
 import debounce from "just-debounce-it";
@@ -818,6 +819,7 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("readAppConfig", async () => {
+      let doesConfigExist = true;
       try {
         try {
           const appState = await readConfig();
@@ -828,13 +830,22 @@ if (!gotTheLock) {
         } catch (err) {
           mainWindow?.webContents.send("failedReadingConfig");
           if (err instanceof Error) console.log(err.message);
+          doesConfigExist = false;
         }
 
-        const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
-        const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
-        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
-        if (!gamePath || !contentFolder || !dataFolder) {
-          await getFolderPaths(log);
+        const gamesToCheck = doesConfigExist ? [appData.currentGame] : supportedGames;
+        for (const game of gamesToCheck) {
+          console.log(`checking game: ${game}`);
+          const dataFolder = appData.gamesToGameFolderPaths[game].dataFolder;
+          const contentFolder = appData.gamesToGameFolderPaths[game].contentFolder;
+          const gamePath = appData.gamesToGameFolderPaths[game].gamePath;
+          if (!gamePath || !contentFolder || !dataFolder) {
+            await getFolderPaths(log, game);
+          }
+          if (appData.gamesToGameFolderPaths[game].contentFolder) {
+            appData.currentGame = game;
+            break;
+          }
         }
 
         getAllMods();
@@ -846,20 +857,30 @@ if (!gotTheLock) {
           gamePath: gamePath || "",
           contentFolder: contentFolder || "",
         } as GameFolderPaths);
+        if (!doesConfigExist) mainWindow?.webContents.send("setCurrentGame", appData.currentGame);
       }
     });
 
-    const refreshModsIfFoldersValid = () => {
-      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
-      const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
-      const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
-      if (contentFolder && gamePath && dataFolder) {
-        console.log(contentFolder, gamePath, dataFolder);
-        getAllMods();
+    const refreshModsIfFoldersValid = async (requestedGame: SupportedGames | undefined) => {
+      const game = requestedGame || appData.currentGame;
+      // const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      // const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
+      // const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+      // if (contentFolder && gamePath && dataFolder) {
+      //   console.log(contentFolder, gamePath, dataFolder);
+      //   getAllMods();
+      // }
+
+      await setCurrentGame(game);
+      if (appData.gamesToGameFolderPaths[game].contentFolder) {
+        const currentPreset = appData.gameToCurrentPreset[game];
+        // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
+        const presets = appData.gameToPresets[game];
+        mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
       }
     };
 
-    ipcMain.on("selectContentFolder", async () => {
+    ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {
       try {
         if (!mainWindow) return;
         const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
@@ -868,16 +889,17 @@ if (!gotTheLock) {
 
         if (!dialogReturnValue.canceled) {
           const contentFolderPath = dialogReturnValue.filePaths[0];
-          appData.gamesToGameFolderPaths[appData.currentGame].contentFolder = contentFolderPath;
+          const game = requestedGame || appData.currentGame;
+          appData.gamesToGameFolderPaths[game].contentFolder = contentFolderPath;
           mainWindow?.webContents.send("setContentFolder", contentFolderPath);
-          refreshModsIfFoldersValid();
+          refreshModsIfFoldersValid(requestedGame);
         }
       } catch (e) {
         console.log(e);
       }
     });
 
-    ipcMain.on("selectWarhammer3Folder", async () => {
+    ipcMain.on("selectWarhammer3Folder", async (event, requestedGame: SupportedGames | undefined) => {
       try {
         if (!mainWindow) return;
         const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
@@ -886,28 +908,26 @@ if (!gotTheLock) {
 
         if (!dialogReturnValue.canceled) {
           const wh3FolderPath = dialogReturnValue.filePaths[0];
-          appData.gamesToGameFolderPaths[appData.currentGame].gamePath = wh3FolderPath;
-          appData.gamesToGameFolderPaths[appData.currentGame].dataFolder = nodePath.join(
-            wh3FolderPath,
-            "/data/"
-          );
+          const game = requestedGame || appData.currentGame;
+          appData.gamesToGameFolderPaths[game].gamePath = wh3FolderPath;
+          appData.gamesToGameFolderPaths[game].dataFolder = nodePath.join(wh3FolderPath, "/data/");
           mainWindow?.webContents.send("setWarhammer3Folder", wh3FolderPath);
 
-          if (appData.gamesToGameFolderPaths[appData.currentGame].gamePath == undefined) return;
+          if (appData.gamesToGameFolderPaths[game].gamePath == undefined) return;
 
           const calculatedContentPath = nodePath.join(
-            appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+            appData.gamesToGameFolderPaths[game].gamePath as string,
             "..",
             "..",
             "workshop",
             "content",
-            gameToSteamId[appData.currentGame]
+            gameToSteamId[game]
           );
           if (fs.existsSync(calculatedContentPath)) {
-            appData.gamesToGameFolderPaths[appData.currentGame].contentFolder = calculatedContentPath;
+            appData.gamesToGameFolderPaths[game].contentFolder = calculatedContentPath;
             mainWindow?.webContents.send("setContentFolder", calculatedContentPath);
           }
-          refreshModsIfFoldersValid();
+          refreshModsIfFoldersValid(requestedGame);
         }
       } catch (e) {
         console.log(e);
@@ -968,7 +988,7 @@ if (!gotTheLock) {
           .map((packName) => nodePath.join(dataFolder, packName)),
         false,
         true,
-        false
+        appData.isCompatCheckingVanillaPacks
       );
 
       mainWindow?.webContents.send(
@@ -1097,6 +1117,7 @@ if (!gotTheLock) {
         (iterMod) => iterMod.isEnabled || data.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
       );
       appData.enabledMods = enabledMods;
+      appData.isCompatCheckingVanillaPacks = data.isCompatCheckingVanillaPacks;
       const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
         enabledMods.find((mod) => mod.name === iterMod.name)
       );
@@ -1261,42 +1282,58 @@ if (!gotTheLock) {
 
     const setCurrentGame = async (newGame: SupportedGames) => {
       try {
-        appData.currentGame = newGame;
-        if (!appData.gamesToGameFolderPaths[appData.currentGame]) {
-          await getFolderPaths(log);
+        if (!appData.gamesToGameFolderPaths[newGame]) {
+          await getFolderPaths(log, newGame);
         }
-        const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
-        const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
-        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+        const dataFolder = appData.gamesToGameFolderPaths[newGame].dataFolder;
+        const contentFolder = appData.gamesToGameFolderPaths[newGame].contentFolder;
+        const gamePath = appData.gamesToGameFolderPaths[newGame].gamePath;
         if (!gamePath || !contentFolder || !dataFolder) {
-          await getFolderPaths(log);
+          await getFolderPaths(log, newGame);
+          if (appData.gamesToGameFolderPaths[newGame].contentFolder) {
+            appData.packsData = [];
+            appData.saveSetupDone = false;
+            console.log("SETTING CURR GAME 2");
+            appData.currentGame = newGame;
+            await getAllMods();
+          }
         }
-
-        appData.packsData = [];
-        appData.saveSetupDone = false;
-        await getAllMods();
       } finally {
-        const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
-        const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
-        console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
-        mainWindow?.webContents.send("setAppFolderPaths", {
-          gamePath: gamePath || "",
-          contentFolder: contentFolder || "",
-        } as GameFolderPaths);
+        let contentFolder = "",
+          gamePath = "";
+        if (appData.gamesToGameFolderPaths[newGame].contentFolder) {
+          contentFolder = appData.gamesToGameFolderPaths[newGame].contentFolder ?? "";
+          gamePath = appData.gamesToGameFolderPaths[newGame].gamePath ?? "";
+          console.log("SETTING CURR GAME 1");
+          appData.currentGame = newGame;
+          console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
+          // mainWindow?.webContents.send("setCurrentGameNaive", newGame);
+          mainWindow?.webContents.send("setAppFolderPaths", {
+            gamePath: gamePath || "",
+            contentFolder: contentFolder || "",
+          } as GameFolderPaths);
+        } else {
+          mainWindow?.webContents.send("requestGameFolderPaths", newGame);
+        }
       }
     };
 
     ipcMain.on("requestGameChange", async (event, game: SupportedGames, appState: AppState) => {
       // console.log("game before change is", appData.currentGame, "to", game);
 
+      console.log(`Requesting game change to ${game}`);
+      console.log(`Current game is ${appState.currentGame}`);
       appData.gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
       appData.gameToPresets[appState.currentGame] = appState.presets;
 
       await setCurrentGame(game);
-      const currentPreset = appData.gameToCurrentPreset[game];
-      // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
-      const presets = appData.gameToPresets[game];
-      mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
+      if (appData.gamesToGameFolderPaths[game].contentFolder) {
+        const currentPreset = appData.gameToCurrentPreset[game];
+        // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
+        const presets = appData.gameToPresets[game];
+        console.log("SENDING setCurrentGame", game);
+        mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
+      }
     });
 
     const readModsByPath = async (
@@ -1875,15 +1912,35 @@ if (!gotTheLock) {
       console.log(e);
     }
   });
-  ipcMain.on("forceResubscribeMods", async (event, mods: Mod[]) => {
-    console.log(
-      "in forceResubscribeMods, mods are:",
-      mods.map((mod) => mod.name)
-    );
+  const resubscribeToMods = async (modIds: string[]) => {
+    await subscribeToMods(modIds);
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
     try {
       const child = fork(
         nodePath.join(__dirname, "sub.js"),
-        [gameToSteamId[appData.currentGame], "unsubscribe", mods.map((mod) => mod.workshopId).join(";")],
+        [gameToSteamId[appData.currentGame], "getSubscribedIds"],
+        {}
+      );
+      child.on("message", (workshopIds: string[]) => {
+        console.log("getSubscribedIds returned:", workshopIds);
+        const failedToSubTo = modIds.filter((modId) => !workshopIds.includes(modId));
+        console.log("failedToSubTo:", failedToSubTo);
+        if (failedToSubTo.length > 0) {
+          resubscribeToMods(failedToSubTo);
+        }
+      });
+    } catch (e) {
+      console.log(e);
+    }
+  };
+  const forceResubscribeMods = (mods: Mod[]) => {
+    try {
+      const modIds = mods.map((mod) => mod.workshopId);
+      appData.modIdsToResubscribeTo = modIds;
+      const child = fork(
+        nodePath.join(__dirname, "sub.js"),
+        [gameToSteamId[appData.currentGame], "unsubscribe", modIds.join(";")],
         {}
       );
       child.on("message", async () => {
@@ -1897,11 +1954,18 @@ if (!gotTheLock) {
           }
         }
         await new Promise((resolve) => setTimeout(resolve, 500));
-        await subscribeToMods(mods.map((mod) => mod.workshopId));
+        resubscribeToMods(modIds);
       });
     } catch (e) {
       console.log(e);
     }
+  };
+  ipcMain.on("forceResubscribeMods", async (event, mods: Mod[]) => {
+    console.log(
+      "in forceResubscribeMods, mods are:",
+      mods.map((mod) => mod.name)
+    );
+    forceResubscribeMods(mods);
   });
   ipcMain.on("unsubscribeToMod", async (event, mod: Mod) => {
     try {
@@ -2274,6 +2338,7 @@ if (!gotTheLock) {
           uniqueIdsCollisions: {},
           scriptListenerCollisions: {},
           packFileAnalysisErrors: {},
+          missingFileRefs: {},
         };
         appData.packsData = [];
 

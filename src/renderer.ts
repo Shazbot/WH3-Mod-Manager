@@ -16,6 +16,7 @@ import {
   createdMergedPack,
   setPacksDataRead,
   setAppFolderPaths,
+  requestGameFolderPaths,
   setWarhammer3Folder,
   setContentFolder,
   setOverwrittenDataPackedFiles,
@@ -162,6 +163,11 @@ window.api?.fromAppConfig((event, appState: AppStateToRead) => {
 window.api?.setAppFolderPaths((event, appFolderPaths: GameFolderPaths) => {
   console.log("INVOKED: SET APP FOLDER PATHS");
   store.dispatch(setAppFolderPaths(appFolderPaths));
+});
+
+window.api?.requestGameFolderPaths((event, game: SupportedGames) => {
+  console.log("INVOKED: SET APP FOLDER PATHS");
+  store.dispatch(requestGameFolderPaths(game));
 });
 
 window.api?.failedReadingConfig(() => {

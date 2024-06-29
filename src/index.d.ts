@@ -88,6 +88,7 @@ declare global {
     lastModThatWasRead: ModReadingInfo | undefined;
     currentlyReadingMod: ModReadingInfo | undefined;
     isClosedOnPlay: boolean;
+    isCompatCheckingVanillaPacks: boolean;
     isAuthorEnabled: boolean;
     isDev: boolean;
     isAdmin: boolean;
@@ -105,6 +106,7 @@ declare global {
     pathsOfReadPacks: string[];
     appFolderPaths: GameFolderPaths;
     isSetAppFolderPathsDone: boolean;
+    requestFolderPathsForGame: SupportedGames | undefined;
     overwrittenDataPackedFiles: Record<string, string[]>;
     outdatedPackFiles: Record<string, string[]>;
     dataModLastChangedLocal?: number;
@@ -147,6 +149,7 @@ declare global {
     | "currentLanguage"
     | "currentGame"
     | "packDataOverwrites"
+    | "isCompatCheckingVanillaPacks"
   > &
     AppStateMainProcessExtras;
 

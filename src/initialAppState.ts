@@ -21,9 +21,11 @@ const initialState = {
   isClosedOnPlay: false,
   isAuthorEnabled: true,
   isMakeUnitsGeneralsEnabled: false,
+  requestFolderPathsForGame: undefined,
   isScriptLoggingEnabled: false,
   isSkipIntroMoviesEnabled: false,
   isAutoStartCustomBattleEnabled: false,
+  isCompatCheckingVanillaPacks: false,
   allMods: [],
   packsData: {},
   packCollisions: {
@@ -33,6 +35,7 @@ const initialState = {
     uniqueIdsCollisions: {},
     scriptListenerCollisions: {},
     packFileAnalysisErrors: {},
+    missingFileRefs: {},
   },
   packCollisionsCheckProgress: {
     currentIndex: -1,

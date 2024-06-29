@@ -122,6 +122,8 @@ const api = {
   setAppFolderPaths: (
     callback: (event: Electron.IpcRendererEvent, appFolderPaths: GameFolderPaths) => void
   ) => ipcRenderer.on("setAppFolderPaths", callback),
+  requestGameFolderPaths: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
+    ipcRenderer.on("requestGameFolderPaths", callback),
   getAllModData: (ids: string[]) => ipcRenderer.send("getAllModData", ids),
   getCustomizableMods: debounce(
     (modPaths: string[], tables: string[]) => ipcRenderer.send("getCustomizableMods", modPaths, tables),
@@ -131,8 +133,10 @@ const api = {
     callback: (event: Electron.IpcRendererEvent, customizableMods: Record<string, string[]>) => void
   ) => ipcRenderer.on("setCustomizableMods", callback),
   getCompatData: (mods: Mod[]) => ipcRenderer.send("getCompatData", mods),
-  selectContentFolder: () => ipcRenderer.send("selectContentFolder"),
-  selectWarhammer3Folder: () => ipcRenderer.send("selectWarhammer3Folder"),
+  selectContentFolder: (requestedGame: SupportedGames | undefined) =>
+    ipcRenderer.send("selectContentFolder", requestedGame),
+  selectWarhammer3Folder: (requestedGame: SupportedGames | undefined) =>
+    ipcRenderer.send("selectWarhammer3Folder", requestedGame),
   savesPopulated: (callback: (event: Electron.IpcRendererEvent, saves: GameSave[]) => void) =>
     ipcRenderer.on("savesPopulated", callback),
   setContentFolder: (callback: (event: Electron.IpcRendererEvent, path: string) => void) =>

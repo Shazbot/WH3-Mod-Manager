@@ -10,7 +10,7 @@ import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
 import * as os from "os";
 import { XMLParser } from "fast-xml-parser";
-import { gameToGameFolder, gameToManifest, gameToSteamId } from "./supportedGames";
+import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from "./supportedGames";
 import { decodeHTML } from "entities";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
@@ -301,7 +301,8 @@ const regKeyValuesAsPromise = (regKey: Registry.Registry): Promise<{ name: strin
 };
 
 // Find the steamapps folder, e.g. K:\SteamLibrary\steamapps\
-const getSteamAppsFolder = async () => {
+const getSteamAppsFolder = async (newGame?: SupportedGames) => {
+  const game = newGame || appData.currentGame;
   let installPath = "";
   if (process.platform === "win32") {
     const regKey = new Registry({
@@ -339,17 +340,13 @@ const getSteamAppsFolder = async () => {
 
   for (const basepath of paths) {
     const path = basepath.replaceAll("\\\\", "\\").replaceAll("//", "/");
-    const worshopFilePath = nodePath.join(
-      path,
-      "steamapps",
-      `appmanifest_${gameToSteamId[appData.currentGame]}.acf`
-    );
+    const worshopFilePath = nodePath.join(path, "steamapps", `appmanifest_${gameToSteamId[game]}.acf`);
     try {
       await dumbfs.readFileSync(worshopFilePath, "utf8"); // try to read the file to check for its existence
-      console.log(`Found appmanifest_${gameToSteamId[appData.currentGame]}.acf at ${worshopFilePath}`);
+      console.log(`Found appmanifest_${gameToSteamId[game]}.acf at ${worshopFilePath}`);
 
       const steamAppsFolderPath = nodePath.join(path, "steamapps");
-      appData.gamesToSteamAppsFolderPaths[appData.currentGame] = steamAppsFolderPath;
+      appData.gamesToSteamAppsFolderPaths[game] = steamAppsFolderPath;
       return steamAppsFolderPath;
       // eslint-disable-next-line no-empty
     } catch (err) {}
@@ -376,27 +373,23 @@ export const getLastUpdated = async () => {
   }
 };
 
-export const getFolderPaths = async (log: (msg: string) => void) => {
+export const getFolderPaths = async (log: (msg: string) => void, newGame?: SupportedGames) => {
+  const game = newGame || appData.currentGame;
+  console.log(`getFolderPaths for ${game}`);
   const steamAppsFolderPath =
-    appData.gamesToSteamAppsFolderPaths[appData.currentGame] || (await getSteamAppsFolder());
+    appData.gamesToSteamAppsFolderPaths[game] || (await getSteamAppsFolder(newGame));
   if (!steamAppsFolderPath) return;
 
-  const contentFolder = nodePath.join(
-    steamAppsFolderPath,
-    "workshop",
-    "content",
-    gameToSteamId[appData.currentGame]
-  );
-  appData.gamesToGameFolderPaths[appData.currentGame] =
-    appData.gamesToGameFolderPaths[appData.currentGame] || {};
-  appData.gamesToGameFolderPaths[appData.currentGame].contentFolder = contentFolder;
+  const contentFolder = nodePath.join(steamAppsFolderPath, "workshop", "content", gameToSteamId[game]);
+  appData.gamesToGameFolderPaths[game] = appData.gamesToGameFolderPaths[game] || {};
+  appData.gamesToGameFolderPaths[game].contentFolder = contentFolder;
 
-  const gamePath = nodePath.join(steamAppsFolderPath, "common", gameToGameFolder[appData.currentGame]);
-  appData.gamesToGameFolderPaths[appData.currentGame].gamePath = gamePath;
-  appData.gamesToGameFolderPaths[appData.currentGame].dataFolder = nodePath.join(gamePath, "data");
+  const gamePath = nodePath.join(steamAppsFolderPath, "common", gameToGameFolder[game]);
+  appData.gamesToGameFolderPaths[game].gamePath = gamePath;
+  appData.gamesToGameFolderPaths[game].dataFolder = nodePath.join(gamePath, "data");
 
-  log(`Content folder is at ${appData.gamesToGameFolderPaths[appData.currentGame].contentFolder}`);
-  log(`Game path is at ${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}`);
+  log(`Content folder is at ${appData.gamesToGameFolderPaths[game].contentFolder}`);
+  log(`Game path is at ${appData.gamesToGameFolderPaths[game].gamePath}`);
 };
 
 export async function getContentModInFolder(

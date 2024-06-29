@@ -1,19 +1,20 @@
 import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useContext } from "react";
-import { useAppSelector } from "../hooks";
+import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
 import { SupportedGames } from "../supportedGames";
+import { requestGameFolderPaths } from "../appSlice";
 
 export interface GamePathsSetupProps {
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-const onSelectContentFolder = () => {
-  window.api?.selectContentFolder();
+const onSelectContentFolder = (requestFolderPathsForGame: SupportedGames | undefined) => {
+  window.api?.selectContentFolder(requestFolderPathsForGame);
 };
-const onSelectWarhammer3Folder = () => {
-  window.api?.selectWarhammer3Folder();
+const onSelectWarhammer3Folder = (requestFolderPathsForGame: SupportedGames | undefined) => {
+  window.api?.selectWarhammer3Folder(requestFolderPathsForGame);
 };
 
 const supportedGameToMainGameFolderLocalization: Record<SupportedGames, string> = {
@@ -21,51 +22,68 @@ const supportedGameToMainGameFolderLocalization: Record<SupportedGames, string> 
   wh3: "mainWH3Folder",
   threeKingdoms: "mainThreeKingdomsFolder",
   attila: "mainAttilaFolder",
+  troy: "mainTroyFolder",
+  pharaoh: "mainPharaohFolder",
 };
 const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2Folder",
   wh3: "wh3Folder",
   threeKingdoms: "threeKingdomsFolder",
   attila: "attilaFolder",
+  troy: "troyFolder",
+  pharaoh: "pharaohFolder",
 };
 const supportedGameToContentFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2ContentFolder",
   wh3: "wh3ContentFolder",
   threeKingdoms: "threeKingdomsContentFolder",
   attila: "attilaContentFolder",
+  troy: "troyContentFolder",
+  pharaoh: "pharaohContentFolder",
 };
 const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = {
   wh2: "selectWH2Folder",
   wh3: "selectWH3Folder",
   threeKingdoms: "selectThreeKingdomsFolder",
   attila: "selectAttilaFolder",
+  troy: "selectTroyFolder",
+  pharaoh: "selectPharaohFolder",
 };
 const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyWH2",
   wh3: "setFolderPathsManuallyWH3",
   threeKingdoms: "setFolderPathsManuallyThreeKingdoms",
   attila: "setFolderPathsManuallyAttila",
+  troy: "setFolderPathsManuallyTroy",
+  pharaoh: "setFolderPathsManuallyPharaoh",
 };
 const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyOptionallyWH2",
   wh3: "setFolderPathsManuallyOptionallyWH3",
   threeKingdoms: "setFolderPathsManuallyOptionallyThreeKingdoms",
   attila: "setFolderPathsManuallyOptionallyAttila",
+  troy: "setFolderPathsManuallyOptionallyTroy",
+  pharaoh: "setFolderPathsManuallyOptionallyPharaoh",
 };
 
 const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
+  const dispatch = useAppDispatch();
   const isSetAppFolderPathsDone = useAppSelector((state) => state.app.isSetAppFolderPathsDone);
   const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
   const isAnyPathEmpty = appFolderPaths.contentFolder == "" || appFolderPaths.gamePath == "";
-  const currentGame = useAppSelector((state) => state.app.currentGame);
+  const appStateCurrentGame = useAppSelector((state) => state.app.currentGame);
+  const requestFolderPathsForGame = useAppSelector((state) => state.app.requestFolderPathsForGame);
+
+  const currentGame = requestFolderPathsForGame ? requestFolderPathsForGame : appStateCurrentGame;
 
   const localized: Record<string, string> = useContext(localizationContext);
 
   return (
     <>
-      {(isOpen || (isSetAppFolderPathsDone && isAnyPathEmpty)) && (
+      {(isOpen || (isSetAppFolderPathsDone && isAnyPathEmpty) || requestFolderPathsForGame) && (
         <Modal
           onClose={() => {
+            dispatch(requestGameFolderPaths(undefined));
             setIsOpen(false);
           }}
           show={true}
@@ -107,7 +125,7 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
                   <button
                     className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-64"
                     onClick={() => {
-                      onSelectWarhammer3Folder();
+                      onSelectWarhammer3Folder(requestFolderPathsForGame);
                     }}
                   >
                     <span className="uppercase">
@@ -134,7 +152,7 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
                   <button
                     className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-64"
                     onClick={() => {
-                      onSelectContentFolder();
+                      onSelectContentFolder(requestFolderPathsForGame);
                     }}
                   >
                     <span className="uppercase">{localized.selectContentFolder}</span>

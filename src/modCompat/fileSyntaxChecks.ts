@@ -12,11 +12,37 @@ export const emptyPackFileAnalysisErrors = () => {
 };
 
 let xmlParserAttributesCache: string[] = [];
-const xmlParser = new XMLParser({
+const vmdParser = new XMLParser({
   ignoreAttributes: false,
   attributeValueProcessor: (attrName, attrValue, jPath) => {
     if (attrName == "model" || attrName == "definition") {
       xmlParserAttributesCache.push(attrValue);
+    }
+    return attrValue;
+  },
+});
+
+const wsmodelParser = new XMLParser({
+  ignoreAttributes: false,
+  tagValueProcessor: (attrName, attrValue, jPath) => {
+    if (attrName == "material" || attrName == "geometry") {
+      xmlParserAttributesCache.push(attrValue);
+    }
+    return attrValue;
+  },
+});
+
+const toIgnoreInMaterials = [
+  "commontextures/default_black.dds",
+  "MASK_PATH",
+  "commontextures\\default_black.dds",
+];
+const materialParser = new XMLParser({
+  ignoreAttributes: false,
+  tagValueProcessor: (attrName, attrValue, jPath) => {
+    if (attrName == "shader" || attrName == "source") {
+      if (!toIgnoreInMaterials.includes(attrValue) && !attrValue.endsWith("test_mask.dds"))
+        xmlParserAttributesCache.push(attrValue);
     }
     return attrValue;
   },
@@ -66,7 +92,27 @@ export function appendToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
     if (packFile.name.endsWith(".variantmeshdefinition")) {
       try {
         xmlParserAttributesCache = [];
-        xmlParser.parse(packFile.text, true);
+        vmdParser.parse(packFile.text, true);
+        appendToFileToFileRegistry(pack, packFile, xmlParserAttributesCache);
+        return;
+      } catch (e) {
+        /* run it inside XMLValidator.validate */
+      }
+    }
+    if (packFile.name.endsWith(".wsmodel")) {
+      try {
+        xmlParserAttributesCache = [];
+        wsmodelParser.parse(packFile.text, true);
+        appendToFileToFileRegistry(pack, packFile, xmlParserAttributesCache);
+        return;
+      } catch (e) {
+        /* run it inside XMLValidator.validate */
+      }
+    }
+    if (packFile.name.endsWith(".xml.material")) {
+      try {
+        xmlParserAttributesCache = [];
+        materialParser.parse(packFile.text, true);
         appendToFileToFileRegistry(pack, packFile, xmlParserAttributesCache);
         return;
       } catch (e) {

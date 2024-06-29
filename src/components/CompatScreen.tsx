@@ -10,6 +10,7 @@ import {
   DBFileName,
   DBRefOrigin,
   FileAnalysisError,
+  FileToFileReference,
   PackFileCollision,
   PackName,
   PackTableCollision,
@@ -20,11 +21,21 @@ import { setPackCollisions } from "../appSlice";
 import groupBy from "object.groupby";
 import localizationContext from "../localizationContext";
 import { vanillaPackNames } from "../supportedGames";
+import { IoPeople } from "react-icons/io5";
+import { BsPersonVcard } from "react-icons/bs";
+import { LuPaintbrush2 } from "react-icons/lu";
 
 let cachedIsCompatOpen = false;
 
 const baseNameOfFile = /.*\\/;
 const matchTablePartOfFileName = /.*?\\(.*?)\\.*?/;
+
+const fileNameToIcon = (packFileName: string) => {
+  if (packFileName.endsWith(".wsmodel")) return <IoPeople className="h-5 w-5 self-center ml-2" />;
+  if (packFileName.endsWith(".xml.material")) return <LuPaintbrush2 className="h-5 w-5 self-center ml-2" />;
+  if (packFileName.endsWith(".variantmeshdefinition"))
+    return <BsPersonVcard className="h-5 w-5 self-center ml-2" />;
+};
 
 const CompatScreen = memo(() => {
   const dispatch = useAppDispatch();
@@ -61,6 +72,7 @@ const CompatScreen = memo(() => {
           uniqueIdsCollisions: {},
           scriptListenerCollisions: {},
           packFileAnalysisErrors: {},
+          missingFileRefs: {},
         })
       );
     }
@@ -302,6 +314,23 @@ const CompatScreen = memo(() => {
     0
   );
 
+  const groupedMissingFileRefs: Record<PackName, Record<DBFileName, FileToFileReference[]>> = {};
+  for (const [packName, missingFileRefs] of Object.entries(packCollisions.missingFileRefs)) {
+    if (useEnabledModsOnly) {
+      const mod =
+        enabledMods.find((iterMod) => iterMod.name == packName) || vanillaPackNames.includes(packName);
+      if (!mod) continue;
+    }
+
+    groupedMissingFileRefs[packName] = groupedMissingFileRefs[packName] || {};
+    groupedMissingFileRefs[packName] = missingFileRefs;
+  }
+
+  const numMissingFileRefs = Object.values(groupedMissingFileRefs).reduce(
+    (acc, curr) => acc + Object.values(curr).reduce((acc2, curr2) => acc2 + Object.values(curr2).length, 0),
+    0
+  );
+
   // console.log("groupedScriptListenerCollisions", groupedScriptListenerCollisions);
 
   const toggleUseEnabledModsOnly = useCallback(() => {
@@ -342,6 +371,7 @@ const CompatScreen = memo(() => {
                 uniqueIdsCollisions: {},
                 scriptListenerCollisions: {},
                 packFileAnalysisErrors: {},
+                missingFileRefs: {},
               })
             );
           }}
@@ -605,9 +635,9 @@ const CompatScreen = memo(() => {
                       })
                       .map((firstPackName) => {
                         const tableKeyGroupToRefs = groupedMissingTableReferences[firstPackName];
+                        let donePackName = false;
                         return Object.keys(tableKeyGroupToRefs).map((tableKeyGroup) => {
                           const refs = tableKeyGroupToRefs[tableKeyGroup];
-                          let donePackName = false;
                           let doneTableKeyGroup = false;
                           return refs.map((ref) => {
                             const targetDBFileName = ref.targetDBFileName;
@@ -918,7 +948,7 @@ const CompatScreen = memo(() => {
                       {localized.enabledModsOnly}
                     </label>
                   </span>
-                  {Object.keys(groupedScriptListenerCollisions).length == 0 && (
+                  {numScriptListenerCollisions == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
                       {localized.noDuplicateListenerNamesFound}
                     </p>
@@ -1098,6 +1128,86 @@ const CompatScreen = memo(() => {
                 </div>
               </Tabs.Item>
 
+              <Tabs.Item title={`${localized.missingFiles} (${numMissingFileRefs})`}>
+                <div className="leading-relaxed dark:text-gray-300 relative whitespace-nowrap">
+                  <span className="absolute top-[-4rem] right-0 flex items-center">
+                    <input
+                      type="checkbox"
+                      id="compat-enabled-mod-only"
+                      checked={useEnabledModsOnly}
+                      onChange={() => toggleUseEnabledModsOnly()}
+                    ></input>
+                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      {localized.enabledModsOnly}
+                    </label>
+                  </span>
+                  {Object.keys(groupedMissingFileRefs).length == 0 && (
+                    <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
+                      {localized.noMissingFilesFound}
+                    </p>
+                  )}
+                  <div className="text-lg">
+                    {Object.keys(groupedMissingFileRefs)
+                      .sort((firstPackName, secondPackName) => {
+                        const firstPackIndex = sortedMods.indexOf(
+                          sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                        );
+                        const secondPackIndex = sortedMods.indexOf(
+                          sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                        );
+
+                        return firstPackIndex - secondPackIndex;
+                      })
+                      .map((packName) => {
+                        const packFileToMissingRefs = groupedMissingFileRefs[packName];
+                        const packFileTooltip = localized.fileInsidePack.replace("<PACKNAME>", packName);
+
+                        let donePackName = false;
+                        return Object.keys(packFileToMissingRefs).map((packFileName) => {
+                          let doneFileName = false;
+                          const refs = packFileToMissingRefs[packFileName];
+                          return refs.map((ref, refsIndex) => {
+                            const packName = ref.packName;
+                            const packFileName = ref.packFileName;
+                            const reference = ref.reference;
+
+                            const fragment = (
+                              <React.Fragment key={packName + packFileName + reference}>
+                                {!donePackName && <div className="mt-4 font-normal">{packName}</div>}
+                                {!doneFileName && (
+                                  <div className="ml-8 font-normal mb-2 flex">
+                                    <span className="make-tooltip-inline">
+                                      <Tooltip
+                                        style="light"
+                                        content={
+                                          <>
+                                            <p>{packFileTooltip}</p>
+                                          </>
+                                        }
+                                      >
+                                        <span className="text-center w-full">{packFileName}</span>
+                                      </Tooltip>
+                                    </span>
+                                    {fileNameToIcon(packFileName)}
+                                  </div>
+                                )}
+
+                                <div className={`ml-24 mb-2 ${refsIndex == refs.length - 1 && "mb-5"}`}>
+                                  <div>{reference}</div>
+                                </div>
+                              </React.Fragment>
+                            );
+
+                            donePackName = true;
+                            doneFileName = true;
+                            return fragment;
+                          });
+                        });
+                      })}
+                  </div>
+                </div>
+              </Tabs.Item>
+
               <Tabs.Item title={localized.help}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
                   <p>
@@ -1114,6 +1224,16 @@ const CompatScreen = memo(() => {
                   <p className="mt-6">{localized.compatHelpFive}</p>
                   <p className="mt-6">{localized.compatHelpSix}</p>
                   <p className="mt-6">{localized.compatHelpSeven}</p>
+                  <p className="mt-6">{localized.compatHelpEight}</p>
+                  <div className="flex gap-[1ch]">
+                    <IoPeople className="h-5 w-5 self-center ml-2" /> - wsmodel
+                  </div>
+                  <div className="flex gap-[1ch]">
+                    <LuPaintbrush2 className="h-5 w-5 self-center ml-2" /> - xml.material
+                  </div>
+                  <div className="flex gap-[1ch]">
+                    <BsPersonVcard className="h-5 w-5 self-center ml-2" /> - variantmeshdefinition
+                  </div>
                 </div>
               </Tabs.Item>
             </Tabs.Group>

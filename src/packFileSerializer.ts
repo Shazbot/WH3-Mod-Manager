@@ -1816,7 +1816,8 @@ export const readPack = async (
         return (
           packFile.name.endsWith(".xml") ||
           packFile.name.endsWith(".variantmeshdefinition") ||
-          packFile.name.endsWith(".wsmodel")
+          packFile.name.endsWith(".wsmodel") ||
+          packFile.name.endsWith(".xml.material")
         );
       });
 
