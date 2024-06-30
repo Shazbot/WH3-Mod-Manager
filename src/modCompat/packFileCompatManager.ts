@@ -13,8 +13,6 @@ import {
 import { emptyPackToTablesWithUniqueIds, processPackToTablesWithUniqueIds } from "./uniqueDBTableIndices";
 import { findPackFileCollisions } from "./packFileCollisions";
 import { findPackTableCollisions } from "./packTableCollisions";
-import * as fs from "fs";
-import appData from "../appData";
 
 export async function getCompatDataWithWorker(packsData: Pack[]): Promise<PackCollisions> {
   return await new Promise<PackCollisions>((resolve, reject) => {

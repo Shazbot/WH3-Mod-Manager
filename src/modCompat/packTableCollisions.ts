@@ -1,7 +1,6 @@
 import { diff } from "deep-object-diff";
 import { getDBVersion, getDBVersionByTableName, matchDBFileRegex } from "../packFileSerializer";
 import { Pack, PackTableCollision, PackedFile } from "../packFileTypes";
-import { vanillaPackNames } from "../supportedGames";
 import { getDBName } from "../utility/packFileHelpers";
 import { collator } from "../utility/packFileSorting";
 import * as fs from "fs";

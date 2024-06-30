@@ -263,7 +263,7 @@ const handleImportSteamCollection = (state: AppState, importSteamCollection: Imp
 };
 
 const checkImportedSteamCollections = (state: AppState) => {
-  for (const [name, importSteamCollection] of Object.entries(state.steamCollectionsToImport)) {
+  for (const importSteamCollection of Object.values(state.steamCollectionsToImport)) {
     if (
       importSteamCollection.modIds.every((modId) =>
         state.allMods.some((modInAllMods) => modInAllMods.workshopId == modId)
