@@ -33,6 +33,8 @@ interface AppData {
   subscribedModIds: string[];
   isCompatCheckingVanillaPacks: boolean;
   modIdsToResubscribeTo: string[];
+  isViewerReady: boolean;
+  queuedViewerData: (PackViewData | undefined)[];
 }
 
 export type GameFolderPaths = {
@@ -78,6 +80,8 @@ const appData = {
   subscribedModIds: [],
   isCompatCheckingVanillaPacks: false,
   modIdsToResubscribeTo: [],
+  isViewerReady: false,
+  queuedViewerData: [],
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
