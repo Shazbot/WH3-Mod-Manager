@@ -15,6 +15,7 @@ import { decodeHTML } from "entities";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
+const xmlParser = new XMLParser();
 export function fetchModData(
   ids: string[],
   cb: (modData: ModData) => void,
@@ -32,14 +33,16 @@ export function fetchModData(
         fetch(`https://steamcommunity.com/profiles/${workshopItem.owner.steamId64}?xml=1`)
           .then((data) => data.buffer())
           .then((data) => {
-            const steamProfile = new XMLParser().parse(data);
+            const steamProfile = xmlParser.parse(data);
             const modData = {
               workshopId: workshopItem.publishedFileId,
               humanName: workshopItem.title,
               author: steamProfile?.profile?.steamID?.toString() ?? "",
               reqModIdToName: [],
               lastChanged: workshopItem.timeUpdated * 1000,
+              subscriptionTime: workshopItem.timeAddedToUserList * 1000,
               isDeleted: false,
+              tags: workshopItem.tags,
             } as ModData;
             cb(modData);
           })
@@ -169,6 +172,7 @@ export function fetchModData(
             reqModIdToName,
             lastChanged,
             isDeleted,
+            subscriptionTime: 0,
           } as ModData;
           cb(modData);
         }
@@ -242,6 +246,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     size,
     mergedModsData,
     isSymbolicLink,
+    tags: ["mod"],
   };
   return mod;
 }
@@ -378,10 +383,11 @@ export const getFolderPaths = async (log: (msg: string) => void, newGame?: Suppo
   console.log(`getFolderPaths for ${game}`);
   const steamAppsFolderPath =
     appData.gamesToSteamAppsFolderPaths[game] || (await getSteamAppsFolder(newGame));
+
+  appData.gamesToGameFolderPaths[game] = appData.gamesToGameFolderPaths[game] || {};
   if (!steamAppsFolderPath) return;
 
   const contentFolder = nodePath.join(steamAppsFolderPath, "workshop", "content", gameToSteamId[game]);
-  appData.gamesToGameFolderPaths[game] = appData.gamesToGameFolderPaths[game] || {};
   appData.gamesToGameFolderPaths[game].contentFolder = contentFolder;
 
   const gamePath = nodePath.join(steamAppsFolderPath, "common", gameToGameFolder[game]);
@@ -452,6 +458,7 @@ export async function getContentModInFolder(
     subbedTime: (subbedTime != -1 && subbedTime) || lastChangedLocal,
     size,
     isSymbolicLink,
+    tags: ["mod"],
   };
   return mod;
 }

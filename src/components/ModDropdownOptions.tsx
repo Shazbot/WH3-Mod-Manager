@@ -1,6 +1,12 @@
 import { Tooltip } from "flowbite-react";
 import React, { memo, useCallback, useContext, useState } from "react";
-import { setModLoadOrderRelativeTo, toggleAlwaysEnabledMods, toggleAlwaysHiddenMods } from "../appSlice";
+import {
+  setCurrentModToUpload,
+  setIsModTagPickerOpen,
+  setModLoadOrderRelativeTo,
+  toggleAlwaysEnabledMods,
+  toggleAlwaysHiddenMods,
+} from "../appSlice";
 import {
   FaFolderOpen,
   FaExternalLinkAlt,
@@ -100,7 +106,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   );
   const uploadMod = useCallback(
     (mod: Mod) => {
-      window.api?.uploadMod(mod);
+      dispatch(setCurrentModToUpload(mod));
+      dispatch(setIsModTagPickerOpen(true));
     },
     [allMods]
   );

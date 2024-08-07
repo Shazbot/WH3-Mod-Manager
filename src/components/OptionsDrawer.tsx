@@ -239,14 +239,14 @@ const OptionsDrawer = memo(() => {
               <div className="rounded border border-slate-400 h-32 w-32 flex justify-center items-center">
                 <Select
                   className="aspect-square m-2 mt-5"
-                  id="languageSelect"
+                  id="gameSelect"
                   options={availableGames}
                   styles={selectStyle}
                   onChange={onGameChange}
                   isClearable={false}
                   isSearchable={false}
                   components={{ SingleValue, DropdownIndicator: null }}
-                  defaultValue={{ value: currentGame, label: currentGame } as OptionType}
+                  value={{ value: currentGame, label: currentGame } as OptionType}
                 ></Select>
               </div>
             </div>

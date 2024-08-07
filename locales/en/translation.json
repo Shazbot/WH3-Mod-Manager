@@ -381,5 +381,14 @@
   "setFolderPathsManuallyPharaoh": "The mod manager tried to get Pharaoh folder locations from Windows Registry, but it couldn't find them! You'll have to set them manually!",
   "setFolderPathsManuallyOptionallyPharaoh": "The mod manager automatically found Pharaoh folder paths from the Windows Registry, but you can set them manually here.",
   "noMissingFilesFound": "No missing files found!",
-  "missingFiles": "Missing Files"
+  "missingFiles": "Missing Files",
+  "dynasties": "Pharaoh Dynasties",
+  "mainDynastiesFolder": "The main Dynasties folder that contains Pharaoh.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War PHARAOH DYNASTIES",
+  "dynastiesFolder": "Dynasties folder:",
+  "dynastiesContentFolder": "The Dynasties Steam Workshop content folder named 2951630 (which is the steam ID for Pharaoh Dynasties) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\2951630",
+  "selectDynastiesFolder": "Select Dynasties Folder",
+  "setFolderPathsManuallyDynasties": "The mod manager tried to get Pharaoh Dynasties folder locations from Windows Registry, but it couldn't find them! You'll have to set them manually!",
+  "setFolderPathsManuallyOptionallyDynasties": "The mod manager automatically found Pharaoh Dynasties folder paths from the Windows Registry, but you can set them manually here.",
+  "chooseNewModTag": "Choose tag for the new mod:",
+  "upload": "Upload"
 }
