@@ -3,6 +3,7 @@ import { useAppSelector } from "../hooks";
 import Sidebar from "./Sidebar";
 import ModRows from "./ModRows";
 import Categories from "./Categories";
+import ModTagPicker from "./ModTagPicker";
 
 const Main = () => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
@@ -16,6 +17,7 @@ const Main = () => {
           <div className="ml-3 col-span-2 relative">
             <Sidebar />
           </div>
+          <ModTagPicker></ModTagPicker>
         </div>
       )}
     </>

@@ -485,6 +485,7 @@ const appSlice = createSlice({
       if (removedModData) {
         mod.isEnabled = removedModData.isEnabled;
         mod.loadOrder = removedModData.loadOrder;
+        mod.tags = removedModData.tags;
         // state.currentPreset.mods.splice(state.currentPreset.mods.indexOf(mod), 1);
         // state.currentPreset.mods.splice(removedModData.indexInMods, 0, mod);
         state.removedModsData = state.removedModsData.filter(({ modPath }) => modPath != mod.path);
@@ -560,6 +561,7 @@ const appSlice = createSlice({
         indexInMods: state.currentPreset.mods.indexOf(removedMod),
         loadOrder: removedMod.loadOrder,
         time: Date.now(),
+        tags: removedMod.tags,
       });
       state.removedModsCategories[removedMod.path] = removedMod.categories ?? [];
 
@@ -587,6 +589,16 @@ const appSlice = createSlice({
               !equal(dataMod.reqModIdToName, data.reqModIdToName)
             )
               dataMod.reqModIdToName = data.reqModIdToName;
+            if (data.tags) {
+              if (dataMod.tags.length != data.tags.length) {
+                // console.log("tags changed:", dataMod.name, dataMod.tags, "->", data.tags);
+                dataMod.tags = data.tags;
+              }
+              if (contentMod.tags.length != data.tags.length) {
+                // console.log("tags changed:", contentMod.name, contentMod.tags, "->", data.tags);
+                contentMod.tags = data.tags;
+              }
+            }
           }
         }
 
@@ -607,6 +619,16 @@ const appSlice = createSlice({
         }
 
         if (data.lastChanged && mod.lastChanged != data.lastChanged) mod.lastChanged = data.lastChanged;
+        if (data.tags && mod.tags.length != data.tags.length) {
+          // console.log("tags changed:", mod.name, mod.tags, "->", data.tags);
+          mod.tags = data.tags;
+        }
+
+        // timeAddedToUserList we get from Steam is always 0, not sure what it's for but it's not actually time of subbing
+        // if (data.subscriptionTime && mod.subbedTime != data.subscriptionTime) {
+        //   console.log("subbedTime:", mod.subbedTime, "->", data.subscriptionTime);
+        //   mod.subbedTime = data.subscriptionTime;
+        // }
       }
     },
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData | PackHeaderData[]>) => {
@@ -1138,6 +1160,20 @@ const appSlice = createSlice({
     createBisectedModListPresets: (state: AppState, action: PayloadAction<boolean>) => {
       createBisectedModListPresetsInternal(state, action.payload);
     },
+    setIsModTagPickerOpen: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isModTagPickerOpen = action.payload;
+    },
+    setCurrentModToUpload: (state: AppState, action: PayloadAction<Mod | undefined>) => {
+      state.currentModToUpload = action.payload;
+    },
+    setTagForMod: (state: AppState, action: PayloadAction<{ mod: Mod; tag: string }>) => {
+      const payloadMod = action.payload.mod;
+      const payloadTag = action.payload.tag;
+      const mod = state.currentPreset.mods.find((mod) => mod.path == payloadMod.path);
+      if (!mod) return;
+
+      mod.tags = ["mod", payloadTag];
+    },
     selectCategory: (state: AppState, action: PayloadAction<CategorySelectionPayload>) => {
       const { mods, category, selectOperation } = action.payload;
 
@@ -1243,6 +1279,9 @@ export const {
   setCustomizableMods,
   createBisectedModListPresets,
   requestGameFolderPaths,
+  setCurrentModToUpload,
+  setIsModTagPickerOpen,
+  setTagForMod,
 } = appSlice.actions;
 
 export default appSlice.reducer;

@@ -73,6 +73,8 @@ const initialState = {
   isHelpOpen: false,
   lastModThatWasRead: undefined,
   currentlyReadingMod: undefined,
+  isModTagPickerOpen: false,
+  currentModToUpload: undefined,
 } as AppState;
 
 export default initialState;

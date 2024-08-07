@@ -1,4 +1,5 @@
 import * as steamworks from "@ai-zen/steamworks.js";
+import * as fs from "fs";
 
 if (process.argv[3] == "justRun") {
   console.log("justRun");
@@ -78,6 +79,39 @@ if (process.argv[3] == "getItems") {
                   ...data,
                   owner: { ...data.owner, steamId64: data?.owner.steamId64.toString() },
                   publishedFileId: data.publishedFileId.toString(),
+                  statistics: {
+                    numSubscriptions: data.statistics.numSubscriptions
+                      ? data.statistics.numSubscriptions.toString()
+                      : "",
+                    numFavorites: data.statistics.numFavorites ? data.statistics.numFavorites.toString() : "",
+                    numFollowers: data.statistics.numFollowers ? data.statistics.numFollowers.toString() : "",
+                    numUniqueSubscriptions: data.statistics.numUniqueSubscriptions
+                      ? data.statistics.numUniqueSubscriptions.toString()
+                      : "",
+                    numUniqueFavorites: data.statistics.numUniqueFavorites
+                      ? data.statistics.numUniqueFavorites.toString()
+                      : "",
+                    numUniqueFollowers: data.statistics.numUniqueFollowers
+                      ? data.statistics.numUniqueFollowers.toString()
+                      : "",
+                    numUniqueWebsiteViews: data.statistics.numUniqueWebsiteViews
+                      ? data.statistics.numUniqueWebsiteViews.toString()
+                      : "",
+                    reportScore: data.statistics.reportScore ? data.statistics.reportScore.toString() : "",
+                    numSecondsPlayed: data.statistics.numSecondsPlayed
+                      ? data.statistics.numSecondsPlayed.toString()
+                      : "",
+                    numPlaytimeSessions: data.statistics.numPlaytimeSessions
+                      ? data.statistics.numPlaytimeSessions.toString()
+                      : "",
+                    numComments: data.statistics.numComments ? data.statistics.numComments.toString() : "",
+                    numSecondsPlayedDuringTimePeriod: data.statistics.numSecondsPlayedDuringTimePeriod
+                      ? data.statistics.numSecondsPlayedDuringTimePeriod.toString()
+                      : "",
+                    numPlaytimeSessionsDuringTimePeriod: data.statistics.numPlaytimeSessionsDuringTimePeriod
+                      ? data.statistics.numPlaytimeSessionsDuringTimePeriod.toString()
+                      : "",
+                  },
                 }
             )
         );
@@ -85,7 +119,9 @@ if (process.argv[3] == "getItems") {
         process.exit();
       }, 200);
     })
-    .catch(() => {
+    .catch((e) => {
+      fs.appendFileSync("sublog.txt", "ERROR:");
+      fs.appendFileSync("sublog.txt", e.toString());
       process.exit();
     });
 }
@@ -138,16 +174,20 @@ if (process.argv[3] == "update") {
   const id = process.argv[4]; //"2856936614";
   const path = process.argv[5]; //"2856936614";
   const previewPath = process.argv[6];
-  const modTitle = process.argv.length > 7 && process.argv[7];
+  const modTags = process.argv[7];
+  const modTitle = process.argv.length > 8 && process.argv[8];
   const client = steamworks.init(Number(process.argv[2]));
+
+  fs.appendFileSync("sublog.txt", modTags.toString());
 
   console.log(id);
   console.log(path);
 
-  const updateData = { contentPath: path, previewPath } as {
+  const updateData = { contentPath: path, previewPath, tags: modTags ? modTags.split(";") : ["mod"] } as {
     contentPath: string;
     previewPath: string;
     title?: string;
+    tags: string[];
   };
 
   if (modTitle) {

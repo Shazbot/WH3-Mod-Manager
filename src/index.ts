@@ -1,7 +1,7 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
 import psList from "ps-list";
 import { exec, fork } from "child_process";
-import { app, autoUpdater, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-extension-installer";
 import fetch from "electron-fetch";
 import isDev from "electron-is-dev";
@@ -263,6 +263,9 @@ if (!gotTheLock) {
       mainWindow.focus();
     }
   });
+
+  // not using a default menu
+  Menu.setApplicationMenu(null);
 
   // This method will be called when Electron has finished
   // initialization and is ready to create browser windows.

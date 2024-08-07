@@ -2,6 +2,7 @@ import { PackedFile, PackCollisions } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
+import { UgcItemVisibility } from "../node_modules/@ai-zen/steamworks.js/client.d";
 export {};
 
 declare global {
@@ -38,6 +39,7 @@ declare global {
     subbedTime?: number;
     isSymbolicLink: boolean;
     categories?: string[];
+    tags: string[];
   }
 
   interface ModData {
@@ -47,6 +49,8 @@ declare global {
     lastChanged: number;
     author: string;
     isDeleted: boolean;
+    subscriptionTime: number;
+    tags: string[];
   }
 
   interface PackHeaderData {
@@ -128,6 +132,8 @@ declare global {
     customizableMods: Record<string, string[]>;
     currentGame: SupportedGames;
     steamCollectionsToImport: Record<string, ImportSteamCollection>;
+    isModTagPickerOpen: boolean;
+    currentModToUpload: Mod | undefined;
   }
 
   type;
@@ -338,12 +344,28 @@ declare global {
     indexInMods: number;
     loadOrder?: number;
     time: number;
+    tags: string[];
   }
 
   type ToastType = "success" | "warning" | "info";
 
   type MainWindowTab = "mods" | "enabledMods" | "categories";
 
+  export interface WorkshopItemStatisticStringified {
+    numSubscriptions: string;
+    numFavorites: string;
+    numFollowers: string;
+    numUniqueSubscriptions: string;
+    numUniqueFavorites: string;
+    numUniqueFollowers: string;
+    numUniqueWebsiteViews: string;
+    reportScore: string;
+    numSecondsPlayed: string;
+    numPlaytimeSessions: string;
+    numComments: string;
+    numSecondsPlayedDuringTimePeriod: string;
+    numPlaytimeSessionsDuringTimePeriod: string;
+  }
   export interface WorkshopItemStringInsteadOfBigInt {
     publishedFileId: string;
     creatorAppId?: number;
@@ -355,6 +377,9 @@ declare global {
     timeCreated: number;
     /** Time updated in unix epoch seconds format */
     timeUpdated: number;
+    /** Time when the user added the published item to their list (not always applicable), provided in Unix epoch format (time since Jan 1st, 1970). */
+    timeAddedToUserList: number;
+    visibility: UgcItemVisibility;
     banned: boolean;
     acceptedForUse: boolean;
     tags: Array<string>;
@@ -364,6 +389,7 @@ declare global {
     numDownvotes: number;
     numChildren: number;
     previewUrl?: string;
+    statistics: WorkshopItemStatisticStringified;
   }
 
   export interface PlayerSteamIdStringInsteadOfBigInt {

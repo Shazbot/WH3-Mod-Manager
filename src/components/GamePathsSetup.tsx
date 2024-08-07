@@ -24,6 +24,7 @@ const supportedGameToMainGameFolderLocalization: Record<SupportedGames, string> 
   attila: "mainAttilaFolder",
   troy: "mainTroyFolder",
   pharaoh: "mainPharaohFolder",
+  dynasties: "mainDynastiesFolder",
 };
 const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2Folder",
@@ -32,6 +33,7 @@ const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   attila: "attilaFolder",
   troy: "troyFolder",
   pharaoh: "pharaohFolder",
+  dynasties: "dynastiesFolder",
 };
 const supportedGameToContentFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2ContentFolder",
@@ -40,6 +42,7 @@ const supportedGameToContentFolderLocalization: Record<SupportedGames, string> =
   attila: "attilaContentFolder",
   troy: "troyContentFolder",
   pharaoh: "pharaohContentFolder",
+  dynasties: "dynastiesContentFolder",
 };
 const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = {
   wh2: "selectWH2Folder",
@@ -48,6 +51,7 @@ const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = 
   attila: "selectAttilaFolder",
   troy: "selectTroyFolder",
   pharaoh: "selectPharaohFolder",
+  dynasties: "selectDynastiesFolder",
 };
 const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyWH2",
@@ -56,6 +60,7 @@ const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, 
   attila: "setFolderPathsManuallyAttila",
   troy: "setFolderPathsManuallyTroy",
   pharaoh: "setFolderPathsManuallyPharaoh",
+  dynasties: "setFolderPathsManuallyDynasties",
 };
 const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyOptionallyWH2",
@@ -64,6 +69,7 @@ const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<Suppor
   attila: "setFolderPathsManuallyOptionallyAttila",
   troy: "setFolderPathsManuallyOptionallyTroy",
   pharaoh: "setFolderPathsManuallyOptionallyPharaoh",
+  dynasties: "setFolderPathsManuallyOptionallyDynasties",
 };
 
 const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
@@ -77,6 +83,8 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
   const currentGame = requestFolderPathsForGame ? requestFolderPathsForGame : appStateCurrentGame;
 
   const localized: Record<string, string> = useContext(localizationContext);
+
+  console.log("requestFolderPathsForGame:", requestFolderPathsForGame);
 
   return (
     <>
@@ -95,7 +103,7 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
           <Modal.Body>
             <div className="flex flex-col gap-y-8 gap-x-4 z-10 leading-relaxed dark:text-gray-300 relative font-normal items-center">
               <div>
-                {(isAnyPathEmpty && (
+                {((isAnyPathEmpty || requestFolderPathsForGame) && (
                   <p className="m-auto text-center">
                     {localized[supportedGameToSetFolderPathsManuallyLocalization[currentGame]]}
                   </p>

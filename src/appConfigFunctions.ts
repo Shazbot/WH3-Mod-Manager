@@ -61,6 +61,7 @@ const removeModDataWeDontSave = (mods: Mod[] | undefined) => {
     mod.isDeleted = false;
     mod.isMovie = false;
     mod.dependencyPacks = [];
+    mod.tags = [];
   }
 };
 

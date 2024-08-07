@@ -4,6 +4,7 @@ import * as threeKingdomsSchema from "../schema/schema_3k.json";
 import * as attilaSchema from "../schema/schema_att.json";
 import * as troySchema from "../schema/schema_troy.json";
 import * as pharaohSchema from "../schema/schema_ph.json";
+import * as dynastiesSchema from "../schema/schema_ph_dyn.json";
 import { SCHEMA_FIELD_TYPE, DBFieldName, DBFileName } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 
@@ -82,6 +83,7 @@ export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion
   attila: {},
   troy: {},
   pharaoh: {},
+  dynasties: {},
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,6 +122,12 @@ for (const table_name in pharaohDefinitions) {
   DBNameToDBVersions["pharaoh"][table_name] = pharaohDefinitions[table_name];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const dynastiesDefinitions = (dynastiesSchema as { definitions: any }).definitions as any;
+for (const table_name in dynastiesDefinitions) {
+  DBNameToDBVersions["dynasties"][table_name] = dynastiesDefinitions[table_name];
+}
+
 // gameToReferences stores all the tables and their keys that are referenced by at least 1 other table field
 // these are all the fields that are BEING referenced by other fields
 // for example:
@@ -136,6 +144,7 @@ export const gameToReferences: Record<SupportedGames, Record<string, string[]>> 
   attila: {},
   troy: {},
   pharaoh: {},
+  dynasties: {},
 };
 for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
   for (const versions of Object.values(tableVersions)) {
@@ -187,6 +196,7 @@ export const gameToDBFieldsThatReference: Record<
   attila: {},
   troy: {},
   pharaoh: {},
+  dynasties: {},
 };
 for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
   for (const [tableName, versions] of Object.entries(tableVersions)) {
@@ -221,6 +231,7 @@ export const gameToTablesWithNumericIds: Record<SupportedGames, Record<DBFileNam
   attila: {},
   troy: {},
   pharaoh: {},
+  dynasties: {},
 };
 gameToTablesWithNumericIds.wh3 = {
   //main_units_tables: "", // unused by the game

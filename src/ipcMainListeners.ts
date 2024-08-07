@@ -52,6 +52,7 @@ import { format } from "date-fns";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { tryOpenFile } from "./utility/fileHelpers";
 import steamCollectionScript from "./utility/steamCollectionScript";
+import fetch from "electron-fetch";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -89,7 +90,7 @@ export const registerIpcMainListeners = (
         if (appData.gamesToGameFolderPaths[newGame].contentFolder) {
           appData.packsData = [];
           appData.saveSetupDone = false;
-          console.log("SETTING CURR GAME 2");
+          console.log("Setting current game 1");
           appData.currentGame = newGame;
           await getAllMods();
         }
@@ -100,7 +101,7 @@ export const registerIpcMainListeners = (
       if (appData.gamesToGameFolderPaths[newGame].contentFolder) {
         contentFolder = appData.gamesToGameFolderPaths[newGame].contentFolder ?? "";
         gamePath = appData.gamesToGameFolderPaths[newGame].gamePath ?? "";
-        console.log("SETTING CURR GAME 1");
+        console.log("Setting current game 2");
         appData.currentGame = newGame;
         console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
         // mainWindow?.webContents.send("setCurrentGameNaive", newGame);
@@ -409,6 +410,7 @@ export const registerIpcMainListeners = (
             isMovie: false,
             size: 0,
             isSymbolicLink: false,
+            tags: ["mod"],
           };
           if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
             console.log("READING DATA PACK");
@@ -664,7 +666,7 @@ export const registerIpcMainListeners = (
   };
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    if (isDev) return;
+    // if (isDev) return;
 
     fetchModData(
       ids.filter((id) => id !== ""),
@@ -1419,7 +1421,7 @@ export const registerIpcMainListeners = (
                 startTime: Date.now(),
               } as Toast);
             }
-            updateMod(mod, response.workshopId, mod.name, true);
+            updateMod(mod, response.workshopId, mod.tags, mod.name, true);
             break;
           case "error":
             mainWindow?.webContents.send("addToast", {
@@ -1436,6 +1438,7 @@ export const registerIpcMainListeners = (
   const updateMod = async (
     mod: Mod,
     workshopId: string,
+    tags: string[],
     modTitle?: string,
     openInSteamAfterUpdate = false
   ) => {
@@ -1450,7 +1453,16 @@ export const registerIpcMainListeners = (
     await fs.linkSync(mod.path, nodePath.join(uploadFolderPath, mod.name));
     await fs.linkSync(mod.imgPath, nodePath.join(uploadFolderPath, nodePath.basename(mod.imgPath)));
 
-    const args = [gameToSteamId[appData.currentGame], "update", workshopId, uploadFolderPath, mod.imgPath];
+    const args = [
+      gameToSteamId[appData.currentGame],
+      "update",
+      workshopId,
+      uploadFolderPath,
+      mod.imgPath,
+      tags.join(";"),
+    ];
+    console.log("UPDATING MOD:", modTitle, tags);
+    // return;
     if (modTitle) args.push(modTitle);
     const child = fork(nodePath.join(__dirname, "sub.js"), args, {});
     child.on(
@@ -1514,7 +1526,7 @@ export const registerIpcMainListeners = (
     );
   };
   ipcMain.on("updateMod", async (event, mod: Mod, contentMod: Mod) => {
-    updateMod(mod, contentMod.workshopId);
+    updateMod(mod, contentMod.workshopId, contentMod.tags);
   });
   ipcMain.on("fakeUpdatePack", async (event, mod: Mod) => {
     try {
@@ -1890,6 +1902,7 @@ export const registerIpcMainListeners = (
             isMovie: false,
             size: 0,
             isSymbolicLink: false,
+            tags: ["mod"],
           };
           vanillaPacks.push(dataMod);
         }
