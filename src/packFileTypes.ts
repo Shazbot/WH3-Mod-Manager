@@ -22,6 +22,7 @@ export interface PackedFile {
   guid?: string;
   tableSchema?: DBVersion;
   text?: string;
+  buffer?: Buffer;
 }
 
 export interface PackHeader {

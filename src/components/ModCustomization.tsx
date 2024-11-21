@@ -5,17 +5,8 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
 import { getPackNameFromPath } from "../utility/packFileHelpers";
 import { selectDBTable, setModBeingCustomized } from "../appSlice";
-import getPackTableData, { getLocsTree } from "../utility/packDataHandling";
-import ModCustomizationRows from "./ModCustomizationRows";
-
-export type ModCustomizationSorts =
-  | "UnitKeyTableOrder"
-  | "UnitKey"
-  | "UnitKeyDesc"
-  | "UnitOwner"
-  | "UnitOwnerDesc"
-  | "Enabled"
-  | "EnabledDesc";
+import getPackTableData, { getLocsTree } from "../utility/frontend/packDataHandling";
+import ModCustomizationRows, { ModCustomizationSorts } from "./ModCustomizationRows";
 
 const ModCustomization = React.memo(() => {
   const dispatch = useAppDispatch();

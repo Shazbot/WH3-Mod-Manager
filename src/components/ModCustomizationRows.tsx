@@ -2,11 +2,19 @@ import React, { memo, useCallback, useContext } from "react";
 import localizationContext from "../localizationContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
-import { ModCustomizationSorts } from "./ModCustomization";
 import { compareModNames } from "../modSortingHelpers";
 import { useAppDispatch } from "../hooks";
 import { removePackDataOverwrite, setPackDataOverwrites } from "../appSlice";
-import { getLocFromTree } from "../utility/packDataHandling";
+import { getLocFromTree } from "../utility/frontend/packDataHandling";
+
+export type ModCustomizationSorts =
+  | "UnitKeyTableOrder"
+  | "UnitKey"
+  | "UnitKeyDesc"
+  | "UnitOwner"
+  | "UnitOwnerDesc"
+  | "Enabled"
+  | "EnabledDesc";
 
 export interface ModCustomizationRowsProps {
   tablesData: Record<string, PlainPackFileData>;

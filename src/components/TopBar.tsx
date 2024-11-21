@@ -2,6 +2,7 @@ import React, { memo, useEffect, useState } from "react";
 import { useAppSelector } from "../hooks";
 import appPackage from "../../package.json";
 import { gameToGameName } from "../supportedGames";
+import { match, P } from "ts-pattern";
 
 const TopBar = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -11,6 +12,8 @@ const TopBar = memo(() => {
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isHardwareAccelerationDisabled = startArgs.some((arg) => arg == "-nogpu");
+  const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
+  const packPath = currentDBTableSelection?.packPath;
 
   const [translated, setTranslated] = useState<Record<string, string>>({});
 
@@ -20,12 +23,23 @@ const TopBar = memo(() => {
   const hiddenAndEnabledMods = hiddenMods.filter((iterMod) =>
     enabledMods.find((mod) => mod.name === iterMod.name)
   );
-  const title =
-    `WH3 Mod Manager v${appPackage.version}: ${translated["numModsEnabled"]}` +
-    (hiddenAndEnabledMods.length > 0 ? ` (${translated["numModsHidden"]})` : "") +
-    ` for ${gameToGameName[currentGame]}` +
-    ((isHardwareAccelerationDisabled && " nogpu") || "") +
-    ((isAdmin && " admin") || "");
+  const managerNameAndVersion = `WH3 Mod Manager v${appPackage.version}`;
+  const title = match(window.location.pathname)
+    .with(
+      P.string.includes("/main_window"),
+      () =>
+        `${managerNameAndVersion}: ${translated["numModsEnabled"]}` +
+        (hiddenAndEnabledMods.length > 0 ? ` (${translated["numModsHidden"]})` : "") +
+        ` for ${gameToGameName[currentGame]}` +
+        ((isHardwareAccelerationDisabled && " nogpu") || "") +
+        ((isAdmin && " admin") || "")
+    )
+    .with(
+      P.string.includes("/viewer"),
+      () => `${managerNameAndVersion}` + (packPath ? `: viewing ${packPath.replace(/.*\/\//, "")}` : "")
+    )
+    .with(P.string.includes("/skills"), () => `${managerNameAndVersion}`)
+    .otherwise(() => managerNameAndVersion);
 
   useEffect(() => {
     const forTranslation = {

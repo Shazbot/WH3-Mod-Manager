@@ -9,23 +9,10 @@ import {
   SchemaField,
   SCHEMA_FIELD_TYPE,
   AmendedSchemaField,
-  PackFileCollision,
-  PackTableCollision,
-  PackTableReferences,
-  DBField,
-  DBRefOrigin,
-  PackName,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
-import {
-  DBNameToDBVersions,
-  DBVersion,
-  LocVersion,
-  gameToDBFieldsThatReference,
-  gameToReferences,
-  locFields,
-} from "./schema";
+import { DBNameToDBVersions, DBVersion, LocVersion, locFields } from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
 import { format } from "date-fns";
@@ -37,24 +24,13 @@ import { getDBName } from "./utility/packFileHelpers";
 import getPackTableData, {
   isSchemaFieldNumber,
   isSchemaFieldNumberInteger,
-} from "./utility/packDataHandling";
+} from "./utility/frontend/packDataHandling";
 import deepClone from "clone-deep";
 import { gameToIntroMovies } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
 import { collator } from "./utility/packFileSorting";
-
-import { emptyPackFileToFileReferences } from "./modCompat/fileToFileReferences";
-import { emptyPackFileAnalysisErrors, packFileAnalysisErrors } from "./modCompat/fileSyntaxChecks";
-import {
-  emptyPackToScriptFilesWithListeners,
-  processPackToScriptFilesWithListeners,
-} from "./modCompat/scriptFileListenerNames";
-import {
-  emptyPackToTablesWithUniqueIds,
-  processPackToTablesWithUniqueIds,
-} from "./modCompat/uniqueDBTableIndices";
-import { findPackTableReferencesOptimized } from "./modCompat/missingDBTableReferences";
+import bs from "binary-search";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -628,6 +604,88 @@ export const resolveKeyValue = (field_type: SCHEMA_FIELD_TYPE, fields: Field[]) 
   return (fields[1] && fields[1].val!.toString()) || fields[0].val!.toString();
 };
 
+export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], getLocs?: boolean) => {
+  console.log(
+    "getPacksTableData:",
+    packs.map((pack) => pack.name),
+    tables
+  );
+  const results: PackViewData[] = [];
+  for (const pack of packs) {
+    const locFiles: Record<string, PackedFile> = {};
+    if (getLocs) {
+      for (const packedFile of pack.packedFiles) {
+        if (packedFile.name.endsWith(".loc")) {
+          // console.log("found loc pack file", packedFile.name);
+          locFiles[packedFile.name] = packedFile;
+        }
+      }
+    }
+
+    const result = { packName: pack.name, packPath: pack.path, tables } as PackViewData;
+    result.packedFiles = result.packedFiles || {};
+
+    let packedFiles: PackedFile[] = [];
+
+    if (getLocs) {
+      packedFiles = packedFiles.concat(Object.values(locFiles));
+    }
+
+    for (const table of tables) {
+      if (typeof table === "string") {
+        packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(table));
+      } else {
+        packedFiles = pack.packedFiles.filter((packedFile) =>
+          packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`)
+        );
+      }
+
+      // console.log("getpackviewdata packedFiles:", packedFiles);
+      for (const packedFile of packedFiles) {
+        const amendedSchemaFields: AmendedSchemaField[] = [];
+        const dbversion = locFiles[packedFile.name] ? LocVersion : getDBVersion(packedFile);
+        if (!dbversion) {
+          console.log("no dbversion for", packedFile.name);
+          return;
+        }
+
+        const chunkedSchemaIntoRows = chunkSchemaIntoRows(packedFile.schemaFields || [], dbversion);
+
+        // console.log("chunked into ", chunkedSchemaIntoRows.length);
+        // console.log("num fields in row is ", dbversion.fields.length);
+        // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
+        // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
+
+        for (const chunkedSchemaIntoRow of chunkedSchemaIntoRows) {
+          for (const dbFieldsIndex of dbversion.fields.keys()) {
+            const { name, field_type } = dbversion.fields[dbFieldsIndex];
+            const fields = chunkedSchemaIntoRow[dbFieldsIndex].fields;
+            if (!fields) {
+              console.log("MISSING FIELD ", name);
+            }
+            const resolvedKeyValue = resolveKeyValue(field_type, fields);
+
+            amendedSchemaFields.push({ name, resolvedKeyValue, ...chunkedSchemaIntoRow[dbFieldsIndex] });
+
+            // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
+            //   console.log("AMENDING ", name, resolvedKeyValue);
+            // }
+          }
+        }
+        packedFile.schemaFields = amendedSchemaFields;
+        if (typeof table === "string" && table.includes("character_skill_node_sets")) {
+          console.log("FOUND character_skill_node_sets_tables", pack.name, packedFile.name);
+        }
+        packedFile.tableSchema = dbversion;
+        result.packedFiles[packedFile.name] = packedFile;
+      }
+    }
+    results.push(result);
+  }
+
+  return results;
+};
+
 export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: boolean) => {
   console.log("getPackViewData:", pack.name, table);
   const tables = pack.packedFiles.map((packedFile) => packedFile.name);
@@ -643,8 +701,8 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
 
   const result = { packName: pack.name, packPath: pack.path, tables } as PackViewData;
   result.packedFiles = result.packedFiles || {};
+  let packedFiles: PackedFile[] = [];
   if (table) {
-    let packedFiles = [];
     if (typeof table === "string") {
       packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name == table);
     } else {
@@ -652,45 +710,45 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
         packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`)
       );
     }
-    if (getLocs) {
-      packedFiles = packedFiles.concat(Object.values(locFiles));
+  }
+  if (getLocs) {
+    packedFiles = packedFiles.concat(Object.values(locFiles));
+  }
+  // console.log("getpackviewdata packedFiles:", packedFiles);
+  for (const packedFile of packedFiles) {
+    const amendedSchemaFields: AmendedSchemaField[] = [];
+    const dbversion = locFiles[packedFile.name] ? LocVersion : getDBVersion(packedFile);
+    if (!dbversion) {
+      console.log("no dbversion for", packedFile.name);
+      return;
     }
-    // console.log("getpackviewdata packedFiles:", packedFiles);
-    for (const packedFile of packedFiles) {
-      const amendedSchemaFields: AmendedSchemaField[] = [];
-      const dbversion = locFiles[packedFile.name] ? LocVersion : getDBVersion(packedFile);
-      if (!dbversion) {
-        console.log("no dbversion for", packedFile.name);
-        return;
-      }
 
-      const chunkedSchemaIntoRows = chunkSchemaIntoRows(packedFile.schemaFields || [], dbversion);
+    const chunkedSchemaIntoRows = chunkSchemaIntoRows(packedFile.schemaFields || [], dbversion);
 
-      // console.log("chunked into ", chunkedSchemaIntoRows.length);
-      // console.log("num fields in row is ", dbversion.fields.length);
-      // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
-      // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
+    // console.log("chunked into ", chunkedSchemaIntoRows.length);
+    // console.log("num fields in row is ", dbversion.fields.length);
+    // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
+    // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
 
-      for (const chunkedSchemaIntoRow of chunkedSchemaIntoRows) {
-        for (const dbFieldsIndex of dbversion.fields.keys()) {
-          const { name, field_type } = dbversion.fields[dbFieldsIndex];
-          const fields = chunkedSchemaIntoRow[dbFieldsIndex].fields;
-          if (!fields) {
-            console.log("MISSING FIELD ", name);
-          }
-          const resolvedKeyValue = resolveKeyValue(field_type, fields);
-
-          amendedSchemaFields.push({ name, resolvedKeyValue, ...chunkedSchemaIntoRow[dbFieldsIndex] });
-
-          // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
-          //   console.log("AMENDING ", name, resolvedKeyValue);
-          // }
+    for (const chunkedSchemaIntoRow of chunkedSchemaIntoRows) {
+      for (const dbFieldsIndex of dbversion.fields.keys()) {
+        const { name, field_type } = dbversion.fields[dbFieldsIndex];
+        const fields = chunkedSchemaIntoRow[dbFieldsIndex].fields;
+        if (!fields) {
+          console.log("MISSING FIELD ", name);
         }
+        const resolvedKeyValue = resolveKeyValue(field_type, fields);
+
+        amendedSchemaFields.push({ name, resolvedKeyValue, ...chunkedSchemaIntoRow[dbFieldsIndex] });
+
+        // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
+        //   console.log("AMENDING ", name, resolvedKeyValue);
+        // }
       }
-      packedFile.schemaFields = amendedSchemaFields;
-      packedFile.tableSchema = dbversion;
-      result.packedFiles[packedFile.name] = packedFile;
     }
+    packedFile.schemaFields = amendedSchemaFields;
+    packedFile.tableSchema = dbversion;
+    result.packedFiles[packedFile.name] = packedFile;
   }
 
   return result;
@@ -1279,12 +1337,31 @@ export const readFromExistingPack = async (
     // await file.open();
 
     console.log(`${modPath} file opened`);
-    if (packReadingOptions.tablesToRead) console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead);
+    if (packReadingOptions.tablesToRead)
+      console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
 
-    const dbPackFiles = pack_files.filter((packFile) => {
-      const dbNameMatch = packFile.name.match(matchDBFileRegex);
-      return dbNameMatch != null && dbNameMatch[1];
-    });
+    if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
+      for (const fileToRead of packReadingOptions.filesToRead) {
+        // console.log("FIND", fileToRead);
+        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
+          collator.compare(a.name, b)
+        );
+        if (indexOfFileToRead >= 0) {
+          // console.log("FOUND", fileToRead);
+          const packedFileToRead = pack_files[indexOfFileToRead];
+          const buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
+          fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
+          packedFileToRead.buffer = buffer;
+        }
+      }
+    }
+
+    const dbPackFiles = packReadingOptions.skipParsingTables
+      ? []
+      : pack_files.filter((packFile) => {
+          const dbNameMatch = packFile.name.match(matchDBFileRegex);
+          return dbNameMatch != null && dbNameMatch[1];
+        });
 
     if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
       return {
@@ -1521,7 +1598,6 @@ const readLoc = async (
   packReadingOptions: PackReadingOptions,
   locPackFile: PackedFile,
   buffer: Buffer,
-  startPos: number,
   modPath: string
 ) => {
   let currentPos = 0;
@@ -1596,7 +1672,6 @@ const readLoc = async (
           console.log(name, field_type);
           console.log("lastPos:", lastPos);
           console.log("currentPos:", currentPos);
-          console.log("real_pos:", currentPos + startPos);
 
           throw e;
         }
@@ -1633,7 +1708,8 @@ export const readPack = async (
     // await file.open();
 
     console.log(`${modPath} file opened`);
-    if (packReadingOptions.tablesToRead) console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead);
+    if (packReadingOptions.tablesToRead)
+      console.log(`NUM OF TABLES TO READ:`, packReadingOptions.tablesToRead.length);
 
     // header 4
     // byteMask 4
@@ -1838,10 +1914,48 @@ export const readPack = async (
       }
     }
 
+    if (packReadingOptions.readLocs) {
+      const locPackFiles = pack_files.filter((packFile) => {
+        const locNameMatch = packFile.name.match(matchLocFileRegex);
+        return locNameMatch != null;
+      });
+
+      for (const locPackFile of locPackFiles) {
+        // console.log("LOC file to read:", locPackFile);
+        // const buffer = await file.read(locPackFile.file_size, locPackFile.start_pos);
+
+        const buffer = Buffer.allocUnsafe(locPackFile.file_size);
+        fs.readSync(fileId, buffer, 0, buffer.length, locPackFile.start_pos);
+
+        await readLoc(packReadingOptions, locPackFile, buffer, modPath);
+      }
+    }
+
+    if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
+      for (const fileToRead of packReadingOptions.filesToRead) {
+        console.log("FIND", fileToRead);
+        const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
+          collator.compare(a.name, b)
+        );
+        if (indexOfFileToRead >= 0) {
+          console.log("FOUND", fileToRead);
+          const packedFileToRead = pack_files[indexOfFileToRead];
+          const buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
+          fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
+          packedFileToRead.buffer = buffer;
+        }
+      }
+    }
+
     const dbPackFiles = pack_files.filter((packFile) => {
       const dbNameMatch = packFile.name.match(matchDBFileRegex);
       return dbNameMatch != null && dbNameMatch[1];
     });
+
+    if (packReadingOptions.tablesToRead) {
+      if (dbPackFiles.length < 1) console.log(`NO DB TABLES PRESENT IN PACK`);
+      else console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
+    }
 
     if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
       return {
@@ -1878,23 +1992,6 @@ export const readPack = async (
     // console.log("startPos:", startPos);
 
     await readDBPackedFiles(packReadingOptions, dbPackFiles, buffer, startPos, modPath);
-
-    if (packReadingOptions.readLocs) {
-      const locPackFiles = pack_files.filter((packFile) => {
-        const locNameMatch = packFile.name.match(matchLocFileRegex);
-        return locNameMatch != null;
-      });
-
-      for (const locPackFile of locPackFiles) {
-        // console.log("LOC file to read:", locPackFile);
-        // const buffer = await file.read(locPackFile.file_size, locPackFile.start_pos);
-
-        const buffer = Buffer.allocUnsafe(locPackFile.file_size);
-        fs.readSync(fileId, buffer, 0, buffer.length, locPackFile.start_pos);
-
-        await readLoc(packReadingOptions, locPackFile, buffer, startPos, modPath);
-      }
-    }
   } catch (e) {
     console.log(e);
   } finally {

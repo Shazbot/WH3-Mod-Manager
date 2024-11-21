@@ -630,6 +630,18 @@ const Sidebar = React.memo(() => {
         <div className="mt-4">
           <div className="text-center mt-4">
             <button
+              onClick={() => window.api?.requestOpenSkillsWindow(mods)}
+              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+              type="button"
+            >
+              {localized.skillsViewer}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-center mt-4">
+            <button
               onClick={() => dispatch(setIsHelpOpen(true))}
               className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"

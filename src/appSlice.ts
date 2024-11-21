@@ -643,6 +643,9 @@ const appSlice = createSlice({
         if (header.isMovie) console.log(`${header.path} is movie!`);
       }
     },
+    setSkillsData: (state: AppState, action: PayloadAction<SkillsData>) => {
+      state.skillsData = action.payload;
+    },
     setPacksData: (state: AppState, action: PayloadAction<PackViewData[]>) => {
       const packsData = action.payload;
 
@@ -1282,6 +1285,7 @@ export const {
   setCurrentModToUpload,
   setIsModTagPickerOpen,
   setTagForMod,
+  setSkillsData,
 } = appSlice.actions;
 
 export default appSlice.reducer;

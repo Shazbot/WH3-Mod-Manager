@@ -20,6 +20,6 @@
     // "typeRoots": ["node_modules/@types", "./src"]
   },
   "include": ["src/**/*"],
-  "exclude": ["src/flowbite/components/Modal/**/*"],
+  "exclude": ["node_modules", "src/flowbite/components/Modal/**/*", "src/stories"],
   "files": ["src/index.d.ts"]
 }

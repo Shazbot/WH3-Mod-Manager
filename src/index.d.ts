@@ -134,6 +134,7 @@ declare global {
     steamCollectionsToImport: Record<string, ImportSteamCollection>;
     isModTagPickerOpen: boolean;
     currentModToUpload: Mod | undefined;
+    skillsData?: SkillsData;
   }
 
   type;
@@ -263,6 +264,7 @@ declare global {
     tablesToRead?: string[];
     readLocs?: boolean;
     readScripts?: boolean;
+    filesToRead?: string[];
   }
 
   interface Toast {
@@ -345,6 +347,54 @@ declare global {
     loadOrder?: number;
     time: number;
     tags: string[];
+  }
+
+  interface EffectData {
+    key: string;
+    icon: string;
+    isPositive: string;
+  }
+
+  interface Effect {
+    key: string;
+    localizedKey?: string;
+    effectScope: string;
+    level: number;
+    value: string;
+    effectKey: string;
+    icon?: string;
+    iconData: string;
+  }
+  interface Skill {
+    title: string;
+    localizedTitle?: string;
+    description: string;
+    localizedDescription?: string;
+    x: number;
+    y: number;
+    img: string;
+    effects: Effect[];
+    id: string;
+    linkedToSkill?: string | undefined;
+    group?: string;
+    maxLevel: number;
+    origIndent: string;
+    origTier: string;
+  }
+  interface SkillsData {
+    // subtypeToSkills: Record<string, Skill[]>;
+    currentSubtype: string;
+    currentSkills: Skill[];
+    nodeLinks: Record<
+      string,
+      {
+        child: string;
+        childLinkPosition?: string;
+        parentLinkPosition?: string;
+      }[]
+    >;
+    icons: Record<string, string>;
+    subtypes: string[];
   }
 
   type ToastType = "success" | "warning" | "info";
