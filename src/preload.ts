@@ -70,7 +70,9 @@ const api = {
     ipcRenderer.on("packsInSave", callback),
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
   viewerIsReady: () => ipcRenderer.send("viewerIsReady"),
+  skillsAreReady: () => ipcRenderer.send("skillsAreReady"),
   requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
+  requestOpenSkillsWindow: (mods: Mod[]) => ipcRenderer.send("requestOpenSkillsWindow", mods),
   openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("openModInViewer", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
@@ -110,6 +112,8 @@ const api = {
     ipcRenderer.on("setPackHeaderData", callback),
   setPacksData: (callback: (event: Electron.IpcRendererEvent, packsData: PackViewData[]) => void) =>
     ipcRenderer.on("setPacksData", callback),
+  setSkillsData: (callback: (event: Electron.IpcRendererEvent, skillsData: SkillsData) => void) =>
+    ipcRenderer.on("setSkillsData", callback),
   setPackCollisionsCheckProgress: (
     callback: (event: Electron.IpcRendererEvent, progressData: PackCollisionsCheckProgressData) => void
   ) => ipcRenderer.on("setPackCollisionsCheckProgress", callback),
@@ -177,6 +181,8 @@ const api = {
   setCurrentGameNaive: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
     ipcRenderer.on("setCurrentGameNaive", callback),
   electronLog,
+
+  getSkillsForSubtype: (subtype: string) => ipcRenderer.send("getSkillsForSubtype", subtype),
 };
 
 export type api = typeof api;

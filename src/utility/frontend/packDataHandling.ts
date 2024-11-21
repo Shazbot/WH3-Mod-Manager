@@ -1,5 +1,5 @@
-import { LocVersion } from "../schema";
-import { PackedFile, AmendedSchemaField, SCHEMA_FIELD_TYPE, DBVersion } from "../packFileTypes";
+import { LocVersion } from "../../schema";
+import { PackedFile, AmendedSchemaField, SCHEMA_FIELD_TYPE, DBVersion } from "../../packFileTypes";
 
 export const isSchemaFieldNumber = (fieldType: SCHEMA_FIELD_TYPE) => {
   return (
@@ -79,6 +79,7 @@ export const getLocFromTree = (tree: Tree<string>, locPrefix: string, loc: strin
   if (node) return node.value;
 };
 
+// Requires AmendedSchemaFields to exists from getPackViewData
 const getPlainPackData = (
   packedFiles: PackedFile[],
   schema: DBVersion,

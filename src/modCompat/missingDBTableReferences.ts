@@ -10,7 +10,20 @@ import { appendToAddListenerRegistry } from "./scriptFileListenerNames";
 import { appendToUniqueIdKeysRegistry } from "./uniqueDBTableIndices";
 import equals from "fast-deep-equal";
 import * as fs from "fs";
-import { refSorting } from "./packFileCompatManager";
+
+export const refSorting = (a: DBRefOrigin, b: DBRefOrigin): number => {
+  const f = a.targetDBFileName.localeCompare(b.targetDBFileName);
+  if (f !== 0) return f;
+  const c = a.targetFieldName.localeCompare(b.targetFieldName);
+  if (c !== 0) return c;
+  const e = a.value.localeCompare(b.value);
+  if (e !== 0) return e;
+  const d = a.originFieldName.localeCompare(b.originFieldName);
+  if (d !== 0) return d;
+  const g = a.originDBFileName.localeCompare(b.originDBFileName);
+  if (g !== 0) return d;
+  return a.originFileSuffix.localeCompare(b.originFileSuffix);
+};
 
 export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecked?: OnPackChecked) {
   const packsTableReferences: Record<string, PackTableReferences> = {};

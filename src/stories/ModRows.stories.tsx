@@ -8,7 +8,7 @@ import { modsFive } from "./test_data/mods";
 import initialState from "../initialAppState";
 
 console.log(modsFive);
-export const MockedState: AppState = {
+const MockedState: AppState = {
   ...initialState,
   currentPreset: {
     mods: modsFive,

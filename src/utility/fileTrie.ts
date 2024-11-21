@@ -1,3 +1,5 @@
+import Trie, { ITrie } from "./trie";
+
 class FileTrie<T> implements ITrie<T> {
   private trie: Trie<Trie<T>>;
 

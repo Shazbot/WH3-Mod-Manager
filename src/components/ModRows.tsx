@@ -128,6 +128,8 @@ const ModRows = memo(() => {
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
 
+  const isCurrentTabEnabledMods = currentTab == "enabledMods";
+
   const localized: Record<string, string> = useContext(localizationContext);
 
   const rowsParentRef = useRef<HTMLDivElement>(null);
@@ -598,6 +600,8 @@ const ModRows = memo(() => {
   }, [unfilteredVisibleMods, onDrop]);
 
   const onDropMemoized = useMemo(() => onDropWithVisibleMods(), [onDropWithVisibleMods]);
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  const emptyFunc = useCallback(() => {}, []);
 
   return (
     <>
@@ -762,7 +766,7 @@ const ModRows = memo(() => {
                 mod,
                 onRowHoverStart,
                 onRowHoverEnd,
-                onDrop: onDropMemoized,
+                onDrop: isCurrentTabEnabledMods ? onDropMemoized : emptyFunc,
                 onDrag,
                 onDragStart,
                 onDragLeave,

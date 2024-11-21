@@ -2,6 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
+/* latin-ext */
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/librebaskerville/kmKhZrc3Hgbbcjq75U4uslyuy4kn0qNcWx8QDP2V.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/librebaskerville/kmKhZrc3Hgbbcjq75U4uslyuy4kn0qNcWxEQDA.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/librebaskerville/kmKnZrc3Hgbbcjq75U4uslyuy4kn0qNXaxMICA.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/librebaskerville/kmKnZrc3Hgbbcjq75U4uslyuy4kn0qNZaxM.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/librebaskerville/kmKiZrc3Hgbbcjq75U4uslyuy4kn0qviTgY5KcCsww.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: "Libre Baskerville";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/librebaskerville/kmKiZrc3Hgbbcjq75U4uslyuy4kn0qviTgY3KcA.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -298,4 +359,25 @@ body:not(.disable-row-hover) .row:hover > div:not(.drop-ghost) {
 
 .modalGiveChildVisibleOverflow > :first-child {
   overflow: visible;
+}
+
+.hideReactFlowHandles .react-flow__handle {
+  opacity: 0;
+}
+
+.reactFlowGroup .react-flow__handle {
+  margin-top: 5px;
+}
+
+.react-flow__edge .react-flow__edge-path {
+  stroke: url(#p1);
+  fill: url(#p1);
+  stroke-width: 10;
+  stroke-opacity: 0.75;
+}
+
+.skillTooltip {
+  padding: 1rem;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }

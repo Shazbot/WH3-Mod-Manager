@@ -12,6 +12,7 @@ import Main from "./components/Main";
 import { StrictMode } from "react";
 import LocalizationContext, { staticTextIds } from "./localizationContext";
 import { useAppSelector } from "./hooks";
+import SkillsViewer from "./components/skillsViewer/SkillsViewer";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -57,7 +58,11 @@ const App = React.memo(() => {
             <div className="m-auto px-8 pb-4 pt-11">
               <ModsViewer />
             </div>
-          ))}
+          )) || (
+            <div className="m-auto px-8 pb-4 pt-11">
+              <SkillsViewer />
+            </div>
+          )}
         <Toasts />
       </ErrorBoundary>
     </LocalizationContext.Provider>

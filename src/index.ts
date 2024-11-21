@@ -15,7 +15,7 @@ import { isMainThread } from "worker_threads";
 import electronLog from "electron-log";
 import i18n from "./configs/i18next.config";
 import { globSync } from "glob";
-import { registerIpcMainListeners } from "./ipcMainListeners";
+import { windows, registerIpcMainListeners } from "./ipcMainListeners";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -27,13 +27,16 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
-let mainWindow: BrowserWindow | undefined;
-let viewerWindow: BrowserWindow | undefined;
+// let mainWindow: BrowserWindow | undefined;
+// let viewerWindow: BrowserWindow | undefined;
+// let skillsWindow: BrowserWindow | undefined;
 
 if (!gotTheLock) {
   console.log("ONLY ONE INSTANCE ALLOWED!");
   app.quit();
 } else {
+  app.commandLine.appendSwitch("js-flags", "--max-old-space-size=12288");
+
   console.log("ARGVS:", process.argv);
   appData.startArgs = process.argv.slice(1);
 
@@ -80,7 +83,7 @@ if (!gotTheLock) {
     });
 
     // Create the browser window.
-    mainWindow = new BrowserWindow({
+    windows.mainWindow = new BrowserWindow({
       x: mainWindowState.x,
       y: mainWindowState.y,
       width: mainWindowState.width,
@@ -101,12 +104,12 @@ if (!gotTheLock) {
       icon: "./assets/modmanager.ico",
     });
 
-    mainWindowState.manage(mainWindow);
+    mainWindowState.manage(windows.mainWindow);
 
     // and load the index.html of the app.
-    mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+    windows.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    windows.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
       shell.openExternal(url);
       return { action: "deny" };
     });
@@ -129,7 +132,7 @@ if (!gotTheLock) {
     if (isDev) {
       // no idea why but openDevTools is really uncooperative, this isn't great but it works
       setTimeout(() => {
-        mainWindow?.webContents.openDevTools();
+        windows.mainWindow?.webContents.openDevTools();
       }, 45000);
     }
 
@@ -151,12 +154,13 @@ if (!gotTheLock) {
       console.error(message);
     });
 
-    mainWindow.on("page-title-updated", (evt) => {
+    windows.mainWindow.on("page-title-updated", (evt) => {
       evt.preventDefault();
     });
 
-    mainWindow.on("closed", () => {
-      if (viewerWindow) viewerWindow.close();
+    windows.mainWindow.on("closed", () => {
+      if (windows.viewerWindow) windows.viewerWindow.close();
+      if (windows.skillsWindow) windows.skillsWindow.close();
     });
 
     const waitForModDownloads = async () => {
@@ -194,7 +198,7 @@ if (!gotTheLock) {
     };
     setInterval(waitForModDownloads, 3500);
 
-    registerIpcMainListeners(mainWindow, isDev);
+    registerIpcMainListeners(windows.mainWindow, isDev);
 
     ipcMain.removeHandler("getUpdateData");
     ipcMain.handle("getUpdateData", async () => {
@@ -209,7 +213,10 @@ if (!gotTheLock) {
         .then((res) => res.json())
         .then((body) => {
           body.assets.forEach((asset: { content_type: string; browser_download_url: string }) => {
-            mainWindow?.webContents.send("handleLog", asset.content_type == "application/x-zip-compressed");
+            windows.mainWindow?.webContents.send(
+              "handleLog",
+              asset.content_type == "application/x-zip-compressed"
+            );
             if (asset.content_type === "application/x-zip-compressed") {
               modUpdatedExists = {
                 updateExists: true,
@@ -226,10 +233,10 @@ if (!gotTheLock) {
     });
 
     ipcMain.on("sendApiExists", async () => {
-      mainWindow?.webContents.send("handleLog", "API now exists");
-      mainWindow?.webContents.send("setIsDev", isDev);
-      mainWindow?.webContents.send("setStartArgs", appData.startArgs);
-      mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
+      windows.mainWindow?.webContents.send("handleLog", "API now exists");
+      windows.mainWindow?.webContents.send("setIsDev", isDev);
+      windows.mainWindow?.webContents.send("setStartArgs", appData.startArgs);
+      windows.mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
 
       try {
         const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";
@@ -237,19 +244,23 @@ if (!gotTheLock) {
           .filter((dirent) => dirent.isDirectory())
           .map((dirent) => dirent.name);
 
-        mainWindow?.webContents.send("setAvailableLanguages", availableLocalizations);
+        windows.mainWindow?.webContents.send("setAvailableLanguages", availableLocalizations);
         // eslint-disable-next-line no-empty
       } catch (e) {}
 
       if (!checkWH3RunningInterval) {
         checkWH3RunningInterval = setInterval(async () => {
-          const processes = await psList();
-          const isWH3Running = processes.some(
-            (process) => process.name == gameToProcessName[appData.currentGame]
-          );
-          if (appData.isWH3Running != isWH3Running) {
-            appData.isWH3Running = isWH3Running;
-            mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+          try {
+            const processes = await psList();
+            const isWH3Running = processes.some(
+              (process) => process.name == gameToProcessName[appData.currentGame]
+            );
+            if (appData.isWH3Running != isWH3Running) {
+              appData.isWH3Running = isWH3Running;
+              windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+            }
+          } catch (e) {
+            console.log("psList coroutine error:", e);
           }
         }, 500);
       }
@@ -258,9 +269,9 @@ if (!gotTheLock) {
 
   app.on("second-instance", () => {
     // Someone tried to run a second instance, we should focus our window.
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    if (windows.mainWindow) {
+      if (windows.mainWindow.isMinimized()) windows.mainWindow.restore();
+      windows.mainWindow.focus();
     }
   });
 
@@ -314,8 +325,3 @@ if (!gotTheLock) {
     console.log(err);
   });
 }
-
-export const windows = {
-  mainWindow,
-  viewerWindow,
-};

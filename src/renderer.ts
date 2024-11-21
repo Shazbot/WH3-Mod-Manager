@@ -12,6 +12,7 @@ import {
   enableModsByName,
   setPackHeaderData,
   setPacksData,
+  setSkillsData,
   setPackCollisions,
   createdMergedPack,
   setPacksDataRead,
@@ -56,15 +57,20 @@ interface WindowWithApi extends Window {
 declare const window: WindowWithApi;
 
 const isViewer = window.location.pathname.includes("/viewer");
+const isSkills = window.location.pathname.includes("/skills");
 const isMain = window.location.pathname.includes("/main_window");
 
 if (isViewer) window.api?.viewerIsReady();
+if (isSkills) window.api?.skillsAreReady();
 
 const originalConsoleLog = console.log.bind(console);
 console.log = (...args) => {
   window.api?.electronLog.log(...args);
+  originalConsoleLog(`isMain: ${isMain}, isViewer: ${isViewer}, isSkills: ${isSkills}`);
   originalConsoleLog(...args);
 };
+
+console.log(`isMain: ${isMain}, isViewer: ${isViewer}, isSkills: ${isSkills}`);
 
 window.addEventListener("error", (e) => {
   console.log(e);
@@ -138,6 +144,8 @@ const saveConfigDebounced = debounce((appState: AppState) => {
 }, 200);
 
 const subscribeToStoreChanges = () => {
+  if (!isMain) return;
+
   if (!isSubscribedToStoreChanges) {
     setTimeout(() => {
       if (!isSubscribedToStoreChanges) {
@@ -262,6 +270,15 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
   //   console.log("GOT COMPAT DATA");
   //   store.dispatch(setPackCollisions(data));
   // });
+});
+
+window.api?.setSkillsData((event, skillsData: SkillsData) => {
+  if (!skillsData) {
+    console.log("setSkillsData: skillsData is invalid");
+    return;
+  }
+
+  store.dispatch(setSkillsData(skillsData));
 });
 
 window.api?.setPacksDataRead((event, packPaths: string[]) => {

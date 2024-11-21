@@ -1,11 +1,11 @@
 import * as path from "path";
 import { Worker } from "worker_threads";
 import * as schema from "../../schema/schema_wh3.json";
-import { PackCollisions, Pack, DBRefOrigin } from "../packFileTypes";
+import { PackCollisions, Pack } from "../packFileTypes";
 
 import { emptyPackFileToFileReferences, findMissingFileReferences } from "./fileToFileReferences";
 import { emptyPackFileAnalysisErrors, packFileAnalysisErrors } from "./fileSyntaxChecks";
-import { findPackTableReferencesOptimized } from "./missingDBTableReferences";
+import { findPackTableReferencesOptimized, refSorting } from "./missingDBTableReferences";
 import {
   emptyPackToScriptFilesWithListeners,
   processPackToScriptFilesWithListeners,
@@ -70,20 +70,6 @@ export const emptyAllCompatDataCollections = () => {
   emptyPackToScriptFilesWithListeners();
   emptyPackFileAnalysisErrors();
   emptyPackFileToFileReferences();
-};
-
-export const refSorting = (a: DBRefOrigin, b: DBRefOrigin): number => {
-  const f = a.targetDBFileName.localeCompare(b.targetDBFileName);
-  if (f !== 0) return f;
-  const c = a.targetFieldName.localeCompare(b.targetFieldName);
-  if (c !== 0) return c;
-  const e = a.value.localeCompare(b.value);
-  if (e !== 0) return e;
-  const d = a.originFieldName.localeCompare(b.originFieldName);
-  if (d !== 0) return d;
-  const g = a.originDBFileName.localeCompare(b.originDBFileName);
-  if (g !== 0) return d;
-  return a.originFileSuffix.localeCompare(b.originFileSuffix);
 };
 
 export function findPackTableMissingReferencesAndRunAnalysis(

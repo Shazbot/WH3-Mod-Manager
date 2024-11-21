@@ -382,6 +382,7 @@
   "setFolderPathsManuallyOptionallyPharaoh": "The mod manager automatically found Pharaoh folder paths from the Windows Registry, but you can set them manually here.",
   "noMissingFilesFound": "No missing files found!",
   "missingFiles": "Missing Files",
+  "skillsViewer": "Skills (WIP)",
   "dynasties": "Pharaoh Dynasties",
   "mainDynastiesFolder": "The main Dynasties folder that contains Pharaoh.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War PHARAOH DYNASTIES",
   "dynastiesFolder": "Dynasties folder:",

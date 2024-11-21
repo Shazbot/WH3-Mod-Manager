@@ -1,7 +1,19 @@
 import { Pack, PackCollisions } from "./packFileTypes";
 import { SupportedGames, supportedGames } from "./supportedGames";
+import Trie from "./utility/trie";
 
 interface AppData {
+  skillsData?: {
+    subtypesToSet: Record<string, string>;
+    setToNodes: Record<string, string[]>;
+    nodeLinks: Record<string, { child: string; childLinkPosition: string; parentLinkPosition: string }[]>;
+    nodeToSkill: Record<string, { node: string; skill: string; tier: string; indent: string }>;
+    skillsToEffects: Record<string, Effect[]>;
+    skills: { key: string; iconPath: string; maxLevel: number }[];
+    locs: Record<string, Trie<string>>;
+    icons: Record<string, string>;
+    effectsToEffectData: Record<string, EffectData>;
+  };
   presets: Preset[];
 
   // gamePaths: Record<string, string>;
@@ -34,7 +46,9 @@ interface AppData {
   isCompatCheckingVanillaPacks: boolean;
   modIdsToResubscribeTo: string[];
   isViewerReady: boolean;
+  areSkillsReady: boolean;
   queuedViewerData: (PackViewData | undefined)[];
+  queuedSkillsData: SkillsData | undefined;
 }
 
 export type GameFolderPaths = {
@@ -81,7 +95,9 @@ const appData = {
   isCompatCheckingVanillaPacks: false,
   modIdsToResubscribeTo: [],
   isViewerReady: false,
+  areSkillsReady: false,
   queuedViewerData: [],
+  queuedSkillsData: undefined,
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {

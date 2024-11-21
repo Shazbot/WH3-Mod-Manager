@@ -7,7 +7,7 @@ import { Provider } from "react-redux";
 import { modsFive, categories } from "./test_data/mods";
 import initialState from "../initialAppState";
 
-export const MockedState: AppState = {
+const MockedState: AppState = {
   ...initialState,
   currentPreset: {
     mods: modsFive,

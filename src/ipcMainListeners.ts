@@ -10,8 +10,11 @@ import {
 } from "./modFunctions";
 import {
   addFakeUpdate,
+  chunkSchemaIntoRows,
   createOverwritePack,
+  getDBVersion,
   getPacksInSave,
+  getPacksTableData,
   getPackViewData,
   mergeMods,
   readFromExistingPack,
@@ -39,28 +42,41 @@ import chokidar from "chokidar";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import { readPackHeader } from "./packFileHandler";
 import { collator } from "./utility/packFileSorting";
-import { Pack, PackCollisions } from "./packFileTypes";
+import { AmendedSchemaField, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import * as fsExtra from "fs-extra";
 import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
 import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modCompat/packTableCollisions";
 import { version } from "react";
 import { getCompatData, emptyAllCompatDataCollections } from "./modCompat/packFileCompatManager";
-import { windows } from "./index";
 import windowStateKeeper from "electron-window-state";
 import * as cheerio from "cheerio";
 import { format } from "date-fns";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { tryOpenFile } from "./utility/fileHelpers";
 import steamCollectionScript from "./utility/steamCollectionScript";
-import fetch from "electron-fetch";
+import { resolveTable } from "./resolveTable";
+import bs from "binary-search";
+import Trie from "./utility/trie";
+import getPackTableData from "./utility/frontend/packDataHandling";
+import { appendLocalizationsToSkills, getNodesToParents, getSkills } from "./skills";
+import fetch from "node-fetch";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
+
+declare const SKILLS_WEBPACK_ENTRY: string;
+declare const SKILLS_PRELOAD_WEBPACK_ENTRY: string;
 
 let contentWatcher: chokidar.FSWatcher | undefined;
 let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
+
+export const windows = {
+  mainWindow: undefined as BrowserWindow | undefined,
+  viewerWindow: undefined as BrowserWindow | undefined,
+  skillsWindow: undefined as BrowserWindow | undefined,
+};
 
 export const registerIpcMainListeners = (
   mainWindow: Electron.CrossProcessExports.BrowserWindow,
@@ -76,6 +92,507 @@ export const registerIpcMainListeners = (
     mainWindow?.webContents.send("setModData", [...tempModDatas]);
     tempModDatas.splice(0, tempModDatas.length);
   }, 200);
+
+  const getLocsTrie = (pack: Pack) => {
+    console.log("getLocsTrie:", pack.name);
+
+    const trie = new Trie<string>("_");
+    const locPFs = Object.values(pack.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
+
+    const packViewData = getPackViewData(pack, undefined, true);
+    if (!packViewData) return;
+
+    for (const packedFile of locPFs) {
+      const data = getPackTableData(packedFile.name, packViewData);
+      if (!data) continue;
+
+      // console.log("loc data for:", pack.name, data);
+      for (const rows of Object.values(data)) {
+        for (const row of rows) {
+          const [locKey, locValue] = [row[0] as string, row[1] as string];
+          // console.log("loc:", locKey, locValue);
+          if (locKey && locKey != "") trie.add(locKey, locValue);
+        }
+      }
+    }
+
+    return trie;
+  };
+
+  const getSkillsData = async (mods: Mod[]) => {
+    console.log(
+      "getSkillsData:",
+      mods.map((mod) => mod.name)
+    );
+    const tablesToRead = resolveTable("character_skill_node_set_items_tables").map(
+      (table) => `db\\${table}\\`
+    );
+
+    const effectTablesToRead = resolveTable("character_skill_level_to_effects_junctions_tables").map(
+      (table) => `db\\${table}\\`
+    );
+    for (const effectTable of effectTablesToRead) {
+      if (!tablesToRead.includes(effectTable)) tablesToRead.push(effectTable);
+    }
+
+    const nodeLinksTablesToRead = resolveTable("character_skill_node_links_tables").map(
+      (table) => `db\\${table}\\`
+    );
+    for (const nodeLinksTable of nodeLinksTablesToRead) {
+      if (!tablesToRead.includes(nodeLinksTable)) tablesToRead.push(nodeLinksTable);
+    }
+
+    const effectBonusValueIdsUnitSetsTablesToRead = resolveTable(
+      "effect_bonus_value_ids_unit_sets_tables"
+    ).map((table) => `db\\${table}\\`);
+    for (const effectBonusValueIdsUnitSetsTable of effectBonusValueIdsUnitSetsTablesToRead) {
+      if (!tablesToRead.includes(effectBonusValueIdsUnitSetsTable))
+        tablesToRead.push(effectBonusValueIdsUnitSetsTable);
+    }
+
+    // const effectsTablesToRead = resolveTable("effects_tables").map((table) => `db\\${table}\\`);
+    // for (const effectsTable of effectsTablesToRead) {
+    //   if (!tablesToRead.includes(effectsTable)) tablesToRead.push(effectsTable);
+    // }
+
+    console.log("RESOLVED tablesToRead:", tablesToRead);
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+    if (!dataFolder) return;
+
+    await readMods(mods, false, true, false, true, tablesToRead);
+
+    const vanillaPacksToRead = appData.allVanillaPackNames
+      .filter(
+        (packName) =>
+          packName.startsWith("local_en") ||
+          (!packName.startsWith("audio_") && !packName.startsWith("local_"))
+      )
+      .map((packName) => nodePath.join(dataFolder, packName));
+    await readModsByPath(vanillaPacksToRead, false, true, false, true, tablesToRead);
+
+    const packsTableData = getPacksTableData(
+      appData.packsData.filter(
+        (pack) => pack.name == "db.pack" || mods.some((mod) => mod.path === pack.path)
+      ),
+      tablesToRead,
+      true
+    );
+    if (!packsTableData) return;
+
+    const effects: EffectData[] = [];
+    getTableRowData(packsTableData, "effects_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+      const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
+      const isPositive = schemaFieldRow.find((sF) => sF.name == "is_positive_value_good")?.resolvedKeyValue;
+      if (key != undefined && icon != undefined && isPositive != undefined)
+        effects.push({
+          key,
+          icon,
+          isPositive,
+        });
+    });
+
+    const effectsToEffectData: Record<string, EffectData> = {};
+    for (const effectData of effects) {
+      effectsToEffectData[effectData.key] = effectData;
+    }
+
+    const effectBonusValueIdsUnitSets: { bonusValueId: string; effect: string; unitSet: string }[] = [];
+    getTableRowData(packsTableData, "effect_bonus_value_ids_unit_sets_tables", (schemaFieldRow) => {
+      const bonusValueId = schemaFieldRow.find((sF) => sF.name == "bonus_value_id")?.resolvedKeyValue;
+      const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+      const unitSet = schemaFieldRow.find((sF) => sF.name == "unit_set")?.resolvedKeyValue;
+      if (bonusValueId != undefined && effect != undefined && unitSet != undefined)
+        effectBonusValueIdsUnitSets.push({
+          bonusValueId,
+          effect,
+          unitSet,
+        });
+    });
+
+    const effectToEffectBonusValueIdsUnitSetsData: Record<string, typeof effectBonusValueIdsUnitSets[0]> = {};
+    for (const effectBonusValueIdsUnitSet of effectBonusValueIdsUnitSets) {
+      effectToEffectBonusValueIdsUnitSetsData[effectBonusValueIdsUnitSet.effect] = effectBonusValueIdsUnitSet;
+    }
+
+    const subtypeAndSets: { key: string; agentSubtype: string }[] = [];
+    getTableRowData(packsTableData, "character_skill_node_sets_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const agentSubtype = schemaFieldRow.find((sF) => sF.name == "agent_subtype_key")?.resolvedKeyValue;
+      if (key && agentSubtype)
+        subtypeAndSets.push({
+          key,
+          agentSubtype,
+        });
+    });
+
+    const subtypesToSet: Record<string, string> = {};
+    for (const { key, agentSubtype } of subtypeAndSets) {
+      subtypesToSet[agentSubtype] = key;
+    }
+
+    const setAndNodes: { set: string; node: string; modDisabled: string }[] = [];
+    getTableRowData(packsTableData, "character_skill_node_set_items_tables", (schemaFieldRow) => {
+      const set = schemaFieldRow.find((sF) => sF.name == "set")?.resolvedKeyValue;
+      const node = schemaFieldRow.find((sF) => sF.name == "item")?.resolvedKeyValue;
+      const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
+
+      if (set && node && modDisabled != undefined)
+        setAndNodes.push({
+          set,
+          node,
+          modDisabled,
+        });
+    });
+
+    const setToNodes: Record<string, string[]> = {};
+    for (const setAndNode of setAndNodes) {
+      const set = setAndNode.set;
+      if (!setToNodes[set]) setToNodes[set] = [];
+      if (!setToNodes[set].includes(setAndNode.node)) setToNodes[set].push(setAndNode.node);
+    }
+
+    // set to node table can also be used to disable nodes for a set
+    const setToNodesDisables: Record<string, string[]> = {};
+    for (const setAndNode of setAndNodes) {
+      const set = setAndNode.set;
+      if (setAndNode.modDisabled == "0") continue;
+      if (!setToNodesDisables[set]) setToNodesDisables[set] = [];
+      if (!setToNodesDisables[set].includes(setAndNode.node)) setToNodesDisables[set].push(setAndNode.node);
+    }
+
+    // console.log("setToNodesDisables:", setToNodesDisables);
+    // console.log("setToNodes KF:", setToNodes["wh_main_skill_node_set_emp_karl_franz"]);
+
+    const nodeLinks: Record<
+      string,
+      {
+        child: string;
+        childLinkPosition: string;
+        parentLinkPosition: string;
+      }[]
+    > = {};
+    getTableRowData(packsTableData, "character_skill_node_links_tables", (schemaFieldRow) => {
+      const child_key = schemaFieldRow.find((sF) => sF.name == "child_key")?.resolvedKeyValue;
+      const parent_key = schemaFieldRow.find((sF) => sF.name == "parent_key")?.resolvedKeyValue;
+      const parent_link_position = schemaFieldRow.find(
+        (sF) => sF.name == "parent_link_position"
+      )?.resolvedKeyValue;
+      const child_link_position = schemaFieldRow.find(
+        (sF) => sF.name == "child_link_position"
+      )?.resolvedKeyValue;
+
+      if (
+        child_key != undefined &&
+        parent_key != undefined &&
+        parent_link_position != undefined &&
+        child_link_position != undefined
+      ) {
+        nodeLinks[parent_key] = nodeLinks[parent_key] || [];
+        nodeLinks[parent_key].push({
+          child: child_key,
+          childLinkPosition: child_link_position,
+          parentLinkPosition: parent_link_position,
+        });
+      }
+    });
+
+    const nodeAndSkills: { node: string; skill: string; tier: string; indent: string }[] = [];
+    getTableRowData(packsTableData, "character_skill_nodes_tables", (schemaFieldRow) => {
+      const node = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const skill = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
+      const tier = schemaFieldRow.find((sF) => sF.name == "tier")?.resolvedKeyValue;
+      const indent = schemaFieldRow.find((sF) => sF.name == "indent")?.resolvedKeyValue;
+      if (node && skill && tier != undefined && indent != undefined)
+        nodeAndSkills.push({
+          node,
+          skill,
+          tier,
+          indent,
+        });
+    });
+
+    const nodeToSkill: Record<string, typeof nodeAndSkills[0]> = {};
+    for (const nodeAndSkill of nodeAndSkills) {
+      nodeToSkill[nodeAndSkill.node] = nodeAndSkill;
+    }
+
+    const skills: { key: string; iconPath: string; maxLevel: number }[] = [];
+    getTableRowData(packsTableData, "character_skills_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const iconPath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
+      if (key && iconPath)
+        skills.push({
+          key,
+          iconPath,
+          maxLevel: 1,
+        });
+    });
+
+    const skillsAndEffects: Effect[] = [];
+    getTableRowData(packsTableData, "character_skill_level_to_effects_junctions_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
+      const effectScope = schemaFieldRow.find((sF) => sF.name == "effect_scope")?.resolvedKeyValue;
+      const level = schemaFieldRow.find((sF) => sF.name == "level")?.resolvedKeyValue;
+      const value = schemaFieldRow.find((sF) => sF.name == "value")?.resolvedKeyValue;
+      const effectKey = schemaFieldRow.find((sF) => sF.name == "effect_key")?.resolvedKeyValue;
+
+      if (
+        key != undefined &&
+        effectScope != undefined &&
+        level != undefined &&
+        value != undefined &&
+        effectKey != undefined
+      )
+        skillsAndEffects.push({
+          key,
+          effectScope,
+          level: Number(level),
+          value,
+          effectKey,
+          iconData: "",
+          icon: effectsToEffectData[effectKey].icon,
+        });
+    });
+
+    const skillsToEffects: Record<string, typeof skillsAndEffects[0][]> = {};
+    for (const skillAndEffect of skillsAndEffects) {
+      const key = skillAndEffect.key;
+      if (!skillsToEffects[key]) skillsToEffects[key] = [];
+      skillsToEffects[key].push(skillAndEffect);
+    }
+
+    for (const skill of Object.keys(skillsToEffects)) {
+      let maxLevel = 1;
+      const effects = skillsToEffects[skill];
+      for (let i = 0; i < effects.length; i++) {
+        if (effects[i].level > maxLevel) maxLevel = effects[i].level;
+      }
+      const skillInSkills = skills.find((skillIter) => skillIter.key == skill);
+      if (skillInSkills) skillInSkills.maxLevel = maxLevel;
+    }
+
+    // const set = subtypeToSet["wh_main_emp_karl_franz"];
+    // const nodes = setToNodes[set];
+    // for (const node of nodes) {
+    //   const nodeAndSkill = nodeToSkill[node];
+    //   const skill = nodeAndSkill.skill;
+    //   console.log("skill", skill);
+    //   const effects = skillsToEffects[skill];
+    //   for (const effect of effects) {
+    //     console.log("effect", effect);
+    //   }
+    // }
+
+    const skillIconPathsSet = new Set(
+      skills
+        .map((skill) => `ui\\campaign ui\\skills\\${skill.iconPath}`)
+        // wh_main_character_abilities_heroic_killing_blow was removed from campaign ui for example
+        .concat(skills.map((skill) => `ui\\battle ui\\ability_icons\\${skill.iconPath}`))
+    );
+
+    const effectIcons = new Set<string>();
+    for (const skill of skills) {
+      const effectsInSkill = skillsToEffects[skill.key] || [];
+      for (const effect of effectsInSkill) {
+        if (effect.icon) {
+          effectIcons.add(`ui\\campaign ui\\effect_bundles\\${effect.icon}`);
+        }
+      }
+    }
+
+    const skillIconPaths = Array.from(new Set([...skillIconPathsSet, ...effectIcons]));
+
+    // const readList1 = appData.packsData.filter((packsData) =>
+    //   mods.map((mod) => mod.name).includes(packsData.name)
+    // );
+    // const readList2 = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
+    // console.log(
+    //   "readList1:",
+    //   readList1.map((mod) => mod.name)
+    // );
+    // console.log(
+    //   "readList2:",
+    //   readList2.map((mod) => mod.name)
+    // );
+
+    const enabledModPacks = appData.packsData.filter((packsData) =>
+      mods.map((mod) => mod.name).includes(packsData.name)
+    );
+    for (const pack of enabledModPacks)
+      await readFromExistingPack(pack, { filesToRead: skillIconPaths, skipParsingTables: true });
+
+    console.log("vanillaPacksToRead", vanillaPacksToRead);
+    console.log(
+      "vanillaPacksToRead ARE:",
+      appData.packsData
+        .filter((packsData) => vanillaPacksToRead.includes(packsData.path))
+        .map((pack) => pack.path)
+    );
+    const vanillaPacks = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
+    for (const pack of vanillaPacks.concat(enabledModPacks))
+      await readFromExistingPack(pack, { filesToRead: skillIconPaths, skipParsingTables: true });
+
+    const icons: Record<string, string> = {};
+    for (const pack of vanillaPacks.concat(enabledModPacks)) {
+      for (const fileToRead of skillIconPaths) {
+        const indexOfFileToRead = bs(pack.packedFiles, fileToRead, (a: PackedFile, b: string) =>
+          collator.compare(a.name, b)
+        );
+        if (indexOfFileToRead >= 0) {
+          const packedFileToRead = pack.packedFiles[indexOfFileToRead];
+          if (packedFileToRead.buffer) {
+            // fs.writeFileSync(`dumps/img/${nodePath.basename(fileToRead)}`, packedFileToRead.buffer);
+            icons[fileToRead] = packedFileToRead.buffer.toString("base64");
+          }
+        }
+      }
+    }
+
+    const locs: Record<string, Trie<string>> = {};
+    for (const pack of appData.packsData.filter(
+      (packsData) => mods.map((mod) => mod.name).includes(packsData.name) || vanillaPacks.includes(packsData)
+    )) {
+      const locsTrie = getLocsTrie(pack);
+      if (locsTrie) locs[pack.name] = locsTrie;
+    }
+
+    const packNameToLocEntries: Record<string, Record<string, string>> = {};
+    for (const packName of Object.keys(locs)) {
+      packNameToLocEntries[packName] = locs[packName].getEntries();
+    }
+
+    // fs.writeFileSync("dumps/iconPaths.json", JSON.stringify(skillIconPaths));
+    // fs.writeFileSync("dumps/locs.json", JSON.stringify(packNameToLocEntries));
+    // fs.writeFileSync("dumps/packsTableData.json", JSON.stringify(packsTableData));
+    // fs.writeFileSync("dumps/subtypeAndSets.json", JSON.stringify(subtypeAndSets));
+    // fs.writeFileSync("dumps/setAndNodes.json", JSON.stringify(setAndNodes));
+    // fs.writeFileSync("dumps/nodeAndSkills.json", JSON.stringify(nodeAndSkills));
+    // fs.writeFileSync("dumps/skills.json", JSON.stringify(skills));
+    // fs.writeFileSync("dumps/skillsAndEffects.json", JSON.stringify(skillsAndEffects));
+
+    // fs.writeFileSync("dumps/subtypeToSet.json", JSON.stringify(subtypeToSet));
+    // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
+    // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
+    // fs.writeFileSync("dumps/skillsToEffects.json", JSON.stringify(skillsToEffects));
+    // fs.writeFileSync("dumps/nodeLinks.json", JSON.stringify(nodeLinks));
+    // fs.writeFileSync("dumps/effectsToEffectData.json", JSON.stringify(effectsToEffectData));
+    // fs.writeFileSync(
+    //   "dumps/effectToEffectBonusValueIdsUnitSetsData.json",
+    //   JSON.stringify(effectToEffectBonusValueIdsUnitSetsData)
+    // );
+
+    for (const [set, setToNodesToDisable] of Object.entries(setToNodesDisables)) {
+      const nodes = setToNodes[set];
+      const lenBefore = nodes.length;
+      setToNodes[set] = setToNodes[set].filter((node) => !setToNodesToDisable.includes(node));
+      const lenAfter = setToNodes[set].length;
+
+      if (lenBefore != lenAfter) {
+        console.log("from set", set, "removed", lenBefore - lenAfter, "elements");
+      }
+    }
+
+    const setKF = subtypesToSet["wh_main_emp_karl_franz"];
+    appData.skillsData = {
+      subtypesToSet,
+      setToNodes,
+      nodeLinks,
+      nodeToSkill,
+      skillsToEffects,
+      skills,
+      locs,
+      icons,
+      effectsToEffectData,
+    };
+    const nodesKF = setToNodes[setKF];
+
+    const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
+
+    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+
+    const getLoc = (locId: string) => {
+      for (const locsInPack of Object.values(locs)) {
+        const localized = locsInPack.get(locId);
+        if (localized) return localized;
+      }
+    };
+
+    appendLocalizationsToSkills(kfSkills, getLoc);
+
+    appData.queuedSkillsData = {
+      // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
+      currentSubtype: "wh_main_emp_karl_franz",
+      currentSkills: kfSkills,
+      nodeLinks,
+      icons,
+      subtypes: Object.keys(subtypesToSet),
+    };
+
+    if (appData.queuedSkillsData) {
+      sendQueuedDataToSkills();
+    }
+  };
+
+  const getSkillsForSubtype = (subtype: string) => {
+    console.log("getSkillsForSubtype:", subtype);
+    const cachedSkillsData = appData.skillsData;
+    if (!cachedSkillsData) {
+      getSkillsData(appData.enabledMods);
+      return;
+    }
+
+    const setKF = cachedSkillsData.subtypesToSet[subtype];
+    const nodesKF = cachedSkillsData.setToNodes[setKF];
+
+    const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet } = cachedSkillsData;
+    const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
+    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+
+    const getLoc = (locId: string) => {
+      for (const locsInPack of Object.values(locs)) {
+        const localized = locsInPack.get(locId);
+        if (localized) return localized;
+      }
+    };
+
+    appendLocalizationsToSkills(kfSkills, getLoc);
+
+    appData.queuedSkillsData = {
+      // subtypeToSkills: { [subtype]: kfSkills },
+      currentSubtype: subtype,
+      currentSkills: kfSkills,
+      nodeLinks,
+      icons,
+      subtypes: Object.keys(subtypesToSet),
+    };
+
+    if (appData.queuedSkillsData) {
+      sendQueuedDataToSkills();
+    }
+  };
+
+  const getTableRowData = (
+    packsTableData: PackViewData[],
+    tableName: string,
+    rowDataExtractor: (schemaFieldRow: AmendedSchemaField[]) => void
+  ) => {
+    packsTableData.forEach((pTD) => {
+      const skillNodeSetsFiles = Object.keys(pTD.packedFiles).filter((pFName) =>
+        pFName.startsWith(`db\\${tableName}\\`)
+      );
+      for (const skillNodeSetFile of skillNodeSetsFiles) {
+        const packedFile = pTD.packedFiles[skillNodeSetFile];
+        const dbVersion = getDBVersion(packedFile);
+        if (!dbVersion) continue;
+        const schemaFields = packedFile.schemaFields as AmendedSchemaField[];
+        const chunkedShemaFields = chunkSchemaIntoRows(schemaFields, dbVersion) as AmendedSchemaField[][];
+        for (const schemaFieldRow of chunkedShemaFields) {
+          rowDataExtractor(schemaFieldRow);
+        }
+      }
+    });
+  };
 
   const setCurrentGame = async (newGame: SupportedGames) => {
     try {
@@ -666,7 +1183,7 @@ export const registerIpcMainListeners = (
   };
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    // if (isDev) return;
+    if (isDev) return;
 
     fetchModData(
       ids.filter((id) => id !== ""),
@@ -1012,6 +1529,10 @@ export const registerIpcMainListeners = (
     writeAppConfig(data);
   });
 
+  ipcMain.on("getSkillsForSubtype", async (event, subtype: string) => {
+    getSkillsForSubtype(subtype);
+  });
+
   ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table);
   });
@@ -1064,6 +1585,50 @@ export const registerIpcMainListeners = (
     });
   };
 
+  const createSkillsWindow = () => {
+    if (windows.skillsWindow) return;
+
+    const skillsWindowState = windowStateKeeper({
+      file: "skills_window.json",
+      defaultWidth: 1280,
+      defaultHeight: 900,
+    });
+
+    windows.skillsWindow = new BrowserWindow({
+      x: skillsWindowState.x,
+      y: skillsWindowState.y,
+      width: skillsWindowState.width,
+      height: skillsWindowState.height,
+      autoHideMenuBar: true,
+      titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: "#374151",
+        symbolColor: "#9ca3af",
+        height: 28,
+      },
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        preload: SKILLS_PRELOAD_WEBPACK_ENTRY,
+      },
+      title: "WH3 Mod Manager Mod Viewer",
+      icon: "./assets/modmanager.ico",
+    });
+
+    skillsWindowState.manage(windows.skillsWindow);
+
+    windows.skillsWindow.loadURL(SKILLS_WEBPACK_ENTRY);
+
+    windows.skillsWindow.on("page-title-updated", (evt) => {
+      evt.preventDefault();
+    });
+
+    windows.skillsWindow.on("closed", () => {
+      windows.skillsWindow = undefined;
+      appData.areSkillsReady = false;
+    });
+  };
+
   ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
       const baseVanillaPackName = vanillaPackData.name;
@@ -1082,6 +1647,17 @@ export const registerIpcMainListeners = (
       windows.viewerWindow.focus();
     } else {
       createViewerWindow();
+    }
+  });
+
+  ipcMain.on("requestOpenSkillsWindow", (event, mods: Mod[]) => {
+    console.log("ON requestOpenSkillsWindow");
+    appData.enabledMods = mods.filter((mod) => mod.isEnabled);
+    getSkillsData(mods.filter((mod) => mod.isEnabled));
+    if (windows.skillsWindow) {
+      windows.skillsWindow.focus();
+    } else {
+      createSkillsWindow();
     }
   });
 
@@ -1237,7 +1813,10 @@ export const registerIpcMainListeners = (
     modPaths: string[],
     skipParsingTables = true,
     skipCollisionCheck = true,
-    readScripts = false
+    readScripts = false,
+    readLocs = false,
+    tablesToRead?: string[],
+    filesToRead?: string[]
   ) => {
     console.log("readModsByPath:", modPaths);
     console.log("readModsByPath skipParsingTables:", skipParsingTables);
@@ -1258,6 +1837,9 @@ export const registerIpcMainListeners = (
         const newPack = await readPack(modPath, {
           skipParsingTables,
           readScripts,
+          tablesToRead,
+          filesToRead,
+          readLocs,
         });
         mainWindow?.webContents.send("setLastModThatWasRead", modPath);
         appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
@@ -1281,7 +1863,10 @@ export const registerIpcMainListeners = (
     mods: Mod[],
     skipParsingTables = true,
     skipCollisionCheck = true,
-    readScripts = false
+    readScripts = false,
+    readLocs = false,
+    tablesToRead?: string[],
+    filesToRead?: string[]
   ) => {
     if (!skipParsingTables) {
       appData.packsData = appData.packsData.filter((pack) => !mods.some((mod) => mod.path == pack.path));
@@ -1297,6 +1882,9 @@ export const registerIpcMainListeners = (
         const newPack = await readPack(mod.path, {
           skipParsingTables,
           readScripts,
+          tablesToRead,
+          filesToRead,
+          readLocs,
         });
         if (!skipParsingTables) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
         appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
@@ -1357,6 +1945,34 @@ export const registerIpcMainListeners = (
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
+    }
+  });
+
+  const sendQueuedDataToSkills = async () => {
+    if (!appData.queuedSkillsData) {
+      console.log("sendQueuedDataToSkills called but queuedSkillsData not ready");
+      return;
+    }
+    if (!appData.areSkillsReady) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      sendQueuedDataToSkills();
+      return;
+    }
+
+    console.log("SENDING QUEUED DATA TO SKILLS");
+    // windows.skillsWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
+    windows.skillsWindow?.webContents.send("setSkillsData", appData.queuedSkillsData);
+    windows.skillsWindow?.focus();
+    appData.queuedSkillsData = undefined;
+  };
+
+  ipcMain.on("skillsAreReady", () => {
+    console.log("SKILLS ARE NOW READY");
+    appData.areSkillsReady = true;
+
+    // console.log("QUEUED DATA IS ", queuedViewerData);
+    if (appData.queuedSkillsData) {
+      sendQueuedDataToSkills();
     }
   });
 
@@ -1793,20 +2409,7 @@ export const registerIpcMainListeners = (
     clipboard.writeText(scriptWithIDs);
   });
 
-  const getDBsForGameStartOptions = async (mods: Mod[], startGameOptions: StartGameOptions) => {
-    const tablesToRead: string[] = [];
-    if (startGameOptions.isMakeUnitsGeneralsEnabled) {
-      tablesToRead.push("db\\units_custom_battle_permissions_tables\\");
-    }
-
-    if (tablesToRead.length == 0) return;
-
-    mainWindow?.webContents.send("addToast", {
-      type: "info",
-      messages: ["loc:processingMods"],
-      startTime: Date.now(),
-    } as Toast);
-
+  const readTablesFromMods = async (mods: Mod[], tablesToRead: string[]) => {
     for (const mod of mods) {
       const existingPack = appData.packsData.find((pack) => pack.path == mod.path);
       let needsReRead = false;
@@ -1849,6 +2452,23 @@ export const registerIpcMainListeners = (
     }
   };
 
+  const getDBsForGameStartOptions = async (mods: Mod[], startGameOptions: StartGameOptions) => {
+    const tablesToRead: string[] = [];
+    if (startGameOptions.isMakeUnitsGeneralsEnabled) {
+      tablesToRead.push("db\\units_custom_battle_permissions_tables\\");
+    }
+
+    if (tablesToRead.length == 0) return;
+
+    mainWindow?.webContents.send("addToast", {
+      type: "info",
+      messages: ["loc:processingMods"],
+      startTime: Date.now(),
+    } as Toast);
+
+    await readTablesFromMods(mods, tablesToRead);
+  };
+
   ipcMain.on(
     "startGame",
     async (
@@ -1863,6 +2483,9 @@ export const registerIpcMainListeners = (
         console.log(pack.name, pack.readTables);
       }
       try {
+        // getSkillsData(mods.filter((mod) => mod.isEnabled));
+        // return;
+
         for (const supportedGameOption of supportedGameOptions) {
           if (!gameToSupportedGameOptions[appData.currentGame].includes(supportedGameOption)) {
             const startGameOption = supportedGameOptionToStartGameOption[supportedGameOption];
