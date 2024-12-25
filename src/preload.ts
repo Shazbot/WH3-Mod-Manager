@@ -1,9 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
-import electronLog from "electron-log";
 import { PackCollisions } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
 import debounce from "just-debounce-it";
+import "electron-log/preload";
 
 console.log("IN PRELOAD");
 
@@ -180,7 +180,6 @@ const api = {
   ) => ipcRenderer.on("setCurrentGame", callback),
   setCurrentGameNaive: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
     ipcRenderer.on("setCurrentGameNaive", callback),
-  electronLog,
 
   getSkillsForSubtype: (subtype: string) => ipcRenderer.send("getSkillsForSubtype", subtype),
 };

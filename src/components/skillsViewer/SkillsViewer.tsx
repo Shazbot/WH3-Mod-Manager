@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { memo, useContext, useEffect, useState } from "react";
 import { useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
@@ -8,8 +8,8 @@ import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
 import localizationContext from "../../localizationContext";
 
-const SkillsViewer = React.memo(() => {
-  const [isOpen, setIsOpen] = React.useState(true);
+const SkillsViewer = memo(() => {
+  const [isOpen, setIsOpen] = useState(true);
 
   const localized: Record<string, string> = useContext(localizationContext);
 

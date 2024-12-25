@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { useAppDispatch, useAppSelector } from "../../hooks";
+import React, { memo } from "react";
+import { useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
 import cx from "classnames";
@@ -11,9 +11,8 @@ type SkillsTreeViewProps = {
 
 const collator = new Intl.Collator("en");
 
-const SkillsTreeView = React.memo((props: SkillsTreeViewProps) => {
-  const dispatch = useAppDispatch();
-
+const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
+  const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
   const skillsData = useAppSelector((state) => state.app.skillsData);
   if (!skillsData || !skillsData.subtypes) {
     console.log("skillsData or skillsData.subtypes missing!");
@@ -153,7 +152,9 @@ const SkillsTreeView = React.memo((props: SkillsTreeViewProps) => {
                 {/* <span onClick={(e) => handleSelect(e)} className="absolute">
                   {element.name}
                 </span> */}
-                {element.name}
+                {isLocalizingSubtypes
+                  ? skillsData.subtypesToLocalizedNames[element.name] ?? element.name
+                  : element.name}
               </span>
             </div>
           );

@@ -6,6 +6,7 @@ export type NodeToSkill = Record<
     skill: string;
     tier: string;
     indent: string;
+    visibleInUI: "0" | "1";
   }
 >;
 
@@ -63,6 +64,7 @@ export function getNodesToParents(
         maxLevel: 1,
         origIndent: skill.indent,
         origTier: skill.tier,
+        isHiddentInUI: skill.visibleInUI == "0",
       });
     }
   });
@@ -127,6 +129,7 @@ export function getSkills(
       maxLevel: skillAndIcon?.maxLevel || 1,
       origIndent: skill.indent,
       origTier: skill.tier,
+      isHiddentInUI: skill.visibleInUI == "0",
     } as Skill;
   });
 

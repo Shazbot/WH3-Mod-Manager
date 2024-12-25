@@ -179,7 +179,7 @@ const ModRow = memo(
               name={mod.workshopId}
               id={mod.workshopId + "enabled"}
               checked={mod.isEnabled}
-              onChange={(event) => onModToggled(mod)}
+              onChange={() => onModToggled(mod)}
             ></input>
           </form>
         </div>

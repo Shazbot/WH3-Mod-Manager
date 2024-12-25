@@ -1,26 +1,47 @@
 module.exports = {
-  stories: ["../src/**/*.stories.mdx", "../src/**/*.stories.@(js|jsx|ts|tsx)"],
+  stories: ["../src/**/*.mdx", "../src/**/*.stories.@(js|jsx|ts|tsx)"],
+
   addons: [
     "@storybook/addon-links",
     "@storybook/addon-essentials",
-    "@storybook/addon-interactions",
     {
-      name: "@storybook/addon-postcss",
+      name: "@storybook/addon-styling-webpack",
       options: {
-        cssLoaderOptions: {
-          // When you have splitted your css over multiple files
-          // and use @import('./other-styles.css')
-          importLoaders: 1,
-        },
-        postcssLoaderOptions: {
-          // When using postCSS 8
-          implementation: require("postcss"),
-        },
+        rules: [
+          // Replaces existing CSS rules to support PostCSS
+          {
+            test: /\.css$/,
+            use: [
+              "style-loader",
+              {
+                loader: "css-loader",
+                options: { importLoaders: 1 },
+              },
+              {
+                // Gets options from `postcss.config.js` in your project root
+                loader: "postcss-loader",
+                options: { implementation: require.resolve("postcss") },
+              },
+            ],
+          },
+        ],
       },
     },
+    "@storybook/addon-interactions",
+    "@storybook/addon-mdx-gfm",
+    "@storybook/addon-webpack5-compiler-swc",
+    "@chromatic-com/storybook",
+    "@storybook/addon-themes",
   ],
-  framework: "@storybook/react",
-  core: {
-    builder: "@storybook/builder-webpack5",
+
+  framework: {
+    name: "@storybook/react-webpack5",
+    options: {},
+  },
+
+  docs: {},
+
+  typescript: {
+    reactDocgen: "react-docgen-typescript",
   },
 };

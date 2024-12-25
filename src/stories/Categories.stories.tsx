@@ -18,7 +18,13 @@ const MockedState: AppState = {
 };
 
 // A super-simple mock of a redux store
-const Mockstore = ({ appState, children }: { appState: AppState; children: React.ReactNode }) => (
+const Mockstore = ({
+  appState,
+  children,
+}: {
+  appState: AppState;
+  children: React.ReactNode;
+}) => (
   <Provider
     store={configureStore({
       reducer: {
@@ -46,7 +52,9 @@ export default taskList;
 type Story = StoryObj<typeof Categories>;
 
 export const Default: Story = {
-  decorators: [(story) => <Mockstore appState={MockedState}>{story()}</Mockstore>],
+  decorators: [
+    (story) => <Mockstore appState={MockedState}>{story()}</Mockstore>,
+  ],
 };
 
 export const WithPinnedTasks: Story = {

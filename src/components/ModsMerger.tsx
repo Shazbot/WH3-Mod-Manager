@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Modal } from "../flowbite/components/Modal/index";
-import { Spinner, Tabs, Tooltip } from "../flowbite";
+import { Spinner, Tabs } from "../flowbite";
+import { Tooltip } from "flowbite-react";
 import {
   getModsSortedByName,
   getModsSortedByHumanName,

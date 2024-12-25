@@ -7,7 +7,10 @@ interface AppData {
     subtypesToSet: Record<string, string>;
     setToNodes: Record<string, string[]>;
     nodeLinks: Record<string, { child: string; childLinkPosition: string; parentLinkPosition: string }[]>;
-    nodeToSkill: Record<string, { node: string; skill: string; tier: string; indent: string }>;
+    nodeToSkill: Record<
+      string,
+      { node: string; skill: string; tier: string; indent: string; visibleInUI: "0" | "1" }
+    >;
     skillsToEffects: Record<string, Effect[]>;
     skills: { key: string; iconPath: string; maxLevel: number }[];
     locs: Record<string, Trie<string>>;

@@ -1198,6 +1198,9 @@ const appSlice = createSlice({
         return;
       }
     },
+    setIsLocalizingSubtypes: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isLocalizingSubtypes = action.payload;
+    },
   },
 });
 
@@ -1286,6 +1289,7 @@ export const {
   setIsModTagPickerOpen,
   setTagForMod,
   setSkillsData,
+  setIsLocalizingSubtypes,
 } = appSlice.actions;
 
 export default appSlice.reducer;

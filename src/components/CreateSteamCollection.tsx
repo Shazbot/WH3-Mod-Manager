@@ -1,4 +1,5 @@
-import { Modal, Tooltip } from "../flowbite";
+import { Modal } from "../flowbite";
+import { Tooltip } from "flowbite-react";
 import React, { memo, useContext } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setIsCreateSteamCollectionOpen } from "../appSlice";

@@ -75,6 +75,7 @@ const initialState = {
   currentlyReadingMod: undefined,
   isModTagPickerOpen: false,
   currentModToUpload: undefined,
+  isLocalizingSubtypes: false,
 } as AppState;
 
 export default initialState;

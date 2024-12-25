@@ -1,5 +1,6 @@
 import "./index.css";
 import "./app";
+import log from "electron-log/renderer";
 import {
   setMods,
   setModData,
@@ -65,7 +66,7 @@ if (isSkills) window.api?.skillsAreReady();
 
 const originalConsoleLog = console.log.bind(console);
 console.log = (...args) => {
-  window.api?.electronLog.log(...args);
+  log.log(...args);
   originalConsoleLog(`isMain: ${isMain}, isViewer: ${isViewer}, isSkills: ${isSkills}`);
   originalConsoleLog(...args);
 };

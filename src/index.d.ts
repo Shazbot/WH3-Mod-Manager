@@ -135,6 +135,9 @@ declare global {
     isModTagPickerOpen: boolean;
     currentModToUpload: Mod | undefined;
     skillsData?: SkillsData;
+
+    //skills view
+    isLocalizingSubtypes: boolean;
   }
 
   type;
@@ -353,6 +356,7 @@ declare global {
     key: string;
     icon: string;
     isPositive: string;
+    priority: string;
   }
 
   interface Effect {
@@ -364,6 +368,7 @@ declare global {
     effectKey: string;
     icon?: string;
     iconData: string;
+    priority: string;
   }
   interface Skill {
     title: string;
@@ -380,6 +385,7 @@ declare global {
     maxLevel: number;
     origIndent: string;
     origTier: string;
+    isHiddentInUI: boolean;
   }
   interface SkillsData {
     // subtypeToSkills: Record<string, Skill[]>;
@@ -395,6 +401,7 @@ declare global {
     >;
     icons: Record<string, string>;
     subtypes: string[];
+    subtypesToLocalizedNames: Record<string, string>;
   }
 
   type ToastType = "success" | "warning" | "info";

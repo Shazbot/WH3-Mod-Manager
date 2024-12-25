@@ -1,7 +1,8 @@
 import React, { memo, useCallback, useContext, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { Modal } from "../flowbite/components/Modal/index";
-import { Spinner, Tabs, Tooltip } from "../flowbite";
+import { Spinner, Tabs } from "../flowbite";
+import { Tooltip } from "flowbite-react";
 import { compareModNames, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
