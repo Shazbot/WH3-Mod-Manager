@@ -183,7 +183,8 @@ function resolveTextReplacements(
 
   return localizedText.replaceAll(/{{tr:(.*?)}}/gi, (_, captureGroup) => {
     console.log("capture group is", captureGroup);
-    const replacementText = getLoc(`ui_text_replacements_localised_text_${captureGroup}`);
+    const replacementText =
+      getLoc(`ui_text_replacements_localised_text_${captureGroup}`) || getLoc(captureGroup);
     console.log("FOUND:", replacementText);
     return replacementText || captureGroup;
   });
