@@ -12,7 +12,7 @@ import appData from "./appData";
 import windowStateKeeper from "electron-window-state";
 import * as nodePath from "path";
 import { isMainThread } from "worker_threads";
-import electronLog from "electron-log";
+import electronLog from "electron-log/main";
 import i18n from "./configs/i18next.config";
 import { globSync } from "glob";
 import { windows, registerIpcMainListeners } from "./ipcMainListeners";
@@ -60,6 +60,8 @@ if (!gotTheLock) {
 
   if (isMainThread) {
     process.umask(0);
+
+    electronLog.initialize({ preload: true });
 
     console.log = (...args) => {
       electronLog.info(...args);
@@ -132,13 +134,13 @@ if (!gotTheLock) {
     if (isDev) {
       // no idea why but openDevTools is really uncooperative, this isn't great but it works
       setTimeout(() => {
-        windows.mainWindow?.webContents.openDevTools();
-      }, 45000);
+        windows.mainWindow?.webContents.openDevTools({ mode: "right" });
+      }, 25000);
     }
 
     autoUpdater.on("update-downloaded", (event, releaseNotes, releaseName) => {
       const dialogOpts = {
-        type: "info",
+        type: "info" as const,
         buttons: ["Restart", "Later"],
         title: "Application Update",
         message: process.platform === "win32" ? releaseNotes : releaseName,

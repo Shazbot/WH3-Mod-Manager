@@ -50,9 +50,21 @@ console.log("nodeToSkill:", nodeToSkill);
 const set = subtypeToSet["wh_main_emp_karl_franz"];
 const nodes = setToNodes[set];
 
-const nodesToParents = getNodesToParents(nodes, nodeLinks, nodeToSkill, skillsToEffects);
+const nodesToParents = getNodesToParents(
+  nodes,
+  nodeLinks,
+  nodeToSkill,
+  skillsToEffects,
+);
 
-const skills = getSkills(nodes, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skillAndIcons);
+const skills = getSkills(
+  nodes,
+  nodeLinks,
+  nodeToSkill,
+  nodesToParents,
+  skillsToEffects,
+  skillAndIcons,
+);
 
 // const skillToEffects = getSkillToEffects(skills, skillsToEffects);
 
@@ -84,7 +96,13 @@ appendLocalizationsToSkills(skills, getLoc);
 console.log(skills);
 
 // A super-simple mock of a redux store
-const Mockstore = ({ appState, children }: { appState: AppState; children: React.ReactNode }) => (
+const Mockstore = ({
+  appState,
+  children,
+}: {
+  appState: AppState;
+  children: React.ReactNode;
+}) => (
   <Provider
     store={configureStore({
       reducer: {
@@ -122,10 +140,22 @@ export const Default: Story = {
 export const Skill: Story = {
   render: () => (
     <div className="h-20 relative w-[220px]">
-      <img className="absolute h-20" src={skillBackground} alt={skillBackground} />
+      <img
+        className="absolute h-20"
+        src={skillBackground}
+        alt={skillBackground}
+      />
       <div className="absolute h-20 left-[-30px]">
-        <img className="h-full object-cover" src={skillIconBackground} alt={skillIconBackground} />
-        <img className="absolute h-[110%] top-[-6px] left-[32px]" src={skillIcon} alt={skillIcon} />
+        <img
+          className="h-full object-cover"
+          src={skillIconBackground}
+          alt={skillIconBackground}
+        />
+        <img
+          className="absolute h-[110%] top-[-6px] left-[32px]"
+          src={skillIcon}
+          alt={skillIcon}
+        />
       </div>
       <div
         className="absolute left-[40%] top-[15%] text-center h-[50%] w-[50%] text-gray-200"

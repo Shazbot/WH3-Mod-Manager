@@ -10,8 +10,6 @@ import type {
   ButtonSizes,
 } from "../Button";
 import type { PositionInButtonGroup } from "../Button/ButtonGroup";
-import { FlowbiteDropdownTheme } from "../Dropdown";
-import type { FlowbiteFloatingTheme } from "../Floating";
 import type {
   HelperColors,
   LabelColors,
@@ -24,7 +22,6 @@ import type {
 import type { ModalPositions, ModalSizes } from "../Modal";
 import type { ProgressColor, ProgressSizes } from "../Progress";
 import type { StarSizes } from "../Rating";
-import type { SidebarCTAColors } from "../Sidebar/SidebarCTA";
 import type { SpinnerColors, SpinnerSizes } from "../Spinner";
 import type { TabStyleItem, TabStyles } from "../Tab";
 
@@ -402,10 +399,6 @@ export interface FlowbiteTheme extends Record<string, unknown> {
       };
       list: string;
     };
-    cta: {
-      base: string;
-      color: SidebarCTAColors;
-    };
     item: {
       active: string;
       base: string;
@@ -472,13 +465,6 @@ export interface FlowbiteTheme extends Record<string, unknown> {
       base: string;
       icon: string;
     };
-  };
-  tooltip: FlowbiteFloatingTheme;
-  dropdown: {
-    floating: FlowbiteDropdownTheme;
-    content: string;
-    inlineWrapper: string;
-    arrowIcon: string;
   };
 }
 

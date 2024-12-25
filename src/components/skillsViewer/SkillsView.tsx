@@ -1,13 +1,24 @@
-import React, { useCallback, useEffect } from "react";
-import { useAppSelector } from "../../hooks";
+import React, { useContext, useEffect, useState } from "react";
+import { useAppDispatch, useAppSelector } from "../../hooks";
 import deepClone from "clone-deep";
 import "@silevis/reactgrid/styles.css";
+import localizationContext from "../../localizationContext";
 
-import { Node, useNodesState, useEdgesState, Position, ViewportPortal, ReactFlow } from "@xyflow/react";
+import {
+  Node,
+  useNodesState,
+  useEdgesState,
+  Position,
+  ViewportPortal,
+  ReactFlow,
+  Panel,
+} from "@xyflow/react";
 import groupBy from "object.groupby";
 
 import "reactflow/dist/style.css";
 import Skill, { SkillData } from "./Skill";
+import { Dropdown } from "flowbite-react";
+import { setIsLocalizingSubtypes } from "@/src/appSlice";
 
 const edgeType = "straight";
 
@@ -35,24 +46,30 @@ const nodeWidth = 300;
 const nodeHeight = 100;
 
 const SkillsView = React.memo(() => {
-  // const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
-  // const packsData = useAppSelector((state) => state.app.packsData);
+  const dispatch = useAppDispatch();
+  const localized: Record<string, string> = useContext(localizationContext);
+
+  const [isShowingHiddentSkills, setIsShowingHiddenSkills] = useState(true);
+  const [isShowingHiddenModifiersInsideSkills, setIsShowingHiddenModifiersInsideSkills] = useState(true);
+
+  const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
 
   const skillsData = useAppSelector((state) => state.app.skillsData);
   if (!skillsData) {
     console.log("skillsData missing!");
     return <></>;
   }
-  // const subtypeToSkills = skillsData.subtypeToSkills;
-  // const nodeLinks = skillsData.nodeLinks;
-  // const subtypes = Object.keys(subtypeToSkills);
-  const skills = skillsData.currentSkills; //subtypeToSkills["wh_main_emp_karl_franz"];
-  const subtype = skillsData.currentSubtype; //subtypeToSkills["wh_main_emp_karl_franz"];
+  let skills = skillsData.currentSkills;
+  const subtype = skillsData.currentSubtype;
 
   // return <></>;
   if (!skills) {
     console.log("SkillsView: no skills");
     return <></>;
+  }
+
+  if (!isShowingHiddentSkills) {
+    skills = skills.filter((skill) => !skill.isHiddentInUI);
   }
 
   // console.log("with group:", skills.filter((skill) => skill.group).length);
@@ -98,6 +115,7 @@ const SkillsView = React.memo(() => {
         effects: [],
         origIndent: "",
         origTier: "",
+        isHiddentInUI: false,
       },
       position: { y: lowest.x * nodeHeight - 10, x: lowest.y * nodeWidth - 10 },
       sourcePosition: Position.Right,
@@ -138,11 +156,6 @@ const SkillsView = React.memo(() => {
       skillIconBuffer = skillsData.icons[abilityIcon];
       isAbilityIcon = true;
     }
-    // for (const effect of skill.effects) {
-    //   if (effect.icon) {
-    //     effect.iconData = skillsData.icons[`ui\\campaign ui\\effect_bundles\\${effect.icon}`];
-    //   }
-    // }
 
     const node: Node<SkillData, "skill"> = {
       id: `${skill.id}`,
@@ -170,6 +183,7 @@ const SkillsView = React.memo(() => {
           }
           return { ...effect, iconData };
         }),
+        isHiddentInUI: skill.isHiddentInUI,
       } as SkillData,
       position,
       sourcePosition: Position.Right,
@@ -178,6 +192,10 @@ const SkillsView = React.memo(() => {
       type: "skill",
       style: { zIndex: "1" },
     };
+
+    if (!isShowingHiddenModifiersInsideSkills) {
+      node.data.effects = node.data.effects.filter((effect) => effect.priority != "0");
+    }
     skillNodes.push(node);
   });
 
@@ -189,6 +207,7 @@ const SkillsView = React.memo(() => {
   );
   for (const row of Object.keys(skillNodesByRow)) {
     const skillNodesRow = skillNodesByRow[row];
+
     skillNodesRow.sort((firstNode, secondNode) => firstNode.position.x - secondNode.position.x);
     let delta = 0;
     console.log("row:", row);
@@ -198,11 +217,9 @@ const SkillsView = React.memo(() => {
       console.log("current node:", node.data.label);
       if (node.data.isGrouping) {
         delta += 50;
-        console.log("INC");
       }
       if (!node.data.isGrouping && nodePrev.data.isGrouping) {
         delta += 50;
-        console.log("INC");
       }
       node.position.x += delta;
       if (!node.parentId) {
@@ -260,7 +277,7 @@ const SkillsView = React.memo(() => {
   // console.log("arrows:", arrows);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(deepClone(skillNodes));
-  const [edges, setEdges, onEdgesChange] = useEdgesState<typeof initialEdges[0]>(deepClone(initialEdges));
+  const [edges, setEdges, onEdgesChange] = useEdgesState<(typeof initialEdges)[0]>(deepClone(initialEdges));
 
   // const onConnect = useCallback(
   //   (params) =>
@@ -268,10 +285,11 @@ const SkillsView = React.memo(() => {
   //   []
   // );
 
+  // ReactFlow won't refresh when things like isShowingHiddenModifiersInsideSkills change, so force it
   useEffect(() => {
     setNodes(deepClone(skillNodes));
     setEdges(deepClone(initialEdges));
-  }, [skillsData]);
+  }, [skillsData, isShowingHiddenModifiersInsideSkills, isShowingHiddentSkills]);
 
   return (
     <div className="w-full h-full hideReactFlowHandles">
@@ -284,6 +302,64 @@ const SkillsView = React.memo(() => {
         nodeTypes={nodeTypes}
         proOptions={{ hideAttribution: true }}
       >
+        <Panel position="top-center">
+          <div className="text-cyan-500 text-xl opacity-80">WORK IN PROGRESS</div>
+        </Panel>
+        <Panel position="top-right">
+          <div className="text-slate-200 text-xl opacity-80">{subtype}</div>
+        </Panel>
+        <Panel position="top-left">
+          <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg">
+            <Dropdown dismissOnClick={false} label={localized.options}>
+              <Dropdown.Item>
+                <div className="flex items-center min-w-[18em]">
+                  <label htmlFor="isShowingHiddentSkillsCheckbox">
+                    <input
+                      id="isShowingHiddentSkillsCheckbox"
+                      type="checkbox"
+                      checked={!!isShowingHiddentSkills}
+                      onChange={() => {
+                        setIsShowingHiddenSkills(!isShowingHiddentSkills);
+                      }}
+                    ></input>
+                    <span className="ml-2">{localized.showHiddenSkills}</span>
+                  </label>
+                </div>
+              </Dropdown.Item>
+              <Dropdown.Item>
+                <div className="flex items-center">
+                  <label htmlFor="isShowingHiddenModifiersInsideSkillsCheckbox">
+                    <input
+                      id="isShowingHiddenModifiersInsideSkillsCheckbox"
+                      type="checkbox"
+                      checked={!!isShowingHiddenModifiersInsideSkills}
+                      onChange={() => {
+                        setIsShowingHiddenModifiersInsideSkills(!isShowingHiddenModifiersInsideSkills);
+                      }}
+                    ></input>
+                    <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
+                  </label>
+                </div>
+              </Dropdown.Item>
+              {/* localizing subtype is actually not that useful since we want names_ */}
+              {/* <Dropdown.Item>
+                <div className="flex items-center">
+                  <label htmlFor="isLocalizingSubtypesCheckbox">
+                    <input
+                      id="isLocalizingSubtypesCheckbox"
+                      type="checkbox"
+                      checked={!!isLocalizingSubtypes}
+                      onChange={() => {
+                        dispatch(setIsLocalizingSubtypes(!isLocalizingSubtypes));
+                      }}
+                    ></input>
+                    <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
+                  </label>
+                </div>
+              </Dropdown.Item> */}
+            </Dropdown>
+          </div>
+        </Panel>
         <ViewportPortal>
           <div className="fixed w-full h-full top-0 left-0">
             {arrows.map((arrow, i) => (

@@ -35,4 +35,17 @@ module.exports = {
       ],
     }),
   ],
+  output: {
+    pathinfo: false,
+  },
+  devServer: {
+    devMiddleware: {
+      writeToDisk: true,
+    },
+    hot: true,
+  },
+
+  cache: {
+    type: "filesystem",
+  },
 };

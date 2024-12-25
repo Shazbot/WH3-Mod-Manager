@@ -184,11 +184,13 @@ export const registerIpcMainListeners = (
       const key = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
       const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
       const isPositive = schemaFieldRow.find((sF) => sF.name == "is_positive_value_good")?.resolvedKeyValue;
-      if (key != undefined && icon != undefined && isPositive != undefined)
+      const priority = schemaFieldRow.find((sF) => sF.name == "priority")?.resolvedKeyValue;
+      if (key != undefined && icon != undefined && isPositive != undefined && priority != undefined)
         effects.push({
           key,
           icon,
           isPositive,
+          priority,
         });
     });
 
@@ -210,7 +212,8 @@ export const registerIpcMainListeners = (
         });
     });
 
-    const effectToEffectBonusValueIdsUnitSetsData: Record<string, typeof effectBonusValueIdsUnitSets[0]> = {};
+    const effectToEffectBonusValueIdsUnitSetsData: Record<string, (typeof effectBonusValueIdsUnitSets)[0]> =
+      {};
     for (const effectBonusValueIdsUnitSet of effectBonusValueIdsUnitSets) {
       effectToEffectBonusValueIdsUnitSetsData[effectBonusValueIdsUnitSet.effect] = effectBonusValueIdsUnitSet;
     }
@@ -297,22 +300,37 @@ export const registerIpcMainListeners = (
       }
     });
 
-    const nodeAndSkills: { node: string; skill: string; tier: string; indent: string }[] = [];
+    const nodeAndSkills: {
+      node: string;
+      skill: string;
+      tier: string;
+      indent: string;
+      visibleInUI: "0" | "1";
+    }[] = [];
     getTableRowData(packsTableData, "character_skill_nodes_tables", (schemaFieldRow) => {
       const node = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const skill = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
       const tier = schemaFieldRow.find((sF) => sF.name == "tier")?.resolvedKeyValue;
       const indent = schemaFieldRow.find((sF) => sF.name == "indent")?.resolvedKeyValue;
-      if (node && skill && tier != undefined && indent != undefined)
+      const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue;
+      if (
+        node &&
+        skill &&
+        tier != undefined &&
+        indent != undefined &&
+        visibleInUI != undefined &&
+        (visibleInUI == "0" || visibleInUI == "1")
+      )
         nodeAndSkills.push({
           node,
           skill,
           tier,
           indent,
+          visibleInUI,
         });
     });
 
-    const nodeToSkill: Record<string, typeof nodeAndSkills[0]> = {};
+    const nodeToSkill: Record<string, (typeof nodeAndSkills)[0]> = {};
     for (const nodeAndSkill of nodeAndSkills) {
       nodeToSkill[nodeAndSkill.node] = nodeAndSkill;
     }
@@ -352,10 +370,11 @@ export const registerIpcMainListeners = (
           effectKey,
           iconData: "",
           icon: effectsToEffectData[effectKey].icon,
+          priority: effectsToEffectData[effectKey].priority,
         });
     });
 
-    const skillsToEffects: Record<string, typeof skillsAndEffects[0][]> = {};
+    const skillsToEffects: Record<string, (typeof skillsAndEffects)[0][]> = {};
     for (const skillAndEffect of skillsAndEffects) {
       const key = skillAndEffect.key;
       if (!skillsToEffects[key]) skillsToEffects[key] = [];
@@ -471,7 +490,7 @@ export const registerIpcMainListeners = (
     // fs.writeFileSync("dumps/skills.json", JSON.stringify(skills));
     // fs.writeFileSync("dumps/skillsAndEffects.json", JSON.stringify(skillsAndEffects));
 
-    // fs.writeFileSync("dumps/subtypeToSet.json", JSON.stringify(subtypeToSet));
+    // fs.writeFileSync("dumps/subtypeToSet.json", JSON.stringify(subtypesToSet));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
     // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
     // fs.writeFileSync("dumps/skillsToEffects.json", JSON.stringify(skillsToEffects));
@@ -520,13 +539,20 @@ export const registerIpcMainListeners = (
 
     appendLocalizationsToSkills(kfSkills, getLoc);
 
+    const subtypes = Object.keys(subtypesToSet);
+
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
       currentSkills: kfSkills,
       nodeLinks,
       icons,
-      subtypes: Object.keys(subtypesToSet),
+      subtypes,
+      subtypesToLocalizedNames: subtypes.reduce((acc, curr) => {
+        const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
+        if (localized) acc[curr] = localized;
+        return acc;
+      }, {} as Record<string, string>),
     };
 
     if (appData.queuedSkillsData) {
@@ -558,13 +584,20 @@ export const registerIpcMainListeners = (
 
     appendLocalizationsToSkills(kfSkills, getLoc);
 
+    const subtypes = Object.keys(subtypesToSet);
+
     appData.queuedSkillsData = {
       // subtypeToSkills: { [subtype]: kfSkills },
       currentSubtype: subtype,
       currentSkills: kfSkills,
       nodeLinks,
       icons,
-      subtypes: Object.keys(subtypesToSet),
+      subtypes,
+      subtypesToLocalizedNames: subtypes.reduce((acc, curr) => {
+        const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
+        if (localized) acc[curr] = localized;
+        return acc;
+      }, {} as Record<string, string>),
     };
 
     if (appData.queuedSkillsData) {
@@ -1970,6 +2003,10 @@ export const registerIpcMainListeners = (
     console.log("SKILLS ARE NOW READY");
     appData.areSkillsReady = true;
 
+    setTimeout(() => {
+      windows.skillsWindow?.webContents.openDevTools({ mode: "right" });
+    }, 1000);
+
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {
       sendQueuedDataToSkills();
@@ -2665,7 +2702,7 @@ export const registerIpcMainListeners = (
         mainWindow?.webContents.send("handleLog", batData);
 
         await fs.writeFileSync(batPath, batData);
-        execFile(batPath);
+        execFile(batPath, { shell: true });
 
         appData.compatData = {
           packTableCollisions: [],
@@ -2677,6 +2714,7 @@ export const registerIpcMainListeners = (
           missingFileRefs: {},
         };
         appData.packsData = [];
+        appData.queuedSkillsData = undefined;
 
         if (startGameOptions.isClosedOnPlay) {
           await new Promise((resolve) => {

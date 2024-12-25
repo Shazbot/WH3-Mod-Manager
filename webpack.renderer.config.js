@@ -20,7 +20,12 @@ module.exports = {
   plugins: plugins,
   resolve: {
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css"],
-    fallback: { path: require.resolve("path-browserify") },
+    fallback: {
+      http: require.resolve("stream-http"),
+      os: require.resolve("os-browserify/browser"),
+      https: require.resolve("https-browserify"),
+      path: require.resolve("path-browserify"),
+    },
     alias: {
       "@": path.resolve(__dirname, "./"),
     },

@@ -6,7 +6,7 @@ import "handsontable/dist/handsontable.full.min.css";
 import { HotColumn, HotTable } from "@handsontable/react";
 import { textRenderer, checkboxRenderer } from "handsontable/renderers";
 import { registerAllModules } from "handsontable/registry";
-import { FloatingOverlay } from "@floating-ui/react-dom-interactions";
+import { FloatingOverlay } from "@floating-ui/react";
 import selectStyle from "../styles/selectStyle";
 import { ActionMeta, SingleValue } from "react-select";
 import { addCategory, removeCategory, selectCategory, setAreModsEnabled, toggleMod } from "../appSlice";
@@ -17,7 +17,7 @@ import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import ModDropdownOptions from "./ModDropdownOptions";
 import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
-import { Tooltip } from "../flowbite";
+import { Tooltip } from "flowbite-react";
 import localizationContext from "../localizationContext";
 
 type CategorySelectType = {
@@ -133,7 +133,7 @@ const BadgesRowRenderer = memo((props: any) => {
 let isShiftDown = false;
 let isControlDown = false;
 
-const Categories = React.memo(() => {
+const Categories = memo(() => {
   const dispatch = useAppDispatch();
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);

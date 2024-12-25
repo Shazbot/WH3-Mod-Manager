@@ -1,10 +1,10 @@
-import * as wh3Schema from "../schema/schema_wh3.json";
-import * as wh2Schema from "../schema/schema_wh2.json";
-import * as threeKingdomsSchema from "../schema/schema_3k.json";
-import * as attilaSchema from "../schema/schema_att.json";
-import * as troySchema from "../schema/schema_troy.json";
-import * as pharaohSchema from "../schema/schema_ph.json";
-import * as dynastiesSchema from "../schema/schema_ph_dyn.json";
+import wh3Schema from "../schema/schema_wh3.json";
+import wh2Schema from "../schema/schema_wh2.json";
+import threeKingdomsSchema from "../schema/schema_3k.json";
+import attilaSchema from "../schema/schema_att.json";
+import troySchema from "../schema/schema_troy.json";
+import pharaohSchema from "../schema/schema_ph.json";
+import dynastiesSchema from "../schema/schema_ph_dyn.json";
 import { SCHEMA_FIELD_TYPE, DBFieldName, DBFileName } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 

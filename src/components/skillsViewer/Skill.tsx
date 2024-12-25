@@ -19,6 +19,7 @@ export type SkillData = {
   id: string;
   origIndent: string;
   origTier: string;
+  isHiddentInUI: boolean;
 };
 const Skill = ({ data }: { data: SkillData }) => {
   const { skillBackground, skillIconBackground, skillIcon, label } = data;
