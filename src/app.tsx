@@ -47,7 +47,7 @@ const App = React.memo(() => {
         {(window.location.pathname.includes("/main_window") && (
           <div
             id="mod-rows-scroll"
-            className="m-auto pb-4 pt-11 height-without-topbar scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+            className="m-auto pb-4 pt-11 height-without-topbar overflow-y-scroll scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
           >
             <Onboarding></Onboarding>
             <LeftSidebar />
