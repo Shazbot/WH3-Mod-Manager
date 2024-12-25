@@ -2003,9 +2003,11 @@ export const registerIpcMainListeners = (
     console.log("SKILLS ARE NOW READY");
     appData.areSkillsReady = true;
 
-    setTimeout(() => {
-      windows.skillsWindow?.webContents.openDevTools({ mode: "right" });
-    }, 1000);
+    if (isDev) {
+      setTimeout(() => {
+        windows.skillsWindow?.webContents.openDevTools({ mode: "right" });
+      }, 1000);
+    }
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {
