@@ -1,6 +1,6 @@
 import Creatable from "react-select/creatable";
 import Select, { ActionMeta, SingleValue } from "react-select";
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
   addPreset,
@@ -29,7 +29,7 @@ type OptionType = {
   label: string;
 };
 
-const Sidebar = React.memo(() => {
+const Sidebar = memo(() => {
   const dispatch = useAppDispatch();
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
@@ -303,7 +303,7 @@ const Sidebar = React.memo(() => {
         setIsOpen={setIsShowingRequiredMods}
         modDependencies={missingModDependencies}
       />
-      <div className="fixed h-[90vh]">
+      <div className="fixed h-[90vh] z-[40]">
         <div id="presetSection">
           <Tooltip
             placement="left"
