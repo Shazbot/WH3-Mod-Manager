@@ -107,6 +107,10 @@ const Sidebar = React.memo(() => {
     })
   );
 
+  options.sort((firstOption, secondOption) => {
+    return firstOption.label.localeCompare(secondOption.label);
+  });
+
   const newPresetMade = (name: string) => {
     dispatch(addPreset({ name: name, mods: mods }));
     console.log(name);
