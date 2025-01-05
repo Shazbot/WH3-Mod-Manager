@@ -4,13 +4,15 @@ import React, { memo, useContext } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setIsCreateSteamCollectionOpen } from "../appSlice";
 import localizationContext from "../localizationContext";
+import { gameToSteamId } from "../supportedGames";
 
 const CreateSteamCollection = memo(() => {
   const dispatch = useAppDispatch();
   const isOpen = useAppSelector((state) => state.app.isCreateSteamCollectionOpen);
+  const currentGame = useAppSelector((state) => state.app.currentGame);
 
   const onGoToSteamCreateCollectionPageClicked = () => {
-    window.open(`https://steamcommunity.com/workshop/editcollection/?appid=1142710`);
+    window.open(`https://steamcommunity.com/workshop/editcollection/?appid=${gameToSteamId[currentGame]}`);
   };
 
   const presetMods = useAppSelector((state) => state.app.currentPreset.mods);
