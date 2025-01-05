@@ -174,8 +174,8 @@ if (!gotTheLock) {
       const downloadsFolder = nodePath.join(contentFolder, "..", "..", "downloads");
       console.log("downloads folder:", downloadsFolder);
 
-      if (globSync("*1142710*", { cwd: downloadsFolder }).length != 0) {
-        console.log("something for wh3 is being downloaded!");
+      if (globSync(`*${appData.currentGame}*`, { cwd: downloadsFolder }).length != 0) {
+        console.log("something for the current game is being downloaded!");
         return;
       }
 

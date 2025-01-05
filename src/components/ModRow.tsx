@@ -1,6 +1,6 @@
 import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { memo, useCallback, useContext } from "react";
+import React, { CSSProperties, memo, useCallback, useContext, useEffect, useMemo } from "react";
 import { useAppSelector } from "../hooks";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
@@ -35,6 +35,8 @@ type ModRowProps = {
   sortingType: SortingType;
   currentTab: MainWindowTab;
   isLast: boolean;
+  style: CSSProperties;
+  gridClass: string;
 };
 
 const domParser = new DOMParser();
@@ -56,6 +58,7 @@ const ModRow = memo(
   ({
     index,
     mod,
+    style,
     onRowHoverStart,
     onRowHoverEnd,
     onDrop,
@@ -75,6 +78,7 @@ const ModRow = memo(
     currentTab,
     onCustomizeModClicked,
     onCustomizeModRightClick,
+    gridClass,
   }: ModRowProps) => {
     const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
     const isDev = useAppSelector((state) => state.app.isDev);
@@ -103,18 +107,21 @@ const ModRow = memo(
     //   });
     // }, []);
 
-    const timeColumnValue =
-      (isSubbedTimeSort(sortingType) &&
-        mod.subbedTime != null &&
-        mod.subbedTime != -1 &&
-        formatLastChanged(mod.subbedTime)) ||
-      (mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
-      (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
-      "";
+    const timeColumnValue = useMemo(
+      () =>
+        (isSubbedTimeSort(sortingType) &&
+          mod.subbedTime != null &&
+          mod.subbedTime != -1 &&
+          formatLastChanged(mod.subbedTime)) ||
+        (mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
+        (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
+        "",
+      [sortingType, mod.lastChanged, mod.lastChangedLocal, mod.subbedTime]
+    );
 
     return (
       <div
-        className="row relative"
+        className={`relative grid row-div-paddings row-hover-highlight ${gridClass}`}
         key={mod.name}
         onMouseEnter={(e) => onRowHoverStart(e)}
         onMouseLeave={(e) => onRowHoverEnd(e)}
@@ -125,6 +132,7 @@ const ModRow = memo(
         onDragLeave={(e) => onDragLeave(e)}
         id={mod.name}
         data-load-order={mod.loadOrder}
+        style={style}
       >
         <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
@@ -188,10 +196,12 @@ const ModRow = memo(
           className={"flex place-items-center grid-area-autohide " + (areThumbnailsEnabled ? "" : "hidden")}
         >
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
-            <img
-              className="max-w-[6rem] aspect-square"
-              src={((isDev || mod.imgPath === "") && require("../assets/modThumbnail.png")) || mod.imgPath}
-            ></img>
+            {areThumbnailsEnabled && (
+              <img
+                className="max-w-[6rem] aspect-square"
+                src={((isDev || mod.imgPath === "") && require("../assets/modThumbnail.png")) || mod.imgPath}
+              ></img>
+            )}
           </label>
         </div>
         <div className="flex place-items-center w-min-[0px]" onContextMenu={(e) => onModRightClick(e, mod)}>
@@ -292,7 +302,11 @@ const ModRow = memo(
           className="flex place-items-center grid-area-autohide"
           onContextMenu={(e) => onModRightClick(e, mod)}
         >
-          <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
+          <label
+            style={{ height: areThumbnailsEnabled ? "28px" : "24px" }}
+            className="cursor-pointer"
+            htmlFor={mod.workshopId + "enabled"}
+          >
             {timeColumnValue}
           </label>
         </div>
