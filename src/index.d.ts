@@ -140,8 +140,6 @@ declare global {
     isLocalizingSubtypes: boolean;
   }
 
-  type;
-
   type AppStateToWrite = Pick<
     AppState,
     | "alwaysEnabledMods"

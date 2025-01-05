@@ -1,18 +1,21 @@
-import React from "react";
+import React, { RefObject } from "react";
 import { useAppSelector } from "../hooks";
 import Sidebar from "./Sidebar";
 import ModRows from "./ModRows";
 import Categories from "./Categories";
 import ModTagPicker from "./ModTagPicker";
 
-const Main = () => {
+type MainProps = {
+  scrollElement: RefObject<HTMLDivElement>;
+};
+const Main = (props: MainProps) => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
   return (
     <>
       {(currentTab == "categories" && <Categories></Categories>) || (
         <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">
           <div className="col-span-10">
-            <ModRows />
+            <ModRows scrollElement={props.scrollElement} />
           </div>
           <div className="ml-3 col-span-2 relative">
             <Sidebar />

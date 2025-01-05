@@ -9,7 +9,7 @@ import { Toasts } from "./components/Toasts";
 import ModsViewer from "./components/viewer/ModsViewer";
 import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
-import { StrictMode } from "react";
+import { StrictMode, useRef } from "react";
 import LocalizationContext, { staticTextIds } from "./localizationContext";
 import { useAppSelector } from "./hooks";
 import SkillsViewer from "./components/skillsViewer/SkillsViewer";
@@ -35,6 +35,8 @@ const App = React.memo(() => {
       setLocalization(translated);
     });
 
+  const scrollElement = useRef<HTMLDivElement>(null);
+
   return (
     <LocalizationContext.Provider value={localization}>
       <ErrorBoundary
@@ -46,12 +48,13 @@ const App = React.memo(() => {
         <TopBar />
         {(window.location.pathname.includes("/main_window") && (
           <div
+            ref={scrollElement}
             id="mod-rows-scroll"
             className="m-auto pb-4 pt-11 height-without-topbar overflow-y-scroll scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
           >
             <Onboarding></Onboarding>
             <LeftSidebar />
-            <Main />
+            <Main scrollElement={scrollElement} />
           </div>
         )) ||
           (window.location.pathname.includes("/viewer") && (
