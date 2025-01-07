@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import type { ComponentProps, FC, PropsWithChildren } from "react";
+import type { ComponentProps, FC, HTMLProps, PropsWithChildren } from "react";
 import React from "react";
 import { excludeClassName } from "../../helpers/exclude";
 import { useTheme } from "../Flowbite/ThemeContext";
@@ -17,6 +17,10 @@ export const ModalBody: FC<ModalBodyProps> = ({ children, ...props }) => {
       className={classNames(theme.base, {
         [theme.popup]: popup,
       })}
+      style={{
+        maxHeight: "calc(100% - 6rem)",
+        ...(theirProps as HTMLProps<'div'>).style
+      }}
       {...theirProps}
     >
       {children}
