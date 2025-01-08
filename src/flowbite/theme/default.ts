@@ -498,15 +498,15 @@ const theme: FlowbiteTheme = {
       inner: "relative rounded-lg bg-white shadow dark:bg-gray-700",
     },
     body: {
-      base: "p-6",
+      base: "p-6 overflow-y-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700",
       popup: "pt-0",
     },
     header: {
-      base: "flex items-start justify-between rounded-t dark:border-gray-600 border-b p-5",
+      base: "flex items-center justify-between rounded-t dark:border-gray-600 border-b p-5",
       popup: "!p-2 !border-b-0",
-      title: "text-xl font-medium text-gray-900 dark:text-white",
+      title: "text-xl font-medium text-gray-900 dark:text-white w-full",
       close: {
-        base: "ml-auto inline-flex items-center rounded-lg bg-transparent p-1.5 text-sm text-gray-400 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-600 dark:hover:text-white",
+        base: "ml-4 inline-flex items-center rounded-lg bg-transparent p-1.5 text-sm text-gray-400 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-600 dark:hover:text-white",
         icon: "h-5 w-5",
       },
     },
