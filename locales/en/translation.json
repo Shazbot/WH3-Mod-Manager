@@ -397,5 +397,6 @@
   "options": "Options",
   "relaunchingGame": "Auto-relaunching game (click to cancel)...",
   "queueUpRelaunchingGame": "Click to queue up relaunching the game once the game is closed.",
-  "gameCurrentlyRunning": "Game is currently running!"
+  "gameCurrentlyRunning": "Game is currently running!",
+  "searchSaves": "Search Saved Files"
 }
