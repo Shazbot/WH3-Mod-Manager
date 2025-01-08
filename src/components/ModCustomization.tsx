@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Modal } from "../flowbite/components/Modal/index";
 import { Spinner, Tabs } from "../flowbite";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -8,7 +8,7 @@ import { selectDBTable, setModBeingCustomized } from "../appSlice";
 import getPackTableData, { getLocsTree } from "../utility/frontend/packDataHandling";
 import ModCustomizationRows, { ModCustomizationSorts } from "./ModCustomizationRows";
 
-const ModCustomization = React.memo(() => {
+const ModCustomization = memo(() => {
   const dispatch = useAppDispatch();
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
@@ -25,8 +25,8 @@ const ModCustomization = React.memo(() => {
     dispatch(setModBeingCustomized(undefined));
   }, []);
 
-  const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(false);
-  const [modsMergeSort, setModsMergeSort] = React.useState<ModCustomizationSorts>("UnitKey");
+  const [isSpinnerClosed, setIsSpinnerClosed] = useState(false);
+  const [modsMergeSort, setModsMergeSort] = useState<ModCustomizationSorts>("UnitKey");
 
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);

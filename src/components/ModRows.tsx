@@ -138,7 +138,6 @@ const ModRows = memo((props: ModRowsProps) => {
   const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
   const isDev = useAppSelector((state) => state.app.isDev);
 
-  const [value, setValue] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isCustomizeModOpen, setIsCustomizeModOpen] = useState<boolean>(false);
   // const [modBeingCustomized, setModBeingCustomized] = useState<Mod>();
