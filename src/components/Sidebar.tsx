@@ -55,6 +55,8 @@ const Sidebar = memo(() => {
   const [releaseNotesURL, setReleaseNotesURL] = useState<string>("");
   const [isShowingSavedGames, setIsShowingSavedGames] = useState<boolean>(false);
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
+  const [isWaitingForRelaunch, setIsWaitingForRelaunch] = useState<boolean>(false);
+  const [previousIsWH3Running, setPreviousIsWH3Running] = useState<boolean>(isWH3Running);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -66,16 +68,27 @@ const Sidebar = memo(() => {
 
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  const playGameClicked = async () => {
+  const playGameClicked = (forcedDelayTime?: number) => {
     console.log("playGameClicked: play game clicked");
-    if (removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)) {
+
+    if (isWH3Running) {
+      setIsWaitingForRelaunch(!isWaitingForRelaunch);
+      console.log("playGameClicked: waiting for relaunch");
+      return;
+    }
+    if (
+      forcedDelayTime ||
+      removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)
+    ) {
       console.log(
-        `playGameClicked: An enabled mod was recently removed. Waiting 3.5 seconds before starting.`,
+        `playGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
+          forcedDelayTime || "3.5"
+        } seconds before starting.`,
         Date.now()
       );
       if (!playDelayTimeoutId.current) {
         playDelayTimeoutId.current = setTimeout(() => {
-          console.log("playGameClicked: triggering delayed plya game", Date.now());
+          console.log("playGameClicked: triggering delayed play game", Date.now());
           playDelayTimeoutId.current = undefined;
           dispatch(createOnGameStartPreset());
           window.api?.startGame(mods, areModsInOrder, {
@@ -86,7 +99,7 @@ const Sidebar = memo(() => {
             isClosedOnPlay,
             packDataOverwrites,
           });
-        }, 3500);
+        }, forcedDelayTime || 3500);
       }
       return;
     }
@@ -100,6 +113,15 @@ const Sidebar = memo(() => {
       packDataOverwrites,
     });
   };
+
+  if (previousIsWH3Running != isWH3Running) {
+    setPreviousIsWH3Running(isWH3Running);
+    if (isWaitingForRelaunch && !isWH3Running) {
+      console.log("calling PLAYGAMECLICKED", previousIsWH3Running, isWH3Running, isWaitingForRelaunch);
+      setIsWaitingForRelaunch(false);
+      playGameClicked(1500);
+    }
+  }
 
   const options: OptionType[] = useAppSelector((state) =>
     state.app.presets.map((preset) => {
@@ -524,17 +546,25 @@ const Sidebar = memo(() => {
           <div className="flex flex-col items-center">
             <button
               id="playGame"
-              disabled={isWH3Running}
               className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto ${
-                (isWH3Running &&
-                  "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+                (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") ||
                 ""
               }`}
-              onClick={async () => await playGameClicked()}
+              onClick={() => playGameClicked()}
             >
               {(isWH3Running && (
-                <div className="make-tooltip-w-full">
-                  <Tooltip placement="left" content={"Game is currently running!"}>
+                <div className="make-tooltip-w-full flex">
+                  <Tooltip
+                    placement="left"
+                    content={
+                      <div>
+                        <p>{localized.gameCurrentlyRunning}</p>
+                        {(isWaitingForRelaunch && <p>{localized.relaunchingGame}</p>) || (
+                          <p>{localized.queueUpRelaunchingGame}</p>
+                        )}
+                      </div>
+                    }
+                  >
                     <div className="flex justify-center items-center gap-[0.4rem]">
                       <img
                         style={{ filter: "drop-shadow(0px 0px 7.5px black)" }}
@@ -543,6 +573,9 @@ const Sidebar = memo(() => {
                       />
                     </div>
                   </Tooltip>
+                  {isWaitingForRelaunch && (
+                    <div className="dots-loader h-3 w-3 self-center mt-2 opacity-90"></div>
+                  )}
                 </div>
               )) || (
                 <div className="flex justify-center items-center gap-[0.4rem]">
@@ -551,7 +584,9 @@ const Sidebar = memo(() => {
                     className="aspect-square w-10"
                     src={require(`../assets/game_icons/${currentGame}.png`)}
                   />
-                  <span className="playButtonText uppercase">{localized.play}</span>
+                  {((isWaitingForRelaunch || playDelayTimeoutId.current) && (
+                    <div className="dots-loader h-3 w-3 self-center mt-2 opacity-90"></div>
+                  )) || <span className="playButtonText uppercase">{localized.play}</span>}
                 </div>
               )}
             </button>
