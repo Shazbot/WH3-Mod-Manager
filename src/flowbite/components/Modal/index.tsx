@@ -1,7 +1,6 @@
 import classNames from "classnames";
 import type { ComponentProps, FC, PropsWithChildren } from "react";
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { excludeClassName } from "../../helpers/exclude";
 import windowExists from "../../helpers/window-exists";
@@ -77,9 +76,7 @@ const ModalComponent: FC<ModalProps> = ({
               <div
                 className={classNames(
                   theme.content.inner,
-                  "overflow-auto",
                   "!h-full",
-                  "scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
                 )}
               >
                 {children}
