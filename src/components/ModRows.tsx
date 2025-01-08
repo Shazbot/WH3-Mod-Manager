@@ -622,8 +622,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const cache = useMemo(
     () =>
       new CellMeasurerCache({
-        defaultWidth: 100,
-        minWidth: 75,
+        fixedWidth: true,
         defaultHeight: 32,
         minHeight: 32,
       }),
@@ -646,39 +645,42 @@ const ModRows = memo((props: ModRowsProps) => {
       const mod = visibleMods[i];
       return mod ? (
         <CellMeasurer cache={cache} index={index} key={key} parent={parent}>
-          <ModRow
-            key={key}
-            {...{
-              style,
-              index: i,
-              gridClass: getGridClass(),
-              mod,
-              onRowHoverStart,
-              onRowHoverEnd,
-              onDrop: isCurrentTabEnabledMods ? onDropMemoized : emptyFunc,
-              onDrag,
-              onDragStart,
-              onDragLeave,
-              onDragEnter,
-              onDragOver,
-              onDragEnd,
-              onModToggled,
-              onModRightClick,
-              onCustomizeModClicked,
-              onCustomizeModRightClick,
-              onRemoveModOrder,
-              sortingType,
-              currentTab,
-              isLast: visibleMods.length == i + 1,
-              isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
-              isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
-                (mergeMod.mergedModsData as MergedModsData[]).some(
-                  (mergeModData) => mergeModData.path == mod.path
-                )
-              ),
-              loadOrder: orderedMods.indexOf(mod) + 1,
-            }}
-          ></ModRow>
+          {({ registerChild }) => (
+            <ModRow
+              key={key}
+              {...{
+                style,
+                index: i,
+                gridClass: getGridClass(),
+                mod,
+                onRowHoverStart,
+                onRowHoverEnd,
+                onDrop: isCurrentTabEnabledMods ? onDropMemoized : emptyFunc,
+                onDrag,
+                onDragStart,
+                onDragLeave,
+                onDragEnter,
+                onDragOver,
+                onDragEnd,
+                onModToggled,
+                onModRightClick,
+                onCustomizeModClicked,
+                onCustomizeModRightClick,
+                onRemoveModOrder,
+                sortingType,
+                currentTab,
+                isLast: visibleMods.length == i + 1,
+                isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
+                isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
+                  (mergeMod.mergedModsData as MergedModsData[]).some(
+                    (mergeModData) => mergeModData.path == mod.path
+                  )
+                ),
+                loadOrder: orderedMods.indexOf(mod) + 1,
+                registerChild,
+              }}
+            ></ModRow>
+          )}
         </CellMeasurer>
       ) : (
         <></>
@@ -845,27 +847,30 @@ const ModRows = memo((props: ModRowsProps) => {
 
           {currentTab == "mods" && props.scrollElement.current && (
             <WindowScroller scrollElement={props.scrollElement.current as Element}>
-              {({ height, isScrolling, onChildScroll, scrollTop }) => (
+              {({ height, isScrolling, onChildScroll, scrollTop, registerChild }) => (
                 <AutoSizer disableHeight>
                   {({ width }) => (
-                    <List
-                      autoHeight
-                      height={height}
-                      width={width}
-                      scrollTop={scrollTop}
-                      isScrolling={isScrolling}
-                      onScroll={onChildScroll}
-                      // rowHeight={areThumbnailsEnabled ? 112 - 8 : 32}
-                      rowHeight={({ index }: { index: number }) =>
-                        areThumbnailsEnabled
-                          ? Math.max(112 - 8, cache.rowHeight({ index }))
-                          : cache.rowHeight({ index })
-                      }
-                      rowRenderer={Row}
-                      rowCount={visibleMods.length}
-                      overscanRowCount={areThumbnailsEnabled ? 6 : 12}
-                      deferredMeasurementCache={cache}
-                    />
+                    // @ts-expect-error react-virtualized is outdated and registerChild complains about wrong type
+                    <div ref={registerChild}>
+                      <List
+                        autoHeight
+                        height={height || 500}
+                        width={width}
+                        scrollTop={scrollTop}
+                        isScrolling={isScrolling}
+                        onScroll={onChildScroll}
+                        // rowHeight={areThumbnailsEnabled ? 112 - 8 : 32}
+                        rowHeight={({ index }: { index: number }) =>
+                          areThumbnailsEnabled
+                            ? Math.max(112 - 8, cache.rowHeight({ index }))
+                            : cache.rowHeight({ index })
+                        }
+                        rowRenderer={Row}
+                        rowCount={visibleMods.length}
+                        overscanRowCount={areThumbnailsEnabled ? 6 : 12}
+                        deferredMeasurementCache={cache}
+                      />
+                    </div>
                   )}
                 </AutoSizer>
               )}
@@ -904,6 +909,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   loadOrder: orderedMods.indexOf(mod) + 1,
                   style: {},
                   gridClass: "row",
+                  registerChild: emptyFunc,
                 }}
               ></ModRow>
             ))}

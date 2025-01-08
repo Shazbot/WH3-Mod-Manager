@@ -67,7 +67,6 @@ if (isSkills) window.api?.skillsAreReady();
 const originalConsoleLog = console.log.bind(console);
 console.log = (...args) => {
   log.log(...args);
-  originalConsoleLog(`isMain: ${isMain}, isViewer: ${isViewer}, isSkills: ${isSkills}`);
   originalConsoleLog(...args);
 };
 
