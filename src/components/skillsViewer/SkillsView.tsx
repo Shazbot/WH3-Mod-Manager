@@ -32,15 +32,13 @@ let skillLevelImg = "";
 let tooltipFrame = "";
 let skillLevelLitIcon = "";
 
-// if (process.env.STORYBOOK) {
-skillIconBackground = require("../../../dumps/skins/default/skills_tab_ornament.png");
-skillBackground = require("../../../dumps/skins/wh3_main_theme_blue/tech_skills_tab_active.png");
-skillIcon = require("../../../dumps/img/character_magic.png");
-arrowImg = require("../../../dumps/skins/default/parchment_divider_arrow.png");
-skillLevelImg = require("../../../dumps/skins/default/skills_tab_level_off.png");
-tooltipFrame = require("../../../dumps/skins/default/tooltip_frame.png");
-skillLevelLitIcon = require("../../../dumps/skins/default/skills_tab_level_lit.png");
-// }
+skillIconBackground = require("../../assets/skills/skills_tab_ornament.png");
+skillBackground = require("../../assets/skills//tech_skills_tab_active.png");
+skillIcon = require("../../assets/skills//character_magic.png");
+arrowImg = require("../../assets/skills//parchment_divider_arrow.png");
+skillLevelImg = require("../../assets/skills//skills_tab_level_off.png");
+tooltipFrame = require("../../assets/skills//tooltip_frame.png");
+skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 
 const nodeWidth = 300;
 const nodeHeight = 100;
