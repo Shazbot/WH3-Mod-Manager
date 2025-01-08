@@ -9,6 +9,7 @@ import { formatDistanceToNow } from "date-fns";
 import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
 import { GoGear } from "react-icons/go";
+import { CellMeasurerChildProps } from "react-virtualized/dist/es/CellMeasurer";
 
 const FontAwesomeIconMemo = memo(FontAwesomeIcon);
 
@@ -37,6 +38,7 @@ type ModRowProps = {
   isLast: boolean;
   style: CSSProperties;
   gridClass: string;
+  registerChild: CellMeasurerChildProps["registerChild"];
 };
 
 const domParser = new DOMParser();
@@ -79,6 +81,7 @@ const ModRow = memo(
     onCustomizeModClicked,
     onCustomizeModRightClick,
     gridClass,
+    registerChild,
   }: ModRowProps) => {
     const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
     const isDev = useAppSelector((state) => state.app.isDev);
@@ -133,6 +136,7 @@ const ModRow = memo(
         id={mod.name}
         data-load-order={mod.loadOrder}
         style={style}
+        ref={registerChild}
       >
         <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
