@@ -398,5 +398,12 @@
   "relaunchingGame": "Auto-relaunching game (click to cancel)...",
   "queueUpRelaunchingGame": "Click to queue up relaunching the game once the game is closed.",
   "gameCurrentlyRunning": "Game is currently running!",
-  "searchSaves": "Search Saved Files"
+  "searchSaves": "Search Saved Files",
+  "searchInsidePacks": "Search Inside Packs",
+  "searchInsidePacksMsg1": "Search for text inside enabled packs.",
+  "searchInsidePacksMsg2": "Searches for both ascii (DB keys) and unicode encoded (locs) text. Can take a lot of time with big mods or a lot of mods.",
+  "searchInsidePacksMsg3": "Used when you have a DB key from the ingame context viewer, or a piece of ingame text or a script file name and you want to know which mod it's from.",
+  "search": "Search",
+  "searchInsidePacksResults": "Packs That Contain Text:",
+  "searchInsidePacksDescription": "Search inside enabled mods for text."
 }

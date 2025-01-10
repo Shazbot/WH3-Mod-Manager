@@ -182,6 +182,10 @@ const api = {
     ipcRenderer.on("setCurrentGameNaive", callback),
 
   getSkillsForSubtype: (subtype: string) => ipcRenderer.send("getSkillsForSubtype", subtype),
+  searchInsidePacks: (searchTerm: string, mods: Mod[]) =>
+    ipcRenderer.send("searchInsidePacks", searchTerm, mods),
+  setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
+    ipcRenderer.on("setPackSearchResults", callback),
 };
 
 export type api = typeof api;
