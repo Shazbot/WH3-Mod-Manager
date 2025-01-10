@@ -1,5 +1,5 @@
 import { Modal } from "../flowbite";
-import React, { memo, useContext, useEffect, useRef } from "react";
+import React, { memo, useContext, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { addToast, setIsImportSteamCollectionOpen } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -8,13 +8,13 @@ const ImportSteamCollection = memo(() => {
   const dispatch = useAppDispatch();
   const isOpen = useAppSelector((state) => state.app.isImportSteamCollectionOpen);
   const presets = useAppSelector((state) => state.app.presets);
-  const [areNonCollectionModsToBeDisabled, setAreNonCollectionModsToBeDisabled] = React.useState(false);
-  const [doImportWithLoadOrder, setDoImportWithLoadOrder] = React.useState(false);
-  const [doPresetImportWithLoadOrder, setDoPresetImportWithLoadOrder] = React.useState(false);
-  const [presetName, setPresetName] = React.useState("");
-  const [doImmediateImport, setDoImmediateImport] = React.useState(false);
-  const [doPresetImport, setDoPresetImport] = React.useState(false);
-  const [steamCollectionURL, setSteamCollectionURL] = React.useState("");
+  const [areNonCollectionModsToBeDisabled, setAreNonCollectionModsToBeDisabled] = useState(false);
+  const [doImportWithLoadOrder, setDoImportWithLoadOrder] = useState(false);
+  const [doPresetImportWithLoadOrder, setDoPresetImportWithLoadOrder] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [doImmediateImport, setDoImmediateImport] = useState(false);
+  const [doPresetImport, setDoPresetImport] = useState(false);
+  const [steamCollectionURL, setSteamCollectionURL] = useState("");
 
   const presetAlreadyExists = presets.some((preset) => preset.name == presetName);
 

@@ -687,6 +687,9 @@ const appSlice = createSlice({
     ) => {
       state.packCollisionsCheckProgress = action.payload;
     },
+    setPackSearchResults: (state: AppState, action: PayloadAction<string[] | undefined>) => {
+      state.packSearchResults = action.payload;
+    },
     setAppFolderPaths: (state: AppState, action: PayloadAction<GameFolderPaths>) => {
       state.appFolderPaths = action.payload;
       state.isSetAppFolderPathsDone = true;
@@ -1137,6 +1140,9 @@ const appSlice = createSlice({
     setIsImportSteamCollectionOpen: (state: AppState, action: PayloadAction<boolean>) => {
       state.isImportSteamCollectionOpen = action.payload;
     },
+    setIsPackSearcherOpen: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isPackSearcherOpen = action.payload;
+    },
     setIsHelpOpen: (state: AppState, action: PayloadAction<boolean>) => {
       state.isHelpOpen = action.payload;
     },
@@ -1270,6 +1276,7 @@ export const {
   setAreModsEnabled,
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,
+  setIsPackSearcherOpen,
   setIsHelpOpen,
   setToastDismissed,
   toggleIsCompatCheckingVanillaPacks,
@@ -1289,6 +1296,7 @@ export const {
   setIsModTagPickerOpen,
   setTagForMod,
   setSkillsData,
+  setPackSearchResults,
   setIsLocalizingSubtypes,
 } = appSlice.actions;
 

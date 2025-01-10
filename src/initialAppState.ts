@@ -54,6 +54,7 @@ const initialState = {
   currentTab: "mods",
   isCreateSteamCollectionOpen: false,
   isImportSteamCollectionOpen: false,
+  isPackSearcherOpen: false,
   isWH3Running: false,
   toasts: [],
   removedModsCategories: {},

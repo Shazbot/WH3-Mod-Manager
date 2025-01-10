@@ -39,6 +39,7 @@ import {
   setCurrentlyReadingMod,
   setLastModThatWasRead,
   setCurrentGameNaive,
+  setPackSearchResults,
 } from "./appSlice";
 import store from "./store";
 import { PackCollisions } from "./packFileTypes";
@@ -349,6 +350,11 @@ window.api?.setPackCollisions((event, packCollisions: PackCollisions) => {
 window.api?.setPackCollisionsCheckProgress((event, progressData: PackCollisionsCheckProgressData) => {
   // console.log("INVOKED: setPackCollisionsCheckProgress");
   store.dispatch(setPackCollisionsCheckProgress(progressData));
+});
+
+window.api?.setPackSearchResults((event, packNames) => {
+  console.log("setPackSearchResults: ", packNames);
+  store.dispatch(setPackSearchResults(packNames));
 });
 
 if (isMain) {

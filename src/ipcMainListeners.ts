@@ -2448,6 +2448,54 @@ export const registerIpcMainListeners = (
     clipboard.writeText(scriptWithIDs);
   });
 
+  ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
+    exec(
+      `powershell -Command "$strarry = @(${mods
+        .map((mod) => `'${mod.path}'`)
+        .join(
+          ","
+        )}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
+      (error, stdout) => {
+        if (error) {
+          console.error(`exec error: ${error}`);
+          mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
+          return;
+        }
+
+        const packNames = stdout
+          .split("\n")
+          .map((line) => line.split(".pack:")[0])
+          .filter((packName) => packName != "");
+
+        // Then search again for unicode text.
+        exec(
+          `powershell -Command "$strarry = @(${mods
+            .map((mod) => `'${mod.path}'`)
+            .join(
+              ","
+            )}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
+          (error, stdout) => {
+            if (error) {
+              console.error(`exec error: ${error}`);
+              mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
+              return;
+            }
+
+            const packNamesUnicodeSearch = stdout
+              .split("\n")
+              .map((line) => line.split(".pack:")[0])
+              .filter((packName) => packName != "");
+
+            mainWindow?.webContents.send(
+              "setPackSearchResults",
+              Array.from(new Set([...packNames, ...packNamesUnicodeSearch]))
+            );
+          }
+        );
+      }
+    );
+  });
+
   const readTablesFromMods = async (mods: Mod[], tablesToRead: string[]) => {
     for (const mod of mods) {
       const existingPack = appData.packsData.find((pack) => pack.path == mod.path);

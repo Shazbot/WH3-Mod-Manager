@@ -1,5 +1,5 @@
 import Select, { ActionMeta, SingleValue, SingleValueProps, components } from "react-select";
-import React, { memo, useCallback, useContext, useState } from "react";
+import React, { memo, useCallback, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
@@ -14,6 +14,7 @@ import {
   setDataModsToEnableByName,
   createBisectedModListPresets,
   toggleIsCompatCheckingVanillaPacks,
+  setIsPackSearcherOpen,
 } from "../appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -26,10 +27,11 @@ import GamePathsSetup from "./GamePathsSetup";
 import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
 import ImportSteamCollection from "./ImportSteamCollection";
-import localizationContext from "../localizationContext";
+import { useLocalizations } from "../localizationContext";
 import ISO6391 from "iso-639-1";
 import { gameToSupportedGameOptions, supportedGames } from "../supportedGames";
 import store from "../store";
+import PackSearcher from "./PackSearcher";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -75,7 +77,7 @@ const OptionsDrawer = memo(() => {
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const currentMods = useAppSelector((state) => state.app.currentPreset.mods);
 
-  const localized: Record<string, string> = useContext(localizationContext);
+  const localized = useLocalizations();
 
   const enabledModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -111,7 +113,7 @@ const OptionsDrawer = memo(() => {
     (gameKey) => ({ value: gameKey, label: localized[gameKey] } as OptionType)
   );
 
-  const [areOptionsOpen, setAreOptionsOpen] = React.useState(false);
+  const [areOptionsOpen, setAreOptionsOpen] = useState(false);
 
   const forceDownloadMods = useCallback((contentModsWorshopIds: string[]) => {
     window.api?.forceDownloadMods(contentModsWorshopIds);
@@ -203,6 +205,7 @@ const OptionsDrawer = memo(() => {
       <ShareMods isOpen={isShowingShareMods} setIsOpen={setIsShowingShareMods} />
       <CreateSteamCollection />
       <ImportSteamCollection />
+      <PackSearcher />
 
       <div className="text-center">
         <button
@@ -620,6 +623,19 @@ const OptionsDrawer = memo(() => {
                 onClick={() => bisectModList(true)}
               >
                 <span className="uppercase">{localized.bisectModListRandomly}</span>
+              </button>
+            </div>
+
+            <h6 className="mt-10">{localized.searchInsidePacks}</h6>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {localized.searchInsidePacksDescription}
+            </p>
+            <div className="flex mt-2 w-full">
+              <button
+                className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                onClick={() => dispatch(setIsPackSearcherOpen(true))}
+              >
+                <span className="uppercase">{localized.searchInsidePacks}</span>
               </button>
             </div>
           </div>

@@ -118,6 +118,7 @@ declare global {
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;
+    isPackSearcherOpen: boolean;
     isHelpOpen: boolean;
     isWH3Running: boolean;
     toasts: Toast[];
@@ -135,6 +136,7 @@ declare global {
     isModTagPickerOpen: boolean;
     currentModToUpload: Mod | undefined;
     skillsData?: SkillsData;
+    packSearchResults?: string[];
 
     //skills view
     isLocalizingSubtypes: boolean;
