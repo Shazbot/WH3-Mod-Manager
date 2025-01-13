@@ -60,6 +60,7 @@ import Trie from "./utility/trie";
 import getPackTableData from "./utility/frontend/packDataHandling";
 import { appendLocalizationsToSkills, getNodesToParents, getSkills } from "./skills";
 import fetch from "node-fetch";
+import assert from "assert";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -170,14 +171,28 @@ export const registerIpcMainListeners = (
       .map((packName) => nodePath.join(dataFolder, packName));
     await readModsByPath(vanillaPacksToRead, false, true, false, true, tablesToRead);
 
-    const packsTableData = getPacksTableData(
+    const unsortedPacksTableData = getPacksTableData(
       appData.packsData.filter(
         (pack) => pack.name == "db.pack" || mods.some((mod) => mod.path === pack.path)
       ),
       tablesToRead,
       true
     );
-    if (!packsTableData) return;
+    if (!unsortedPacksTableData) return;
+
+    const packsTableData = [] as PackViewData[];
+
+    // sort the mods by load priority
+    const sortedMods = sortByNameAndLoadOrder(mods);
+    const dbPackData = unsortedPacksTableData.find((ptd) => ptd.packName == "db.pack");
+    if (dbPackData) packsTableData.push(dbPackData);
+
+    for (const mod of sortedMods.toReversed()) {
+      const packTableData = unsortedPacksTableData.find((ptd) => ptd.packPath == mod.path);
+      if (packTableData) packsTableData.push(packTableData);
+    }
+
+    assert(unsortedPacksTableData.length == packsTableData.length);
 
     const effects: EffectData[] = [];
     getTableRowData(packsTableData, "effects_tables", (schemaFieldRow) => {
@@ -185,13 +200,18 @@ export const registerIpcMainListeners = (
       const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
       const isPositive = schemaFieldRow.find((sF) => sF.name == "is_positive_value_good")?.resolvedKeyValue;
       const priority = schemaFieldRow.find((sF) => sF.name == "priority")?.resolvedKeyValue;
-      if (key != undefined && icon != undefined && isPositive != undefined && priority != undefined)
-        effects.push({
+      if (key != undefined && icon != undefined && isPositive != undefined && priority != undefined) {
+        const newEffect = {
           key,
           icon,
           isPositive,
           priority,
-        });
+        };
+        const existingIndex = effects.findIndex((effect) => effect.key == key);
+        if (existingIndex > -1) {
+          effects.splice(existingIndex, 1, newEffect);
+        } else effects.push(newEffect);
+      }
     });
 
     const effectsToEffectData: Record<string, EffectData> = {};
@@ -222,11 +242,16 @@ export const registerIpcMainListeners = (
     getTableRowData(packsTableData, "character_skill_node_sets_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const agentSubtype = schemaFieldRow.find((sF) => sF.name == "agent_subtype_key")?.resolvedKeyValue;
-      if (key && agentSubtype)
-        subtypeAndSets.push({
+      if (key && agentSubtype) {
+        const newSubtypeAndSets = {
           key,
           agentSubtype,
-        });
+        };
+        const existingIndex = subtypeAndSets.findIndex((sas) => sas.key == key);
+        if (existingIndex > -1) {
+          subtypeAndSets.splice(existingIndex, 1, newSubtypeAndSets);
+        } else subtypeAndSets.push(newSubtypeAndSets);
+      }
     });
 
     const subtypesToSet: Record<string, string> = {};
@@ -312,7 +337,9 @@ export const registerIpcMainListeners = (
       const skill = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
       const tier = schemaFieldRow.find((sF) => sF.name == "tier")?.resolvedKeyValue;
       const indent = schemaFieldRow.find((sF) => sF.name == "indent")?.resolvedKeyValue;
-      const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue;
+      const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue as
+        | "0"
+        | "1";
       if (
         node &&
         skill &&
@@ -320,14 +347,19 @@ export const registerIpcMainListeners = (
         indent != undefined &&
         visibleInUI != undefined &&
         (visibleInUI == "0" || visibleInUI == "1")
-      )
-        nodeAndSkills.push({
+      ) {
+        const newNodeAndSkill = {
           node,
           skill,
           tier,
           indent,
           visibleInUI,
-        });
+        };
+        const existingIndex = nodeAndSkills.findIndex((nas) => nas.node == node);
+        if (existingIndex > -1) {
+          nodeAndSkills.splice(existingIndex, 1, newNodeAndSkill);
+        } else nodeAndSkills.push(newNodeAndSkill);
+      }
     });
 
     const nodeToSkill: Record<string, (typeof nodeAndSkills)[0]> = {};
@@ -339,12 +371,17 @@ export const registerIpcMainListeners = (
     getTableRowData(packsTableData, "character_skills_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const iconPath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
-      if (key && iconPath)
-        skills.push({
+      if (key && iconPath) {
+        const newSkill = {
           key,
           iconPath,
           maxLevel: 1,
-        });
+        };
+        const existingIndex = skills.findIndex((skill) => skill.key == key);
+        if (existingIndex > -1) {
+          skills.splice(existingIndex, 1, newSkill);
+        } else skills.push(newSkill);
+      }
     });
 
     const skillsAndEffects: Effect[] = [];
@@ -2752,7 +2789,9 @@ export const registerIpcMainListeners = (
         mainWindow?.webContents.send("handleLog", batData);
 
         await fs.writeFileSync(batPath, batData);
-        execFile(batPath, { shell: true });
+        execFile(batPath, { shell: true }, (error) => {
+          console.error(error);
+        });
 
         appData.compatData = {
           packTableCollisions: [],
