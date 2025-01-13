@@ -25,15 +25,23 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   // const subtypes = Object.keys(subtypeToSkills);
   // return <></>;
 
-  type TreeData = { name: string; children?: TreeData[] };
+  type TreeData = {
+    name: string;
+    children?: TreeData[];
+    metadata: TreeMetadata;
+  };
+  type TreeMetadata = { subtype: string; subtypeIndex: number };
+
   const result = agentSubtypes.reduce(
     (treeData, subtype) => {
       treeData.children = treeData.children || [];
-      treeData.children.push({ name: subtype, children: [] });
+      for (let i = 0; i < skillsData.subtypeToNumSets[subtype]; i++) {
+        treeData.children.push({ name: subtype, children: [], metadata: { subtype, subtypeIndex: i } });
+      }
 
       return treeData;
     },
-    { name: "", children: [] } as TreeData
+    { name: "", children: [], metadata: { subtype: "", subtypeIndex: 0 } } as TreeData
   );
 
   // console.log(result);
@@ -45,9 +53,9 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     if (props.isSelected) {
       const parentLeaf = data.find((leaf) => leaf.id == props.element.parent);
       if (parentLeaf) {
-        const agentSubtype = props.element.name;
-        console.log(`SENT GET PACK DATA ${agentSubtype}`);
-        window.api?.getSkillsForSubtype(agentSubtype);
+        const metadata = props.element.metadata as TreeMetadata;
+        console.log(`SENT GET PACK DATA`, metadata);
+        window.api?.getSkillsForSubtype(metadata.subtype, metadata.subtypeIndex);
         // dispatch(
         //   selectDBTable({
         //     packPath: packData.packPath,
@@ -152,9 +160,15 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
                 {/* <span onClick={(e) => handleSelect(e)} className="absolute">
                   {element.name}
                 </span> */}
-                {isLocalizingSubtypes
-                  ? skillsData.subtypesToLocalizedNames[element.name] ?? element.name
-                  : element.name}
+                {`${
+                  isLocalizingSubtypes
+                    ? skillsData.subtypesToLocalizedNames[element.name] ?? element.name
+                    : element.name
+                }${
+                  skillsData.subtypeToNumSets[(element.metadata as TreeMetadata).subtype] > 1
+                    ? ` ${(element.metadata as TreeMetadata).subtypeIndex + 1}`
+                    : ""
+                }`}
               </span>
             </div>
           );

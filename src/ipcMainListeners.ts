@@ -254,9 +254,10 @@ export const registerIpcMainListeners = (
       }
     });
 
-    const subtypesToSet: Record<string, string> = {};
+    const subtypesToSet: Record<string, string[]> = {};
     for (const { key, agentSubtype } of subtypeAndSets) {
-      subtypesToSet[agentSubtype] = key;
+      subtypesToSet[agentSubtype] = subtypesToSet[agentSubtype] || [];
+      if (!subtypesToSet[agentSubtype].includes(key)) subtypesToSet[agentSubtype].push(key);
     }
 
     const setAndNodes: { set: string; node: string; modDisabled: string }[] = [];
@@ -549,7 +550,7 @@ export const registerIpcMainListeners = (
       }
     }
 
-    const setKF = subtypesToSet["wh_main_emp_karl_franz"];
+    const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
     appData.skillsData = {
       subtypesToSet,
       setToNodes,
@@ -577,10 +578,16 @@ export const registerIpcMainListeners = (
     appendLocalizationsToSkills(kfSkills, getLoc);
 
     const subtypes = Object.keys(subtypesToSet);
+    const subtypeToNumSets = subtypes.reduce((acc, curr) => {
+      acc[curr] = subtypesToSet[curr].length;
+      return acc;
+    }, {} as Record<string, number>);
 
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
+      currentSubtypeIndex: 0,
+      subtypeToNumSets,
       currentSkills: kfSkills,
       nodeLinks,
       icons,
@@ -597,7 +604,7 @@ export const registerIpcMainListeners = (
     }
   };
 
-  const getSkillsForSubtype = (subtype: string) => {
+  const getSkillsForSubtype = (subtype: string, subtypeIndex: number) => {
     console.log("getSkillsForSubtype:", subtype);
     const cachedSkillsData = appData.skillsData;
     if (!cachedSkillsData) {
@@ -606,7 +613,7 @@ export const registerIpcMainListeners = (
     }
 
     const setKF = cachedSkillsData.subtypesToSet[subtype];
-    const nodesKF = cachedSkillsData.setToNodes[setKF];
+    const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
 
     const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet } = cachedSkillsData;
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
@@ -622,11 +629,17 @@ export const registerIpcMainListeners = (
     appendLocalizationsToSkills(kfSkills, getLoc);
 
     const subtypes = Object.keys(subtypesToSet);
+    const subtypeToNumSets = subtypes.reduce((acc, curr) => {
+      acc[curr] = subtypesToSet[curr].length;
+      return acc;
+    }, {} as Record<string, number>);
 
     appData.queuedSkillsData = {
       // subtypeToSkills: { [subtype]: kfSkills },
       currentSubtype: subtype,
+      currentSubtypeIndex: subtypeIndex,
       currentSkills: kfSkills,
+      subtypeToNumSets,
       nodeLinks,
       icons,
       subtypes,
@@ -1599,8 +1612,8 @@ export const registerIpcMainListeners = (
     writeAppConfig(data);
   });
 
-  ipcMain.on("getSkillsForSubtype", async (event, subtype: string) => {
-    getSkillsForSubtype(subtype);
+  ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
+    getSkillsForSubtype(subtype, subtypeIndex);
   });
 
   ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
