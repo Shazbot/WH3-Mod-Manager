@@ -390,7 +390,9 @@ declare global {
   interface SkillsData {
     // subtypeToSkills: Record<string, Skill[]>;
     currentSubtype: string;
+    currentSubtypeIndex: number;
     currentSkills: Skill[];
+    subtypeToNumSets: subtypeToNumSets;
     nodeLinks: Record<
       string,
       {

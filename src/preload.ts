@@ -181,7 +181,8 @@ const api = {
   setCurrentGameNaive: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
     ipcRenderer.on("setCurrentGameNaive", callback),
 
-  getSkillsForSubtype: (subtype: string) => ipcRenderer.send("getSkillsForSubtype", subtype),
+  getSkillsForSubtype: (subtype: string, subtypeIndex: number) =>
+    ipcRenderer.send("getSkillsForSubtype", subtype, subtypeIndex),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) =>
     ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>

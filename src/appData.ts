@@ -4,7 +4,7 @@ import Trie from "./utility/trie";
 
 interface AppData {
   skillsData?: {
-    subtypesToSet: Record<string, string>;
+    subtypesToSet: Record<string, string[]>;
     setToNodes: Record<string, string[]>;
     nodeLinks: Record<string, { child: string; childLinkPosition: string; parentLinkPosition: string }[]>;
     nodeToSkill: Record<
