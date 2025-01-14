@@ -626,7 +626,7 @@ const ModRows = memo((props: ModRowsProps) => {
         defaultHeight: 32,
         minHeight: 32,
       }),
-    [areThumbnailsEnabled]
+    [areThumbnailsEnabled, visibleMods]
   );
 
   const Row = useCallback(
