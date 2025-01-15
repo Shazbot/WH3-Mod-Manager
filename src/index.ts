@@ -1,5 +1,5 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
-import psList from "ps-list";
+import findProcess from "find-process";
 import { exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-extension-installer";
@@ -253,10 +253,9 @@ if (!gotTheLock) {
       if (!checkWH3RunningInterval) {
         checkWH3RunningInterval = setInterval(async () => {
           try {
-            const processes = await psList();
-            const isWH3Running = processes.some(
-              (process) => process.name == gameToProcessName[appData.currentGame]
-            );
+            const gameProcess = await findProcess("name", gameToProcessName[appData.currentGame], true);
+            // console.log("gameProcess:", gameProcess);
+            const isWH3Running = gameProcess.length > 0;
             if (appData.isWH3Running != isWH3Running) {
               appData.isWH3Running = isWH3Running;
               windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
