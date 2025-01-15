@@ -90,7 +90,7 @@ const SaveGame = memo((props: SaveGameProps) => {
               {saves.map((save) => {
                 return (
                   <React.Fragment key={save.name}>
-                    <div className="self-center leading-relaxed text-gray-500 dark:text-gray-300 h-[40px] truncate">
+                    <div className="self-center leading-relaxed text-gray-500 dark:text-gray-300 h-[40px] truncate content-center">
                       {save.name}
                     </div>
                     <div className="grid grid-cols-2 w-fit gap-4 justify-self-end">
