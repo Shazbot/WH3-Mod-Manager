@@ -149,6 +149,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const localized: Record<string, string> = useContext(localizationContext);
 
   const rowsParentRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<List>(null);
 
   let presetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = presetMods.filter(
@@ -626,8 +627,13 @@ const ModRows = memo((props: ModRowsProps) => {
         defaultHeight: 32,
         minHeight: 32,
       }),
-    [areThumbnailsEnabled, visibleMods]
+    []
   );
+
+  useEffect(() => {
+    cache.clearAll();
+    listRef.current?.recomputeRowHeights();
+  }, [visibleMods]);
 
   const Row = useCallback(
     ({
@@ -853,6 +859,7 @@ const ModRows = memo((props: ModRowsProps) => {
                     // @ts-expect-error react-virtualized is outdated and registerChild complains about wrong type
                     <div ref={registerChild}>
                       <List
+                        ref={listRef}
                         autoHeight
                         height={height || 500}
                         width={width}
@@ -866,6 +873,7 @@ const ModRows = memo((props: ModRowsProps) => {
                             : cache.rowHeight({ index })
                         }
                         rowRenderer={Row}
+                        estimatedRowSize={areThumbnailsEnabled ? 104 : 32}
                         rowCount={visibleMods.length}
                         overscanRowCount={areThumbnailsEnabled ? 6 : 12}
                         deferredMeasurementCache={cache}
