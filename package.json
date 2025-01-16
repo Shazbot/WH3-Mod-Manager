@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "2.10.0",
+  "version": "2.10.1",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
@@ -190,7 +190,6 @@
     "entities": "^4.5.0",
     "fast-deep-equal": "^3.1.3",
     "fast-xml-parser": "^4.2.7",
-    "find-process": "^1.4.10",
     "flowbite": "^1.5.3",
     "flowbite-react": "^0.3.4",
     "fs-extra": "^10.1.0",

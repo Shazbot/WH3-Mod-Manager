@@ -2788,7 +2788,6 @@ export const registerIpcMainListeners = (
           fileNameWithModList = "my_mods.txt";
           await fs.writeFileSync(myModsPath, text);
         }
-        const batPath = nodePath.join(appDataPath, "game.bat");
         let batData = `start /d "${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}" ${
           gameToProcessName[appData.currentGame]
         }`;
@@ -2801,8 +2800,7 @@ export const registerIpcMainListeners = (
         mainWindow?.webContents.send("handleLog", "starting game:");
         mainWindow?.webContents.send("handleLog", batData);
 
-        await fs.writeFileSync(batPath, batData);
-        execFile(batPath, { shell: true }, (error) => {
+        exec(batData, (error) => {
           console.error(error);
         });
 
