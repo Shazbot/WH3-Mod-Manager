@@ -1027,6 +1027,8 @@ const appSlice = createSlice({
       state.isAdmin = action.payload;
     },
     setIsWH3Running: (state: AppState, action: PayloadAction<boolean>) => {
+      if (state.isWH3Running == action.payload) return;
+
       state.isWH3Running = action.payload;
     },
     setStartArgs: (state: AppState, action: PayloadAction<string[]>) => {

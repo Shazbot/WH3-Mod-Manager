@@ -1,5 +1,4 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
-import findProcess from "find-process";
 import { exec, fork } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-extension-installer";
@@ -253,13 +252,23 @@ if (!gotTheLock) {
       if (!checkWH3RunningInterval) {
         checkWH3RunningInterval = setInterval(async () => {
           try {
-            const gameProcess = await findProcess("name", gameToProcessName[appData.currentGame], true);
-            // console.log("gameProcess:", gameProcess);
-            const isWH3Running = gameProcess.length > 0;
-            if (appData.isWH3Running != isWH3Running) {
-              appData.isWH3Running = isWH3Running;
-              windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
-            }
+            exec(
+              `powershell -Command "[bool](Get-Process -Name '${gameToProcessName[
+                appData.currentGame
+              ].replace(".exe", "")}' -ErrorAction SilentlyContinue)"`,
+              (error, stdout) => {
+                if (error) {
+                  console.error(`exec check wh3 running error: ${error}`);
+                  return;
+                }
+
+                const isWH3Running = stdout[0] == "T";
+                if (appData.isWH3Running != isWH3Running) {
+                  appData.isWH3Running = isWH3Running;
+                  windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+                }
+              }
+            );
           } catch (e) {
             console.log("psList coroutine error:", e);
           }
