@@ -252,23 +252,13 @@ if (!gotTheLock) {
       if (!checkWH3RunningInterval) {
         checkWH3RunningInterval = setInterval(async () => {
           try {
-            exec(
-              `powershell -Command "[bool](Get-Process -Name '${gameToProcessName[
-                appData.currentGame
-              ].replace(".exe", "")}' -ErrorAction SilentlyContinue)"`,
-              (error, stdout) => {
-                if (error) {
-                  console.error(`exec check wh3 running error: ${error}`);
-                  return;
-                }
-
-                const isWH3Running = stdout[0] == "T";
-                if (appData.isWH3Running != isWH3Running) {
-                  appData.isWH3Running = isWH3Running;
-                  windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
-                }
+            exec(`tasklist | findstr ${gameToProcessName[appData.currentGame]}`, (error) => {
+              const isWH3Running = !error;
+              if (appData.isWH3Running != isWH3Running) {
+                appData.isWH3Running = isWH3Running;
+                windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
               }
-            );
+            });
           } catch (e) {
             console.log("psList coroutine error:", e);
           }
