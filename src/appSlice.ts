@@ -455,7 +455,10 @@ const appSlice = createSlice({
       const mod = action.payload;
 
       const alreadyExists = state.currentPreset.mods.find((iterMod) => iterMod.path === mod.path);
-      if (alreadyExists) return;
+      if (alreadyExists) {
+        console.log("Added mod already exists, skipping it.");
+        return;
+      }
 
       const alreadyExistsByName = state.currentPreset.mods.find((iterMod) => iterMod.name === mod.name);
       if (!alreadyExistsByName) {
@@ -470,7 +473,10 @@ const appSlice = createSlice({
         if (!state.currentPreset.mods.find((iterMod) => iterMod == mod)) state.currentPreset.mods.push(mod);
       } else if (mod.isInData) {
         const previousIndex = state.currentPreset.mods.indexOf(alreadyExistsByName);
-        state.currentPreset.mods.splice(previousIndex, 1, mod);
+        if (!alreadyExistsByName.isInModding) {
+          console.log("Mod is in modding, splicing it into current presset.");
+          state.currentPreset.mods.splice(previousIndex, 1, mod);
+        }
         mod.isEnabled = alreadyExistsByName.isEnabled;
         mod.author = alreadyExistsByName.author;
         mod.imgPath = alreadyExistsByName.imgPath;
@@ -543,10 +549,15 @@ const appSlice = createSlice({
         return;
       }
 
-      // if this mod is in data and the actual mod is in content just switch to the content mod
+      // check if we can enable mod with the same name, either in data (if the mod was in modded) or in content
       const dataMod =
-        removedMod.isInData &&
-        state.allMods.find((iterMod) => !iterMod.isInData && iterMod.name == removedMod.name);
+        (removedMod.isInData &&
+          removedMod.isInModding &&
+          state.allMods.find(
+            (iterMod) => iterMod.isInData && !iterMod.isInModding && iterMod.name == removedMod.name
+          )) ||
+        (removedMod.isInData &&
+          state.allMods.find((iterMod) => !iterMod.isInData && iterMod.name == removedMod.name));
 
       if (dataMod) {
         state.currentPreset.mods.push(dataMod);

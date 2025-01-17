@@ -40,6 +40,7 @@ declare global {
     isSymbolicLink: boolean;
     categories?: string[];
     tags: string[];
+    isInModding?: boolean;
   }
 
   interface ModData {
