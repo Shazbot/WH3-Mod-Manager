@@ -399,7 +399,10 @@ export const registerIpcMainListeners = (
         level != undefined &&
         value != undefined &&
         effectKey != undefined
-      )
+      ) {
+        if (!effectsToEffectData[effectKey]) {
+          console.error("MISSING ICON FOR EFFECT", effectKey);
+        }
         skillsAndEffects.push({
           key,
           effectScope,
@@ -407,9 +410,10 @@ export const registerIpcMainListeners = (
           value,
           effectKey,
           iconData: "",
-          icon: effectsToEffectData[effectKey].icon,
-          priority: effectsToEffectData[effectKey].priority,
+          icon: effectsToEffectData[effectKey]?.icon,
+          priority: effectsToEffectData[effectKey]?.priority,
         });
+      }
     });
 
     const skillsToEffects: Record<string, (typeof skillsAndEffects)[0][]> = {};
@@ -1132,7 +1136,7 @@ export const registerIpcMainListeners = (
     if (!dataWatcher) {
       const sanitizedDataFolder = dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
       dataWatcher = chokidar
-        .watch([`${sanitizedDataFolder}/*.pack`], {
+        .watch([`${sanitizedDataFolder}/*.pack`, `${sanitizedDataFolder}/modding/*.pack`], {
           ignoreInitial: true,
           awaitWriteFinish: true,
           followSymlinks: false,
@@ -2634,6 +2638,7 @@ export const registerIpcMainListeners = (
         const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
         const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
         if (!gamePath) return;
+        if (!dataFolder) return;
 
         const appDataPath = app.getPath("userData");
         const myModsPath = nodePath.join(gamePath, "my_mods.txt");
@@ -2768,6 +2773,7 @@ export const registerIpcMainListeners = (
 
         const text =
           enabledModsWithoutMergedInMods
+            .filter((mod) => !mod.isInModding)
             .filter(
               (mod) =>
                 nodePath.relative(
@@ -2778,6 +2784,35 @@ export const registerIpcMainListeners = (
             .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
             .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
             .join("\n") + extraEnabledMods;
+
+        try {
+          enabledModsWithoutMergedInMods
+            .filter((mod) => mod.isInModding)
+            .forEach((mod) => {
+              const newPath = nodePath.join(dataFolder, mod.name);
+              const stats = fs.statSync(mod.path);
+              if (fs.existsSync(mod.path)) {
+                const statsCurrent = fs.statSync(newPath);
+                // console.log("new times:", stats.atime, stats.mtime);
+                // console.log("current times:", statsCurrent.atime, statsCurrent.mtime);
+                if (statsCurrent.mtime > stats.mtime) {
+                  mainWindow?.webContents.send("addToast", {
+                    type: "warning",
+                    messages: [`Mod ${mod.name} in modding is older than the one in data!`],
+                    startTime: Date.now(),
+                  } as Toast);
+                  throw new Error(
+                    `Mod ${mod.path} is older than the one in data, user needs to resolve this!`
+                  );
+                }
+              }
+              fs.copyFileSync(mod.path, newPath);
+              fs.utimesSync(newPath, stats.atime, stats.mtime);
+            });
+        } catch (e) {
+          console.error(e);
+          return;
+        }
 
         let fileNameWithModList = "used_mods.txt";
         try {

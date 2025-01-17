@@ -238,6 +238,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     workshopId: fileName,
     isEnabled: false,
     isInData: true,
+    isInModding: nodePath.basename(nodePath.dirname(filePath)) == "modding",
     loadOrder: undefined,
     lastChangedLocal,
     author: "",
@@ -251,9 +252,20 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   return mod;
 }
 
-const getDataMods = async (gameDir: string, log: (msg: string) => void): Promise<Mod[]> => {
-  const dataPath = await getDataPath(log);
+const getDataMods = async (
+  gameDir: string,
+  log: (msg: string) => void,
+  subFolder?: string
+): Promise<Mod[]> => {
+  let dataPath = await getDataPath(log);
   if (!dataPath) throw new Error("Data folder not found");
+
+  if (subFolder) {
+    dataPath = nodePath.join(dataPath, subFolder);
+    if (!fsExtra.existsSync(dataPath)) {
+      return [];
+    }
+  }
 
   const vanillaPacks: string[] = [];
   try {
@@ -474,6 +486,17 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder as string;
 
   if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) throw new Error("Game folder not found");
+
+  const moddingDataMods = await getDataMods(
+    appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+    log,
+    "modding"
+  );
+  moddingDataMods.forEach((mod) => {
+    mod.isInModding = true;
+  });
+  mods.push(...moddingDataMods);
+
   const dataMods = await getDataMods(
     appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
     log
