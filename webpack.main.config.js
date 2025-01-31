@@ -25,7 +25,7 @@ module.exports = {
         { from: "./locales/**/*" },
         { from: "./temp/readPacksWorker.js", to: "readPacksWorker.js" },
         { from: "./temp/schema.js", to: "schema.js" },
-        { from: "./temp/schema/**/*", to: "../schema/[name][ext]" },
+        { from: "./schema/**/*", to: "../schema/[name][ext]" },
         { from: "./node_modules/binary-file", to: "../node_modules/binary-file" },
         { from: "./node_modules/denodeify", to: "../node_modules/denodeify" },
         {
