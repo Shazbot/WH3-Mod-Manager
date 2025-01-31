@@ -58,7 +58,15 @@ import { resolveTable } from "./resolveTable";
 import bs from "binary-search";
 import Trie from "./utility/trie";
 import getPackTableData from "./utility/frontend/packDataHandling";
-import { appendLocalizationsToSkills, getNodesToParents, getSkills } from "./skills";
+import {
+  appendLocalizationsToSkills,
+  getNodeRequirements,
+  getNodesToParents,
+  getSkills,
+  NodeLinks,
+  NodeSkill,
+  NodeToSkill,
+} from "./skills";
 import fetch from "node-fetch";
 import assert from "assert";
 
@@ -143,6 +151,13 @@ export const registerIpcMainListeners = (
       if (!tablesToRead.includes(nodeLinksTable)) tablesToRead.push(nodeLinksTable);
     }
 
+    const skillLocksTablesToRead = resolveTable("character_skill_nodes_skill_locks_tables").map(
+      (table) => `db\\${table}\\`
+    );
+    for (const skillLocksTable of skillLocksTablesToRead) {
+      if (!tablesToRead.includes(skillLocksTable)) tablesToRead.push(skillLocksTable);
+    }
+
     const effectBonusValueIdsUnitSetsTablesToRead = resolveTable(
       "effect_bonus_value_ids_unit_sets_tables"
     ).map((table) => `db\\${table}\\`);
@@ -166,7 +181,10 @@ export const registerIpcMainListeners = (
       .filter(
         (packName) =>
           packName.startsWith("local_en") ||
-          (!packName.startsWith("audio_") && !packName.startsWith("local_"))
+          (!packName.startsWith("audio_") &&
+            !packName.startsWith("local_") &&
+            !packName.startsWith("tile") &&
+            !packName.startsWith("terrain"))
       )
       .map((packName) => nodePath.join(dataFolder, packName));
     await readModsByPath(vanillaPacksToRead, false, true, false, true, tablesToRead);
@@ -293,17 +311,11 @@ export const registerIpcMainListeners = (
     // console.log("setToNodesDisables:", setToNodesDisables);
     // console.log("setToNodes KF:", setToNodes["wh_main_skill_node_set_emp_karl_franz"]);
 
-    const nodeLinks: Record<
-      string,
-      {
-        child: string;
-        childLinkPosition: string;
-        parentLinkPosition: string;
-      }[]
-    > = {};
+    const nodeLinks: NodeLinks = {};
     getTableRowData(packsTableData, "character_skill_node_links_tables", (schemaFieldRow) => {
       const child_key = schemaFieldRow.find((sF) => sF.name == "child_key")?.resolvedKeyValue;
       const parent_key = schemaFieldRow.find((sF) => sF.name == "parent_key")?.resolvedKeyValue;
+      const link_type = schemaFieldRow.find((sF) => sF.name == "link_type")?.resolvedKeyValue;
       const parent_link_position = schemaFieldRow.find(
         (sF) => sF.name == "parent_link_position"
       )?.resolvedKeyValue;
@@ -315,6 +327,8 @@ export const registerIpcMainListeners = (
         child_key != undefined &&
         parent_key != undefined &&
         parent_link_position != undefined &&
+        link_type != undefined &&
+        (link_type == "REQUIRED" || link_type == "SUBSET_REQUIRED") &&
         child_link_position != undefined
       ) {
         nodeLinks[parent_key] = nodeLinks[parent_key] || [];
@@ -322,22 +336,22 @@ export const registerIpcMainListeners = (
           child: child_key,
           childLinkPosition: child_link_position,
           parentLinkPosition: parent_link_position,
+          linkType: link_type,
         });
       }
     });
 
-    const nodeAndSkills: {
-      node: string;
-      skill: string;
-      tier: string;
-      indent: string;
-      visibleInUI: "0" | "1";
-    }[] = [];
+    const nodeAndSkills: NodeSkill[] = [];
     getTableRowData(packsTableData, "character_skill_nodes_tables", (schemaFieldRow) => {
       const node = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const skill = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
       const tier = schemaFieldRow.find((sF) => sF.name == "tier")?.resolvedKeyValue;
       const indent = schemaFieldRow.find((sF) => sF.name == "indent")?.resolvedKeyValue;
+      const factionKey = schemaFieldRow.find((sF) => sF.name == "faction_key")?.resolvedKeyValue;
+      const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
+      const requiredNumParents = schemaFieldRow.find(
+        (sF) => sF.name == "required_num_parents"
+      )?.resolvedKeyValue;
       const visibleInUI = schemaFieldRow.find((sF) => sF.name == "visible_in_ui")?.resolvedKeyValue as
         | "0"
         | "1";
@@ -347,6 +361,9 @@ export const registerIpcMainListeners = (
         tier != undefined &&
         indent != undefined &&
         visibleInUI != undefined &&
+        factionKey != undefined &&
+        subculture != undefined &&
+        requiredNumParents != undefined &&
         (visibleInUI == "0" || visibleInUI == "1")
       ) {
         const newNodeAndSkill = {
@@ -355,6 +372,9 @@ export const registerIpcMainListeners = (
           tier,
           indent,
           visibleInUI,
+          factionKey,
+          subculture,
+          requiredNumParents: Number.parseInt(requiredNumParents),
         };
         const existingIndex = nodeAndSkills.findIndex((nas) => nas.node == node);
         if (existingIndex > -1) {
@@ -382,6 +402,25 @@ export const registerIpcMainListeners = (
         if (existingIndex > -1) {
           skills.splice(existingIndex, 1, newSkill);
         } else skills.push(newSkill);
+      }
+    });
+
+    const nodeToSkillLocks = {} as NodeToSkillLocks;
+    getTableRowData(packsTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
+      const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
+      const skillNode = schemaFieldRow.find((sF) => sF.name == "character_skill_node")?.resolvedKeyValue;
+      const level = schemaFieldRow.find((sF) => sF.name == "level")?.resolvedKeyValue;
+
+      if (skill != undefined && skillNode != undefined && level != undefined) {
+        nodeToSkillLocks[skillNode] = nodeToSkillLocks[skillNode] || [];
+        const levelAsNumber = Number(level);
+        if (
+          !nodeToSkillLocks[skillNode].find(
+            (iterSkillLevel) => iterSkillLevel[0] == skill && iterSkillLevel[1] == levelAsNumber
+          )
+        ) {
+          nodeToSkillLocks[skillNode].push([skill, levelAsNumber]);
+        }
       }
     });
 
@@ -554,13 +593,14 @@ export const registerIpcMainListeners = (
       }
     }
 
-    const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
+    const setKF = subtypesToSet["wh3_dlc24_chs_lord_mtze"][0];
     appData.skillsData = {
       subtypesToSet,
       setToNodes,
       nodeLinks,
       nodeToSkill,
       skillsToEffects,
+      nodeToSkillLocks,
       skills,
       locs,
       icons,
@@ -568,9 +608,23 @@ export const registerIpcMainListeners = (
     };
     const nodesKF = setToNodes[setKF];
 
+    // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
+    // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
+    // fs.writeFileSync("dumps/nodeLinks.json", JSON.stringify(nodeLinks));
+    // fs.writeFileSync("dumps/nodesKF.json", JSON.stringify(nodesKF));
+
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
 
+    // fs.writeFileSync("dumps/nodesToParents.json", JSON.stringify(nodesToParents));
+
     const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+
+    // const nodeToSkillsKF = nodesKF.reduce((acc, current) => {
+    //   acc[current] = nodeToSkill[current];
+    //   return acc;
+    // }, {} as Record<string, (typeof nodeAndSkills)[0]>);
+    // fs.writeFileSync("dumps/kfSkills.json", JSON.stringify(kfSkills));
+    // fs.writeFileSync("dumps/nodeToSkillsKF.json", JSON.stringify(nodeToSkillsKF));
 
     const getLoc = (locId: string) => {
       for (const locsInPack of Object.values(locs)) {
@@ -587,6 +641,8 @@ export const registerIpcMainListeners = (
       return acc;
     }, {} as Record<string, number>);
 
+    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
@@ -594,8 +650,10 @@ export const registerIpcMainListeners = (
       subtypeToNumSets,
       currentSkills: kfSkills,
       nodeLinks,
+      nodeRequirements,
       icons,
       subtypes,
+      nodeToSkillLocks,
       subtypesToLocalizedNames: subtypes.reduce((acc, curr) => {
         const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
         if (localized) acc[curr] = localized;
@@ -619,7 +677,8 @@ export const registerIpcMainListeners = (
     const setKF = cachedSkillsData.subtypesToSet[subtype];
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
 
-    const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet } = cachedSkillsData;
+    const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet, nodeToSkillLocks } =
+      cachedSkillsData;
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
     const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
 
@@ -638,6 +697,8 @@ export const registerIpcMainListeners = (
       return acc;
     }, {} as Record<string, number>);
 
+    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+
     appData.queuedSkillsData = {
       // subtypeToSkills: { [subtype]: kfSkills },
       currentSubtype: subtype,
@@ -645,6 +706,8 @@ export const registerIpcMainListeners = (
       currentSkills: kfSkills,
       subtypeToNumSets,
       nodeLinks,
+      nodeRequirements,
+      nodeToSkillLocks,
       icons,
       subtypes,
       subtypesToLocalizedNames: subtypes.reduce((acc, curr) => {

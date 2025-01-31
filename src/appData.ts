@@ -1,4 +1,5 @@
 import { Pack, PackCollisions } from "./packFileTypes";
+import { NodeLinks, NodeSkill } from "./skills";
 import { SupportedGames, supportedGames } from "./supportedGames";
 import Trie from "./utility/trie";
 
@@ -6,16 +7,14 @@ interface AppData {
   skillsData?: {
     subtypesToSet: Record<string, string[]>;
     setToNodes: Record<string, string[]>;
-    nodeLinks: Record<string, { child: string; childLinkPosition: string; parentLinkPosition: string }[]>;
-    nodeToSkill: Record<
-      string,
-      { node: string; skill: string; tier: string; indent: string; visibleInUI: "0" | "1" }
-    >;
+    nodeLinks: NodeLinks;
+    nodeToSkill: Record<string, NodeSkill>;
     skillsToEffects: Record<string, Effect[]>;
     skills: { key: string; iconPath: string; maxLevel: number }[];
     locs: Record<string, Trie<string>>;
     icons: Record<string, string>;
     effectsToEffectData: Record<string, EffectData>;
+    nodeToSkillLocks: NodeToSkillLocks;
   };
   presets: Preset[];
 

@@ -405,5 +405,9 @@
   "searchInsidePacksMsg3": "Used when you have a DB key from the ingame context viewer, or a piece of ingame text or a script file name and you want to know which mod it's from.",
   "search": "Search",
   "searchInsidePacksResults": "Packs That Contain Text:",
-  "searchInsidePacksDescription": "Search inside enabled mods for text."
+  "searchInsidePacksDescription": "Search inside enabled mods for text.",
+  "skillUnlockRequirementMultipleParents": "Available after spending NUM_SKILL_POINTS in the previous group.",
+  "skillUnlockRequirementParent": "Available after unlocking \"REQUIRED_SKILL\".",
+  "skillUnlockWillLock": "Unlocking this skill will lock:",
+  "checkSkillRequirements": "Check Skill Requirements"
 }
