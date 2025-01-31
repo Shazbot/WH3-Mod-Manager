@@ -3,6 +3,7 @@ import appData from "../appData";
 import { getDBVersionByTableName, resolveKeyValue, chunkSchemaIntoRows } from "../packFileSerializer";
 import { Pack, PackTableReferences, PackName, DBRefOrigin, DBField } from "../packFileTypes";
 import { gameToReferences, gameToDBFieldsThatReference, DBNameToDBVersions } from "../schema";
+import optionalNontextFields from "../../schema/optional_nontext_fields.json";
 import { getDBName } from "../utility/packFileHelpers";
 import { binarySearchIncludes, insertIntoPresortedArray } from "../utility/packFileSorting";
 import { appendScriptToFileChecksRegistry, appendToFileChecksRegistry } from "./fileSyntaxChecks";
@@ -247,6 +248,19 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                   refOrigin.targetFieldName === dbFieldNameToSearch
               );
               for (const ref of refs) {
+                // check if it's an optional non-text field with value 0 and skip it in that case
+                const optionalNonTextFieldsInTable = (optionalNontextFields as Record<string, string[]>)[
+                  ref.originDBFileName
+                ];
+                if (
+                  optionalNonTextFieldsInTable &&
+                  optionalNonTextFieldsInTable.includes(ref.originFieldName) &&
+                  ref.value == "0"
+                ) {
+                  console.log("Found optional missing ref, skipping it:", ref);
+                  continue;
+                }
+
                 foundMissingRefs[packName] = foundMissingRefs[packName] || [];
                 foundMissingRefs[packName].push(ref);
                 // console.log(
@@ -486,6 +500,18 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                   refOrigin.targetFieldName === dbFieldNameToSearch
               );
               for (const ref of refs) {
+                // check if it's an optional non-text field with value 0 and skip it in that case
+                const optionalNonTextFieldsInTable = (optionalNontextFields as Record<string, string[]>)[
+                  ref.originDBFileName
+                ];
+                if (
+                  optionalNonTextFieldsInTable &&
+                  optionalNonTextFieldsInTable.includes(ref.originFieldName)
+                ) {
+                  console.log("FOUND OPTIONAL", ref);
+                  continue;
+                }
+
                 foundMissingRefs[packName] = foundMissingRefs[packName] || [];
                 foundMissingRefs[packName].push(ref);
                 // console.log(
