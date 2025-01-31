@@ -21,10 +21,6 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   // const subtypeToSkills = skillsData.subtypeToSkills;
   const agentSubtypes = [...skillsData.subtypes].sort(collator.compare);
 
-  console.log("skillsData subtypes:", skillsData.subtypes);
-  // const subtypes = Object.keys(subtypeToSkills);
-  // return <></>;
-
   type TreeData = {
     name: string;
     children?: TreeData[];

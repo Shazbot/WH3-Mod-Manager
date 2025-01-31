@@ -142,6 +142,7 @@ declare global {
     //skills view
     isLocalizingSubtypes: boolean;
     skillNodesToLevel: Record<string, number>;
+    currentRank: number;
   }
 
   type AppStateToWrite = Pick<
@@ -391,6 +392,7 @@ declare global {
     nodeId: string;
     faction?: string;
     subculture?: string;
+    unlockRank: number;
   }
   interface SkillsData {
     // subtypeToSkills: Record<string, Skill[]>;

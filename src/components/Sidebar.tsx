@@ -56,6 +56,7 @@ const Sidebar = memo(() => {
   const [isShowingSavedGames, setIsShowingSavedGames] = useState<boolean>(false);
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
   const [isWaitingForRelaunch, setIsWaitingForRelaunch] = useState<boolean>(false);
+  const [isWaitingForContinueRelaunch, setIsWaitingForContinueRelaunch] = useState<boolean>(false);
   const [previousIsWH3Running, setPreviousIsWH3Running] = useState<boolean>(isWH3Running);
 
   const localized: Record<string, string> = useContext(localizationContext);
@@ -67,6 +68,7 @@ const Sidebar = memo(() => {
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
+  const continueDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const terminateGameClicked = () => {
     window.api?.terminateGame();
@@ -75,6 +77,7 @@ const Sidebar = memo(() => {
   const playGameClicked = (forcedDelayTime?: number) => {
     console.log("playGameClicked: play game clicked");
 
+    if (isWaitingForContinueRelaunch) return;
     if (isWH3Running) {
       setIsWaitingForRelaunch(!isWaitingForRelaunch);
       console.log("playGameClicked: waiting for relaunch");
@@ -118,12 +121,73 @@ const Sidebar = memo(() => {
     });
   };
 
+  const onContinueGameClicked = (forcedDelayTime?: number) => {
+    if (isWaitingForRelaunch) return;
+
+    if (isWH3Running) {
+      setIsWaitingForContinueRelaunch(!isWaitingForContinueRelaunch);
+      console.log("onContinueGameClicked: waiting for relaunch");
+      return;
+    }
+
+    if (
+      forcedDelayTime ||
+      removedModsData.some((removedModData) => Date.now() - removedModData.time < 3000)
+    ) {
+      console.log(
+        `onContinueGameClicked: ${forcedDelayTime && "An enabled mod was recently removed. "}Waiting ${
+          forcedDelayTime || "3.5"
+        } seconds before starting.`,
+        Date.now()
+      );
+      if (!continueDelayTimeoutId.current) {
+        continueDelayTimeoutId.current = setTimeout(() => {
+          console.log("onContinueGameClicked: triggering delayed continue game", Date.now());
+          continueDelayTimeoutId.current = undefined;
+          window.api?.startGame(
+            mods,
+            areModsInOrder,
+            {
+              isMakeUnitsGeneralsEnabled,
+              isSkipIntroMoviesEnabled,
+              isScriptLoggingEnabled,
+              isAutoStartCustomBattleEnabled,
+              isClosedOnPlay,
+              packDataOverwrites,
+            },
+            saves[0]?.name
+          );
+        }, forcedDelayTime || 3500);
+      }
+      return;
+    }
+
+    window.api?.startGame(
+      mods,
+      areModsInOrder,
+      {
+        isMakeUnitsGeneralsEnabled,
+        isSkipIntroMoviesEnabled,
+        isScriptLoggingEnabled,
+        isAutoStartCustomBattleEnabled,
+        isClosedOnPlay,
+        packDataOverwrites,
+      },
+      saves[0]?.name
+    );
+  };
+
   if (previousIsWH3Running != isWH3Running) {
     setPreviousIsWH3Running(isWH3Running);
     if (isWaitingForRelaunch && !isWH3Running) {
       console.log("calling PLAYGAMECLICKED", previousIsWH3Running, isWH3Running, isWaitingForRelaunch);
       setIsWaitingForRelaunch(false);
       playGameClicked(1500);
+    }
+    if (isWaitingForContinueRelaunch && !isWH3Running) {
+      console.log("calling PLAYGAMECLICKED", previousIsWH3Running, isWH3Running, isWaitingForRelaunch);
+      setIsWaitingForContinueRelaunch(false);
+      onContinueGameClicked(1500);
     }
   }
 
@@ -181,21 +245,6 @@ const Sidebar = memo(() => {
     setIsShowingRequiredMods(true);
   };
 
-  const onContinueGameClicked = () => {
-    window.api?.startGame(
-      mods,
-      areModsInOrder,
-      {
-        isMakeUnitsGeneralsEnabled,
-        isSkipIntroMoviesEnabled,
-        isScriptLoggingEnabled,
-        isAutoStartCustomBattleEnabled,
-        isClosedOnPlay,
-        packDataOverwrites,
-      },
-      saves[0]?.name
-    );
-  };
   const onShowSavedGamesClicked = () => {
     setIsShowingSavedGames(true);
   };
@@ -602,30 +651,32 @@ const Sidebar = memo(() => {
               )}
             </button>
 
-            <div className="mt-2 w-36 relative">
+            <div className="mt-2 w-36 h-7 relative">
               <button
                 id="continueGame"
                 className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto ${
                   (isWH3Running &&
-                    "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+                    "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") ||
                   ""
                 }`}
                 onClick={() => onContinueGameClicked()}
-                disabled={saves.length < 1 || isWH3Running}
+                disabled={saves.length < 1}
               >
                 <div className="make-tooltip-w-full">
                   <Tooltip
                     placement="left"
                     content={(saves[0] && `Load ${saves[0].name}`) || "No saves found!"}
                   >
-                    <span className="ml-[-25%]">{localized.continue}</span>
+                    {((isWaitingForContinueRelaunch || continueDelayTimeoutId.current) && (
+                      <div className="dots-loader mb-1 ml-2 h-3 w-3 self-center mt-2 opacity-90"></div>
+                    )) || <span className="ml-[-25%]">{localized.continue}</span>}
                   </Tooltip>
                 </div>
               </button>
               <button
                 id="showSaves"
                 type="submit"
-                className="absolute h-7 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border-2 border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+                className="absolute h-7 top-0 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border-2 border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
                 onClick={() => onShowSavedGamesClicked()}
                 disabled={saves.length < 1}
               >
@@ -677,17 +728,19 @@ const Sidebar = memo(() => {
           </div>
         </div>
 
-        <div className="mt-4">
-          <div className="text-center mt-4">
-            <button
-              onClick={() => window.api?.requestOpenSkillsWindow(mods)}
-              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
-              type="button"
-            >
-              {localized.skillsViewer}
-            </button>
+        {currentGame == "wh3" && (
+          <div className="mt-4">
+            <div className="text-center mt-4">
+              <button
+                onClick={() => window.api?.requestOpenSkillsWindow(mods)}
+                className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                type="button"
+              >
+                {localized.skillsViewer}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-4">
           <div className="text-center mt-4">

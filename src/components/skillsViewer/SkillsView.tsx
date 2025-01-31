@@ -18,7 +18,6 @@ import groupBy from "object.groupby";
 import "reactflow/dist/style.css";
 import Skill, { SkillData } from "./Skill";
 import { Dropdown } from "flowbite-react";
-import { setIsLocalizingSubtypes } from "@/src/appSlice";
 
 const edgeType = "straight";
 
@@ -46,6 +45,38 @@ const nodeWidth = 300;
 let nodeHeight = 100;
 const biggerNodeHeight = 120;
 
+const sortSameCoordinateSkills = (first: Skill, second: Skill) => {
+  if (first.faction == second.faction && first.subculture == second.subculture) return 0;
+
+  const firstHasFaction = first.faction && first.faction != "";
+  const secondHasFaction = second.faction && second.faction != "";
+  const firstHasSubculture = first.subculture && first.subculture != "";
+  const secondHasSubculture = second.subculture && second.subculture != "";
+
+  if (!firstHasFaction && !firstHasSubculture && (secondHasFaction || secondHasSubculture)) {
+    return -1;
+  }
+  if (!secondHasFaction && !secondHasSubculture && (firstHasFaction || firstHasSubculture)) {
+    return 1;
+  }
+  if (firstHasFaction && secondHasFaction) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return collator.compare(first.faction!, second.faction!);
+  }
+  if (firstHasSubculture && secondHasSubculture) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return collator.compare(first.subculture!, second.subculture!);
+  }
+  if (firstHasFaction && secondHasSubculture) {
+    return -1;
+  }
+  if (secondHasFaction && firstHasSubculture) {
+    return 1;
+  }
+
+  return 0;
+};
+
 const SkillsView = memo(() => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useContext(localizationContext);
@@ -54,7 +85,7 @@ const SkillsView = memo(() => {
   const [isShowingHiddenModifiersInsideSkills, setIsShowingHiddenModifiersInsideSkills] = useState(true);
   const [isCheckingSkillRequirements, setIsCheckingSkillRequirements] = useState(true);
 
-  const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
+  const currentRank = useAppSelector((state) => state.app.currentRank);
 
   const skillsData = useAppSelector((state) => state.app.skillsData);
   if (!skillsData) {
@@ -146,6 +177,7 @@ const SkillsView = memo(() => {
         origTier: "",
         isHiddentInUI: false,
         isCheckingSkillRequirements,
+        unlockRank: 0,
       },
       position: {
         y: lowest.x * nodeHeight - (usingBiggerNodeHeight ? 15 + nodeSizeDelta / 2 : 15),
@@ -185,37 +217,7 @@ const SkillsView = memo(() => {
     const sameCoordinatesSkills = skills.filter(
       (iterSkill) => iterSkill.origIndent == skill.origIndent && iterSkill.origTier == skill.origTier
     );
-    sameCoordinatesSkills.sort((first, second) => {
-      if (first.faction == second.faction && first.subculture == second.subculture) return 0;
-
-      const firstHasFaction = first.faction && first.faction != "";
-      const secondHasFaction = second.faction && second.faction != "";
-      const firstHasSubculture = first.subculture && first.subculture != "";
-      const secondHasSubculture = second.subculture && second.subculture != "";
-
-      if (!firstHasFaction && !firstHasSubculture && (secondHasFaction || secondHasSubculture)) {
-        return -1;
-      }
-      if (!secondHasFaction && !secondHasSubculture && (firstHasFaction || firstHasSubculture)) {
-        return 1;
-      }
-      if (firstHasFaction && secondHasFaction) {
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        return collator.compare(first.faction!, second.faction!);
-      }
-      if (firstHasSubculture && secondHasSubculture) {
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        return collator.compare(first.subculture!, second.subculture!);
-      }
-      if (firstHasFaction && secondHasSubculture) {
-        return -1;
-      }
-      if (secondHasFaction && firstHasSubculture) {
-        return 1;
-      }
-
-      return 0;
-    });
+    sameCoordinatesSkills.sort(sortSameCoordinateSkills);
 
     const indexInSameCoords = sameCoordinatesSkills.indexOf(skill);
 
@@ -277,6 +279,7 @@ const SkillsView = memo(() => {
         faction: skill.faction,
         subculture: skill.subculture,
         isCheckingSkillRequirements,
+        unlockRank: skill.unlockRank + 1,
       } as SkillData,
       position,
       sourcePosition: Position.Right,
@@ -425,6 +428,7 @@ const SkillsView = memo(() => {
         </Panel>
         <Panel position="top-right">
           <div className="text-slate-200 text-xl opacity-80">{subtype}</div>
+          <div className="text-slate-200 text-xl opacity-80">{`${localized.rank} ${currentRank}`}</div>
         </Panel>
         <Panel position="top-left">
           <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg">

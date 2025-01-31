@@ -1,5 +1,5 @@
 import { Pack, PackCollisions } from "./packFileTypes";
-import { NodeLinks, NodeSkill } from "./skills";
+import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
 import { SupportedGames, supportedGames } from "./supportedGames";
 import Trie from "./utility/trie";
 
@@ -10,7 +10,7 @@ interface AppData {
     nodeLinks: NodeLinks;
     nodeToSkill: Record<string, NodeSkill>;
     skillsToEffects: Record<string, Effect[]>;
-    skills: { key: string; iconPath: string; maxLevel: number }[];
+    skills: SkillAndIcons;
     locs: Record<string, Trie<string>>;
     icons: Record<string, string>;
     effectsToEffectData: Record<string, EffectData>;

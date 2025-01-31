@@ -1,4 +1,4 @@
-import React, { memo, useContext, useEffect, useState } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
@@ -6,12 +6,9 @@ import SkillsTreeView from "./SkillsTreeView";
 import SkillsView from "./SkillsView";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
-import localizationContext from "../../localizationContext";
 
 const SkillsViewer = memo(() => {
   const [isOpen, setIsOpen] = useState(true);
-
-  const localized: Record<string, string> = useContext(localizationContext);
 
   const [dbTableFilter, setDBTableFilter] = useState("");
 

@@ -410,5 +410,7 @@
   "skillUnlockRequirementParent": "Available after unlocking \"REQUIRED_SKILL\".",
   "skillUnlockWillLock": "Unlocking this skill will lock:",
   "checkSkillRequirements": "Check Skill Requirements",
-  "holdCtrlToTerminateGame": "Hold Ctrl and click to terminate game."
+  "holdCtrlToTerminateGame": "Hold Ctrl and click to terminate game.",
+  "skillUnlockRank": "Available at rank UNLOCK_RANK",
+  "rank": "Rank"
 }

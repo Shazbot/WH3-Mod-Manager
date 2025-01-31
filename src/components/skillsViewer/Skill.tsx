@@ -27,12 +27,14 @@ export type SkillData = {
   faction?: string;
   subculture?: string;
   isCheckingSkillRequirements: boolean;
+  unlockRank: number;
 };
 const Skill = memo(({ data }: { data: SkillData }) => {
   const dispatch = useAppDispatch();
   const { skillBackground, skillIconBackground, skillIcon, label } = data;
   const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
   const skillsData = useAppSelector((state) => state.app.skillsData);
+  const currentRank = useAppSelector((state) => state.app.currentRank);
 
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const resolvedSkillIcon = skillIcon; //require(`../../../dumps/img/${skillIcon}`);
@@ -157,6 +159,11 @@ const Skill = memo(({ data }: { data: SkillData }) => {
             </div>
           )}
           <div className="text-sm italic">{data.description}</div>
+          {data.unlockRank > 0 && data.unlockRank > currentRank && (
+            <div className="text-sm text-red-600">
+              {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
+            </div>
+          )}
           {!areRequirementsValid && reqsMessage != "" && (
             <div className="text-sm text-red-600">{reqsMessage}</div>
           )}
@@ -205,12 +212,17 @@ const Skill = memo(({ data }: { data: SkillData }) => {
         onMouseEnter={() => onMouseEnter()}
         onMouseLeave={() => onMouseLeave()}
         onClick={() => {
+          if (isCheckingSkillRequirements && data.unlockRank > currentRank) return;
           if (!isCheckingSkillRequirements || areRequirementsValid) onClick(currentLevel, data.numLevels);
         }}
         onContextMenu={() => {
           onRightClick(currentLevel);
         }}
-        className={`h-20 relative w-[260px] ${areRequirementsValid ? "" : "grayscale"}`}
+        className={`h-20 relative w-[260px] ${
+          areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank)
+            ? ""
+            : "grayscale"
+        }`}
       >
         <Handle type="target" position={Position.Left} className="ml-[10px] z-[2] opacity-0" />
         <img className="absolute h-20 w-full" src={skillBackground} alt={skillBackground} />

@@ -22,7 +22,7 @@ export type NodeLinks = Record<
   }[]
 >;
 
-export type SkillAndIcons = { key: string; iconPath: string; maxLevel: number }[];
+export type SkillAndIcons = { key: string; iconPath: string; maxLevel: number; unlockRank: number }[];
 export type SkillsToEffects = Record<string, Effect[]>;
 export type NodesToParents = Record<string, Skill[]>;
 export type EffectsToEffectData = Record<string, EffectData>;
@@ -71,6 +71,7 @@ export function getNodesToParents(
         nodeId: node,
         faction: skill.factionKey,
         subculture: skill.subculture,
+        unlockRank: 0,
       });
     }
   });
@@ -139,6 +140,7 @@ export function getSkills(
       nodeId: node,
       faction: skill.factionKey,
       subculture: skill.subculture,
+      unlockRank: skillAndIcon?.unlockRank ?? 0,
     } as Skill;
   });
 
