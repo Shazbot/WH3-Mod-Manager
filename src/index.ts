@@ -252,13 +252,17 @@ if (!gotTheLock) {
       if (!checkWH3RunningInterval) {
         checkWH3RunningInterval = setInterval(async () => {
           try {
-            exec(`tasklist | findstr ${gameToProcessName[appData.currentGame]}`, (error) => {
-              const isWH3Running = !error;
-              if (appData.isWH3Running != isWH3Running) {
-                appData.isWH3Running = isWH3Running;
-                windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+            // if a game crashes you can end up with a tiny running process of the game, that's why we have a memory filter here
+            exec(
+              `tasklist /fi "MEMUSAGE gt 10000" | findstr ${gameToProcessName[appData.currentGame]}`,
+              (error) => {
+                const isWH3Running = !error;
+                if (appData.isWH3Running != isWH3Running) {
+                  appData.isWH3Running = isWH3Running;
+                  windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
+                }
               }
-            });
+            );
           } catch (e) {
             console.log("psList coroutine error:", e);
           }

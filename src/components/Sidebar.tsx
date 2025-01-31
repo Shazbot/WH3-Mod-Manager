@@ -68,6 +68,10 @@ const Sidebar = memo(() => {
 
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
 
+  const terminateGameClicked = () => {
+    window.api?.terminateGame();
+  };
+
   const playGameClicked = (forcedDelayTime?: number) => {
     console.log("playGameClicked: play game clicked");
 
@@ -550,7 +554,13 @@ const Sidebar = memo(() => {
                 (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") ||
                 ""
               }`}
-              onClick={() => playGameClicked()}
+              onClick={(e) => {
+                if (e.ctrlKey) {
+                  terminateGameClicked();
+                  return;
+                }
+                playGameClicked();
+              }}
             >
               {(isWH3Running && (
                 <div className="make-tooltip-w-full flex">
@@ -562,6 +572,7 @@ const Sidebar = memo(() => {
                         {(isWaitingForRelaunch && <p>{localized.relaunchingGame}</p>) || (
                           <p>{localized.queueUpRelaunchingGame}</p>
                         )}
+                        <p>{localized.holdCtrlToTerminateGame}</p>
                       </div>
                     }
                   >

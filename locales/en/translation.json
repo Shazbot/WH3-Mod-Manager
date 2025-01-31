@@ -409,5 +409,6 @@
   "skillUnlockRequirementMultipleParents": "Available after spending NUM_SKILL_POINTS in the previous group.",
   "skillUnlockRequirementParent": "Available after unlocking \"REQUIRED_SKILL\".",
   "skillUnlockWillLock": "Unlocking this skill will lock:",
-  "checkSkillRequirements": "Check Skill Requirements"
+  "checkSkillRequirements": "Check Skill Requirements",
+  "holdCtrlToTerminateGame": "Hold Ctrl and click to terminate game."
 }

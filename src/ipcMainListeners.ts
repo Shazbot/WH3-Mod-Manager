@@ -1834,6 +1834,18 @@ export const registerIpcMainListeners = (
     }
   });
 
+  ipcMain.on("terminateGame", () => {
+    console.log(`Requesting terminate game`);
+
+    try {
+      exec(`taskkill /f /t /im ${gameToProcessName[appData.currentGame]}`, (error) => {
+        if (error) console.log("taskkill error:", error);
+      });
+    } catch (e) {
+      console.log("taskkill error:", e);
+    }
+  });
+
   const dbTableToString = (dbTable: DBTable) => {
     return `db\\${dbTable.dbName}\\${dbTable.dbSubname}`;
   };
