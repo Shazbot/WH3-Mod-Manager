@@ -80,6 +80,7 @@ const initialState = {
 
   // skills
   skillNodesToLevel: {},
+  currentRank: 1,
 } as AppState;
 
 export default initialState;

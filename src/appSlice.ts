@@ -656,6 +656,8 @@ const appSlice = createSlice({
     },
     setSkillsData: (state: AppState, action: PayloadAction<SkillsData>) => {
       state.skillsData = action.payload;
+      state.skillNodesToLevel = {};
+      state.currentRank = 1;
     },
     setPacksData: (state: AppState, action: PayloadAction<PackViewData[]>) => {
       const packsData = action.payload;
@@ -1222,6 +1224,10 @@ const appSlice = createSlice({
     },
     setSkillNodeLevel: (state: AppState, action: PayloadAction<{ skillNodeId: string; level: number }>) => {
       state.skillNodesToLevel[action.payload.skillNodeId] = action.payload.level;
+
+      state.currentRank = Object.values(state.skillNodesToLevel).reduce((acc, curr) => {
+        return acc + curr;
+      }, 1);
     },
   },
 });

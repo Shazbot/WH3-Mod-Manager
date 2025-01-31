@@ -66,6 +66,7 @@ import {
   NodeLinks,
   NodeSkill,
   NodeToSkill,
+  SkillAndIcons,
 } from "./skills";
 import fetch from "node-fetch";
 import assert from "assert";
@@ -388,15 +389,17 @@ export const registerIpcMainListeners = (
       nodeToSkill[nodeAndSkill.node] = nodeAndSkill;
     }
 
-    const skills: { key: string; iconPath: string; maxLevel: number }[] = [];
+    const skills: SkillAndIcons = [];
     getTableRowData(packsTableData, "character_skills_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const iconPath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
-      if (key && iconPath) {
+      const unlockRank = schemaFieldRow.find((sF) => sF.name == "unlocked_at_rank")?.resolvedKeyValue;
+      if (key != undefined && iconPath != undefined && unlockRank != undefined) {
         const newSkill = {
           key,
           iconPath,
           maxLevel: 1,
+          unlockRank: Number(unlockRank),
         };
         const existingIndex = skills.findIndex((skill) => skill.key == key);
         if (existingIndex > -1) {
@@ -593,7 +596,7 @@ export const registerIpcMainListeners = (
       }
     }
 
-    const setKF = subtypesToSet["wh3_dlc24_chs_lord_mtze"][0];
+    const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
     appData.skillsData = {
       subtypesToSet,
       setToNodes,
