@@ -4,6 +4,7 @@ import { getDBVersionByTableName, resolveKeyValue, chunkSchemaIntoRows } from ".
 import { Pack, PackTableReferences, PackName, DBRefOrigin, DBField } from "../packFileTypes";
 import { gameToReferences, gameToDBFieldsThatReference, DBNameToDBVersions } from "../schema";
 import optionalNontextFields from "../../schema/optional_nontext_fields.json";
+import additionalFieldKeysOrig from "../../schema/additional_field_keys.json"; // startpos and other keys that the game is tolerant of not existing
 import { getDBName } from "../utility/packFileHelpers";
 import { binarySearchIncludes, insertIntoPresortedArray } from "../utility/packFileSorting";
 import { appendScriptToFileChecksRegistry, appendToFileChecksRegistry } from "./fileSyntaxChecks";
@@ -11,6 +12,8 @@ import { appendToAddListenerRegistry } from "./scriptFileListenerNames";
 import { appendToUniqueIdKeysRegistry } from "./uniqueDBTableIndices";
 import equals from "fast-deep-equal";
 import * as fs from "fs";
+
+const additionalFieldKeys = additionalFieldKeysOrig as Record<string, Record<string, string[]>>;
 
 export const refSorting = (a: DBRefOrigin, b: DBRefOrigin): number => {
   const f = a.targetDBFileName.localeCompare(b.targetDBFileName);
@@ -261,8 +264,17 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                   continue;
                 }
 
+                const additionalFieldKeysTableName = additionalFieldKeys[ref.targetDBFileName];
+                if (additionalFieldKeysTableName) {
+                  if (additionalFieldKeysTableName[ref.targetFieldName]?.includes(ref.value)) {
+                    console.log("Found missing ref that is in additional field keys, skipping it:", ref);
+                    continue;
+                  }
+                }
+
                 foundMissingRefs[packName] = foundMissingRefs[packName] || [];
                 foundMissingRefs[packName].push(ref);
+                // console.log("missing ref:", ref);
                 // console.log(
                 //   `MISSING ${refKey} referenced in ${ref.originDBFileName}, column: ${ref.originFieldName}`
                 // );
@@ -506,10 +518,19 @@ export function findPackTableReferences(packsData: Pack[], onPackChecked?: OnPac
                 ];
                 if (
                   optionalNonTextFieldsInTable &&
-                  optionalNonTextFieldsInTable.includes(ref.originFieldName)
+                  optionalNonTextFieldsInTable.includes(ref.originFieldName) &&
+                  ref.value == "0"
                 ) {
-                  console.log("FOUND OPTIONAL", ref);
+                  console.log("Found optional missing ref, skipping it:", ref);
                   continue;
+                }
+
+                const additionalFieldKeysTableName = additionalFieldKeys[ref.targetDBFileName];
+                if (additionalFieldKeysTableName) {
+                  if (additionalFieldKeysTableName[ref.targetFieldName]?.includes(ref.value)) {
+                    console.log("Found missing ref that is in additional field keys, skipping it:", ref);
+                    continue;
+                  }
                 }
 
                 foundMissingRefs[packName] = foundMissingRefs[packName] || [];

@@ -65,7 +65,6 @@ import {
   getSkills,
   NodeLinks,
   NodeSkill,
-  NodeToSkill,
   SkillAndIcons,
 } from "./skills";
 import fetch from "node-fetch";
@@ -185,6 +184,7 @@ export const registerIpcMainListeners = (
           (!packName.startsWith("audio_") &&
             !packName.startsWith("local_") &&
             !packName.startsWith("tile") &&
+            !packName.startsWith("warmachines") &&
             !packName.startsWith("terrain"))
       )
       .map((packName) => nodePath.join(dataFolder, packName));
