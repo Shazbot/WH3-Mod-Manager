@@ -187,6 +187,7 @@ const api = {
     ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("setPackSearchResults", callback),
+  terminateGame: () => ipcRenderer.send("terminateGame"),
 };
 
 export type api = typeof api;
