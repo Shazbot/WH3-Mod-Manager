@@ -86,46 +86,56 @@ export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion
   dynasties: {},
 };
 
+const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
+  secondVersion.version - firstVersion.version;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const wh3Definitions = (wh3Schema as { definitions: any }).definitions as any;
 for (const table_name in wh3Definitions) {
   DBNameToDBVersions["wh3"][table_name] = wh3Definitions[table_name];
+  DBNameToDBVersions["wh3"][table_name].sort(orderByVersion);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const wh2Definitions = (wh2Schema as { definitions: any }).definitions as any;
 for (const table_name in wh2Definitions) {
   DBNameToDBVersions["wh2"][table_name] = wh2Definitions[table_name];
+  DBNameToDBVersions["wh2"][table_name].sort(orderByVersion);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const threeKingdomsDefinitions = (threeKingdomsSchema as { definitions: any }).definitions as any;
 for (const table_name in threeKingdomsDefinitions) {
   DBNameToDBVersions["threeKingdoms"][table_name] = threeKingdomsDefinitions[table_name];
+  DBNameToDBVersions["threeKingdoms"][table_name].sort(orderByVersion);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const attilaDefinitions = (attilaSchema as { definitions: any }).definitions as any;
 for (const table_name in attilaDefinitions) {
   DBNameToDBVersions["attila"][table_name] = attilaDefinitions[table_name];
+  DBNameToDBVersions["attila"][table_name].sort(orderByVersion);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const troyDefinitions = (troySchema as { definitions: any }).definitions as any;
 for (const table_name in troyDefinitions) {
   DBNameToDBVersions["troy"][table_name] = troyDefinitions[table_name];
+  DBNameToDBVersions["troy"][table_name].sort(orderByVersion);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const pharaohDefinitions = (pharaohSchema as { definitions: any }).definitions as any;
 for (const table_name in pharaohDefinitions) {
   DBNameToDBVersions["pharaoh"][table_name] = pharaohDefinitions[table_name];
+  DBNameToDBVersions["pharaoh"][table_name].sort(orderByVersion);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dynastiesDefinitions = (dynastiesSchema as { definitions: any }).definitions as any;
 for (const table_name in dynastiesDefinitions) {
   DBNameToDBVersions["dynasties"][table_name] = dynastiesDefinitions[table_name];
+  DBNameToDBVersions["dynasties"][table_name].sort(orderByVersion);
 }
 
 // gameToReferences stores all the tables and their keys that are referenced by at least 1 other table field
@@ -200,7 +210,7 @@ export const gameToDBFieldsThatReference: Record<
 };
 for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
   for (const [tableName, versions] of Object.entries(tableVersions)) {
-    for (const version of versions) {
+    for (const version of versions.toReversed()) {
       for (const field of version.fields) {
         if (field.is_reference) {
           const dbFileNameRef = `${field.is_reference[0]}_tables`;
