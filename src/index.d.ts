@@ -141,6 +141,7 @@ declare global {
 
     //skills view
     isLocalizingSubtypes: boolean;
+    skillNodesToLevel: Record<string, number>;
   }
 
   type AppStateToWrite = Pick<
@@ -381,12 +382,15 @@ declare global {
     img: string;
     effects: Effect[];
     id: string;
-    linkedToSkill?: string | undefined;
+    linkedToNode?: string | undefined;
     group?: string;
     maxLevel: number;
     origIndent: string;
     origTier: string;
     isHiddentInUI: boolean;
+    nodeId: string;
+    faction?: string;
+    subculture?: string;
   }
   interface SkillsData {
     // subtypeToSkills: Record<string, Skill[]>;
@@ -400,14 +404,20 @@ declare global {
         child: string;
         childLinkPosition?: string;
         parentLinkPosition?: string;
+        linkType?: "REQUIRED" | "SUBSET_REQUIRED";
       }[]
     >;
+    nodeRequirements: Record<string, { single: string[]; multiple: string[]; numMultiple: number }>;
     icons: Record<string, string>;
     subtypes: string[];
     subtypesToLocalizedNames: Record<string, string>;
+    nodeToSkillLocks: NodeToSkillLocks;
   }
 
-  type ToastType = "success" | "warning" | "info";
+  Record<string, [string, string][]>;
+
+  type SkillAndLevel = [string, number];
+  type NodeToSkillLocks = Record<string, SkillAndLevel[]>;
 
   type MainWindowTab = "mods" | "enabledMods" | "categories";
 

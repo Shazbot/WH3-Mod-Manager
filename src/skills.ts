@@ -1,14 +1,16 @@
 import groupBy from "object.groupby";
-export type NodeToSkill = Record<
-  string,
-  {
-    node: string;
-    skill: string;
-    tier: string;
-    indent: string;
-    visibleInUI: "0" | "1";
-  }
->;
+export type NodeSkill = {
+  node: string;
+  skill: string;
+  tier: string;
+  indent: string;
+  visibleInUI: "0" | "1";
+  factionKey: string;
+  subculture: string;
+  requiredNumParents: number;
+};
+
+export type NodeToSkill = Record<string, NodeSkill>;
 
 export type NodeLinks = Record<
   string,
@@ -16,6 +18,7 @@ export type NodeLinks = Record<
     child: string;
     childLinkPosition?: string;
     parentLinkPosition?: string;
+    linkType: "REQUIRED" | "SUBSET_REQUIRED";
   }[]
 >;
 
@@ -33,7 +36,7 @@ export function getNodesToParents(
   const nodesToParents: Record<string, Skill[]> = {};
   nodes.forEach((node) => {
     const skill = nodeToSkill[node];
-    let linkedToSkill = undefined;
+    let linkedToNode = undefined;
     if (nodeLinks[node]) {
       const links = nodeLinks[node];
       const skills = [];
@@ -47,12 +50,12 @@ export function getNodesToParents(
         (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier)
       );
       if (skills.length > 0) {
-        linkedToSkill = skills[0].skill;
+        linkedToNode = skills[0].node;
       }
     }
-    if (linkedToSkill) {
-      nodesToParents[linkedToSkill] = nodesToParents[linkedToSkill] || [];
-      nodesToParents[linkedToSkill].push({
+    if (linkedToNode) {
+      nodesToParents[linkedToNode] = nodesToParents[linkedToNode] || [];
+      nodesToParents[linkedToNode].push({
         title: "",
         description: "",
         x: Number.parseInt(skill.indent),
@@ -60,11 +63,14 @@ export function getNodesToParents(
         img: "",
         effects: skillsToEffects[skill.skill],
         id: skill.skill,
-        linkedToSkill,
+        linkedToNode,
         maxLevel: 1,
         origIndent: skill.indent,
         origTier: skill.tier,
         isHiddentInUI: skill.visibleInUI == "0",
+        nodeId: node,
+        faction: skill.factionKey,
+        subculture: skill.subculture,
       });
     }
   });
@@ -81,7 +87,7 @@ export function getSkills(
 ) {
   const skills = nodes.map((node) => {
     const skill = nodeToSkill[node];
-    let linkedToSkill = undefined;
+    let linkedToNode = undefined;
     if (nodeLinks[node]) {
       const links = nodeLinks[node];
       const skills = [];
@@ -95,15 +101,15 @@ export function getSkills(
         (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier)
       );
       if (skills.length > 0) {
-        linkedToSkill = skills[0].skill;
+        linkedToNode = skills[0].node;
       }
     }
-    if (linkedToSkill) {
-      const parents = nodesToParents[linkedToSkill];
+    if (linkedToNode) {
+      const parents = nodesToParents[linkedToNode];
       if (parents) {
         parents.sort((firstSkill, secondSkill) => firstSkill.y - secondSkill.y);
         if (parents[0] && parents[parents.length - 1].id != skill.skill) {
-          linkedToSkill = undefined;
+          linkedToNode = undefined;
         }
       }
     }
@@ -125,11 +131,14 @@ export function getSkills(
       img: skillAndIcon?.iconPath || "",
       effects: skillsToEffects[skill.skill] || [],
       id: skill.skill,
-      linkedToSkill,
+      linkedToNode,
       maxLevel: skillAndIcon?.maxLevel || 1,
       origIndent: skill.indent,
       origTier: skill.tier,
       isHiddentInUI: skill.visibleInUI == "0",
+      nodeId: node,
+      faction: skill.factionKey,
+      subculture: skill.subculture,
     } as Skill;
   });
 
@@ -137,8 +146,23 @@ export function getSkills(
   for (const skillsInRow of Object.values(skillsGroupedByRow)) {
     skillsInRow.sort((firstSkill, secondSkill) => firstSkill.y - secondSkill.y);
     const startingColumn = (skillsInRow[0].x == 0 && 1) || 0; // first row starts at column 1, other rows at 0
-    for (let i = 0; i < skillsInRow.length; i++) {
-      skillsInRow[i].y = startingColumn + i;
+    for (let i = 0, j = 0; i < skillsInRow.length; i++, j++) {
+      const currentSkill = skillsInRow[i];
+      // check if there are nodes that share the same position due to faction or subculture columns
+      if (
+        ((currentSkill.subculture && currentSkill.subculture != "") ||
+          (currentSkill.faction && currentSkill.faction != "")) &&
+        skillsInRow.some(
+          (skill) =>
+            skill != currentSkill &&
+            skill.origIndent == currentSkill.origIndent &&
+            skill.origTier == currentSkill.origTier &&
+            skillsInRow.indexOf(skill) < i
+        )
+      ) {
+        j--;
+      }
+      currentSkill.y = startingColumn + j;
     }
   }
 
@@ -146,7 +170,7 @@ export function getSkills(
     const parents = nodesToParents[node];
     if (parents.length < 2) continue;
     for (const parent of parents) {
-      const skill = skills.find((skill) => skill.id === parent.id);
+      const skill = skills.find((skill) => skill.nodeId === parent.nodeId);
       if (skill) {
         skill.group = node;
       }
@@ -228,4 +252,37 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
       // }
     }
   }
+}
+
+export function getNodeRequirements(nodeLinks: NodeLinks, nodeToSkill: Record<string, NodeSkill>) {
+  const nodeRequirements = {} as Record<
+    string,
+    { single: string[]; multiple: string[]; numMultiple: number }
+  >;
+
+  for (const [parentNode, nodeLinkData] of Object.entries(nodeLinks)) {
+    for (const nodeLink of nodeLinkData) {
+      nodeRequirements[nodeLink.child] = nodeRequirements[nodeLink.child] || {};
+      switch (nodeLink.linkType) {
+        case "REQUIRED":
+          nodeRequirements[nodeLink.child].single = nodeRequirements[nodeLink.child].single || [];
+          if (!nodeRequirements[nodeLink.child].single.includes(parentNode)) {
+            nodeRequirements[nodeLink.child].single.push(parentNode);
+          }
+          break;
+        case "SUBSET_REQUIRED":
+          nodeRequirements[nodeLink.child].multiple = nodeRequirements[nodeLink.child].multiple || [];
+          if (!nodeRequirements[nodeLink.child].multiple.includes(parentNode)) {
+            nodeRequirements[nodeLink.child].multiple.push(parentNode);
+            const nodeData = nodeToSkill[nodeLink.child];
+            if (nodeData) {
+              nodeRequirements[nodeLink.child].numMultiple = nodeData.requiredNumParents;
+            }
+          }
+          break;
+      }
+    }
+  }
+
+  return nodeRequirements;
 }

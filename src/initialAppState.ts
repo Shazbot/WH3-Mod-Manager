@@ -77,6 +77,9 @@ const initialState = {
   isModTagPickerOpen: false,
   currentModToUpload: undefined,
   isLocalizingSubtypes: false,
+
+  // skills
+  skillNodesToLevel: {},
 } as AppState;
 
 export default initialState;

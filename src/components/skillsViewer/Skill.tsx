@@ -1,5 +1,8 @@
-import React, { useCallback } from "react";
+import React, { memo, useCallback, useState } from "react";
 import { Handle, NodeToolbar, Position } from "@xyflow/react";
+import { useAppDispatch, useAppSelector } from "../../hooks";
+import { setSkillNodeLevel } from "@/src/appSlice";
+import { useLocalizations } from "@/src/localizationContext";
 
 export type SkillData = {
   skillBackground: string;
@@ -17,16 +20,27 @@ export type SkillData = {
   isAbilityIcon: boolean;
   imgPath: string;
   id: string;
+  nodeId: string;
   origIndent: string;
   origTier: string;
   isHiddentInUI: boolean;
+  faction?: string;
+  subculture?: string;
+  isCheckingSkillRequirements: boolean;
 };
-const Skill = ({ data }: { data: SkillData }) => {
+const Skill = memo(({ data }: { data: SkillData }) => {
+  const dispatch = useAppDispatch();
   const { skillBackground, skillIconBackground, skillIcon, label } = data;
+  const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
+  const skillsData = useAppSelector((state) => state.app.skillsData);
 
-  const [isTooltipOpen, setIsTooltipOpen] = React.useState(false);
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const resolvedSkillIcon = skillIcon; //require(`../../../dumps/img/${skillIcon}`);
-  const [currentLevel, setCurrentLevel] = React.useState(0);
+  const [currentLevel, setCurrentLevel] = useState(0);
+
+  const localized = useLocalizations();
+
+  const isCheckingSkillRequirements = data.isCheckingSkillRequirements;
 
   const onMouseEnter = useCallback(() => {
     setIsTooltipOpen(true);
@@ -37,7 +51,10 @@ const Skill = ({ data }: { data: SkillData }) => {
 
   const onClick = useCallback(
     (currentLevel: number, maxLevel: number) => {
-      if (currentLevel < maxLevel) setCurrentLevel(currentLevel + 1);
+      if (currentLevel < maxLevel) {
+        setCurrentLevel(currentLevel + 1);
+        dispatch(setSkillNodeLevel({ skillNodeId: data.nodeId, level: currentLevel + 1 }));
+      }
       console.log("clicked skill:", data);
       console.log("effects:");
       for (const effect of data.effects) {
@@ -49,10 +66,79 @@ const Skill = ({ data }: { data: SkillData }) => {
 
   const onRightClick = useCallback(
     (currentLevel: number) => {
-      if (currentLevel > 0) setCurrentLevel(currentLevel - 1);
+      if (currentLevel > 0) {
+        setCurrentLevel(currentLevel - 1);
+        dispatch(setSkillNodeLevel({ skillNodeId: data.nodeId, level: currentLevel - 1 }));
+      }
     },
     [setCurrentLevel]
   );
+
+  if (!skillsData) return <></>;
+
+  const skillsBeingDisabled = [] as string[];
+  const nodeToSkillLocks = skillsData.nodeToSkillLocks;
+  for (const [nodeId, skillAndLevels] of Object.entries(nodeToSkillLocks)) {
+    for (const [iterSkill, iterLevel] of skillAndLevels) {
+      if (iterSkill == data.id && iterLevel == currentLevel + 1) {
+        for (const skillBeingDisabled of skillsData.currentSkills.filter((skill) => skill.nodeId == nodeId)) {
+          skillsBeingDisabled.push(skillBeingDisabled.localizedTitle || skillBeingDisabled.id);
+        }
+      }
+    }
+  }
+
+  let areRequirementsValid = true;
+  let reqsMessage = "";
+  const skillAndLevels = nodeToSkillLocks[data.nodeId];
+  if (skillAndLevels) {
+    for (const [lockingSkill, lockingLevel] of skillAndLevels) {
+      for (const skillNodeToCheck of skillsData.currentSkills.filter((skill) => skill.id == lockingSkill)) {
+        const level = skillNodesToLevel[skillNodeToCheck.nodeId];
+        if (level && level >= lockingLevel) areRequirementsValid = false;
+      }
+    }
+  }
+
+  const nodeRequirements = skillsData.nodeRequirements[data.nodeId];
+  if (nodeRequirements) {
+    if (nodeRequirements.single && nodeRequirements.single.length > 0) {
+      for (const parentNode of nodeRequirements.single || []) {
+        areRequirementsValid = areRequirementsValid && (skillNodesToLevel[parentNode] || 0) > 0;
+      }
+      if (!areRequirementsValid) {
+        const reqParentNodeSkill = skillsData.currentSkills.find(
+          (skill) => skill.nodeId == nodeRequirements.single[0]
+        );
+        if (reqParentNodeSkill) {
+          reqsMessage =
+            localized.skillUnlockRequirementParent &&
+            localized.skillUnlockRequirementParent.replace(
+              "REQUIRED_SKILL",
+              reqParentNodeSkill.localizedTitle || reqParentNodeSkill.id
+            );
+        }
+      }
+    }
+    let countForMultiple = 0;
+    if (nodeRequirements.multiple && nodeRequirements.multiple.length > 0) {
+      for (const parentNode of nodeRequirements.multiple) {
+        countForMultiple += skillNodesToLevel[parentNode] || 0;
+      }
+      areRequirementsValid = areRequirementsValid && countForMultiple >= nodeRequirements.numMultiple;
+
+      if (!areRequirementsValid) {
+        reqsMessage =
+          localized.skillUnlockRequirementMultipleParents &&
+          localized.skillUnlockRequirementMultipleParents.replace(
+            "NUM_SKILL_POINTS",
+            nodeRequirements.numMultiple.toString()
+          );
+      }
+    }
+  }
+
+  if (!isCheckingSkillRequirements) areRequirementsValid = true;
 
   return (
     <>
@@ -63,7 +149,25 @@ const Skill = ({ data }: { data: SkillData }) => {
       >
         <div style={{ backgroundImage: `url('${data.tooltipFrame}')` }} className={`w-96 skillTooltip`}>
           <div className="font-bold text-center">{data.label}</div>
+          {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
+          {data.faction && <div className="font-bold text-center">{data.faction}</div>}
+          {data.numLevels > 3 && (
+            <div className="font-bold text-center">
+              {currentLevel}/{data.numLevels}
+            </div>
+          )}
           <div className="text-sm italic">{data.description}</div>
+          {!areRequirementsValid && reqsMessage != "" && (
+            <div className="text-sm text-red-600">{reqsMessage}</div>
+          )}
+          {skillsBeingDisabled.length > 0 && (
+            <>
+              <div className="text-sm text-yellow-200">{localized.skillUnlockWillLock}</div>
+              {skillsBeingDisabled.map((skillBeingDisabled) => (
+                <div className="text-sm text-yellow-200">{skillBeingDisabled}</div>
+              ))}
+            </>
+          )}
           {/* <div className="mt-2">
             {data.effects
               .filter((effect) => effect.level == Math.min(currentLevel + 1, data.numLevels))
@@ -100,9 +204,13 @@ const Skill = ({ data }: { data: SkillData }) => {
       <div
         onMouseEnter={() => onMouseEnter()}
         onMouseLeave={() => onMouseLeave()}
-        onClick={() => onClick(currentLevel, data.numLevels)}
-        onContextMenu={() => onRightClick(currentLevel)}
-        className="h-20 relative w-[260px]"
+        onClick={() => {
+          if (!isCheckingSkillRequirements || areRequirementsValid) onClick(currentLevel, data.numLevels);
+        }}
+        onContextMenu={() => {
+          onRightClick(currentLevel);
+        }}
+        className={`h-20 relative w-[260px] ${areRequirementsValid ? "" : "grayscale"}`}
       >
         <Handle type="target" position={Position.Left} className="ml-[10px] z-[2] opacity-0" />
         <img className="absolute h-20 w-full" src={skillBackground} alt={skillBackground} />
@@ -123,7 +231,7 @@ const Skill = ({ data }: { data: SkillData }) => {
           {label}
         </div>
         <div className="absolute right-[2%] h-[70%] justify-center flex flex-col mt-[8px]">
-          {Array.from(Array(data.numLevels).keys()).map((i) => (
+          {Array.from(Array(Math.min(data.numLevels, 3)).keys()).map((i) => (
             <div className="relative">
               <img key={`${data.label}-skillLevel-${i}`} src={data.skillLevelImg} alt="skillLevelImg"></img>
               {i < currentLevel && (
@@ -136,5 +244,5 @@ const Skill = ({ data }: { data: SkillData }) => {
       </div>
     </>
   );
-};
+});
 export default Skill;

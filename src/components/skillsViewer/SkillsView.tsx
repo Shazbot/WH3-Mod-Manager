@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { memo, useContext, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import deepClone from "clone-deep";
 import "@silevis/reactgrid/styles.css";
@@ -24,6 +24,8 @@ const edgeType = "straight";
 
 const nodeTypes = { skill: Skill };
 
+const collator = new Intl.Collator("en");
+
 let skillIconBackground = "";
 let skillBackground = "";
 let skillIcon = "";
@@ -41,14 +43,16 @@ tooltipFrame = require("../../assets/skills//tooltip_frame.png");
 skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 
 const nodeWidth = 300;
-const nodeHeight = 100;
+let nodeHeight = 100;
+const biggerNodeHeight = 120;
 
-const SkillsView = React.memo(() => {
+const SkillsView = memo(() => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useContext(localizationContext);
 
   const [isShowingHiddentSkills, setIsShowingHiddenSkills] = useState(true);
   const [isShowingHiddenModifiersInsideSkills, setIsShowingHiddenModifiersInsideSkills] = useState(true);
+  const [isCheckingSkillRequirements, setIsCheckingSkillRequirements] = useState(true);
 
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
 
@@ -65,6 +69,25 @@ const SkillsView = React.memo(() => {
     console.log("SkillsView: no skills");
     return <></>;
   }
+
+  let nodeSizeDelta = 0;
+  let usingBiggerNodeHeight = false;
+  // if we need to overlay nodes make the y gap between them bigger
+  if (
+    skills.some((skillFirst) =>
+      skills.some(
+        (skillSecond) =>
+          skillFirst != skillSecond &&
+          skillFirst.origIndent == skillSecond.origIndent &&
+          skillFirst.origTier == skillSecond.origTier
+      )
+    )
+  ) {
+    nodeHeight = biggerNodeHeight;
+    nodeSizeDelta = 20;
+    usingBiggerNodeHeight = true;
+  }
+  console.log("usingBiggerNodeHeight:", usingBiggerNodeHeight);
 
   if (!isShowingHiddentSkills) {
     skills = skills.filter((skill) => !skill.isHiddentInUI);
@@ -92,7 +115,14 @@ const SkillsView = React.memo(() => {
       if (skills[i].y < lowest.y) lowest = skills[i];
       if (skills[i].y > highest.y) highest = skills[i];
     }
-    console.log("group", group, "size", skills.length);
+    console.log(
+      "group",
+      group,
+      "size",
+      skills.length,
+      "skills:",
+      skills.map((skill) => skill.id)
+    );
     skillNodes.push({
       id: `${group}_group`,
       data: {
@@ -100,6 +130,7 @@ const SkillsView = React.memo(() => {
         id: group,
         isAbilityIcon: false,
         imgPath: "",
+        nodeId: `${group}_group`,
         skillBackground,
         skillIconBackground,
         skillLevelImg,
@@ -114,8 +145,12 @@ const SkillsView = React.memo(() => {
         origIndent: "",
         origTier: "",
         isHiddentInUI: false,
+        isCheckingSkillRequirements,
       },
-      position: { y: lowest.x * nodeHeight - 10, x: lowest.y * nodeWidth - 10 },
+      position: {
+        y: lowest.x * nodeHeight - (usingBiggerNodeHeight ? 15 + nodeSizeDelta / 2 : 15),
+        x: lowest.y * nodeWidth - 10,
+      },
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
       parentId: undefined,
@@ -133,14 +168,70 @@ const SkillsView = React.memo(() => {
   }
   // console.log("grouped skills:", JSON.stringify(groupedSkills));
 
+  // DEBUG
+  for (const group of Object.keys(groupedSkills)) {
+    console.log("GROUP:", group);
+
+    const skills = groupedSkills[group];
+    for (const skill of skills) {
+      console.log("SKILL:", skill.id, skill.origTier, skill.origIndent);
+    }
+    console.log("DONE WITH GROUP");
+  }
+
   skills.forEach((skill, i) => {
-    let position = { y: skill.x * nodeHeight, x: skill.y * nodeWidth };
+    // console.log("skill:", skill);
+
+    const sameCoordinatesSkills = skills.filter(
+      (iterSkill) => iterSkill.origIndent == skill.origIndent && iterSkill.origTier == skill.origTier
+    );
+    sameCoordinatesSkills.sort((first, second) => {
+      if (first.faction == second.faction && first.subculture == second.subculture) return 0;
+
+      const firstHasFaction = first.faction && first.faction != "";
+      const secondHasFaction = second.faction && second.faction != "";
+      const firstHasSubculture = first.subculture && first.subculture != "";
+      const secondHasSubculture = second.subculture && second.subculture != "";
+
+      if (!firstHasFaction && !firstHasSubculture && (secondHasFaction || secondHasSubculture)) {
+        return -1;
+      }
+      if (!secondHasFaction && !secondHasSubculture && (firstHasFaction || firstHasSubculture)) {
+        return 1;
+      }
+      if (firstHasFaction && secondHasFaction) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        return collator.compare(first.faction!, second.faction!);
+      }
+      if (firstHasSubculture && secondHasSubculture) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        return collator.compare(first.subculture!, second.subculture!);
+      }
+      if (firstHasFaction && secondHasSubculture) {
+        return -1;
+      }
+      if (secondHasFaction && firstHasSubculture) {
+        return 1;
+      }
+
+      return 0;
+    });
+
+    const indexInSameCoords = sameCoordinatesSkills.indexOf(skill);
+
+    let position = {
+      y: skill.x * nodeHeight + indexInSameCoords * 40,
+      x: skill.y * nodeWidth + indexInSameCoords * 25,
+    };
     if (skill.group) {
       const skillsInGroup = groupedSkills[skill.group];
       if (skillsInGroup && skillsInGroup.length > 1) {
         const index = skillsInGroup.indexOf(skill);
         if (index > -1) {
-          position = { y: 10, x: index * nodeWidth + 10 };
+          position = {
+            y: (usingBiggerNodeHeight ? 10 + nodeSizeDelta / 2 : 15) + indexInSameCoords * 40,
+            x: index * nodeWidth + 10 + indexInSameCoords * 25,
+          };
         }
       }
     }
@@ -156,7 +247,7 @@ const SkillsView = React.memo(() => {
     }
 
     const node: Node<SkillData, "skill"> = {
-      id: `${skill.id}`,
+      id: `${skill.nodeId}`,
       data: {
         id: skill.id,
         label: skill.localizedTitle || skill.id,
@@ -166,6 +257,7 @@ const SkillsView = React.memo(() => {
         tooltipFrame,
         skillLevelLitIcon,
         row: skill.x,
+        nodeId: skill.nodeId,
         imgPath: skill.img,
         isGrouping: false,
         numLevels: skill.maxLevel,
@@ -182,6 +274,9 @@ const SkillsView = React.memo(() => {
           return { ...effect, iconData };
         }),
         isHiddentInUI: skill.isHiddentInUI,
+        faction: skill.faction,
+        subculture: skill.subculture,
+        isCheckingSkillRequirements,
       } as SkillData,
       position,
       sourcePosition: Position.Right,
@@ -213,11 +308,15 @@ const SkillsView = React.memo(() => {
       const node = skillNodesRow[i];
       const nodePrev = skillNodesRow[i - 1];
       console.log("current node:", node.data.label);
-      if (node.data.isGrouping) {
-        delta += 50;
-      }
-      if (!node.data.isGrouping && nodePrev.data.isGrouping) {
-        delta += 50;
+      if (node.position.x != nodePrev.position.x) {
+        if (node.data.isGrouping) {
+          delta += 50;
+        }
+        if (!node.data.isGrouping && nodePrev.data.isGrouping) {
+          delta += 50;
+        }
+      } else {
+        node.position.y = nodePrev.position.y + 20;
       }
       node.position.x += delta;
       if (!node.parentId) {
@@ -225,6 +324,14 @@ const SkillsView = React.memo(() => {
       }
     }
   }
+
+  console.log("LINKED SKILLS:-----------------------");
+  for (const skill of skills) {
+    if (skill.linkedToNode) {
+      console.log("SKILL:", skill.id, skill.x, skill.y, skill.linkedToNode);
+    }
+  }
+  console.log("LINKED SKILLS DONE-------------------------");
 
   const initialEdges: {
     id: string;
@@ -234,23 +341,27 @@ const SkillsView = React.memo(() => {
     animated: boolean;
   }[] = [];
   skills
-    .filter((skill) => skill.linkedToSkill)
+    .filter((skill) => skill.linkedToNode)
     .forEach((skillWithLink) => {
-      const linkedSkill = skillWithLink.linkedToSkill;
-      if (linkedSkill)
-        if (skills.some((skill) => skill.id == linkedSkill)) {
-          const linkedSkillNode = skillNodes.find((skillNode) => skillNode.id == `${linkedSkill}`);
-          const skillNode = skillNodes.find((skillNode) => skillNode.id == `${skillWithLink.id}`);
-          if (linkedSkillNode) {
-            initialEdges.push({
-              id: `e${skillWithLink.id}2${linkedSkill}`,
-              source: skillNode && skillNode.parentId ? skillNode.parentId : skillWithLink.id,
-              target: linkedSkillNode.parentId ? linkedSkillNode.parentId : linkedSkill,
-              type: edgeType,
-              animated: false,
-            });
-          }
+      const linkedNode = skillWithLink.linkedToNode;
+      console.log("for", skillWithLink.nodeId, "searching for node", linkedNode);
+      if (linkedNode) {
+        const linkedSkillNode = skillNodes.find((skillNode) => skillNode.data.nodeId == `${linkedNode}`);
+        const sourceSkillNode = skillNodes.find(
+          (skillNode) => skillNode.data.nodeId == `${skillWithLink.nodeId}`
+        );
+        // console.log("linkedSkillNode:", !!linkedSkillNode);
+        // console.log("sourceSkillNode:", !!sourceSkillNode);
+        if (linkedSkillNode && sourceSkillNode) {
+          initialEdges.push({
+            id: `e${skillWithLink.id}2${linkedNode}`,
+            source: sourceSkillNode && sourceSkillNode.parentId ? sourceSkillNode.parentId : skillWithLink.id,
+            target: linkedSkillNode.parentId ? linkedSkillNode.parentId : linkedNode,
+            type: edgeType,
+            animated: false,
+          });
         }
+      }
     });
 
   // console.log(skills.map((skill) => [skill.x, skill.y]));
@@ -258,15 +369,24 @@ const SkillsView = React.memo(() => {
 
   // console.log("initialEdges:", initialEdges);
 
+  console.log("nodeSizeDelta:", nodeSizeDelta);
   const arrows = initialEdges
     .map((edge) => {
-      const sourceNode = skillNodes.find((node) => node.id == edge.source);
-      const targetNode = skillNodes.find((node) => node.id == edge.target);
+      console.log("edge:", edge.source, edge.target);
+      const sourceNode =
+        skillNodes.find((node) => node.id == edge.source) ||
+        skillNodes.find((node) => node.data.id == edge.source);
+      const targetNode =
+        skillNodes.find((node) => node.id == edge.target) ||
+        skillNodes.find((node) => node.data.id == edge.target);
       if (!sourceNode || !targetNode) return;
 
       let x = Math.max(sourceNode.position.x, targetNode.position.x) - 70;
       if (targetNode.data.isGrouping) x -= 20;
-      const y = targetNode.position.y + (targetNode.height ? targetNode.height / 2 : 30) - 5;
+      const y = sourceNode.position.y + (sourceNode.data.isGrouping ? 40 + nodeSizeDelta / 2 : 27.5);
+      // targetNode.position.y +
+      // (targetNode.height ? targetNode.height / 2 : 30) -
+      // (usingBiggerNodeHeight ? 0 : 5);
 
       return { x, y, sourceNode, targetNode };
     })
@@ -287,7 +407,7 @@ const SkillsView = React.memo(() => {
   useEffect(() => {
     setNodes(deepClone(skillNodes));
     setEdges(deepClone(initialEdges));
-  }, [skillsData, isShowingHiddenModifiersInsideSkills, isShowingHiddentSkills]);
+  }, [skillsData, isShowingHiddenModifiersInsideSkills, isShowingHiddentSkills, isCheckingSkillRequirements]);
 
   return (
     <div className="w-full h-full hideReactFlowHandles">
@@ -336,6 +456,21 @@ const SkillsView = React.memo(() => {
                       }}
                     ></input>
                     <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
+                  </label>
+                </div>
+              </Dropdown.Item>
+              <Dropdown.Item>
+                <div className="flex items-center">
+                  <label htmlFor="isCheckingSkillRequirementsCheckbox">
+                    <input
+                      id="isCheckingSkillRequirementsCheckbox"
+                      type="checkbox"
+                      checked={!!isCheckingSkillRequirements}
+                      onChange={() => {
+                        setIsCheckingSkillRequirements(!isCheckingSkillRequirements);
+                      }}
+                    ></input>
+                    <span className="ml-2">{localized.checkSkillRequirements}</span>
                   </label>
                 </div>
               </Dropdown.Item>
