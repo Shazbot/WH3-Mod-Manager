@@ -291,7 +291,20 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   display: none;
 }
 
+.ht_nestingButton {
+  display: none;
+}
+
+.handsontable th.ht_nestingLevels span:last-child {
+  padding-left: 0 !important;
+}
+
 .handsontable td {
+}
+
+.htFocusCatcher,
+.ht_clone_top {
+  display: none;
 }
 
 .my-cell {

@@ -2,8 +2,9 @@ import Creatable from "react-select/creatable";
 import React, { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import "@silevis/reactgrid/styles.css";
-import "handsontable/dist/handsontable.full.min.css";
-import { HotColumn, HotTable } from "@handsontable/react";
+import "handsontable/styles/handsontable.min.css";
+import "handsontable/styles/ht-theme-main.min.css";
+import { HotColumn, HotTable } from "@handsontable/react-wrapper";
 import { textRenderer, checkboxRenderer } from "handsontable/renderers";
 import { registerAllModules } from "handsontable/registry";
 import { FloatingOverlay } from "@floating-ui/react";
@@ -19,6 +20,7 @@ import ModDropdownOptions from "./ModDropdownOptions";
 import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
 import { Tooltip } from "flowbite-react";
 import localizationContext from "../localizationContext";
+import Handsontable from "handsontable";
 
 type CategorySelectType = {
   value: string;
@@ -88,48 +90,6 @@ const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
   );
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const BadgesRowRenderer = memo((props: any) => {
-  // the available renderer-related props are:
-  // - `row` (row index)
-  // - `col` (column index)
-  // - `prop` (column property name)
-  // - `TD` (the HTML cell element)
-
-  const selectedRows: number[] = [];
-  for (const selection of selectedInTable) {
-    if (selection.row == -1) continue;
-    const rowMin = Math.min(selection.row, selection.row2);
-    const rowMax = Math.max(selection.row, selection.row2);
-
-    for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
-  }
-
-  props.TD.style.background = "rgba(255,255, 255,1)";
-  if (props.isContextMenuOpen && selectedRows.includes(props.row))
-    props.TD.style.background = "rgba(0, 94, 255, 0.1)";
-
-  if (!props.value) return <></>;
-  const categories = props.value as string[];
-
-  const hotRef = props.hotRef;
-  if (!hotRef || !hotRef.current) return <></>;
-  const hot = hotRef.current.hotInstance;
-  if (!hot) return <></>;
-
-  const rowData = hot.getSourceDataAtRow(props.row) as ModRow;
-  const mod = (props.mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
-  if (!mod) return <></>;
-
-  return (
-    <>
-      {categories.map((category) => (
-        <Badge key={category} text={category} mod={mod} />
-      ))}
-    </>
-  );
-});
-
 let isShiftDown = false;
 let isControlDown = false;
 
@@ -180,6 +140,49 @@ const Categories = memo(() => {
 
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const hotRef = useRef<HotTable>(null);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const BadgesRowRenderer = memo((props: any) => {
+    // the available renderer-related props are:
+    // - `row` (row index)
+    // - `col` (column index)
+    // - `prop` (column property name)
+    // - `TD` (the HTML cell element)
+
+    const selectedRows: number[] = [];
+    for (const selection of selectedInTable) {
+      if (selection.row == -1) continue;
+      const rowMin = Math.min(selection.row, selection.row2);
+      const rowMax = Math.max(selection.row, selection.row2);
+
+      for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
+    }
+
+    // props.TD.style.background = "rgba(255,255, 255,1)";
+    if (isContextMenuOpen && selectedRows.includes(props.row))
+      props.TD.style.background = "rgba(0, 94, 255, 0.1)";
+
+    if (!props.value) return <></>;
+    const categories = props.value as string[];
+
+    if (!hotRef || !hotRef.current) return <></>;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const hot = hotRef.current.hotInstance as Handsontable;
+    if (!hot) return <></>;
+
+    const rowData = hot.getSourceDataAtRow(props.row) as ModRow;
+    const mod = (mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
+    if (!mod) return <></>;
+
+    return (
+      <>
+        {categories.map((category) => (
+          <Badge key={category} text={category} mod={mod} />
+        ))}
+      </>
+    );
+  });
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -360,7 +363,9 @@ const Categories = memo(() => {
     document.addEventListener("contextmenu", onContextMenu);
 
     if (!hotRef || !hotRef.current) return;
-    const hot = hotRef.current.hotInstance;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const hot = hotRef.current.hotInstance as Handsontable;
     if (!hot) return;
 
     return () => document.removeEventListener("contextmenu", onContextMenu);
@@ -368,7 +373,9 @@ const Categories = memo(() => {
 
   const getSelectedMods = (): Mod[] => {
     if (!hotRef || !hotRef.current) return [];
-    const hot = hotRef.current.hotInstance;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const hot = hotRef.current.hotInstance as Handsontable;
     if (!hot) return [];
 
     const selectedRows: number[] = [];
@@ -385,6 +392,7 @@ const Categories = memo(() => {
     const selectedMods: Mod[] = [];
     for (const rowNum of selectedRows) {
       const rowData = hot.getSourceDataAtRow(rowNum) as CategoryRow | ModRow;
+      if (!rowData) continue;
       if (isCategoryRow(rowData)) continue;
       const path = rowData.path;
       const selectedMod = mods.find((iterMod) => iterMod.path == path);
@@ -438,6 +446,9 @@ const Categories = memo(() => {
     value: any,
     cellProperties: CellProperties
   ) {
+    if (col == 0) {
+      td.style.verticalAlign = "left";
+    }
     if (col == 1) {
       td.style.verticalAlign = "middle";
     }
@@ -647,9 +658,15 @@ const Categories = memo(() => {
         onClick={(ev) => {
           const targetElement = ev.target as HTMLElement;
           let innerHmtl = "";
-          if (targetElement.classList.contains("rowHeader")) {
+          if (
+            targetElement.classList.contains("rowHeader") ||
+            targetElement.classList.contains("rowHeaderChild")
+          ) {
             innerHmtl = targetElement.innerHTML;
-          } else if (targetElement.parentElement?.classList.contains("rowHeader")) {
+          } else if (
+            targetElement.parentElement?.classList.contains("rowHeader") ||
+            targetElement.parentElement?.classList.contains("rowHeaderChild")
+          ) {
             innerHmtl = targetElement.parentElement?.innerHTML;
           }
 
@@ -658,6 +675,7 @@ const Categories = memo(() => {
           if (flattenedData.length <= rowNum) return;
 
           const rowData = flattenedData[rowNum];
+          if (!rowData) return;
           if (!isCategoryRow(rowData)) return;
 
           const category = rowData.category;
@@ -671,7 +689,9 @@ const Categories = memo(() => {
         }}
         onContextMenu={() => {
           if (!hotRef || !hotRef.current) return;
-          const hot = hotRef.current.hotInstance;
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          const hot = hotRef.current.hotInstance as Handsontable;
           if (!hot) return;
 
           const selectedRows: number[] = [];
@@ -694,7 +714,7 @@ const Categories = memo(() => {
           setCurrentlySelectedMods(selectedMods);
           setIsContextMenuOpen(true);
         }}
-        className="overflow-hidden mx-10"
+        className="overflow-hidden mx-10 ht-theme-main-dark-auto"
       >
         <HotTable
           className={(isContextMenuOpen && "disable-border") || ""}
@@ -703,6 +723,8 @@ const Categories = memo(() => {
           data={sourceDataObject}
           persistentState={true}
           width="100%"
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
           ref={hotRef}
           stretchH="last"
           height={"87.5vh"}
@@ -715,9 +737,9 @@ const Categories = memo(() => {
             const data = flattenedData[visualRowIndex];
             if (isCategoryRow(data)) {
               if (hiddenCategories.includes(data.category)) {
-                return `${visualRowIndex + 1} <span style="">▼</span>`;
+                return `<span class="rowHeaderChild">${visualRowIndex + 1} ▼</span>`;
               }
-              return `${visualRowIndex + 1} <span style="">▲</span>`;
+              return `<span class="rowHeaderChild">${visualRowIndex + 1} ▲</span>`;
             }
 
             return `${visualRowIndex + 1}`;
@@ -726,7 +748,9 @@ const Categories = memo(() => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             changes?.forEach(([row, prop, oldValue, newValue]) => {
               if (!hotRef || !hotRef.current) return;
-              const hot = hotRef.current.hotInstance;
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore
+              const hot = hotRef.current.hotInstance as Handsontable;
               if (!hot) return;
 
               if (prop == "isEnabled") {
@@ -758,7 +782,9 @@ const Categories = memo(() => {
             selectedInTable.push({ row, column, row2, column2 });
 
             if (!hotRef || !hotRef.current) return;
-            const hot = hotRef.current.hotInstance;
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            const hot = hotRef.current.hotInstance as Handsontable;
             if (!hot) return;
 
             preventScrolling.value = true;
@@ -806,7 +832,9 @@ const Categories = memo(() => {
               console.log("clearing tracked selection");
             }
             if (!hotRef || !hotRef.current) return;
-            const hot = hotRef.current.hotInstance;
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            const hot = hotRef.current.hotInstance as Handsontable;
             if (!hot) return;
             // hot.render();
           }}
@@ -839,15 +867,7 @@ const Categories = memo(() => {
           <HotColumn data="category" className="htCenter htMiddle" width={120} readOnly={true}></HotColumn>
           <HotColumn data="isEnabled" width={30} type="checkbox"></HotColumn>
           <HotColumn data="humanName" className="htMiddle" width={300} readOnly={true}></HotColumn>
-          <HotColumn data="categories" readOnly={true}>
-            {/* add the `hot-renderer` attribute to mark the component as a Handsontable renderer */}
-            <BadgesRowRenderer
-              mods={mods}
-              isContextMenuOpen={isContextMenuOpen}
-              hotRef={hotRef}
-              hot-renderer
-            />
-          </HotColumn>
+          <HotColumn data="categories" readOnly={true} renderer={BadgesRowRenderer}></HotColumn>
         </HotTable>
       </div>
     </>
