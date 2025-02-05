@@ -1,16 +1,18 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, memo } from "react";
 import { useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 
-import "handsontable/dist/handsontable.full.min.css";
+import "handsontable/styles/handsontable.min.css";
+import "handsontable/styles/ht-theme-main.min.css";
 
-import { HotTable } from "@handsontable/react";
+import { HotTable } from "@handsontable/react-wrapper";
 
 import { registerAllModules } from "handsontable/registry";
+import Handsontable from "handsontable";
 
-const PackTablesTableView = React.memo(() => {
+const PackTablesTableView = memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
 
@@ -21,7 +23,9 @@ const PackTablesTableView = React.memo(() => {
 
   useEffect(() => {
     if (!hotRef || !hotRef.current) return;
-    const hot = hotRef.current.hotInstance;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const hot = hotRef.current.hotInstance as Handsontable;
     if (!hot) return;
     const plugin = hot.getPlugin("autoColumnSize");
 
@@ -143,8 +147,10 @@ const PackTablesTableView = React.memo(() => {
   // console.log("COLUMNS:", columns);
 
   return (
-    <div>
+    <div className="ht-theme-main-dark-auto">
       <HotTable
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
         ref={hotRef}
         filters={true}
         autoColumnSize={{ useHeaders: false }}
