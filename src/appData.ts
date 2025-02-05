@@ -117,6 +117,7 @@ for (const supportedGame of supportedGames) {
   troy: undefined,
   pharaoh: undefined,
   dynasties: undefined,
+  rome2: undefined,
 };
 (appData as AppData).gameToPresets = {
   wh2: [],
@@ -126,6 +127,7 @@ for (const supportedGame of supportedGames) {
   troy: [],
   pharaoh: [],
   dynasties: [],
+  rome2: [],
 };
 
 export default appData as AppData;

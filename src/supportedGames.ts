@@ -6,8 +6,9 @@ export const supportedGames = [
   "troy",
   "pharaoh",
   "dynasties",
+  "rome2",
 ] as const;
-export type SupportedGames = typeof supportedGames[number];
+export type SupportedGames = (typeof supportedGames)[number];
 
 export const supportedGameOptions = [
   "MakeUnitsGenerals",
@@ -15,7 +16,7 @@ export const supportedGameOptions = [
   "ScriptLogging",
   "AutoStartCustomBattle",
 ] as const;
-export type SupportedGameOptions = typeof supportedGameOptions[number];
+export type SupportedGameOptions = (typeof supportedGameOptions)[number];
 
 export const supportedGameOptionToStartGameOption: Record<
   SupportedGameOptions,
@@ -35,6 +36,7 @@ export const gameToGameFolder: Record<SupportedGames, string> = {
   troy: "Total War Troy",
   pharaoh: "Total War Pharaoh",
   dynasties: "Total War PHARAOH DYNASTIES",
+  rome2: "Total War Rome II",
 };
 
 export const gameToGameName: Record<SupportedGames, string> = {
@@ -45,6 +47,7 @@ export const gameToGameName: Record<SupportedGames, string> = {
   troy: "Troy",
   pharaoh: "Pharaoh",
   dynasties: "Pharaoh Dynasties",
+  rome2: "Rome 2",
 };
 
 export const gameToSteamId: Record<SupportedGames, string> = {
@@ -55,6 +58,7 @@ export const gameToSteamId: Record<SupportedGames, string> = {
   troy: "1099410",
   pharaoh: "1937780",
   dynasties: "2951630",
+  rome2: "214950",
 };
 
 export const gameToProcessName: Record<SupportedGames, string> = {
@@ -65,6 +69,7 @@ export const gameToProcessName: Record<SupportedGames, string> = {
   troy: "Troy.exe",
   pharaoh: "Pharaoh.exe",
   dynasties: "Pharaoh.exe",
+  rome2: "Rome2.exe",
 };
 
 export const gameToAppDataFolderName: Record<SupportedGames, string> = {
@@ -75,6 +80,7 @@ export const gameToAppDataFolderName: Record<SupportedGames, string> = {
   troy: "Troy",
   pharaoh: "Pharaoh",
   dynasties: "PharaohDynasties",
+  rome2: "Rome2",
 };
 
 export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
@@ -85,6 +91,7 @@ export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
   troy: "data.pack",
   pharaoh: "data.pack",
   dynasties: "data_db.pack",
+  rome2: "data_rome2.pack",
 };
 
 export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> = {
@@ -128,6 +135,11 @@ export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> 
       name: "data_db.pack",
     },
   ],
+  rome2: [
+    {
+      name: "data_rome2.pack",
+    },
+  ],
 };
 
 export const vanillaPackNames: string[] = [];
@@ -156,6 +168,7 @@ export const gameToIntroMovies: Record<SupportedGames, string[]> = {
   troy: [],
   pharaoh: [],
   dynasties: [],
+  rome2: [],
 };
 
 export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOptions[]> = {
@@ -166,6 +179,7 @@ export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOpt
   troy: ["ScriptLogging"],
   pharaoh: ["ScriptLogging"],
   dynasties: ["ScriptLogging"],
+  rome2: [],
 };
 
 export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
@@ -628,5 +642,42 @@ export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
     "units.pack",
     "variants.pack",
     "variants2.pack",
+  ],
+  rome2: [
+    "sound.pack",
+    "data.pack",
+    "terrain.pack",
+    "tiles4.pack",
+    "tiles2_rome2.pack",
+    "tiles2.pack",
+    "movies.pack",
+    "tiles3.pack",
+    "local_en.pack",
+    "music_en_shared_rome2.pack",
+    "tiles4_rome2.pack",
+    "music.pack",
+    "terrain2.pack",
+    "local_en_shared_rome2.pack",
+    "boot.pack",
+    "data_rome2.pack",
+    "models_rome2.pack",
+    "models3_rome2.pack",
+    "movies_rome2.pack",
+    "terrain2_rome2.pack",
+    "models.pack",
+    "music_rome2.pack",
+    "models2.pack",
+    "tiles.pack",
+    "tiles_rome2.pack",
+    "terrain3_rome2.pack",
+    "tiles3_rome2.pack",
+    "sound_rome2.pack",
+    "divided.pack",
+    "invasion.pack",
+    "models2_rome2.pack",
+    "terrain_rome2.pack",
+    "gaul.pack",
+    "blood_rome2.pack",
+    "punic.pack",
   ],
 };
