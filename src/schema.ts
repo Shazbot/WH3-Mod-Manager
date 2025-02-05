@@ -84,6 +84,7 @@ export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion
   troy: {},
   pharaoh: {},
   dynasties: {},
+  rome2: {},
 };
 
 const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
@@ -155,6 +156,7 @@ export const gameToReferences: Record<SupportedGames, Record<string, string[]>> 
   troy: {},
   pharaoh: {},
   dynasties: {},
+  rome2: {},
 };
 for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
   for (const versions of Object.values(tableVersions)) {
@@ -207,6 +209,7 @@ export const gameToDBFieldsThatReference: Record<
   troy: {},
   pharaoh: {},
   dynasties: {},
+  rome2: {},
 };
 for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
   for (const [tableName, versions] of Object.entries(tableVersions)) {
@@ -242,6 +245,7 @@ export const gameToTablesWithNumericIds: Record<SupportedGames, Record<DBFileNam
   troy: {},
   pharaoh: {},
   dynasties: {},
+  rome2: {},
 };
 gameToTablesWithNumericIds.wh3 = {
   //main_units_tables: "", // unused by the game

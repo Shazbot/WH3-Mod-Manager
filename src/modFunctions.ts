@@ -280,6 +280,9 @@ const getDataMods = async (
     if (appData.currentGame == "attila") {
       vanillaPacks.push("charlemagne.pack");
     }
+    if (appData.currentGame == "rome2") {
+      vanillaPacks.push("gaul.pack", "blood_rome2.pack", "punic.pack");
+    }
   } catch (e) {
     if (gameToManifest[appData.currentGame])
       vanillaPacks.splice(0, 0, ...(gameToManifest[appData.currentGame] as string[]));

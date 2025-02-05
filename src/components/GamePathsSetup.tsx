@@ -25,6 +25,7 @@ const supportedGameToMainGameFolderLocalization: Record<SupportedGames, string> 
   troy: "mainTroyFolder",
   pharaoh: "mainPharaohFolder",
   dynasties: "mainDynastiesFolder",
+  rome2: "mainRome2Folder",
 };
 const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2Folder",
@@ -34,6 +35,7 @@ const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   troy: "troyFolder",
   pharaoh: "pharaohFolder",
   dynasties: "dynastiesFolder",
+  rome2: "rome2Folder",
 };
 const supportedGameToContentFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2ContentFolder",
@@ -43,6 +45,7 @@ const supportedGameToContentFolderLocalization: Record<SupportedGames, string> =
   troy: "troyContentFolder",
   pharaoh: "pharaohContentFolder",
   dynasties: "dynastiesContentFolder",
+  rome2: "rome2ContentFolder",
 };
 const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = {
   wh2: "selectWH2Folder",
@@ -52,6 +55,7 @@ const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = 
   troy: "selectTroyFolder",
   pharaoh: "selectPharaohFolder",
   dynasties: "selectDynastiesFolder",
+  rome2: "selectRome2Folder",
 };
 const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyWH2",
@@ -61,6 +65,7 @@ const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, 
   troy: "setFolderPathsManuallyTroy",
   pharaoh: "setFolderPathsManuallyPharaoh",
   dynasties: "setFolderPathsManuallyDynasties",
+  rome2: "setFolderPathsManuallyRome2",
 };
 const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyOptionallyWH2",
@@ -70,6 +75,7 @@ const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<Suppor
   troy: "setFolderPathsManuallyOptionallyTroy",
   pharaoh: "setFolderPathsManuallyOptionallyPharaoh",
   dynasties: "setFolderPathsManuallyOptionallyDynasties",
+  rome2: "setFolderPathsManuallyOptionallyRome2",
 };
 
 const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {

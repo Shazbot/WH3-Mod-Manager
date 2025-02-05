@@ -412,5 +412,12 @@
   "checkSkillRequirements": "Check Skill Requirements",
   "holdCtrlToTerminateGame": "Hold Ctrl and click to terminate game.",
   "skillUnlockRank": "Available at rank UNLOCK_RANK",
-  "rank": "Rank"
+  "rank": "Rank",
+  "setFolderPathsManuallyRome2": "The mod manager tried to get Rome 2 folder locations from Windows Registry, but it couldn't find them! You'll have to set them manually!",
+  "setFolderPathsManuallyOptionallyRome2": "The mod manager automatically found Rome 2 folder paths from the Windows Registry, but you can set them manually here.",
+  "rome2": "Rome 2",
+  "mainRome2Folder": "The main Rome 2 folder that contains Three_Kingdoms.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Rome II",
+  "rome2Folder": "Rome 2 folder:",
+  "selectRome2Folder": "Select Rome 2 Folder",
+  "rome2ContentFolder": "The Rome 2 Steam Workshop content folder named 214950 (which is the steam ID for Rome 2) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\214950"
 }
