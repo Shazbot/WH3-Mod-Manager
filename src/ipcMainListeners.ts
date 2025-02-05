@@ -2581,12 +2581,9 @@ export const registerIpcMainListeners = (
   });
 
   ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
+    const modsArray = mods.map((mod) => `'${mod.path.replaceAll("'", "''")}'`).join(",");
     exec(
-      `powershell -Command "$strarry = @(${mods
-        .map((mod) => `'${mod.path}'`)
-        .join(
-          ","
-        )}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
+      `powershell -Command "$strarry = @(${modsArray}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
       (error, stdout) => {
         if (error) {
           console.error(`exec error: ${error}`);
@@ -2601,11 +2598,7 @@ export const registerIpcMainListeners = (
 
         // Then search again for unicode text.
         exec(
-          `powershell -Command "$strarry = @(${mods
-            .map((mod) => `'${mod.path}'`)
-            .join(
-              ","
-            )}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
+          `powershell -Command "$strarry = @(${modsArray}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
           (error, stdout) => {
             if (error) {
               console.error(`exec error: ${error}`);
