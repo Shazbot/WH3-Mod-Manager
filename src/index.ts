@@ -173,10 +173,11 @@ if (!gotTheLock) {
       const downloadsFolder = nodePath.join(contentFolder, "..", "..", "downloads");
       console.log("downloads folder:", downloadsFolder);
 
-      if (globSync(`*${gameToSteamId[appData.currentGame]}*`, { cwd: downloadsFolder }).length != 0) {
-        console.log("something for the current game is being downloaded!");
-        return;
-      }
+      // should we stop if something is currently being downloaded? after some testing, no
+      // if (globSync(`*${gameToSteamId[appData.currentGame]}*`, { cwd: downloadsFolder }).length != 0) {
+      //   console.log("something for the current game is being downloaded!");
+      //   return;
+      // }
 
       const toRemoveFromWaitForModIds: string[] = [];
       const idsToDownload: string[] = [];
@@ -187,6 +188,7 @@ if (!gotTheLock) {
         else toRemoveFromWaitForModIds.push(modId);
       }
 
+      console.log("ids to download:", idsToDownload);
       fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "download", idsToDownload.join(";")],

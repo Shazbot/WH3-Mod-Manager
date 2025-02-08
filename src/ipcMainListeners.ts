@@ -963,7 +963,7 @@ export const registerIpcMainListeners = (
     }
   };
 
-  const onNewPackFound = async (path: string) => {
+  const onNewPackFound = async (path: string, fromWatcher = false) => {
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD ADDED: " + path);
     console.log("MOD ADDED: " + path);
@@ -971,6 +971,23 @@ export const registerIpcMainListeners = (
     const mod = await getMod(mainWindow, path);
     if (mod) {
       mainWindow?.webContents.send("addMod", mod);
+      // we get onNewPackFound called by the data watcher if it's a symlink on app launch, ignore that case
+      if (!fromWatcher || !mod.isSymbolicLink) {
+        mainWindow?.webContents.send("addToast", {
+          type: "success",
+          messages: ["loc:addedMod", mod.name],
+          startTime: Date.now(),
+        } as Toast);
+      }
+
+      if (appData.modsToResubscribeTo.some((iterMod) => iterMod.name == mod.name)) {
+        appData.modsToResubscribeTo = appData.modsToResubscribeTo.filter(
+          (iterMod) => iterMod.name != mod.name
+        );
+        if (appData.modsToResubscribeTo.length > 0) {
+          forceResubscribeMods(appData.modsToResubscribeTo);
+        }
+      }
     }
   };
   const onPackDeleted = async (path: string, isDeletedFromContent = false) => {
@@ -1209,7 +1226,8 @@ export const registerIpcMainListeners = (
           ignored: /whmm_backups/,
         })
         .on("add", async (path) => {
-          onNewPackFound(path);
+          console.log("dataWatcher add:", path);
+          onNewPackFound(path, true);
         })
         .on("unlink", async (path) => {
           onPackDeleted(path);
@@ -1217,6 +1235,7 @@ export const registerIpcMainListeners = (
         .on("change", async (path) => {
           console.log("data pack changed:", path);
           onPackDeleted(path);
+          console.log("dataWatcher change:", path);
           onNewPackFound(path);
         });
     }
@@ -1630,6 +1649,7 @@ export const registerIpcMainListeners = (
         !mod.isInModding &&
         mods.find((modSecond) => !modSecond.isInData && !modSecond.isInData && modSecond.name === mod.name)
     );
+
     const deletePromises = modsInBothPlaces.map((mod) => {
       mainWindow?.webContents.send("handleLog", `DELETING ${mod.path}`);
 
@@ -2472,25 +2492,34 @@ export const registerIpcMainListeners = (
   };
   const forceResubscribeMods = (mods: Mod[]) => {
     try {
-      const modIds = mods.map((mod) => mod.workshopId);
-      appData.modIdsToResubscribeTo = modIds;
+      appData.modsToResubscribeTo = mods;
+      const mod = mods[0];
+      mainWindow?.webContents.send("addToast", {
+        type: "info",
+        messages: [
+          "loc:resubscribing",
+          mod.humanName != "" ? mod.humanName : mod.name,
+          "loc:queue",
+          (mods.length - 1).toString(),
+        ],
+        startTime: Date.now(),
+      } as Toast);
+
       const child = fork(
         nodePath.join(__dirname, "sub.js"),
-        [gameToSteamId[appData.currentGame], "unsubscribe", modIds.join(";")],
+        [gameToSteamId[appData.currentGame], "unsubscribe", mod.workshopId],
         {}
       );
       child.on("message", async () => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        for (const mod of mods) {
-          console.log("unsubscribe finished, deleting file:", mod.path);
-          try {
-            fsExtra.removeSync(mod.path);
-          } catch (e) {
-            /* empty */
-          }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        console.log("unsubscribe finished, deleting file:", mod.path);
+        try {
+          fsExtra.removeSync(nodePath.dirname(mod.path));
+        } catch (e) {
+          /* empty */
         }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        resubscribeToMods(modIds);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        resubscribeToMods([mod.workshopId]);
       });
     } catch (e) {
       console.log(e);
@@ -2510,9 +2539,17 @@ export const registerIpcMainListeners = (
         [gameToSteamId[appData.currentGame], "unsubscribe", mod.workshopId],
         {}
       );
-      child.on("message", () => {
+      child.on("message", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         console.log("unsubscribe finished, deleting file:", mod.path);
-        fsExtra.removeSync(mod.path);
+
+        // why do we need to unsubscribe twice? who knows, but otherwise Steam unsubs AND happily downloads the mod into content after we unsub the first time
+        fork(
+          nodePath.join(__dirname, "sub.js"),
+          [gameToSteamId[appData.currentGame], "unsubscribe", mod.workshopId],
+          {}
+        );
+        fsExtra.removeSync(nodePath.dirname(mod.path));
       });
     } catch (e) {
       console.log(e);
@@ -2543,8 +2580,8 @@ export const registerIpcMainListeners = (
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
+    // await new Promise((resolve) => setTimeout(resolve, 500));
     mainWindow?.webContents.send("subscribedToMods", ids);
   };
 

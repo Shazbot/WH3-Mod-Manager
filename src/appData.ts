@@ -46,7 +46,7 @@ interface AppData {
   waitForModIds: string[];
   subscribedModIds: string[];
   isCompatCheckingVanillaPacks: boolean;
-  modIdsToResubscribeTo: string[];
+  modsToResubscribeTo: Mod[];
   isViewerReady: boolean;
   areSkillsReady: boolean;
   queuedViewerData: (PackViewData | undefined)[];
@@ -95,7 +95,7 @@ const appData = {
   waitForModIds: [],
   subscribedModIds: [],
   isCompatCheckingVanillaPacks: false,
-  modIdsToResubscribeTo: [],
+  modsToResubscribeTo: [],
   isViewerReady: false,
   areSkillsReady: false,
   queuedViewerData: [],

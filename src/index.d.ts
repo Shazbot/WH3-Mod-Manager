@@ -273,6 +273,8 @@ declare global {
     filesToRead?: string[];
   }
 
+  type ToastType = "info" | "success" | "warning";
+
   interface Toast {
     type: ToastType;
     messages: string[];
