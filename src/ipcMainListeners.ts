@@ -1625,7 +1625,10 @@ export const registerIpcMainListeners = (
       if (mod.isInData) mainWindow?.webContents.send("handleLog", `is in data ${mod.name}`);
     });
     const modsInBothPlaces = mods.filter(
-      (mod) => mod.isInData && mods.find((modSecond) => !modSecond.isInData && modSecond.name === mod.name)
+      (mod) =>
+        mod.isInData &&
+        !mod.isInModding &&
+        mods.find((modSecond) => !modSecond.isInData && !modSecond.isInData && modSecond.name === mod.name)
     );
     const deletePromises = modsInBothPlaces.map((mod) => {
       mainWindow?.webContents.send("handleLog", `DELETING ${mod.path}`);
