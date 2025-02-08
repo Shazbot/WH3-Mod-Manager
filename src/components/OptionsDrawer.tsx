@@ -70,6 +70,7 @@ const OptionsDrawer = memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isDev = useAppSelector((state) => state.app.isDev);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
   const availableLanguages = useAppSelector((state) => state.app.availableLanguages);
@@ -402,7 +403,7 @@ const OptionsDrawer = memo(() => {
                     "")
                 }
                 onClick={(e) => copyToDataAsSymbolicLink(e)}
-                disabled={!isAdmin}
+                disabled={!isAdmin && !isDev}
               >
                 <Tooltip
                   placement="top"

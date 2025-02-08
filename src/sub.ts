@@ -29,7 +29,7 @@ if (process.argv[3] == "download") {
 
   ids.forEach(async (id) => {
     try {
-      const success = client.workshop.download(BigInt(id), true);
+      const success = client.workshop.download(BigInt(id), false);
       if (process.send) process.send("for id: " + success);
       await new Promise((resolve) => setTimeout(resolve, 300));
     } catch (e) {
@@ -136,7 +136,7 @@ if (process.argv[3] == "checkState") {
     .map((num) => num[0]);
 
   idsThatNeedUpdates.forEach(async (id) => {
-    client.workshop.download(BigInt(id), true);
+    client.workshop.download(BigInt(id), false);
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
@@ -205,7 +205,7 @@ if (process.argv[3] == "update") {
           itemId: Number(data.itemId),
           needsToAcceptAgreement: data.needsToAcceptAgreement,
         } as ModUpdateResponseSuccess);
-      client.workshop.download(BigInt(id), true);
+      client.workshop.download(BigInt(id), false);
       setTimeout(() => {
         process.exit();
       }, 300);

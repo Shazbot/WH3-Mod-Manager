@@ -309,7 +309,7 @@
   "faqIssuesSecondH": "Play launches the CA Launcher instead of the game",
   "faqIssuesSecondC": "Not sure of the cause. I've had reports this issue goes away so try restarting the PC or Steam. Try adding the mod manager exe into Steam as a non-Steam game and launching it that way. Please report if you have more information.",
   "faqIssuesThirdH": "Attempting to launch with the optional parameters Steam error when launching",
-  "faqIssuesThirdC": "Not sure of the cause, I believe adding the mod manager exe into Steam as a non-Steam game and launching it that way fixes this.",
+  "faqIssuesThirdC": "Try running the game using vanilla launcher first and then using the manager, it usually fixes it. If that doesn't work you can try adding the mod manager exe into Steam as a non-Steam game and launching it that way.",
   "readingPack": "Reading pack:",
   "finishedReadingPack": "Finished reading pack:",
   "comparingFilesInPacks": "Comparing <firstPackName> files with <secondPackName>...",
@@ -349,7 +349,7 @@
   "compatHelpSeven": "The File Errors tab parses Lua and XML files (this includes variantmeshdefinitions) for syntax errors. For Lua this can't catch run-time errors but can catch some issuse. Some XML errors can also be a non-issue ingame because the ingame XML parsers is very tolerant of malformed XML.",
   "compatHelpEight": "The Missing Files tab lists files that are referenced in some other file, but don't actually exist. It's possible for this to not be an issue since mods can contain unused files. Icons for the file types:",
   "forceResubscribe": "Force Resubscribe",
-  "forceResubscribeMsg": "Force steam to unsubscribe and then subscribe to the same mods, which deletes and downloads the mods. In cases where Force Re-Download isn't enough. By default this is for enabled mods, hold Shift for all mods.",
+  "forceResubscribeMsg": "Force steam to unsubscribe and then subscribe to the same mods, which deletes and downloads the mods. In cases where Force Re-Download isn't enough. By default this is for enabled mods, hold Shift for all mods. I recommend making a collection as a backup beforehand, option for that is below. Takes a lot of time if you have a lot of mods.",
   "collapseAll": "Collapse All",
   "expandAll": "Expand All",
   "sameFileSize": "Both files are of the same size",
@@ -419,5 +419,8 @@
   "mainRome2Folder": "The main Rome 2 folder that contains Three_Kingdoms.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Rome II",
   "rome2Folder": "Rome 2 folder:",
   "selectRome2Folder": "Select Rome 2 Folder",
-  "rome2ContentFolder": "The Rome 2 Steam Workshop content folder named 214950 (which is the steam ID for Rome 2) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\214950"
+  "rome2ContentFolder": "The Rome 2 Steam Workshop content folder named 214950 (which is the steam ID for Rome 2) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\214950",
+  "addedMod": "Added mod:",
+  "resubscribing": "Re-subscribing to:",
+  "queue": "Left in queue:"
 }
