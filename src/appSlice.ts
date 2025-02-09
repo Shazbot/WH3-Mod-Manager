@@ -762,7 +762,7 @@ const appSlice = createSlice({
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
-      state.currentLanguage = fromConfigAppState.currentLanguage || "en";
+      // state.currentLanguage = fromConfigAppState.currentLanguage || "en"; // handled elsewhere
       state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
       state.currentGame = fromConfigAppState.currentGame || "wh3";
 
@@ -952,7 +952,7 @@ const appSlice = createSlice({
     },
     setCurrentLanguage: (state: AppState, action: PayloadAction<string>) => {
       const language = action.payload;
-      state.currentLanguage = language;
+      if (language == "zh" || language == "en") state.currentLanguage = language;
     },
     setCurrentGame: (state: AppState, action: PayloadAction<SetCurrentGamePayload>) => {
       const { game, currentPreset, presets } = action.payload;

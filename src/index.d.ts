@@ -128,7 +128,7 @@ declare global {
     removedModsData: RemovedModData[];
     modRowsSortingType: SortingType;
     availableLanguages: string[];
-    currentLanguage: string;
+    currentLanguage: SupportedLanguages;
     packDataOverwrites: Record<string, PackDataOverwrite[]>;
     modBeingCustomized: Mod | undefined;
     customizableMods: Record<string, string[]>;
@@ -539,4 +539,6 @@ declare global {
   type ModUploadResponseError = ModUpdateResponse & {
     type: "error";
   };
+
+  type SupportedLanguages = "en" | "zh";
 }
