@@ -1410,7 +1410,11 @@ export const registerIpcMainListeners = (
         mainWindow?.webContents.send("fromAppConfig", appState);
 
         const languageInConfig = appState.currentLanguage || "en";
-        if (i18n.language != languageInConfig) i18n.changeLanguage(languageInConfig);
+        if (i18n.language != languageInConfig) {
+          i18n.changeLanguage(languageInConfig).then(() => {
+            mainWindow?.webContents.send("setCurrentLanguage", languageInConfig);
+          });
+        }
       } catch (err) {
         mainWindow?.webContents.send("failedReadingConfig");
         if (err instanceof Error) console.log(err.message);

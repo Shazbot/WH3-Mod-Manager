@@ -276,7 +276,10 @@ const OptionsDrawer = memo(() => {
                 onChange={onLanguageChange}
                 isClearable={false}
                 isSearchable={false}
-                defaultValue={{ value: currentLanguage, label: ISO6391.getName(currentLanguage) }}
+                defaultValue={{
+                  value: currentLanguage as string,
+                  label: ISO6391.getName(currentLanguage as string),
+                }}
               ></Select>
             </div>
 
