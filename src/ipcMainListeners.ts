@@ -2906,7 +2906,7 @@ export const registerIpcMainListeners = (
             .forEach((mod) => {
               const newPath = nodePath.join(dataFolder, mod.name);
               const stats = fs.statSync(mod.path);
-              if (fs.existsSync(mod.path)) {
+              if (fs.existsSync(newPath)) {
                 const statsCurrent = fs.statSync(newPath);
                 // console.log("new times:", stats.atime, stats.mtime);
                 // console.log("current times:", statsCurrent.atime, statsCurrent.mtime);
