@@ -60,6 +60,19 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
       (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
   );
 
+  // filter out the mods in data that are also in data/modding
+  const dataModsThatAreInModding = state.currentPreset.mods.filter(
+    (iterMod) =>
+      iterMod.isInData &&
+      !iterMod.isInModding &&
+      state.currentPreset.mods.some(
+        (secondMod) => secondMod.isInModding && secondMod != iterMod && secondMod.name == iterMod.name
+      )
+  );
+  state.currentPreset.mods = state.currentPreset.mods.filter(
+    (mod) => !dataModsThatAreInModding.includes(mod)
+  );
+
   if (state.dataFromConfig && state.dataFromConfig.currentPreset.version != undefined) {
     state.currentPreset.version = state.dataFromConfig.currentPreset.version;
     console.log("sorting as in preset from config in setMods");
