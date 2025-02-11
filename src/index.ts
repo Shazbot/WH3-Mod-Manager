@@ -252,23 +252,25 @@ if (!gotTheLock) {
       } catch (e) {}
 
       if (!checkWH3RunningInterval) {
-        checkWH3RunningInterval = setInterval(async () => {
+        const isGameRuningCheck = async () => {
           try {
             // if a game crashes you can end up with a tiny running process of the game, that's why we have a memory filter here
             exec(
-              `tasklist /fi "MEMUSAGE gt 10000" | findstr ${gameToProcessName[appData.currentGame]}`,
-              (error) => {
-                const isWH3Running = !error;
+              `tasklist /fi "IMAGENAME eq ${gameToProcessName[appData.currentGame]}" /fi "MEMUSAGE gt 10000"`,
+              (_, stdout) => {
+                const isWH3Running = !stdout.startsWith("INFO: ");
                 if (appData.isWH3Running != isWH3Running) {
                   appData.isWH3Running = isWH3Running;
                   windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
                 }
+                if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
               }
             );
           } catch (e) {
             console.log("psList coroutine error:", e);
           }
-        }, 500);
+        };
+        checkWH3RunningInterval = setTimeout(isGameRuningCheck, 500);
       }
     });
   };
