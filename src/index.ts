@@ -256,9 +256,11 @@ if (!gotTheLock) {
           try {
             // if a game crashes you can end up with a tiny running process of the game, that's why we have a memory filter here
             exec(
-              `tasklist /fi "IMAGENAME eq ${gameToProcessName[appData.currentGame]}" /fi "MEMUSAGE gt 10000"`,
+              `tasklist /nh /fi "IMAGENAME eq ${
+                gameToProcessName[appData.currentGame]
+              }" /fi "MEMUSAGE gt 10000"`,
               (_, stdout) => {
-                const isWH3Running = !stdout.startsWith("INFO: ");
+                const isWH3Running = stdout.includes(gameToProcessName[appData.currentGame]);
                 if (appData.isWH3Running != isWH3Running) {
                   appData.isWH3Running = isWH3Running;
                   windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
