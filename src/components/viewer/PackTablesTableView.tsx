@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, memo } from "react";
-import { useAppSelector } from "../../hooks";
+import { useAppDispatch, useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
@@ -11,8 +11,10 @@ import { HotTable } from "@handsontable/react-wrapper";
 
 import { registerAllModules } from "handsontable/registry";
 import Handsontable from "handsontable";
+import { setDeepCloneTarget } from "@/src/appSlice";
 
 const PackTablesTableView = memo(() => {
+  const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
 
@@ -165,7 +167,51 @@ const PackTablesTableView = memo(() => {
         columnSorting={true}
         manualColumnFreeze={true}
         stretchH="all"
-        contextMenu={true}
+        contextMenu={{
+          items: {
+            row_above: {},
+            row_below: {},
+            about: {
+              // Own custom option
+              name() {
+                // `name` can be a string or a function
+                return "<b>Deep clone</b>"; // Name can contain HTML
+              },
+              hidden() {
+                if (!hotRef || !hotRef.current) return;
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                const hot = hotRef.current.hotInstance as Handsontable;
+                if (!hot) return true;
+
+                const lastSelected = hot.getSelected();
+                if (!lastSelected) return true;
+                if (lastSelected.length != 1) return true;
+                const [startRow, startCol, endRow, endCol] = lastSelected[0];
+
+                console.log(startRow, startCol, endRow, endCol);
+
+                if (startRow != endRow || startCol != endCol) return true;
+                return false;
+              },
+              callback(key, selection, clickEvent) {
+                if (!hotRef || !hotRef.current) return;
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                const hot = hotRef.current.hotInstance as Handsontable;
+                if (!hot) return true;
+
+                const lastSelected = hot.getSelected();
+                if (!lastSelected) return;
+                if (lastSelected.length != 1) return;
+                const [startRow, startCol, endRow, endCol] = lastSelected[0];
+                if (startRow != endRow || startCol != endCol) return;
+
+                dispatch(setDeepCloneTarget({ row: startRow, col: startCol }));
+              },
+            },
+          },
+        }}
         viewportColumnRenderingOffset={50}
         // dropdownMenu={["filter_by_condition", "filter_action_bar"]}
         dropdownMenu={[

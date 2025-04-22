@@ -1035,10 +1035,10 @@
   resolved "https://registry.yarnpkg.com/@handsontable/pikaday/-/pikaday-1.0.0.tgz#21a432b727791d48f4f231094d999b1a4b5f6f5f"
   integrity sha512-1VN6N38t5/DcjJ7y7XUYrDx1LuzvvzlrFdBdMG90Qo1xc8+LXHqbWbsTEm5Ec5gXTEbDEO53vUT35R+2COmOyg==
 
-"@handsontable/react-wrapper@^15.0.0":
-  version "15.0.0"
-  resolved "https://registry.yarnpkg.com/@handsontable/react-wrapper/-/react-wrapper-15.0.0.tgz#6f741d047717ebd8719024952130667664140c8f"
-  integrity sha512-78uCgcVBM5JjIVYb9stShbKQ126RCEnpjojYMNVF+EqIhc0KzvlKoVKonDm6k6PoQz2b1aMkHL17BEBxumsU/w==
+"@handsontable/react-wrapper@^15.2.0":
+  version "15.2.0"
+  resolved "https://registry.yarnpkg.com/@handsontable/react-wrapper/-/react-wrapper-15.2.0.tgz#7801acba8fe4b558836c8a410f912561b74e5eef"
+  integrity sha512-yqRxTi3d7N0lQL9sejz2dpAK9cxFbrwBzInju9KYep6ZLuDcRkZwmSuyadwWGQCwGMiOfcpb6vp/CQTvyDrmhA==
 
 "@heroicons/react@^2.0.13":
   version "2.2.0"
@@ -7832,10 +7832,10 @@ handlebars@^4.0.1:
   optionalDependencies:
     uglify-js "^3.1.4"
 
-handsontable@^15.0.0:
-  version "15.0.0"
-  resolved "https://registry.yarnpkg.com/handsontable/-/handsontable-15.0.0.tgz#79cbedc7b62b087be834484d6ba95ee552ebabcd"
-  integrity sha512-vv3d8m9tmXZDE/+zzyMyMmFu93LxcYCsm0DN+nPaEPzNMk9+5B29o6K6vc6nPJhzB1k/sPu3J393UMQYf3/Rgw==
+handsontable@^15.2.0:
+  version "15.2.0"
+  resolved "https://registry.yarnpkg.com/handsontable/-/handsontable-15.2.0.tgz#e3a2e3049438761e419389e819725bd18080e429"
+  integrity sha512-QccHZkowqciFgyUyG/BUidatHpDkkUgx1O6v6czpU/ZgT3blmEpNFhErblC/JsWb6uVxbDfgW2vpW5eQNsU8GA==
   dependencies:
     "@handsontable/pikaday" "^1.0.0"
     core-js "^3.37.0"
@@ -7843,7 +7843,7 @@ handsontable@^15.0.0:
     moment "2.30.1"
     numbro "2.5.0"
   optionalDependencies:
-    hyperformula "^2.6.2"
+    hyperformula "^3.0.0"
 
 har-schema@^1.0.5:
   version "1.0.5"
@@ -8194,10 +8194,10 @@ humanize-ms@^1.2.1:
   dependencies:
     ms "^2.0.0"
 
-hyperformula@^2.6.2:
-  version "2.7.1"
-  resolved "https://registry.yarnpkg.com/hyperformula/-/hyperformula-2.7.1.tgz#575c1d63b70b1c5c8be02cb1389594a64619d0fd"
-  integrity sha512-mpVF5zOyNpksZzgTaCQyRAzdC/X43+taz5x1n7zNbs/PUUv0AuLmsy2yfihCr+vihUzN/pk+gXBbOfNpXKOpgA==
+hyperformula@^3.0.0:
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/hyperformula/-/hyperformula-3.0.0.tgz#741d96ce54ef370ace5cf56b19aeb0ba9a7858e9"
+  integrity sha512-fAmwxQnbo405llUZiLcnrQTWA26kmbWZk+Cn58PJrANJ/xHBk7ls0ilcNJRIJdti5Z6AqPVi0hZSKvHLbTYtyQ==
   dependencies:
     chevrotain "^6.5.0"
     tiny-emitter "^2.1.0"

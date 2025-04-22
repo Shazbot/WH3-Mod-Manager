@@ -300,6 +300,18 @@ for (const [tableName, fieldName] of Object.entries(gameToTablesWithNumericIds.w
   }
 }
 
+for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
+  for (const versions of Object.values(tableVersions)) {
+    for (const version of versions) {
+      for (const field of version.fields) {
+        if (field.is_reference && field.is_reference.length > 0) {
+          field.is_reference[0] = `${field.is_reference[0]}_tables`;
+        }
+      }
+    }
+  }
+}
+
 // import * as fs from "fs";
 // fs.writeFileSync("dumps/gameToReferences.json", JSON.stringify(gameToReferences));
 // fs.writeFileSync("dumps/gameToDBFieldsThatReference.json", JSON.stringify(gameToDBFieldsThatReference));

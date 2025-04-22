@@ -858,7 +858,8 @@ const Categories = memo(() => {
             if (col != 3) cellProperties.renderer = firstRowRenderer; // uses lookup map
             return cellProperties;
           }}
-          autoRowSize={true}
+          // autoRowSize={true}
+          autoRowSize={{ syncLimit: "100%", allowSampleDuplicates: true }}
           // rowHeights="28px"
 
           autoColumnSize={true}

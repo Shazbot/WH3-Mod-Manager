@@ -1,5 +1,5 @@
-import React, { useContext, useEffect, useState } from "react";
-import { useAppSelector } from "../../hooks";
+import React, { memo, useContext, useEffect, useState } from "react";
+import { useAppDispatch, useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import PackTablesTreeView from "./PackTablesTreeView";
@@ -8,13 +8,18 @@ import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
 import localizationContext from "../../localizationContext";
 import { gameToPackWithDBTablesName } from "../../supportedGames";
+import { Modal } from "@/src/flowbite";
+import DBDuplication from "@/src/components/viewer/DBDuplication";
+import { setDeepCloneTarget } from "@/src/appSlice";
 
-const ModsViewer = React.memo(() => {
+const ModsViewer = memo(() => {
+  const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const packPath =
     currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
+  const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
 
   const [isOpen, setIsOpen] = React.useState(true);
 
@@ -68,38 +73,64 @@ const ModsViewer = React.memo(() => {
   // console.log(`currentPackData.data is ${currentPackData.data}`);
 
   return (
-    <div className="dark:text-gray-300">
-      {isOpen && (
-        <>
-          <div
-            style={{
-              width: "100%",
-              display: "flex",
-            }}
-          >
-            <Resizable
-              defaultSize={{
-                width: "17%",
-                height: "90vh",
-              }}
-              maxWidth="100%"
-              minWidth="1"
-            >
-              <div>
-                {/* <div className="overflow-auto hover:-scale-x-100 overflow-y-scroll h-[90vh] hover:overflow-x-visible hover:overflow-y-scroll hover:absolute hover:z-50"> */}
-                <div className="overflow-auto  h-[90vh]">
-                  {/* <div className="hover:-scale-x-100"> */}
-                  <PackTablesTreeView tableFilter={dbTableFilter} />
-                </div>
-                {/* </div> */}
-              </div>
-            </Resizable>
-            <div style={{ width: "100%", minWidth: "1px" }}>
-              <PackTablesTableView />
+    <>
+      {deepCloneTarget && (
+        <Modal
+          onClose={() => {
+            dispatch(setDeepCloneTarget(undefined));
+          }}
+          show={isOpen}
+          size="6xl"
+          position="top-center"
+          explicitClasses={[
+            "mt-8",
+            "!max-w-7xl",
+            "md:!h-full",
+            "overflow-hidden",
+            "modalDontOverflowWindowHeight",
+          ]}
+        >
+          <Modal.Header>Deep Cloning...</Modal.Header>
+          <Modal.Body>
+            <div className="text-center mt-8">
+              <DBDuplication />
             </div>
-          </div>
+          </Modal.Body>
+        </Modal>
+      )}
 
-          {/* <div className="grid grid-cols-10 dark:text-gray-300">
+      <div className="dark:text-gray-300">
+        {isOpen && (
+          <>
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+              }}
+            >
+              <Resizable
+                defaultSize={{
+                  width: "17%",
+                  height: "90vh",
+                }}
+                maxWidth="100%"
+                minWidth="1"
+              >
+                <div>
+                  {/* <div className="overflow-auto hover:-scale-x-100 overflow-y-scroll h-[90vh] hover:overflow-x-visible hover:overflow-y-scroll hover:absolute hover:z-50"> */}
+                  <div className="overflow-auto  h-[90vh]">
+                    {/* <div className="hover:-scale-x-100"> */}
+                    <PackTablesTreeView tableFilter={dbTableFilter} />
+                  </div>
+                  {/* </div> */}
+                </div>
+              </Resizable>
+              <div style={{ width: "100%", minWidth: "1px" }}>
+                <PackTablesTableView />
+              </div>
+            </div>
+
+            {/* <div className="grid grid-cols-10 dark:text-gray-300">
             <div className="col-span-2 overflow-scroll h-[90vh]">
               <PackTablesTreeView tableFilter={modFilter} />
             </div>
@@ -108,27 +139,28 @@ const ModsViewer = React.memo(() => {
             </div>
           </div> */}
 
-          <div className="flex items-center">
-            <span className="text-slate-100">{localized.filter}</span>
-            <span className="relative">
-              <input
-                id="dbTableFilter"
-                type="text"
-                onChange={(e) => onFilterChange(e)}
-                defaultValue={dbTableFilter}
-                className="ml-2 block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              ></input>
+            <div className="flex items-center">
+              <span className="text-slate-100">{localized.filter}</span>
+              <span className="relative">
+                <input
+                  id="dbTableFilter"
+                  type="text"
+                  onChange={(e) => onFilterChange(e)}
+                  defaultValue={dbTableFilter}
+                  className="ml-2 block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                ></input>
 
-              <span className="absolute right-[0.3rem] top-[0.6rem] text-gray-400">
-                <button onClick={() => clearFilter()}>
-                  <FontAwesomeIcon icon={faXmark} />
-                </button>
+                <span className="absolute right-[0.3rem] top-[0.6rem] text-gray-400">
+                  <button onClick={() => clearFilter()}>
+                    <FontAwesomeIcon icon={faXmark} />
+                  </button>
+                </span>
               </span>
-            </span>
-          </div>
-        </>
-      )}
-    </div>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 });
 

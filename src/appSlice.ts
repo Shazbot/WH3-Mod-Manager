@@ -14,6 +14,7 @@ import initialState from "./initialAppState";
 import equal from "fast-deep-equal";
 import { format } from "date-fns";
 import { SupportedGames } from "./supportedGames";
+import { packDataStore } from "./components/viewer/packDataStore";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -1242,6 +1243,15 @@ const appSlice = createSlice({
         return acc + curr;
       }, 1);
     },
+    setDeepCloneTarget: (state: AppState, action: PayloadAction<DeepCloneTarget | undefined>) => {
+      state.deepCloneTarget = action.payload;
+    },
+    setReferencesHash: (state: AppState, action: PayloadAction<string>) => {
+      state.referencesHash = action.payload;
+    },
+    setPackDataStore: (state: AppState, action: PayloadAction<SetPackDataStorePayload>) => {
+      packDataStore[action.payload.packPath] = action.payload.pack;
+    },
   },
 });
 
@@ -1333,6 +1343,11 @@ export const {
   setSkillsData,
   setPackSearchResults,
   setIsLocalizingSubtypes,
+
+  // for DB viewer
+  setDeepCloneTarget,
+  setPackDataStore,
+  setReferencesHash,
 
   // for skills
   setSkillNodeLevel,
