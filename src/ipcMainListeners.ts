@@ -10,16 +10,20 @@ import {
 } from "./modFunctions";
 import {
   addFakeUpdate,
+  amendSchemaField,
   chunkSchemaIntoRows,
   createOverwritePack,
   getDBVersion,
+  getFieldSize,
   getPacksInSave,
   getPacksTableData,
   getPackViewData,
   mergeMods,
   readFromExistingPack,
   readPack,
+  typeToBuffer,
   writePack,
+  writeStartGamePack,
 } from "./packFileSerializer";
 import {
   gameToGameName,
@@ -42,7 +46,7 @@ import chokidar from "chokidar";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import { readPackHeader } from "./packFileHandler";
 import { collator } from "./utility/packFileSorting";
-import { AmendedSchemaField, Pack, PackCollisions, PackedFile } from "./packFileTypes";
+import { AmendedSchemaField, NewPackedFile, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import * as fsExtra from "fs-extra";
 import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
 import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modCompat/packTableCollisions";
@@ -69,6 +73,9 @@ import {
 } from "./skills";
 import fetch from "node-fetch";
 import assert from "assert";
+import { packDataStore } from "./components/viewer/packDataStore";
+import { DBNameToDBVersions, gameToDBFieldsThatReference, gameToReferences } from "./schema";
+import cloneDeep from "clone-deep";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -1447,6 +1454,19 @@ export const registerIpcMainListeners = (
       } as GameFolderPaths);
       if (!doesConfigExist) mainWindow?.webContents.send("setCurrentGame", appData.currentGame);
     }
+
+    console.log(
+      "NUM MODS IN APPDATA",
+      appData.currentGame,
+      appData.gameToCurrentPreset[appData.currentGame]?.mods.length
+    );
+    // const teb = appData.gameToCurrentPreset[appData.currentGame]?.mods.find((mod) =>
+    //   mod.name.includes("ak_teb")
+    // );
+    // console.log("ak teb:", teb);
+    // console.log("ak teb:", teb?.path);
+    // ipcMain.emit("requestOpenModInViewer", null, teb?.path);
+    ipcMain.emit("requestOpenModInViewer", null, "db.pack");
   });
 
   ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {
@@ -2134,6 +2154,19 @@ export const registerIpcMainListeners = (
     console.log("VIEWER IS NOW READY");
     appData.isViewerReady = true;
 
+    if (isDev) {
+      setTimeout(() => {
+        windows.viewerWindow?.webContents.openDevTools({ mode: "right" });
+      }, 1000);
+    }
+
+    windows.viewerWindow?.webContents.send(
+      "setDBNameToDBVersions",
+      DBNameToDBVersions[appData.currentGame],
+      gameToDBFieldsThatReference[appData.currentGame],
+      gameToReferences[appData.currentGame]
+    );
+
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
@@ -2726,6 +2759,203 @@ export const registerIpcMainListeners = (
   };
 
   ipcMain.on(
+    "executeDBDuplication",
+    async (
+      event,
+      packPath: string,
+      nodesNamesToDuplicate: string[],
+      nodeNameToRef: Record<string, [string, string, string]>,
+      nodeNameToRenameValue: Record<string, string>
+    ) => {
+      const pack = packDataStore[packPath];
+
+      const toSave = [] as NewPackedFile[];
+
+      console.log("to duplicate", nodesNamesToDuplicate);
+
+      for (const node of nodesNamesToDuplicate) {
+        const [tableName, tableColumnName, resolvedKeyValue] = nodeNameToRef[node];
+        console.log(
+          "tableName",
+          tableName,
+          "tableColumnName",
+          tableColumnName,
+          "resolvedKeyValue",
+          resolvedKeyValue
+        );
+
+        const packedFiles = pack.packedFiles.filter((existingPackedFile) =>
+          existingPackedFile.name.startsWith(`db\\${tableName}\\`)
+        );
+
+        console.log("num packedFiles:", packedFiles.length);
+        console.log(
+          "packedFiles:",
+          packedFiles.map((pf) => pf.name)
+        );
+
+        for (const packedFile of packedFiles) {
+          if (!packedFile.schemaFields) {
+            console.log("packedFile.schemaFields not found");
+            continue;
+          }
+
+          const currentSchema = packedFile.tableSchema;
+          if (!currentSchema) {
+            console.log("currentSchema not found");
+            continue;
+          }
+
+          const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
+          for (const row of rows) {
+            const cellWithKey = row.find((cell) => cell.name == tableColumnName);
+            if (!cellWithKey) {
+              console.log("cellWithKey not found");
+              continue;
+            }
+            if (cellWithKey.resolvedKeyValue != resolvedKeyValue) continue;
+
+            console.log("found row match at index", rows.indexOf(row));
+
+            const clonedRow = cloneDeep(row);
+            const cellToReplaceValue = clonedRow.find(
+              (cell) => cell.name == tableColumnName && cell.resolvedKeyValue == resolvedKeyValue
+            );
+            if (!cellToReplaceValue) {
+              console.log("cellToReplaceValue not found");
+              continue;
+            }
+
+            const cellIndex = row.findIndex((cellIter) => cellIter == cellWithKey);
+            if (!packedFile.tableSchema) {
+              console.log("packedFile.tableSchema not found");
+              continue;
+            }
+
+            const field = packedFile.tableSchema?.fields[cellIndex];
+
+            if (!field) {
+              console.log("Field not found!");
+              continue;
+            }
+
+            cellToReplaceValue.fields = [
+              { type: "Buffer", val: await typeToBuffer(field?.field_type, nodeNameToRenameValue[node]) },
+            ];
+            cellToReplaceValue.resolvedKeyValue = nodeNameToRenameValue[node];
+
+            let packFileSize = 0;
+            for (let i = 0; i < clonedRow.length; i++) {
+              const field = packedFile.tableSchema.fields[i];
+              console.log(
+                "field size of",
+                clonedRow[i].name,
+                field.field_type.toString(),
+                clonedRow[i].resolvedKeyValue,
+                "is",
+                getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
+              );
+              packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
+            }
+
+            if (version) packFileSize += 19; // size of version data
+
+            toSave.push({
+              name: `db\\${tableName}\\test`,
+              schemaFields: clonedRow,
+              file_size: packFileSize,
+              version: packedFile.version,
+              tableSchema: packedFile.tableSchema,
+            });
+          }
+        }
+      }
+
+      console.log("toSave", toSave);
+      await writePack(
+        toSave,
+        nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string, "test.pack")
+      );
+    }
+  );
+
+  ipcMain.on(
+    "getTableReferences",
+    async (event, packPath: string, tableReferenceRequests: TableReferenceRequest[], withPack: boolean) => {
+      console.log("ON getTableReferences, with pack:", withPack);
+      console.log("to read:", tableReferenceRequests);
+
+      const newPack = await readPack(packPath, {
+        tablesToRead: tableReferenceRequests.map(
+          (req) => (req.tableName.startsWith("db") && req.tableName) || `db\\${req.tableName}`
+        ),
+      });
+
+      // console.log(
+      //   "after getting refs1",
+      //   newPack.packedFiles.filter((packedFile) => packedFile.schemaFields).map((pf) => pf.name)
+      // );
+
+      if (!packDataStore[packPath]) {
+        packDataStore[packPath] = newPack;
+      } else {
+        const existingPack = packDataStore[packPath];
+        newPack.packedFiles
+          .filter((packedFile) => packedFile.schemaFields)
+          .forEach((newPackedFile) => {
+            const index = existingPack.packedFiles.findIndex(
+              (existingPackedFile) => existingPackedFile.name == newPackedFile.name
+            );
+            if (index != -1) {
+              existingPack.packedFiles.splice(index, 1);
+            }
+            existingPack.packedFiles.push(newPackedFile);
+          });
+
+        // console.log(
+        //   "after getting refs2",
+        //   newPack.packedFiles.filter((packedFile) => packedFile.schemaFields).map((pf) => pf.name)
+        // );
+      }
+
+      packDataStore[packPath].packedFiles
+        .filter((pF) => pF.schemaFields)
+        .forEach((pF) => {
+          const dbVersion = getDBVersion(pF);
+          if (!dbVersion) {
+            return;
+          }
+
+          if (pF.schemaFields) {
+            pF.schemaFields = amendSchemaField(pF.schemaFields, dbVersion);
+            pF.tableSchema = dbVersion;
+          }
+        });
+
+      // console.log("packDataStore in INDEX", packDataStore);
+      if (withPack)
+        windows.viewerWindow?.webContents.send(
+          "setPackDataStore",
+          packPath,
+          packDataStore[packPath],
+          tableReferenceRequests
+        );
+      else {
+        const onlyAskedForPFs = newPack.packedFiles
+          .filter((pF) => pF.schemaFields)
+          .map((pF) => packDataStore[packPath].packedFiles.find((amendedPF) => amendedPF.name == pF.name))
+          .filter((pF) => pF);
+        windows.viewerWindow?.webContents.send(
+          "appendPackDataStore",
+          packPath,
+          onlyAskedForPFs,
+          tableReferenceRequests
+        );
+      }
+    }
+  );
+
+  ipcMain.on(
     "startGame",
     async (
       event,
@@ -2813,7 +3043,7 @@ export const registerIpcMainListeners = (
           for (let i = 0; i < 10; i++) {
             try {
               tryOpenFile(tempPackPath);
-              await writePack(
+              await writeStartGamePack(
                 appData.packsData,
                 tempPackPath,
                 enabledMods.concat(vanillaPacks),

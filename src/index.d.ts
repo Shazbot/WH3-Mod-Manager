@@ -76,6 +76,22 @@ declare global {
     creationTime: number;
   }
 
+  interface DeepCloneTarget {
+    col: number;
+    row: number;
+  }
+
+  interface TableReferenceRequest {
+    key: string;
+    tableName: string;
+    tableColumnName: string;
+  }
+
+  interface SetPackDataStorePayload {
+    packPath: string;
+    pack: Pack;
+  }
+
   interface AppState {
     categories: string[];
     currentPreset: Preset;
@@ -138,6 +154,12 @@ declare global {
     currentModToUpload: Mod | undefined;
     skillsData?: SkillsData;
     packSearchResults?: string[];
+
+    // DB viewer
+    deepCloneTarget?: DeepCloneTarget;
+    deepClonereferencesHashTarget?: string;
+    referencesHash?: string;
+    // packDataStore: Record<string, Pack>;
 
     //skills view
     isLocalizingSubtypes: boolean;

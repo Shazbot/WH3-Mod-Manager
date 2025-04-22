@@ -9,6 +9,7 @@ import {
   SchemaField,
   SCHEMA_FIELD_TYPE,
   AmendedSchemaField,
+  NewPackedFile,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
@@ -113,7 +114,7 @@ function getDataSize(data: SchemaField[]): number {
   return size;
 }
 
-async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackDataTypes): Promise<Buffer> {
+export async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackDataTypes): Promise<Buffer> {
   switch (type) {
     case "Boolean":
       {
@@ -438,6 +439,67 @@ function parseTypeBuffer(
   }
 }
 
+export function getFieldSize(value: string, type: SCHEMA_FIELD_TYPE): number {
+  switch (type) {
+    case "Boolean":
+      {
+        return 1;
+      }
+      break;
+    case "ColourRGB":
+      {
+        return 4;
+      }
+      break;
+    case "StringU16":
+      {
+        return (value as string).length * 2 + 2;
+      }
+      break;
+    case "StringU8":
+      {
+        return (value as string).length + 2;
+      }
+      break;
+    case "OptionalStringU8":
+      {
+        const stringVal = value as string;
+        if (stringVal == "") return 1;
+
+        return stringVal.length + 1;
+      }
+      break;
+    case "F32":
+      {
+        return 4;
+      }
+      break;
+    case "I32":
+      {
+        return 4;
+      }
+      break;
+    case "I16":
+      {
+        return 2;
+      }
+      break;
+    case "F64":
+      {
+        return 8;
+      }
+      break;
+    case "I64":
+      {
+        return 8;
+      }
+      break;
+    default:
+      throw new Error("NO WAY TO RESOLVE " + type);
+      break;
+  }
+}
+
 const getGUID = () => {
   const genRanHex = (size: number) =>
     [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
@@ -602,6 +664,42 @@ export const resolveKeyValue = (field_type: SCHEMA_FIELD_TYPE, fields: Field[]) 
 
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   return (fields[1] && fields[1].val!.toString()) || fields[0].val!.toString();
+};
+
+export const amendSchemaField = (schemaFields: SchemaField[], dbVersion: DBVersion) => {
+  const amendedSchemaFields: AmendedSchemaField[] = [];
+
+  const chunkedSchemaIntoRows = chunkSchemaIntoRows(schemaFields || [], dbVersion);
+
+  // console.log("chunked into ", chunkedSchemaIntoRows.length);
+  // console.log("num fields in row is ", dbversion.fields.length);
+  // console.log("db types are ", dbversion.fields.map((field) => field.name).join(", "));
+  // console.log("with num chunks of ", chunkedSchemaIntoRows.map((row) => row.length).join(","));
+
+  for (const chunkedSchemaIntoRow of chunkedSchemaIntoRows) {
+    for (const dbFieldsIndex of dbVersion.fields.keys()) {
+      const { name, field_type } = dbVersion.fields[dbFieldsIndex];
+      const fields = chunkedSchemaIntoRow[dbFieldsIndex].fields;
+      if (!fields) {
+        console.log("MISSING FIELD ", name);
+      }
+      const resolvedKeyValue = resolveKeyValue(field_type, fields);
+
+      const newAmendedField = {
+        name,
+        resolvedKeyValue,
+        ...chunkedSchemaIntoRow[dbFieldsIndex],
+      } as AmendedSchemaField;
+
+      amendedSchemaFields.push(newAmendedField);
+
+      // if (chunkedSchemaIntoRow == chunkedSchemaIntoRows[0]) {
+      //   console.log("AMENDING ", name, resolvedKeyValue);
+      // }
+    }
+  }
+
+  return amendedSchemaFields;
 };
 
 export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], getLocs?: boolean) => {
@@ -1151,7 +1249,67 @@ export const writeCopyPack = async (
   }
 };
 
-export const writePack = async (
+export const writePack = async (packFiles: NewPackedFile[], path: string) => {
+  let outFile: BinaryFile | undefined;
+  try {
+    const header = "PFH5";
+    const byteMask = 3;
+    const refFileCount = 0;
+    const pack_file_index_size = 0;
+
+    if (packFiles.length < 1) return;
+
+    outFile = new BinaryFile(path, "w", true);
+    await outFile.open();
+    await outFile.writeString(header);
+    await outFile.writeInt32(byteMask);
+    await outFile.writeInt32(refFileCount);
+    await outFile.writeInt32(pack_file_index_size);
+
+    await outFile.writeInt32(packFiles.length);
+
+    const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
+    await outFile.writeInt32(index_size);
+    await outFile.writeInt32(0x7fffffff); // header_buffer
+
+    for (const packFile of packFiles) {
+      // const { name, file_size, start_pos, is_compressed } = packFile;
+      const { name, file_size } = packFile;
+      // console.log("file size is " + file_size);
+      await outFile.writeInt32(file_size);
+      // await outFile.writeInt8(is_compressed);
+      await outFile.writeInt8(0);
+      await outFile.writeString(name + "\0");
+    }
+
+    for (const packFile of packFiles) {
+      if (!packFile.schemaFields) continue;
+
+      if (packFile.version != null) {
+        // console.log(packFile.version);
+        await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+        await outFile.writeInt32(packFile.version); // db version
+        await outFile.writeInt8(1);
+
+        // console.log("NUM OF FIELDS:");
+        // console.log(packFile.schemaFields.length / ver_schema.length);
+        await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
+      }
+
+      // console.log(general_unit_index);
+      // console.log(dbVersionNumFields);
+
+      for (let i = 0; i < packFile.schemaFields.length; i++) {
+        const field = packFile.schemaFields[i];
+        await writeField(outFile, field);
+      }
+    }
+  } finally {
+    if (outFile) await outFile.close();
+  }
+};
+
+export const writeStartGamePack = async (
   packsData: Pack[],
   path: string,
   enabledMods: Mod[],
@@ -1189,7 +1347,7 @@ export const writePack = async (
 
     for (const packFile of packFiles) {
       // const { name, file_size, start_pos, is_compressed } = packFile;
-      const { name, file_size, start_pos } = packFile;
+      const { name, file_size } = packFile;
       // console.log("file size is " + file_size);
       await outFile.writeInt32(file_size);
       // await outFile.writeInt8(is_compressed);
@@ -1240,6 +1398,36 @@ const writeField = async (file: BinaryFile, schemaField: SchemaField) => {
   // console.log(field);
   for (const field of schemaField.fields) {
     switch (field.type) {
+      case "UInt8":
+        {
+          await file.writeUInt8(field.val as number);
+        }
+        break;
+      case "F32":
+        {
+          await file.writeFloat(field.val as number);
+        }
+        break;
+      case "I32":
+        {
+          await file.writeInt32(field.val as number);
+        }
+        break;
+      case "I16":
+        {
+          await file.writeInt16(field.val as number);
+        }
+        break;
+      case "I64":
+        {
+          await file.writeInt64(field.val as number);
+        }
+        break;
+      case "F64":
+        {
+          await file.writeDouble(field.val as number);
+        }
+        break;
       case "Int8":
         {
           await file.writeInt8(field.val as number);
@@ -1255,15 +1443,13 @@ const writeField = async (file: BinaryFile, schemaField: SchemaField) => {
           await file.writeString(field.val as string);
         }
         break;
-      case "UInt8":
-        {
-          await file.writeUInt8(field.val as number);
-        }
-        break;
       case "Buffer":
         {
           await file.write(field.val as Buffer);
         }
+        break;
+      default:
+        throw new Error("NO WAY TO RESOLVE " + field.type);
         break;
     }
   }

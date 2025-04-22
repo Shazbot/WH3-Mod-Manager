@@ -40,13 +40,17 @@ import {
   setLastModThatWasRead,
   setCurrentGameNaive,
   setPackSearchResults,
+  setReferencesHash,
 } from "./appSlice";
 import store from "./store";
-import { PackCollisions } from "./packFileTypes";
+import { DBFieldName, DBFileName, DBVersion, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import debounce from "just-debounce-it";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
+import { dataFromBackend, doneRequests, packDataStore } from "@/src/components/viewer/packDataStore";
+import { tableNameWithDBPrefix } from "@/src/utility/packFileHelpers";
+import hash from "object-hash";
 
 console.log("IN RENDERER");
 
@@ -356,6 +360,101 @@ window.api?.setPackSearchResults((event, packNames) => {
   console.log("setPackSearchResults: ", packNames);
   store.dispatch(setPackSearchResults(packNames));
 });
+
+window.api?.setPackDataStore(
+  (event, packPath: string, pack: Pack, tableReferenceRequests: TableReferenceRequest[]) => {
+    console.log("INVOKED: setReferencesHash");
+
+    packDataStore[packPath] = pack;
+
+    doneRequests[packPath] = doneRequests[packPath] || [];
+    tableReferenceRequests
+      .filter(
+        (tableReferenceRequest) =>
+          !doneRequests[packPath].some(
+            (doneReq) =>
+              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq)
+          )
+      )
+      .forEach((tableReferenceRequest) => {
+        doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
+      });
+
+    // store.dispatch(setPackDataStore({ packPath, pack } as SetPackDataStorePayload));
+    store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
+  }
+);
+window.api?.appendPackDataStore(
+  (
+    event,
+    packPath: string,
+    packFilesToAppend: PackedFile[],
+    tableReferenceRequests: TableReferenceRequest[]
+  ) => {
+    console.log("INVOKED: appendPackDataStore");
+
+    const pack = packDataStore[packPath];
+    if (!pack) return;
+
+    pack.packedFiles = pack.packedFiles
+      .filter((pF) => !packFilesToAppend.some((pFPlus) => pFPlus.name == pF.name))
+      .concat(packFilesToAppend);
+
+    doneRequests[packPath] = doneRequests[packPath] || [];
+    tableReferenceRequests
+      .filter(
+        (tableReferenceRequest) =>
+          !doneRequests[packPath].some(
+            (doneReq) =>
+              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq)
+          )
+      )
+      .forEach((tableReferenceRequest) => {
+        doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
+      });
+
+    store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
+  }
+);
+
+window.api?.setDBNameToDBVersions(
+  (
+    event,
+    DBNameToDBVersions: Record<string, DBVersion[]>,
+    DBFieldsThatReference: Record<DBFileName, Record<DBFieldName, string[]>>,
+    referencedColums: Record<string, string[]>
+  ) => {
+    dataFromBackend.DBNameToDBVersions = DBNameToDBVersions;
+    dataFromBackend.DBFieldsThatReference = DBFieldsThatReference;
+    dataFromBackend.DBFieldsReferencedBy = {} as Record<DBFileName, Record<DBFieldName, string[][]>>;
+    dataFromBackend.referencedColums = referencedColums;
+
+    for (const [tableName, dbFieldToReference] of Object.entries(DBFieldsThatReference)) {
+      for (const [dbFieldName, references] of Object.entries(dbFieldToReference)) {
+        const [referencedTableName, referencedFieldName] = references;
+        dataFromBackend.DBFieldsReferencedBy[referencedTableName] =
+          dataFromBackend.DBFieldsReferencedBy[referencedTableName] || {};
+
+        if (!dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName])
+          dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName] = [];
+
+        if (
+          !dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].some(
+            (reference) => reference[0] == tableName && reference[1] == dbFieldName
+          )
+        ) {
+          dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].push([
+            tableName,
+            dbFieldName,
+          ]);
+        }
+      }
+    }
+
+    // console.log("dataFromBackend.DBFieldsThatReference:", dataFromBackend.DBFieldsThatReference);
+    // console.log("dataFromBackend.DBFieldsReferencedBy:", dataFromBackend.DBFieldsReferencedBy);
+  }
+);
 
 if (isMain) {
   window.api?.sendApiExists();

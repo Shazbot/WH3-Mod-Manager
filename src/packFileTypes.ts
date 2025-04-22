@@ -11,6 +11,14 @@ export interface AmendedSchemaField extends SchemaField {
   resolvedKeyValue: string;
 }
 
+export interface NewPackedFile {
+  name: string;
+  schemaFields: SchemaField[];
+  file_size: number;
+  version?: number;
+  tableSchema: DBVersion;
+}
+
 export interface PackedFile {
   name: string;
   file_size: number;

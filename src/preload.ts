@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { PackCollisions } from "./packFileTypes";
+import { DBFieldName, DBFileName, DBVersion, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
 import debounce from "just-debounce-it";
@@ -188,6 +188,52 @@ const api = {
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("setPackSearchResults", callback),
   terminateGame: () => ipcRenderer.send("terminateGame"),
+
+  setSchemaData: (
+    callback: (event: Electron.IpcRendererEvent, DBNameToDBVersions: Record<string, DBVersion[]>) => void
+  ) => ipcRenderer.on("setSchemaData", callback),
+  setPackDataStore: (
+    callback: (
+      event: Electron.IpcRendererEvent,
+      packPath: string,
+      pack: Pack,
+      tableReferenceRequests: TableReferenceRequest[]
+    ) => void
+  ) => ipcRenderer.on("setPackDataStore", callback),
+  appendPackDataStore: (
+    callback: (
+      event: Electron.IpcRendererEvent,
+      packPath: string,
+      packFilesToAppend: PackedFile[],
+      tableReferenceRequests: TableReferenceRequest[]
+    ) => void
+  ) => ipcRenderer.on("appendPackDataStore", callback),
+  getTableReferences: (
+    packPath: string,
+    tableReferenceRequests: TableReferenceRequest[],
+    withPack: boolean
+  ) => ipcRenderer.send("getTableReferences", packPath, tableReferenceRequests, withPack),
+  setDBNameToDBVersions: (
+    callback: (
+      event: Electron.IpcRendererEvent,
+      DBNameToDBVersions: Record<string, DBVersion[]>,
+      DBFieldsThatReference: Record<DBFileName, Record<DBFieldName, string[]>>,
+      referencedColums: Record<string, string[]>
+    ) => void
+  ) => ipcRenderer.on("setDBNameToDBVersions", callback),
+  executeDBDuplication: (
+    packPath: string,
+    nodesNamesToDuplicate: string[],
+    nodeNameToRef: Record<string, [string, string, string]>,
+    nodeNameToRenameValue: Record<string, string>
+  ) =>
+    ipcRenderer.send(
+      "executeDBDuplication",
+      packPath,
+      nodesNamesToDuplicate,
+      nodeNameToRef,
+      nodeNameToRenameValue
+    ),
 };
 
 export type api = typeof api;
