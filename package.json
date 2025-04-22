@@ -5,9 +5,9 @@
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "scripts": {
-    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start --inspect-electron",
+    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start --inspect-electron -- --mode development",
     "package": "electron-forge package",
-    "make": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge make",
+    "make": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge make -- --mode production",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "storybook": "echo 'storybook currently broken, storybook dev -p 6006'",
