@@ -114798,7 +114798,9 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0
+        ]
       }
     ],
     "start_pos_diplomacy_deal_actions_tables": [
@@ -115981,7 +115983,9 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0
+        ]
       }
     ],
     "start_pos_family_relationships_tables": [
@@ -117545,7 +117549,10 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0,
+          1
+        ]
       }
     ],
     "start_pos_technologies_tables": [
@@ -132668,7 +132675,7 @@
         "is_filename": "true"
       },
       "ui_image": {
-        "filename_relative_path": "ui/eventpics/%;ui/eventpics/%.png",
+        "filename_relative_path": "ui/eventpics/%.png",
         "is_filename": "true"
       }
     },
@@ -132688,6 +132695,17 @@
     "multiplayer_mininum_length_funds_tables": {
       "key": {
         "lookup_hardcoded": "minimum_land_battle_funds_spent;;;;;Minimum land battle funds spent:::::minimum_land_battle_length;;;;;Minimum land battle length in seconds:::::minimum_naval_battle_funds_spent;;;;;Minimum naval battle funds spent:::::minimum_naval_battle_length;;;;;Minimum naval battle length in seconds"
+      }
+    },
+    "names_tables": {
+      "gender": {
+        "lookup_hardcoded": "0;;;;;m:::::1;;;;;f:::::2;;;;;b"
+      },
+      "id": {
+        "lookup": "name"
+      },
+      "type": {
+        "lookup_hardcoded": "0;;;;;forename:::::1;;;;;family_name:::::2;;;;;clan_name:::::3;;;;;other"
       }
     },
     "political_actions_tables": {
