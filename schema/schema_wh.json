@@ -62492,7 +62492,9 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0
+        ]
       }
     ],
     "capture_point_types_tables": [
@@ -104850,7 +104852,9 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0
+        ]
       }
     ],
     "start_pos_diplomacy_tables": [
@@ -105364,7 +105368,9 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0
+        ]
       }
     ],
     "start_pos_horde_details_tables": [
@@ -106495,7 +106501,10 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          0,
+          1
+        ]
       }
     ],
     "start_pos_starting_general_option_additional_units_tables": [
@@ -106718,7 +106727,9 @@
             "is_part_of_colour": null
           }
         ],
-        "localised_key_order": []
+        "localised_key_order": [
+          1
+        ]
       }
     ],
     "start_pos_technologies_tables": [
@@ -119566,6 +119577,17 @@
       },
       "model_file": {
         "filename_relative_path": "%"
+      }
+    },
+    "names_tables": {
+      "gender": {
+        "lookup_hardcoded": "0;;;;;m:::::1;;;;;f:::::2;;;;;b"
+      },
+      "id": {
+        "lookup": "name"
+      },
+      "type": {
+        "lookup_hardcoded": "0;;;;;forename:::::1;;;;;family_name:::::2;;;;;clan_name:::::3;;;;;other"
       }
     },
     "naval_units_tables": {
