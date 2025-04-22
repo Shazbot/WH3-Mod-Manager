@@ -183,7 +183,7 @@
     "electron-extension-installer": "^1.2.0",
     "electron-fetch": "^1.9.1",
     "electron-is-dev": "^2.0.0",
-    "electron-log": "^5.2.2",
+    "electron-log": "^5.3.4",
     "electron-prebuilt-compile": "^8.2.0",
     "electron-squirrel-startup": "^1.0.0",
     "electron-window-state": "^5.0.3",

@@ -6155,10 +6155,10 @@ electron-is-dev@^2.0.0:
   resolved "https://registry.yarnpkg.com/electron-is-dev/-/electron-is-dev-2.0.0.tgz#833487a069b8dad21425c67a19847d9064ab19bd"
   integrity sha512-3X99K852Yoqu9AcW50qz3ibYBWY79/pBhlMCab8ToEWS48R0T9tyxRiQhwylE7zQdXrMnx2JKqUJyMPmt5FBqA==
 
-electron-log@^5.2.2:
-  version "5.2.2"
-  resolved "https://registry.yarnpkg.com/electron-log/-/electron-log-5.2.2.tgz#cdb0a6dc48178a7cbacb434a268ab097ad5198dc"
-  integrity sha512-fgvx6srjIHDowJD8WAAjoAXmiTyOz6JnGQoxOtk1mXw7o4S+HutuPHLCsk24xTXqWZgy4uO63NbedG+oEvldLw==
+electron-log@^5.3.4:
+  version "5.3.4"
+  resolved "https://registry.yarnpkg.com/electron-log/-/electron-log-5.3.4.tgz#4117d9762d06dbed8e3b878cc468a92ce415a9e0"
+  integrity sha512-QLj0EbsA5R5Yy4vjGlLe7m8hPNZ/Enp7c7a2WH7RUPr0hIOp0vDaC+6bJM0th6+uZKiZGGH5a2aKzvYp3eYwDQ==
 
 electron-prebuilt-compile@^8.2.0:
   version "8.2.0"
