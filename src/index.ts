@@ -60,8 +60,6 @@ if (!gotTheLock) {
   if (isMainThread) {
     process.umask(0);
 
-    electronLog.initialize({ preload: true });
-
     console.log = (...args) => {
       electronLog.info(...args);
     };
