@@ -2,6 +2,8 @@
 const CopyPlugin = require("copy-webpack-plugin");
 const path = require("path");
 
+const isProduction = process.argv[process.argv.indexOf("--mode") + 1] === "production";
+
 module.exports = {
   /**
    * This is the main entry point for your application, it's the first file
@@ -44,7 +46,7 @@ module.exports = {
     },
     hot: true,
   },
-
+  devtool: isProduction ? "source-map" : "eval-cheap-module-source-map",
   cache: {
     type: "filesystem",
   },
