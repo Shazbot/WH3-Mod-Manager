@@ -2659,8 +2659,23 @@ export const registerIpcMainListeners = (
     clipboard.writeText(scriptWithIDs);
   });
 
-  ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
-    const modsArray = mods.map((mod) => `'${mod.path.replaceAll("'", "''")}'`).join(",");
+  const appendToSearchInsidePacks = (
+    mods: Mod[],
+    modsIndex: number,
+    packNamesAll: string[],
+    searchTerm: string
+  ) => {
+    if (mods.length < modsIndex * 10) {
+      console.log("setPackSearchResults", modsIndex);
+      mainWindow?.webContents.send("setPackSearchResults", Array.from(new Set([...packNamesAll])));
+      return;
+    }
+
+    const slicedMods = mods.slice(modsIndex * 10, modsIndex * 10 + 10);
+    const modsArray = slicedMods.map((mod) => `'${mod.path.replaceAll("'", "''")}'`).join(",");
+
+    console.log("modsArray is", modsArray, "i is", modsIndex, searchTerm);
+
     exec(
       `powershell -Command "$strarry = @(${modsArray}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
       (error, stdout) => {
@@ -2670,10 +2685,14 @@ export const registerIpcMainListeners = (
           return;
         }
 
+        console.log("stdout:", stdout);
+
         const packNames = stdout
           .split("\n")
           .map((line) => line.split(".pack:")[0])
           .filter((packName) => packName != "");
+
+        console.log("packNames:", packNames);
 
         // Then search again for unicode text.
         exec(
@@ -2690,14 +2709,22 @@ export const registerIpcMainListeners = (
               .map((line) => line.split(".pack:")[0])
               .filter((packName) => packName != "");
 
-            mainWindow?.webContents.send(
-              "setPackSearchResults",
-              Array.from(new Set([...packNames, ...packNamesUnicodeSearch]))
-            );
+            console.log("packNames", packNames, packNamesUnicodeSearch);
+
+            packNamesAll = packNamesAll.concat(packNames);
+            packNamesAll = packNamesAll.concat(packNamesUnicodeSearch);
+
+            appendToSearchInsidePacks(mods, modsIndex + 1, packNamesAll, searchTerm);
           }
         );
       }
     );
+  };
+
+  ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
+    const packNamesAll = [] as string[];
+
+    appendToSearchInsidePacks(mods, 0, packNamesAll, searchTerm);
   });
 
   const readTablesFromMods = async (mods: Mod[], tablesToRead: string[]) => {
