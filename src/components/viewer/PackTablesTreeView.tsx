@@ -23,16 +23,17 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
     currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const packData = packsData[packPath];
 
-  useEffect(() => {
-    window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
-    dispatch(
-      selectDBTable({
-        packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
-        dbName: "main_units_tables",
-        dbSubname: "data__",
-      })
-    );
-  }, []);
+  // for testing, automatically opens db.pack main_units_tablesl
+  // useEffect(() => {
+  //   window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
+  //   dispatch(
+  //     selectDBTable({
+  //       packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
+  //       dbName: "main_units_tables",
+  //       dbSubname: "data__",
+  //     })
+  //   );
+  // }, []);
 
   // const packData = currentPackData.data;
   if (!packData) {

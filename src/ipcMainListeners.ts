@@ -1466,7 +1466,9 @@ export const registerIpcMainListeners = (
     // console.log("ak teb:", teb);
     // console.log("ak teb:", teb?.path);
     // ipcMain.emit("requestOpenModInViewer", null, teb?.path);
-    ipcMain.emit("requestOpenModInViewer", null, "db.pack");
+
+    // for testing, automatically opens db.pack
+    // ipcMain.emit("requestOpenModInViewer", null, "db.pack");
   });
 
   ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {
