@@ -39,7 +39,7 @@ import {
 import i18n from "./configs/i18next.config";
 import debounce from "just-debounce-it";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
-import { execFile, exec, fork } from "child_process";
+import { execFile, exec, fork, spawn } from "child_process";
 import * as nodePath from "path";
 import * as fs from "fs";
 import chokidar from "chokidar";
@@ -2674,11 +2674,11 @@ export const registerIpcMainListeners = (
     const slicedMods = mods.slice(modsIndex * 10, modsIndex * 10 + 10);
     const modsArray = slicedMods.map((mod) => `'${mod.path.replaceAll("'", "''")}'`).join(",");
 
-    console.log("modsArray is", modsArray, "i is", modsIndex, searchTerm);
+    console.log("modsArray is", modsArray, "i is", modsIndex, searchTerm, "num mods is", slicedMods.length);
 
     exec(
-      `powershell -Command "$strarry = @(${modsArray}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
-      (error, stdout) => {
+      `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
+      (error, stdout, stderr) => {
         if (error) {
           console.error(`exec error: ${error}`);
           mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
@@ -2686,6 +2686,7 @@ export const registerIpcMainListeners = (
         }
 
         console.log("stdout:", stdout);
+        console.log("stderr:", stderr);
 
         const packNames = stdout
           .split("\n")
@@ -2696,7 +2697,7 @@ export const registerIpcMainListeners = (
 
         // Then search again for unicode text.
         exec(
-          `powershell -Command "$strarry = @(${modsArray}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
+          `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
           (error, stdout) => {
             if (error) {
               console.error(`exec error: ${error}`);
@@ -2709,7 +2710,7 @@ export const registerIpcMainListeners = (
               .map((line) => line.split(".pack:")[0])
               .filter((packName) => packName != "");
 
-            console.log("packNames", packNames, packNamesUnicodeSearch);
+            console.log("packNames unicode:", packNames, packNamesUnicodeSearch);
 
             packNamesAll = packNamesAll.concat(packNames);
             packNamesAll = packNamesAll.concat(packNamesUnicodeSearch);
@@ -2724,6 +2725,7 @@ export const registerIpcMainListeners = (
   ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
     const packNamesAll = [] as string[];
 
+    console.log("search inside mods:", searchTerm, "num mods:", mods.length);
     appendToSearchInsidePacks(mods, 0, packNamesAll, searchTerm);
   });
 
