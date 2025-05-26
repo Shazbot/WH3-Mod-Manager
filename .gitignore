@@ -88,8 +88,6 @@ typings/
 # Electron-Forge
 out/
 
-temp/
-
 .yarn/cache/
 
 dumps
