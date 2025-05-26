@@ -39,7 +39,7 @@ import {
 import i18n from "./configs/i18next.config";
 import debounce from "just-debounce-it";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
-import { execFile, exec, fork, spawn } from "child_process";
+import { exec, fork } from "child_process";
 import * as nodePath from "path";
 import * as fs from "fs";
 import chokidar from "chokidar";
