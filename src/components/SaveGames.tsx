@@ -86,10 +86,10 @@ const SaveGame = memo((props: SaveGameProps) => {
             </div>
           </Modal.Header>
           <Modal.Body>
-            <div className="grid grid-cols-[3fr_2fr] h-full">
+            <div>
               {saves.map((save) => {
                 return (
-                  <React.Fragment key={save.name}>
+                  <div className="grid grid-cols-[3fr_2fr] h-full p-2 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-600 dark:hover:text-white" key={save.name}>
                     <div className="self-center leading-relaxed text-gray-500 dark:text-gray-300 h-[40px] truncate content-center">
                       {save.name}
                     </div>
@@ -113,7 +113,7 @@ const SaveGame = memo((props: SaveGameProps) => {
                         {localized.loadModsFromSave}
                       </button>
                     </div>
-                  </React.Fragment>
+                  </div>
                 );
               })}
             </div>
