@@ -1035,10 +1035,10 @@
   resolved "https://registry.yarnpkg.com/@handsontable/pikaday/-/pikaday-1.0.0.tgz#21a432b727791d48f4f231094d999b1a4b5f6f5f"
   integrity sha512-1VN6N38t5/DcjJ7y7XUYrDx1LuzvvzlrFdBdMG90Qo1xc8+LXHqbWbsTEm5Ec5gXTEbDEO53vUT35R+2COmOyg==
 
-"@handsontable/react-wrapper@^15.2.0":
-  version "15.2.0"
-  resolved "https://registry.yarnpkg.com/@handsontable/react-wrapper/-/react-wrapper-15.2.0.tgz#7801acba8fe4b558836c8a410f912561b74e5eef"
-  integrity sha512-yqRxTi3d7N0lQL9sejz2dpAK9cxFbrwBzInju9KYep6ZLuDcRkZwmSuyadwWGQCwGMiOfcpb6vp/CQTvyDrmhA==
+"@handsontable/react-wrapper@^15.3.0":
+  version "15.3.0"
+  resolved "https://registry.yarnpkg.com/@handsontable/react-wrapper/-/react-wrapper-15.3.0.tgz#24d6010928b1be820246cdc99313d548295c7c53"
+  integrity sha512-WCnk9sCA8FXW/xTeTjpqbJCUqA9q/A8bHYd2WFf5iZFXu574GD+1uDx5lpd9Cog3K/VIp/oX978Luaze9UJEvg==
 
 "@heroicons/react@^2.0.13":
   version "2.2.0"
@@ -7832,10 +7832,10 @@ handlebars@^4.0.1:
   optionalDependencies:
     uglify-js "^3.1.4"
 
-handsontable@^15.2.0:
-  version "15.2.0"
-  resolved "https://registry.yarnpkg.com/handsontable/-/handsontable-15.2.0.tgz#e3a2e3049438761e419389e819725bd18080e429"
-  integrity sha512-QccHZkowqciFgyUyG/BUidatHpDkkUgx1O6v6czpU/ZgT3blmEpNFhErblC/JsWb6uVxbDfgW2vpW5eQNsU8GA==
+handsontable@^15.3.0:
+  version "15.3.0"
+  resolved "https://registry.yarnpkg.com/handsontable/-/handsontable-15.3.0.tgz#e1cd55dab9b14999d66953522b2434f3ad695760"
+  integrity sha512-3ZnrLv53Aw7LPdJz9gBJEspnrE7LyjXeYV55hN1+5M8XmNJcROaYaMAwPYztH6MGCV2OQ/njDxWs5LDb+fSOAg==
   dependencies:
     "@handsontable/pikaday" "^1.0.0"
     core-js "^3.37.0"

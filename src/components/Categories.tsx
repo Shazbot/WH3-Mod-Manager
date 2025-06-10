@@ -656,22 +656,26 @@ const Categories = memo(() => {
       </div>
       <div
         onClick={(ev) => {
+          console.log("HT: onClick");
           const targetElement = ev.target as HTMLElement;
           let innerHmtl = "";
           if (
             targetElement.classList.contains("rowHeader") ||
             targetElement.classList.contains("rowHeaderChild")
           ) {
+            console.log("HT: classList rowHeader");
             innerHmtl = targetElement.innerHTML;
           } else if (
             targetElement.parentElement?.classList.contains("rowHeader") ||
             targetElement.parentElement?.classList.contains("rowHeaderChild")
           ) {
+            console.log("HT: parentElement classList rowHeader");
             innerHmtl = targetElement.parentElement?.innerHTML;
           }
 
           if (innerHmtl == "") return;
           const rowNum = Number(innerHmtl.split(" ")[0]) - 1;
+          console.log("rowNum:", rowNum);
           if (flattenedData.length <= rowNum) return;
 
           const rowData = flattenedData[rowNum];
@@ -859,10 +863,10 @@ const Categories = memo(() => {
             return cellProperties;
           }}
           // autoRowSize={true}
-          autoRowSize={{ syncLimit: "100%", allowSampleDuplicates: true }}
+          // autoRowSize={{ syncLimit: "100%", allowSampleDuplicates: true }}
           // rowHeights="28px"
 
-          autoColumnSize={true}
+          // autoColumnSize={true}
           bindRowsWithHeaders={false}
         >
           <HotColumn data="category" className="htCenter htMiddle" width={120} readOnly={true}></HotColumn>
