@@ -344,5 +344,6 @@
   "rome2ContentFolder": "罗马2的Steam创意工坊文件夹（ID 214950），示例路径 C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\214950",
   "addedMod": "已添加模组:",
   "resubscribing": "重新订阅中:",
-  "queue": "剩余队列:"
+  "queue": "剩余队列:",
+  "downloadingUpdate": "正在下载更新..."
 }

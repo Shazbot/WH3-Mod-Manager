@@ -1,49 +1,186 @@
-import React, { useEffect, useRef, memo } from "react";
+import React, { useEffect, useRef, memo, Suspense, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
-import { AmendedSchemaField, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
-
-import "handsontable/styles/handsontable.min.css";
-import "handsontable/styles/ht-theme-main.min.css";
-
-import { HotTable } from "@handsontable/react-wrapper";
-
-import { registerAllModules } from "handsontable/registry";
-import Handsontable from "handsontable";
+import { AmendedSchemaField, DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { setDeepCloneTarget } from "@/src/appSlice";
+import { dataFromBackend } from "./packDataStore";
+
+// Lazy load Handsontable components
+const LazyHotTable = React.lazy(async () => {
+  // CSS imports handled via webpack configuration - remove direct imports
+
+  const [{ HotTable }, { registerAllModules }, Handsontable] = await Promise.all([
+    import("@handsontable/react-wrapper"),
+    import("handsontable/registry"),
+    import("handsontable"),
+  ]);
+
+  // Register modules once loaded
+  registerAllModules();
+
+  return { default: HotTable, Handsontable };
+});
+
+// Loading component for table
+const TableLoadingSpinner = () => (
+  <div className="flex items-center justify-center h-96 bg-gray-800">
+    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+    <span className="ml-4 text-gray-300">Loading table...</span>
+  </div>
+);
+
+const colHeaders = (
+  index: number,
+  currentDBTableSelection: DBTableSelection,
+  currentSchema: DBVersion,
+  columnHeaders: string[]
+) => {
+  const keyColumnNames = dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
+  const field = currentSchema.fields[index];
+
+  if (keyColumnNames.indexOf(field.name) > -1) {
+    return `🔑 ${columnHeaders[index]}`;
+  }
+
+  return columnHeaders[index];
+};
+
+// Handsontable wrapper component
+const HandsontableWrapper = memo(
+  ({
+    data,
+    columns,
+    columnHeaders,
+    hotRef,
+    onContextMenuCallback,
+    currentDBTableSelection,
+    currentSchema,
+  }: {
+    data: any[][];
+    columns: any[];
+    columnHeaders: string[];
+    hotRef: React.RefObject<any>;
+    onContextMenuCallback: (row: number, col: number) => void;
+    currentDBTableSelection: DBTableSelection;
+    currentSchema: DBVersion;
+  }) => {
+    return (
+      <Suspense fallback={<TableLoadingSpinner />}>
+        <LazyHotTable
+          ref={hotRef}
+          filters={true}
+          autoColumnSize={{ useHeaders: false }}
+          data={data}
+          rowHeaders={true}
+          colHeaders={(i) => {
+            return colHeaders(i, currentDBTableSelection, currentSchema, columnHeaders);
+          }}
+          columns={columns}
+          manualColumnResize={true}
+          columnSorting={true}
+          manualColumnFreeze={true}
+          stretchH="all"
+          contextMenu={{
+            items: {
+              row_above: {},
+              row_below: {},
+              about: {
+                name() {
+                  return "<b>Deep clone</b>";
+                },
+                hidden() {
+                  return true;
+                  if (!hotRef || !hotRef.current) return;
+                  const hot = hotRef.current.hotInstance;
+                  if (!hot) return true;
+
+                  const lastSelected = hot.getSelected();
+                  if (!lastSelected) return true;
+                  if (lastSelected.length != 1) return true;
+                  const [startRow, startCol, endRow, endCol] = lastSelected[0];
+
+                  if (startRow != endRow || startCol != endCol) return true;
+
+                  // console.log("dataFromBackend.referencedColums:", dataFromBackend.referencedColums);
+                  console.log(
+                    "column refs:",
+                    currentDBTableSelection.dbName,
+                    dataFromBackend.referencedColums[currentDBTableSelection.dbName]
+                  );
+                  const keyColumnNames =
+                    dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
+                  // console.log("current schema:", currentSchema);
+                  // currentSchema.fields.find(field=>field.name == )
+                  for (let i = 0; i < currentSchema.fields.length; i++) {
+                    const field = currentSchema.fields[i];
+                    console.log("checking", field.name, "index is", i, "startCol is", startCol);
+                    if (i == startCol && keyColumnNames.indexOf(field.name) > -1) {
+                      console.log("clicked ref column", field.name);
+                      return false;
+                    }
+                  }
+
+                  return true;
+                },
+                callback(key, selection, clickEvent) {
+                  if (!hotRef || !hotRef.current) return;
+                  const hot = hotRef.current.hotInstance;
+                  if (!hot) return true;
+
+                  const lastSelected = hot.getSelected();
+                  if (!lastSelected) return;
+                  if (lastSelected.length != 1) return;
+                  const [startRow, startCol, endRow, endCol] = lastSelected[0];
+                  if (startRow != endRow || startCol != endCol) return;
+
+                  onContextMenuCallback(startRow, startCol);
+                },
+              },
+            },
+          }}
+          viewportColumnRenderingOffset={50}
+          dropdownMenu={[
+            "filter_by_condition",
+            "filter_by_condition2",
+            "filter_operators",
+            "filter_by_value",
+            "filter_action_bar",
+          ]}
+          width="100%"
+          height="85vh"
+          // colHeaders={columnHeaders}
+          licenseKey="non-commercial-and-evaluation"
+        />
+      </Suspense>
+    );
+  }
+);
 
 const PackTablesTableView = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
+  const [handsontableLoaded, setHandsontableLoaded] = useState(false);
 
-  // console.log("packsData:");
-  // console.log(packData);
-
-  const hotRef = useRef<HotTable>(null);
+  const hotRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!hotRef || !hotRef.current) return;
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const hot = hotRef.current.hotInstance as Handsontable;
+    if (!hotRef || !hotRef.current || !handsontableLoaded) return;
+    const hot = hotRef.current.hotInstance;
     if (!hot) return;
     const plugin = hot.getPlugin("autoColumnSize");
 
-    // console.log("WIDHT IS", plugin.getColumnWidth(4));
-
-    if (plugin.isEnabled()) {
+    if (plugin?.isEnabled()) {
       // code...
     }
-  });
+  }, [handsontableLoaded]);
 
-  // registerPlugin(AutoColumnSize);
-  // registerPlugin(DropdownMenu);
-  // registerPlugin(HiddenRows);
-  // registerCellType(CheckboxCellType);
-  // registerPlugin(Filters);
-  registerAllModules();
+  const handleContextMenuCallback = (row: number, col: number) => {
+    dispatch(setDeepCloneTarget({ row, col }));
+  };
+
+  // Handsontable modules are registered lazily when component loads
 
   console.log("currentDBTableSelection:", currentDBTableSelection);
   if (!currentDBTableSelection) {
@@ -150,86 +287,15 @@ const PackTablesTableView = memo(() => {
 
   return (
     <div className="ht-theme-main-dark-auto">
-      <HotTable
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        ref={hotRef}
-        filters={true}
-        autoColumnSize={{ useHeaders: false }}
-        // beforeStretchingColumnWidth={(w, c) => {
-        //   console.log(w, c);
-        //   return 10;
-        // }}
+      <HandsontableWrapper
         data={data}
-        rowHeaders={true}
         columns={columns}
-        manualColumnResize={true}
-        columnSorting={true}
-        manualColumnFreeze={true}
-        stretchH="all"
-        contextMenu={{
-          items: {
-            row_above: {},
-            row_below: {},
-            about: {
-              // Own custom option
-              name() {
-                // `name` can be a string or a function
-                return "<b>Deep clone</b>"; // Name can contain HTML
-              },
-              hidden() {
-                if (!hotRef || !hotRef.current) return;
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                const hot = hotRef.current.hotInstance as Handsontable;
-                if (!hot) return true;
-
-                const lastSelected = hot.getSelected();
-                if (!lastSelected) return true;
-                if (lastSelected.length != 1) return true;
-                const [startRow, startCol, endRow, endCol] = lastSelected[0];
-
-                console.log(startRow, startCol, endRow, endCol);
-
-                if (startRow != endRow || startCol != endCol) return true;
-                return false;
-              },
-              callback(key, selection, clickEvent) {
-                if (!hotRef || !hotRef.current) return;
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                const hot = hotRef.current.hotInstance as Handsontable;
-                if (!hot) return true;
-
-                const lastSelected = hot.getSelected();
-                if (!lastSelected) return;
-                if (lastSelected.length != 1) return;
-                const [startRow, startCol, endRow, endCol] = lastSelected[0];
-                if (startRow != endRow || startCol != endCol) return;
-
-                dispatch(setDeepCloneTarget({ row: startRow, col: startCol }));
-              },
-            },
-          },
-        }}
-        viewportColumnRenderingOffset={50}
-        // dropdownMenu={["filter_by_condition", "filter_action_bar"]}
-        dropdownMenu={[
-          "filter_by_condition",
-          "filter_by_condition2",
-          "filter_operators",
-          "filter_by_value",
-          "filter_action_bar",
-        ]}
-        // dropdownMenu={true}
-        width="100%"
-        height="90vh"
-        colHeaders={columnHeaders}
-        licenseKey="non-commercial-and-evaluation" // for non-commercial use only
-        // columns={columns}
-      >
-        {/* {...hotColumns} */}
-      </HotTable>
+        columnHeaders={columnHeaders}
+        hotRef={hotRef}
+        onContextMenuCallback={handleContextMenuCallback}
+        currentDBTableSelection={currentDBTableSelection}
+        currentSchema={currentSchema}
+      />
     </div>
   );
 });

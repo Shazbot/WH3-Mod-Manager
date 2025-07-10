@@ -1,5 +1,5 @@
 export default class Queue<T> {
-  private queue: T[];
+  public queue: T[];
 
   constructor() {
     this.queue = [];

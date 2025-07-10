@@ -731,7 +731,7 @@ const Categories = memo(() => {
           // @ts-ignore
           ref={hotRef}
           stretchH="last"
-          height={"87.5vh"}
+          height={"87vh"}
           nestedRows={true}
           // preventOverflow={"vertical"}
           licenseKey="non-commercial-and-evaluation"

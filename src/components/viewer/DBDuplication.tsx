@@ -19,10 +19,19 @@ import { AmendedSchemaField, PackedFile } from "@/src/packFileTypes";
 import { Tooltip } from "flowbite-react";
 import Queue from "@/src/utility/queue";
 
-interface ITreeNode {
-  name: string;
-  children: ITreeNode[];
-}
+const findNodeInTree = (
+  tree: IViewerTreeNodeWithData | IViewerTreeNode,
+  targetName: string
+): IViewerTreeNodeWithData | IViewerTreeNode | null => {
+  if (tree.name === targetName) return tree;
+  if (tree.children) {
+    for (const child of tree.children) {
+      const found = findNodeInTree(child, targetName);
+      if (found) return found;
+    }
+  }
+  return null;
+};
 
 const DBDuplication = React.memo(() => {
   const dispatch = useAppDispatch();
@@ -31,11 +40,108 @@ const DBDuplication = React.memo(() => {
   // important to reload the component
   useAppSelector((state) => state.app.referencesHash);
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
-  const packPath = currentDBTableSelection?.packPath ?? "data.pack";
+  const packPath = currentDBTableSelection?.packPath ?? "db.pack";
 
   const [selectedNodesByName, setSelectedNodesByName] = useState<string[]>([]);
   const [expandedNodesByName, setExpandedNodesByName] = useState<string[]>([]);
   const [nodeNameToRenameValue, setNodeNameToRenameValue] = useState<Record<string, string>>({});
+  const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Dispatch event to get indirect references for newly expanded node
+  const getIndirectReferences = async (
+    newDBTableSelection: DBTableSelection,
+    newSelectedNode: IViewerTreeNodeWithData,
+    treeData: IViewerTreeNodeWithData
+  ) => {
+    try {
+      const indirectRefsResult = await window.api?.buildDBReferenceTree(
+        packPath,
+        newDBTableSelection,
+        { row: -1, col: -1 },
+        [newSelectedNode] // Only get references for this specific node
+      );
+
+      if (indirectRefsResult) {
+        if (!treeData) {
+          console.log("ERROR: no treedata for indirect references");
+          return;
+        }
+        console.log("Indirect references received:", indirectRefsResult);
+        // Append the references to existing tree data under the correct node
+        const targetNode = findNodeInTree(treeData, newSelectedNode.name);
+        if (targetNode && indirectRefsResult.children) {
+          if (indirectRefsResult.children.length == 0) return;
+
+          // Merge new children into existing node
+          indirectRefsResult.children[0].children.forEach((newChild) => {
+            if (!targetNode.children.some((existingChild) => existingChild.name === newChild.name)) {
+              (newChild as IViewerTreeNode).isIndirectRef = true;
+              targetNode.children.push(newChild);
+            }
+          });
+          setTreeData({ ...treeData }); // Trigger re-render
+        }
+      } else {
+        console.log("ERROR: no indirectRefsResult");
+      }
+    } catch (error) {
+      console.error("Failed to get indirect references:", error);
+    }
+  };
+
+  // Fetch tree data from backend
+  useEffect(() => {
+    if (!currentDBTableSelection || !deepCloneTarget) return;
+
+    const buildTree = async () => {
+      setIsLoading(true);
+      try {
+        const treeNodeResult = await window.api?.buildDBReferenceTree(
+          packPath,
+          {
+            dbName: currentDBTableSelection.dbName,
+            dbSubname: currentDBTableSelection.dbSubname,
+            packPath: currentDBTableSelection.packPath,
+          } as DBTableSelection,
+          deepCloneTarget,
+          []
+        );
+
+        if (treeNodeResult) {
+          console.log("buildDBReferenceTree RECIEVED", treeNodeResult);
+          console.log(
+            "currentDBTableSelection:",
+            currentDBTableSelection,
+            "deepCloneTarget:",
+            deepCloneTarget,
+            "selectedNodesByName:",
+            selectedNodesByName,
+            "packPath:",
+            packPath
+          );
+          setTreeData(treeNodeResult);
+
+          if (treeNodeResult.children.length == 0) return;
+          const rootNodeData = treeNodeResult.children[0] as IViewerTreeNodeWithData;
+          const rootNodeSelection = {
+            dbName: rootNodeData.tableName,
+            dbSubname: "",
+            packPath,
+          } as DBTableSelection;
+          console.log("get indirect refs");
+          getIndirectReferences(rootNodeSelection, rootNodeData, treeNodeResult);
+        }
+      } catch (error) {
+        console.error("Failed to build reference tree:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    buildTree();
+  }, [currentDBTableSelection, deepCloneTarget, packPath]);
+  // }, [currentDBTableSelection, deepCloneTarget, selectedNodesByName, packPath]);
 
   if (!currentDBTableSelection) {
     console.log("NO currentDBTableSelection");
@@ -100,235 +206,7 @@ const DBDuplication = React.memo(() => {
     children: [] as ITreeNode[],
   };
 
-  const refsToGet: TableReferenceRequest[] = [];
   const allTreeChildren: string[] = [];
-
-  const refsQueue = new Queue<[acc: DBCell[], packFile: PackedFile, dbCell: DBCell, treeParent: ITreeNode]>();
-
-  type DBCell = [tableName: string, tableColumnName: string, resolveKeyValue: string];
-  const addRefsRecursively = (acc: DBCell[], packFile: PackedFile, dbCell: DBCell, treeParent: ITreeNode) => {
-    const [tableName, tableColumnName, resolvedKeyValue] = dbCell;
-    // console.log("addRefsRecursively for", tableName, tableColumnName, resolvedKeyValue, packFile.name);
-    const dbVersion = getDBVersion(packFile, dataFromBackend.DBNameToDBVersions);
-    if (!dbVersion || !packFile.schemaFields) {
-      console.log("NO dbversion", dbVersion, !!packFile.schemaFields);
-      return;
-    }
-    const rows = chunkTableIntoRows(packFile.schemaFields, dbVersion);
-
-    // if (tableName == "land_units_tables") {
-    //   console.log("land rows:", rows);
-    // }
-
-    for (const row of rows) {
-      const cellWithKey = row.find((cell) => cell.name == tableColumnName);
-      if (!cellWithKey) continue;
-      if (cellWithKey.resolvedKeyValue != resolvedKeyValue) continue;
-
-      // console.log("FOUND ROW FOR", tableName, tableColumnName, resolvedKeyValue);
-
-      const isRowSelected = selectedNodesByName.includes(
-        `${tableName} ${tableColumnName} : ${resolvedKeyValue}`
-      );
-
-      if (isRowSelected) {
-        console.log("ALREADY SELECTED", `${tableName} ${tableColumnName} : ${resolvedKeyValue}`);
-        const references =
-          dataFromBackend.DBFieldsReferencedBy[tableName] &&
-          dataFromBackend.DBFieldsReferencedBy[tableName][tableColumnName];
-
-        if (references) {
-          console.log("REFERENCES FOR", tableName, tableColumnName, references);
-          for (const [refTableName, refTableColumnName] of references) {
-            addNewCellFromReference(
-              acc,
-              treeParent,
-              refTableName,
-              refTableColumnName,
-              resolvedKeyValue,
-              true
-            );
-          }
-        }
-      }
-
-      for (let i = 0; i < row.length; i++) {
-        const cell = row[i];
-        if (i >= dbVersion.fields.length) continue;
-        const field = dbVersion.fields[i];
-
-        if (!field || !field.is_reference || field.is_reference.length == 0) continue;
-        // if (cell.name == tableColumnName) {
-        //   console.log("cell:", cell.resolvedKeyValue, resolvedKeyValue);
-        // }
-        // if (cell.resolvedKeyValue == resolvedKeyValue) {
-        //   console.log("resolvedKeyValue:", cell.name, tableColumnName);
-        // }
-        if (cell.name != tableColumnName) {
-          const newTableName = field.is_reference[0];
-          const newTableColumnName = field.is_reference[1];
-          // const newTableName = tableName;
-          // const newTableColumnName = tableColumnName;
-
-          addNewCellFromReference(acc, treeParent, newTableName, newTableColumnName, cell.resolvedKeyValue);
-        }
-      }
-    }
-  };
-
-  const addNewCellFromReference = (
-    acc: DBCell[],
-    treeParent: ITreeNode,
-    newTableName: string,
-    newTableColumnName: string,
-    resolvedKeyValue: string,
-    isIndirectReference?: boolean
-  ) => {
-    if (!isIndirectReference) {
-      if (
-        acc.some(
-          (dbCell) =>
-            dbCell[0] == newTableName && dbCell[1] == newTableColumnName && dbCell[2] == resolvedKeyValue
-        )
-      )
-        return;
-
-      acc.push([newTableName, newTableColumnName, resolvedKeyValue]);
-    }
-    // console.log("SEARCH", newTableName, newTableColumnName, resolvedKeyValue);
-
-    const newPackFile = packDataStore[packData.packPath].packedFiles.find(
-      (pf) =>
-        getDBNameFromString(pf.name) == newTableName &&
-        pf.schemaFields
-          ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
-          .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue)
-    );
-
-    if (!newPackFile || !newPackFile.schemaFields) {
-      addToRefsToGet(newTableName, newTableColumnName, resolvedKeyValue);
-      return;
-    }
-
-    if (!isIndirectReference) {
-      return addNewChildNode(
-        acc,
-        newPackFile,
-        treeParent,
-        newTableName,
-        newTableColumnName,
-        resolvedKeyValue
-      );
-    }
-
-    if (newPackFile.schemaFields) {
-      const dbVersion = getDBVersion(newPackFile, dataFromBackend.DBNameToDBVersions);
-      if (!dbVersion) {
-        console.log("NO dbVersion for", newPackFile.name);
-        return;
-      }
-      const rows = chunkTableIntoRows(newPackFile.schemaFields, dbVersion);
-
-      const row = rows.find(
-        (row) => row.find((cell) => cell.name == newTableColumnName)?.resolvedKeyValue == resolvedKeyValue
-      );
-
-      if (!row) {
-        console.log("no row:", newPackFile.name, newTableColumnName, resolvedKeyValue);
-        if (newTableColumnName == "unit") console.log(dbVersion);
-        return;
-      }
-      if (row) {
-        const referencedColumns = dataFromBackend.referencedColums[newTableName];
-        if (!referencedColumns || referencedColumns.length == 0) {
-          console.log("referencedColumns NOT USABLE");
-          return;
-        }
-        if (referencedColumns.length > 1) {
-          console.log("MORE THAN ONE REFERENCED COLUMN");
-          return;
-        }
-        const referencedColumn = referencedColumns[0];
-        const resolvedKeyValueOfColumnKey = row.find(
-          (cell) => cell.name == referencedColumn
-        )?.resolvedKeyValue;
-        if (!resolvedKeyValueOfColumnKey) {
-          console.log("no resoldevedKeyValueOfColumnKey");
-          return;
-        }
-
-        if (
-          acc.some(
-            (dbCell) =>
-              dbCell[0] == newTableName &&
-              dbCell[1] == referencedColumn &&
-              dbCell[2] == resolvedKeyValueOfColumnKey
-          )
-        )
-          return;
-
-        acc.push([newTableName, referencedColumn, resolvedKeyValueOfColumnKey]);
-
-        addNewChildNode(
-          acc,
-          newPackFile,
-          treeParent,
-          newTableName,
-          referencedColumn,
-          resolvedKeyValueOfColumnKey
-        );
-      } else {
-        console.log("NO row FOUND");
-      }
-    } else {
-      console.log("NO schemaFields");
-    }
-  };
-
-  const addNewChildNode = (
-    acc: DBCell[],
-    newPackFile: PackedFile,
-    treeParent: ITreeNode,
-    newTableName: string,
-    newTableColumnName: string,
-    resolvedKeyValue: string
-  ) => {
-    // console.log("addNewChildNode", newTableName, newTableColumnName, resolvedKeyValue, treeParent.name);
-    const newChild = {
-      name: `${newTableName} ${newTableColumnName} : ${resolvedKeyValue}`,
-      children: [],
-    } as ITreeNode;
-    if (
-      !treeParent.children.some((node) => node.name == newChild.name) &&
-      !allTreeChildren.includes(newChild.name)
-    ) {
-      treeParent.children.push(newChild);
-      allTreeChildren.push(newChild.name);
-      refsQueue.enqueue([acc, newPackFile, [newTableName, newTableColumnName, resolvedKeyValue], newChild]);
-      // addRefsRecursively(acc, newPackFile, [newTableName, newTableColumnName, resolvedKeyValue], newChild);
-    } else {
-      console.log("not adding tree child, it alreadyexists");
-    }
-  };
-
-  const addToRefsToGet = (newTableName: string, tableColumnName: string, resolvedKeyValue: string) => {
-    if (
-      !doneRequests[packData.packPath]?.some(
-        (doneTableName) => tableNameWithDBPrefix(doneTableName) == tableNameWithDBPrefix(newTableName)
-      ) &&
-      !refsToGet.some(
-        (refToGet) =>
-          refToGet.key == resolvedKeyValue &&
-          refToGet.tableName == newTableName &&
-          refToGet.tableColumnName == tableColumnName
-      )
-    )
-      refsToGet.push({
-        key: resolvedKeyValue,
-        tableName: newTableName,
-        tableColumnName: tableColumnName,
-      });
-  };
 
   console.log(
     "packDataStore:",
@@ -337,8 +215,6 @@ const DBDuplication = React.memo(() => {
       .map((pf) => pf.name)
   );
 
-  const childrenToAdd: [pf: PackedFile, dbCell: DBCell, newChild: ITreeNode][] = [];
-
   const rootNode = {
     name: `${currentDBTableSelection.dbName} ${field.name} : ${toClone.resolvedKeyValue}`,
     children: [],
@@ -346,229 +222,39 @@ const DBDuplication = React.memo(() => {
   folder.children.push(rootNode);
   allTreeChildren.push(rootNode.name);
 
-  const refsToUse = rows[deepCloneTarget.row].reduce((acc, currentField, currentFieldIndex) => {
-    if (!schema.fields[currentFieldIndex].is_reference) return acc;
-    const [tableName, tableColumnName] = schema.fields[currentFieldIndex].is_reference;
+  if (!treeData) return <></>;
 
-    if (!packDataStore[packData.packPath]) {
-      console.log(`no ${packData.packPath} in packDataStore`);
-      return acc;
+  const data = flattenTree(treeData);
+
+  const nodeNameToData = data.reduce((acc, current) => {
+    const treeNode = findNodeInTree(treeData, current.name);
+    if (treeNode) {
+      acc[current.name] = treeNode as IViewerTreeNodeWithData;
     }
-    const pf = packDataStore[packData.packPath].packedFiles.find(
-      (pf) =>
-        getDBNameFromString(pf.name) == tableName &&
-        pf.schemaFields
-          ?.filter((sF) => (sF as AmendedSchemaField).name == tableColumnName)
-          .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == currentField.resolvedKeyValue)
-    );
-    if (pf) {
-      const dbCell: DBCell = [tableName, tableColumnName, currentField.resolvedKeyValue];
-      acc.push([tableName, tableColumnName, currentField.resolvedKeyValue]);
-      const newChild = {
-        name: `${tableName} ${tableColumnName} : ${currentField.resolvedKeyValue}`,
-        children: [],
-      } as ITreeNode;
-
-      if (
-        !rootNode.children.some((node) => node.name == newChild.name) &&
-        !allTreeChildren.includes(newChild.name)
-      ) {
-        rootNode.children.push(newChild);
-        allTreeChildren.push(newChild.name);
-        childrenToAdd.push([pf, dbCell, newChild]);
-        // addRefsRecursively(acc, pf, dbCell, newChild);
-      }
-    } else {
-      console.log("no pf for", tableName, tableColumnName, currentField.resolvedKeyValue);
-    }
-
     return acc;
-  }, [] as [string, string, string][]);
+  }, {} as Record<string, IViewerTreeNodeWithData>);
 
-  // root node value
-  refsToUse.push([currentDBTableSelection.dbName, field.name, toClone.resolvedKeyValue]);
-
-  for (const [packFile, dbCell, newChild] of childrenToAdd) {
-    refsQueue.enqueue([refsToUse, packFile, dbCell, newChild]);
-    // addRefsRecursively(refsToUse, packFile, dbCell, newChild);
-  }
-
-  while (!refsQueue.isEmpty()) {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    addRefsRecursively(...refsQueue.dequeue()!);
-  }
-
-  const data = flattenTree(folder);
   // console.log("data is", data);
   console.log("EXPANDED NODES ARE", selectedNodesByName);
 
-  const nodeNameToRef = refsToUse.reduce((acc, [tableName, tableColumnName, resolvedKeyValue]) => {
-    const name = `${tableName} ${tableColumnName} : ${resolvedKeyValue}`;
-    acc[name] = [tableName, tableColumnName, resolvedKeyValue];
-    return acc;
-  }, {} as Record<string, [string, string, string]>);
-  nodeNameToRef[rootNode.name] = [currentDBTableSelection.dbName, field.name, toClone.resolvedKeyValue];
+  nodeNameToData[rootNode.name] = {
+    name: rootNode.name,
+    children: [],
+    tableName: currentDBTableSelection.dbName,
+    columnName: field.name,
+    value: toClone.resolvedKeyValue,
+  };
 
   const defaultNodeNameToRenameValue = data.reduce((acc, current) => {
-    acc[current.name] = (nodeNameToRef[current.name] && nodeNameToRef[current.name][2]) || "";
+    acc[current.name] = (nodeNameToData[current.name] && nodeNameToData[current.name].value) || "";
     return acc;
   }, {} as Record<string, string>);
-
-  // for (const expandedNodeName of Object.values(selectedNodesByName)) {
-  //   if (nodeNameToRef[expandedNodeName]) {
-  //     const [tableName, tableColumnName, resolvedKeyValue] = nodeNameToRef[expandedNodeName];
-  //     refsToUse.push([tableName, tableColumnName, resolvedKeyValue]);
-  //   }
-  // }
-
-  refsToGet.push(
-    ...rows[deepCloneTarget.row].reduce((acc, currentField, currentFieldIndex) => {
-      if (!schema.fields[currentFieldIndex].is_reference) return acc;
-      const [tableName, tableColumnName] = schema.fields[currentFieldIndex].is_reference;
-
-      if (
-        doneRequests[packData.packPath]?.some(
-          (doneTableName) => tableNameWithDBPrefix(doneTableName) == tableNameWithDBPrefix(tableName)
-        )
-      )
-        return acc;
-
-      console.log("GET", tableNameWithDBPrefix(tableName));
-      // console.log("packdatastore for", packData.packPath, !!packDataStore[packData.packPath]);
-
-      // packDataStore[packData.packPath]?.packedFiles
-      //   .filter((pf) => pf.schemaFields)
-      //   .forEach((pf) => {
-      //     // console.log(pf.name);
-      //     // console.log(
-      //     //   "comparing",
-      //     //   getDBNameFromString(pf.name),
-      //     //   "to",
-      //     //   tableName,
-      //     //   "it's",
-      //     //   getDBNameFromString(pf.name) == tableName
-      //     // );
-      //     return (
-      //       getDBNameFromString(pf.name) == tableName &&
-      //       pf.name.includes("dio_vo_actor_groups_tabl") &&
-      //       pf.schemaFields
-      //         ?.filter((sF) => (sF as AmendedSchemaField).name == tableColumnName)
-      //         .forEach((sF) => {
-      //           console.log(
-      //             "in",
-      //             pf.name,
-      //             "for",
-      //             tableName,
-      //             "val is",
-      //             (sF as AmendedSchemaField).resolvedKeyValue
-      //           );
-      //         })
-      //     );
-      //   });
-
-      // console.log(
-      //   "packdata with schemas for",
-      //   packData.packPath,
-      //   "are",
-      //   packDataStore[packData.packPath]?.packedFiles.filter((pF) => pF.schemaFields).map((pF) => pF.name)
-      // );
-
-      if (
-        !packDataStore[packData.packPath] ||
-        !packDataStore[packData.packPath].packedFiles.some(
-          (pf) =>
-            getDBNameFromString(pf.name) == tableName &&
-            pf.schemaFields
-              ?.filter((sF) => (sF as AmendedSchemaField).name == tableColumnName)
-              .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == currentField.resolvedKeyValue)
-        )
-      )
-        if (
-          !acc.some(
-            (refToGet) =>
-              refToGet.key == currentField.resolvedKeyValue &&
-              refToGet.tableName == tableName &&
-              refToGet.tableColumnName == tableColumnName
-          ) &&
-          !refsToGet.some(
-            (refToGet) =>
-              refToGet.key == currentField.resolvedKeyValue &&
-              refToGet.tableName == tableName &&
-              refToGet.tableColumnName == tableColumnName
-          )
-        )
-          acc.push({
-            key: currentField.resolvedKeyValue,
-            tableName,
-            tableColumnName,
-          } as TableReferenceRequest);
-      return acc;
-    }, [] as TableReferenceRequest[])
-  );
-
-  for (const expandedNodeName of Object.values(selectedNodesByName)) {
-    if (!nodeNameToRef[expandedNodeName]) continue;
-
-    const [tableName, tableColumnName, resolvedKeyValue] = nodeNameToRef[expandedNodeName];
-    if (
-      !doneRequests[packData.packPath]?.some(
-        (doneTableName) => tableNameWithDBPrefix(doneTableName) == tableNameWithDBPrefix(tableName)
-      ) &&
-      !refsToGet.some(
-        (refToGet) =>
-          refToGet.key == resolvedKeyValue &&
-          refToGet.tableName == tableName &&
-          refToGet.tableColumnName == tableColumnName
-      )
-    )
-      refsToGet.push({ tableName, tableColumnName, key: resolvedKeyValue });
-
-    const node = data.find((node) => node.name == expandedNodeName);
-    node?.children
-      .map((childId) => data.find((node) => node.id == childId))
-      .filter((node): node is INode => !!node)
-      .map((node) => nodeNameToRef[node.name])
-      .filter((nodeRef): nodeRef is [string, string, string] => !!nodeRef)
-      .forEach((nodeRef) => {
-        const [tableName, tableColumnName, resolvedKeyValue] = nodeRef;
-        // console.log("ADD CHILD", tableName, tableColumnName, resolvedKeyValue);
-        if (
-          !refsToGet.some(
-            (refToGet) =>
-              refToGet.key == resolvedKeyValue &&
-              refToGet.tableName == tableName &&
-              refToGet.tableColumnName == tableColumnName
-          ) &&
-          !doneRequests[packData.packPath]?.some(
-            (doneTableName) => tableNameWithDBPrefix(doneTableName) == tableNameWithDBPrefix(tableName)
-          )
-        )
-          refsToGet.push({
-            key: resolvedKeyValue,
-            tableName,
-            tableColumnName,
-          } as TableReferenceRequest);
-      });
-  }
-
-  // console.log("doneRequests:", doneRequests[packPath]);
-  console.log("refsToGet", refsToGet);
-  if (refsToGet.length > 0) {
-    // console.log("packDataStore for this pack is ", packDataStore[packPath]);
-    window.api?.getTableReferences(packData.packPath, refsToGet, !packDataStore[packPath]);
-  }
 
   console.log("tryign to amend", rows[deepCloneTarget.row][deepCloneTarget.col]);
 
   // console.log(`currentPackData.data is ${currentPackData.data}`);
-  // console.log("packDataStore", packDataStore);
-  // if (packDataStore[packPath]) console.log(packDataStore[packPath].packedFiles.map((pf) => pf.name));
-
-  const storedData = packDataStore[packPath];
-  if (!storedData) {
-    console.log("NO stored data for", packPath);
-    return <></>;
-  }
+  console.log("packDataStore", packDataStore);
+  if (packDataStore[packPath]) console.log(packDataStore[packPath].packedFiles.map((pf) => pf.name));
 
   const getParentNodeNames = (acc: string[], node: INode) => {
     const nodeName = data.find((iterNode) => iterNode.id == node.id)?.name;
@@ -601,7 +287,7 @@ const DBDuplication = React.memo(() => {
   };
 
   const onNodeExpanded = (nodeName: string) => {
-    console.log("toggled", nodeName);
+    console.log("expanded node", nodeName);
     const currentName = nodeName;
     // const expandedByName = Array.from(props.treeState.selectedIds.values())
     //   .map((id) => data.find((node) => node.id == id)?.name)
@@ -626,7 +312,7 @@ const DBDuplication = React.memo(() => {
   };
 
   const onNodeToggled = (nodeName: string) => {
-    console.log("toggled", nodeName);
+    console.log("toggled node", nodeName);
     const currentName = nodeName;
     // const expandedByName = Array.from(props.treeState.selectedIds.values())
     //   .map((id) => data.find((node) => node.id == id)?.name)
@@ -649,6 +335,19 @@ const DBDuplication = React.memo(() => {
 
     console.log("SELECTED NODES ARE NOW:", newselectedNodesByName);
     setSelectedNodesByName(newselectedNodesByName);
+
+    for (const newSelectedNode of newselectedNodesByName) {
+      const newNodeData = nodeNameToData[newSelectedNode];
+      const newDBTableSelection = {
+        dbName: newNodeData.tableName,
+        dbSubname: "",
+        packPath,
+      } as DBTableSelection;
+
+      console.log("find indirect refs for", newSelectedNode);
+
+      getIndirectReferences(newDBTableSelection, newNodeData, treeData);
+    }
   };
 
   const selectedIds = [...selectedNodesByName, rootNode.name]
@@ -668,9 +367,9 @@ const DBDuplication = React.memo(() => {
   };
 
   const onFocusChange = (e: React.FocusEvent<HTMLInputElement, Element>, node: INode) => {
-    console.log("new focus:", e.relatedTarget?.tagName);
-    if (e.relatedTarget?.tagName == "INPUT") return;
-    e.target.focus();
+    // console.log("new focus:", e.relatedTarget?.tagName);
+    // if (e.relatedTarget?.tagName == "INPUT") return;
+    // e.target.focus();
   };
 
   const onInputClick = (e: React.MouseEvent<HTMLInputElement, MouseEvent>): void => {
@@ -688,10 +387,11 @@ const DBDuplication = React.memo(() => {
   };
 
   const isSavingPossible = () => {
+    return true;
     // const selecedNodesWithRootNode = [...selectedNodesByName, rootNode.name];
 
     for (const node of selectedNodesByName) {
-      console.log("node is", node, nodeNameToRef[node], nodeNameToRenameValue[node]);
+      console.log("node is", node, nodeNameToData[node], nodeNameToRenameValue[node]);
     }
 
     return !selectedNodesByName.some(
@@ -715,14 +415,15 @@ const DBDuplication = React.memo(() => {
     window.api?.executeDBDuplication(
       packData.packPath,
       selectedNodesByName,
-      nodeNameToRef,
-      nodeNameToRenameValue
+      nodeNameToData,
+      nodeNameToRenameValue,
+      defaultNodeNameToRenameValue
     );
 
     // dispatch(setDeepCloneTarget(undefined));
 
     for (const node of selectedNodesByName) {
-      console.log("node is", node, nodeNameToRef[node]);
+      console.log("node is", node, nodeNameToData[node]);
     }
   };
 
@@ -787,7 +488,11 @@ const DBDuplication = React.memo(() => {
                   }}
                   variant={isHalfSelected ? "some" : isSelected ? "all" : "none"}
                 />
-                <span className="name">{element.name}</span>
+                <span
+                  className={`name ${nodeNameToData[element.name].isIndirectRef ? "text-amber-500" : ""}`}
+                >
+                  {element.name}
+                </span>
                 <span className="flex items-center">
                   <span className="text-slate-100 ml-4">
                     <FaArrowRight></FaArrowRight>

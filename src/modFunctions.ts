@@ -269,7 +269,7 @@ const getDataMods = async (
 
   const vanillaPacks: string[] = [];
   try {
-    const data = await dumbfs.readFileSync(nodePath.join(gameDir, "data", "manifest.txt"), "utf8");
+    const data = await dumbfs.promises.readFile(nodePath.join(gameDir, "data", "manifest.txt"), "utf8");
     const re = /([^\s]+)/;
     data.split("\n").map((line) => {
       const found = line.match(re);
@@ -339,7 +339,13 @@ const getSteamAppsFolder = async (newGame?: SupportedGames) => {
     installPath = installPathObj.value;
   } else if (process.platform === "linux") {
     const steamPath = os.homedir() + "/.steam/steam";
-    if (!dumbfs.existsSync(steamPath)) {
+    try {
+      await dumbfs.promises.access(steamPath);
+    } catch {
+      console.log("Unable to find steam directory at " + steamPath);
+      return;
+    }
+    if (false) { // This condition is now handled by the try/catch above
       console.log("Unable to find steam directory at " + steamPath);
       return;
     }
@@ -348,10 +354,14 @@ const getSteamAppsFolder = async (newGame?: SupportedGames) => {
 
   const libFoldersPath = nodePath.join(installPath, "steamapps", "libraryfolders.vdf");
   console.log(`Check lib vdf at ${libFoldersPath}`);
-  if (!dumbfs.existsSync(libFoldersPath)) return;
+  try {
+    await dumbfs.promises.access(libFoldersPath);
+  } catch {
+    return;
+  }
   console.log(`Found libraryfolders.vdf at ${libFoldersPath}`);
 
-  const data = await dumbfs.readFileSync(libFoldersPath, "utf8");
+  const data = await dumbfs.promises.readFile(libFoldersPath, "utf8");
   const object = VDF.parse(data).libraryfolders;
   const paths = [];
   for (const property in object) {
@@ -362,7 +372,7 @@ const getSteamAppsFolder = async (newGame?: SupportedGames) => {
     const path = basepath.replaceAll("\\\\", "\\").replaceAll("//", "/");
     const worshopFilePath = nodePath.join(path, "steamapps", `appmanifest_${gameToSteamId[game]}.acf`);
     try {
-      await dumbfs.readFileSync(worshopFilePath, "utf8"); // try to read the file to check for its existence
+      await dumbfs.promises.readFile(worshopFilePath, "utf8"); // try to read the file to check for its existence
       console.log(`Found appmanifest_${gameToSteamId[game]}.acf at ${worshopFilePath}`);
 
       const steamAppsFolderPath = nodePath.join(path, "steamapps");
@@ -384,7 +394,7 @@ export const getLastUpdated = async () => {
       `appmanifest_${gameToSteamId[appData.currentGame]}.acf`
     );
 
-    const appmanifest = await dumbfs.readFileSync(appmanifestFilePath, "utf8");
+    const appmanifest = await dumbfs.promises.readFile(appmanifestFilePath, "utf8");
     const lastUpdated = VDF.parse(appmanifest).AppState.LastUpdated;
     console.log("lastUpdated:", lastUpdated);
     return lastUpdated;
@@ -427,7 +437,8 @@ export async function getContentModInFolder(
 
   let subbedTime = -1;
   try {
-    subbedTime = dumbfs.statSync(contentSubfolder).birthtimeMs;
+    const stats = await dumbfs.promises.stat(contentSubfolder);
+    subbedTime = stats.birthtimeMs;
   } catch (err) {
     log(`ERROR: ${err}`);
   }

@@ -23,7 +23,7 @@ export interface PackedFile {
   name: string;
   file_size: number;
   start_pos: number;
-  // is_compressed: number;
+  is_compressed?: boolean;
   schemaFields?: SchemaField[];
   entryCount?: number;
   version?: number;

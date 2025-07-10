@@ -563,4 +563,21 @@ declare global {
   };
 
   type SupportedLanguages = "en" | "zh";
+
+  interface ITreeNode {
+    name: string;
+    children: ITreeNode[];
+  }
+
+  interface IViewerTreeNode {
+    name: string;
+    children: ITreeNode[];
+    isIndirectRef?: boolean;
+  }
+
+  interface IViewerTreeNodeWithData extends IViewerTreeNode {
+    tableName: string;
+    columnName: string;
+    value: string;
+  }
 }

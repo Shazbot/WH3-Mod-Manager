@@ -74,8 +74,14 @@ import {
 import fetch from "node-fetch";
 import assert from "assert";
 import { packDataStore } from "./components/viewer/packDataStore";
-import { DBNameToDBVersions, gameToDBFieldsThatReference, gameToReferences } from "./schema";
+import {
+  DBNameToDBVersions,
+  gameToDBFieldsThatReference,
+  gameToReferences,
+  initializeAllSchemaForGame,
+} from "./schema";
 import cloneDeep from "clone-deep";
+import { buildDBReferenceTree } from "./DBClone";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -92,6 +98,164 @@ export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
   skillsWindow: undefined as BrowserWindow | undefined,
+};
+
+const appendCollisions = async (newPack: Pack) => {
+  while (!appData.compatData) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (appData.compatData) {
+    appData.compatData.packTableCollisions = appendPackTableCollisions(
+      appData.packsData,
+      appData.compatData.packTableCollisions,
+      newPack
+    );
+    appData.compatData.packFileCollisions = appendPackFileCollisions(
+      appData.packsData,
+      appData.compatData.packFileCollisions,
+      newPack
+    );
+  }
+};
+
+const matchVanillaDBFiles = /^db\\.*\\data__/;
+const appendPacksData = (newPack: Pack, mod?: Mod) => {
+  const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
+  console.log("appendPacksData: appending", newPack.name);
+  console.log("appendPacksData: is existingPack:", !!existingPack);
+
+  if (!existingPack) {
+    appData.packsData.push(newPack);
+    windows.mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
+
+    const overwrittenFileNames = newPack.packedFiles
+      .map((packedFile) => packedFile.name)
+      .filter(
+        (packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua")
+      )
+      .filter((packedFileName) => {
+        let foundMatchingFile = false;
+        for (const vanillaPack of appData.vanillaPacks) {
+          foundMatchingFile ||= vanillaPack.packedFiles.some(
+            (packedFileInData) => packedFileInData.name == packedFileName
+          );
+        }
+        return foundMatchingFile;
+      });
+    if (overwrittenFileNames.length > 0) {
+      appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
+      windows.mainWindow?.webContents.send(
+        "setOverwrittenDataPackedFiles",
+        appData.overwrittenDataPackedFiles
+      );
+    }
+
+    const outdatedPackFiles = new Set<string>();
+    if (appData.currentGame == "wh3" && mod && (mod.lastChangedLocal || mod.lastChanged)) {
+      const lastChanged = mod.lastChanged || mod.lastChangedLocal;
+      if (lastChanged) {
+        appData.gameUpdates
+          .filter((gameUpdate) => parseInt(gameUpdate.timestamp) * 1000 - lastChanged > 0)
+          .reduce((acc, current) => {
+            if (current.files) {
+              current.files
+                .filter((fileUpdateRule) => {
+                  const ret = newPack.packedFiles.some((pF) => pF.name.search(fileUpdateRule.regex) > -1);
+                  // if (ret)
+                  //   console.log(
+                  //     "file match",
+                  //     newPack.packedFiles.find((pF) => pF.name.search(fileUpdateRule.regex) > -1)?.name,
+                  //     "regex",
+                  //     fileUpdateRule.regex,
+                  //     "ret",
+                  //     ret
+                  //   );
+                  return ret;
+                })
+                .map((updateRule) => `${current.version}: ${updateRule.reason}`)
+                .forEach((updateStr) => acc.add(updateStr));
+            }
+            return acc;
+          }, outdatedPackFiles);
+      }
+    }
+    console.log("outdatedPackFiles", outdatedPackFiles);
+    if (outdatedPackFiles.size > 0) {
+      appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
+      windows.mainWindow?.webContents.send("setOutdatedPackFiles", appData.outdatedPackFiles);
+    }
+  } else {
+    console.log("existing pack for", newPack.name, "found");
+    // append list of tables that are parsed in that pack
+    if (newPack.readTables == "all") {
+      existingPack.readTables = "all";
+    } else {
+      newPack.readTables.forEach((newlyRead) => {
+        if (existingPack.readTables != "all" && !existingPack.readTables.includes(newlyRead)) {
+          existingPack.readTables.push(newlyRead);
+        }
+      });
+    }
+    newPack.packedFiles
+      .filter((packedFile) => packedFile.schemaFields)
+      .forEach((newPackedFile) => {
+        const index = existingPack.packedFiles.findIndex(
+          (existingPackedFile) => existingPackedFile.name == newPackedFile.name
+        );
+        if (index != -1) {
+          existingPack.packedFiles.splice(index, 1);
+        }
+        existingPack.packedFiles.push(newPackedFile);
+      });
+  }
+};
+
+export const readModsByPath = async (
+  modPaths: string[],
+  skipParsingTables = true,
+  skipCollisionCheck = true,
+  readScripts = false,
+  readLocs = false,
+  tablesToRead?: string[],
+  filesToRead?: string[]
+) => {
+  console.log("readModsByPath:", modPaths);
+  // console.log("readModsByPath skipParsingTables:", skipParsingTables);
+  // console.log("readModsByPath skipCollisionCheck:", skipCollisionCheck);
+  // if (!skipParsingTables) {
+  //   appData.packsData = appData.packsData.filter((pack) => !modPaths.some((modPath) => modPath == pack.path));
+  // }
+  for (const modPath of modPaths) {
+    if (
+      appData.currentlyReadingModPaths.every((path) => path != modPath)
+      // && appData.packsData.every((pack) => pack.path != modPath)
+    ) {
+      // console.log("READING " + modPath);
+      appData.currentlyReadingModPaths.push(modPath);
+      windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
+      const newPack = await readPack(modPath, {
+        skipParsingTables,
+        readScripts,
+        tablesToRead,
+        filesToRead,
+        readLocs,
+      });
+      windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
+      appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
+      // if (appData.packsData.every((pack) => pack.path != modPath)) {
+      appendPacksData(newPack);
+      // }
+      if (!skipCollisionCheck) {
+        appendCollisions(newPack);
+      }
+    }
+  }
+  if (!skipCollisionCheck) {
+    windows.mainWindow?.webContents.send("setPackCollisions", {
+      packFileCollisions: appData.compatData.packFileCollisions,
+      packTableCollisions: appData.compatData.packTableCollisions,
+    } as PackCollisions);
+  }
 };
 
 export const registerIpcMainListeners = (
@@ -529,8 +693,8 @@ export const registerIpcMainListeners = (
     const enabledModPacks = appData.packsData.filter((packsData) =>
       mods.map((mod) => mod.name).includes(packsData.name)
     );
-    for (const pack of enabledModPacks)
-      await readFromExistingPack(pack, { filesToRead: skillIconPaths, skipParsingTables: true });
+    // for (const pack of enabledModPacks)
+    //   await readFromExistingPack(pack, { filesToRead: skillIconPaths, skipParsingTables: true });
 
     console.log("vanillaPacksToRead", vanillaPacksToRead);
     console.log(
@@ -581,6 +745,7 @@ export const registerIpcMainListeners = (
     // fs.writeFileSync("dumps/skills.json", JSON.stringify(skills));
     // fs.writeFileSync("dumps/skillsAndEffects.json", JSON.stringify(skillsAndEffects));
 
+    // fs.writeFileSync("dumps/subtypeAndSets.json", JSON.stringify(subtypeAndSets));
     // fs.writeFileSync("dumps/subtypeToSet.json", JSON.stringify(subtypesToSet));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
     // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
@@ -769,6 +934,7 @@ export const registerIpcMainListeners = (
           appData.saveSetupDone = false;
           console.log("Setting current game 1");
           appData.currentGame = newGame;
+          initializeAllSchemaForGame(newGame);
           await getAllMods();
         }
       }
@@ -780,6 +946,7 @@ export const registerIpcMainListeners = (
         gamePath = appData.gamesToGameFolderPaths[newGame].gamePath ?? "";
         console.log("Setting current game 2");
         appData.currentGame = newGame;
+        initializeAllSchemaForGame(newGame);
         console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
         // mainWindow?.webContents.send("setCurrentGameNaive", newGame);
         mainWindow?.webContents.send("setAppFolderPaths", {
@@ -808,95 +975,6 @@ export const registerIpcMainListeners = (
       // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
       const presets = appData.gameToPresets[game];
       mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
-    }
-  };
-
-  const matchVanillaDBFiles = /^db\\.*\\data__/;
-  const appendPacksData = (newPack: Pack, mod?: Mod) => {
-    const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
-    console.log("appendPacksData: appending", newPack.name);
-    console.log("appendPacksData: is existingPack:", !!existingPack);
-
-    if (!existingPack) {
-      appData.packsData.push(newPack);
-      mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
-
-      const overwrittenFileNames = newPack.packedFiles
-        .map((packedFile) => packedFile.name)
-        .filter(
-          (packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua")
-        )
-        .filter((packedFileName) => {
-          let foundMatchingFile = false;
-          for (const vanillaPack of appData.vanillaPacks) {
-            foundMatchingFile ||= vanillaPack.packedFiles.some(
-              (packedFileInData) => packedFileInData.name == packedFileName
-            );
-          }
-          return foundMatchingFile;
-        });
-      if (overwrittenFileNames.length > 0) {
-        appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
-        mainWindow?.webContents.send("setOverwrittenDataPackedFiles", appData.overwrittenDataPackedFiles);
-      }
-
-      const outdatedPackFiles = new Set<string>();
-      if (appData.currentGame == "wh3" && mod && (mod.lastChangedLocal || mod.lastChanged)) {
-        const lastChanged = mod.lastChanged || mod.lastChangedLocal;
-        if (lastChanged) {
-          appData.gameUpdates
-            .filter((gameUpdate) => parseInt(gameUpdate.timestamp) * 1000 - lastChanged > 0)
-            .reduce((acc, current) => {
-              if (current.files) {
-                current.files
-                  .filter((fileUpdateRule) => {
-                    const ret = newPack.packedFiles.some((pF) => pF.name.search(fileUpdateRule.regex) > -1);
-                    // if (ret)
-                    //   console.log(
-                    //     "file match",
-                    //     newPack.packedFiles.find((pF) => pF.name.search(fileUpdateRule.regex) > -1)?.name,
-                    //     "regex",
-                    //     fileUpdateRule.regex,
-                    //     "ret",
-                    //     ret
-                    //   );
-                    return ret;
-                  })
-                  .map((updateRule) => `${current.version}: ${updateRule.reason}`)
-                  .forEach((updateStr) => acc.add(updateStr));
-              }
-              return acc;
-            }, outdatedPackFiles);
-        }
-      }
-      console.log("outdatedPackFiles", outdatedPackFiles);
-      if (outdatedPackFiles.size > 0) {
-        appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
-        mainWindow?.webContents.send("setOutdatedPackFiles", appData.outdatedPackFiles);
-      }
-    } else {
-      console.log("existing pack for", newPack.name, "found");
-      // append list of tables that are parsed in that pack
-      if (newPack.readTables == "all") {
-        existingPack.readTables = "all";
-      } else {
-        newPack.readTables.forEach((newlyRead) => {
-          if (existingPack.readTables != "all" && !existingPack.readTables.includes(newlyRead)) {
-            existingPack.readTables.push(newlyRead);
-          }
-        });
-      }
-      newPack.packedFiles
-        .filter((packedFile) => packedFile.schemaFields)
-        .forEach((newPackedFile) => {
-          const index = existingPack.packedFiles.findIndex(
-            (existingPackedFile) => existingPackedFile.name == newPackedFile.name
-          );
-          if (index != -1) {
-            existingPack.packedFiles.splice(index, 1);
-          }
-          existingPack.packedFiles.push(newPackedFile);
-        });
     }
   };
 
@@ -1328,6 +1406,7 @@ export const registerIpcMainListeners = (
 
       if (appState.currentGame) {
         appData.currentGame = appState.currentGame;
+        initializeAllSchemaForGame(appData.currentGame);
       } else {
         appState.currentGame = appData.currentGame;
       }
@@ -1439,6 +1518,7 @@ export const registerIpcMainListeners = (
         }
         if (appData.gamesToGameFolderPaths[game].contentFolder) {
           appData.currentGame = game;
+          initializeAllSchemaForGame(game);
           break;
         }
       }
@@ -1460,15 +1540,15 @@ export const registerIpcMainListeners = (
       appData.currentGame,
       appData.gameToCurrentPreset[appData.currentGame]?.mods.length
     );
-    // const teb = appData.gameToCurrentPreset[appData.currentGame]?.mods.find((mod) =>
-    //   mod.name.includes("ak_teb")
-    // );
-    // console.log("ak teb:", teb);
-    // console.log("ak teb:", teb?.path);
-    // ipcMain.emit("requestOpenModInViewer", null, teb?.path);
 
     // for testing, automatically opens db.pack
-    // ipcMain.emit("requestOpenModInViewer", null, "db.pack");
+    // if (appData.gamesToGameFolderPaths[appData.currentGame].dataFolder)
+    //   ipcMain.emit(
+    //     "requestOpenModInViewer",
+    //     null,
+    //     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    //     nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder!, "db.pack")
+    //   );
   });
 
   ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {
@@ -2005,74 +2085,6 @@ export const registerIpcMainListeners = (
     }
   };
 
-  const appendCollisions = async (newPack: Pack) => {
-    while (!appData.compatData) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    if (appData.compatData) {
-      appData.compatData.packTableCollisions = appendPackTableCollisions(
-        appData.packsData,
-        appData.compatData.packTableCollisions,
-        newPack
-      );
-      appData.compatData.packFileCollisions = appendPackFileCollisions(
-        appData.packsData,
-        appData.compatData.packFileCollisions,
-        newPack
-      );
-    }
-  };
-
-  const readModsByPath = async (
-    modPaths: string[],
-    skipParsingTables = true,
-    skipCollisionCheck = true,
-    readScripts = false,
-    readLocs = false,
-    tablesToRead?: string[],
-    filesToRead?: string[]
-  ) => {
-    console.log("readModsByPath:", modPaths);
-    console.log("readModsByPath skipParsingTables:", skipParsingTables);
-    console.log("readModsByPath skipCollisionCheck:", skipCollisionCheck);
-    if (!skipParsingTables) {
-      appData.packsData = appData.packsData.filter(
-        (pack) => !modPaths.some((modPath) => modPath == pack.path)
-      );
-    }
-    for (const modPath of modPaths) {
-      if (
-        appData.currentlyReadingModPaths.every((path) => path != modPath) &&
-        appData.packsData.every((pack) => pack.path != modPath)
-      ) {
-        console.log("READING " + modPath);
-        appData.currentlyReadingModPaths.push(modPath);
-        mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
-        const newPack = await readPack(modPath, {
-          skipParsingTables,
-          readScripts,
-          tablesToRead,
-          filesToRead,
-          readLocs,
-        });
-        mainWindow?.webContents.send("setLastModThatWasRead", modPath);
-        appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
-        if (appData.packsData.every((pack) => pack.path != modPath)) {
-          appendPacksData(newPack);
-        }
-        if (!skipCollisionCheck) {
-          appendCollisions(newPack);
-        }
-      }
-    }
-    if (!skipCollisionCheck) {
-      mainWindow?.webContents.send("setPackCollisions", {
-        packFileCollisions: appData.compatData.packFileCollisions,
-        packTableCollisions: appData.compatData.packTableCollisions,
-      } as PackCollisions);
-    }
-  };
-
   const readMods = async (
     mods: Mod[],
     skipParsingTables = true,
@@ -2152,9 +2164,13 @@ export const registerIpcMainListeners = (
     appData.queuedViewerData = [];
   };
 
-  ipcMain.on("viewerIsReady", () => {
+  ipcMain.on("viewerIsReady", async () => {
     console.log("VIEWER IS NOW READY");
     appData.isViewerReady = true;
+
+    await initializeAllSchemaForGame(appData.currentGame);
+
+    console.log("viewerIsReady appData.currentGame", appData.currentGame);
 
     if (isDev) {
       setTimeout(() => {
@@ -2734,7 +2750,7 @@ export const registerIpcMainListeners = (
       const existingPack = appData.packsData.find((pack) => pack.path == mod.path);
       let needsReRead = false;
       if (existingPack) {
-        const lastChangedLocal = (await fsExtra.statSync(mod.path)).mtimeMs;
+        const lastChangedLocal = (await fsExtra.stat(mod.path)).mtimeMs;
         if (lastChangedLocal != existingPack.lastChangedLocal) {
           needsReRead = true;
           appData.packsData = appData.packsData.filter((pack) => pack.path != mod.path);
@@ -2795,117 +2811,17 @@ export const registerIpcMainListeners = (
       event,
       packPath: string,
       nodesNamesToDuplicate: string[],
-      nodeNameToRef: Record<string, [string, string, string]>,
-      nodeNameToRenameValue: Record<string, string>
+      nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
+      nodeNameToRenameValue: Record<string, string>,
+      defaultNodeNameToRenameValue: Record<string, string>
     ) => {
-      const pack = packDataStore[packPath];
-
-      const toSave = [] as NewPackedFile[];
-
-      console.log("to duplicate", nodesNamesToDuplicate);
-
-      for (const node of nodesNamesToDuplicate) {
-        const [tableName, tableColumnName, resolvedKeyValue] = nodeNameToRef[node];
-        console.log(
-          "tableName",
-          tableName,
-          "tableColumnName",
-          tableColumnName,
-          "resolvedKeyValue",
-          resolvedKeyValue
-        );
-
-        const packedFiles = pack.packedFiles.filter((existingPackedFile) =>
-          existingPackedFile.name.startsWith(`db\\${tableName}\\`)
-        );
-
-        console.log("num packedFiles:", packedFiles.length);
-        console.log(
-          "packedFiles:",
-          packedFiles.map((pf) => pf.name)
-        );
-
-        for (const packedFile of packedFiles) {
-          if (!packedFile.schemaFields) {
-            console.log("packedFile.schemaFields not found");
-            continue;
-          }
-
-          const currentSchema = packedFile.tableSchema;
-          if (!currentSchema) {
-            console.log("currentSchema not found");
-            continue;
-          }
-
-          const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
-          for (const row of rows) {
-            const cellWithKey = row.find((cell) => cell.name == tableColumnName);
-            if (!cellWithKey) {
-              console.log("cellWithKey not found");
-              continue;
-            }
-            if (cellWithKey.resolvedKeyValue != resolvedKeyValue) continue;
-
-            console.log("found row match at index", rows.indexOf(row));
-
-            const clonedRow = cloneDeep(row);
-            const cellToReplaceValue = clonedRow.find(
-              (cell) => cell.name == tableColumnName && cell.resolvedKeyValue == resolvedKeyValue
-            );
-            if (!cellToReplaceValue) {
-              console.log("cellToReplaceValue not found");
-              continue;
-            }
-
-            const cellIndex = row.findIndex((cellIter) => cellIter == cellWithKey);
-            if (!packedFile.tableSchema) {
-              console.log("packedFile.tableSchema not found");
-              continue;
-            }
-
-            const field = packedFile.tableSchema?.fields[cellIndex];
-
-            if (!field) {
-              console.log("Field not found!");
-              continue;
-            }
-
-            cellToReplaceValue.fields = [
-              { type: "Buffer", val: await typeToBuffer(field?.field_type, nodeNameToRenameValue[node]) },
-            ];
-            cellToReplaceValue.resolvedKeyValue = nodeNameToRenameValue[node];
-
-            let packFileSize = 0;
-            for (let i = 0; i < clonedRow.length; i++) {
-              const field = packedFile.tableSchema.fields[i];
-              console.log(
-                "field size of",
-                clonedRow[i].name,
-                field.field_type.toString(),
-                clonedRow[i].resolvedKeyValue,
-                "is",
-                getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
-              );
-              packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
-            }
-
-            if (version) packFileSize += 19; // size of version data
-
-            toSave.push({
-              name: `db\\${tableName}\\test`,
-              schemaFields: clonedRow,
-              file_size: packFileSize,
-              version: packedFile.version,
-              tableSchema: packedFile.tableSchema,
-            });
-          }
-        }
-      }
-
-      console.log("toSave", toSave);
-      await writePack(
-        toSave,
-        nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string, "test.pack")
+      const { executeDBDuplication } = await import("./DBClone");
+      await executeDBDuplication(
+        packPath,
+        nodesNamesToDuplicate,
+        nodeNameToRef,
+        nodeNameToRenameValue,
+        defaultNodeNameToRenameValue
       );
     }
   );
@@ -2983,6 +2899,19 @@ export const registerIpcMainListeners = (
           tableReferenceRequests
         );
       }
+    }
+  );
+
+  ipcMain.handle(
+    "buildDBReferenceTree",
+    async (
+      event,
+      packPath: string,
+      currentDBTableSelection: DBTableSelection,
+      deepCloneTarget: { row: number; col: number },
+      selectedNodesByName: IViewerTreeNodeWithData[]
+    ) => {
+      return buildDBReferenceTree(packPath, currentDBTableSelection, deepCloneTarget, selectedNodesByName);
     }
   );
 

@@ -1,12 +1,7 @@
-import wh3Schema from "../schema/schema_wh3.json";
-import wh2Schema from "../schema/schema_wh2.json";
-import threeKingdomsSchema from "../schema/schema_3k.json";
-import attilaSchema from "../schema/schema_att.json";
-import troySchema from "../schema/schema_troy.json";
-import pharaohSchema from "../schema/schema_ph.json";
-import dynastiesSchema from "../schema/schema_ph_dyn.json";
+// Schema files are now loaded lazily on-demand
 import { SCHEMA_FIELD_TYPE, DBFieldName, DBFileName } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
+import { perfMonitor } from "./utility/performanceMonitor";
 
 export interface DBField {
   name: string;
@@ -76,6 +71,18 @@ export const LocVersion: DBVersion = {
   fields: locFields,
 };
 
+// Schema cache to avoid reloading
+const schemaCache = new Map<SupportedGames, any>();
+const processedSchemasCache = new Map<SupportedGames, Record<string, DBVersion[]>>();
+const processedReferencesExtension = new Map<SupportedGames, boolean>();
+
+// Promise caches to prevent concurrent duplicate requests
+const schemaLoadingPromises = new Map<SupportedGames, Promise<any>>();
+const schemaProcessingPromises = new Map<SupportedGames, Promise<Record<string, DBVersion[]>>>();
+const referencesProcessingPromises = new Map<SupportedGames, Promise<void>>();
+const dbFieldsProcessingPromises = new Map<SupportedGames, Promise<void>>();
+const dbFieldsReferencedByProcessingPromises = new Map<SupportedGames, Promise<void>>();
+
 export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion[]>> = {
   wh2: {},
   wh3: {},
@@ -90,54 +97,110 @@ export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion
 const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
   secondVersion.version - firstVersion.version;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const wh3Definitions = (wh3Schema as { definitions: any }).definitions as any;
-for (const table_name in wh3Definitions) {
-  DBNameToDBVersions["wh3"][table_name] = wh3Definitions[table_name];
-  DBNameToDBVersions["wh3"][table_name].sort(orderByVersion);
-}
+// Schema loading functions
+const getSchemaFileName = (game: SupportedGames): string => {
+  const schemaMap: Record<SupportedGames, string> = {
+    wh3: "schema_wh3.json",
+    wh2: "schema_wh2.json",
+    threeKingdoms: "schema_3k.json",
+    attila: "schema_att.json",
+    troy: "schema_troy.json",
+    pharaoh: "schema_ph.json",
+    dynasties: "schema_ph_dyn.json",
+    rome2: "schema_rome2.json", // assuming this exists
+  };
+  return schemaMap[game];
+};
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const wh2Definitions = (wh2Schema as { definitions: any }).definitions as any;
-for (const table_name in wh2Definitions) {
-  DBNameToDBVersions["wh2"][table_name] = wh2Definitions[table_name];
-  DBNameToDBVersions["wh2"][table_name].sort(orderByVersion);
-}
+const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
+  if (schemaCache.has(game)) {
+    return schemaCache.get(game);
+  }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const threeKingdomsDefinitions = (threeKingdomsSchema as { definitions: any }).definitions as any;
-for (const table_name in threeKingdomsDefinitions) {
-  DBNameToDBVersions["threeKingdoms"][table_name] = threeKingdomsDefinitions[table_name];
-  DBNameToDBVersions["threeKingdoms"][table_name].sort(orderByVersion);
-}
+  // Check if there's already a loading promise for this game
+  if (schemaLoadingPromises.has(game)) {
+    return schemaLoadingPromises.get(game);
+  }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const attilaDefinitions = (attilaSchema as { definitions: any }).definitions as any;
-for (const table_name in attilaDefinitions) {
-  DBNameToDBVersions["attila"][table_name] = attilaDefinitions[table_name];
-  DBNameToDBVersions["attila"][table_name].sort(orderByVersion);
-}
+  const startTime = performance.now();
+  const loadingPromise = (async () => {
+    try {
+      const schemaFileName = getSchemaFileName(game);
+      const schema = await import(`../schema/${schemaFileName}`);
+      const schemaData = schema.default;
+      schemaCache.set(game, schemaData);
+      perfMonitor.trackSchemaLoad(game, startTime);
+      return schemaData;
+    } catch (error) {
+      console.warn(`Failed to load schema for game ${game}:`, error);
+      return { definitions: {} };
+    } finally {
+      // Clean up the promise from the map once it's resolved
+      schemaLoadingPromises.delete(game);
+    }
+  })();
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const troyDefinitions = (troySchema as { definitions: any }).definitions as any;
-for (const table_name in troyDefinitions) {
-  DBNameToDBVersions["troy"][table_name] = troyDefinitions[table_name];
-  DBNameToDBVersions["troy"][table_name].sort(orderByVersion);
-}
+  schemaLoadingPromises.set(game, loadingPromise);
+  return loadingPromise;
+};
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pharaohDefinitions = (pharaohSchema as { definitions: any }).definitions as any;
-for (const table_name in pharaohDefinitions) {
-  DBNameToDBVersions["pharaoh"][table_name] = pharaohDefinitions[table_name];
-  DBNameToDBVersions["pharaoh"][table_name].sort(orderByVersion);
-}
+const processSchemaForGame = async (game: SupportedGames): Promise<Record<string, DBVersion[]>> => {
+  if (processedSchemasCache.has(game)) {
+    return processedSchemasCache.get(game)!;
+  }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const dynastiesDefinitions = (dynastiesSchema as { definitions: any }).definitions as any;
-for (const table_name in dynastiesDefinitions) {
-  DBNameToDBVersions["dynasties"][table_name] = dynastiesDefinitions[table_name];
-  DBNameToDBVersions["dynasties"][table_name].sort(orderByVersion);
-}
+  // Check if there's already a processing promise for this game
+  if (schemaProcessingPromises.has(game)) {
+    return schemaProcessingPromises.get(game)!;
+  }
+
+  const processingPromise = (async () => {
+    try {
+      const schema = await loadSchemaForGame(game);
+      const definitions = (schema as { definitions: any }).definitions as any;
+      const processedSchema: Record<string, DBVersion[]> = {};
+
+      for (const table_name in definitions) {
+        processedSchema[table_name] = definitions[table_name];
+        processedSchema[table_name].sort(orderByVersion);
+      }
+
+      processedSchemasCache.set(game, processedSchema);
+      DBNameToDBVersions[game] = processedSchema;
+
+      // imported is_reference[0] is for example "building_levels", we make it "building_levels_tables"
+      for (const versions of Object.values(DBNameToDBVersions[game])) {
+        for (const version of versions) {
+          for (const field of version.fields) {
+            if (field.is_reference && field.is_reference.length > 0) {
+              field.is_reference[0] = `${field.is_reference[0]}_tables`;
+            }
+          }
+        }
+      }
+      return processedSchema;
+    } finally {
+      // Clean up the promise from the map once it's resolved
+      schemaProcessingPromises.delete(game);
+    }
+  })();
+
+  schemaProcessingPromises.set(game, processingPromise);
+  return processingPromise;
+};
+
+// Initialize schema for a game lazily
+export const initializeSchemaForGame = async (game: SupportedGames): Promise<void> => {
+  if (Object.keys(DBNameToDBVersions[game]).length === 0) {
+    await processSchemaForGame(game);
+  }
+};
+
+// Get schema data for a specific game (lazy loaded)
+export const getSchemaForGame = async (game: SupportedGames): Promise<Record<string, DBVersion[]>> => {
+  await initializeSchemaForGame(game);
+  return DBNameToDBVersions[game];
+};
 
 // gameToReferences stores all the tables and their keys that are referenced by at least 1 other table field
 // these are all the fields that are BEING referenced by other fields
@@ -158,30 +221,52 @@ export const gameToReferences: Record<SupportedGames, Record<string, string[]>> 
   dynasties: {},
   rome2: {},
 };
-for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
-  for (const versions of Object.values(tableVersions)) {
-    for (const version of versions) {
-      for (const field of version.fields) {
-        if (field.is_reference) {
-          const dbFileNameRef = `${field.is_reference[0]}_tables`;
-          const dbFieldNameRef = field.is_reference[1];
 
-          // if a table is referenced but doesn't have a schema skip it
-          if (!tableVersions[dbFileNameRef]) {
-            // if (gameName == "wh3") console.log("REFERENCED TABLE DOESN'T EXIST:", dbFileNameRef);
-            continue;
+const processReferencesForGame = async (game: SupportedGames): Promise<void> => {
+  // Check if there's already a processing promise for this game
+  if (referencesProcessingPromises.has(game)) {
+    return referencesProcessingPromises.get(game)!;
+  }
+
+  const processingPromise = (async () => {
+    try {
+      const tableVersions = await getSchemaForGame(game);
+
+      for (const versions of Object.values(tableVersions)) {
+        for (const version of versions) {
+          for (const field of version.fields) {
+            if (field.is_reference) {
+              const dbFileNameRef = field.is_reference[0];
+              const dbFieldNameRef = field.is_reference[1];
+
+              if (!tableVersions[dbFileNameRef]) {
+                continue;
+              }
+
+              gameToReferences[game][dbFileNameRef] = gameToReferences[game][dbFileNameRef] || [];
+
+              if (!gameToReferences[game][dbFileNameRef].includes(dbFieldNameRef))
+                gameToReferences[game][dbFileNameRef].push(dbFieldNameRef);
+            }
           }
-
-          gameToReferences[gameName as SupportedGames][dbFileNameRef] =
-            gameToReferences[gameName as SupportedGames][dbFileNameRef] || [];
-
-          if (!gameToReferences[gameName as SupportedGames][dbFileNameRef].includes(dbFieldNameRef))
-            gameToReferences[gameName as SupportedGames][dbFileNameRef].push(dbFieldNameRef);
         }
       }
+    } finally {
+      // Clean up the promise from the map once it's resolved
+      referencesProcessingPromises.delete(game);
     }
+  })();
+
+  referencesProcessingPromises.set(game, processingPromise);
+  return processingPromise;
+};
+
+export const getReferencesForGame = async (game: SupportedGames): Promise<Record<string, string[]>> => {
+  if (Object.keys(gameToReferences[game]).length === 0) {
+    await processReferencesForGame(game);
   }
-}
+  return gameToReferences[game];
+};
 
 // gameToDBFieldsThatReference stores all the tables and their keys that reference another table field
 // these are all the fields that are DOING THE REFERENCING
@@ -211,31 +296,117 @@ export const gameToDBFieldsThatReference: Record<
   dynasties: {},
   rome2: {},
 };
-for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
-  for (const [tableName, versions] of Object.entries(tableVersions)) {
-    for (const version of versions.toReversed()) {
-      for (const field of version.fields) {
-        if (field.is_reference) {
-          const dbFileNameRef = `${field.is_reference[0]}_tables`;
-          const dbFieldNameRef = field.is_reference[1];
 
-          // if a table is referenced but doesn't have a schema skip it
-          if (!tableVersions[dbFileNameRef]) {
-            // if (gameName == "wh3") console.log("REFERENCED TABLE DOESN'T EXIST:", dbFileNameRef);
-            continue;
+const processDBFieldsThatReferenceForGame = async (game: SupportedGames): Promise<void> => {
+  // Check if there's already a processing promise for this game
+  if (dbFieldsProcessingPromises.has(game)) {
+    return dbFieldsProcessingPromises.get(game)!;
+  }
+
+  const processingPromise = (async () => {
+    try {
+      const tableVersions = await getSchemaForGame(game);
+
+      for (const [tableName, versions] of Object.entries(tableVersions)) {
+        for (const version of versions.toReversed()) {
+          for (const field of version.fields) {
+            if (field.is_reference) {
+              const dbFileNameRef = field.is_reference[0];
+              const dbFieldNameRef = field.is_reference[1];
+
+              if (!tableVersions[dbFileNameRef]) {
+                continue;
+              }
+
+              gameToDBFieldsThatReference[game][tableName] =
+                gameToDBFieldsThatReference[game][tableName] || {};
+              gameToDBFieldsThatReference[game][tableName][field.name] = [dbFileNameRef, dbFieldNameRef];
+            }
           }
-
-          gameToDBFieldsThatReference[gameName as SupportedGames][tableName] =
-            gameToDBFieldsThatReference[gameName as SupportedGames][tableName] || {};
-          gameToDBFieldsThatReference[gameName as SupportedGames][tableName][field.name] = [
-            dbFileNameRef,
-            dbFieldNameRef,
-          ];
         }
       }
+    } finally {
+      // Clean up the promise from the map once it's resolved
+      dbFieldsProcessingPromises.delete(game);
     }
+  })();
+
+  dbFieldsProcessingPromises.set(game, processingPromise);
+  return processingPromise;
+};
+
+export const getDBFieldsThatReferenceForGame = async (
+  game: SupportedGames
+): Promise<Record<DBFileName, Record<DBFieldName, string[]>>> => {
+  if (Object.keys(gameToDBFieldsThatReference[game]).length === 0) {
+    await processDBFieldsThatReferenceForGame(game);
   }
-}
+  return gameToDBFieldsThatReference[game];
+};
+
+export const gameToDBFieldsReferencedBy: Record<
+  SupportedGames,
+  Record<DBFileName, Record<DBFieldName, string[][]>>
+> = {
+  wh3: {},
+  wh2: {},
+  threeKingdoms: {},
+  attila: {},
+  troy: {},
+  pharaoh: {},
+  dynasties: {},
+  rome2: {},
+};
+
+const processDBFieldsReferencedByForGame = async (game: SupportedGames): Promise<void> => {
+  // Check if there's already a processing promise for this game
+  if (dbFieldsReferencedByProcessingPromises.has(game)) {
+    return dbFieldsReferencedByProcessingPromises.get(game)!;
+  }
+
+  const processingPromise = (async () => {
+    try {
+      const dbFieldsThatReference = await getDBFieldsThatReferenceForGame(game);
+
+      for (const [tableName, dbFieldToReference] of Object.entries(dbFieldsThatReference)) {
+        for (const [dbFieldName, references] of Object.entries(dbFieldToReference)) {
+          const [referencedTableName, referencedFieldName] = references;
+          gameToDBFieldsReferencedBy[game][referencedTableName] =
+            gameToDBFieldsReferencedBy[game][referencedTableName] || {};
+
+          if (!gameToDBFieldsReferencedBy[game][referencedTableName][referencedFieldName])
+            gameToDBFieldsReferencedBy[game][referencedTableName][referencedFieldName] = [];
+
+          if (
+            !gameToDBFieldsReferencedBy[game][referencedTableName][referencedFieldName].some(
+              (reference) => reference[0] == tableName && reference[1] == dbFieldName
+            )
+          ) {
+            gameToDBFieldsReferencedBy[game][referencedTableName][referencedFieldName].push([
+              tableName,
+              dbFieldName,
+            ]);
+          }
+        }
+      }
+    } finally {
+      // Clean up the promise from the map once it's resolved
+      dbFieldsReferencedByProcessingPromises.delete(game);
+    }
+  })();
+
+  dbFieldsReferencedByProcessingPromises.set(game, processingPromise);
+  return processingPromise;
+};
+
+export const getDBFieldsReferencedByForGame = async (
+  game: SupportedGames
+): Promise<Record<DBFileName, Record<DBFieldName, string[][]>>> => {
+  if (Object.keys(gameToDBFieldsReferencedBy[game]).length === 0) {
+    await processDBFieldsReferencedByForGame(game);
+  }
+  return gameToDBFieldsReferencedBy[game];
+};
 
 export const gameToTablesWithNumericIds: Record<SupportedGames, Record<DBFileName, DBFieldName>> = {
   wh3: {},
@@ -279,38 +450,101 @@ gameToTablesWithNumericIds.wh3 = {
   campaign_group_post_battle_casualty_resources_tables: "id",
 };
 
-// check gameToTablesWithNumericIds.wh3 tables and keys exist
-const wh3DBNameToDBVersions = DBNameToDBVersions.wh3;
-for (const [tableName, fieldName] of Object.entries(gameToTablesWithNumericIds.wh3)) {
-  const DBVersions = wh3DBNameToDBVersions[tableName];
-  if (!DBVersions) {
-    console.log("gameToTablesWithNumericIds: TABLE", tableName, "DOESN'T HAVE SCHEMA");
-    continue;
+// Validation function for numeric ID tables
+export const validateNumericIdTablesForGame = async (game: SupportedGames): Promise<void> => {
+  const gameNumericTables = gameToTablesWithNumericIds[game];
+  if (!gameNumericTables || Object.keys(gameNumericTables).length === 0) {
+    return;
   }
 
-  let exists = false;
-  for (const version of DBVersions) {
-    if (version.fields.find((field) => field.name == fieldName)) {
-      exists = true;
-      break;
+  const dbNameToDBVersions = await getSchemaForGame(game);
+
+  for (const [tableName, fieldName] of Object.entries(gameNumericTables)) {
+    const DBVersions = dbNameToDBVersions[tableName];
+    if (!DBVersions) {
+      console.log("gameToTablesWithNumericIds: TABLE", tableName, "DOESN'T HAVE SCHEMA");
+      continue;
     }
-  }
-  if (!exists) {
-    console.log("gameToTablesWithNumericIds: TABLE", tableName, "DOESN'T HAVE FIELD", fieldName);
-  }
-}
 
-for (const [gameName, tableVersions] of Object.entries(DBNameToDBVersions)) {
-  for (const versions of Object.values(tableVersions)) {
-    for (const version of versions) {
-      for (const field of version.fields) {
-        if (field.is_reference && field.is_reference.length > 0) {
-          field.is_reference[0] = `${field.is_reference[0]}_tables`;
-        }
+    let exists = false;
+    for (const version of DBVersions) {
+      if (version.fields.find((field) => field.name == fieldName)) {
+        exists = true;
+        break;
       }
     }
+    if (!exists) {
+      console.log("gameToTablesWithNumericIds: TABLE", tableName, "DOESN'T HAVE FIELD", fieldName);
+    }
   }
-}
+};
+
+// Process reference field names for a specific game
+// const processReferenceFieldNames = async (game: SupportedGames): Promise<void> => {
+//   if (processedReferencesExtension.get(game)) return;
+//   processedReferencesExtension.set(game, true);
+
+//   const tableVersions = await getSchemaForGame(game);
+
+//   for (const versions of Object.values(tableVersions)) {
+//     for (const version of versions) {
+//       for (const field of version.fields) {
+//         if (field.is_reference && field.is_reference.length > 0) {
+//           field.is_reference[0] = `${field.is_reference[0]}_tables`;
+//         }
+//       }
+//     }
+//   }
+// };
+
+// Initialize all schema processing for a game
+export const initializeAllSchemaForGame = async (game: SupportedGames): Promise<void> => {
+  await initializeSchemaForGame(game);
+  // await processReferenceFieldNames(game);
+  await processReferencesForGame(game);
+  await processDBFieldsThatReferenceForGame(game);
+  await processDBFieldsReferencedByForGame(game);
+  await validateNumericIdTablesForGame(game);
+};
+
+// Preload schema for specific games (call this for commonly used games)
+export const preloadSchemaForGames = async (games: SupportedGames[]): Promise<void> => {
+  const promises = games.map((game) => initializeAllSchemaForGame(game));
+  await Promise.all(promises);
+};
+
+// Clear schema cache (useful for testing or memory management)
+export const clearSchemaCache = (): void => {
+  schemaCache.clear();
+  processedSchemasCache.clear();
+  processedReferencesExtension.clear();
+
+  // Clear promise caches to prevent stale promises
+  schemaLoadingPromises.clear();
+  schemaProcessingPromises.clear();
+  referencesProcessingPromises.clear();
+  dbFieldsProcessingPromises.clear();
+  dbFieldsReferencedByProcessingPromises.clear();
+
+  // Reset all game schema objects
+  Object.keys(DBNameToDBVersions).forEach((game) => {
+    DBNameToDBVersions[game as SupportedGames] = {};
+    gameToReferences[game as SupportedGames] = {};
+    gameToDBFieldsThatReference[game as SupportedGames] = {};
+    gameToDBFieldsReferencedBy[game as SupportedGames] = {};
+  });
+};
+
+// Get cache status for debugging
+export const getSchemaCacheStatus = (): {
+  loadedGames: SupportedGames[];
+  cacheSize: number;
+} => {
+  return {
+    loadedGames: Array.from(schemaCache.keys()),
+    cacheSize: schemaCache.size,
+  };
+};
 
 // import * as fs from "fs";
 // fs.writeFileSync("dumps/gameToReferences.json", JSON.stringify(gameToReferences));

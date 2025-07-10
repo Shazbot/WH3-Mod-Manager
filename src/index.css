@@ -325,6 +325,10 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   display: none;
 }
 
+.ht_clone_top_inline_start_corner {
+  display: none;
+}
+
 .handsontable .ht_clone_inline_start thead,
 .handsontable .ht_master thead,
 .handsontable .ht_master tr th {

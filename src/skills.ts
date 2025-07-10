@@ -226,10 +226,10 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
     skill.localizedDescription = getLoc(descriptionLocId);
     skill.localizedDescription = resolveTextReplacements(skill.localizedDescription, getLoc);
 
-    console.log("translate:", titleLocId, skill.localizedTitle);
+    // console.log("translate:", titleLocId, skill.localizedTitle);
     for (const effect of skill.effects) {
       const effectDescriptionKey = `effects_description_${effect.effectKey}`;
-      console.log("translated:", effectDescriptionKey, getLoc(effectDescriptionKey));
+      // console.log("translated:", effectDescriptionKey, getLoc(effectDescriptionKey));
       effect.localizedKey = getLoc(effectDescriptionKey);
       if (!effect.localizedKey) {
         effect.localizedKey = effect.effectKey;

@@ -32,6 +32,7 @@ import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
 import { collator } from "./utility/packFileSorting";
 import bs from "binary-search";
+import { decompress } from "@mongodb-js/zstd";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -466,7 +467,7 @@ export function getFieldSize(value: string, type: SCHEMA_FIELD_TYPE): number {
         const stringVal = value as string;
         if (stringVal == "") return 1;
 
-        return stringVal.length + 1;
+        return stringVal.length + 2 + 1;
       }
       break;
     case "F32":
@@ -857,7 +858,7 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
     name: "script\\enable_console_logging",
     file_size: 1,
     start_pos: 0,
-    is_compressed: 0,
+    is_compressed: false,
     schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from([0x00]) }] }],
   } as PackedFile);
 };
@@ -868,7 +869,7 @@ const createAutoStartCustomBattleData = (pack_files: PackedFile[]) => {
     name: "script\\frontend\\mod\\pj_auto_custom_battles.lua",
     file_size: scriptBuffer.byteLength,
     start_pos: 0,
-    is_compressed: 0,
+    is_compressed: false,
     schemaFields: [
       {
         type: "Buffer",
@@ -1286,15 +1287,14 @@ export const writePack = async (packFiles: NewPackedFile[], path: string) => {
       if (!packFile.schemaFields) continue;
 
       if (packFile.version != null) {
-        // console.log(packFile.version);
+        console.log(packFile.name, "version:", packFile.version);
         await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
         await outFile.writeInt32(packFile.version); // db version
-        await outFile.writeInt8(1);
-
-        // console.log("NUM OF FIELDS:");
-        // console.log(packFile.schemaFields.length / ver_schema.length);
-        await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
       }
+
+      await outFile.writeInt8(1);
+      console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
+      await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
       // console.log(general_unit_index);
       // console.log(dbVersionNumFields);
@@ -1509,7 +1509,7 @@ export const readFromExistingPack = async (
 
   let lastChangedLocal = -1;
   try {
-    lastChangedLocal = (await fsExtra.statSync(modPath)).mtimeMs;
+    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
   } catch (e) {
     console.log(e);
   }
@@ -1524,7 +1524,7 @@ export const readFromExistingPack = async (
 
     console.log(`${modPath} file opened`);
     if (packReadingOptions.tablesToRead)
-      console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
+      console.log(`readFromExistingPack: TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
 
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
       for (const fileToRead of packReadingOptions.filesToRead) {
@@ -1535,8 +1535,11 @@ export const readFromExistingPack = async (
         if (indexOfFileToRead >= 0) {
           // console.log("FOUND", fileToRead);
           const packedFileToRead = pack_files[indexOfFileToRead];
-          const buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
+          let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
+          if (packedFileToRead.is_compressed) {
+            buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+          }
           packedFileToRead.buffer = buffer;
         }
       }
@@ -1646,22 +1649,32 @@ const readDBPackedFiles = async (
     const dbversions = DBNameToDBVersions[appData.currentGame][dbName];
     if (!dbversions) continue;
 
+    let packBuffer = buffer.subarray(currentPos, currentPos + pack_file.file_size);
+    if (pack_file.is_compressed) {
+      // console.log("dbbuffer before: currentPos", currentPos, "len", pack_file.file_size);
+      // fs.writeFileSync("dbbuffer_raw_" + pack_file.name.replaceAll("\\", "_"), packBuffer);
+      packBuffer = Buffer.concat([Buffer.from(await decompress(packBuffer.subarray(4)))]);
+      // fs.writeFileSync("dbbuffer_" + pack_file.name.replaceAll("\\", "_"), packBuffer);
+    }
+
+    currentPos = 0;
+
     // console.log(`reading ${pack_file.name}`);
 
     let version: number | undefined;
     for (;;) {
-      const marker = await buffer.subarray(currentPos, currentPos + 4);
+      const marker = await packBuffer.subarray(currentPos, currentPos + 4);
       currentPos += 4;
 
       if (marker.toString("hex") === "fdfefcff") {
-        const readUTF = readUTFStringFromBuffer(buffer, currentPos);
+        const readUTF = readUTFStringFromBuffer(packBuffer, currentPos);
         // console.log("guid is " + readUTF[0]);
         pack_file.guid = readUTF[0];
         currentPos = readUTF[1];
         // console.log("current pos after guid is:", currentPos);
       } else if (marker.toString("hex") === "fcfdfeff") {
         // console.log("found version marker");
-        version = buffer.readInt32LE(currentPos); // await file.readInt32();
+        version = packBuffer.readInt32LE(currentPos); // await file.readInt32();
         currentPos += 4;
 
         pack_file.version = version;
@@ -1700,8 +1713,9 @@ const readDBPackedFiles = async (
     //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
     // }
 
-    const entryCount = buffer.readInt32LE(currentPos); //await file.readInt32();
+    const entryCount = packBuffer.readInt32LE(currentPos); //await file.readInt32();
     currentPos += 4;
+
     // console.log("entry count is ", entryCount);
     // console.log("pos is ", currentPos);
 
@@ -1723,7 +1737,7 @@ const readDBPackedFiles = async (
           // const fields = await parseType(file, field_type);
           const lastPos = currentPos;
           try {
-            const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+            const fieldsRet = await parseTypeBuffer(packBuffer, currentPos, field_type);
             const fields = fieldsRet[0];
             currentPos = fieldsRet[1];
 
@@ -1880,7 +1894,7 @@ export const readPack = async (
 
   let lastChangedLocal = -1;
   try {
-    lastChangedLocal = (await fsExtra.statSync(modPath)).mtimeMs;
+    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
   } catch (e) {
     console.log(e);
   }
@@ -1889,13 +1903,11 @@ export const readPack = async (
   // eslint-disable-next-line @typescript-eslint/no-inferrable-types
   let fileId: number = -1;
   try {
-    // file = new BinaryFile(modPath, "r", true);
     fileId = fs.openSync(modPath, "r");
-    // await file.open();
 
-    console.log(`${modPath} file opened`);
-    if (packReadingOptions.tablesToRead)
-      console.log(`NUM OF TABLES TO READ:`, packReadingOptions.tablesToRead.length);
+    // console.log(`${modPath} file opened`);
+    // if (packReadingOptions.tablesToRead)
+    //   console.log(`NUM OF TABLES TO READ:`, packReadingOptions.tablesToRead.length);
 
     // header 4
     // byteMask 4
@@ -2013,9 +2025,10 @@ export const readPack = async (
       const file_size = headerBuffer.readInt32LE(bufPos);
       bufPos += 4;
 
+      let is_compressed = false;
       if (appData.currentGame != "attila") {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const is_compressed = headerBuffer.readInt8(bufPos);
+        is_compressed = headerBuffer.readInt8(bufPos) == 1;
         bufPos += 1;
       }
 
@@ -2046,7 +2059,7 @@ export const readPack = async (
         name,
         file_size,
         start_pos: file_pos,
-        // is_compressed,
+        is_compressed,
       });
       file_pos += file_size;
     }
@@ -2084,14 +2097,22 @@ export const readPack = async (
       });
 
       for (const scriptFile of scriptFiles) {
-        const buffer = Buffer.allocUnsafe(scriptFile.file_size);
+        let buffer = Buffer.allocUnsafe(scriptFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
+
+        if (scriptFile.is_compressed) {
+          buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+        }
         scriptFile.text = buffer.toString("utf8");
       }
 
       for (const scriptFile of xmlFiles) {
-        const buffer = Buffer.allocUnsafe(scriptFile.file_size);
+        let buffer = Buffer.allocUnsafe(scriptFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
+
+        if (scriptFile.is_compressed) {
+          buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+        }
         if (buffer.subarray(0, 2).toString("hex") == "fffe") {
           scriptFile.text = buffer.subarray(2).toString("utf16le");
         } else {
@@ -2110,9 +2131,15 @@ export const readPack = async (
         // console.log("LOC file to read:", locPackFile);
         // const buffer = await file.read(locPackFile.file_size, locPackFile.start_pos);
 
-        const buffer = Buffer.allocUnsafe(locPackFile.file_size);
+        let buffer = Buffer.allocUnsafe(locPackFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, locPackFile.start_pos);
 
+        if (locPackFile.is_compressed) {
+          buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+          // console.log("it's compressed!");
+          // console.log("buffer:", buffer);
+          // fs.writeFileSync("locbuffer" + locPackFile.name.replaceAll("\\", "_"), buffer);
+        }
         await readLoc(packReadingOptions, locPackFile, buffer, modPath);
       }
     }
@@ -2126,8 +2153,11 @@ export const readPack = async (
         if (indexOfFileToRead >= 0) {
           console.log("FOUND", fileToRead);
           const packedFileToRead = pack_files[indexOfFileToRead];
-          const buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
+          let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
+          if (packedFileToRead.is_compressed) {
+            buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+          }
           packedFileToRead.buffer = buffer;
         }
       }
@@ -2140,7 +2170,7 @@ export const readPack = async (
 
     if (packReadingOptions.tablesToRead) {
       if (dbPackFiles.length < 1) console.log(`NO DB TABLES PRESENT IN PACK`);
-      else console.log(`TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
+      else console.log(`readPack: TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
     }
 
     if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {

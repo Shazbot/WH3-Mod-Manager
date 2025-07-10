@@ -1,5 +1,5 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
-import { exec, fork } from "child_process";
+import { exec, fork, spawn } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-extension-installer";
 import fetch from "electron-fetch";
@@ -15,6 +15,8 @@ import electronLog from "electron-log/main";
 import i18n from "./configs/i18next.config";
 import { globSync } from "glob";
 import { windows, registerIpcMainListeners } from "./ipcMainListeners";
+import * as https from "https";
+import { Extract } from "unzipper";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -203,7 +205,16 @@ if (!gotTheLock) {
 
     ipcMain.removeHandler("getUpdateData");
     ipcMain.handle("getUpdateData", async () => {
-      if (isDev) return;
+      // if (isDev) return;
+
+      // clean up the temp_update folder
+      try {
+        if (fs.existsSync("./temp_update")) {
+          fs.rmSync("./temp_update", { force: true, recursive: true });
+        }
+      } catch (e) {
+        console.log(e);
+      }
 
       let modUpdatedExists = { updateExists: false } as ModUpdateExists;
 
@@ -231,6 +242,132 @@ if (!gotTheLock) {
         .catch();
 
       return modUpdatedExists;
+    });
+
+    // Handle auto-update download and installation
+    ipcMain.handle("downloadAndInstallUpdate", async (event, downloadURL: string) => {
+      console.log("downloadAndInstallUpdate:", downloadURL);
+      if (isDev) {
+        return { success: false, error: "Updates not available in development mode" };
+      }
+
+      try {
+        const appPath = app.getAppPath();
+        const tempDir = nodePath.join(appPath, "../..", "temp_update");
+        const zipPath = nodePath.join(tempDir, "update.zip");
+
+        // Create temp directory
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        // Download the update file
+        const downloadFile = (url: string, dest: string, fileOut?: fs.WriteStream): Promise<void> => {
+          return new Promise((resolve, reject) => {
+            const file = fileOut || fs.createWriteStream(dest);
+            https
+              .get(url, (response) => {
+                if (response.statusCode === 302 || response.statusCode === 301) {
+                  // Handle redirect
+                  return downloadFile(response.headers.location!, dest, file).then(resolve).catch(reject);
+                }
+
+                response.on("end", () => {
+                  file.close();
+                  resolve();
+                });
+                response.pipe(file);
+              })
+              .on("error", (err) => {
+                fs.unlink(dest, () => {}); // Delete the file async
+                reject(err);
+              });
+          });
+        };
+
+        if (fs.existsSync(zipPath)) {
+          fs.rmSync(zipPath);
+        }
+        await downloadFile(downloadURL, zipPath);
+
+        // Extract the zip file to a staging directory
+        const stagingDir = nodePath.join(tempDir, "staging");
+        await new Promise<void>((resolve, reject) => {
+          fs.createReadStream(zipPath)
+            .pipe(Extract({ path: stagingDir }))
+            .on("close", resolve)
+            .on("error", reject);
+        });
+
+        // Create update script
+        const appDir = nodePath.dirname(nodePath.join(appPath, ".."));
+        const updateScript = nodePath.join(tempDir, "update.bat");
+        const appExeName = nodePath.basename(process.execPath);
+
+        const processId = process.pid;
+        const scriptContent = `@echo off
+          echo Waiting for application to close...
+          :wait_loop
+          tasklist /FI "PID eq ${processId}" | find "${processId}" >nul
+          if errorlevel 1 goto continue_update
+          timeout /t 1 /nobreak >nul
+          goto wait_loop
+
+          :continue_update
+          echo Application closed. Starting update...
+          timeout /t 1 /nobreak >nul
+          xcopy /E /Y /I "${stagingDir}\\*" "${appDir}\\"
+          if errorlevel 1 (
+              echo Update failed!
+              pause
+              exit /b 1
+          )
+          echo Update complete! Starting application...
+          powershell "start \"${nodePath.join(appDir, appExeName)}\""
+          echo Cleaning up...
+          timeout /t 2 /nobreak >nul
+          rd /s /q "${tempDir}"
+          del "%~f0"
+          exit /b`;
+
+        fs.writeFileSync(updateScript, scriptContent);
+
+        // Show dialog and execute update
+        const result = await dialog.showMessageBox(windows.mainWindow!, {
+          type: "info",
+          title: "Update Ready",
+          message: "The update has been downloaded. The application will now close and update automatically.",
+          buttons: ["Update Now", "Cancel"],
+        });
+
+        if (result.response === 0) {
+          // Launch update script and exit
+          const subprocess = spawn(`start cmd.exe /c update.bat`, [], {
+            cwd: tempDir,
+            shell: true,
+            detached: true,
+            windowsHide: true,
+          });
+          subprocess.unref();
+          // exec(`"${updateScript}"`, { detached: true });
+          app.quit();
+        } else {
+          // Cleanup if user cancels
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error("Update download/install failed:", error);
+
+        // Show error dialog
+        await dialog.showErrorBox(
+          "Update Failed",
+          `Failed to download or install update: ${error instanceof Error ? error.message : String(error)}`
+        );
+
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
     });
 
     ipcMain.on("sendApiExists", async () => {

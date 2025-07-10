@@ -102,7 +102,7 @@ export function writeAppConfig(data: AppState) {
     return;
   }
 
-  if (dataToWrite) console.log("diff in config:", JSON.stringify(diff(dataToWrite, toWrite), null, 2));
+  // if (dataToWrite) console.log("diff in config:", JSON.stringify(diff(dataToWrite, toWrite), null, 2));
 
   dataToWrite = deepClone(toWrite, true);
 
@@ -122,7 +122,7 @@ export function writeAppConfig(data: AppState) {
           const exeDirPath = nodePath.dirname(app.getPath("exe"));
           const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
           const exeDirConfigPath = nodePath.join(exeDirPath, "config.json");
-          await fs.writeFileSync(exeDirTempConfigPath, stringifiedData);
+          await fs.promises.writeFile(exeDirTempConfigPath, stringifiedData);
           const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
           await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
           await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
@@ -132,7 +132,7 @@ export function writeAppConfig(data: AppState) {
 
         const userData = app.getPath("userData");
         const tempFilePath = nodePath.join(userData, "config_temp.json");
-        await fs.writeFileSync(tempFilePath, stringifiedData);
+        await fs.promises.writeFile(tempFilePath, stringifiedData);
 
         const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
         await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
@@ -153,14 +153,14 @@ export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProp
   try {
     const userData = app.getPath("userData");
     const userDataConfigFilePath = nodePath.join(userData, "config.json");
-    data = await fs.readFileSync(userDataConfigFilePath, "utf8");
+    data = await fs.promises.readFile(userDataConfigFilePath, "utf8");
     // eslint-disable-next-line no-empty
   } catch (err) {}
 
   try {
     if (!data) {
       const exeDirConfigPath = nodePath.join(nodePath.dirname(app.getPath("exe")), "config.json");
-      data = await fs.readFileSync(exeDirConfigPath, "utf8");
+      data = await fs.promises.readFile(exeDirConfigPath, "utf8");
     }
     // eslint-disable-next-line no-empty
   } catch (err) {}

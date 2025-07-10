@@ -10,7 +10,7 @@ import localizationContext from "../../localizationContext";
 import { gameToPackWithDBTablesName } from "../../supportedGames";
 import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
-import { setDeepCloneTarget } from "@/src/appSlice";
+import { selectDBTable, setDeepCloneTarget } from "@/src/appSlice";
 
 const ModsViewer = memo(() => {
   const dispatch = useAppDispatch();
@@ -65,6 +65,18 @@ const ModsViewer = memo(() => {
     }
   }, []);
 
+  // for testing, automatically opens db.pack main_units_tablesl
+  // useEffect(() => {
+  //   window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
+  //   dispatch(
+  //     selectDBTable({
+  //       packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
+  //       dbName: "main_units_tables",
+  //       dbSubname: "data__",
+  //     })
+  //   );
+  // }, []);
+
   if (!packsData[packPath]) {
     console.log(`ModsViewer: no ${packPath} in packsData`);
     return <></>;
@@ -111,14 +123,14 @@ const ModsViewer = memo(() => {
               <Resizable
                 defaultSize={{
                   width: "17%",
-                  height: "90vh",
+                  height: "85vh",
                 }}
                 maxWidth="100%"
                 minWidth="1"
               >
                 <div>
                   {/* <div className="overflow-auto hover:-scale-x-100 overflow-y-scroll h-[90vh] hover:overflow-x-visible hover:overflow-y-scroll hover:absolute hover:z-50"> */}
-                  <div className="overflow-auto  h-[90vh]">
+                  <div className="overflow-auto  h-[85vh]">
                     {/* <div className="hover:-scale-x-100"> */}
                     <PackTablesTreeView tableFilter={dbTableFilter} />
                   </div>
