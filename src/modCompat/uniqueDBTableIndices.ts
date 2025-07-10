@@ -80,11 +80,13 @@ export function processDuplicateKeysInSameTable(
         fieldName: currentGameToTablesWithNumericIds[tableName],
         value: keyValues[i],
         firstPackName: packName,
+        valueTwo: keyValues[i + 1],
       } as UniqueIdsCollision;
       if (
         !uniqueIdsCollisions[packName].find(
           (collision) =>
             collision.value.value == newUniqueIdsCollision.value.value &&
+            collision.value.packFileName == newUniqueIdsCollision.value.packFileName &&
             collision.fieldName == newUniqueIdsCollision.fieldName &&
             collision.tableName == newUniqueIdsCollision.tableName &&
             collision.firstPackName == newUniqueIdsCollision.firstPackName &&

@@ -422,5 +422,6 @@
   "rome2ContentFolder": "The Rome 2 Steam Workshop content folder named 214950 (which is the steam ID for Rome 2) that contains mods, for example C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\214950",
   "addedMod": "Added mod:",
   "resubscribing": "Re-subscribing to:",
-  "queue": "Left in queue:"
+  "queue": "Left in queue:",
+  "downloadingUpdate": "Downloading update..."
 }

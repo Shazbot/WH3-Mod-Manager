@@ -6,13 +6,35 @@ import Onboarding from "./components/Onboarding";
 import { ErrorBoundary } from "react-error-boundary";
 import TopBar from "./components/TopBar";
 import { Toasts } from "./components/Toasts";
-import ModsViewer from "./components/viewer/ModsViewer";
 import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
-import { StrictMode, useRef } from "react";
+import { StrictMode, useRef, Suspense } from "react";
 import LocalizationContext, { staticTextIds } from "./localizationContext";
 import { useAppSelector } from "./hooks";
-import SkillsViewer from "./components/skillsViewer/SkillsViewer";
+import { perfMonitor, startTiming, endTiming } from "./utility/performanceMonitor";
+
+// Lazy load heavy components with performance tracking
+const ModsViewer = React.lazy(() => {
+  const startTime = performance.now();
+  return import("./components/viewer/ModsViewer").then((module) => {
+    perfMonitor.trackComponentLoad("ModsViewer", startTime);
+    return module;
+  });
+});
+const SkillsViewer = React.lazy(() => {
+  const startTime = performance.now();
+  return import("./components/skillsViewer/SkillsViewer").then((module) => {
+    perfMonitor.trackComponentLoad("SkillsViewer", startTime);
+    return module;
+  });
+});
+
+// Loading component
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center h-64">
+    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
+  </div>
+);
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -25,6 +47,13 @@ function ErrorFallback({ error }: { error: Error }) {
 }
 
 const App = React.memo(() => {
+  React.useEffect(() => {
+    startTiming("app_component_mount");
+    return () => {
+      endTiming("app_component_mount");
+    };
+  }, []);
+
   const [localization, setLocalization] = React.useState<Record<string, string>>({});
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
   const [cachedLanguage, setCachedLanguage] = React.useState<string>(currentLanguage);
@@ -59,11 +88,15 @@ const App = React.memo(() => {
         )) ||
           (window.location.pathname.includes("/viewer") && (
             <div className="m-auto px-8 pb-4 pt-11">
-              <ModsViewer />
+              <Suspense fallback={<LoadingSpinner />}>
+                <ModsViewer />
+              </Suspense>
             </div>
           )) || (
             <div className="m-auto px-8 pb-4 pt-11">
-              <SkillsViewer />
+              <Suspense fallback={<LoadingSpinner />}>
+                <SkillsViewer />
+              </Suspense>
             </div>
           )}
         <Toasts />
@@ -73,7 +106,7 @@ const App = React.memo(() => {
 });
 
 function render() {
-  // console.log("LOCATION IS ", useLocation());
+  startTiming("react_render");
   const root = createRoot(document.getElementById("root") as HTMLElement);
   root.render(
     <StrictMode>
@@ -82,6 +115,7 @@ function render() {
       </Provider>
     </StrictMode>
   );
+  endTiming("react_render");
 }
 
 render();

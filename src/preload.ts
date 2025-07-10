@@ -90,6 +90,7 @@ const api = {
     100
   ),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
+  downloadAndInstallUpdate: (downloadURL: string) => ipcRenderer.invoke("downloadAndInstallUpdate", downloadURL),
   translate: (translationId: string, options?: Record<string, string | number>) =>
     ipcRenderer.invoke("translate", translationId, options),
   translateAll: (translationIdsWithOptions: Record<string, Record<string, string | number>>) =>
@@ -224,15 +225,30 @@ const api = {
   executeDBDuplication: (
     packPath: string,
     nodesNamesToDuplicate: string[],
-    nodeNameToRef: Record<string, [string, string, string]>,
-    nodeNameToRenameValue: Record<string, string>
+    nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
+    nodeNameToRenameValue: Record<string, string>,
+    defaultNodeNameToRenameValue: Record<string, string>
   ) =>
     ipcRenderer.send(
       "executeDBDuplication",
       packPath,
       nodesNamesToDuplicate,
       nodeNameToRef,
-      nodeNameToRenameValue
+      nodeNameToRenameValue,
+      defaultNodeNameToRenameValue
+    ),
+  buildDBReferenceTree: (
+    packPath: string,
+    currentDBTableSelection: DBTableSelection,
+    deepCloneTarget: { row: number; col: number },
+    selectedNodesByName: IViewerTreeNodeWithData[]
+  ): Promise<IViewerTreeNodeWithData> =>
+    ipcRenderer.invoke(
+      "buildDBReferenceTree",
+      packPath,
+      currentDBTableSelection,
+      deepCloneTarget,
+      selectedNodesByName
     ),
 };
 

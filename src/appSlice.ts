@@ -687,7 +687,11 @@ const appSlice = createSlice({
         }
       }
 
-      console.log("APPSLICE set setPacksData:", packsData);
+      console.log(
+        "APPSLICE setPacksData:",
+        window.location,
+        packsData.map((pd) => pd.packName)
+      );
     },
     setPacksDataRead: (state: AppState, action: PayloadAction<string[]>) => {
       const packPaths = action.payload;
@@ -1154,6 +1158,7 @@ const appSlice = createSlice({
         console.log("selectDBTable for same selection, not updating app state");
         return;
       }
+      console.log("APPSLICE selectDBTable:", action.payload);
       state.currentDBTableSelection = action.payload;
     },
     setCurrentTab: (state: AppState, action: PayloadAction<MainWindowTab>) => {

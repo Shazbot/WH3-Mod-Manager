@@ -762,6 +762,7 @@ const Sidebar = memo(() => {
           <UpdateNotification
             downloadURL={downloadURL}
             releaseNotesURL={releaseNotesURL}
+            setIsUpdateAvailable={setIsUpdateAvailable}
           ></UpdateNotification>
         </div>
       )}

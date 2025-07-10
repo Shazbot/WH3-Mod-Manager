@@ -4,11 +4,10 @@ import React, { CSSProperties, memo, useCallback, useContext, useEffect, useMemo
 import { useAppSelector } from "../hooks";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
-import { HiOutlineCollection } from "react-icons/hi";
 import { formatDistanceToNow } from "date-fns";
 import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
-import { GoGear } from "react-icons/go";
+import { Icons } from "./icons";
 import { CellMeasurerChildProps } from "react-virtualized/dist/es/CellMeasurer";
 
 const FontAwesomeIconMemo = memo(FontAwesomeIcon);
@@ -282,7 +281,7 @@ const ModRow = memo(
                   }
                 >
                   <span className="text-gray-300">
-                    <HiOutlineCollection className="inline h-4 overflow-visible"></HiOutlineCollection>
+                    <Icons.Collection className="inline h-4 overflow-visible" />
                   </span>
                 </Tooltip>
               )}
@@ -323,10 +322,10 @@ const ModRow = memo(
           onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
         >
           {customizableMods[mod.path] && (
-            <GoGear
+            <Icons.Gear
               className="bigger-gear-icon cursor-pointer"
               color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
-            ></GoGear>
+            />
           )}
         </div>
         {isLast && (
