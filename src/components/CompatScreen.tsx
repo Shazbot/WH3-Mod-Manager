@@ -50,6 +50,7 @@ const CompatScreen = memo(() => {
   const [isCompatOpen, setIsCompatOpen] = React.useState(false);
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(true);
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
+  const [selectedModFilter, setSelectedModFilter] = React.useState("");
 
   useEffect(() => {
     if (!cachedIsCompatOpen && isCompatOpen) {
@@ -391,16 +392,49 @@ const CompatScreen = memo(() => {
             <Tabs.Group style="underline">
               <Tabs.Item active={true} title={`${localized.files} (${numPackFileCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-4rem] right-0 flex items-center">
-                    <input
-                      type="checkbox"
-                      id="compat-enabled-mod-only"
-                      checked={useEnabledModsOnly}
-                      onChange={() => toggleUseEnabledModsOnly()}
-                    ></input>
-                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      {localized.enabledModsOnly}
-                    </label>
+                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="compat-enabled-mod-only"
+                        checked={useEnabledModsOnly}
+                        onChange={() => toggleUseEnabledModsOnly()}
+                      ></input>
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                        {localized.enabledModsOnly}
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <select
+                        value={selectedModFilter}
+                        onChange={(e) => setSelectedModFilter(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">All mods</option>
+                        {(() => {
+                          const availableMods = Object.keys(groupedPackFileCollisions);
+                          const modsToShow =
+                            selectedModFilter && !availableMods.includes(selectedModFilter)
+                              ? [...availableMods, selectedModFilter]
+                              : availableMods;
+                          return modsToShow
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((modName) => (
+                              <option key={modName} value={modName}>
+                                {modName}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
                   </span>
                   {packCollisions.packFileCollisions.length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
@@ -410,6 +444,9 @@ const CompatScreen = memo(() => {
                   {packCollisions &&
                     packCollisions.packFileCollisions &&
                     Object.keys(groupedPackFileCollisions)
+                      .filter(
+                        (firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter
+                      )
                       .sort((firstPackName, secondPackName) => {
                         const firstPackIndex = sortedMods.indexOf(
                           sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
@@ -483,16 +520,49 @@ const CompatScreen = memo(() => {
               </Tabs.Item>
               <Tabs.Item title={`${localized.tables} (${numPackTableCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-4rem] right-0 flex items-center">
-                    <input
-                      type="checkbox"
-                      id="compat-enabled-mod-only"
-                      checked={useEnabledModsOnly}
-                      onChange={() => toggleUseEnabledModsOnly()}
-                    ></input>
-                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      {localized.enabledModsOnly}
-                    </label>
+                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="compat-enabled-mod-only"
+                        checked={useEnabledModsOnly}
+                        onChange={() => toggleUseEnabledModsOnly()}
+                      ></input>
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                        {localized.enabledModsOnly}
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <select
+                        value={selectedModFilter}
+                        onChange={(e) => setSelectedModFilter(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">All mods</option>
+                        {(() => {
+                          const availableMods = Object.keys(groupedPackTableCollisions);
+                          const modsToShow =
+                            selectedModFilter && !availableMods.includes(selectedModFilter)
+                              ? [...availableMods, selectedModFilter]
+                              : availableMods;
+                          return modsToShow
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((modName) => (
+                              <option key={modName} value={modName}>
+                                {modName}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
                   </span>
                   {packCollisions.packTableCollisions.length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
@@ -502,6 +572,9 @@ const CompatScreen = memo(() => {
                   {packCollisions &&
                     packCollisions.packTableCollisions &&
                     Object.keys(groupedPackTableCollisions)
+                      .filter(
+                        (firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter
+                      )
                       .sort((firstPackName, secondPackName) => {
                         const firstPackIndex = sortedMods.indexOf(
                           sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
@@ -606,16 +679,49 @@ const CompatScreen = memo(() => {
               </Tabs.Item>
               <Tabs.Item title={`${localized.missingKeys} (${numMissingTableReferences})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-4rem] right-0 flex items-center">
-                    <input
-                      type="checkbox"
-                      id="compat-enabled-mod-only"
-                      checked={useEnabledModsOnly}
-                      onChange={() => toggleUseEnabledModsOnly()}
-                    ></input>
-                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      {localized.enabledModsOnly}
-                    </label>
+                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="compat-enabled-mod-only"
+                        checked={useEnabledModsOnly}
+                        onChange={() => toggleUseEnabledModsOnly()}
+                      ></input>
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                        {localized.enabledModsOnly}
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <select
+                        value={selectedModFilter}
+                        onChange={(e) => setSelectedModFilter(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">All mods</option>
+                        {(() => {
+                          const availableMods = Object.keys(groupedMissingTableReferences);
+                          const modsToShow =
+                            selectedModFilter && !availableMods.includes(selectedModFilter)
+                              ? [...availableMods, selectedModFilter]
+                              : availableMods;
+                          return modsToShow
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((modName) => (
+                              <option key={modName} value={modName}>
+                                {modName}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
                   </span>
                   {Object.keys(groupedMissingTableReferences).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
@@ -624,6 +730,9 @@ const CompatScreen = memo(() => {
                   )}
                   <div className="text-lg">
                     {Object.keys(groupedMissingTableReferences)
+                      .filter(
+                        (firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter
+                      )
                       .sort((firstPackName, secondPackName) => {
                         const firstPackIndex = sortedMods.indexOf(
                           sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
@@ -719,16 +828,49 @@ const CompatScreen = memo(() => {
 
               <Tabs.Item title={`${localized.duplicateKeys} (${numUniqueIdsCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-4rem] right-0 flex items-center">
-                    <input
-                      type="checkbox"
-                      id="compat-enabled-mod-only"
-                      checked={useEnabledModsOnly}
-                      onChange={() => toggleUseEnabledModsOnly()}
-                    ></input>
-                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      {localized.enabledModsOnly}
-                    </label>
+                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="compat-enabled-mod-only"
+                        checked={useEnabledModsOnly}
+                        onChange={() => toggleUseEnabledModsOnly()}
+                      ></input>
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                        {localized.enabledModsOnly}
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <select
+                        value={selectedModFilter}
+                        onChange={(e) => setSelectedModFilter(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">All mods</option>
+                        {(() => {
+                          const availableMods = Object.keys(groupedUniqueIdsCollisions);
+                          const modsToShow =
+                            selectedModFilter && !availableMods.includes(selectedModFilter)
+                              ? [...availableMods, selectedModFilter]
+                              : availableMods;
+                          return modsToShow
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((modName) => (
+                              <option key={modName} value={modName}>
+                                {modName}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
                   </span>
                   {Object.keys(groupedUniqueIdsCollisions).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
@@ -737,6 +879,9 @@ const CompatScreen = memo(() => {
                   )}
                   <div className="text-lg">
                     {Object.keys(groupedUniqueIdsCollisions)
+                      .filter(
+                        (firstPackName) => selectedModFilter === "" || firstPackName === selectedModFilter
+                      )
                       .sort((firstPackName, secondPackName) => {
                         const firstPackIndex = sortedMods.indexOf(
                           sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
@@ -938,16 +1083,49 @@ const CompatScreen = memo(() => {
 
               <Tabs.Item title={`${localized.duplicateListenerNames} (${numScriptListenerCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-4rem] right-0 flex items-center">
-                    <input
-                      type="checkbox"
-                      id="compat-enabled-mod-only"
-                      checked={useEnabledModsOnly}
-                      onChange={() => toggleUseEnabledModsOnly()}
-                    ></input>
-                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      {localized.enabledModsOnly}
-                    </label>
+                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="compat-enabled-mod-only"
+                        checked={useEnabledModsOnly}
+                        onChange={() => toggleUseEnabledModsOnly()}
+                      ></input>
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                        {localized.enabledModsOnly}
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <select
+                        value={selectedModFilter}
+                        onChange={(e) => setSelectedModFilter(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">All mods</option>
+                        {(() => {
+                          const availableMods = Object.keys(groupedScriptListenerCollisions);
+                          const modsToShow =
+                            selectedModFilter && !availableMods.includes(selectedModFilter)
+                              ? [...availableMods, selectedModFilter]
+                              : availableMods;
+                          return modsToShow
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((modName) => (
+                              <option key={modName} value={modName}>
+                                {modName}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
                   </span>
                   {numScriptListenerCollisions == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
@@ -956,6 +1134,7 @@ const CompatScreen = memo(() => {
                   )}
                   <div className="text-lg">
                     {Object.keys(groupedScriptListenerCollisions)
+                      .filter((packName) => selectedModFilter === "" || packName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
                         const firstPackIndex = sortedMods.indexOf(
                           sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
@@ -1049,16 +1228,49 @@ const CompatScreen = memo(() => {
 
               <Tabs.Item title={`${localized.fileErrors} (${numPackFileAnalysisErrors})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
-                  <span className="absolute top-[-4rem] right-0 flex items-center">
-                    <input
-                      type="checkbox"
-                      id="compat-enabled-mod-only"
-                      checked={useEnabledModsOnly}
-                      onChange={() => toggleUseEnabledModsOnly()}
-                    ></input>
-                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      {localized.enabledModsOnly}
-                    </label>
+                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="compat-enabled-mod-only"
+                        checked={useEnabledModsOnly}
+                        onChange={() => toggleUseEnabledModsOnly()}
+                      ></input>
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                        {localized.enabledModsOnly}
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <select
+                        value={selectedModFilter}
+                        onChange={(e) => setSelectedModFilter(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">All mods</option>
+                        {(() => {
+                          const availableMods = Object.keys(groupedPackFileAnalysisErrors);
+                          const modsToShow =
+                            selectedModFilter && !availableMods.includes(selectedModFilter)
+                              ? [...availableMods, selectedModFilter]
+                              : availableMods;
+                          return modsToShow
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((modName) => (
+                              <option key={modName} value={modName}>
+                                {modName}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
                   </span>
                   {Object.keys(groupedPackFileAnalysisErrors).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
@@ -1067,6 +1279,7 @@ const CompatScreen = memo(() => {
                   )}
                   <div className="text-lg">
                     {Object.keys(groupedPackFileAnalysisErrors)
+                      .filter((packName) => selectedModFilter === "" || packName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
                         const firstPackIndex = sortedMods.indexOf(
                           sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
@@ -1131,16 +1344,49 @@ const CompatScreen = memo(() => {
 
               <Tabs.Item title={`${localized.missingFiles} (${numMissingFileRefs})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative whitespace-nowrap">
-                  <span className="absolute top-[-4rem] right-0 flex items-center">
-                    <input
-                      type="checkbox"
-                      id="compat-enabled-mod-only"
-                      checked={useEnabledModsOnly}
-                      onChange={() => toggleUseEnabledModsOnly()}
-                    ></input>
-                    <label className="ml-2" htmlFor="compat-enabled-mod-only">
-                      {localized.enabledModsOnly}
-                    </label>
+                  <span className="absolute top-[-2.5rem] flex-col right-0 flex items-center gap-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="compat-enabled-mod-only"
+                        checked={useEnabledModsOnly}
+                        onChange={() => toggleUseEnabledModsOnly()}
+                      ></input>
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                        {localized.enabledModsOnly}
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <select
+                        value={selectedModFilter}
+                        onChange={(e) => setSelectedModFilter(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">All mods</option>
+                        {(() => {
+                          const availableMods = Object.keys(groupedMissingFileRefs);
+                          const modsToShow =
+                            selectedModFilter && !availableMods.includes(selectedModFilter)
+                              ? [...availableMods, selectedModFilter]
+                              : availableMods;
+                          return modsToShow
+                            .sort((firstPackName, secondPackName) => {
+                              const firstPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
+                              );
+                              const secondPackIndex = sortedMods.indexOf(
+                                sortedMods.find((iterMod) => iterMod.name == secondPackName) as Mod
+                              );
+                              return firstPackIndex - secondPackIndex;
+                            })
+                            .map((modName) => (
+                              <option key={modName} value={modName}>
+                                {modName}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
                   </span>
                   {Object.keys(groupedMissingFileRefs).length == 0 && (
                     <p className="pt-16 text-lg font-normal text-gray-500 lg:text-xl sm:px-16 dark:text-gray-400 text-center">
@@ -1149,6 +1395,7 @@ const CompatScreen = memo(() => {
                   )}
                   <div className="text-lg">
                     {Object.keys(groupedMissingFileRefs)
+                      .filter((packName) => selectedModFilter === "" || packName === selectedModFilter)
                       .sort((firstPackName, secondPackName) => {
                         const firstPackIndex = sortedMods.indexOf(
                           sortedMods.find((iterMod) => iterMod.name == firstPackName) as Mod
