@@ -335,9 +335,9 @@ if (!gotTheLock) {
         // Show dialog and execute update
         const result = await dialog.showMessageBox(windows.mainWindow!, {
           type: "info",
-          title: "Update Ready",
-          message: "The update has been downloaded. The application will now close and update automatically.",
-          buttons: ["Update Now", "Cancel"],
+          title: i18n.t("updateReady"),
+          message: i18n.t("updateReadyMessage"),
+          buttons: [i18n.t("updateNow"), i18n.t("cancel")],
         });
 
         if (result.response === 0) {
@@ -362,8 +362,8 @@ if (!gotTheLock) {
 
         // Show error dialog
         await dialog.showErrorBox(
-          "Update Failed",
-          `Failed to download or install update: ${error instanceof Error ? error.message : String(error)}`
+          i18n.t("updateFailed"),
+          `${i18n.t("updateFailedMessage")} ${error instanceof Error ? error.message : String(error)}`
         );
 
         return { success: false, error: error instanceof Error ? error.message : String(error) };

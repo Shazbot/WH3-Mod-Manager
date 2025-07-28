@@ -258,7 +258,7 @@ const Sidebar = memo(() => {
       const appUpdateData = await window.api?.getUpdateData();
       if (!appUpdateData) return;
       if (appUpdateData.updateExists && appUpdateData.downloadURL) {
-        console.log("UPDATE EXITS");
+        console.log("UPDATE EXISTS");
         setIsUpdateAvailable(true);
         setDownloadURL(appUpdateData.downloadURL);
 

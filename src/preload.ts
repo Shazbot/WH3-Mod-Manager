@@ -90,7 +90,8 @@ const api = {
     100
   ),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
-  downloadAndInstallUpdate: (downloadURL: string) => ipcRenderer.invoke("downloadAndInstallUpdate", downloadURL),
+  downloadAndInstallUpdate: (downloadURL: string) =>
+    ipcRenderer.invoke("downloadAndInstallUpdate", downloadURL),
   translate: (translationId: string, options?: Record<string, string | number>) =>
     ipcRenderer.invoke("translate", translationId, options),
   translateAll: (translationIdsWithOptions: Record<string, Record<string, string | number>>) =>

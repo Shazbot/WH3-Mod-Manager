@@ -51,7 +51,6 @@ const ModDropdown = memo((props: ModDropdownProps) => {
           ref={modDropdownRef}
         >
           <ModDropdownOptions
-            isOpen={props.isOpen}
             mod={props.mod}
             mods={props.mods}
             visibleMods={props.visibleMods}

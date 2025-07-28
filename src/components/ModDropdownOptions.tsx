@@ -25,7 +25,6 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
 
 type ModDropdownOptionsProps = {
-  isOpen: boolean;
   mod?: Mod;
   mods: Mod[];
   visibleMods: Mod[];
