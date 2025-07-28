@@ -66,16 +66,16 @@ const ModsViewer = memo(() => {
   }, []);
 
   // for testing, automatically opens db.pack main_units_tablesl
-  // useEffect(() => {
-  //   window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
-  //   dispatch(
-  //     selectDBTable({
-  //       packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
-  //       dbName: "main_units_tables",
-  //       dbSubname: "data__",
-  //     })
-  //   );
-  // }, []);
+  useEffect(() => {
+    window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
+    dispatch(
+      selectDBTable({
+        packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
+        dbName: "main_units_tables",
+        dbSubname: "data__",
+      })
+    );
+  }, []);
 
   if (!packsData[packPath]) {
     console.log(`ModsViewer: no ${packPath} in packsData`);

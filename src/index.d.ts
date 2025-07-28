@@ -327,9 +327,9 @@ declare global {
     category: string;
   }
 
-  interface AddCategoryPayload {
-    mods: Mod[];
-    category: string;
+  interface RenameCategoryPayload {
+    oldCategory: string;
+    newCategory: string;
   }
 
   interface CategorySelectionPayload {

@@ -345,5 +345,21 @@
   "addedMod": "已添加模组:",
   "resubscribing": "重新订阅中:",
   "queue": "剩余队列:",
-  "downloadingUpdate": "正在下载更新..."
+  "downloadingUpdate": "正在下载更新...",
+  "editCategories": "编辑分类",
+  "addNewCategory": "添加新分类",
+  "enterCategoryName": "输入分类名称...",
+  "add": "添加",
+  "existingCategories": "现有分类",
+  "save": "保存",
+  "cancel": "取消",
+  "renameCategoryTooltip": "重命名分类",
+  "deleteCategoryTooltip": "删除分类",
+  "noCategoriesFound": "未找到分类。请在上方添加一个开始使用。",
+  "close": "关闭",
+  "updateReady": "更新准备就绪",
+  "updateReadyMessage": "更新已下载完成。应用程序将现在关闭并自动更新。",
+  "updateFailed": "更新失败",
+  "updateNow": "立即更新",
+  "updateFailedMessage": "下载或安装更新失败:"
 }

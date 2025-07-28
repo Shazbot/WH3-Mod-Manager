@@ -70,7 +70,7 @@ const HandsontableWrapper = memo(
         <LazyHotTable
           ref={hotRef}
           filters={true}
-          autoColumnSize={{ useHeaders: false }}
+          // autoColumnSize={{ useHeaders: false }}
           data={data}
           rowHeaders={true}
           colHeaders={(i) => {
@@ -90,7 +90,6 @@ const HandsontableWrapper = memo(
                   return "<b>Deep clone</b>";
                 },
                 hidden() {
-                  return true;
                   if (!hotRef || !hotRef.current) return;
                   const hot = hotRef.current.hotInstance;
                   if (!hot) return true;
@@ -139,7 +138,8 @@ const HandsontableWrapper = memo(
               },
             },
           }}
-          viewportColumnRenderingOffset={50}
+          viewportColumnRenderingOffset={10}
+          viewportRowRenderingOffset={50}
           dropdownMenu={[
             "filter_by_condition",
             "filter_by_condition2",

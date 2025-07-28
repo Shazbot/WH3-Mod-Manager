@@ -18,7 +18,6 @@ import { packDataStore } from "./components/viewer/packDataStore";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
-  let wasCategoryAddedToAnyMod = false;
 
   for (const mod of mods) {
     const modInPreset = state.currentPreset.mods.find((iterMod) => iterMod.path === mod.path);
@@ -26,14 +25,11 @@ const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
       modInPreset.categories = modInPreset.categories || [];
       if (!modInPreset.categories.includes(category)) {
         modInPreset.categories.push(category);
-        wasCategoryAddedToAnyMod = true;
       }
     }
   }
 
-  if (wasCategoryAddedToAnyMod) {
-    if (!state.categories.includes(category)) state.categories.push(category);
-  }
+  if (!state.categories.includes(category)) state.categories.push(category);
 };
 
 const removeCategoryByPayload = (state: AppState, payload: RemoveCategoryPayload) => {
@@ -49,6 +45,23 @@ const removeCategoryByPayload = (state: AppState, payload: RemoveCategoryPayload
 
   if (state.currentPreset.mods.every((mod) => !mod.categories || !mod.categories.includes(category)))
     state.categories = state.categories.filter((iterCategory) => iterCategory != category);
+};
+
+const renameCategoryByPayload = (state: AppState, payload: RenameCategoryPayload) => {
+  const { oldCategory, newCategory } = payload;
+
+  // Update category name in all mods
+  for (const mod of state.currentPreset.mods) {
+    if (mod.categories && mod.categories.includes(oldCategory)) {
+      mod.categories = mod.categories.map((cat) => (cat === oldCategory ? newCategory : cat));
+    }
+  }
+
+  // Update category in the categories list
+  const categoryIndex = state.categories.indexOf(oldCategory);
+  if (categoryIndex !== -1) {
+    state.categories[categoryIndex] = newCategory;
+  }
 };
 
 const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
@@ -365,6 +378,8 @@ const appSlice = createSlice({
       addCategoryByPayload(state, action.payload),
     removeCategory: (state: AppState, action: PayloadAction<RemoveCategoryPayload>) =>
       removeCategoryByPayload(state, action.payload),
+    renameCategory: (state: AppState, action: PayloadAction<RenameCategoryPayload>) =>
+      renameCategoryByPayload(state, action.payload),
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
@@ -1333,6 +1348,7 @@ export const {
   setDataModsToEnableByName,
   addCategory,
   removeCategory,
+  renameCategory,
   setModRowsSortingType,
   setAvailableLanguages,
   setPackDataOverwrites,

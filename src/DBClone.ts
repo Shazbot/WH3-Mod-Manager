@@ -195,48 +195,59 @@ export const buildDBReferenceTree = async (
         (selectedNode) => selectedNode.name == `${tableName} ${tableColumnName} : ${resolvedKeyValue}`
       );
 
-      if (isRowSelected) {
-        console.log("ALREADY SELECTED", `${tableName} ${tableColumnName} : ${resolvedKeyValue}`);
-        const references =
-          DBFieldsReferencedBy[tableName] && DBFieldsReferencedBy[tableName][tableColumnName];
+      // if (isRowSelected) {
+      console.log("ALREADY SELECTED", `${tableName} ${tableColumnName} : ${resolvedKeyValue}`);
+      const references = DBFieldsReferencedBy[tableName] && DBFieldsReferencedBy[tableName][tableColumnName];
 
-        if (references) {
-          console.log("REFERENCES FOR", tableName, tableColumnName, references);
-          for (const [refTableName, refTableColumnName] of references) {
-            await addNewCellFromReference(
-              acc,
-              treeParent,
-              refTableName,
-              refTableColumnName,
-              resolvedKeyValue,
-              true
-            );
-          }
-        }
-        return;
-      } else {
-        for (let i = 0; i < row.length; i++) {
-          const cell = row[i];
-          if (i >= dbVersion.fields.length) continue;
-          const field = dbVersion.fields[i];
+      // if (references) {
+      //   console.log("REFERENCES FOR", tableName, tableColumnName, references);
+      //   for (const [refTableName, refTableColumnName] of references) {
+      //     await addNewCellFromReference(
+      //       acc,
+      //       treeParent,
+      //       refTableName,
+      //       refTableColumnName,
+      //       resolvedKeyValue,
+      //       true
+      //     );
+      //   }
+      // }
+      // return;
+      // } else {
+      for (let i = 0; i < row.length; i++) {
+        const cell = row[i];
+        if (i >= dbVersion.fields.length) continue;
+        const field = dbVersion.fields[i];
 
-          if (!field || !field.is_reference || field.is_reference.length == 0) continue;
-          // if (cell.name == tableColumnName) {
-          //   console.log("cell:", cell.resolvedKeyValue, resolvedKeyValue);
-          // }
-          // if (cell.resolvedKeyValue == resolvedKeyValue) {
-          //   console.log("resolvedKeyValue:", cell.name, tableColumnName);
-          // }
-          if (cell.name != tableColumnName) {
-            const newTableName = field.is_reference[0];
-            const newTableColumnName = field.is_reference[1];
-            // const newTableName = tableName;
-            // const newTableColumnName = tableColumnName;
+        if (!field || !field.is_reference || field.is_reference.length == 0) continue;
+        // if (cell.name == tableColumnName) {
+        //   console.log("cell:", cell.resolvedKeyValue, resolvedKeyValue);
+        // }
+        // if (cell.resolvedKeyValue == resolvedKeyValue) {
+        //   console.log("resolvedKeyValue:", cell.name, tableColumnName);
+        // }
+        if (cell.name != tableColumnName) {
+          const newTableName = field.is_reference[0];
+          const newTableColumnName = field.is_reference[1];
+          // const newTableName = tableName;
+          // const newTableColumnName = tableColumnName;
 
-            addNewCellFromReference(acc, treeParent, newTableName, newTableColumnName, cell.resolvedKeyValue);
-          }
+          console.log(
+            "ELSE addNewCellFromReference:",
+            newTableName,
+            newTableColumnName,
+            cell.resolvedKeyValue
+          );
+          await addNewCellFromReference(
+            acc,
+            treeParent,
+            newTableName,
+            newTableColumnName,
+            cell.resolvedKeyValue
+          );
         }
       }
+      // }
     }
   };
 
@@ -391,6 +402,7 @@ export const buildDBReferenceTree = async (
     ) {
       treeParent.children.push(newChild);
       allTreeChildren.push(newChild.name);
+      console.log("enqueue 1:", acc);
       refsQueue.enqueue([acc, newPackFile, [newTableName, newTableColumnName, resolvedKeyValue], newChild]);
       // addRefsRecursively(acc, newPackFile, [newTableName, newTableColumnName, resolvedKeyValue], newChild);
     } else {
@@ -441,6 +453,7 @@ export const buildDBReferenceTree = async (
     );
     if (pf) {
       const dbCell: DBCell = [tableName, tableColumnName, currentField.resolvedKeyValue];
+      console.log("acc push:", tableName, tableColumnName, currentField.resolvedKeyValue);
       acc.push([tableName, tableColumnName, currentField.resolvedKeyValue]);
       const newChild = {
         name: `${tableName} ${tableColumnName} : ${currentField.resolvedKeyValue}`,
@@ -470,6 +483,7 @@ export const buildDBReferenceTree = async (
   refsToUse.push([currentDBTableSelection.dbName, field.name, toClone.resolvedKeyValue]);
 
   for (const [packFile, dbCell, newChild] of childrenToAdd) {
+    console.log("enqueue 2:", refsToUse);
     refsQueue.enqueue([refsToUse, packFile, dbCell, newChild]);
     // addRefsRecursively(refsToUse, packFile, dbCell, newChild);
   }
@@ -481,6 +495,7 @@ export const buildDBReferenceTree = async (
       selectedNodeByName.columnName,
       selectedNodeByName.value,
     ];
+    console.log("enqueue 3:", refsToUse);
     refsQueue.enqueue([refsToUse, packFile, dbCell, rootNode]);
   }
 

@@ -1542,13 +1542,13 @@ export const registerIpcMainListeners = (
     );
 
     // for testing, automatically opens db.pack
-    // if (appData.gamesToGameFolderPaths[appData.currentGame].dataFolder)
-    //   ipcMain.emit(
-    //     "requestOpenModInViewer",
-    //     null,
-    //     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    //     nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder!, "db.pack")
-    //   );
+    if (appData.gamesToGameFolderPaths[appData.currentGame].dataFolder)
+      ipcMain.emit(
+        "requestOpenModInViewer",
+        null,
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder!, "db.pack")
+      );
   });
 
   ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {

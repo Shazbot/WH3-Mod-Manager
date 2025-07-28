@@ -10,7 +10,15 @@ import { registerAllModules } from "handsontable/registry";
 import { FloatingOverlay } from "@floating-ui/react";
 import selectStyle from "../styles/selectStyle";
 import { ActionMeta, SingleValue } from "react-select";
-import { addCategory, removeCategory, selectCategory, setAreModsEnabled, toggleMod } from "../appSlice";
+import {
+  addCategory,
+  removeCategory,
+  selectCategory,
+  setAreModsEnabled,
+  toggleMod,
+  renameCategory,
+} from "../appSlice";
+import EditCategoriesModal from "./EditCategoriesModal";
 import { CellProperties } from "handsontable/settings";
 import Core from "handsontable/core";
 import debounce from "just-debounce-it";
@@ -101,7 +109,7 @@ const Categories = memo(() => {
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [nameFilter, setNameFilter] = useState<string>("");
   const [categoriesFilter, setCategoriesFilter] = useState<string>("");
-  const [currentlySelectedMods, setCurrentlySelectedMods] = useState<Mod[]>([]);
+  const [isEditCategoriesModalOpen, setIsEditCategoriesModalOpen] = useState(false);
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const categories = useAppSelector((state) => state.app.categories);
@@ -140,6 +148,36 @@ const Categories = memo(() => {
 
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const hotRef = useRef<HotTable>(null);
+
+  const getCurrentlySelectedMods = useCallback(() => {
+    if (!hotRef || !hotRef.current) return [];
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const hot = hotRef.current.hotInstance as Handsontable;
+    if (!hot) return [];
+
+    const selectedRows: number[] = [];
+    for (const selection of selectedInTable) {
+      if (selection.row == -1) continue;
+      const rowMin = Math.min(selection.row, selection.row2);
+      const rowMax = Math.max(selection.row, selection.row2);
+
+      for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
+    }
+
+    const selectedMods: Mod[] = [];
+    for (const i of selectedRows) {
+      const rowData = hot.getSourceDataAtRow(i) as ModRow | CategoryRow;
+      if (!isCategoryRow(rowData)) {
+        const mod = mods.find((mod) => mod.path == rowData.path);
+        if (mod) selectedMods.push(mod);
+      }
+    }
+
+    return selectedMods;
+  }, [hotRef]);
+
+  console.log("currentlySelectedMods:", getCurrentlySelectedMods());
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const BadgesRowRenderer = memo((props: any) => {
@@ -185,6 +223,7 @@ const Categories = memo(() => {
   });
 
   useEffect(() => {
+    console.log("REDRAW");
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Shift") isShiftDown = true;
       if (e.key === "Control") isControlDown = true;
@@ -225,49 +264,54 @@ const Categories = memo(() => {
 
   registerAllModules();
 
-  let sourceDataObject = getModsSortedByHumanNameAndName(mods).reduce((acc, current) => {
-    let modCategories = current.categories ?? ["Uncategorized"];
-    if (modCategories.length == 0) modCategories = ["Uncategorized"];
+  let sourceDataObject = useMemo(() => {
+    const sourceDataObject = getModsSortedByHumanNameAndName(mods).reduce((acc, current) => {
+      let modCategories = current.categories ?? ["Uncategorized"];
+      if (modCategories.length == 0) modCategories = ["Uncategorized"];
 
-    for (const category of modCategories) {
-      const existingCategoryRow = acc.find((row) => row.category === category);
-      const { isEnabled, humanName, path, name, categories } = current;
+      for (const category of modCategories) {
+        const existingCategoryRow = acc.find((row) => row.category === category);
+        const { isEnabled, humanName, path, name, categories } = current;
 
-      const newModRow = {
-        isEnabled,
-        humanName: humanName != "" ? humanName : name.replace(".pack", ""),
-        path,
-        name,
-        categories: categories ?? [],
-      };
+        const newModRow = {
+          isEnabled,
+          humanName: humanName != "" ? humanName : name.replace(".pack", ""),
+          path,
+          name,
+          categories: categories ?? [],
+        };
 
-      if (existingCategoryRow) {
-        if (!hiddenCategories.includes(category)) {
-          existingCategoryRow.__children.push(newModRow);
+        if (existingCategoryRow) {
+          if (!hiddenCategories.includes(category)) {
+            existingCategoryRow.__children.push(newModRow);
+          }
+        } else {
+          const children = (!hiddenCategories.includes(category) && [newModRow]) || [];
+          acc.push({
+            category,
+            isEnabled: false,
+            humanName: null,
+            path: null,
+            name: null,
+            categories: null,
+            __children: children,
+          });
         }
-      } else {
-        const children = (!hiddenCategories.includes(category) && [newModRow]) || [];
-        acc.push({
-          category,
-          isEnabled: false,
-          humanName: null,
-          path: null,
-          name: null,
-          categories: null,
-          __children: children,
-        });
       }
-    }
-    return acc;
-  }, [] as CategoriesTable);
+      return acc;
+    }, [] as CategoriesTable);
 
-  for (const categoryRowObject of sourceDataObject) {
-    const category = categoryRowObject.category;
-    const modsInCategory =
-      (category == "Uncategorized" && mods.filter((mod) => !mod.categories || mod.categories.length == 0)) ||
-      mods.filter((mod) => mod.categories?.includes(category));
-    categoryRowObject.isEnabled = modsInCategory.every((child) => child.isEnabled);
-  }
+    for (const categoryRowObject of sourceDataObject) {
+      const category = categoryRowObject.category;
+      const modsInCategory =
+        (category == "Uncategorized" &&
+          mods.filter((mod) => !mod.categories || mod.categories.length == 0)) ||
+        mods.filter((mod) => mod.categories?.includes(category));
+      categoryRowObject.isEnabled = modsInCategory.every((child) => child.isEnabled);
+    }
+
+    return sourceDataObject;
+  }, [mods, hiddenCategories]);
 
   // filter out the name column, supports comma as OR
   if (nameFilter.trim() != "") {
@@ -521,14 +565,16 @@ const Categories = memo(() => {
               ></Creatable>
             </li>
           </ul>
-          {currentlySelectedMods.length > 1 && (
+          {getCurrentlySelectedMods().length > 1 && (
             <div>
               <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
                 <li>
                   <a
                     onClick={() => {
                       dispatch(
-                        setAreModsEnabled(currentlySelectedMods.map((mod) => ({ mod: mod, isEnabled: true })))
+                        setAreModsEnabled(
+                          getCurrentlySelectedMods().map((mod) => ({ mod: mod, isEnabled: true }))
+                        )
                       );
                       setIsContextMenuOpen(false);
                     }}
@@ -543,7 +589,7 @@ const Categories = memo(() => {
                     onClick={() => {
                       dispatch(
                         setAreModsEnabled(
-                          currentlySelectedMods.map((mod) => ({ mod: mod, isEnabled: false }))
+                          getCurrentlySelectedMods().map((mod) => ({ mod: mod, isEnabled: false }))
                         )
                       );
                       setIsContextMenuOpen(false);
@@ -557,10 +603,9 @@ const Categories = memo(() => {
               </ul>
             </div>
           )}
-          {currentlySelectedMods.length == 1 && (
+          {getCurrentlySelectedMods().length == 1 && (
             <ModDropdownOptions
-              isOpen={isContextMenuOpen}
-              mod={currentlySelectedMods[0]}
+              mod={getCurrentlySelectedMods()[0]}
               mods={mods}
               visibleMods={mods}
             ></ModDropdownOptions>
@@ -642,10 +687,17 @@ const Categories = memo(() => {
             </span>
           </span>
 
-          <div className="text-center ml-auto">
+          <div className="text-center ml-auto flex gap-2">
+            <button
+              onClick={() => setIsEditCategoriesModalOpen(true)}
+              className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+              type="button"
+            >
+              Edit Categories
+            </button>
             <button
               onClick={() => collapseOrExpandAllCategories()}
-              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
               aria-controls="drawer-example"
             >
@@ -715,13 +767,14 @@ const Categories = memo(() => {
               if (mod) selectedMods.push(mod);
             }
           }
-          setCurrentlySelectedMods(selectedMods);
+          console.log("CSM:", getCurrentlySelectedMods());
+          console.log("NEW CSM:", selectedMods);
+          // setCurrentlySelectedMods(selectedMods);
           setIsContextMenuOpen(true);
         }}
         className="overflow-hidden mx-10 ht-theme-main-dark-auto"
       >
-        <HotTable
-          className={(isContextMenuOpen && "disable-border") || ""}
+        <MemoHotTable
           viewportColumnRenderingOffset={100}
           viewportRowRenderingOffset={100}
           data={sourceDataObject}
@@ -831,10 +884,10 @@ const Categories = memo(() => {
           }}
           afterDeselect={() => {
             console.log("deselected");
-            if (!isContextMenuOpen) {
-              selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
-              console.log("clearing tracked selection");
-            }
+            // if (!isContextMenuOpen) {
+            //   selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
+            //   console.log("clearing tracked selection");
+            // }
             if (!hotRef || !hotRef.current) return;
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore
@@ -845,7 +898,7 @@ const Categories = memo(() => {
           readOnlyCellClassName="" // prevents use of the default class
           selectionMode="multiple"
           // disableVisualSelection={true}
-          rowHeights={"29px"}
+          // rowHeights={"29px"}
           hiddenColumns={
             {
               // columns: [3],
@@ -867,16 +920,22 @@ const Categories = memo(() => {
           // rowHeights="28px"
 
           // autoColumnSize={true}
-          bindRowsWithHeaders={false}
         >
           <HotColumn data="category" className="htCenter htMiddle" width={120} readOnly={true}></HotColumn>
           <HotColumn data="isEnabled" width={30} type="checkbox"></HotColumn>
           <HotColumn data="humanName" className="htMiddle" width={300} readOnly={true}></HotColumn>
           <HotColumn data="categories" readOnly={true} renderer={BadgesRowRenderer}></HotColumn>
-        </HotTable>
+        </MemoHotTable>
       </div>
+
+      <EditCategoriesModal
+        isOpen={isEditCategoriesModalOpen}
+        onClose={() => setIsEditCategoriesModalOpen(false)}
+      />
     </>
   );
 });
 
 export default Categories;
+
+const MemoHotTable = memo(HotTable);

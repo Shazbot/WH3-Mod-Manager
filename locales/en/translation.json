@@ -423,5 +423,21 @@
   "addedMod": "Added mod:",
   "resubscribing": "Re-subscribing to:",
   "queue": "Left in queue:",
-  "downloadingUpdate": "Downloading update..."
+  "downloadingUpdate": "Downloading update...",
+  "editCategories": "Edit Categories",
+  "addNewCategory": "Add New Category",
+  "enterCategoryName": "Enter category name...",
+  "add": "Add",
+  "existingCategories": "Existing Categories",
+  "save": "Save",
+  "cancel": "Cancel",
+  "renameCategoryTooltip": "Rename category",
+  "deleteCategoryTooltip": "Delete category",
+  "noCategoriesFound": "No categories found. Add one above to get started.",
+  "close": "Close",
+  "updateReady": "Update Ready",
+  "updateReadyMessage": "The update has been downloaded. The application will now close and update automatically.",
+  "updateFailed": "Update Failed",
+  "updateNow": "Update Now",
+  "updateFailedMessage": "Failed to download or install update:"
 }
