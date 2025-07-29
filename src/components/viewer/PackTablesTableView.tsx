@@ -176,6 +176,16 @@ const PackTablesTableView = memo(() => {
     }
   }, [handsontableLoaded]);
 
+  useEffect(() => {
+    const autoDispatchTimer = setTimeout(() => {
+      dispatch(setDeepCloneTarget({ row: 3, col: 14 }));
+    }, 2000);
+
+    return () => {
+      clearTimeout(autoDispatchTimer);
+    };
+  });
+
   const handleContextMenuCallback = (row: number, col: number) => {
     dispatch(setDeepCloneTarget({ row, col }));
   };

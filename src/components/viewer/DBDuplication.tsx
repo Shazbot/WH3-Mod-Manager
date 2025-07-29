@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/src/hooks";
 import { FaSquare, FaCheckSquare, FaMinusSquare, FaArrowRight } from "react-icons/fa";
 import { IoMdArrowDropright } from "react-icons/io";
@@ -8,16 +8,9 @@ import "./DBDuplicationStyles.css";
 import { IconBaseProps } from "react-icons";
 import hash from "object-hash";
 import { chunkTableIntoRows } from "./viewerHelpers";
-import { dataFromBackend, doneRequests, packDataStore } from "./packDataStore";
-import {
-  getDBNameFromString,
-  getDBPackedFilePath,
-  getDBVersion,
-  tableNameWithDBPrefix,
-} from "@/src/utility/packFileHelpers";
-import { AmendedSchemaField, PackedFile } from "@/src/packFileTypes";
+import { packDataStore } from "./packDataStore";
+import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
 import { Tooltip } from "flowbite-react";
-import Queue from "@/src/utility/queue";
 
 const findNodeInTree = (
   tree: IViewerTreeNodeWithData | IViewerTreeNode,
@@ -235,7 +228,8 @@ const DBDuplication = React.memo(() => {
   }, {} as Record<string, IViewerTreeNodeWithData>);
 
   // console.log("data is", data);
-  console.log("EXPANDED NODES ARE", selectedNodesByName);
+  console.log("SELECTED NODES ARE", selectedNodesByName);
+  console.log("EXPANDED NODES ARE", expandedNodesByName);
 
   nodeNameToData[rootNode.name] = {
     name: rootNode.name,
@@ -263,8 +257,9 @@ const DBDuplication = React.memo(() => {
     return acc;
   };
 
-  const onTreeExpand = (props: ITreeViewOnSelectProps) => {
-    console.log("expanded", props.element.name);
+  const onTreeSelect = (props: ITreeViewOnSelectProps) => {
+    console.log("selected tree node", props.element.name);
+    console.log("selectedNodesByName:", selectedNodesByName);
     const currentName = props.element.name;
     // const expandedByName = Array.from(props.treeState.selectedIds.values())
     //   .map((id) => data.find((node) => node.id == id)?.name)
@@ -284,10 +279,12 @@ const DBDuplication = React.memo(() => {
         }
       }
     }
+
+    // setSelectedNodesByName(newselectedNodesByName);
   };
 
   const onNodeExpanded = (nodeName: string) => {
-    console.log("expanded node", nodeName);
+    console.log("expanded tree node", nodeName);
     const currentName = nodeName;
     // const expandedByName = Array.from(props.treeState.selectedIds.values())
     //   .map((id) => data.find((node) => node.id == id)?.name)
@@ -357,6 +354,8 @@ const DBDuplication = React.memo(() => {
   const expandedIds = [...expandedNodesByName, rootNode.name]
     .map((name) => data.find((node) => node.name == name)?.id)
     .filter((id): id is number => !!id);
+
+  console.log("expandedIds:", expandedIds);
 
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>, nodeName: string) => {
     console.log("textbox change:", e.target.value, nodeName);
@@ -450,10 +449,16 @@ const DBDuplication = React.memo(() => {
       <div>Cloning {toClone.resolvedKeyValue}</div>
       <div className="checkbox dark:text-gray-300">
         <TreeView
-          key={hash(folder) + hash(selectedNodesByName)}
+          key={
+            hash(folder) +
+            hash(selectedNodesByName) +
+            hash(expandedNodesByName) +
+            hash(expandedIds) +
+            hash(selectedIds)
+          }
           data={data}
           aria-label="Checkbox tree"
-          onSelect={(props) => onTreeExpand(props)}
+          onSelect={(props) => onTreeSelect(props)}
           selectedIds={selectedIds}
           expandedIds={expandedIds}
           nodeRenderer={({
