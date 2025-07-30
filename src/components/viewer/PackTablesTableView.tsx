@@ -164,6 +164,7 @@ const PackTablesTableView = memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   const [handsontableLoaded, setHandsontableLoaded] = useState(false);
+  const startArgs = useAppSelector((state) => state.app.startArgs);
 
   const hotRef = useRef<any>(null);
 
@@ -179,6 +180,8 @@ const PackTablesTableView = memo(() => {
   }, [handsontableLoaded]);
 
   useEffect(() => {
+    if (!startArgs.includes("-testDBClone")) return;
+
     const autoDispatchTimer = setTimeout(() => {
       dispatch(setDeepCloneTarget({ row: 3, col: 14 }));
     }, 2000);
@@ -186,7 +189,7 @@ const PackTablesTableView = memo(() => {
     return () => {
       clearTimeout(autoDispatchTimer);
     };
-  });
+  }, []);
 
   const handleContextMenuCallback = (row: number, col: number) => {
     dispatch(setDeepCloneTarget({ row, col }));

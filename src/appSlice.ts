@@ -380,6 +380,12 @@ const appSlice = createSlice({
       removeCategoryByPayload(state, action.payload),
     renameCategory: (state: AppState, action: PayloadAction<RenameCategoryPayload>) =>
       renameCategoryByPayload(state, action.payload),
+    setCategoryColor: (state: AppState, action: PayloadAction<{ category: string; color: string }>) => {
+      if (!state.categoryColors) {
+        state.categoryColors = {};
+      }
+      state.categoryColors[action.payload.category] = action.payload.color;
+    },
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
@@ -804,6 +810,7 @@ const appSlice = createSlice({
         fromConfigAppState.categories.forEach((category) => categoriesFromMods.add(category));
       }
       state.categories = Array.from(categoriesFromMods);
+      state.categoryColors = fromConfigAppState.categoryColors || {};
 
       const toEnable = fromConfigAppState.currentPreset.mods.filter((iterMod) =>
         fromConfigAppState.alwaysEnabledMods.some((mod) => mod.name == iterMod.name)
@@ -1349,6 +1356,7 @@ export const {
   addCategory,
   removeCategory,
   renameCategory,
+  setCategoryColor,
   setModRowsSortingType,
   setAvailableLanguages,
   setPackDataOverwrites,

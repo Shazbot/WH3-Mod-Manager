@@ -33,6 +33,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isClosedOnPlay: appState.isClosedOnPlay,
     isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,
     categories: appState.categories,
+    categoryColors: appState.categoryColors,
     modRowsSortingType: appState.modRowsSortingType,
     currentLanguage: appState.currentLanguage,
     currentGame: appState.currentGame,
