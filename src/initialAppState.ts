@@ -6,6 +6,7 @@ const initialState = {
     name: "",
   },
   categories: [],
+  categoryColors: {},
   lastSelectedPreset: null,
   presets: [],
   filter: "",

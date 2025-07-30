@@ -94,6 +94,7 @@ declare global {
 
   interface AppState {
     categories: string[];
+    categoryColors: Record<string, string>;
     currentPreset: Preset;
     importedMods: ModIdAndLoadOrder[];
     presets: Preset[];
@@ -180,6 +181,7 @@ declare global {
     | "isAutoStartCustomBattleEnabled"
     | "isClosedOnPlay"
     | "categories"
+    | "categoryColors"
     | "modRowsSortingType"
     | "currentLanguage"
     | "currentGame"
