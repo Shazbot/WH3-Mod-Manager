@@ -1,75 +1,10 @@
 // Schema files are now loaded lazily on-demand
-import { SCHEMA_FIELD_TYPE, DBFieldName, DBFileName } from "./packFileTypes";
+import { DBFieldName, DBFileName, DBVersion } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 import { perfMonitor } from "./utility/performanceMonitor";
-
-export interface DBField {
-  name: string;
-  field_type: SCHEMA_FIELD_TYPE;
-  is_key: boolean;
-  default_value: string;
-  is_filename: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  filename_relative_path?: any;
-  is_reference: string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  lookup?: any;
-  description: string;
-  ca_order: number;
-  is_bitwise: number;
-  enum_values: Record<string, unknown>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  is_part_of_colour?: any;
-}
-
-export interface DBVersion {
-  version: number;
-  fields: DBField[];
-}
-
-export const locFields: DBField[] = [
-  {
-    name: "key",
-    field_type: "StringU16",
-    default_value: "",
-    is_key: true,
-    is_filename: false,
-    is_reference: [],
-    description: "",
-    ca_order: 0,
-    is_bitwise: 0,
-    enum_values: {},
-  },
-  {
-    name: "text",
-    field_type: "StringU16",
-    default_value: "",
-    is_key: true,
-    is_filename: false,
-    is_reference: [],
-    description: "",
-    ca_order: 0,
-    is_bitwise: 0,
-    enum_values: {},
-  },
-  {
-    name: "tooltip",
-    field_type: "Boolean",
-    default_value: "false",
-    is_key: true,
-    is_filename: false,
-    is_reference: [],
-    description: "",
-    ca_order: 0,
-    is_bitwise: 0,
-    enum_values: {},
-  },
-];
-
-export const LocVersion: DBVersion = {
-  version: 1,
-  fields: locFields,
-};
+import { decompress } from "@mongodb-js/zstd";
+import * as fs from "fs";
+import * as path from "path";
 
 // Schema cache to avoid reloading
 const schemaCache = new Map<SupportedGames, any>();
@@ -100,14 +35,14 @@ const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
 // Schema loading functions
 const getSchemaFileName = (game: SupportedGames): string => {
   const schemaMap: Record<SupportedGames, string> = {
-    wh3: "schema_wh3.json",
-    wh2: "schema_wh2.json",
-    threeKingdoms: "schema_3k.json",
-    attila: "schema_att.json",
-    troy: "schema_troy.json",
-    pharaoh: "schema_ph.json",
-    dynasties: "schema_ph_dyn.json",
-    rome2: "schema_rome2.json", // assuming this exists
+    wh3: "schema_wh3.json.zst",
+    wh2: "schema_wh2.json.zst",
+    threeKingdoms: "schema_3k.json.zst",
+    attila: "schema_att.json.zst",
+    troy: "schema_troy.json.zst",
+    pharaoh: "schema_ph.json.zst",
+    dynasties: "schema_ph_dyn.json.zst",
+    rome2: "schema_rome2.json.zst", // assuming this exists
   };
   return schemaMap[game];
 };
@@ -126,13 +61,18 @@ const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
   const loadingPromise = (async () => {
     try {
       const schemaFileName = getSchemaFileName(game);
-      const schema = await import(`../schema/${schemaFileName}`);
-      const schemaData = schema.default;
+      const compressedBuffer = fs.readFileSync(path.join(__dirname, `../schema/${schemaFileName}`));
+
+      const decompressedBuffer = await decompress(compressedBuffer);
+
+      // Parse JSON from decompressed buffer
+      const schemaData = JSON.parse(Buffer.from(decompressedBuffer).toString("utf8"));
+
       schemaCache.set(game, schemaData);
       perfMonitor.trackSchemaLoad(game, startTime);
       return schemaData;
     } catch (error) {
-      console.warn(`Failed to load schema for game ${game}:`, error);
+      console.log(`Failed to load schema for game ${game}:`, error);
       return { definitions: {} };
     } finally {
       // Clean up the promise from the map once it's resolved
