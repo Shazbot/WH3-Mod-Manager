@@ -20,6 +20,7 @@ const ModsViewer = memo(() => {
   const packPath =
     currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
+  const startArgs = useAppSelector((state) => state.app.startArgs);
 
   const [isOpen, setIsOpen] = React.useState(true);
 
@@ -67,14 +68,16 @@ const ModsViewer = memo(() => {
 
   // for testing, automatically opens db.pack main_units_tablesl
   useEffect(() => {
-    window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
-    dispatch(
-      selectDBTable({
-        packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
-        dbName: "main_units_tables",
-        dbSubname: "data__",
-      })
-    );
+    if (startArgs.includes("-testDBClone")) {
+      window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
+      dispatch(
+        selectDBTable({
+          packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
+          dbName: "main_units_tables",
+          dbSubname: "data__",
+        })
+      );
+    }
   }, []);
 
   if (!packsData[packPath]) {

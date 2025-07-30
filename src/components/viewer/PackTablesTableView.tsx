@@ -65,6 +65,7 @@ const HandsontableWrapper = memo(
     currentDBTableSelection: DBTableSelection;
     currentSchema: DBVersion;
   }) => {
+    const startArgs = useAppSelector((state) => state.app.startArgs);
     return (
       <Suspense fallback={<TableLoadingSpinner />}>
         <LazyHotTable
@@ -90,6 +91,7 @@ const HandsontableWrapper = memo(
                   return "<b>Deep clone</b>";
                 },
                 hidden() {
+                  if (!startArgs.includes("-testDBClone")) return true;
                   if (!hotRef || !hotRef.current) return;
                   const hot = hotRef.current.hotInstance;
                   if (!hot) return true;

@@ -1542,13 +1542,15 @@ export const registerIpcMainListeners = (
     );
 
     // for testing, automatically opens db.pack
-    // if (appData.gamesToGameFolderPaths[appData.currentGame].dataFolder)
-    //   ipcMain.emit(
-    //     "requestOpenModInViewer",
-    //     null,
-    //     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    //     nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder!, "db.pack")
-    //   );
+    if (appData.startArgs.includes("-testDBClone")) {
+      if (appData.gamesToGameFolderPaths[appData.currentGame].dataFolder)
+        ipcMain.emit(
+          "requestOpenModInViewer",
+          null,
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder!, "db.pack")
+        );
+    }
   });
 
   ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {
@@ -2185,6 +2187,8 @@ export const registerIpcMainListeners = (
       gameToReferences[appData.currentGame]
     );
 
+    windows.viewerWindow?.webContents.send("setStartArgs", appData.startArgs);
+
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
@@ -2218,6 +2222,8 @@ export const registerIpcMainListeners = (
         windows.skillsWindow?.webContents.openDevTools({ mode: "right" });
       }, 1000);
     }
+
+    windows.skillsWindow?.webContents.send("setStartArgs", appData.startArgs);
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {
