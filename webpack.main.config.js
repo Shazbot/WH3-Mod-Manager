@@ -45,6 +45,13 @@ module.exports = {
     "../schema/schema_troy.json": "commonjs2 ../schema/schema_troy.json",
     "../schema/schema_ph.json": "commonjs2 ../schema/schema_ph.json",
     "../schema/schema_ph_dyn.json": "commonjs2 ../schema/schema_ph_dyn.json",
+    "../schema/schema_wh3.json.zst": "../schema/schema_wh3.json.zst",
+    "../schema/schema_wh2.json.zst": "../schema/schema_wh2.json.zst",
+    "../schema/schema_3k.json.zst": "../schema/schema_3k.json.zst",
+    "../schema/schema_att.json.zst": "../schema/schema_att.json.zst",
+    "../schema/schema_troy.json.zst": "../schema/schema_troy.json.zst",
+    "../schema/schema_ph.json.zst": "../schema/schema_ph.json.zst",
+    "../schema/schema_ph_dyn.json.zst": "../schema/schema_ph_dyn.json.zst",
   },
   plugins: [
     new webpack.IgnorePlugin({ resourceRegExp: /^@aws-sdk\/client-s3$/ }),

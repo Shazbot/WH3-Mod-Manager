@@ -1,5 +1,10 @@
-import { LocVersion } from "../../schema";
-import { PackedFile, AmendedSchemaField, SCHEMA_FIELD_TYPE, DBVersion } from "../../packFileTypes";
+import {
+  PackedFile,
+  AmendedSchemaField,
+  SCHEMA_FIELD_TYPE,
+  DBVersion,
+  LocVersion,
+} from "../../packFileTypes";
 
 export const isSchemaFieldNumber = (fieldType: SCHEMA_FIELD_TYPE) => {
   return (

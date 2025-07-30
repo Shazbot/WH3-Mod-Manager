@@ -10,10 +10,13 @@ import {
   SCHEMA_FIELD_TYPE,
   AmendedSchemaField,
   NewPackedFile,
+  DBVersion,
+  LocVersion,
+  locFields,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
-import { DBNameToDBVersions, DBVersion, LocVersion, locFields } from "./schema";
+import { DBNameToDBVersions } from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
 import { format } from "date-fns";
