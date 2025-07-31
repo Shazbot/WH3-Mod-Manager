@@ -9,6 +9,7 @@ import {
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
+  toggleIsChangingGameProcessPriority,
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,
   setDataModsToEnableByName,
@@ -70,6 +71,7 @@ const OptionsDrawer = memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isDev = useAppSelector((state) => state.app.isDev);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
@@ -578,6 +580,29 @@ const OptionsDrawer = memo(() => {
                     </label>
                   </div>
                 )}
+                <div className="flex items-center ml-1 mt-2">
+                  <input
+                    className=""
+                    type="checkbox"
+                    id="toggleIsChangingGameProcessPriority"
+                    checked={!!isChangingGameProcessPriority}
+                    onChange={() => dispatch(toggleIsChangingGameProcessPriority())}
+                  ></input>
+                  <label className="ml-2" htmlFor="toggleIsChangingGameProcessPriority">
+                    <Tooltip
+                      placement="bottom"
+                      style="light"
+                      content={
+                        <>
+                          <div>{localized.changeGameProcessPriority1}</div>
+                          <div>{localized.changeGameProcessPriority2}</div>
+                        </>
+                      }
+                    >
+                      {localized.changeGameProcessPriority}
+                    </Tooltip>
+                  </label>
+                </div>
               </>
             )}
 

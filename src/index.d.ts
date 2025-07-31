@@ -119,6 +119,7 @@ declare global {
     isScriptLoggingEnabled: boolean;
     isSkipIntroMoviesEnabled: boolean;
     isAutoStartCustomBattleEnabled: boolean;
+    isChangingGameProcessPriority: boolean;
     allMods: Mod[];
     packsData: Record<string, PackViewData>;
     packCollisions: PackCollisions;
@@ -179,6 +180,7 @@ declare global {
     | "isScriptLoggingEnabled"
     | "isSkipIntroMoviesEnabled"
     | "isAutoStartCustomBattleEnabled"
+    | "isChangingGameProcessPriority"
     | "isClosedOnPlay"
     | "categories"
     | "categoryColors"

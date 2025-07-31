@@ -26,6 +26,7 @@ const initialState = {
   isScriptLoggingEnabled: false,
   isSkipIntroMoviesEnabled: false,
   isAutoStartCustomBattleEnabled: false,
+  isChangingGameProcessPriority: false,
   isCompatCheckingVanillaPacks: false,
   allMods: [],
   packsData: {},
