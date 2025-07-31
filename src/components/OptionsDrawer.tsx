@@ -231,18 +231,19 @@ const OptionsDrawer = memo(() => {
           >
             <h5
               id="drawer-label"
-              className="inline-flex items-center mb-4 text-base font-semibold text-gray-500 dark:text-gray-400 mt-6"
+              className="inline-flex items-center mb-4 text-base font-semibold text-gray-500 dark:text-gray-400 mt-6 cursor-default"
             >
               {localized.otherOptions}
             </h5>
 
             <div className="flex justify-center relative">
-              <div className="absolute flex font-normal text-lg items-center bg-gray-800 justify-center w-14 h-6 top-[-12px] rounded mt-[-0.05rem]">
+              <div className="absolute flex font-normal text-lg items-center bg-gray-800 justify-center w-[5.5rem] h-6 top-[-12px] rounded mt-[-0.05rem] cursor-default">
                 {localized.Game}
+                <span className="text-xs pl-2">▼</span>
               </div>
               <div className="rounded border border-slate-400 h-32 w-32 flex justify-center items-center">
                 <Select
-                  className="aspect-square m-2 mt-5"
+                  className="aspect-square m-2 mt-5 cursor-pointer"
                   id="gameSelect"
                   options={availableGames}
                   styles={selectStyle}
