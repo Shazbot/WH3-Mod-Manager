@@ -25,6 +25,7 @@ export const buildDBReferenceTree = async (
   packPath: string,
   currentDBTableSelection: DBTableSelection,
   deepCloneTarget: { row: number; col: number },
+  existingRefs: DBCell[],
   selectedNodesByName: IViewerTreeNodeWithData[]
 ): Promise<IViewerTreeNodeWithData | undefined> => {
   console.log("ENTER buildDBReferenceTree");
@@ -34,7 +35,7 @@ export const buildDBReferenceTree = async (
   const tableToreferencedColumns = gameToReferences[appData.currentGame];
   const packedFilePath = getDBPackedFilePath(currentDBTableSelection);
 
-  const isIndirectRefSearch = selectedNodesByName.length > 0;
+  const isStartingSearchIndirect = selectedNodesByName.length > 0;
 
   const existingPack = appData.packsData.find((pack) => pack.path == packPath);
   if (!existingPack) {
@@ -75,6 +76,7 @@ export const buildDBReferenceTree = async (
       packPath,
       currentDBTableSelection,
       deepCloneTarget,
+      existingRefs,
       selectedNodesByName
     );
   }
@@ -145,7 +147,7 @@ export const buildDBReferenceTree = async (
   // console.log("found row is", rows[deepCloneTarget.row]);
 
   // get refs that are in the base DB row
-  if (!isIndirectRefSearch) {
+  if (!isStartingSearchIndirect) {
     const row = rows[deepCloneTarget.row];
     for (let i = 0; i < row.length; i++) {
       if (!schema.fields[i].is_reference) continue;
@@ -174,15 +176,21 @@ export const buildDBReferenceTree = async (
   const allTreeChildren: string[] = [];
 
   const refsQueue = new Queue<
-    [acc: DBCell[], packFile: PackedFile, dbCell: DBCell, treeParent: IViewerTreeNodeWithData]
+    [
+      acc: DBCell[],
+      packFile: PackedFile,
+      dbCell: DBCell,
+      treeParent: IViewerTreeNodeWithData,
+      isIndirect: boolean
+    ]
   >();
 
-  type DBCell = [tableName: string, tableColumnName: string, resolveKeyValue: string];
   const addRefsRecursively = async (
     acc: DBCell[],
     packFile: PackedFile,
     dbCell: DBCell,
-    treeParent: IViewerTreeNodeWithData
+    treeParent: IViewerTreeNodeWithData,
+    isIndirectRefSearch: boolean
   ) => {
     const [tableName, tableColumnName, resolvedKeyValue] = dbCell;
     console.log("addRefsRecursively for", tableName, tableColumnName, resolvedKeyValue, packFile.name);
@@ -268,7 +276,8 @@ export const buildDBReferenceTree = async (
             treeParent,
             newTableName,
             newTableColumnName,
-            cell.resolvedKeyValue
+            cell.resolvedKeyValue,
+            false
           );
         }
       }
@@ -282,7 +291,7 @@ export const buildDBReferenceTree = async (
     newTableName: string,
     newTableColumnName: string,
     resolvedKeyValue: string,
-    isIndirectReference?: boolean
+    isIndirectReference: boolean
   ) => {
     if (!isIndirectReference) {
       if (
@@ -339,7 +348,8 @@ export const buildDBReferenceTree = async (
         treeParent,
         newTableName,
         newTableColumnName,
-        resolvedKeyValue
+        resolvedKeyValue,
+        false
       );
     }
 
@@ -357,48 +367,85 @@ export const buildDBReferenceTree = async (
 
       if (!row) {
         console.log("no row:", newPackFile.name, newTableColumnName, resolvedKeyValue);
-        if (newTableColumnName == "unit") console.log(dbVersion);
+        // if (newTableColumnName == "unit") console.log(dbVersion);
         return;
       }
       if (row) {
-        const referencedColumns = tableToreferencedColumns[newTableName];
-        if (!referencedColumns || referencedColumns.length == 0) {
-          console.log("referencedColumns NOT USABLE");
-          return;
-        }
-        if (referencedColumns.length > 1) {
-          console.log("MORE THAN ONE REFERENCED COLUMN");
-          return;
-        }
-        const referencedColumn = referencedColumns[0];
-        const resolvedKeyValueOfColumnKey = row.find(
-          (cell) => cell.name == referencedColumn
-        )?.resolvedKeyValue;
-        if (!resolvedKeyValueOfColumnKey) {
-          console.log("no resoldevedKeyValueOfColumnKey");
-          return;
-        }
+        const referencedColumns = tableToreferencedColumns[newTableName] || [];
+        // if (!referencedColumns || referencedColumns.length == 0) {
+        //   console.log("referencedColumns NOT USABLE");
+        //   return;
+        // }
+        // if (referencedColumns.length > 1) {
+        //   console.log("MORE THAN ONE REFERENCED COLUMN");
+        //   return;
+        // }
+        // const referencedColumn = referencedColumns[0];
+        console.log("referenced columns are:", referencedColumns);
 
-        if (
-          acc.some(
-            (dbCell) =>
-              dbCell[0] == newTableName &&
-              dbCell[1] == referencedColumn &&
-              dbCell[2] == resolvedKeyValueOfColumnKey
-          )
-        )
-          return;
+        if (referencedColumns.length == 0) {
+          addNewChildNode(
+            acc,
+            newPackFile,
+            treeParent,
+            newTableName,
+            newTableColumnName,
+            resolvedKeyValue,
+            true
+          );
+        } else {
+          for (const referencedColumn of referencedColumns) {
+            const resolvedKeyValueOfColumnKey = row.find(
+              (cell) => cell.name == referencedColumn
+            )?.resolvedKeyValue;
+            if (!resolvedKeyValueOfColumnKey) {
+              console.log("no resoldevedKeyValueOfColumnKey");
+              return;
+            }
 
-        acc.push([newTableName, referencedColumn, resolvedKeyValueOfColumnKey]);
+            console.log("for column", referencedColumn, "key is", resolvedKeyValueOfColumnKey);
 
-        addNewChildNode(
-          acc,
-          newPackFile,
-          treeParent,
-          newTableName,
-          referencedColumn,
-          resolvedKeyValueOfColumnKey
-        );
+            if (
+              acc.some(
+                (dbCell) =>
+                  dbCell[0] == newTableName &&
+                  dbCell[1] == referencedColumn &&
+                  dbCell[2] == resolvedKeyValueOfColumnKey
+              )
+            ) {
+              console.log("SKIPPING, this ref already exists");
+              continue;
+            }
+
+            acc.push([newTableName, referencedColumn, resolvedKeyValueOfColumnKey]);
+
+            console.log(
+              "adding new referenced node:",
+              newPackFile.name,
+              newTableName,
+              referencedColumn,
+              resolvedKeyValueOfColumnKey
+            );
+            logUsedRefs(acc);
+            // await addNewCellFromReference(
+            //   acc,
+            //   treeParent,
+            //   newTableName,
+            //   referencedColumn,
+            //   resolvedKeyValueOfColumnKey
+            // );
+
+            addNewChildNode(
+              acc,
+              newPackFile,
+              treeParent,
+              newTableName,
+              referencedColumn,
+              resolvedKeyValueOfColumnKey,
+              false
+            );
+          }
+        }
       } else {
         console.log("NO row FOUND");
       }
@@ -413,9 +460,10 @@ export const buildDBReferenceTree = async (
     treeParent: IViewerTreeNodeWithData,
     newTableName: string,
     newTableColumnName: string,
-    resolvedKeyValue: string
+    resolvedKeyValue: string,
+    isIndirectRefSearch: boolean
   ) => {
-    // console.log("addNewChildNode", newTableName, newTableColumnName, resolvedKeyValue, treeParent.name);
+    console.log("addNewChildNode", newTableName, newTableColumnName, resolvedKeyValue, treeParent.name);
     const newChild = {
       name: `${newTableName} ${newTableColumnName} : ${resolvedKeyValue}`,
       children: [],
@@ -430,8 +478,16 @@ export const buildDBReferenceTree = async (
       treeParent.children.push(newChild);
       allTreeChildren.push(newChild.name);
       // console.log("enqueue 1:", acc);
-      if (!isIndirectRefSearch)
-        refsQueue.enqueue([acc, newPackFile, [newTableName, newTableColumnName, resolvedKeyValue], newChild]);
+      if (!isIndirectRefSearch) {
+        console.log("ENQUEUE", newTableName, newTableColumnName, resolvedKeyValue);
+        refsQueue.enqueue([
+          acc,
+          newPackFile,
+          [newTableName, newTableColumnName, resolvedKeyValue],
+          newChild,
+          false,
+        ]);
+      }
       // addRefsRecursively(acc, newPackFile, [newTableName, newTableColumnName, resolvedKeyValue], newChild);
     } else {
       console.log("not adding tree child, it alreadyexists");
@@ -458,7 +514,7 @@ export const buildDBReferenceTree = async (
   allTreeChildren.push(rootNode.name);
 
   // the starting refs we'll add to the queue, these will be then recursed from to find new refs
-  const refsToUse = isIndirectRefSearch
+  const refsToUse = isStartingSearchIndirect
     ? [[currentDBTableSelection.dbName, field.name, toClone.resolvedKeyValue] as DBCell] // if it's an indirect ref search just add the root node
     : // otherwise it's a normal ref search and we add all the direct references in the starting DB row
       rows[deepCloneTarget.row].reduce((acc, currentField, currentFieldIndex) => {
@@ -514,9 +570,19 @@ export const buildDBReferenceTree = async (
   // root node value
   refsToUse.push([currentDBTableSelection.dbName, field.name, toClone.resolvedKeyValue]);
 
+  // already existing refs
+  for (const existingRef of existingRefs) {
+    if (
+      !refsToUse.some(
+        (dbCell) => dbCell[0] == existingRef[0] && dbCell[1] == existingRef[1] && dbCell[2] == existingRef[2]
+      )
+    )
+      refsToUse.push(existingRef);
+  }
+
   for (const [packFile, dbCell, newChild] of childrenToAdd) {
     // console.log("enqueue 2:", refsToUse);
-    refsQueue.enqueue([refsToUse, packFile, dbCell, newChild]);
+    refsQueue.enqueue([refsToUse, packFile, dbCell, newChild, false]);
     // addRefsRecursively(refsToUse, packFile, dbCell, newChild);
   }
 
@@ -528,7 +594,7 @@ export const buildDBReferenceTree = async (
       selectedNodeByName.value,
     ];
     // console.log("enqueue 3:", refsToUse);
-    refsQueue.enqueue([refsToUse, packFile, dbCell, rootNode]);
+    refsQueue.enqueue([refsToUse, packFile, dbCell, rootNode, true]);
   }
 
   console.log(
@@ -686,4 +752,13 @@ export async function executeDBDuplication(
     toSave,
     nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string, "test.pack")
   );
+}
+
+function logUsedRefs(acc: DBCell[]) {
+  console.log("current used refs:");
+  for (const cell of acc) {
+    const [tableName, tableColumnName, resolveKeyValue] = cell;
+    console.log(tableName, tableColumnName, resolveKeyValue);
+  }
+  console.log("current used refs DONE =======================");
 }

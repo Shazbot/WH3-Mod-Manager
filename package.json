@@ -14,7 +14,7 @@
     "handsontable/styles/*.css"
   ],
   "scripts": {
-    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start --inspect-electron -- --mode development",
+    "start": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge start --inspect-electron -- --mode development -testDBClone",
     "package": "electron-forge package",
     "make": "tsc ./src/sub.ts ./src/readPacksWorker.ts --skipLibCheck --resolveJsonModule --outDir ./temp && electron-forge make -- --mode production",
     "publish": "electron-forge publish",

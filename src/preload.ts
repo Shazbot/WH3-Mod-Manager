@@ -242,6 +242,7 @@ const api = {
     packPath: string,
     currentDBTableSelection: DBTableSelection,
     deepCloneTarget: { row: number; col: number },
+    existingRefs: DBCell[],
     selectedNodesByName: IViewerTreeNodeWithData[]
   ): Promise<IViewerTreeNodeWithData> =>
     ipcRenderer.invoke(
@@ -249,6 +250,7 @@ const api = {
       packPath,
       currentDBTableSelection,
       deepCloneTarget,
+      existingRefs,
       selectedNodesByName
     ),
 };

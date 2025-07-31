@@ -582,4 +582,6 @@ declare global {
     columnName: string;
     value: string;
   }
+
+  type DBCell = [tableName: string, tableColumnName: string, resolveKeyValue: string];
 }

@@ -422,3 +422,7 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 #gameSelect .css-mwdn4m-control {
   cursor: pointer;
 }
+
+.color-disabled {
+  color: #666666;
+}
