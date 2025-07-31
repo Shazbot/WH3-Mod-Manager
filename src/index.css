@@ -417,3 +417,8 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
     clip-path: inset(0 -34% 0 0);
   }
 }
+
+/* for the game icon in Other Options that opens the game select dropdown */
+#gameSelect .css-mwdn4m-control {
+  cursor: pointer;
+}
