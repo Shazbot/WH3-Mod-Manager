@@ -1434,6 +1434,8 @@ export const registerIpcMainListeners = (
         appState.presets = appData.gameToPresets[appState.currentGame];
       }
 
+      appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
+
       return appState;
     } finally {
       appData.hasReadConfig = true;
@@ -1794,6 +1796,7 @@ export const registerIpcMainListeners = (
     );
     appData.enabledMods = enabledMods;
     appData.isCompatCheckingVanillaPacks = data.isCompatCheckingVanillaPacks;
+    appData.isChangingGameProcessPriority = data.isChangingGameProcessPriority;
     const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
       enabledMods.find((mod) => mod.name === iterMod.name)
     );

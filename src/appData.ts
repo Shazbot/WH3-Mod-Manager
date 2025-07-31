@@ -51,6 +51,7 @@ interface AppData {
   areSkillsReady: boolean;
   queuedViewerData: (PackViewData | undefined)[];
   queuedSkillsData: SkillsData | undefined;
+  isChangingGameProcessPriority: boolean;
 }
 
 export type GameFolderPaths = {
@@ -100,6 +101,7 @@ const appData = {
   areSkillsReady: false,
   queuedViewerData: [],
   queuedSkillsData: undefined,
+  isChangingGameProcessPriority: false,
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {

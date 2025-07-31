@@ -397,6 +397,21 @@ if (!gotTheLock) {
               (_, stdout) => {
                 const isWH3Running = stdout.includes(gameToProcessName[appData.currentGame]);
                 if (appData.isWH3Running != isWH3Running) {
+                  if (appData.isChangingGameProcessPriority && isWH3Running && !appData.isWH3Running) {
+                    console.log("Setting process priority to high...");
+                    exec(
+                      `powershell.exe -Command "(Get-Process -Name '${gameToProcessName[
+                        appData.currentGame
+                      ].replace(".exe", "")}').PriorityClass = 'High'"`,
+
+                      (error) => {
+                        if (error) {
+                          console.error(`exec error: ${error}`);
+                          return;
+                        }
+                      }
+                    );
+                  }
                   appData.isWH3Running = isWH3Running;
                   windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
                 }

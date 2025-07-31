@@ -800,6 +800,7 @@ const appSlice = createSlice({
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
+      state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
       // state.currentLanguage = fromConfigAppState.currentLanguage || "en"; // handled elsewhere
       state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
@@ -1073,6 +1074,9 @@ const appSlice = createSlice({
     toggleIsAutoStartCustomBattleEnabled: (state: AppState) => {
       state.isAutoStartCustomBattleEnabled = !state.isAutoStartCustomBattleEnabled;
     },
+    toggleIsChangingGameProcessPriority: (state: AppState) => {
+      state.isChangingGameProcessPriority = !state.isChangingGameProcessPriority;
+    },
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
@@ -1322,6 +1326,7 @@ export const {
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleIsAutoStartCustomBattleEnabled,
+  toggleIsChangingGameProcessPriority,
   setSharedMod,
   orderImportedMods,
   addMod,
