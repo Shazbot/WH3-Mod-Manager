@@ -26,6 +26,30 @@ const findNodeInTree = (
   return null;
 };
 
+const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
+  const getAllNodesInTreeIter = (
+    tree: IViewerTreeNodeWithData | IViewerTreeNode,
+    acc: (IViewerTreeNodeWithData | IViewerTreeNode)[]
+  ) => {
+    acc.push(tree);
+    if (tree.children) {
+      for (const child of tree.children) {
+        acc.push(child);
+        getAllNodesInTreeIter(child, acc);
+      }
+    }
+    return acc;
+  };
+  return getAllNodesInTreeIter(tree, []);
+};
+
+const getAllRefsFromTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
+  const nodes = getAllNodesInTree(tree);
+  return nodes
+    .map((node) => node as IViewerTreeNodeWithData)
+    .map((node) => [node.tableName, node.columnName, node.value] as DBCell);
+};
+
 const DBDuplication = React.memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
@@ -52,6 +76,7 @@ const DBDuplication = React.memo(() => {
         packPath,
         newDBTableSelection,
         { row: -1, col: -1 },
+        getAllRefsFromTree(treeData),
         [newSelectedNode] // Only get references for this specific node
       );
 
@@ -98,6 +123,7 @@ const DBDuplication = React.memo(() => {
             packPath: currentDBTableSelection.packPath,
           } as DBTableSelection,
           deepCloneTarget,
+          treeData ? getAllRefsFromTree(treeData) : [],
           []
         );
 
@@ -286,6 +312,10 @@ const DBDuplication = React.memo(() => {
   const onNodeExpanded = (nodeName: string) => {
     console.log("expanded tree node", nodeName);
     const currentName = nodeName;
+
+    const node = data.find((node) => node.name == nodeName);
+    if (!node || !node.children || node.children.length == 0) return;
+
     // const expandedByName = Array.from(props.treeState.selectedIds.values())
     //   .map((id) => data.find((node) => node.id == id)?.name)
     //   .filter((name): name is string => !!name);
@@ -311,9 +341,6 @@ const DBDuplication = React.memo(() => {
   const onNodeToggled = (nodeName: string) => {
     console.log("toggled node", nodeName);
     const currentName = nodeName;
-    // const expandedByName = Array.from(props.treeState.selectedIds.values())
-    //   .map((id) => data.find((node) => node.id == id)?.name)
-    //   .filter((name): name is string => !!name);
 
     let newselectedNodesByName = [...selectedNodesByName];
     if (selectedNodesByName.includes(currentName))
@@ -481,7 +508,7 @@ const DBDuplication = React.memo(() => {
                 }}
                 // {...getNodeProps({ onClick: handleExpand })}
                 style={{ marginLeft: 40 * (level - 1) }}
-                className="flex items-center"
+                className="flex items-center min-h-[42px]"
               >
                 {isBranch && <ArrowIcon isOpen={isExpanded} />}
                 <CheckBoxIcon
@@ -498,26 +525,28 @@ const DBDuplication = React.memo(() => {
                 >
                   {element.name}
                 </span>
-                <span className="flex items-center">
-                  <span className="text-slate-100 ml-4">
-                    <FaArrowRight></FaArrowRight>
+                {!nodeNameToData[element.name].isIndirectRef && (
+                  <span className="flex items-center">
+                    <span className="text-slate-100 ml-4">
+                      <FaArrowRight></FaArrowRight>
+                    </span>
+                    <span className="relative">
+                      <input
+                        onClick={(e) => onInputClick(e)}
+                        onBlur={(e) => onFocusChange(e, element)}
+                        id="filterInput"
+                        type="text"
+                        onChange={(e) => onFilterChange(e, element.name)}
+                        defaultValue={
+                          nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]
+                        }
+                        className={`ml-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 ${
+                          needsWarningBorder(element.name) ? "!border-yellow-300" : ""
+                        }`}
+                      ></input>
+                    </span>
                   </span>
-                  <span className="relative">
-                    <input
-                      onClick={(e) => onInputClick(e)}
-                      onBlur={(e) => onFocusChange(e, element)}
-                      id="filterInput"
-                      type="text"
-                      onChange={(e) => onFilterChange(e, element.name)}
-                      defaultValue={
-                        nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]
-                      }
-                      className={`ml-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 ${
-                        needsWarningBorder(element.name) ? "!border-yellow-300" : ""
-                      }`}
-                    ></input>
-                  </span>
-                </span>
+                )}
               </div>
             );
           }}

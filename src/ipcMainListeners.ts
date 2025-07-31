@@ -2915,9 +2915,16 @@ export const registerIpcMainListeners = (
       packPath: string,
       currentDBTableSelection: DBTableSelection,
       deepCloneTarget: { row: number; col: number },
+      existingRefs: DBCell[],
       selectedNodesByName: IViewerTreeNodeWithData[]
     ) => {
-      return buildDBReferenceTree(packPath, currentDBTableSelection, deepCloneTarget, selectedNodesByName);
+      return buildDBReferenceTree(
+        packPath,
+        currentDBTableSelection,
+        deepCloneTarget,
+        existingRefs,
+        selectedNodesByName
+      );
     }
   );
 
