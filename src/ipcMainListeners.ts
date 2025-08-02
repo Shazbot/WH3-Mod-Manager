@@ -1490,6 +1490,10 @@ export const registerIpcMainListeners = (
     mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
   });
 
+  ipcMain.handle("getListOfPacksInSave", async (event, saveName: string) => {
+    return getPacksInSave(saveName);
+  });
+
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {

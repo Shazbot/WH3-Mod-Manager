@@ -253,6 +253,9 @@ const api = {
       existingRefs,
       selectedNodesByName
     ),
+
+  getListOfPacksInSave: (saveName: string): Promise<string[]> =>
+    ipcRenderer.invoke("getListOfPacksInSave", saveName),
 };
 
 export type api = typeof api;
