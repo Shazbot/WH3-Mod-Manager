@@ -20,7 +20,7 @@ import {
 } from "../packFileTypes";
 import { setPackCollisions } from "../appSlice";
 import groupBy from "object.groupby";
-import localizationContext from "../localizationContext";
+import { useLocalizations } from "../localizationContext";
 import { vanillaPackNames } from "../supportedGames";
 import { IoPeople } from "react-icons/io5";
 import { BsPersonVcard } from "react-icons/bs";
@@ -109,7 +109,7 @@ const CompatScreen = memo(() => {
     setLastPackCollisionCheckProgressIndex(-1);
   }
 
-  const localized: Record<string, string> = useContext(localizationContext);
+  const localized = useLocalizations();
   const compatHelpTwo = ((localized.compatHelpTwo ?? "").includes("STAR_ICON") &&
     localized.compatHelpTwo.split("STAR_ICON")) || ["", ""];
 
@@ -410,7 +410,7 @@ const CompatScreen = memo(() => {
                         onChange={(e) => setSelectedModFilter(e.target.value)}
                         className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                       >
-                        <option value="">All mods</option>
+                        <option value="">{localized.allMods}</option>
                         {(() => {
                           const availableMods = Object.keys(groupedPackFileCollisions);
                           const modsToShow =
@@ -538,7 +538,7 @@ const CompatScreen = memo(() => {
                         onChange={(e) => setSelectedModFilter(e.target.value)}
                         className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                       >
-                        <option value="">All mods</option>
+                        <option value="">{localized.allMods}</option>
                         {(() => {
                           const availableMods = Object.keys(groupedPackTableCollisions);
                           const modsToShow =
@@ -697,7 +697,7 @@ const CompatScreen = memo(() => {
                         onChange={(e) => setSelectedModFilter(e.target.value)}
                         className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                       >
-                        <option value="">All mods</option>
+                        <option value="">{localized.allMods}</option>
                         {(() => {
                           const availableMods = Object.keys(groupedMissingTableReferences);
                           const modsToShow =
@@ -846,7 +846,7 @@ const CompatScreen = memo(() => {
                         onChange={(e) => setSelectedModFilter(e.target.value)}
                         className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                       >
-                        <option value="">All mods</option>
+                        <option value="">{localized.allMods}</option>
                         {(() => {
                           const availableMods = Object.keys(groupedUniqueIdsCollisions);
                           const modsToShow =
@@ -1101,7 +1101,7 @@ const CompatScreen = memo(() => {
                         onChange={(e) => setSelectedModFilter(e.target.value)}
                         className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                       >
-                        <option value="">All mods</option>
+                        <option value="">{localized.allMods}</option>
                         {(() => {
                           const availableMods = Object.keys(groupedScriptListenerCollisions);
                           const modsToShow =
@@ -1246,7 +1246,7 @@ const CompatScreen = memo(() => {
                         onChange={(e) => setSelectedModFilter(e.target.value)}
                         className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                       >
-                        <option value="">All mods</option>
+                        <option value="">{localized.allMods}</option>
                         {(() => {
                           const availableMods = Object.keys(groupedPackFileAnalysisErrors);
                           const modsToShow =
@@ -1362,7 +1362,7 @@ const CompatScreen = memo(() => {
                         onChange={(e) => setSelectedModFilter(e.target.value)}
                         className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                       >
-                        <option value="">All mods</option>
+                        <option value="">{localized.allMods}</option>
                         {(() => {
                           const availableMods = Object.keys(groupedMissingFileRefs);
                           const modsToShow =
