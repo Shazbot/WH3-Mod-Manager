@@ -710,7 +710,7 @@ const appSlice = createSlice({
 
       console.log(
         "APPSLICE setPacksData:",
-        window.location,
+        window.location.pathname,
         packsData.map((pd) => pd.packName)
       );
     },
