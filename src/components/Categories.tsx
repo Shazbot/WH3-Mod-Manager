@@ -10,6 +10,7 @@ import { registerAllModules } from "handsontable/registry";
 import { FloatingOverlay } from "@floating-ui/react";
 import selectStyle from "../styles/selectStyle";
 import { ActionMeta, SingleValue } from "react-select";
+import { useLocalizations } from "../localizationContext";
 import {
   addCategory,
   removeCategory,
@@ -187,7 +188,7 @@ const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
             clipRule="evenodd"
           ></path>
         </svg>
-        <span className="sr-only">Remove badge</span>
+        <span className="sr-only">{localized.removeBadge}</span>
       </button>
     </span>
   );
@@ -198,6 +199,7 @@ let isControlDown = false;
 
 const Categories = memo(() => {
   const dispatch = useAppDispatch();
+  const localized = useLocalizations();
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
 
@@ -467,7 +469,7 @@ const Categories = memo(() => {
   // if we filtered out all rows make a new blank row or HotTable will disable its plugins permanently
   if (sourceDataObject.length == 0) {
     sourceDataObject.push({
-      category: "NO MATCHES",
+      category: localized.noMatches,
       isEnabled: false,
       humanName: null,
       path: null,
@@ -788,7 +790,7 @@ const Categories = memo(() => {
               className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
             >
-              Edit Categories
+{localized.editCategories}
             </button>
             <button
               onClick={() => collapseOrExpandAllCategories()}

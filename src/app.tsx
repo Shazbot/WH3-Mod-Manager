@@ -9,7 +9,7 @@ import { Toasts } from "./components/Toasts";
 import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
 import { StrictMode, useRef, Suspense } from "react";
-import LocalizationContext, { staticTextIds } from "./localizationContext";
+import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
 import { perfMonitor, startTiming, endTiming } from "./utility/performanceMonitor";
 
@@ -37,11 +37,12 @@ const LoadingSpinner = () => (
 );
 
 function ErrorFallback({ error }: { error: Error }) {
+  const localized = useLocalizations();
   return (
     <div role="alert" className="text-red-600">
-      <p>Something went wrong:</p>
+      <p>{localized.errorSomethingWentWrong}</p>
       <pre>{error.message}</pre>
-      <p>Press Ctrl+Shift+I to screenshot the error data in the Console tab</p>
+      <p>{localized.errorScreenshotInstructions}</p>
     </div>
   );
 }

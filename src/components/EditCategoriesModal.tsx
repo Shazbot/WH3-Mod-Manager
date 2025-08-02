@@ -4,7 +4,7 @@ import { Modal } from "../flowbite/components/Modal/index";
 import { addCategory, removeCategory, renameCategory, setCategoryColor } from "../appSlice";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faEdit, faPlus } from "@fortawesome/free-solid-svg-icons";
-import localizationContext from "../localizationContext";
+import { useLocalizations } from "../localizationContext";
 
 interface EditCategoriesModalProps {
   isOpen: boolean;
@@ -16,31 +16,31 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
   const categories = useAppSelector((state) => state.app.categories);
   const categoryColors = useAppSelector((state) => state.app.categoryColors || {});
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
-  const localized: Record<string, string> = useContext(localizationContext);
+  const localized = useLocalizations();
 
   const [newCategoryName, setNewCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
 
   const colorOptions = [
-    { name: "Blue", bg: "bg-blue-100 dark:bg-blue-900", text: "text-blue-800 dark:text-blue-300" },
+    { name: localized.colorBlue, bg: "bg-blue-100 dark:bg-blue-900", text: "text-blue-800 dark:text-blue-300" },
     {
-      name: "Emerald",
+      name: localized.colorEmerald,
       bg: "bg-emerald-100 dark:bg-emerald-900",
       text: "text-emerald-800 dark:text-emerald-300",
     },
-    { name: "Red", bg: "bg-red-100 dark:bg-red-900", text: "text-red-800 dark:text-red-300" },
-    { name: "Amber", bg: "bg-amber-100 dark:bg-amber-900", text: "text-amber-800 dark:text-amber-300" },
-    { name: "Purple", bg: "bg-purple-100 dark:bg-purple-900", text: "text-purple-800 dark:text-purple-300" },
-    { name: "Rose", bg: "bg-rose-100 dark:bg-rose-900", text: "text-rose-800 dark:text-rose-300" },
-    { name: "Teal", bg: "bg-teal-100 dark:bg-teal-900", text: "text-teal-800 dark:text-teal-300" },
+    { name: localized.colorRed, bg: "bg-red-100 dark:bg-red-900", text: "text-red-800 dark:text-red-300" },
+    { name: localized.colorAmber, bg: "bg-amber-100 dark:bg-amber-900", text: "text-amber-800 dark:text-amber-300" },
+    { name: localized.colorPurple, bg: "bg-purple-100 dark:bg-purple-900", text: "text-purple-800 dark:text-purple-300" },
+    { name: localized.colorRose, bg: "bg-rose-100 dark:bg-rose-900", text: "text-rose-800 dark:text-rose-300" },
+    { name: localized.colorTeal, bg: "bg-teal-100 dark:bg-teal-900", text: "text-teal-800 dark:text-teal-300" },
     // { name: "Orange", bg: "bg-orange-100 dark:bg-orange-900", text: "text-orange-800 dark:text-orange-300" },
-    { name: "Slate", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-800 dark:text-slate-300" },
-    { name: "White", bg: "bg-white dark:bg-white", text: "text-gray-900 dark:text-gray-900" },
+    { name: localized.colorSlate, bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-800 dark:text-slate-300" },
+    { name: localized.colorWhite, bg: "bg-white dark:bg-white", text: "text-gray-900 dark:text-gray-900" },
     // { name: "Black", bg: "bg-gray-900 dark:bg-gray-900", text: "text-white dark:text-white" },
-    { name: "Lime", bg: "bg-lime-200 dark:bg-lime-200", text: "text-gray-900 dark:text-gray-900" },
-    { name: "Sky", bg: "bg-sky-200 dark:bg-sky-200", text: "text-gray-900 dark:text-gray-900" },
-    { name: "Fuchsia", bg: "bg-fuchsia-200 dark:bg-fuchsia-200", text: "text-gray-900 dark:text-gray-900" },
+    { name: localized.colorLime, bg: "bg-lime-200 dark:bg-lime-200", text: "text-gray-900 dark:text-gray-900" },
+    { name: localized.colorSky, bg: "bg-sky-200 dark:bg-sky-200", text: "text-gray-900 dark:text-gray-900" },
+    { name: localized.colorFuchsia, bg: "bg-fuchsia-200 dark:bg-fuchsia-200", text: "text-gray-900 dark:text-gray-900" },
   ];
 
   const handleAddCategory = () => {
@@ -188,7 +188,7 @@ const EditCategoriesModal = memo(({ isOpen, onClose }: EditCategoriesModalProps)
                                   ? "border-gray-400 dark:border-gray-300"
                                   : "border-gray-200 dark:border-gray-600"
                               } ${color.bg}`}
-                              title={`Set ${category} color to ${color.name}`}
+                              title={localized.setCategoryColorTooltip.replace('{{category}}', category).replace('{{color}}', color.name)}
                             />
                           ))}
                         </div>
