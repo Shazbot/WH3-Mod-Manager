@@ -132764,6 +132764,12 @@
         "is_filename": "true"
       }
     },
+    "unit_variants_colours_tables": {
+      "soldier_type": {
+        "description": "Unique lines are defined by a combination of faction, variant and soldier type, so this one should also be a key.",
+        "is_key": "true"
+      }
+    },
     "victory_types_tables": {
       "icon": {
         "filename_relative_path": "ui/campaign ui/victory_type_icons/%.png",
