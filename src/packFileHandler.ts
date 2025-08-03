@@ -20,16 +20,10 @@ export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
 
     isMovie = byteMask === 4;
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const refFileCount = await file.readInt32();
+    await file.seek(12); // skip to pack_file_index_size
     const pack_file_index_size = await file.readInt32();
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const pack_file_count = await file.readInt32();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const packed_file_index_size = await file.readInt32();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const header_buffer = await file.read(4);
+    await file.seek(28); // skip to after header_buffer
 
     if (pack_file_index_size > 0) {
       let chunk;
@@ -55,6 +49,8 @@ export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
   } finally {
     if (file) file.close();
   }
+
+  console.log("dependencyPacks:", dependencyPacks);
 
   return { path, isMovie, dependencyPacks };
 };
