@@ -106,9 +106,13 @@ const OptionsDrawer = memo(() => {
   const availableLanguagesToOptionsSelector = createSelector(
     (state: { app: AppState }) => state.app.availableLanguages,
     (availableLanguages) =>
-      availableLanguages.map((language) => {
-        return { value: language, label: ISO6391.getName(language) };
-      })
+      availableLanguages
+        .map((language) => {
+          return { value: language, label: ISO6391.getName(language) };
+        })
+        .toSorted((a, b) => {
+          return a.label.localeCompare(b.label);
+        })
   );
   const languageOptions = useSelector(availableLanguagesToOptionsSelector);
 

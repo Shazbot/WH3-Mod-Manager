@@ -1497,22 +1497,33 @@ export const registerIpcMainListeners = (
   ipcMain.handle("getPackFilesList", async (event, packPath: string) => {
     try {
       const pack = await readPack(packPath, { skipParsingTables: true });
-      return pack.packedFiles.map(pf => pf.name);
+      return pack.packedFiles.map((pf) => pf.name);
     } catch (error) {
       console.error("Failed to get pack files list:", error);
       throw error;
     }
   });
 
-  ipcMain.handle("renamePackedFiles", async (event, packPath: string, searchRegex: string, replaceText: string, useRegex: boolean, isDev?: boolean, pathFilter?: string) => {
-    try {
-      const { renamePackedFilesWithOptions } = await import("./packFileSerializer");
-      await renamePackedFilesWithOptions(packPath, searchRegex, replaceText, useRegex, isDev, pathFilter);
-    } catch (error) {
-      console.error("Failed to rename packed files:", error);
-      throw error;
+  ipcMain.handle(
+    "renamePackedFiles",
+    async (
+      event,
+      packPath: string,
+      searchRegex: string,
+      replaceText: string,
+      useRegex: boolean,
+      isDev?: boolean,
+      pathFilter?: string
+    ) => {
+      try {
+        const { renamePackedFilesWithOptions } = await import("./packFileSerializer");
+        await renamePackedFilesWithOptions(packPath, searchRegex, replaceText, useRegex, isDev, pathFilter);
+      } catch (error) {
+        console.error("Failed to rename packed files:", error);
+        throw error;
+      }
     }
-  });
+  );
 
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
@@ -1973,6 +1984,7 @@ export const registerIpcMainListeners = (
   });
 
   ipcMain.on("requestLanguageChange", async (event, language: string) => {
+    console.log("requestLanguageChange:", language);
     await i18n.changeLanguage(language);
     mainWindow?.webContents.send("setCurrentLanguage", language);
   });

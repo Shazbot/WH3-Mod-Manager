@@ -681,3 +681,7 @@ export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
     "punic.pack",
   ],
 };
+
+export const SupportedLanguages = ["en", "fr", "de", "es", "ru", "pl", "pt", "tr", "zh"] as const;
+type typedSupportedLanguagesList = typeof SupportedLanguages;
+export type SupportedLanguage = typedSupportedLanguagesList[number]; // this compiles to 'circle' | 'square'
