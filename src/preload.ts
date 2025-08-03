@@ -256,6 +256,11 @@ const api = {
 
   getListOfPacksInSave: (saveName: string): Promise<string[]> =>
     ipcRenderer.invoke("getListOfPacksInSave", saveName),
+  
+  getPackFilesList: (packPath: string): Promise<string[]> =>
+    ipcRenderer.invoke("getPackFilesList", packPath),
+  renamePackedFiles: (packPath: string, searchRegex: string, replaceText: string, useRegex: boolean, isDev?: boolean, pathFilter?: string): Promise<void> =>
+    ipcRenderer.invoke("renamePackedFiles", packPath, searchRegex, replaceText, useRegex, isDev, pathFilter),
 };
 
 export type api = typeof api;

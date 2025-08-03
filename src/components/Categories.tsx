@@ -69,102 +69,105 @@ let selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }] as {
 const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
   const dispatch = useAppDispatch();
   const categoryColors = useAppSelector((state) => state.app.categoryColors || {});
-  
+  const localized = useLocalizations();
+
   const getColorClasses = (color: string) => {
     const colorMap: Record<string, { bg: string; text: string; hover: string; button: string }> = {
-      blue: { 
-        bg: "bg-blue-100 dark:bg-blue-900", 
+      blue: {
+        bg: "bg-blue-100 dark:bg-blue-900",
         text: "text-blue-800 dark:text-blue-300",
         hover: "hover:bg-blue-200 dark:hover:bg-blue-800",
-        button: "text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
+        button: "text-blue-400 hover:text-blue-900 dark:hover:text-blue-300",
       },
-      emerald: { 
-        bg: "bg-emerald-100 dark:bg-emerald-900", 
+      emerald: {
+        bg: "bg-emerald-100 dark:bg-emerald-900",
         text: "text-emerald-800 dark:text-emerald-300",
         hover: "hover:bg-emerald-200 dark:hover:bg-emerald-800",
-        button: "text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300"
+        button: "text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300",
       },
-      red: { 
-        bg: "bg-red-100 dark:bg-red-900", 
+      red: {
+        bg: "bg-red-100 dark:bg-red-900",
         text: "text-red-800 dark:text-red-300",
         hover: "hover:bg-red-200 dark:hover:bg-red-800",
-        button: "text-red-400 hover:text-red-900 dark:hover:text-red-300"
+        button: "text-red-400 hover:text-red-900 dark:hover:text-red-300",
       },
-      amber: { 
-        bg: "bg-amber-100 dark:bg-amber-900", 
+      amber: {
+        bg: "bg-amber-100 dark:bg-amber-900",
         text: "text-amber-800 dark:text-amber-300",
         hover: "hover:bg-amber-200 dark:hover:bg-amber-800",
-        button: "text-amber-400 hover:text-amber-900 dark:hover:text-amber-300"
+        button: "text-amber-400 hover:text-amber-900 dark:hover:text-amber-300",
       },
-      purple: { 
-        bg: "bg-purple-100 dark:bg-purple-900", 
+      purple: {
+        bg: "bg-purple-100 dark:bg-purple-900",
         text: "text-purple-800 dark:text-purple-300",
         hover: "hover:bg-purple-200 dark:hover:bg-purple-800",
-        button: "text-purple-400 hover:text-purple-900 dark:hover:text-purple-300"
+        button: "text-purple-400 hover:text-purple-900 dark:hover:text-purple-300",
       },
-      rose: { 
-        bg: "bg-rose-100 dark:bg-rose-900", 
+      rose: {
+        bg: "bg-rose-100 dark:bg-rose-900",
         text: "text-rose-800 dark:text-rose-300",
         hover: "hover:bg-rose-200 dark:hover:bg-rose-800",
-        button: "text-rose-400 hover:text-rose-900 dark:hover:text-rose-300"
+        button: "text-rose-400 hover:text-rose-900 dark:hover:text-rose-300",
       },
-      teal: { 
-        bg: "bg-teal-100 dark:bg-teal-900", 
+      teal: {
+        bg: "bg-teal-100 dark:bg-teal-900",
         text: "text-teal-800 dark:text-teal-300",
         hover: "hover:bg-teal-200 dark:hover:bg-teal-800",
-        button: "text-teal-400 hover:text-teal-900 dark:hover:text-teal-300"
+        button: "text-teal-400 hover:text-teal-900 dark:hover:text-teal-300",
       },
-      orange: { 
-        bg: "bg-orange-100 dark:bg-orange-900", 
+      orange: {
+        bg: "bg-orange-100 dark:bg-orange-900",
         text: "text-orange-800 dark:text-orange-300",
         hover: "hover:bg-orange-200 dark:hover:bg-orange-800",
-        button: "text-orange-400 hover:text-orange-900 dark:hover:text-orange-300"
+        button: "text-orange-400 hover:text-orange-900 dark:hover:text-orange-300",
       },
-      slate: { 
-        bg: "bg-slate-100 dark:bg-slate-800", 
+      slate: {
+        bg: "bg-slate-100 dark:bg-slate-800",
         text: "text-slate-800 dark:text-slate-300",
         hover: "hover:bg-slate-200 dark:hover:bg-slate-700",
-        button: "text-slate-400 hover:text-slate-900 dark:hover:text-slate-300"
+        button: "text-slate-400 hover:text-slate-900 dark:hover:text-slate-300",
       },
-      white: { 
-        bg: "bg-white dark:bg-white", 
+      white: {
+        bg: "bg-white dark:bg-white",
         text: "text-gray-900 dark:text-gray-900",
         hover: "hover:bg-gray-50 dark:hover:bg-gray-100",
-        button: "text-gray-500 hover:text-gray-900 dark:hover:text-gray-900"
+        button: "text-gray-500 hover:text-gray-900 dark:hover:text-gray-900",
       },
-      black: { 
-        bg: "bg-gray-900 dark:bg-gray-900", 
+      black: {
+        bg: "bg-gray-900 dark:bg-gray-900",
         text: "text-white dark:text-white",
         hover: "hover:bg-gray-800 dark:hover:bg-gray-800",
-        button: "text-gray-300 hover:text-white dark:hover:text-white"
+        button: "text-gray-300 hover:text-white dark:hover:text-white",
       },
-      lime: { 
-        bg: "bg-lime-200 dark:bg-lime-200", 
+      lime: {
+        bg: "bg-lime-200 dark:bg-lime-200",
         text: "text-gray-900 dark:text-gray-900",
         hover: "hover:bg-lime-300 dark:hover:bg-lime-300",
-        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900"
+        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
       },
-      sky: { 
-        bg: "bg-sky-200 dark:bg-sky-200", 
+      sky: {
+        bg: "bg-sky-200 dark:bg-sky-200",
         text: "text-gray-900 dark:text-gray-900",
         hover: "hover:bg-sky-300 dark:hover:bg-sky-300",
-        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900"
+        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
       },
-      fuchsia: { 
-        bg: "bg-fuchsia-200 dark:bg-fuchsia-200", 
+      fuchsia: {
+        bg: "bg-fuchsia-200 dark:bg-fuchsia-200",
         text: "text-gray-900 dark:text-gray-900",
         hover: "hover:bg-fuchsia-300 dark:hover:bg-fuchsia-300",
-        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900"
+        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
       },
     };
     return colorMap[color] || colorMap.blue;
   };
 
-  const color = categoryColors[text] || 'blue';
+  const color = categoryColors[text] || "blue";
   const colorClasses = getColorClasses(color);
 
   return (
-    <span className={`inline-flex items-center px-2 py-1 mr-2 text-sm font-medium rounded ${colorClasses.bg} ${colorClasses.text}`}>
+    <span
+      className={`inline-flex items-center px-2 py-1 mr-2 text-sm font-medium rounded ${colorClasses.bg} ${colorClasses.text}`}
+    >
       {text}
       <button
         onClick={() => {
@@ -213,8 +216,6 @@ const Categories = memo(() => {
   const categoriesWithUncategorized = categories.includes("Uncategorized")
     ? categories
     : categories.concat(["Uncategorized"]);
-
-  const localized: Record<string, string> = useContext(localizationContext);
 
   const headerNames = useMemo(
     () => [localized.category, localized.enabled, localized.name, localized.categories],
@@ -790,7 +791,7 @@ const Categories = memo(() => {
               className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
               type="button"
             >
-{localized.editCategories}
+              {localized.editCategories}
             </button>
             <button
               onClick={() => collapseOrExpandAllCategories()}
