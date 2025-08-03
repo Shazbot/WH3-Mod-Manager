@@ -297,6 +297,7 @@ declare global {
     readLocs?: boolean;
     readScripts?: boolean;
     filesToRead?: string[];
+    skipSorting?: boolean;
   }
 
   type ToastType = "info" | "success" | "warning";

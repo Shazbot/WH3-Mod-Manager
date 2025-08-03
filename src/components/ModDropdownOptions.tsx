@@ -15,11 +15,13 @@ import {
   FaSteam,
   FaRegClipboard,
   FaDownload,
+  FaEdit,
 } from "react-icons/fa";
 import { GoListOrdered } from "react-icons/go";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
 
 import { Modal } from "../flowbite";
+import RenameModal from "./RenameModal";
 
 import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
@@ -65,6 +67,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
   const [loadOrderHasError, setLoadOrderHasError] = useState(false);
   const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -213,6 +216,15 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             </div>
           </Modal.Body>
         </Modal>
+        
+        {props.mod && (
+          <RenameModal
+            show={isRenameModalOpen}
+            onClose={() => setIsRenameModalOpen(false)}
+            mod={props.mod}
+          />
+        )}
+        
         <div>
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
             {currentTab != "categories" && (
@@ -353,6 +365,20 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </span>
               </a>
             </li>
+            {props.mod?.isInData && (
+              <li>
+                <a
+                  onClick={() => setIsRenameModalOpen(true)}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <span className="flex items-center gap-2">
+                    <FaEdit className="w-5 h-5"></FaEdit>
+                    {localized.renamePackedFiles}
+                  </span>
+                </a>
+              </li>
+            )}
             <li>
               <a
                 onClick={() => {

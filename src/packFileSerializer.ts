@@ -1985,10 +1985,10 @@ export const readPack = async (
       let bufPos = 0;
       let lastDependencyStart = 0;
       // const packIndexBuffer = await file.read(pack_file_index_size);
-      const packIndexBuffer = await packedFileHeader.subarray(
-        packedFileHeaderPosition,
-        packedFileHeaderPosition + pack_file_index_size
-      );
+
+      const packIndexBuffer = Buffer.allocUnsafe(pack_file_index_size);
+      fs.readSync(fileId, packIndexBuffer, 0, pack_file_index_size, packedFileHeaderPosition);
+
       packedFileHeaderPosition += pack_file_index_size;
 
       while (bufPos < packIndexBuffer.length && null !== (chunk = packIndexBuffer.readInt8(bufPos))) {
@@ -2067,7 +2067,7 @@ export const readPack = async (
       file_pos += file_size;
     }
 
-    pack_files.sort((a, b) => collator.compare(a.name, b.name));
+    if (!packReadingOptions.skipSorting) pack_files.sort((a, b) => collator.compare(a.name, b.name));
 
     // console.log("num pack files: " + pack_files.length);
 
@@ -2255,6 +2255,425 @@ export const readPackWithWorker = async (modPath: string, skipParsingTables = fa
       if (code !== 0) reject(new Error(`Stopped with  ${code} exit code`));
     });
   });
+};
+
+// Helper function to extract the base filename from a packed file path
+const getBaseFilename = (filePath: string): string => {
+  const parts = filePath.split("\\");
+  return parts[parts.length - 1];
+};
+
+// Helper function to replace the base filename in a packed file path
+const replaceBaseFilename = (filePath: string, newBasename: string): string => {
+  const parts = filePath.split("\\");
+  parts[parts.length - 1] = newBasename;
+  return parts.join("\\");
+};
+
+// Helper function to escape special regex characters for literal string matching
+const escapeRegExp = (string: string): string => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+// Buffer pool for efficient memory reuse during pack operations
+class BufferPool {
+  private pools = new Map<number, Buffer[]>();
+  private readonly MAX_POOL_SIZE = 10; // Maximum buffers per size pool
+
+  getBuffer(size: number): Buffer {
+    // Round up to nearest power of 2 for better reuse (with minimum of 1KB)
+    const poolSize = Math.max(1024, Math.pow(2, Math.ceil(Math.log2(size))));
+
+    let pool = this.pools.get(poolSize);
+    if (!pool) {
+      pool = [];
+      this.pools.set(poolSize, pool);
+    }
+
+    // Try to reuse an existing buffer
+    const buffer = pool.pop();
+    if (buffer) {
+      return buffer; // Return full buffer, caller uses only what they need
+    }
+
+    // Create new buffer if none available
+    return Buffer.allocUnsafe(poolSize);
+  }
+
+  returnBuffer(buffer: Buffer, originalSize: number): void {
+    const poolSize = Math.max(1024, Math.pow(2, Math.ceil(Math.log2(originalSize))));
+
+    // Only return if it's the right size for the pool
+    if (buffer.length !== poolSize) {
+      return; // Different size, don't pool it
+    }
+
+    let pool = this.pools.get(poolSize);
+    if (!pool) {
+      pool = [];
+      this.pools.set(poolSize, pool);
+    }
+
+    // Return buffer to pool for reuse (but don't let pool grow too large)
+    if (pool.length < this.MAX_POOL_SIZE) {
+      pool.push(buffer);
+    }
+    // If pool is full, let buffer get garbage collected
+  }
+
+  // Clear all pools (useful for cleanup)
+  clear(): void {
+    this.pools.clear();
+  }
+
+  // Get stats for debugging
+  getStats(): { totalPools: number; totalBuffers: number; poolSizes: number[] } {
+    let totalBuffers = 0;
+    const poolSizes: number[] = [];
+
+    for (const [size, pool] of this.pools) {
+      totalBuffers += pool.length;
+      if (pool.length > 0) {
+        poolSizes.push(size);
+      }
+    }
+
+    return {
+      totalPools: this.pools.size,
+      totalBuffers,
+      poolSizes: poolSizes.sort((a, b) => a - b),
+    };
+  }
+}
+
+export const renamePackedFilesWithOptions = async (
+  packPath: string,
+  searchPattern: string,
+  replaceTarget: string,
+  useRegex: boolean,
+  isDev?: boolean,
+  pathFilter?: string
+): Promise<void> => {
+  const backupPath = packPath + ".backup." + Date.now();
+
+  // Create temporary pack path we use to create the new pack
+  const tempPath = packPath + ".temp." + Date.now();
+
+  try {
+    // Create backup
+    await fsExtra.copy(packPath, backupPath);
+    console.log(`Created backup at: ${backupPath}`);
+
+    // Read the original pack
+    const originalPack = await readPack(packPath, { skipParsingTables: true, skipSorting: true });
+
+    // Find files that match the pattern and create renamed copies
+    const renamedFiles: PackedFile[] = [];
+    let hasChanges = false;
+
+    // Create a map from original names to renamed files for quick lookup
+    const renameMap = new Map<string, PackedFile>();
+
+    for (const packedFile of originalPack.packedFiles) {
+      // Check path filter first (if provided)
+      if (pathFilter?.trim()) {
+        const filePath = packedFile.name.substring(0, packedFile.name.lastIndexOf("\\"));
+        if (!filePath.includes(pathFilter.trim())) {
+          continue; // Skip files that don't match path filter
+        }
+      }
+
+      const baseFilename = getBaseFilename(packedFile.name);
+      let newBaseFilename: string | null = null;
+
+      if (useRegex) {
+        const regex = new RegExp(searchPattern, "g");
+        if (regex.test(baseFilename)) {
+          regex.lastIndex = 0; // Reset for replacement
+          newBaseFilename = baseFilename.replace(regex, replaceTarget);
+        }
+      } else {
+        // Simple string replacement
+        if (baseFilename.includes(searchPattern)) {
+          newBaseFilename = baseFilename.replace(new RegExp(escapeRegExp(searchPattern), "g"), replaceTarget);
+        }
+      }
+
+      if (newBaseFilename && newBaseFilename !== baseFilename) {
+        const newFileName = replaceBaseFilename(packedFile.name, newBaseFilename);
+        console.log(`Renaming with options: ${packedFile.name} -> ${newFileName}`);
+
+        // Create a copy of the packed file with new name
+        const renamedFile: PackedFile = {
+          ...packedFile,
+          name: newFileName,
+        };
+        renameMap.set(packedFile.name, renamedFile);
+        renamedFiles.push(renamedFile);
+        hasChanges = true;
+      }
+    }
+
+    if (!hasChanges) {
+      if (isDev) {
+        console.log("No files matched the rename pattern - but continuing for dev testing");
+        // Don't return early in dev mode - allow the process to continue for testing
+      } else {
+        console.log("No files matched the rename pattern");
+        // Remove backup since no changes were made
+        await fsExtra.remove(backupPath);
+        return;
+      }
+    }
+
+    // Create new pack with renamed files (safe - doesn't touch original)
+    await createPackWithRenamedFilesWithOptions(originalPack, tempPath, renameMap);
+  } catch (error) {
+    console.error("Error during pack creation (original file safe):", error);
+
+    // Original file is still intact, just clean up temp file and backup
+    try {
+      if (await fsExtra.pathExists(tempPath)) {
+        await fsExtra.remove(tempPath);
+      }
+      await fsExtra.remove(backupPath);
+    } catch (cleanupError) {
+      console.error("Failed to clean up temp files:", cleanupError);
+    }
+
+    throw error;
+  }
+
+  // Atomically replace original with temporary pack (ONLY dangerous step)
+  try {
+    await fsExtra.move(tempPath, packPath, { overwrite: true });
+    console.log(`Successfully renamed files in pack: ${packPath}`);
+    console.log(`Backup available at: ${backupPath}`);
+  } catch (moveError) {
+    console.error("Error during final file replacement:", moveError);
+
+    // Try to restore from backup since original might be corrupted
+    try {
+      if (await fsExtra.pathExists(backupPath)) {
+        await fsExtra.copy(backupPath, packPath);
+        console.log("Restored from backup due to move failure");
+      }
+    } catch (restoreError) {
+      console.error("Failed to restore from backup:", restoreError);
+    }
+
+    throw moveError;
+  }
+};
+
+const createPackWithRenamedFilesWithOptions = async (
+  originalPack: Pack,
+  tempPath: string,
+
+  renameMap: Map<string, PackedFile>
+): Promise<void> => {
+  let outFile: BinaryFile | undefined;
+  let sourceFileId = -1;
+
+  try {
+    // Create the final list of packed files
+    const finalPackedFiles: PackedFile[] = [];
+
+    // Add all files, using renamed versions where applicable
+    for (const originalFile of originalPack.packedFiles) {
+      const renamedFile = renameMap.get(originalFile.name);
+      if (renamedFile) {
+        finalPackedFiles.push(renamedFile);
+      } else {
+        finalPackedFiles.push(originalFile);
+      }
+    }
+
+    // Write the new pack file
+    outFile = new BinaryFile(tempPath, "w", true);
+    sourceFileId = fs.openSync(originalPack.path, "r");
+    await outFile.open();
+
+    // Write header
+    await writePackHeader(
+      outFile,
+      originalPack.packHeader,
+      finalPackedFiles,
+      originalPack.dependencyPacks || []
+    );
+
+    // Pre-build file lookup map for O(1) instead of O(N) lookups
+    const originalFileMap = new Map<string, PackedFile>();
+    for (const pf of originalPack.packedFiles) {
+      originalFileMap.set(pf.name, pf);
+    }
+
+    // Build reverse lookup for renamed files
+    const renamedToOriginalMap = new Map<string, string>();
+    for (const [originalName, renamedFile] of renameMap.entries()) {
+      renamedToOriginalMap.set(renamedFile.name, originalName);
+    }
+
+    // Sort files by original pack position for sequential disk reads (much faster I/O)
+    finalPackedFiles.sort((a, b) => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const origA = originalFileMap.get(a.name) || originalFileMap.get(renamedToOriginalMap.get(a.name)!);
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const origB = originalFileMap.get(b.name) || originalFileMap.get(renamedToOriginalMap.get(b.name)!);
+      return (origA?.start_pos || 0) - (origB?.start_pos || 0);
+    });
+
+    // Create buffer pool for efficient memory reuse
+    const bufferPool = new BufferPool();
+
+    // Optimized batching for files mostly <1MB
+    const SMALL_FILE_BATCH_SIZE = 2 * 1024 * 1024; // 2MB batches for small files
+    const LARGE_FILE_THRESHOLD = 1024 * 1024; // 1MB threshold
+
+    let currentBatchSize = 0;
+    let batchBuffers: { buffer: Buffer; actualSize: number; poolBuffer: Buffer }[] = [];
+
+    const flushBatch = async () => {
+      if (batchBuffers.length > 0) {
+        // Create array of buffer slices for concatenation
+        const bufferSlices = batchBuffers.map((item) => item.buffer.subarray(0, item.actualSize));
+        const combinedBuffer = Buffer.concat(bufferSlices);
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        await outFile!.write(combinedBuffer);
+
+        // Return all buffers to pool
+        for (const item of batchBuffers) {
+          bufferPool.returnBuffer(item.poolBuffer, item.actualSize);
+        }
+
+        batchBuffers = [];
+        currentBatchSize = 0;
+      }
+    };
+
+    try {
+      for (const file of finalPackedFiles) {
+        // Fast O(1) lookup instead of O(N) find operations
+        let originalFile = originalFileMap.get(file.name);
+        if (!originalFile) {
+          const originalName = renamedToOriginalMap.get(file.name);
+          if (originalName) {
+            originalFile = originalFileMap.get(originalName);
+          }
+        }
+
+        // Get buffer from pool (reuses existing if available)
+        const poolBuffer = bufferPool.getBuffer(file.file_size);
+        const data = poolBuffer.subarray(0, file.file_size);
+
+        if (originalFile) {
+          fs.readSync(sourceFileId, data, 0, file.file_size, originalFile.start_pos);
+        } else {
+          console.warn(`Could not find original data for file: ${file.name}`);
+          data.fill(0);
+        }
+
+        // Handle large files differently - write immediately to avoid memory buildup
+        if (file.file_size >= LARGE_FILE_THRESHOLD) {
+          // Flush any pending small files first
+          await flushBatch();
+          // Write large file directly
+          await outFile.write(data);
+          // Return buffer to pool immediately
+          bufferPool.returnBuffer(poolBuffer, file.file_size);
+        } else {
+          // Batch small files together
+          batchBuffers.push({
+            buffer: data,
+            actualSize: file.file_size,
+            poolBuffer: poolBuffer,
+          });
+          currentBatchSize += file.file_size;
+
+          // Flush batch when it reaches optimal size
+          if (currentBatchSize >= SMALL_FILE_BATCH_SIZE) {
+            await flushBatch();
+          }
+        }
+      }
+
+      // Flush remaining batch
+      await flushBatch();
+    } finally {
+      // Clean up buffer pool
+      bufferPool.clear();
+    }
+  } finally {
+    if (outFile) await outFile.close();
+    if (sourceFileId >= 0) fs.closeSync(sourceFileId);
+  }
+};
+
+const writePackHeader = async (
+  outFile: BinaryFile,
+  originalHeader: PackHeader,
+  packedFiles: PackedFile[],
+  dependencyPacks: string[]
+): Promise<void> => {
+  // Write base header
+  await outFile.write(originalHeader.header);
+  await outFile.writeInt32(originalHeader.byteMask);
+  await outFile.writeInt32(originalHeader.refFileCount);
+
+  // Calculate pack index size
+  const pack_file_index_size = dependencyPacks.reduce(
+    (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
+    0
+  );
+  await outFile.writeInt32(pack_file_index_size);
+
+  await outFile.writeInt32(packedFiles.length);
+
+  // Calculate packed file index size
+  const packed_file_index_size = packedFiles.reduce(
+    (acc, file) => acc + 4 + 1 + Buffer.byteLength(file.name, "utf8") + 1,
+    0
+  );
+  await outFile.writeInt32(packed_file_index_size);
+
+  await outFile.writeInt32(0x7fffffff); // header_buffer
+
+  // Write dependency packs
+  for (const dep of dependencyPacks) {
+    await outFile.writeString(dep);
+    await outFile.writeUInt8(0);
+  }
+
+  // Write file index
+  // Pre-calculate total size for file index to write in one batch
+  let totalIndexSize = 0;
+  for (const file of packedFiles) {
+    totalIndexSize += 4; // file_size (int32)
+    totalIndexSize += 1; // is_compressed (int8)
+    totalIndexSize += Buffer.byteLength(file.name + "\0", "utf8"); // filename + null terminator
+  }
+
+  // Create buffer for entire file index and write all at once
+  const indexBuffer = Buffer.allocUnsafe(totalIndexSize);
+  let offset = 0;
+
+  for (const file of packedFiles) {
+    // Write file_size
+    indexBuffer.writeInt32LE(file.file_size, offset);
+    offset += 4;
+
+    // Write is_compressed flag
+    indexBuffer.writeInt8(file.is_compressed ? 1 : 0, offset);
+    offset += 1;
+
+    // Write filename with null terminator
+    const filenameBytes = Buffer.from(file.name + "\0", "utf8");
+    filenameBytes.copy(indexBuffer, offset);
+    offset += filenameBytes.length;
+  }
+
+  // Single write operation for entire file index
+  await outFile.write(indexBuffer);
 };
 
 export const readDataFromPacks = async (mods: Mod[]) => {
