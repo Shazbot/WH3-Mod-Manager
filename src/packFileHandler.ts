@@ -11,10 +11,7 @@ export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
 
     // console.log(`${path} file opened`);
 
-    const header = await file.read(4);
-    if (header === null) throw new Error("header missing");
-    // console.log(`header is ${header}`);
-
+    await file.seek(4); // skip header
     const byteMask = await file.readInt32();
     // console.log(`byteMask is ${byteMask}`);
 
@@ -26,21 +23,14 @@ export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
     await file.seek(28); // skip to after header_buffer
 
     if (pack_file_index_size > 0) {
-      let chunk;
-      let bufPos = 0;
-      let lastDependencyStart = 0;
       const packIndexBuffer = await file.read(pack_file_index_size);
+      let start = 0;
 
-      while (null !== (chunk = packIndexBuffer.readInt8(bufPos))) {
-        bufPos += 1;
-        if (chunk == 0) {
-          const name = packIndexBuffer.toString("utf8", lastDependencyStart, bufPos - 1);
+      for (let i = 0; i < pack_file_index_size; i++) {
+        if (packIndexBuffer[i] === 0) {
+          const name = packIndexBuffer.toString("utf8", start, i);
           dependencyPacks.push(name);
-          lastDependencyStart = bufPos;
-          // console.log(`found dep pack ${name} in ${path}`);
-          if (bufPos >= pack_file_index_size) {
-            break;
-          }
+          start = i + 1;
         }
       }
     }
@@ -49,8 +39,6 @@ export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
   } finally {
     if (file) file.close();
   }
-
-  console.log("dependencyPacks:", dependencyPacks);
 
   return { path, isMovie, dependencyPacks };
 };
