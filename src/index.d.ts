@@ -567,8 +567,6 @@ declare global {
     type: "error";
   };
 
-  type SupportedLanguages = "en" | "zh";
-
   interface ITreeNode {
     name: string;
     children: ITreeNode[];

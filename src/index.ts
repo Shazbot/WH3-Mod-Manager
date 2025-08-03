@@ -17,6 +17,7 @@ import { globSync } from "glob";
 import { windows, registerIpcMainListeners } from "./ipcMainListeners";
 import * as https from "https";
 import { Extract } from "unzipper";
+import { isSupportedLanguage } from "./utility/sharedHelpers";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -71,10 +72,19 @@ if (!gotTheLock) {
 
   const createWindow = (): void => {
     i18n.on("loaded", async () => {
-      i18n.changeLanguage("en");
+      // Get the OS locale and check if it's supported
+      const osLocale = app.getLocale();
+      const primaryLanguage = osLocale.split("-")[0]; // Extract primary language (e.g., 'en' from 'en-US')
+
+      // Check if the primary language is in our supported languages list
+      const languageToUse = isSupportedLanguage(primaryLanguage) ? primaryLanguage : "en";
+
+      console.log(`OS Locale: ${osLocale}, Primary Language: ${primaryLanguage}, Using: ${languageToUse}`);
+
+      i18n.changeLanguage(languageToUse);
       i18n.off("loaded");
 
-      console.log("I18 ON");
+      console.log("I18N initialized with language:", languageToUse);
     });
 
     const mainWindowState = windowStateKeeper({

@@ -15,6 +15,7 @@ import equal from "fast-deep-equal";
 import { format } from "date-fns";
 import { SupportedGames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
+import { isSupportedLanguage } from "./utility/sharedHelpers";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -993,7 +994,11 @@ const appSlice = createSlice({
     },
     setCurrentLanguage: (state: AppState, action: PayloadAction<string>) => {
       const language = action.payload;
-      if (language == "zh" || language == "en") state.currentLanguage = language;
+      if (isSupportedLanguage(language)) {
+        state.currentLanguage = language;
+      } else {
+        console.log("setCurrentLanguage: language", language, "not supported");
+      }
     },
     setCurrentGame: (state: AppState, action: PayloadAction<SetCurrentGamePayload>) => {
       const { game, currentPreset, presets } = action.payload;
