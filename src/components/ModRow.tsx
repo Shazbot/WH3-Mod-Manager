@@ -1,6 +1,6 @@
 import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { CSSProperties, memo, useCallback, useContext, useEffect, useMemo } from "react";
+import React, { CSSProperties, memo, useCallback, useContext, useMemo } from "react";
 import { useAppSelector } from "../hooks";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";

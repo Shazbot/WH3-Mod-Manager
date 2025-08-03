@@ -14,15 +14,12 @@ import {
   chunkSchemaIntoRows,
   createOverwritePack,
   getDBVersion,
-  getFieldSize,
   getPacksInSave,
   getPacksTableData,
   getPackViewData,
   mergeMods,
   readFromExistingPack,
   readPack,
-  typeToBuffer,
-  writePack,
   writeStartGamePack,
 } from "./packFileSerializer";
 import {
@@ -46,7 +43,7 @@ import chokidar from "chokidar";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import { readPackHeader } from "./packFileHandler";
 import { collator } from "./utility/packFileSorting";
-import { AmendedSchemaField, NewPackedFile, Pack, PackCollisions, PackedFile } from "./packFileTypes";
+import { AmendedSchemaField, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import * as fsExtra from "fs-extra";
 import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
 import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modCompat/packTableCollisions";
@@ -80,7 +77,6 @@ import {
   gameToReferences,
   initializeAllSchemaForGame,
 } from "./schema";
-import cloneDeep from "clone-deep";
 import { buildDBReferenceTree } from "./DBClone";
 
 declare const VIEWER_WEBPACK_ENTRY: string;

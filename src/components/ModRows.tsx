@@ -15,7 +15,6 @@ import {
   toggleMod,
   enableAll,
   disableAllMods,
-  setModLoadOrder,
   resetModLoadOrder,
   setModRowsSortingType,
   setModLoadOrderRelativeTo,
@@ -23,7 +22,7 @@ import {
   setModBeingCustomized,
   removeAllPackDataOverwrites,
 } from "../appSlice";
-import { Alert, Tooltip } from "flowbite-react";
+import { Tooltip } from "flowbite-react";
 import { getFilteredMods, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
 import ModDropdown from "./ModDropdown";

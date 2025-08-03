@@ -1,5 +1,5 @@
 import Creatable from "react-select/creatable";
-import React, { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import "@silevis/reactgrid/styles.css";
 import "handsontable/styles/handsontable.min.css";
@@ -11,14 +11,7 @@ import { FloatingOverlay } from "@floating-ui/react";
 import selectStyle from "../styles/selectStyle";
 import { ActionMeta, SingleValue } from "react-select";
 import { useLocalizations } from "../localizationContext";
-import {
-  addCategory,
-  removeCategory,
-  selectCategory,
-  setAreModsEnabled,
-  toggleMod,
-  renameCategory,
-} from "../appSlice";
+import { addCategory, removeCategory, selectCategory, setAreModsEnabled, toggleMod } from "../appSlice";
 import EditCategoriesModal from "./EditCategoriesModal";
 import { CellProperties } from "handsontable/settings";
 import Core from "handsontable/core";
@@ -28,7 +21,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import ModDropdownOptions from "./ModDropdownOptions";
 import { getModsSortedByHumanNameAndName } from "../modSortingHelpers";
 import { Tooltip } from "flowbite-react";
-import localizationContext from "../localizationContext";
 import Handsontable from "handsontable";
 
 type CategorySelectType = {
