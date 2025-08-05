@@ -110,6 +110,7 @@ if (!gotTheLock) {
         nodeIntegration: true,
         contextIsolation: false,
         preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+        spellcheck: false,
       },
       title: "WH3 Mod Manager",
       icon: "./assets/modmanager.ico",
