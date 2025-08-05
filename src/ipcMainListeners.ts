@@ -3187,6 +3187,17 @@ export const registerIpcMainListeners = (
         // file with the list of mods for the game to use, used_mods.txt or my_mods.txt
         batData += ` ${fileNameWithModList};`;
 
+        // Create steam_appid.txt for Attila
+        if (appData.currentGame === "attila") {
+          const steamAppIdPath = nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string, "steam_appid.txt");
+          const steamId = gameToSteamId[appData.currentGame];
+          try {
+            fs.writeFileSync(steamAppIdPath, steamId);
+          } catch (e) {
+            console.error("Failed to create steam_appid.txt:", e);
+          }
+        }
+
         mainWindow?.webContents.send("handleLog", "starting game:");
         mainWindow?.webContents.send("handleLog", batData);
 
