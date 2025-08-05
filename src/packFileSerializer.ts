@@ -1656,7 +1656,7 @@ const readDBPackedFiles = async (
     if (pack_file.is_compressed) {
       // console.log("dbbuffer before: currentPos", currentPos, "len", pack_file.file_size);
       // fs.writeFileSync("dbbuffer_raw_" + pack_file.name.replaceAll("\\", "_"), packBuffer);
-      packBuffer = Buffer.concat([Buffer.from(await decompress(packBuffer.subarray(4)))]);
+      packBuffer = Buffer.from(await decompress(packBuffer.subarray(4)));
       // fs.writeFileSync("dbbuffer_" + pack_file.name.replaceAll("\\", "_"), packBuffer);
     }
 
@@ -1886,7 +1886,6 @@ const readLoc = async (
 };
 
 export const matchDBFileRegex = /^db\\(.*?)\\/;
-const matchLocFileRegex = /\.loc$/;
 export const readPack = async (
   modPath: string,
   packReadingOptions: PackReadingOptions = { skipParsingTables: false }
@@ -1991,16 +1990,14 @@ export const readPack = async (
 
       packedFileHeaderPosition += pack_file_index_size;
 
-      while (bufPos < packIndexBuffer.length && null !== (chunk = packIndexBuffer.readInt8(bufPos))) {
-        bufPos += 1;
-        if (chunk == 0) {
-          const name = packIndexBuffer.toString("utf8", lastDependencyStart, bufPos - 1);
-          dependencyPacks.push(name);
-          lastDependencyStart = bufPos;
-          // console.log(`found dep pack ${name}`);
-          if (bufPos >= pack_file_index_size) {
-            break;
+      // get the dependencyPacks
+      let start = 0;
+      for (let i = 0; i < pack_file_index_size; i++) {
+        if (packIndexBuffer[i] === 0) {
+          if (i > start) {
+            dependencyPacks[dependencyPacks.length] = packIndexBuffer.toString("utf8", start, i);
           }
+          start = i + 1;
         }
       }
     }
@@ -2039,13 +2036,12 @@ export const readPack = async (
       // const is_compressed = (stream.read(1) as Buffer).readInt8();
 
       const nameStartPos = bufPos;
-      while (null !== (chunk = headerBuffer.readInt8(bufPos))) {
-        bufPos += 1;
-        if (chunk == 0) {
-          name = headerBuffer.toString("utf8", nameStartPos, bufPos - 1);
+      for (let i = nameStartPos; i < headerBuffer.length - nameStartPos; i++) {
+        if (headerBuffer[i] === 0) {
+          name = headerBuffer.toString("utf8", nameStartPos, i - 1);
+          bufPos = i + 1;
           break;
         }
-        // console.log(`Read ${chunk.length} bytes of data...`);
       }
 
       // if (name.startsWith("db")) {
@@ -2069,6 +2065,24 @@ export const readPack = async (
 
     if (!packReadingOptions.skipSorting) pack_files.sort((a, b) => collator.compare(a.name, b.name));
 
+    // Early return if no additional processing needed
+    if (
+      !packReadingOptions.readScripts &&
+      !packReadingOptions.readLocs &&
+      (!packReadingOptions.filesToRead || packReadingOptions.filesToRead.length === 0) &&
+      packReadingOptions.skipParsingTables
+    ) {
+      return {
+        name: nodePath.basename(modPath),
+        path: modPath,
+        packedFiles: pack_files,
+        packHeader,
+        lastChangedLocal,
+        readTables: [],
+        dependencyPacks,
+      } as Pack;
+    }
+
     // console.log("num pack files: " + pack_files.length);
 
     // console.log("DONE READING FILE");
@@ -2086,25 +2100,42 @@ export const readPack = async (
     // );
 
     if (packReadingOptions.readScripts) {
-      const scriptFiles = pack_files.filter((packFile) => {
-        return packFile.name.endsWith(".lua");
-      });
+      const scriptFiles: PackedFile[] = [];
+      const xmlFiles: PackedFile[] = [];
 
-      const xmlFiles = pack_files.filter((packFile) => {
-        return (
-          packFile.name.endsWith(".xml") ||
-          packFile.name.endsWith(".variantmeshdefinition") ||
-          packFile.name.endsWith(".wsmodel") ||
-          packFile.name.endsWith(".xml.material")
-        );
-      });
+      const xmlExtensions = new Set([".xml", ".variantmeshdefinition", ".wsmodel", ".xml.material"]);
+
+      for (const packFile of pack_files) {
+        const name = packFile.name;
+        const lastDot = name.lastIndexOf(".");
+        if (lastDot === -1) continue;
+
+        const ext = name.substring(lastDot);
+        if (ext === ".lua") {
+          scriptFiles.push(packFile);
+        } else if (xmlExtensions.has(ext)) {
+          xmlFiles.push(packFile);
+        }
+      }
+      // const scriptFiles = pack_files.filter((packFile) => {
+      //   return packFile.name.endsWith(".lua");
+      // });
+
+      // const xmlFiles = pack_files.filter((packFile) => {
+      //   return (
+      //     packFile.name.endsWith(".xml") ||
+      //     packFile.name.endsWith(".variantmeshdefinition") ||
+      //     packFile.name.endsWith(".wsmodel") ||
+      //     packFile.name.endsWith(".xml.material")
+      //   );
+      // });
 
       for (const scriptFile of scriptFiles) {
         let buffer = Buffer.allocUnsafe(scriptFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
 
         if (scriptFile.is_compressed) {
-          buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+          buffer = Buffer.from(await decompress(buffer.subarray(4)));
         }
         scriptFile.text = buffer.toString("utf8");
       }
@@ -2114,7 +2145,7 @@ export const readPack = async (
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
 
         if (scriptFile.is_compressed) {
-          buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+          buffer = Buffer.from(await decompress(buffer.subarray(4)));
         }
         if (buffer.subarray(0, 2).toString("hex") == "fffe") {
           scriptFile.text = buffer.subarray(2).toString("utf16le");
@@ -2125,10 +2156,7 @@ export const readPack = async (
     }
 
     if (packReadingOptions.readLocs) {
-      const locPackFiles = pack_files.filter((packFile) => {
-        const locNameMatch = packFile.name.match(matchLocFileRegex);
-        return locNameMatch != null;
-      });
+      const locPackFiles = pack_files.filter((packFile) => packFile.name.endsWith(".loc"));
 
       for (const locPackFile of locPackFiles) {
         // console.log("LOC file to read:", locPackFile);
@@ -2159,11 +2187,24 @@ export const readPack = async (
           let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
           if (packedFileToRead.is_compressed) {
-            buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+            buffer = Buffer.from(await decompress(buffer.subarray(4)));
           }
           packedFileToRead.buffer = buffer;
         }
       }
+    }
+
+    // Early return if skipping tables
+    if (packReadingOptions.skipParsingTables) {
+      return {
+        name: nodePath.basename(modPath),
+        path: modPath,
+        packedFiles: pack_files,
+        packHeader,
+        lastChangedLocal,
+        readTables: [],
+        dependencyPacks,
+      } as Pack;
     }
 
     const dbPackFiles = pack_files.filter((packFile) => {
@@ -2176,7 +2217,8 @@ export const readPack = async (
       else console.log(`readPack: TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
     }
 
-    if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
+    // we've already checked packReadingOptions.skipParsingTables above
+    if (dbPackFiles.length < 1) {
       return {
         name: nodePath.basename(modPath),
         path: modPath,
@@ -2188,19 +2230,13 @@ export const readPack = async (
       } as Pack;
     }
 
-    const startPos = dbPackFiles.reduce(
-      (previous, current) => (previous < current.start_pos ? previous : current.start_pos),
-      Number.MAX_SAFE_INTEGER
-    );
-
-    const startOfLastPack = dbPackFiles.reduce(
-      (previous, current) => (previous > current.start_pos ? previous : current.start_pos),
-      -1
-    );
-    const endPos =
-      (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
-      startOfLastPack;
-    // console.log("endPos is ", endPos);
+    let startPos = Number.MAX_SAFE_INTEGER;
+    let endPos = -1;
+    for (const dbFile of dbPackFiles) {
+      if (dbFile.start_pos < startPos) startPos = dbFile.start_pos;
+      const fileEnd = dbFile.start_pos + dbFile.file_size;
+      if (fileEnd > endPos) endPos = fileEnd;
+    }
 
     // const buffer = await file.read(endPos - startPos, startPos);
 
