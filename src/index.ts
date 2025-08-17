@@ -77,7 +77,10 @@ if (!gotTheLock) {
       const primaryLanguage = osLocale.split("-")[0]; // Extract primary language (e.g., 'en' from 'en-US')
 
       // Check if the primary language is in our supported languages list
-      const languageToUse = isSupportedLanguage(primaryLanguage) ? primaryLanguage : "en";
+      const osLanguageToUse = isSupportedLanguage(primaryLanguage) ? primaryLanguage : "en";
+
+      const languageToUse = appData.currentLanguage ? appData.currentLanguage : osLanguageToUse;
+      appData.currentLanguage = languageToUse;
 
       console.log(`OS Locale: ${osLocale}, Primary Language: ${primaryLanguage}, Using: ${languageToUse}`);
 

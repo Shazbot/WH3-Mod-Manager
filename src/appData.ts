@@ -1,6 +1,6 @@
 import { Pack, PackCollisions } from "./packFileTypes";
 import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
-import { SupportedGames, supportedGames } from "./supportedGames";
+import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
 import Trie from "./utility/trie";
 
 interface AppData {
@@ -52,6 +52,7 @@ interface AppData {
   queuedViewerData: (PackViewData | undefined)[];
   queuedSkillsData: SkillsData | undefined;
   isChangingGameProcessPriority: boolean;
+  currentLanguage?: SupportedLanguage;
 }
 
 export type GameFolderPaths = {
@@ -102,6 +103,7 @@ const appData = {
   queuedViewerData: [],
   queuedSkillsData: undefined,
   isChangingGameProcessPriority: false,
+  currentLanguage: "en",
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
