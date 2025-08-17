@@ -32,6 +32,7 @@ import {
   supportedGameOptionToStartGameOption,
   SupportedGames,
   supportedGames,
+  SupportedLanguage,
 } from "./supportedGames";
 import i18n from "./configs/i18next.config";
 import debounce from "just-debounce-it";
@@ -1529,6 +1530,7 @@ export const registerIpcMainListeners = (
         mainWindow?.webContents.send("fromAppConfig", appState);
 
         const languageInConfig = appState.currentLanguage || "en";
+        appData.currentLanguage = languageInConfig;
         if (i18n.language != languageInConfig) {
           i18n.changeLanguage(languageInConfig).then(() => {
             mainWindow?.webContents.send("setCurrentLanguage", languageInConfig);
@@ -1565,7 +1567,9 @@ export const registerIpcMainListeners = (
         gamePath: gamePath || "",
         contentFolder: contentFolder || "",
       } as GameFolderPaths);
-      if (!doesConfigExist) mainWindow?.webContents.send("setCurrentGame", appData.currentGame);
+      if (!doesConfigExist) {
+        mainWindow?.webContents.send("setCurrentGame", appData.currentGame);
+      }
     }
 
     console.log(
@@ -1984,6 +1988,7 @@ export const registerIpcMainListeners = (
   ipcMain.on("requestLanguageChange", async (event, language: string) => {
     console.log("requestLanguageChange:", language);
     await i18n.changeLanguage(language);
+    appData.currentLanguage = language as SupportedLanguage;
     mainWindow?.webContents.send("setCurrentLanguage", language);
   });
 
@@ -3189,7 +3194,10 @@ export const registerIpcMainListeners = (
 
         // Create steam_appid.txt for Attila
         if (appData.currentGame === "attila") {
-          const steamAppIdPath = nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string, "steam_appid.txt");
+          const steamAppIdPath = nodePath.join(
+            appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+            "steam_appid.txt"
+          );
           const steamId = gameToSteamId[appData.currentGame];
           try {
             fs.writeFileSync(steamAppIdPath, steamId);
