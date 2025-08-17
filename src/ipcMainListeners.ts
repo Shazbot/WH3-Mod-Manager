@@ -3004,8 +3004,7 @@ export const registerIpcMainListeners = (
         const myModsPath = nodePath.join(gamePath, "my_mods.txt");
         const usedModsPath = nodePath.join(gamePath, "used_mods.txt");
 
-        const sortedMods = sortByNameAndLoadOrder(mods);
-        const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
+        const sortedMods = sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled));
 
         const linuxBit = process.platform === "linux" ? "Z:" : "";
         const vanillaPacks = [];
@@ -3043,7 +3042,7 @@ export const registerIpcMainListeners = (
           await fs.mkdirSync(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
 
           log("getting start game dbs");
-          await getDBsForGameStartOptions(enabledMods.concat(vanillaPacks), startGameOptions);
+          await getDBsForGameStartOptions(sortedMods.concat(vanillaPacks), startGameOptions);
 
           console.log("before start:");
           for (const pack of appData.packsData) {
@@ -3061,7 +3060,7 @@ export const registerIpcMainListeners = (
               await writeStartGamePack(
                 appData.packsData,
                 tempPackPath,
-                enabledMods.concat(vanillaPacks),
+                sortedMods.concat(vanillaPacks),
                 startGameOptions
               );
               failedWriting = false;
@@ -3088,12 +3087,12 @@ export const registerIpcMainListeners = (
           }
         }
 
-        const modPathsInsideMergedMods = enabledMods
+        const modPathsInsideMergedMods = sortedMods
           .filter((mod) => mod.mergedModsData)
           .map((mod) => (mod.mergedModsData as MergedModsData[]).map((mod) => mod.path))
           .flatMap((paths) => paths);
 
-        let enabledModsWithoutMergedInMods = enabledMods.filter(
+        let enabledModsWithoutMergedInMods = sortedMods.filter(
           (mod) => !modPathsInsideMergedMods.some((path) => path == mod.path)
         );
 
