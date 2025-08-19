@@ -1,4 +1,4 @@
-import * as steamworks from "@ai-zen/steamworks.js";
+import * as steamworks from "steamworks.js";
 import * as fs from "fs";
 
 if (process.argv[3] == "justRun") {

@@ -2,7 +2,7 @@ import { PackedFile, PackCollisions } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
-import { UgcItemVisibility } from "../node_modules/@ai-zen/steamworks.js/client.d";
+import { UgcItemVisibility } from "../node_modules/steamworks.js/client.d";
 export {};
 
 declare global {
