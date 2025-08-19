@@ -103,7 +103,6 @@ const appData = {
   queuedViewerData: [],
   queuedSkillsData: undefined,
   isChangingGameProcessPriority: false,
-  currentLanguage: "en",
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
