@@ -258,6 +258,7 @@ const Categories = memo(() => {
     const selectedMods: Mod[] = [];
     for (const i of selectedRows) {
       const rowData = hot.getSourceDataAtRow(i) as ModRow | CategoryRow;
+      if (!rowData) continue;
       if (!isCategoryRow(rowData)) {
         const mod = mods.find((mod) => mod.path == rowData.path);
         if (mod) selectedMods.push(mod);
@@ -300,6 +301,8 @@ const Categories = memo(() => {
     if (!hot) return <></>;
 
     const rowData = hot.getSourceDataAtRow(props.row) as ModRow;
+    if (!rowData) return <></>;
+
     const mod = (mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
     if (!mod) return <></>;
 
@@ -852,6 +855,7 @@ const Categories = memo(() => {
           const selectedMods: Mod[] = [];
           for (const i of selectedRows) {
             const rowData = hot.getSourceDataAtRow(i) as ModRow | CategoryRow;
+            if (!rowData) continue;
             if (!isCategoryRow(rowData)) {
               const mod = mods.find((mod) => mod.path == rowData.path);
               if (mod) selectedMods.push(mod);
@@ -902,6 +906,7 @@ const Categories = memo(() => {
 
               if (prop == "isEnabled") {
                 const rowData = hot.getSourceDataAtRow(row) as ModRow | CategoryRow;
+                if (!rowData) return;
                 if (isCategoryRow(rowData)) {
                   const category = rowData.category;
                   const modsForEnable =
@@ -938,6 +943,7 @@ const Categories = memo(() => {
             if (row == row2 && column == column2 && column == 0) {
               // console.log("THEY'RE SAME");
               const rowData = hot.getDataAtRow(row);
+              if (!rowData) return;
               const category = rowData[0];
               const name = rowData[2];
               // console.log("rowData", rowData);
@@ -950,6 +956,7 @@ const Categories = memo(() => {
                     break;
                   }
                   const rowData = hot.getDataAtRow(currentRowNum);
+                  if (!rowData) return;
                   const currentRowCategory = rowData[0];
                   if (currentRowCategory) {
                     console.log("NEW selectedInTable", { row, column, row2: currentRowNum - 1, column2 });
