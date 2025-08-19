@@ -47,7 +47,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-var steamworks = require("@ai-zen/steamworks.js");
+var steamworks = require("steamworks.js");
 var fs = require("fs");
 if (process.argv[3] == "justRun") {
     console.log("justRun");
