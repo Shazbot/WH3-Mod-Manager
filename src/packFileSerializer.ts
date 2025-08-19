@@ -1980,11 +1980,6 @@ export const readPack = async (
     } as PackHeader;
 
     if (pack_file_index_size > 0) {
-      let chunk;
-      let bufPos = 0;
-      let lastDependencyStart = 0;
-      // const packIndexBuffer = await file.read(pack_file_index_size);
-
       const packIndexBuffer = Buffer.allocUnsafe(pack_file_index_size);
       fs.readSync(fileId, packIndexBuffer, 0, pack_file_index_size, packedFileHeaderPosition);
 
@@ -2005,7 +2000,6 @@ export const readPack = async (
     const dataStart = 24 + header_buffer_len + pack_file_index_size + packed_file_index_size;
     // console.log("data starts at " + dataStart);
 
-    let chunk;
     let file_pos = dataStart;
 
     const headerSize = dataStart - packedFileHeaderPosition;
@@ -2036,9 +2030,9 @@ export const readPack = async (
       // const is_compressed = (stream.read(1) as Buffer).readInt8();
 
       const nameStartPos = bufPos;
-      for (let i = nameStartPos; i < headerBuffer.length - nameStartPos; i++) {
+      for (let i = nameStartPos; i < headerBuffer.length; i++) {
         if (headerBuffer[i] === 0) {
-          name = headerBuffer.toString("utf8", nameStartPos, i - 1);
+          name = headerBuffer.toString("utf8", nameStartPos, i);
           bufPos = i + 1;
           break;
         }
