@@ -335,6 +335,11 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   visibility: visible !important;
 }
 
+/* horizontally center the enable checkbox in the category panel */
+.htCheckboxRendererInput {
+  margin: 0 auto !important;
+}
+
 .disable-border .htBorders {
   display: none !important;
 }
