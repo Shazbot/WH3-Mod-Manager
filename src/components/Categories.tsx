@@ -4,7 +4,7 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import "@silevis/reactgrid/styles.css";
 import "handsontable/styles/handsontable.min.css";
 import "handsontable/styles/ht-theme-main.min.css";
-import { HotColumn, HotTable } from "@handsontable/react-wrapper";
+import { HotColumn, HotRendererProps, HotTable } from "@handsontable/react-wrapper";
 import { textRenderer, checkboxRenderer } from "handsontable/renderers";
 import { registerAllModules } from "handsontable/registry";
 import { FloatingOverlay } from "@floating-ui/react";
@@ -271,7 +271,7 @@ const Categories = memo(() => {
   console.log("currentlySelectedMods:", getCurrentlySelectedMods());
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const BadgesRowRenderer = memo((props: any) => {
+  const BadgesRowRenderer = (props: HotRendererProps) => {
     // the available renderer-related props are:
     // - `row` (row index)
     // - `col` (column index)
@@ -288,11 +288,8 @@ const Categories = memo(() => {
     }
 
     // props.TD.style.background = "rgba(255,255, 255,1)";
-    if (isContextMenuOpen && selectedRows.includes(props.row))
-      props.TD.style.background = "rgba(0, 94, 255, 0.1)";
-
-    if (!props.value) return <></>;
-    const categories = props.value as string[];
+    const isRowCurrentlySelected = isContextMenuOpen && selectedRows.includes(props.row);
+    if (isRowCurrentlySelected) props.TD.style.background = "rgba(0, 94, 255, 0.1)";
 
     if (!hotRef || !hotRef.current) return <></>;
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -300,11 +297,20 @@ const Categories = memo(() => {
     const hot = hotRef.current.hotInstance as Handsontable;
     if (!hot) return <></>;
 
-    const rowData = hot.getSourceDataAtRow(props.row) as ModRow;
+    const rowData = hot.getSourceDataAtRow(props.row) as CategoryRow | ModRow;
     if (!rowData) return <></>;
+
+    if (rowData && isCategoryRow(rowData)) {
+      props.TD.style.background = "rgb(89, 22, 139)"; // purple-900
+
+      if (isRowCurrentlySelected) props.TD.style.background = "rgb(60, 3, 102)"; // purple-950
+    }
 
     const mod = (mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
     if (!mod) return <></>;
+
+    if (!props.value) return <></>;
+    const categories = props.value as string[];
 
     return (
       <>
@@ -313,7 +319,7 @@ const Categories = memo(() => {
         ))}
       </>
     );
-  });
+  };
 
   useEffect(() => {
     console.log("REDRAW");
@@ -404,7 +410,7 @@ const Categories = memo(() => {
     }
 
     return sourceDataObject;
-  }, [mods, hiddenCategories]);
+  }, [mods, hiddenCategories, categoriesFilter, nameFilter, categoryFilter]);
 
   // filter out the name column, supports comma as OR
   if (nameFilter.trim() != "") {
@@ -474,6 +480,12 @@ const Categories = memo(() => {
       __children: [],
     });
   }
+
+  sourceDataObject.sort((firstCategory, secondCategory) => {
+    if (firstCategory.category == "Uncategorized") return -1;
+    if (secondCategory.category == "Uncategorized") return 1;
+    return firstCategory.category.localeCompare(secondCategory.category);
+  });
 
   const flattenedData: (CategoryRow | ModRow)[] = [];
   for (const categoryRow of sourceDataObject) {
@@ -603,11 +615,16 @@ const Categories = memo(() => {
     }
 
     if (isContextMenuOpen && selectedRows.includes(row)) td.style.background = "rgba(0, 94, 255, 0.1)";
+
+    const rowData = flattenedData[row];
+    if (rowData && isCategoryRow(rowData)) {
+      td.style.background = "oklch(38.1% 0.176 304.987)";
+    }
   }
 
   const collapseOrExpandAllCategories = () => {
     if (hiddenCategories.length == 0) {
-      setHiddenCategories(categoriesWithUncategorized);
+      setHiddenCategories([...categoriesWithUncategorized]);
     } else {
       setHiddenCategories([]);
     }
@@ -870,7 +887,7 @@ const Categories = memo(() => {
       >
         <MemoHotTable
           viewportColumnRenderingOffset={100}
-          viewportRowRenderingOffset={100}
+          viewportRowRenderingOffset={250}
           data={sourceDataObject}
           persistentState={true}
           width="100%"
@@ -1009,12 +1026,13 @@ const Categories = memo(() => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const cellProperties: any = {};
 
-            if (col != 3) cellProperties.renderer = firstRowRenderer; // uses lookup map
+            if (col != 3) cellProperties.renderer = firstRowRenderer;
             return cellProperties;
           }}
           // autoRowSize={true}
           // autoRowSize={{ syncLimit: "100%", allowSampleDuplicates: true }}
           // rowHeights="28px"
+          // renderAllRows={true}
 
           // autoColumnSize={true}
         >
