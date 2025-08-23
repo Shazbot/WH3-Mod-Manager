@@ -3218,7 +3218,7 @@ export const registerIpcMainListeners = (
         batData += ` ${fileNameWithModList};`;
 
         // Create steam_appid.txt for Attila
-        if (appData.currentGame === "attila") {
+        if (appData.currentGame === "attila" || appData.currentGame === "rome2") {
           const steamAppIdPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "steam_appid.txt"
