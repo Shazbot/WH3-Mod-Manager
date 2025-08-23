@@ -192,9 +192,9 @@ const Skill = memo(({ data }: { data: SkillData }) => {
             <div className="flex gap-2 flex-col">
               {data.effects
                 .filter((effect) => effect.level == Math.min(currentLevel + 1, data.numLevels))
-                .map((effect) => {
+                .map((effect, i) => {
                   return (
-                    <div className="flex gap-2 text-sm">
+                    <div id={effect.key + i} className="flex gap-2 text-sm">
                       <img
                         className="h-6"
                         src={`data:image/png;base64,${effect.iconData}`}
