@@ -8,7 +8,7 @@ import TopBar from "./components/TopBar";
 import { Toasts } from "./components/Toasts";
 import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
-import { StrictMode, useRef, Suspense } from "react";
+import { StrictMode, useRef, Suspense, useEffect } from "react";
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
 import { perfMonitor, startTiming, endTiming } from "./utility/performanceMonitor";
@@ -57,13 +57,14 @@ const App = React.memo(() => {
 
   const [localization, setLocalization] = React.useState<Record<string, string>>({});
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
-  const [cachedLanguage, setCachedLanguage] = React.useState<string>(currentLanguage);
 
-  if (Object.keys(localization).length == 0 || cachedLanguage != currentLanguage)
+  useEffect(() => {
+    if (!currentLanguage) return;
     window.api?.translateAllStatic(staticTextIds).then((translated) => {
-      setCachedLanguage(currentLanguage);
+      console.log("translateAllStatic", currentLanguage);
       setLocalization(translated);
     });
+  }, [currentLanguage]);
 
   const scrollElement = useRef<HTMLDivElement>(null);
 
