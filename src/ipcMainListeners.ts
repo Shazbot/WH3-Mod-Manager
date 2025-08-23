@@ -1529,12 +1529,16 @@ export const registerIpcMainListeners = (
         const appState = await readConfig();
         mainWindow?.webContents.send("fromAppConfig", appState);
 
-        const languageInConfig = appState.currentLanguage || "en";
-        appData.currentLanguage = languageInConfig;
-        if (i18n.language != languageInConfig) {
-          i18n.changeLanguage(languageInConfig).then(() => {
-            mainWindow?.webContents.send("setCurrentLanguage", languageInConfig);
-          });
+        console.log("appState.currentLanguage:", appState.currentLanguage);
+        if (appState.currentLanguage) {
+          const languageInConfig = appState.currentLanguage || "en";
+
+          if (i18n.language != languageInConfig || appData.currentLanguage != languageInConfig) {
+            appData.currentLanguage = languageInConfig;
+            i18n.changeLanguage(languageInConfig).then(() => {
+              mainWindow?.webContents.send("setCurrentLanguage", languageInConfig);
+            });
+          }
         }
       } catch (err) {
         mainWindow?.webContents.send("failedReadingConfig");
@@ -1570,6 +1574,7 @@ export const registerIpcMainListeners = (
       if (!doesConfigExist) {
         mainWindow?.webContents.send("setCurrentGame", appData.currentGame);
       }
+      mainWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
     }
 
     console.log(
@@ -1659,13 +1664,24 @@ export const registerIpcMainListeners = (
     return "";
   });
 
-  ipcMain.handle("translate", (event, translationId: string, options?: Record<string, string | number>) => {
-    return i18n.t(translationId, options);
-  });
+  ipcMain.handle(
+    "translate",
+    async (event, translationId: string, options?: Record<string, string | number>) => {
+      if (i18n.language != appData.currentLanguage) {
+        await i18n.changeLanguage(appData.currentLanguage);
+      }
+
+      return i18n.t(translationId, options);
+    }
+  );
 
   ipcMain.handle(
     "translateAll",
-    (event, translationIdsWithOptions: Record<string, Record<string, string | number>>) => {
+    async (event, translationIdsWithOptions: Record<string, Record<string, string | number>>) => {
+      if (i18n.language != appData.currentLanguage) {
+        await i18n.changeLanguage(appData.currentLanguage);
+      }
+
       const translated: Record<string, string> = {};
       for (const id of Object.keys(translationIdsWithOptions)) {
         translated[id] = i18n.t(id, translationIdsWithOptions[id]);
@@ -1674,7 +1690,13 @@ export const registerIpcMainListeners = (
     }
   );
 
-  ipcMain.handle("translateAllStatic", (event, translationIds: Record<string, string | number>) => {
+  ipcMain.handle("translateAllStatic", async (event, translationIds: Record<string, string | number>) => {
+    console.log("translateAllStatic handler, language is", i18n.language);
+
+    if (i18n.language != appData.currentLanguage) {
+      await i18n.changeLanguage(appData.currentLanguage);
+    }
+
     const translated: Record<string, string> = {};
     for (const id of Object.keys(translationIds)) {
       translated[id] = i18n.t(id);
@@ -1989,7 +2011,9 @@ export const registerIpcMainListeners = (
     console.log("requestLanguageChange:", language);
     await i18n.changeLanguage(language);
     appData.currentLanguage = language as SupportedLanguage;
-    mainWindow?.webContents.send("setCurrentLanguage", language);
+    windows.mainWindow?.webContents.send("setCurrentLanguage", language);
+    windows.skillsWindow?.webContents.send("setCurrentLanguage", language);
+    windows.viewerWindow?.webContents.send("setCurrentLanguage", language);
   });
 
   ipcMain.on("requestGameChange", async (event, game: SupportedGames, appState: AppState) => {
@@ -2230,6 +2254,7 @@ export const registerIpcMainListeners = (
     );
 
     windows.viewerWindow?.webContents.send("setStartArgs", appData.startArgs);
+    windows.viewerWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
@@ -2266,6 +2291,7 @@ export const registerIpcMainListeners = (
     }
 
     windows.skillsWindow?.webContents.send("setStartArgs", appData.startArgs);
+    windows.skillsWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {

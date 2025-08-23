@@ -146,7 +146,8 @@ declare global {
     removedModsData: RemovedModData[];
     modRowsSortingType: SortingType;
     availableLanguages: string[];
-    currentLanguage: SupportedLanguages;
+    currentLanguage?: SupportedLanguages;
+    currentLocalization: Record<string, string>;
     packDataOverwrites: Record<string, PackDataOverwrite[]>;
     modBeingCustomized: Mod | undefined;
     customizableMods: Record<string, string[]>;

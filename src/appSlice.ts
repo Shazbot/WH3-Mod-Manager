@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { SupportedGames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
+import { staticTextIds } from "./localizationContext";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -994,10 +995,13 @@ const appSlice = createSlice({
     },
     setCurrentLanguage: (state: AppState, action: PayloadAction<string>) => {
       const language = action.payload;
-      if (isSupportedLanguage(language)) {
-        state.currentLanguage = language;
-      } else {
+      console.log("appslice setCurrentLanguage:", language);
+      if (!isSupportedLanguage(language)) {
         console.log("setCurrentLanguage: language", language, "not supported");
+        return;
+      }
+      if (language != state.currentLanguage) {
+        state.currentLanguage = language;
       }
     },
     setCurrentGame: (state: AppState, action: PayloadAction<SetCurrentGamePayload>) => {

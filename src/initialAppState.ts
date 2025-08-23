@@ -67,7 +67,6 @@ const initialState = {
   modRowsSortingType: SortingType.Ordered,
   importedMods: [],
   availableLanguages: ["en"],
-  currentLanguage: "en",
   packDataOverwrites: {},
   modBeingCustomized: undefined,
   customizableMods: {},
@@ -79,6 +78,7 @@ const initialState = {
   isModTagPickerOpen: false,
   currentModToUpload: undefined,
   isLocalizingSubtypes: false,
+  currentLocalization: {},
 
   // skills
   skillNodesToLevel: {},

@@ -684,4 +684,4 @@ export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
 
 export const SupportedLanguages = ["en", "fr", "de", "es", "ru", "pl", "pt", "tr", "zh", "ja", "ko"] as const;
 type typedSupportedLanguagesList = typeof SupportedLanguages;
-export type SupportedLanguage = typedSupportedLanguagesList[number]; // this compiles to 'circle' | 'square'
+export type SupportedLanguage = typedSupportedLanguagesList[number];
