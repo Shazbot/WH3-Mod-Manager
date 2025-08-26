@@ -79,6 +79,8 @@ import {
   initializeAllSchemaForGame,
 } from "./schema";
 import { buildDBReferenceTree } from "./DBClone";
+import { INode } from "react-accessible-treeview";
+import { IFlatMetadata } from "react-accessible-treeview/dist/TreeView/utils";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -2887,7 +2889,8 @@ export const registerIpcMainListeners = (
       nodesNamesToDuplicate: string[],
       nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
       nodeNameToRenameValue: Record<string, string>,
-      defaultNodeNameToRenameValue: Record<string, string>
+      defaultNodeNameToRenameValue: Record<string, string>,
+      treeData: IViewerTreeNodeWithData
     ) => {
       const { executeDBDuplication } = await import("./DBClone");
       await executeDBDuplication(
@@ -2895,7 +2898,8 @@ export const registerIpcMainListeners = (
         nodesNamesToDuplicate,
         nodeNameToRef,
         nodeNameToRenameValue,
-        defaultNodeNameToRenameValue
+        defaultNodeNameToRenameValue,
+        treeData
       );
     }
   );

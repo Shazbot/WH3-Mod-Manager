@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/src/hooks";
 import { FaSquare, FaCheckSquare, FaMinusSquare, FaArrowRight } from "react-icons/fa";
 import { IoMdArrowDropright } from "react-icons/io";
@@ -7,24 +7,10 @@ import cx from "classnames";
 import "./DBDuplicationStyles.css";
 import { IconBaseProps } from "react-icons";
 import hash from "object-hash";
-import { chunkTableIntoRows } from "./viewerHelpers";
+import { chunkTableIntoRows, findNodeInTree } from "./viewerHelpers";
 import { packDataStore } from "./packDataStore";
 import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
 import { Tooltip } from "flowbite-react";
-
-const findNodeInTree = (
-  tree: IViewerTreeNodeWithData | IViewerTreeNode,
-  targetName: string
-): IViewerTreeNodeWithData | IViewerTreeNode | null => {
-  if (tree.name === targetName) return tree;
-  if (tree.children) {
-    for (const child of tree.children) {
-      const found = findNodeInTree(child, targetName);
-      if (found) return found;
-    }
-  }
-  return null;
-};
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -50,7 +36,7 @@ const getAllRefsFromTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => 
     .map((node) => [node.tableName, node.columnName, node.value] as DBCell);
 };
 
-const DBDuplication = React.memo(() => {
+const DBDuplication = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
@@ -443,14 +429,15 @@ const DBDuplication = React.memo(() => {
       selectedNodesByName,
       nodeNameToData,
       nodeNameToRenameValue,
-      defaultNodeNameToRenameValue
+      defaultNodeNameToRenameValue,
+      treeData
     );
 
     // dispatch(setDeepCloneTarget(undefined));
 
-    for (const node of selectedNodesByName) {
-      console.log("node is", node, nodeNameToData[node]);
-    }
+    // for (const node of selectedNodesByName) {
+    //   console.log("node is", node, nodeNameToData[node]);
+    // }
   };
 
   return (

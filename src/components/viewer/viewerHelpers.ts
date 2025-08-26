@@ -15,3 +15,17 @@ export const chunkTableIntoRows = (schemaFields: SchemaField[], currentSchema: D
     }, []) || []
   );
 };
+
+export const findNodeInTree = (
+  tree: IViewerTreeNodeWithData | IViewerTreeNode,
+  targetName: string
+): IViewerTreeNodeWithData | IViewerTreeNode | null => {
+  if (tree.name === targetName) return tree;
+  if (tree.children) {
+    for (const child of tree.children) {
+      const found = findNodeInTree(child, targetName);
+      if (found) return found;
+    }
+  }
+  return null;
+};

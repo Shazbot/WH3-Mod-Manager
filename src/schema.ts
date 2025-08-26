@@ -486,6 +486,8 @@ export const getSchemaCacheStatus = (): {
   };
 };
 
+export const tablesToIgnore = ["main_unit_ownership_content_pack_junctions_tables"];
+
 // import * as fs from "fs";
 // fs.writeFileSync("dumps/gameToReferences.json", JSON.stringify(gameToReferences));
 // fs.writeFileSync("dumps/gameToDBFieldsThatReference.json", JSON.stringify(gameToDBFieldsThatReference));
