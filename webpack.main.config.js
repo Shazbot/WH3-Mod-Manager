@@ -91,7 +91,7 @@ module.exports = {
     },
     hot: true,
   },
-  devtool: isProduction ? "source-map" : "eval-cheap-module-source-map",
+  devtool: isProduction ? "source-map" : "source-map",
   cache: {
     type: "filesystem",
     // Improve cache invalidation

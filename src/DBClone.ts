@@ -1,3 +1,4 @@
+import { findNodeInTree } from "./components/viewer/viewerHelpers";
 import appData from "./appData";
 import { readModsByPath } from "./ipcMainListeners";
 import { chunkSchemaIntoRows, getPacksTableData } from "./packFileSerializer";
@@ -7,6 +8,8 @@ import {
   gameToDBFieldsReferencedBy,
   gameToReferences,
   getReferencesForGame,
+  gameToDBFieldsThatReference,
+  tablesToIgnore,
 } from "./schema";
 import { getDBNameFromString, getDBPackedFilePath, getDBVersion } from "./utility/packFileHelpers";
 import Queue from "./utility/queue";
@@ -219,6 +222,8 @@ export const buildDBReferenceTree = async (
         if (references) {
           console.log("REFERENCES FOR", tableName, tableColumnName, references);
           for (const [refTableName, refTableColumnName] of references) {
+            if (tablesToIgnore.includes(refTableName)) continue;
+
             await addNewCellFromReference(
               acc,
               treeParent,
@@ -621,137 +626,238 @@ export async function executeDBDuplication(
   nodesNamesToDuplicate: string[],
   nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
   nodeNameToRenameValue: Record<string, string>,
-  defaultNodeNameToRenameValue: Record<string, string>
+  defaultNodeNameToRenameValue: Record<string, string>,
+  treeData: IViewerTreeNodeWithData
 ): Promise<void> {
-  const pack = appData.packsData.find((pack) => pack.path == packPath);
-  if (!pack) {
-    console.log("executeDBDuplication: pack not found");
-    return;
-  }
+  try {
+    const pack = appData.packsData.find((pack) => pack.path == packPath);
+    if (!pack) {
+      console.log("executeDBDuplication: pack not found");
+      return;
+    }
 
-  const toSave = [] as {
-    name: string;
-    schemaFields: AmendedSchemaField[];
-    file_size: number;
-    version?: number;
-    tableSchema: DBVersion;
-  }[];
+    const toSave = [] as {
+      name: string;
+      schemaFields: AmendedSchemaField[];
+      file_size: number;
+      version?: number;
+      tableSchema: DBVersion;
+    }[];
 
-  console.log("to duplicate", nodesNamesToDuplicate);
+    console.log("to duplicate", nodesNamesToDuplicate);
 
-  for (const node of nodesNamesToDuplicate) {
-    const { tableName, columnName } = nodeNameToRef[node];
-    const resolvedKeyValue = nodeNameToRef[node].value;
-
-    console.log("tableName", tableName, "columnName", columnName, "resolvedKeyValue", resolvedKeyValue);
-
-    const packedFiles = pack.packedFiles.filter((existingPackedFile) =>
-      existingPackedFile.name.startsWith(`db\\${tableName}\\`)
-    );
-
-    console.log("num packedFiles:", packedFiles.length);
-    console.log(
-      "packedFiles:",
-      packedFiles.map((pf) => pf.name)
-    );
-
-    for (const packedFile of packedFiles) {
-      if (!packedFile.schemaFields) {
-        console.log("packedFile.schemaFields not found");
+    const nodeRefsToHandle = [] as IViewerTreeNodeWithData[];
+    for (const nodeNameToDupe of nodesNamesToDuplicate) {
+      const nodeToDupe = findNodeInTree(treeData, nodeNameToDupe) as IViewerTreeNodeWithData;
+      if (!nodeToDupe) {
+        console.log("CANNOT FIND NODE", nodeNameToDupe);
         continue;
       }
 
-      const currentSchema = packedFile.tableSchema;
-      if (!currentSchema) {
-        console.log("currentSchema not found");
-        continue;
-      }
-
-      const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
-      for (const row of rows) {
-        const cellWithKey = row.find((cell) => cell.name == columnName);
-        if (!cellWithKey) {
-          console.log("cellWithKey not found");
-          continue;
+      for (const node of [nodeToDupe, ...nodeToDupe.children]) {
+        if (!nodeRefsToHandle.some((nodeIter) => nodeIter.name == node.name)) {
+          nodeRefsToHandle.push(node as IViewerTreeNodeWithData);
         }
-        if (cellWithKey.resolvedKeyValue != resolvedKeyValue) continue;
-
-        console.log("found row match at index", rows.indexOf(row));
-
-        const clonedRow = structuredClone(row);
-        const cellToReplaceValue = clonedRow.find(
-          (cell) => cell.name == columnName && cell.resolvedKeyValue == resolvedKeyValue
-        );
-        if (!cellToReplaceValue) {
-          console.log("cellToReplaceValue not found");
-          continue;
-        }
-
-        const cellIndex = row.findIndex((cellIter) => cellIter == cellWithKey);
-        if (!packedFile.tableSchema) {
-          console.log("packedFile.tableSchema not found");
-          continue;
-        }
-
-        const field = packedFile.tableSchema?.fields[cellIndex];
-
-        if (!field) {
-          console.log("Field not found!");
-          continue;
-        }
-
-        const { typeToBuffer, getFieldSize } = await import("./packFileSerializer");
-
-        const newValue =
-          nodeNameToRenameValue[node] != null
-            ? nodeNameToRenameValue[node]
-            : defaultNodeNameToRenameValue[node];
-        console.log("parse field:", field, nodeNameToRenameValue[node]);
-
-        cellToReplaceValue.fields = [
-          { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
-        ];
-        cellToReplaceValue.resolvedKeyValue = newValue;
-
-        let packFileSize = 0;
-        for (let i = 0; i < clonedRow.length; i++) {
-          const field = packedFile.tableSchema.fields[i];
-          console.log(
-            "field size of",
-            clonedRow[i].name,
-            field.field_type.toString(),
-            clonedRow[i].resolvedKeyValue,
-            "is",
-            getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
-          );
-          packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
-        }
-
-        const version = packedFile.version;
-        if (version) packFileSize += 8; // size of version data
-
-        packFileSize += 5; // number of rows + 1 unknown byte
-
-        toSave.push({
-          name: `db\\${tableName}\\test`,
-          schemaFields: clonedRow,
-          file_size: packFileSize,
-          version: packedFile.version,
-          tableSchema: packedFile.tableSchema,
-        });
       }
     }
+
+    const nodesToDuplicate = [] as IViewerTreeNodeWithData[];
+    for (const nodeName of nodesNamesToDuplicate) {
+      const node = nodeNameToRef[nodeName];
+      if (!node) continue;
+
+      nodesToDuplicate.push(node);
+    }
+
+    const { typeToBuffer, getFieldSize } = await import("./packFileSerializer");
+
+    console.log(
+      "nodesToDuplicate:",
+      nodesToDuplicate.map(
+        (node) =>
+          `tableName: ${node.tableName}, column: ${node.columnName}, node.name: ${node.name}, node.value: ${node.value}`
+      )
+    );
+
+    console.log(
+      "nodeRefsToHandle:",
+      nodeRefsToHandle.map(
+        (node) =>
+          `tableName: ${node.tableName}, column: ${node.columnName}, node.name: ${node.name}, node.value: ${node.value}`
+      )
+    );
+
+    for (const node of nodeRefsToHandle) {
+      const { tableName, columnName } = node;
+      const resolvedKeyValue = node.value;
+
+      console.log(
+        "nodeRefsToHandle: tableName",
+        tableName,
+        "columnName",
+        columnName,
+        "resolvedKeyValue",
+        resolvedKeyValue
+      );
+
+      const packedFiles = pack.packedFiles.filter((existingPackedFile) =>
+        existingPackedFile.name.startsWith(`db\\${tableName}\\`)
+      );
+
+      console.log("num packedFiles:", packedFiles.length);
+      console.log(
+        "packedFiles:",
+        packedFiles.map((pf) => pf.name)
+      );
+
+      for (const packedFile of packedFiles) {
+        if (!packedFile.schemaFields) {
+          console.log("packedFile.schemaFields not found");
+          continue;
+        }
+
+        const currentSchema = packedFile.tableSchema;
+        if (!currentSchema) {
+          console.log("currentSchema not found");
+          continue;
+        }
+
+        const DBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
+        const referencesForCurrentTable = DBFieldsThatReference[tableName];
+
+        const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
+        for (const row of rows) {
+          let clonedRow = null as AmendedSchemaField[] | null;
+          for (let i = 0; i < row.length; i++) {
+            const cell = row[i];
+
+            if (referencesForCurrentTable) {
+              const reference = referencesForCurrentTable[cell.name];
+              if (!reference) continue;
+              // console.log("FOUND REFERENCE:", cell.name, reference);
+
+              const replacement = nodesToDuplicate.find(
+                (nodeToDupe) =>
+                  nodeToDupe.tableName == reference[0] &&
+                  nodeToDupe.columnName == reference[1] &&
+                  nodeToDupe.value == cell.resolvedKeyValue
+              );
+              if (!replacement) continue;
+
+              const newValue =
+                nodeNameToRenameValue[replacement.name] != null
+                  ? nodeNameToRenameValue[replacement.name]
+                  : defaultNodeNameToRenameValue[replacement.name];
+
+              console.log(
+                "FOUND REPLACEMENT",
+                tableName,
+                cell.name,
+                cell.resolvedKeyValue,
+                "new value:",
+                newValue
+              );
+
+              clonedRow = clonedRow || structuredClone(row);
+              const cellToReplaceValue = clonedRow[i];
+
+              const field = packedFile.tableSchema?.fields[i];
+
+              if (!field) {
+                console.log("Field not found!");
+                continue;
+              }
+
+              cellToReplaceValue.fields = [
+                { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
+              ];
+              cellToReplaceValue.resolvedKeyValue = newValue;
+            }
+          }
+
+          for (let i = 0; i < row.length; i++) {
+            const cell = row[i];
+
+            const nodeToDupe = nodesToDuplicate.find(
+              (nodeToDupe) =>
+                nodeToDupe.tableName == tableName &&
+                nodeToDupe.columnName == cell.name &&
+                nodeToDupe.value == cell.resolvedKeyValue
+            );
+            if (nodeToDupe) {
+              clonedRow = clonedRow || structuredClone(row);
+              const cellToReplaceValue = clonedRow[i];
+
+              const field = packedFile.tableSchema?.fields[i];
+
+              if (!field) {
+                console.log("Field not found!");
+                continue;
+              }
+
+              const newValue =
+                nodeNameToRenameValue[nodeToDupe.name] != null
+                  ? nodeNameToRenameValue[nodeToDupe.name]
+                  : defaultNodeNameToRenameValue[nodeToDupe.name];
+
+              cellToReplaceValue.fields = [
+                { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
+              ];
+              cellToReplaceValue.resolvedKeyValue = newValue;
+            }
+          }
+
+          if (clonedRow && packedFile.tableSchema) {
+            let packFileSize = 0;
+            for (let i = 0; i < clonedRow.length; i++) {
+              const field = packedFile.tableSchema.fields[i];
+              console.log(
+                "field size of",
+                clonedRow[i].name,
+                field.field_type.toString(),
+                clonedRow[i].resolvedKeyValue,
+                "is",
+                getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
+              );
+              packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
+            }
+
+            const version = packedFile.version;
+            if (version) packFileSize += 8; // size of version data
+
+            packFileSize += 5; // number of rows + 1 unknown byte
+
+            const newPFName = `db\\${tableName}\\test`;
+            if (!toSave.some((pf) => pf.name == newPFName)) {
+              toSave.push({
+                name: newPFName,
+                schemaFields: clonedRow,
+                file_size: packFileSize,
+                version: packedFile.version,
+                tableSchema: packedFile.tableSchema,
+              });
+            } else {
+              console.log("PACKED FILE ALREADY EXISTS IN TOSAVE:", newPFName);
+            }
+          }
+        }
+      }
+    }
+
+    console.log("DONE BEFORE toSave");
+
+    console.log("toSave", toSave);
+
+    const { writePack } = await import("./packFileSerializer");
+    const nodePath = await import("path");
+
+    await writePack(
+      toSave,
+      nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string, "test.pack")
+    );
+  } catch (e) {
+    console.log(e);
   }
-
-  console.log("toSave", toSave);
-
-  const { writePack } = await import("./packFileSerializer");
-  const nodePath = await import("path");
-
-  await writePack(
-    toSave,
-    nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string, "test.pack")
-  );
 }
 
 function logUsedRefs(acc: DBCell[]) {

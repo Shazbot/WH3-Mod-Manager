@@ -4,6 +4,8 @@ import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
 import debounce from "just-debounce-it";
 import "electron-log/preload";
+import { INode } from "react-accessible-treeview";
+import { IFlatMetadata } from "react-accessible-treeview/dist/TreeView/utils";
 
 console.log("IN PRELOAD");
 
@@ -228,7 +230,8 @@ const api = {
     nodesNamesToDuplicate: string[],
     nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
     nodeNameToRenameValue: Record<string, string>,
-    defaultNodeNameToRenameValue: Record<string, string>
+    defaultNodeNameToRenameValue: Record<string, string>,
+    treeData: IViewerTreeNodeWithData
   ) =>
     ipcRenderer.send(
       "executeDBDuplication",
@@ -236,7 +239,8 @@ const api = {
       nodesNamesToDuplicate,
       nodeNameToRef,
       nodeNameToRenameValue,
-      defaultNodeNameToRenameValue
+      defaultNodeNameToRenameValue,
+      treeData
     ),
   buildDBReferenceTree: (
     packPath: string,
