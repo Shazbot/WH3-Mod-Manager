@@ -301,7 +301,7 @@ const PackTablesTableView = memo(() => {
   // console.log("COLUMNS:", columns);
 
   return (
-    <div className="ht-theme-main-dark-auto">
+    <div className="ht-theme-main-dark">
       <HandsontableWrapper
         data={data}
         columns={columns}
