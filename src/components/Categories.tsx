@@ -723,7 +723,7 @@ const Categories = memo(() => {
         </div>
       </FloatingOverlay>
 
-      <div className="-mt-6 mx-10">
+      <div className="-mt-6 mr-10">
         <div className="mt-5 flex">
           <span className="relative ml-4">
             <input
@@ -883,7 +883,7 @@ const Categories = memo(() => {
           // setCurrentlySelectedMods(selectedMods);
           setIsContextMenuOpen(true);
         }}
-        className="overflow-hidden mx-10 ht-theme-main-dark-auto"
+        className="overflow-hidden mr-10 ht-theme-main-dark"
       >
         <MemoHotTable
           viewportColumnRenderingOffset={100}
