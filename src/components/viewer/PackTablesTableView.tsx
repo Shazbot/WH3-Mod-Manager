@@ -135,7 +135,7 @@ const HandsontableWrapper = memo(
                   const [startRow, startCol, endRow, endCol] = lastSelected[0];
                   if (startRow != endRow || startCol != endCol) return;
 
-                  onContextMenuCallback(startRow, startCol);
+                  onContextMenuCallback(hot.toPhysicalRow(startRow), hot.toPhysicalColumn(startCol));
                 },
               },
             },

@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LocVersion = exports.locFields = void 0;
-exports.locFields = [
+exports.LocVersion = exports.LocFields = void 0;
+exports.LocFields = [
     {
         name: "key",
         field_type: "StringU16",
@@ -41,5 +41,5 @@ exports.locFields = [
 ];
 exports.LocVersion = {
     version: 1,
-    fields: exports.locFields,
+    fields: exports.LocFields,
 };

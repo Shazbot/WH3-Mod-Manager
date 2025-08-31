@@ -302,9 +302,15 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 .handsontable td {
 }
 
-.htFocusCatcher,
-.ht_clone_top {
+#categoriesTableContainer .htFocusCatcher,
+#categoriesTableContainer .ht_clone_top {
   display: none;
+}
+
+.ht_clone_top,
+.ht_clone_left,
+.ht_clone_top_left_corner {
+  z-index: 50 !important;
 }
 
 .my-cell {
@@ -321,17 +327,17 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   outline: none;
 }
 
-.ht_clone_inline_start.ht_clone_left.handsontable {
+#categoriesTableContainer .ht_clone_inline_start.ht_clone_left.handsontable {
   display: none;
 }
 
-.ht_clone_top_inline_start_corner {
+#categoriesTableContainer .ht_clone_top_inline_start_corner {
   display: none;
 }
 
-.handsontable .ht_clone_inline_start thead,
-.handsontable .ht_master thead,
-.handsontable .ht_master tr th {
+#categoriesTableContainer .handsontable .ht_clone_inline_start thead,
+#categoriesTableContainer .handsontable .ht_master thead,
+#categoriesTableContainer .handsontable .ht_master tr th {
   visibility: visible !important;
 }
 

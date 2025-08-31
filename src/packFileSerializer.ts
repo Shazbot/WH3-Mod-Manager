@@ -12,7 +12,7 @@ import {
   NewPackedFile,
   DBVersion,
   LocVersion,
-  locFields,
+  LocFields,
 } from "./packFileTypes";
 import clone from "just-clone";
 import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
@@ -1289,13 +1289,21 @@ export const writePack = async (packFiles: NewPackedFile[], path: string) => {
     for (const packFile of packFiles) {
       if (!packFile.schemaFields) continue;
 
-      if (packFile.version != null) {
+      if (packFile.name.endsWith(".loc")) {
+        await outFile.write(Buffer.from([0xff, 0xfe]));
+        await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
+      } else if (packFile.version != null) {
         console.log(packFile.name, "version:", packFile.version);
         await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
         await outFile.writeInt32(packFile.version); // db version
       }
 
-      await outFile.writeInt8(1);
+      if (packFile.name.endsWith(".loc")) {
+        await outFile.writeInt8(1);
+        await outFile.writeInt32(1);
+      } else {
+        await outFile.writeInt8(1);
+      }
       console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
       await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
@@ -1423,7 +1431,10 @@ const writeField = async (file: BinaryFile, schemaField: SchemaField) => {
         break;
       case "I64":
         {
-          await file.writeInt64(field.val as number);
+          const buffer = Buffer.alloc(8);
+          buffer.writeBigInt64LE(BigInt(field.val as number));
+          await file.write(buffer);
+          // await file.writeInt64(field.val as number);
         }
         break;
       case "F64":
@@ -1830,7 +1841,7 @@ const readLoc = async (
 
   try {
     for (let i = 0; i < entryCount; i++) {
-      for (const field of locFields) {
+      for (const field of LocFields) {
         const { name, field_type, is_key } = field;
 
         // console.log("reading", name, field_type, currentPos);
