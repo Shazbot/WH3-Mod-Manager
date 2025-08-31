@@ -817,6 +817,7 @@ const Categories = memo(() => {
         </div>
       </div>
       <div
+        id="categoriesTableContainer"
         onClick={(ev) => {
           console.log("HT: onClick");
           const targetElement = ev.target as HTMLElement;

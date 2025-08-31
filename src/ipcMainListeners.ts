@@ -209,6 +209,35 @@ const appendPacksData = (newPack: Pack, mod?: Mod) => {
   }
 };
 
+export const getLocsTrie = (pack: Pack) => {
+  console.log("getLocsTrie:", pack.name);
+
+  const trie = new Trie<string>("_");
+  const locPFs = Object.values(pack.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
+
+  const packViewData = getPackViewData(pack, undefined, true);
+  if (!packViewData) {
+    console.log("getLocsTrie: packViewData INVALID");
+    return;
+  }
+
+  for (const packedFile of locPFs) {
+    const data = getPackTableData(packedFile.name, packViewData);
+    if (!data) continue;
+
+    // console.log("loc data for:", pack.name, data);
+    for (const rows of Object.values(data)) {
+      for (const row of rows) {
+        const [locKey, locValue] = [row[0] as string, row[1] as string];
+        // console.log("loc:", locKey, locValue);
+        if (locKey && locKey != "") trie.add(locKey, locValue);
+      }
+    }
+  }
+
+  return trie;
+};
+
 export const readModsByPath = async (
   modPaths: string[],
   skipParsingTables = true,
@@ -224,12 +253,13 @@ export const readModsByPath = async (
   // if (!skipParsingTables) {
   //   appData.packsData = appData.packsData.filter((pack) => !modPaths.some((modPath) => modPath == pack.path));
   // }
+  const newPacks = [] as Pack[];
   for (const modPath of modPaths) {
     if (
       appData.currentlyReadingModPaths.every((path) => path != modPath)
       // && appData.packsData.every((pack) => pack.path != modPath)
     ) {
-      // console.log("READING " + modPath);
+      console.log("READING ", modPath, readLocs);
       appData.currentlyReadingModPaths.push(modPath);
       windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
       const newPack = await readPack(modPath, {
@@ -247,6 +277,10 @@ export const readModsByPath = async (
       if (!skipCollisionCheck) {
         appendCollisions(newPack);
       }
+
+      newPacks.push(newPack);
+    } else {
+      console.log("already reading", modPath, "SKIPPING IT");
     }
   }
   if (!skipCollisionCheck) {
@@ -255,6 +289,8 @@ export const readModsByPath = async (
       packTableCollisions: appData.compatData.packTableCollisions,
     } as PackCollisions);
   }
+
+  return newPacks;
 };
 
 export const registerIpcMainListeners = (
@@ -271,32 +307,6 @@ export const registerIpcMainListeners = (
     mainWindow?.webContents.send("setModData", [...tempModDatas]);
     tempModDatas.splice(0, tempModDatas.length);
   }, 200);
-
-  const getLocsTrie = (pack: Pack) => {
-    console.log("getLocsTrie:", pack.name);
-
-    const trie = new Trie<string>("_");
-    const locPFs = Object.values(pack.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
-
-    const packViewData = getPackViewData(pack, undefined, true);
-    if (!packViewData) return;
-
-    for (const packedFile of locPFs) {
-      const data = getPackTableData(packedFile.name, packViewData);
-      if (!data) continue;
-
-      // console.log("loc data for:", pack.name, data);
-      for (const rows of Object.values(data)) {
-        for (const row of rows) {
-          const [locKey, locValue] = [row[0] as string, row[1] as string];
-          // console.log("loc:", locKey, locValue);
-          if (locKey && locKey != "") trie.add(locKey, locValue);
-        }
-      }
-    }
-
-    return trie;
-  };
 
   const getSkillsData = async (mods: Mod[]) => {
     console.log(

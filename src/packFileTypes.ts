@@ -175,6 +175,8 @@ export interface Field {
 export interface DBVersion {
   version: number;
   fields: DBField[];
+  localised_fields?: DBField[];
+  localised_key_order?: number[];
 }
 
 export interface DBField {
@@ -196,7 +198,7 @@ export interface DBField {
   is_part_of_colour?: any;
 }
 
-export const locFields: DBField[] = [
+export const LocFields: DBField[] = [
   {
     name: "key",
     field_type: "StringU16",
@@ -237,5 +239,5 @@ export const locFields: DBField[] = [
 
 export const LocVersion: DBVersion = {
   version: 1,
-  fields: locFields,
+  fields: LocFields,
 };

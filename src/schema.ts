@@ -486,7 +486,10 @@ export const getSchemaCacheStatus = (): {
   };
 };
 
-export const tablesToIgnore = ["main_unit_ownership_content_pack_junctions_tables"];
+export const tablesToIgnore = [
+  "main_unit_ownership_content_pack_junctions_tables",
+  "allied_recruitment_core_units_tables",
+];
 
 // import * as fs from "fs";
 // fs.writeFileSync("dumps/gameToReferences.json", JSON.stringify(gameToReferences));

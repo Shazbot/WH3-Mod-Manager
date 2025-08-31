@@ -1,8 +1,15 @@
 import { findNodeInTree } from "./components/viewer/viewerHelpers";
 import appData from "./appData";
-import { readModsByPath } from "./ipcMainListeners";
+import { getLocsTrie, readModsByPath } from "./ipcMainListeners";
 import { chunkSchemaIntoRows, getPacksTableData } from "./packFileSerializer";
-import { AmendedSchemaField, DBVersion, PackedFile } from "./packFileTypes";
+import {
+  AmendedSchemaField,
+  DBVersion,
+  LocVersion,
+  PackedFile,
+  LocFields,
+  FIELD_TYPE,
+} from "./packFileTypes";
 import {
   DBNameToDBVersions as gameToDBNameToDBVersions,
   gameToDBFieldsReferencedBy,
@@ -40,6 +47,8 @@ export const buildDBReferenceTree = async (
 
   const isStartingSearchIndirect = selectedNodesByName.length > 0;
 
+  const packsWithReadLocsByPackPath = [] as string[];
+
   const existingPack = appData.packsData.find((pack) => pack.path == packPath);
   if (!existingPack) {
     console.log("buildDBReferenceTree: no existingPack");
@@ -73,7 +82,26 @@ export const buildDBReferenceTree = async (
     console.log("buildDBReferenceTree: NO current schema, try to get it");
 
     const tableToRead = packFile.name;
-    await readModsByPath([packPath], false, true, false, false, [tableToRead]);
+    console.log(
+      "packsWithReadLocsByPackPath.includes()",
+      packPath,
+      packsWithReadLocsByPackPath.includes(packPath)
+    );
+    await readModsByPath([packPath], false, true, false, !packsWithReadLocsByPackPath.includes(packPath), [
+      tableToRead,
+    ]);
+    if (!packsWithReadLocsByPackPath.includes(packPath)) {
+      packsWithReadLocsByPackPath.push(packPath);
+    }
+    const checkP = appData.packsData.find((pack) => pack.path == packPath);
+    if (!checkP) {
+      console.log("NO CHECKP");
+      return;
+    }
+    const locs = checkP.packedFiles.find((pf) => pf.name.endsWith(".loc"));
+    console.log("locs:", locs);
+    // console.log("checkP.packedFiles", checkP.packedFiles);
+
     getPacksTableData([existingPack], [currentDBTableSelection]);
     return await buildDBReferenceTree(
       packPath,
@@ -126,8 +154,15 @@ export const buildDBReferenceTree = async (
     console.log("DBClone: getting ref", newTableName);
     const tableToRead = `db\\${newTableName}`;
 
-    if (!wasPackAlreadyRead(packPath, tableToRead))
-      await readModsByPath([packPath], false, true, false, false, [tableToRead]);
+    if (!wasPackAlreadyRead(packPath, tableToRead)) {
+      await readModsByPath([packPath], false, true, false, !packsWithReadLocsByPackPath.includes(packPath), [
+        tableToRead,
+      ]);
+
+      if (!packsWithReadLocsByPackPath.includes(packPath)) {
+        packsWithReadLocsByPackPath.push(packPath);
+      }
+    }
 
     const newPack = appData.packsData.find((pack) => pack.path == packPath);
     if (!newPack) {
@@ -636,7 +671,7 @@ export async function executeDBDuplication(
       return;
     }
 
-    const toSave = [] as {
+    let toSave = [] as {
       name: string;
       schemaFields: AmendedSchemaField[];
       file_size: number;
@@ -686,6 +721,8 @@ export async function executeDBDuplication(
           `tableName: ${node.tableName}, column: ${node.columnName}, node.name: ${node.name}, node.value: ${node.value}`
       )
     );
+
+    const originalValueLookup = {} as Record<string, Record<string, Record<string, string>>>;
 
     for (const node of nodeRefsToHandle) {
       const { tableName, columnName } = node;
@@ -749,6 +786,10 @@ export async function executeDBDuplication(
                   ? nodeNameToRenameValue[replacement.name]
                   : defaultNodeNameToRenameValue[replacement.name];
 
+              originalValueLookup[tableName] = originalValueLookup[tableName] ?? {};
+              originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
+              originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
+
               console.log(
                 "FOUND REPLACEMENT",
                 tableName,
@@ -800,6 +841,10 @@ export async function executeDBDuplication(
                   ? nodeNameToRenameValue[nodeToDupe.name]
                   : defaultNodeNameToRenameValue[nodeToDupe.name];
 
+              originalValueLookup[tableName] = originalValueLookup[tableName] ?? {};
+              originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
+              originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
+
               cellToReplaceValue.fields = [
                 { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
               ];
@@ -844,12 +889,170 @@ export async function executeDBDuplication(
       }
     }
 
+    const locs = [] as string[];
+    const origLocToNewLoc = {} as Record<string, string>;
+
+    for (const pf of toSave) {
+      const tableName = getDBNameFromString(pf.name);
+      if (!tableName) {
+        console.log("ERROR: no tableName");
+        continue;
+      }
+      console.log(tableName, pf.tableSchema.localised_fields, pf.tableSchema.localised_key_order);
+
+      if (!pf.tableSchema.localised_fields || pf.tableSchema.localised_fields.length < 1) continue;
+
+      const tableToreferencedColumns = gameToReferences[appData.currentGame];
+      const referencedColumns = tableToreferencedColumns[tableName] || [];
+
+      let keyColumn = undefined as undefined | string;
+
+      if (referencedColumns && referencedColumns.length == 1) {
+        keyColumn = referencedColumns[0];
+      }
+
+      if (!keyColumn) {
+        keyColumn = pf.tableSchema.fields.find((field) => field.is_key)?.name;
+      }
+
+      if (!keyColumn) {
+        console.log("CANNOT FIND keyColumn for", tableName);
+      }
+
+      let tableNameNoSuffix = tableName;
+      const indexOfTableSuffix = tableName.lastIndexOf("_tables");
+      if (indexOfTableSuffix > -1) tableNameNoSuffix = tableName.substring(0, indexOfTableSuffix);
+
+      let keyColumns = [] as number[];
+
+      if (pf.tableSchema.localised_key_order && pf.tableSchema.localised_key_order.length > 0) {
+        keyColumns = pf.tableSchema.localised_key_order;
+      } else {
+        const keyField = pf.tableSchema.fields.findIndex((field) => field.name == keyColumn);
+        if (keyField > -1) keyColumns = [keyField];
+      }
+
+      for (const locFieldName of pf.tableSchema.localised_fields) {
+        const newLocNoValue = `${tableNameNoSuffix}_${locFieldName.name}_`;
+
+        const rows = chunkSchemaIntoRows(pf.schemaFields, pf.tableSchema) as AmendedSchemaField[][];
+        for (const row of rows) {
+          let newLoc = newLocNoValue;
+          let newLocLookup = newLocNoValue;
+          for (const keyOrder of keyColumns) {
+            newLoc = newLoc + row[keyOrder].resolvedKeyValue;
+            // console.log("keyOrder is", keyOrder, row[keyOrder].name);
+
+            if (originalValueLookup[tableName][row[keyOrder].name]) {
+              for (const [origValue, newValue] of Object.entries(
+                originalValueLookup[tableName][row[keyOrder].name]
+              )) {
+                if (newValue == row[keyOrder].resolvedKeyValue) {
+                  newLocLookup += origValue;
+                  break;
+                }
+              }
+            } else {
+              newLocLookup += row[keyOrder].resolvedKeyValue;
+            }
+            // newLocLookup.push(newLocLookup);
+          }
+          console.log("newLoc:", newLoc);
+          origLocToNewLoc[newLoc] = newLocLookup;
+          locs.push(newLoc);
+        }
+      }
+    }
+
+    // const schema = await getSchemaForGame(appData.currentGame);
+    // for (const [tableName, dbversions] of Object.entries(schema)) {
+    //   if (dbversions.length < 1) continue;
+    //   const version = dbversions[0];
+
+    //   if (!version.localised_fields || version.localised_fields.length < 1) continue;
+
+    //   if (!version.localised_key_order || version.localised_key_order.length < 1) {
+    //     console.log("missing localised_key_order:", tableName);
+    //   }
+
+    //   if (version.localised_key_order && version.localised_key_order.length > 1) {
+    //     console.log("localised_key_order length >1:", tableName);
+    //   }
+    // }
+
+    const dataPath = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+    if (!dataPath) return;
+
+    const nodePath = await import("path");
+    const localePath = nodePath.join(dataPath, "local_en.pack");
+
+    const localePackArray = await readModsByPath([localePath], true, true, false, true);
+    if (!localePackArray || localePackArray.length < 1) {
+      console.log("ERROR: couldn't read local_en.pack");
+      return;
+    }
+    const localePack = localePackArray[0];
+
+    console.log("originalValueLookup:", originalValueLookup);
+    console.log("origLocToNewLoc:", origLocToNewLoc);
+
+    const locsTrie = getLocsTrie(localePack);
+
+    const locFields = [] as AmendedSchemaField[];
+    let locFileSize = 0;
+
+    for (const loc of locs) {
+      console.log(
+        "LOC for",
+        loc,
+        origLocToNewLoc[loc],
+        origLocToNewLoc[loc] ? locsTrie?.get(origLocToNewLoc[loc]) ?? "" : ""
+      );
+
+      const origLoc = origLocToNewLoc[loc] ? locsTrie?.get(origLocToNewLoc[loc]) ?? "" : "";
+
+      const fields = [
+        { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer("StringU16", loc) },
+        {
+          type: "Buffer" as FIELD_TYPE,
+          val: await typeToBuffer("StringU16", origLoc),
+        },
+        { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer("Boolean", "0") },
+      ];
+
+      const currentLocSize =
+        getFieldSize(loc, "StringU16") + getFieldSize(origLoc, "StringU16") + getFieldSize("0", "Boolean");
+
+      locFileSize += currentLocSize;
+
+      console.log("currentLocSize:", loc, currentLocSize);
+
+      for (let i = 0; i < LocFields.length; i++) {
+        const locField = LocFields[i];
+
+        locFields.push({
+          name: locField.name,
+          resolvedKeyValue: loc,
+          type: "Buffer",
+          fields: [fields[i]],
+          isKey: locField.is_key,
+        });
+      }
+    }
+
+    toSave.push({
+      name: "text/db/testLocs.loc",
+      schemaFields: locFields,
+      file_size: locFileSize + 14,
+      version: 1,
+      tableSchema: LocVersion,
+    });
+
     console.log("DONE BEFORE toSave");
 
-    console.log("toSave", toSave);
+    // console.log("toSave", toSave);
 
     const { writePack } = await import("./packFileSerializer");
-    const nodePath = await import("path");
 
     await writePack(
       toSave,
