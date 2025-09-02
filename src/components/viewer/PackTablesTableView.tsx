@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, memo, Suspense, useState } from "react";
+import React, { useEffect, useRef, memo, Suspense, useState, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { setDeepCloneTarget } from "@/src/appSlice";
 import { dataFromBackend } from "./packDataStore";
+import debounce from "just-debounce-it";
 
 // Lazy load Handsontable components
 const LazyHotTable = React.lazy(async () => {
@@ -91,7 +92,6 @@ const HandsontableWrapper = memo(
                   return "<b>Deep clone</b>";
                 },
                 hidden() {
-                  if (!startArgs.includes("-testDBClone")) return true;
                   if (!hotRef || !hotRef.current) return;
                   const hot = hotRef.current.hotInstance;
                   if (!hot) return true;
@@ -140,8 +140,8 @@ const HandsontableWrapper = memo(
               },
             },
           }}
-          viewportColumnRenderingOffset={10}
-          viewportRowRenderingOffset={50}
+          viewportColumnRenderingOffset={20}
+          viewportRowRenderingOffset={100}
           dropdownMenu={[
             "filter_by_condition",
             "filter_by_condition2",
@@ -166,7 +166,18 @@ const PackTablesTableView = memo(() => {
   const [handsontableLoaded, setHandsontableLoaded] = useState(false);
   const startArgs = useAppSelector((state) => state.app.startArgs);
 
+  const [keyFilter, setKeyFIlter] = useState<string>("");
+  const [tableFilter, setTableFilter] = useState<string>("");
+
   const hotRef = useRef<any>(null);
+
+  const setTableFilterDebounced = useMemo(
+    () =>
+      debounce((value: string) => {
+        setTableFilter(value);
+      }, 250),
+    [setTableFilter]
+  );
 
   useEffect(() => {
     if (!hotRef || !hotRef.current || !handsontableLoaded) return;
@@ -190,10 +201,6 @@ const PackTablesTableView = memo(() => {
       clearTimeout(autoDispatchTimer);
     };
   }, []);
-
-  const handleContextMenuCallback = (row: number, col: number) => {
-    dispatch(setDeepCloneTarget({ row, col }));
-  };
 
   // Handsontable modules are registered lazily when component loads
 
@@ -263,21 +270,11 @@ const PackTablesTableView = memo(() => {
       }, [])) ||
     [];
 
-  const data = chunkedTable.map((row) =>
-    row.map((cell) => {
-      if (cell.type == "Boolean") {
-        return cell.resolvedKeyValue != "0";
-      }
-      if (cell.type == "OptionalStringU8" && cell.resolvedKeyValue == "0") {
-        return "";
-      }
-      return cell.resolvedKeyValue;
-    })
-  );
+  const keyColumnNamesUnderscore = dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
+  const keyColumnNames = currentSchema.fields
+    .filter((field) => keyColumnNamesUnderscore.includes(field.name))
+    .map((field) => field.name.replaceAll("_", " "));
 
-  // const columns = getColumns();
-
-  // const columns = currentSchema.fields.map((field) => ({ data: field.name }));
   const columnHeaders = currentSchema.fields.map((field) => field.name.replaceAll("_", " "));
 
   const fieldTypeToCellType = (fieldType: SCHEMA_FIELD_TYPE) => {
@@ -294,23 +291,95 @@ const PackTablesTableView = memo(() => {
         return "text";
     }
   };
-
   const columns = currentSchema.fields.map((field) => ({ type: fieldTypeToCellType(field.field_type) }));
+
+  const columnFilterOptions = columnHeaders.toSorted((firstHeader, secondHeader) => {
+    if (keyColumnNames.includes(firstHeader) && keyColumnNames.includes(secondHeader)) return 0;
+    if (keyColumnNames.includes(firstHeader)) return -1;
+    if (keyColumnNames.includes(secondHeader)) return 1;
+
+    return columnHeaders.indexOf(firstHeader) - columnHeaders.indexOf(secondHeader);
+  });
+
+  const keyFilterOrDefault = keyFilter != "" ? keyFilter : columnFilterOptions[0];
+  const indexOfFilteredColumn = columnHeaders.indexOf(keyFilterOrDefault);
+
+  console.log("keyFIlter:", keyFilter);
+  console.log("indexOfFilteredColumn:", indexOfFilteredColumn);
+  console.log("tableFilter:", tableFilter);
+
+  if (keyFilter != "" && !columnFilterOptions.includes(keyFilter)) {
+    setKeyFIlter(columnFilterOptions[0]);
+  }
+
+  const filteredData =
+    indexOfFilteredColumn != -1 && tableFilter != ""
+      ? chunkedTable.filter((row) => {
+          return row[indexOfFilteredColumn].resolvedKeyValue
+            .toLowerCase()
+            .includes(tableFilter.toLowerCase());
+        })
+      : chunkedTable;
+
+  const data = filteredData.map((row) =>
+    row.map((cell) => {
+      if (cell.type == "Boolean") {
+        return cell.resolvedKeyValue != "0";
+      }
+      if (cell.type == "OptionalStringU8" && cell.resolvedKeyValue == "0") {
+        return "";
+      }
+      return cell.resolvedKeyValue;
+    })
+  );
+
+  const handleContextMenuCallback = (row: number, col: number) => {
+    console.log("handleContextMenuCallback:", row, col);
+    const filteredRowIndex = filteredData[row];
+    const unfilteredRowIndex = chunkedTable.findIndex((row) => row == filteredRowIndex);
+    dispatch(setDeepCloneTarget({ row: unfilteredRowIndex, col }));
+  };
+
+  // const columns = getColumns();
+
+  // const columns = currentSchema.fields.map((field) => ({ data: field.name }));
+
   // const hotColumns = columns.map((column) => <HotColumn title={column} />);
 
   // console.log("COLUMNS:", columns);
 
   return (
-    <div className="ht-theme-main-dark">
-      <HandsontableWrapper
-        data={data}
-        columns={columns}
-        columnHeaders={columnHeaders}
-        hotRef={hotRef}
-        onContextMenuCallback={handleContextMenuCallback}
-        currentDBTableSelection={currentDBTableSelection}
-        currentSchema={currentSchema}
-      />
+    <div>
+      <div className="ht-theme-main-dark">
+        <HandsontableWrapper
+          data={data}
+          columns={columns}
+          columnHeaders={columnHeaders}
+          hotRef={hotRef}
+          onContextMenuCallback={handleContextMenuCallback}
+          currentDBTableSelection={currentDBTableSelection}
+          currentSchema={currentSchema}
+        />
+      </div>
+      <div className="mt-3 flex gap-6">
+        <select
+          value={keyFilter != "" ? keyFilter : columnFilterOptions[0]}
+          onChange={(e) => setKeyFIlter(e.target.value)}
+          className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+        >
+          {columnFilterOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <input
+          defaultValue={tableFilter}
+          placeholder={"filter by selected column"}
+          onChange={(e) => setTableFilterDebounced(e.target.value)}
+          className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+        />
+      </div>
     </div>
   );
 });

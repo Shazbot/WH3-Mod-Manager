@@ -9,6 +9,7 @@ import {
   PackedFile,
   LocFields,
   FIELD_TYPE,
+  Pack,
 } from "./packFileTypes";
 import {
   DBNameToDBVersions as gameToDBNameToDBVersions,
@@ -17,9 +18,11 @@ import {
   getReferencesForGame,
   gameToDBFieldsThatReference,
   tablesToIgnore,
+  gameToTablesWithNumericIds,
 } from "./schema";
 import { getDBNameFromString, getDBPackedFilePath, getDBVersion } from "./utility/packFileHelpers";
 import Queue from "./utility/queue";
+import { gameToPackWithDBTablesName } from "./supportedGames";
 
 const wasPackAlreadyRead = (newPackPath: string, tableToRead: string) => {
   const packData = appData.packsData.find((pack) => pack.path == newPackPath);
@@ -45,7 +48,21 @@ export const buildDBReferenceTree = async (
   const tableToreferencedColumns = gameToReferences[appData.currentGame];
   const packedFilePath = getDBPackedFilePath(currentDBTableSelection);
 
+  const gameFolderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+  if (!gameFolderPaths || !gameFolderPaths.dataFolder) return;
+
+  const nodePath = await import("path");
+  const dataPackPath = nodePath.join(
+    gameFolderPaths.dataFolder,
+    gameToPackWithDBTablesName[appData.currentGame]
+  );
+
+  const isCurrentPackDataPack = nodePath.relative(packPath, dataPackPath) == "";
+
   const isStartingSearchIndirect = selectedNodesByName.length > 0;
+
+  console.log("isStartingSearchIndirect:", isStartingSearchIndirect);
+  console.log("isCurrentPackDataPack:", isCurrentPackDataPack);
 
   const packsWithReadLocsByPackPath = [] as string[];
 
@@ -150,9 +167,11 @@ export const buildDBReferenceTree = async (
 
   console.log("toClone is", toClone);
 
-  const getRef = async (newTableName: string) => {
+  const getRef = async (newTableName: string, pack: Pack) => {
     console.log("DBClone: getting ref", newTableName);
     const tableToRead = `db\\${newTableName}`;
+
+    const packPath = pack.path;
 
     if (!wasPackAlreadyRead(packPath, tableToRead)) {
       await readModsByPath([packPath], false, true, false, !packsWithReadLocsByPackPath.includes(packPath), [
@@ -191,7 +210,7 @@ export const buildDBReferenceTree = async (
       if (!schema.fields[i].is_reference) continue;
       const [tableName] = schema.fields[i].is_reference;
 
-      await getRef(tableName);
+      await getRef(tableName, existingPack);
     }
   }
   // rows[deepCloneTarget.row].reduce((acc, currentField, currentFieldIndex) => {
@@ -325,6 +344,40 @@ export const buildDBReferenceTree = async (
     }
   };
 
+  const tryGetPackWithReference = async (
+    pack: Pack,
+    newTableName: string,
+    newTableColumnName: string,
+    resolvedKeyValue: string
+  ) => {
+    console.log("tryGetPackWithReference:", pack.path, newTableName, newTableColumnName, resolvedKeyValue);
+
+    let newPackFile = pack.packedFiles.find(
+      (pf) =>
+        getDBNameFromString(pf.name) == newTableName &&
+        pf.schemaFields
+          ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
+          .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue)
+    );
+
+    if (!newPackFile || !newPackFile.schemaFields) {
+      console.log("CALLING getRef");
+      await getRef(newTableName, pack);
+
+      newPackFile = pack.packedFiles.find(
+        (pf) =>
+          getDBNameFromString(pf.name) == newTableName &&
+          pf.schemaFields
+            ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
+            .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue)
+      );
+
+      return newPackFile;
+    }
+
+    return newPackFile;
+  };
+
   const addNewCellFromReference = async (
     acc: DBCell[],
     treeParent: IViewerTreeNodeWithData,
@@ -346,24 +399,29 @@ export const buildDBReferenceTree = async (
     }
     // console.log("SEARCH", newTableName, newTableColumnName, resolvedKeyValue);
 
-    let newPackFile = existingPack.packedFiles.find(
-      (pf) =>
-        getDBNameFromString(pf.name) == newTableName &&
-        pf.schemaFields
-          ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
-          .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue)
+    let newPackFile = await tryGetPackWithReference(
+      existingPack,
+      newTableName,
+      newTableColumnName,
+      resolvedKeyValue
     );
 
     if (!newPackFile || !newPackFile.schemaFields) {
-      await getRef(newTableName);
-
-      newPackFile = existingPack.packedFiles.find(
-        (pf) =>
-          getDBNameFromString(pf.name) == newTableName &&
-          pf.schemaFields
-            ?.filter((sF) => (sF as AmendedSchemaField).name == newTableColumnName)
-            .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == resolvedKeyValue)
+      console.log(
+        "tryGetPackWithReference with existingPack FAILED, isCurrentPackDataPack:",
+        isCurrentPackDataPack
       );
+      if (!isCurrentPackDataPack) {
+        const dataPack = appData.packsData.find((pack) => pack.path == dataPackPath);
+        if (dataPack) {
+          newPackFile = await tryGetPackWithReference(
+            dataPack,
+            newTableName,
+            newTableColumnName,
+            resolvedKeyValue
+          );
+        }
+      }
 
       if (!newPackFile || !newPackFile.schemaFields) {
         console.log(
@@ -375,8 +433,6 @@ export const buildDBReferenceTree = async (
         );
         return;
       }
-      // addToRefsToGet(newTableName, newTableColumnName, resolvedKeyValue);
-      // return;
     }
 
     // return addNewChildNode(acc, newPackFile, treeParent, newTableName, newTableColumnName, resolvedKeyValue);
@@ -562,46 +618,59 @@ export const buildDBReferenceTree = async (
         if (!schema.fields[currentFieldIndex].is_reference) return acc;
         const [tableName, tableColumnName] = schema.fields[currentFieldIndex].is_reference;
 
-        const packToGet = appData.packsData.find((pack) => pack.path == packPath);
-        // if (!packDataStore[packData.packPath]) {
-        //   console.log(`no ${packData.packPath} in packDataStore`);
-        //   return acc;
-        // }
-        if (!packToGet) {
+        const packsToGet = [] as Pack[];
+        const packToGetCurrent = appData.packsData.find((pack) => pack.path == packPath);
+
+        if (!packToGetCurrent) {
           console.log(`no ${packPath} in packDataStore`);
           return acc;
         }
 
-        const pf = packToGet.packedFiles.find(
-          (pf) =>
-            getDBNameFromString(pf.name) == tableName &&
-            pf.schemaFields
-              ?.filter((sF) => (sF as AmendedSchemaField).name == tableColumnName)
-              .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == currentField.resolvedKeyValue)
-        );
-        if (pf) {
-          const dbCell: DBCell = [tableName, tableColumnName, currentField.resolvedKeyValue];
-          console.log("acc push:", tableName, tableColumnName, currentField.resolvedKeyValue);
-          acc.push([tableName, tableColumnName, currentField.resolvedKeyValue]);
-          const newChild = {
-            name: `${tableName} ${tableColumnName} : ${currentField.resolvedKeyValue}`,
-            children: [],
-            tableName,
-            columnName: tableColumnName,
-            value: currentField.resolvedKeyValue,
-          } as IViewerTreeNodeWithData;
+        packsToGet.push(packToGetCurrent);
 
-          if (
-            !rootNode.children.some((node) => node.name == newChild.name) &&
-            !allTreeChildren.includes(newChild.name)
-          ) {
-            rootNode.children.push(newChild);
-            allTreeChildren.push(newChild.name);
-            childrenToAdd.push([pf, dbCell, newChild]);
-            // addRefsRecursively(acc, pf, dbCell, newChild);
+        if (!isCurrentPackDataPack) {
+          const packToGet = appData.packsData.find((pack) => pack.path == dataPackPath);
+
+          if (!packToGet) {
+            console.log(`no ${packPath} in packDataStore`);
+            return acc;
           }
-        } else {
-          console.log("DBClone: no pf for", tableName, tableColumnName, currentField.resolvedKeyValue);
+
+          packsToGet.push(packToGet);
+        }
+
+        for (const packToGet of packsToGet) {
+          const pf = packToGet.packedFiles.find(
+            (pf) =>
+              getDBNameFromString(pf.name) == tableName &&
+              pf.schemaFields
+                ?.filter((sF) => (sF as AmendedSchemaField).name == tableColumnName)
+                .some((sF) => (sF as AmendedSchemaField).resolvedKeyValue == currentField.resolvedKeyValue)
+          );
+          if (pf) {
+            const dbCell: DBCell = [tableName, tableColumnName, currentField.resolvedKeyValue];
+            console.log("acc push:", tableName, tableColumnName, currentField.resolvedKeyValue);
+            acc.push([tableName, tableColumnName, currentField.resolvedKeyValue]);
+            const newChild = {
+              name: `${tableName} ${tableColumnName} : ${currentField.resolvedKeyValue}`,
+              children: [],
+              tableName,
+              columnName: tableColumnName,
+              value: currentField.resolvedKeyValue,
+            } as IViewerTreeNodeWithData;
+
+            if (
+              !rootNode.children.some((node) => node.name == newChild.name) &&
+              !allTreeChildren.includes(newChild.name)
+            ) {
+              rootNode.children.push(newChild);
+              allTreeChildren.push(newChild.name);
+              childrenToAdd.push([pf, dbCell, newChild]);
+              // addRefsRecursively(acc, pf, dbCell, newChild);
+            }
+          } else {
+            console.log("DBClone: no pf for", tableName, tableColumnName, currentField.resolvedKeyValue);
+          }
         }
 
         return acc;
@@ -678,6 +747,8 @@ export async function executeDBDuplication(
       version?: number;
       tableSchema: DBVersion;
     }[];
+
+    const numericIdTables = gameToTablesWithNumericIds[appData.currentGame];
 
     console.log("to duplicate", nodesNamesToDuplicate);
 
@@ -849,6 +920,38 @@ export async function executeDBDuplication(
                 { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
               ];
               cellToReplaceValue.resolvedKeyValue = newValue;
+            }
+          }
+
+          if (numericIdTables[tableName] && clonedRow) {
+            const numericIdField = packedFile.tableSchema?.fields.find(
+              (field) => field.name == numericIdTables[tableName]
+            );
+            if (numericIdField) {
+              const numericIdFieldIndex = packedFile.tableSchema?.fields.indexOf(numericIdField);
+              if (numericIdFieldIndex) {
+                const field = clonedRow[numericIdFieldIndex];
+
+                let newNumericId = Math.random() * (2 ** 15 - 1);
+                if (numericIdField.field_type == "I32" || numericIdField.field_type == "F32") {
+                  newNumericId = Math.random() * (2 ** 31 - 1);
+                }
+                if (numericIdField.field_type == "I64" || numericIdField.field_type == "F64") {
+                  newNumericId = Math.random() * (2 ** 63 - 1);
+                }
+
+                const newNumericIdAsString = Math.floor(newNumericId).toString();
+
+                console.log("NEW NUMERIC:", newNumericIdAsString);
+
+                field.fields = [
+                  {
+                    type: "Buffer",
+                    val: await typeToBuffer(numericIdField.field_type, newNumericIdAsString),
+                  },
+                ];
+                field.resolvedKeyValue = newNumericIdAsString;
+              }
             }
           }
 
