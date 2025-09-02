@@ -259,7 +259,7 @@ export const readModsByPath = async (
       appData.currentlyReadingModPaths.every((path) => path != modPath)
       // && appData.packsData.every((pack) => pack.path != modPath)
     ) {
-      console.log("READING ", modPath, readLocs);
+      // console.log("READING ", modPath, readLocs);
       appData.currentlyReadingModPaths.push(modPath);
       windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
       const newPack = await readPack(modPath, {

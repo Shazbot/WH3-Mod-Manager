@@ -68,16 +68,16 @@ const ModsViewer = memo(() => {
 
   // for testing, automatically opens db.pack main_units_tablesl
   useEffect(() => {
-    // if (startArgs.includes("-testDBClone")) {
-    //   window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
-    //   dispatch(
-    //     selectDBTable({
-    //       packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
-    //       dbName: "main_units_tables",
-    //       dbSubname: "data__",
-    //     })
-    //   );
-    // }
+    if (startArgs.includes("-testDBClone")) {
+      window.api?.getPackData(packPath, { dbName: "main_units_tables", dbSubname: "data__" });
+      dispatch(
+        selectDBTable({
+          packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
+          dbName: "main_units_tables",
+          dbSubname: "data__",
+        })
+      );
+    }
   }, []);
 
   if (!packsData[packPath]) {
@@ -138,6 +138,24 @@ const ModsViewer = memo(() => {
                     <PackTablesTreeView tableFilter={dbTableFilter} />
                   </div>
                   {/* </div> */}
+                  <div className="flex items-center mt-3">
+                    <span className="text-slate-100">{localized.filter}</span>
+                    <span className="relative">
+                      <input
+                        id="dbTableFilter"
+                        type="text"
+                        onChange={(e) => onFilterChange(e)}
+                        defaultValue={dbTableFilter}
+                        className="ml-2 block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                      ></input>
+
+                      <span className="absolute right-[0.3rem] top-[0.6rem] text-gray-400">
+                        <button onClick={() => clearFilter()}>
+                          <FontAwesomeIcon icon={faXmark} />
+                        </button>
+                      </span>
+                    </span>
+                  </div>
                 </div>
               </Resizable>
               <div style={{ width: "100%", minWidth: "1px" }}>
@@ -153,25 +171,6 @@ const ModsViewer = memo(() => {
               <PackTablesTableView />
             </div>
           </div> */}
-
-            <div className="flex items-center">
-              <span className="text-slate-100">{localized.filter}</span>
-              <span className="relative">
-                <input
-                  id="dbTableFilter"
-                  type="text"
-                  onChange={(e) => onFilterChange(e)}
-                  defaultValue={dbTableFilter}
-                  className="ml-2 block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-                ></input>
-
-                <span className="absolute right-[0.3rem] top-[0.6rem] text-gray-400">
-                  <button onClick={() => clearFilter()}>
-                    <FontAwesomeIcon icon={faXmark} />
-                  </button>
-                </span>
-              </span>
-            </div>
           </>
         )}
       </div>

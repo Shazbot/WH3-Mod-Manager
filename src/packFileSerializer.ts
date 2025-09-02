@@ -196,14 +196,14 @@ export async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackData
       break;
     case "F64":
       {
-        const view = new DataView(new ArrayBuffer(4));
+        const view = new DataView(new ArrayBuffer(8));
         view.setFloat64(0, Number(value), true);
         return Buffer.from(view.buffer);
       }
       break;
     case "I64":
       {
-        const view = new DataView(new ArrayBuffer(4));
+        const view = new DataView(new ArrayBuffer(8));
         view.setBigInt64(0, BigInt(value), true);
         return Buffer.from(view.buffer);
       }

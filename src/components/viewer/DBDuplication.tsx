@@ -85,6 +85,10 @@ const DBDuplication = memo(() => {
             }
           });
           setTreeData({ ...treeData }); // Trigger re-render
+
+          if (selectedNodesByName.length == 0) {
+            setSelectedNodesByName([treeData.children[0].name]);
+          }
         }
       } else {
         console.log("ERROR: no indirectRefsResult");
@@ -134,7 +138,7 @@ const DBDuplication = memo(() => {
             dbSubname: "",
             packPath,
           } as DBTableSelection;
-          console.log("get indirect refs");
+          // console.log("get indirect refs");
           getIndirectReferences(rootNodeSelection, rootNodeData, treeNodeResult);
         }
       } catch (error) {

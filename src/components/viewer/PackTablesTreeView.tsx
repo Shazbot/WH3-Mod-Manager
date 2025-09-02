@@ -32,24 +32,28 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
   // console.log("TreeView packsData:", packData);
 
   type TreeData = { name: string; children?: TreeData[] };
-  const result = packData.tables.reduce(
-    (map, packFileName) => {
-      const dbName = getDBNameFromString(packFileName);
-      const dbSubname = getDBSubnameFromString(packFileName);
+  const result = packData.tables
+    .toSorted((firstPackFileName, secondPackFileName) => {
+      return firstPackFileName.localeCompare(secondPackFileName);
+    })
+    .reduce(
+      (map, packFileName) => {
+        const dbName = getDBNameFromString(packFileName);
+        const dbSubname = getDBSubnameFromString(packFileName);
 
-      if (dbName && dbSubname) {
-        if (typeof map.children === "undefined") {
-          map.children = [];
+        if (dbName && dbSubname) {
+          if (typeof map.children === "undefined") {
+            map.children = [];
+          }
+          map.children = map.children || [];
+          const existingNode = map.children.find((node) => node.name == dbName);
+          if (existingNode) existingNode.children?.push({ name: dbSubname, children: [] });
+          else map.children.push({ name: dbName, children: [{ name: dbSubname, children: [] }] });
         }
-        map.children = map.children || [];
-        const existingNode = map.children.find((node) => node.name == dbName);
-        if (existingNode) existingNode.children?.push({ name: dbSubname, children: [] });
-        else map.children.push({ name: dbName, children: [{ name: dbSubname, children: [] }] });
-      }
-      return map;
-    },
-    { name: "", children: [] } as TreeData
-  );
+        return map;
+      },
+      { name: "", children: [] } as TreeData
+    );
 
   // console.log(result);
   const data = flattenTree(result);
