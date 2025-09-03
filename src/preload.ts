@@ -1,11 +1,9 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { ipcRenderer } from "electron";
 import { DBFieldName, DBFileName, DBVersion, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
 import debounce from "just-debounce-it";
 import "electron-log/preload";
-import { INode } from "react-accessible-treeview";
-import { IFlatMetadata } from "react-accessible-treeview/dist/TreeView/utils";
 
 console.log("IN PRELOAD");
 

@@ -64,6 +64,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const dispatch = useAppDispatch();
   const allMods = useAppSelector((state) => state.app.allMods);
   const currentTab = useAppSelector((state) => state.app.currentTab);
+  const isDev = useAppSelector((state) => state.app.isDev);
   const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
   const [loadOrderHasError, setLoadOrderHasError] = useState(false);
   const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
@@ -115,8 +116,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   );
   const fakeUpdatePack = useCallback(
     (mod: Mod) => {
-      const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
-      if (contentMod == null) return;
+      if (!isDev) {
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+        if (contentMod == null) return;
+      }
 
       window.api?.fakeUpdatePack(mod);
     },
@@ -216,15 +219,11 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             </div>
           </Modal.Body>
         </Modal>
-        
+
         {props.mod && (
-          <RenameModal
-            show={isRenameModalOpen}
-            onClose={() => setIsRenameModalOpen(false)}
-            mod={props.mod}
-          />
+          <RenameModal show={isRenameModalOpen} onClose={() => setIsRenameModalOpen(false)} mod={props.mod} />
         )}
-        
+
         <div>
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
             {currentTab != "categories" && (
@@ -414,7 +413,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </li>
               )} */}
             {props.mod?.isInData &&
-              allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) && (
+              (allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) || isDev) && (
                 <>
                   <li>
                     <a
