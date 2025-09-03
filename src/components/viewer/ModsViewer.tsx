@@ -1,4 +1,4 @@
-import React, { memo, useContext, useEffect, useState } from "react";
+import React, { memo, useContext, useEffect, useMemo, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
@@ -27,10 +27,14 @@ const ModsViewer = memo(() => {
   const localized: Record<string, string> = useContext(localizationContext);
 
   const [dbTableFilter, setDBTableFilter] = useState("");
-  const debouncedFilterChange = debounce((val: string) => setDBTableFilter(val), 150);
-  const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    debouncedFilterChange(e.target.value);
-  };
+
+  const onFilterChangeDebounced = useMemo(
+    () =>
+      debounce((value: string) => {
+        setDBTableFilter(value);
+      }, 250),
+    [setDBTableFilter]
+  );
 
   const clearFilter = () => {
     setDBTableFilter("");
@@ -144,7 +148,7 @@ const ModsViewer = memo(() => {
                       <input
                         id="dbTableFilter"
                         type="text"
-                        onChange={(e) => onFilterChange(e)}
+                        onChange={(e) => onFilterChangeDebounced(e.target.value)}
                         defaultValue={dbTableFilter}
                         className="ml-2 block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                       ></input>

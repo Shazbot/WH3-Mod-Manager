@@ -581,7 +581,7 @@ export const buildDBReferenceTree = async (
           newPackFile,
           [newTableName, newTableColumnName, resolvedKeyValue],
           newChild,
-          false,
+          isIndirectRefSearch,
         ]);
       }
       // addRefsRecursively(acc, newPackFile, [newTableName, newTableColumnName, resolvedKeyValue], newChild);
@@ -740,7 +740,7 @@ export async function executeDBDuplication(
       return;
     }
 
-    let toSave = [] as {
+    const toSave = [] as {
       name: string;
       schemaFields: AmendedSchemaField[];
       file_size: number;
@@ -751,6 +751,26 @@ export async function executeDBDuplication(
     const numericIdTables = gameToTablesWithNumericIds[appData.currentGame];
 
     console.log("to duplicate", nodesNamesToDuplicate);
+
+    // TODO we GET CHILDRENT HERE BUT WE DON"T HAVNDLE THEM CORRECTLY CHECK WHAT THE PARENT INDIRECT WAS CHANGED TO
+
+    const getIndirectChildrenNodes = (node: IViewerTreeNodeWithData) => {
+      const getIndirectChildrenNodesIter = (
+        acc: IViewerTreeNodeWithData[],
+        node: IViewerTreeNodeWithData
+      ) => {
+        for (const child of node.children as IViewerTreeNodeWithData[]) {
+          if (child.isIndirectRef && !acc.includes(child)) {
+            acc.push(child);
+            acc.push(...getIndirectChildrenNodesIter(acc, child));
+          }
+        }
+
+        return acc;
+      };
+
+      return getIndirectChildrenNodesIter([], node);
+    };
 
     const nodeRefsToHandle = [] as IViewerTreeNodeWithData[];
     for (const nodeNameToDupe of nodesNamesToDuplicate) {
@@ -795,202 +815,239 @@ export async function executeDBDuplication(
 
     const originalValueLookup = {} as Record<string, Record<string, Record<string, string>>>;
 
-    for (const node of nodeRefsToHandle) {
-      const { tableName, columnName } = node;
-      const resolvedKeyValue = node.value;
+    const newNodesToDuplicate = [] as IViewerTreeNodeWithData[];
 
-      console.log(
-        "nodeRefsToHandle: tableName",
-        tableName,
-        "columnName",
-        columnName,
-        "resolvedKeyValue",
-        resolvedKeyValue
-      );
+    const handleRefs = async (
+      nodeRefsToHandle: IViewerTreeNodeWithData[],
+      nodesToDuplicate: IViewerTreeNodeWithData[]
+    ) => {
+      for (const node of nodeRefsToHandle) {
+        const { tableName, columnName } = node;
+        const resolvedKeyValue = node.value;
 
-      const packedFiles = pack.packedFiles.filter((existingPackedFile) =>
-        existingPackedFile.name.startsWith(`db\\${tableName}\\`)
-      );
+        console.log(
+          "nodeRefsToHandle: tableName",
+          tableName,
+          "columnName",
+          columnName,
+          "resolvedKeyValue",
+          resolvedKeyValue
+        );
 
-      console.log("num packedFiles:", packedFiles.length);
-      console.log(
-        "packedFiles:",
-        packedFiles.map((pf) => pf.name)
-      );
+        const packedFiles = pack.packedFiles.filter((existingPackedFile) =>
+          existingPackedFile.name.startsWith(`db\\${tableName}\\`)
+        );
 
-      for (const packedFile of packedFiles) {
-        if (!packedFile.schemaFields) {
-          console.log("packedFile.schemaFields not found");
-          continue;
-        }
+        console.log("num packedFiles:", packedFiles.length);
+        console.log(
+          "packedFiles:",
+          packedFiles.map((pf) => pf.name)
+        );
 
-        const currentSchema = packedFile.tableSchema;
-        if (!currentSchema) {
-          console.log("currentSchema not found");
-          continue;
-        }
+        for (const packedFile of packedFiles) {
+          if (!packedFile.schemaFields) {
+            console.log("packedFile.schemaFields not found");
+            continue;
+          }
 
-        const DBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
-        const referencesForCurrentTable = DBFieldsThatReference[tableName];
+          const currentSchema = packedFile.tableSchema;
+          if (!currentSchema) {
+            console.log("currentSchema not found");
+            continue;
+          }
 
-        const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
-        for (const row of rows) {
-          let clonedRow = null as AmendedSchemaField[] | null;
-          for (let i = 0; i < row.length; i++) {
-            const cell = row[i];
+          const DBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
+          const referencesForCurrentTable = DBFieldsThatReference[tableName];
 
-            if (referencesForCurrentTable) {
-              const reference = referencesForCurrentTable[cell.name];
-              if (!reference) continue;
-              // console.log("FOUND REFERENCE:", cell.name, reference);
+          const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
+          for (const row of rows) {
+            let clonedRow = null as AmendedSchemaField[] | null;
+            for (let i = 0; i < row.length; i++) {
+              const cell = row[i];
 
-              const replacement = nodesToDuplicate.find(
+              if (referencesForCurrentTable) {
+                const reference = referencesForCurrentTable[cell.name];
+                if (!reference) continue;
+                // console.log("FOUND REFERENCE:", cell.name, reference);
+
+                const replacement = nodesToDuplicate.find(
+                  (nodeToDupe) =>
+                    nodeToDupe.tableName == reference[0] &&
+                    nodeToDupe.columnName == reference[1] &&
+                    nodeToDupe.value == cell.resolvedKeyValue
+                );
+                if (!replacement) continue;
+
+                const newValue =
+                  nodeNameToRenameValue[replacement.name] != null
+                    ? nodeNameToRenameValue[replacement.name]
+                    : defaultNodeNameToRenameValue[replacement.name];
+
+                originalValueLookup[tableName] = originalValueLookup[tableName] ?? {};
+                originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
+                originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
+
+                if (
+                  !newNodesToDuplicate.some(
+                    (nodeIter) =>
+                      nodeIter.tableName == node.tableName &&
+                      nodeIter.columnName == node.columnName &&
+                      nodeIter.value == node.value
+                  )
+                ) {
+                  // add this for the second pass where we handle indirect children of indirect nodes
+                  newNodesToDuplicate.push(node);
+                  nodeNameToRenameValue[node.name] = newValue;
+                }
+
+                console.log(
+                  "FOUND REPLACEMENT",
+                  tableName,
+                  cell.name,
+                  cell.resolvedKeyValue,
+                  "new value:",
+                  newValue
+                );
+
+                clonedRow = clonedRow || structuredClone(row);
+                const cellToReplaceValue = clonedRow[i];
+
+                const field = packedFile.tableSchema?.fields[i];
+
+                if (!field) {
+                  console.log("Field not found!");
+                  continue;
+                }
+
+                cellToReplaceValue.fields = [
+                  { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
+                ];
+                cellToReplaceValue.resolvedKeyValue = newValue;
+              }
+            }
+
+            for (let i = 0; i < row.length; i++) {
+              const cell = row[i];
+
+              const nodeToDupe = nodesToDuplicate.find(
                 (nodeToDupe) =>
-                  nodeToDupe.tableName == reference[0] &&
-                  nodeToDupe.columnName == reference[1] &&
+                  nodeToDupe.tableName == tableName &&
+                  nodeToDupe.columnName == cell.name &&
                   nodeToDupe.value == cell.resolvedKeyValue
               );
-              if (!replacement) continue;
+              if (nodeToDupe) {
+                clonedRow = clonedRow || structuredClone(row);
+                const cellToReplaceValue = clonedRow[i];
 
-              const newValue =
-                nodeNameToRenameValue[replacement.name] != null
-                  ? nodeNameToRenameValue[replacement.name]
-                  : defaultNodeNameToRenameValue[replacement.name];
+                const field = packedFile.tableSchema?.fields[i];
 
-              originalValueLookup[tableName] = originalValueLookup[tableName] ?? {};
-              originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
-              originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
-
-              console.log(
-                "FOUND REPLACEMENT",
-                tableName,
-                cell.name,
-                cell.resolvedKeyValue,
-                "new value:",
-                newValue
-              );
-
-              clonedRow = clonedRow || structuredClone(row);
-              const cellToReplaceValue = clonedRow[i];
-
-              const field = packedFile.tableSchema?.fields[i];
-
-              if (!field) {
-                console.log("Field not found!");
-                continue;
-              }
-
-              cellToReplaceValue.fields = [
-                { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
-              ];
-              cellToReplaceValue.resolvedKeyValue = newValue;
-            }
-          }
-
-          for (let i = 0; i < row.length; i++) {
-            const cell = row[i];
-
-            const nodeToDupe = nodesToDuplicate.find(
-              (nodeToDupe) =>
-                nodeToDupe.tableName == tableName &&
-                nodeToDupe.columnName == cell.name &&
-                nodeToDupe.value == cell.resolvedKeyValue
-            );
-            if (nodeToDupe) {
-              clonedRow = clonedRow || structuredClone(row);
-              const cellToReplaceValue = clonedRow[i];
-
-              const field = packedFile.tableSchema?.fields[i];
-
-              if (!field) {
-                console.log("Field not found!");
-                continue;
-              }
-
-              const newValue =
-                nodeNameToRenameValue[nodeToDupe.name] != null
-                  ? nodeNameToRenameValue[nodeToDupe.name]
-                  : defaultNodeNameToRenameValue[nodeToDupe.name];
-
-              originalValueLookup[tableName] = originalValueLookup[tableName] ?? {};
-              originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
-              originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
-
-              cellToReplaceValue.fields = [
-                { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
-              ];
-              cellToReplaceValue.resolvedKeyValue = newValue;
-            }
-          }
-
-          if (numericIdTables[tableName] && clonedRow) {
-            const numericIdField = packedFile.tableSchema?.fields.find(
-              (field) => field.name == numericIdTables[tableName]
-            );
-            if (numericIdField) {
-              const numericIdFieldIndex = packedFile.tableSchema?.fields.indexOf(numericIdField);
-              if (numericIdFieldIndex) {
-                const field = clonedRow[numericIdFieldIndex];
-
-                let newNumericId = Math.random() * (2 ** 15 - 1);
-                if (numericIdField.field_type == "I32" || numericIdField.field_type == "F32") {
-                  newNumericId = Math.random() * (2 ** 31 - 1);
-                }
-                if (numericIdField.field_type == "I64" || numericIdField.field_type == "F64") {
-                  newNumericId = Math.random() * (2 ** 63 - 1);
+                if (!field) {
+                  console.log("Field not found!");
+                  continue;
                 }
 
-                const newNumericIdAsString = Math.floor(newNumericId).toString();
+                const newValue =
+                  nodeNameToRenameValue[nodeToDupe.name] != null
+                    ? nodeNameToRenameValue[nodeToDupe.name]
+                    : defaultNodeNameToRenameValue[nodeToDupe.name];
 
-                console.log("NEW NUMERIC:", newNumericIdAsString);
+                originalValueLookup[tableName] = originalValueLookup[tableName] ?? {};
+                originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
+                originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
 
-                field.fields = [
-                  {
-                    type: "Buffer",
-                    val: await typeToBuffer(numericIdField.field_type, newNumericIdAsString),
-                  },
+                cellToReplaceValue.fields = [
+                  { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
                 ];
-                field.resolvedKeyValue = newNumericIdAsString;
+                cellToReplaceValue.resolvedKeyValue = newValue;
               }
             }
-          }
 
-          if (clonedRow && packedFile.tableSchema) {
-            let packFileSize = 0;
-            for (let i = 0; i < clonedRow.length; i++) {
-              const field = packedFile.tableSchema.fields[i];
-              console.log(
-                "field size of",
-                clonedRow[i].name,
-                field.field_type.toString(),
-                clonedRow[i].resolvedKeyValue,
-                "is",
-                getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
+            if (numericIdTables[tableName] && clonedRow) {
+              const numericIdField = packedFile.tableSchema?.fields.find(
+                (field) => field.name == numericIdTables[tableName]
               );
-              packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
+              if (numericIdField) {
+                const numericIdFieldIndex = packedFile.tableSchema?.fields.indexOf(numericIdField);
+                if (numericIdFieldIndex) {
+                  const field = clonedRow[numericIdFieldIndex];
+
+                  let newNumericId = Math.random() * (2 ** 15 - 1);
+                  if (numericIdField.field_type == "I32" || numericIdField.field_type == "F32") {
+                    newNumericId = Math.random() * (2 ** 31 - 1);
+                  }
+                  if (numericIdField.field_type == "I64" || numericIdField.field_type == "F64") {
+                    newNumericId = Math.random() * (2 ** 63 - 1);
+                  }
+
+                  const newNumericIdAsString = Math.floor(newNumericId).toString();
+
+                  console.log("NEW NUMERIC:", newNumericIdAsString);
+
+                  field.fields = [
+                    {
+                      type: "Buffer",
+                      val: await typeToBuffer(numericIdField.field_type, newNumericIdAsString),
+                    },
+                  ];
+                  field.resolvedKeyValue = newNumericIdAsString;
+                }
+              }
             }
 
-            const version = packedFile.version;
-            if (version) packFileSize += 8; // size of version data
+            if (clonedRow && packedFile.tableSchema) {
+              let packFileSize = 0;
+              for (let i = 0; i < clonedRow.length; i++) {
+                const field = packedFile.tableSchema.fields[i];
+                // console.log(
+                //   "field size of",
+                //   clonedRow[i].name,
+                //   field.field_type.toString(),
+                //   clonedRow[i].resolvedKeyValue,
+                //   "is",
+                //   getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
+                // );
+                packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
+              }
 
-            packFileSize += 5; // number of rows + 1 unknown byte
+              const version = packedFile.version;
+              if (version) packFileSize += 8; // size of version data
 
-            const newPFName = `db\\${tableName}\\test`;
-            if (!toSave.some((pf) => pf.name == newPFName)) {
-              toSave.push({
-                name: newPFName,
-                schemaFields: clonedRow,
-                file_size: packFileSize,
-                version: packedFile.version,
-                tableSchema: packedFile.tableSchema,
-              });
-            } else {
-              console.log("PACKED FILE ALREADY EXISTS IN TOSAVE:", newPFName);
+              packFileSize += 5; // number of rows + 1 unknown byte
+
+              const newPFName = `db\\${tableName}\\test`;
+              if (!toSave.some((pf) => pf.name == newPFName)) {
+                toSave.push({
+                  name: newPFName,
+                  schemaFields: clonedRow,
+                  file_size: packFileSize,
+                  version: packedFile.version,
+                  tableSchema: packedFile.tableSchema,
+                });
+              } else {
+                console.log("PACKED FILE ALREADY EXISTS IN TOSAVE:", newPFName);
+              }
             }
           }
         }
       }
+    };
+
+    await handleRefs(nodeRefsToHandle, nodesToDuplicate);
+
+    const indirectRefsToHandle = [] as IViewerTreeNodeWithData[];
+    for (const node of nodeRefsToHandle.filter((node) => node.isIndirectRef)) {
+      const indirectChildren = getIndirectChildrenNodes(node);
+      for (const indirectChild of indirectChildren) {
+        if (!indirectRefsToHandle.some((nodeIter) => nodeIter.name == indirectChild.name)) {
+          indirectRefsToHandle.push(indirectChild as IViewerTreeNodeWithData);
+        }
+      }
     }
+
+    console.log("nodesToDuplicate:", nodesToDuplicate);
+    console.log("newNodesToDuplicate:", newNodesToDuplicate);
+    // second pass that handles indirect children of indirect nodes
+    await handleRefs(indirectRefsToHandle, newNodesToDuplicate);
 
     const locs = [] as string[];
     const origLocToNewLoc = {} as Record<string, string>;
