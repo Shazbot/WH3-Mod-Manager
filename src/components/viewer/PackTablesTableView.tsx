@@ -304,7 +304,7 @@ const PackTablesTableView = memo(() => {
   const keyFilterOrDefault = keyFilter != "" ? keyFilter : columnFilterOptions[0];
   const indexOfFilteredColumn = columnHeaders.indexOf(keyFilterOrDefault);
 
-  console.log("keyFIlter:", keyFilter);
+  console.log("keyFilter:", keyFilter);
   console.log("indexOfFilteredColumn:", indexOfFilteredColumn);
   console.log("tableFilter:", tableFilter);
 

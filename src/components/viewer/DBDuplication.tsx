@@ -89,6 +89,10 @@ const DBDuplication = memo(() => {
           if (selectedNodesByName.length == 0) {
             setSelectedNodesByName([treeData.children[0].name]);
           }
+
+          for (const newChild of indirectRefsResult.children[0].children) {
+            await getIndirectReferences(newDBTableSelection, newChild as IViewerTreeNodeWithData, treeData);
+          }
         }
       } else {
         console.log("ERROR: no indirectRefsResult");
