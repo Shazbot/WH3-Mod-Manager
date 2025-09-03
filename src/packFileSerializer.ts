@@ -1193,7 +1193,7 @@ export const writeCopyPack = async (
       const replacementPackFile = packFilesToAdd.find((toAdd) => toAdd.name == name);
       await outFile.writeInt32(replacementPackFile ? replacementPackFile.file_size : file_size);
       // await outFile.writeInt8(is_compressed);
-      await outFile.writeInt8(0);
+      await outFile.writeInt8(replacementPackFile ? 0 : packFile.is_compressed ? 1 : 0);
       await outFile.writeString(name + "\0");
     }
 
