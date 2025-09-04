@@ -253,33 +253,37 @@ export const readModsByPath = async (
   // }
   const newPacks = [] as Pack[];
   for (const modPath of modPaths) {
-    if (
-      appData.currentlyReadingModPaths.every((path) => path != modPath)
-      // && appData.packsData.every((pack) => pack.path != modPath)
-    ) {
-      // console.log("READING ", modPath, readLocs);
-      appData.currentlyReadingModPaths.push(modPath);
-      windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
-      const newPack = await readPack(modPath, {
-        skipParsingTables,
-        readScripts,
-        tablesToRead,
-        filesToRead,
-        readLocs,
-      });
-      windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
-      appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
-      // if (appData.packsData.every((pack) => pack.path != modPath)) {
-      appendPacksData(newPack);
-      // }
-      if (!skipCollisionCheck) {
-        appendCollisions(newPack);
+    for (let i = 0; i < 20; i++) {
+      if (!appData.currentlyReadingModPaths.some((path) => path == modPath)) {
+        break;
       }
 
-      newPacks.push(newPack);
-    } else {
-      console.log("already reading", modPath, "SKIPPING IT");
+      await new Promise((resolve) => setTimeout(resolve, 125));
     }
+    if (appData.currentlyReadingModPaths.some((path) => path == modPath)) {
+      console.log("already reading", modPath, "SKIPPING IT");
+      continue;
+    }
+    // console.log("READING ", modPath, readLocs);
+    appData.currentlyReadingModPaths.push(modPath);
+    windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
+    const newPack = await readPack(modPath, {
+      skipParsingTables,
+      readScripts,
+      tablesToRead,
+      filesToRead,
+      readLocs,
+    });
+    windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
+    appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
+    // if (appData.packsData.every((pack) => pack.path != modPath)) {
+    appendPacksData(newPack);
+    // }
+    if (!skipCollisionCheck) {
+      appendCollisions(newPack);
+    }
+
+    newPacks.push(newPack);
   }
   if (!skipCollisionCheck) {
     windows.mainWindow?.webContents.send("setPackCollisions", {
