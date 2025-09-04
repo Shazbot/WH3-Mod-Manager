@@ -67,10 +67,15 @@ export const buildDBReferenceTree = async (
 
   const packsWithReadLocsByPackPath = [] as string[];
 
-  const existingPack = appData.packsData.find((pack) => pack.path == packPath);
+  let existingPack = appData.packsData.find((pack) => pack.path == packPath);
   if (!existingPack) {
-    console.log("buildDBReferenceTree: no existingPack");
-    return;
+    await readModsByPath([packPath], true, true, false, false);
+
+    existingPack = appData.packsData.find((pack) => pack.path == packPath);
+    if (!existingPack) {
+      console.log("buildDBReferenceTree: no existingPack");
+      return;
+    }
   }
 
   let packFile = existingPack.packedFiles.find(
@@ -860,8 +865,8 @@ export async function executeDBDuplication(
 
           const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
 
-          let rowToSave = undefined as AmendedSchemaField[] | undefined;
-          let rowWithBothKeyAndRefToSave = undefined as AmendedSchemaField[] | undefined;
+          const rowsToSave = [] as AmendedSchemaField[][];
+          const rowsToSaveBothKeyAndRefToSave = [] as AmendedSchemaField[][];
           for (const row of rows) {
             // we do 2 passes on a row, first to clone references, and then keys
             // if we do both passes in a single row we use that row for the final pack
@@ -893,18 +898,30 @@ export async function executeDBDuplication(
                 originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
                 originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
 
+                const newNode = {
+                  name: `${tableName} ${cell.name} : ${cell.resolvedKeyValue}`,
+                  children: [],
+                  isIndirectRef: false,
+
+                  tableName: tableName,
+                  columnName: cell.name,
+                  value: cell.resolvedKeyValue,
+                } as IViewerTreeNodeWithData;
+
                 if (
                   !newNodesToDuplicate.some(
                     (nodeIter) =>
-                      nodeIter.tableName == node.tableName &&
-                      nodeIter.columnName == node.columnName &&
-                      nodeIter.value == node.value
+                      nodeIter.tableName == newNode.tableName &&
+                      nodeIter.columnName == newNode.columnName &&
+                      nodeIter.value == cell.resolvedKeyValue
                   )
                 ) {
                   // add this for the second pass where we handle indirect children of indirect nodes
-                  newNodesToDuplicate.push(node);
+                  newNodesToDuplicate.push(newNode);
 
-                  if (!nodeNameToRenameValue[node.name]) nodeNameToRenameValue[node.name] = newValue;
+                  console.log("newNodesToDuplicate ADD:", newNode.name, "new value:", newValue);
+
+                  if (!nodeNameToRenameValue[newNode.name]) nodeNameToRenameValue[newNode.name] = newValue;
                 }
 
                 console.log(
@@ -932,7 +949,7 @@ export async function executeDBDuplication(
                 cellToReplaceValue.resolvedKeyValue = newValue;
 
                 clonedReferenceField = true;
-                rowToSave = clonedRow;
+                rowsToSave.push(clonedRow);
               }
             }
 
@@ -980,9 +997,11 @@ export async function executeDBDuplication(
                 ];
                 cellToReplaceValue.resolvedKeyValue = newValue;
 
-                rowToSave = clonedRow;
-
-                if (clonedReferenceField) rowWithBothKeyAndRefToSave = clonedRow;
+                if (clonedReferenceField) {
+                  rowsToSaveBothKeyAndRefToSave.push(clonedRow);
+                } else {
+                  rowsToSave.push(clonedRow);
+                }
               }
             }
 
@@ -1019,22 +1038,38 @@ export async function executeDBDuplication(
             }
           }
 
-          const clonedRow = rowWithBothKeyAndRefToSave ?? rowToSave;
-          if (clonedRow && packedFile.tableSchema) {
-            let packFileSize = 0;
-            for (let i = 0; i < clonedRow.length; i++) {
-              const field = packedFile.tableSchema.fields[i];
-              // console.log(
-              //   "field size of",
-              //   clonedRow[i].name,
-              //   field.field_type.toString(),
-              //   clonedRow[i].resolvedKeyValue,
-              //   "is",
-              //   getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
-              // );
-              packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
-            }
+          // const clonedRow = rowWithBothKeyAndRefToSave ?? rowToSave;
+          const clonedRows =
+            rowsToSaveBothKeyAndRefToSave.length > 0 ? rowsToSaveBothKeyAndRefToSave : rowsToSave;
 
+          let packFileSize = 0;
+          for (const clonedRow of clonedRows) {
+            if (clonedRow && packedFile.tableSchema) {
+              for (let i = 0; i < clonedRow.length; i++) {
+                const field = packedFile.tableSchema.fields[i];
+                // console.log(
+                //   "field size of",
+                //   clonedRow[i].name,
+                //   field.field_type.toString(),
+                //   clonedRow[i].resolvedKeyValue,
+                //   "is",
+                //   getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
+                // );
+                packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
+              }
+            }
+          }
+
+          console.log(
+            "clonedRows.length:",
+            clonedRows.length,
+            "packFileSize:",
+            packFileSize,
+            "tableName:",
+            tableName
+          );
+
+          if (packFileSize != 0 && packedFile.tableSchema) {
             const version = packedFile.version;
             if (version) packFileSize += 8; // size of version data
 
@@ -1044,7 +1079,7 @@ export async function executeDBDuplication(
             if (!toSave.some((pf) => pf.name == newPFName)) {
               toSave.push({
                 name: newPFName,
-                schemaFields: clonedRow,
+                schemaFields: clonedRows.flat(),
                 file_size: packFileSize,
                 version: packedFile.version,
                 tableSchema: packedFile.tableSchema,

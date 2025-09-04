@@ -231,7 +231,7 @@ const api = {
     defaultNodeNameToRenameValue: Record<string, string>,
     treeData: IViewerTreeNodeWithData
   ) =>
-    ipcRenderer.send(
+    ipcRenderer.invoke(
       "executeDBDuplication",
       packPath,
       nodesNamesToDuplicate,
