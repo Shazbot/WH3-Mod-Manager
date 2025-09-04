@@ -2893,7 +2893,7 @@ export const registerIpcMainListeners = (
     await readTablesFromMods(mods, tablesToRead);
   };
 
-  ipcMain.on(
+  ipcMain.handle(
     "executeDBDuplication",
     async (
       event,

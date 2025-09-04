@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/src/hooks";
 import { FaSquare, FaCheckSquare, FaMinusSquare, FaArrowRight } from "react-icons/fa";
 import { IoMdArrowDropright } from "react-icons/io";
@@ -10,7 +10,8 @@ import hash from "object-hash";
 import { chunkTableIntoRows, findNodeInTree } from "./viewerHelpers";
 import { packDataStore } from "./packDataStore";
 import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
-import { Tooltip } from "flowbite-react";
+import { Spinner, Tooltip } from "flowbite-react";
+import { FloatingOverlay } from "@floating-ui/react";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -36,6 +37,8 @@ const getAllRefsFromTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => 
     .map((node) => [node.tableName, node.columnName, node.value] as DBCell);
 };
 
+const MemoizedFloatingOverlay = memo(FloatingOverlay);
+
 const DBDuplication = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
@@ -49,7 +52,7 @@ const DBDuplication = memo(() => {
   const [expandedNodesByName, setExpandedNodesByName] = useState<string[]>([]);
   const [nodeNameToRenameValue, setNodeNameToRenameValue] = useState<Record<string, string>>({});
   const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
 
   // Dispatch event to get indirect references for newly expanded node
   const getIndirectReferences = async (
@@ -58,6 +61,8 @@ const DBDuplication = memo(() => {
     treeData: IViewerTreeNodeWithData
   ) => {
     try {
+      if (overlayRef.current) overlayRef.current.style.visibility = "visible";
+
       const indirectRefsResult = await window.api?.buildDBReferenceTree(
         packPath,
         newDBTableSelection,
@@ -66,6 +71,8 @@ const DBDuplication = memo(() => {
         [newSelectedNode], // Only get references for this specific node
         treeData
       );
+
+      if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
 
       if (indirectRefsResult) {
         if (!treeData) {
@@ -108,7 +115,6 @@ const DBDuplication = memo(() => {
     if (!currentDBTableSelection || !deepCloneTarget) return;
 
     const buildTree = async () => {
-      setIsLoading(true);
       try {
         const treeNodeResult = await window.api?.buildDBReferenceTree(
           packPath,
@@ -149,8 +155,6 @@ const DBDuplication = memo(() => {
         }
       } catch (error) {
         console.error("Failed to build reference tree:", error);
-      } finally {
-        setIsLoading(false);
       }
     };
 
@@ -424,7 +428,7 @@ const DBDuplication = memo(() => {
     );
   };
 
-  const onSave = () => {
+  const onSave = async () => {
     console.log("SAVING");
 
     // const selecedNodesWithRootNode = [...selectedNodesByName, rootNode.name];
@@ -434,7 +438,9 @@ const DBDuplication = memo(() => {
       return;
     }
 
-    window.api?.executeDBDuplication(
+    if (overlayRef.current) overlayRef.current.style.visibility = "visible";
+
+    await window.api?.executeDBDuplication(
       packData.packPath,
       selectedNodesByName,
       nodeNameToData,
@@ -442,6 +448,8 @@ const DBDuplication = memo(() => {
       defaultNodeNameToRenameValue,
       treeData
     );
+
+    if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
 
     // dispatch(setDeepCloneTarget(undefined));
 
@@ -452,6 +460,16 @@ const DBDuplication = memo(() => {
 
   return (
     <>
+      <MemoizedFloatingOverlay
+        ref={overlayRef}
+        className={`absolute h-full w-full z-50 dark flex justify-center bg-black opacity-25`}
+        id="DBDuplicationOverlay"
+      >
+        <div className="scale-[4] self-center">
+          <Spinner color="purple" size="xl" className="" />
+        </div>
+      </MemoizedFloatingOverlay>
+
       <div className="absolute right-8 top-24">
         <button
           id="continueGame"
@@ -460,7 +478,7 @@ const DBDuplication = memo(() => {
               "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
             ""
           }`}
-          onClick={() => onSave()}
+          onClick={async () => await onSave()}
           disabled={!isSavingPossible()}
         >
           <div className="make-tooltip-w-full">
