@@ -63,7 +63,8 @@ const DBDuplication = memo(() => {
         newDBTableSelection,
         { row: -1, col: -1 },
         getAllRefsFromTree(treeData),
-        [newSelectedNode] // Only get references for this specific node
+        [newSelectedNode], // Only get references for this specific node
+        treeData
       );
 
       if (indirectRefsResult) {
@@ -118,7 +119,8 @@ const DBDuplication = memo(() => {
           } as DBTableSelection,
           deepCloneTarget,
           treeData ? getAllRefsFromTree(treeData) : [],
-          []
+          [],
+          treeData ?? undefined
         );
 
         if (treeNodeResult) {
