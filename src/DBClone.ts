@@ -1,4 +1,4 @@
-import { findNodeInTree } from "./components/viewer/viewerHelpers";
+import { findNodeInTree, findParentOfNode } from "./components/viewer/viewerHelpers";
 import appData from "./appData";
 import { getLocsTrie, readModsByPath } from "./ipcMainListeners";
 import { chunkSchemaIntoRows, getPacksTableData } from "./packFileSerializer";
@@ -39,7 +39,8 @@ export const buildDBReferenceTree = async (
   currentDBTableSelection: DBTableSelection,
   deepCloneTarget: { row: number; col: number },
   existingRefs: DBCell[],
-  selectedNodesByName: IViewerTreeNodeWithData[]
+  selectedNodesByName: IViewerTreeNodeWithData[],
+  existingTree?: IViewerTreeNodeWithData
 ): Promise<IViewerTreeNodeWithData | undefined> => {
   console.log("ENTER buildDBReferenceTree");
   console.log("args:", packPath, currentDBTableSelection, deepCloneTarget, selectedNodesByName);
@@ -125,7 +126,8 @@ export const buildDBReferenceTree = async (
       currentDBTableSelection,
       deepCloneTarget,
       existingRefs,
-      selectedNodesByName
+      selectedNodesByName,
+      existingTree
     );
   }
   if (!packFile.schemaFields) {
@@ -258,10 +260,6 @@ export const buildDBReferenceTree = async (
     }
     const rows = chunkSchemaIntoRows(packFile.schemaFields, dbVersion);
 
-    // if (tableName == "land_units_tables") {
-    //   console.log("land rows:", rows);
-    // }
-
     for (const row of rows as AmendedSchemaField[][]) {
       const cellWithKey = row.find((cell) => cell.name == tableColumnName) as AmendedSchemaField;
       if (!cellWithKey) continue;
@@ -278,6 +276,24 @@ export const buildDBReferenceTree = async (
           for (const [refTableName, refTableColumnName] of references) {
             if (tablesToIgnore.includes(refTableName)) continue;
 
+            console.log("REFERENCE:", refTableName, refTableColumnName, resolvedKeyValue);
+
+            if (existingTree) {
+              const parentOfParentNode = findParentOfNode(
+                existingTree,
+                treeParent.name
+              ) as IViewerTreeNodeWithData;
+
+              // are we looking up the reference to the parent in the tree, if so we can skip it
+              if (parentOfParentNode.tableName == refTableName) {
+                console.log(
+                  "parentOfParentNode points to the same table, skipping this refence:",
+                  parentOfParentNode.name
+                );
+                continue;
+              }
+            }
+
             await addNewCellFromReference(
               acc,
               treeParent,
@@ -291,21 +307,6 @@ export const buildDBReferenceTree = async (
         return;
       }
 
-      // if (references) {
-      //   console.log("REFERENCES FOR", tableName, tableColumnName, references);
-      //   for (const [refTableName, refTableColumnName] of references) {
-      //     await addNewCellFromReference(
-      //       acc,
-      //       treeParent,
-      //       refTableName,
-      //       refTableColumnName,
-      //       resolvedKeyValue,
-      //       true
-      //     );
-      //   }
-      // }
-      // return;
-      // } else {
       for (let i = 0; i < row.length; i++) {
         const cell = row[i];
         if (i >= dbVersion.fields.length) continue;
@@ -321,8 +322,6 @@ export const buildDBReferenceTree = async (
         if (cell.name != tableColumnName) {
           const newTableName = field.is_reference[0];
           const newTableColumnName = field.is_reference[1];
-          // const newTableName = tableName;
-          // const newTableColumnName = tableColumnName;
 
           console.log(
             "ELSE addNewCellFromReference:",
@@ -340,7 +339,6 @@ export const buildDBReferenceTree = async (
           );
         }
       }
-      // }
     }
   };
 
@@ -751,6 +749,7 @@ export async function executeDBDuplication(
     const numericIdTables = gameToTablesWithNumericIds[appData.currentGame];
 
     console.log("to duplicate", nodesNamesToDuplicate);
+    console.log("nodeNameToRenameValue:", nodeNameToRenameValue);
 
     // TODO we GET CHILDRENT HERE BUT WE DON"T HAVNDLE THEM CORRECTLY CHECK WHAT THE PARENT INDIRECT WAS CHANGED TO
 
@@ -860,7 +859,14 @@ export async function executeDBDuplication(
           const referencesForCurrentTable = DBFieldsThatReference[tableName];
 
           const rows = chunkSchemaIntoRows(packedFile.schemaFields, currentSchema) as AmendedSchemaField[][];
+
+          let rowToSave = undefined as AmendedSchemaField[] | undefined;
+          let rowWithBothKeyAndRefToSave = undefined as AmendedSchemaField[] | undefined;
           for (const row of rows) {
+            // we do 2 passes on a row, first to clone references, and then keys
+            // if we do both passes in a single row we use that row for the final pack
+            let clonedReferenceField = false;
+
             let clonedRow = null as AmendedSchemaField[] | null;
             for (let i = 0; i < row.length; i++) {
               const cell = row[i];
@@ -897,11 +903,12 @@ export async function executeDBDuplication(
                 ) {
                   // add this for the second pass where we handle indirect children of indirect nodes
                   newNodesToDuplicate.push(node);
-                  nodeNameToRenameValue[node.name] = newValue;
+
+                  if (!nodeNameToRenameValue[node.name]) nodeNameToRenameValue[node.name] = newValue;
                 }
 
                 console.log(
-                  "FOUND REPLACEMENT",
+                  "FOUND REPLACEMENT REF",
                   tableName,
                   cell.name,
                   cell.resolvedKeyValue,
@@ -923,6 +930,9 @@ export async function executeDBDuplication(
                   { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
                 ];
                 cellToReplaceValue.resolvedKeyValue = newValue;
+
+                clonedReferenceField = true;
+                rowToSave = clonedRow;
               }
             }
 
@@ -951,6 +961,16 @@ export async function executeDBDuplication(
                     ? nodeNameToRenameValue[nodeToDupe.name]
                     : defaultNodeNameToRenameValue[nodeToDupe.name];
 
+                console.log("nodeToDupe.name:", nodeToDupe.name);
+                console.log(
+                  "FOUND KEY REPLACEMENT KEY",
+                  tableName,
+                  cell.name,
+                  cell.resolvedKeyValue,
+                  "new value:",
+                  newValue
+                );
+
                 originalValueLookup[tableName] = originalValueLookup[tableName] ?? {};
                 originalValueLookup[tableName][cell.name] = originalValueLookup[tableName][cell.name] ?? {};
                 originalValueLookup[tableName][cell.name][cell.resolvedKeyValue] = newValue;
@@ -959,6 +979,10 @@ export async function executeDBDuplication(
                   { type: "Buffer", val: await typeToBuffer(field?.field_type, newValue) },
                 ];
                 cellToReplaceValue.resolvedKeyValue = newValue;
+
+                rowToSave = clonedRow;
+
+                if (clonedReferenceField) rowWithBothKeyAndRefToSave = clonedRow;
               }
             }
 
@@ -993,39 +1017,40 @@ export async function executeDBDuplication(
                 }
               }
             }
+          }
 
-            if (clonedRow && packedFile.tableSchema) {
-              let packFileSize = 0;
-              for (let i = 0; i < clonedRow.length; i++) {
-                const field = packedFile.tableSchema.fields[i];
-                // console.log(
-                //   "field size of",
-                //   clonedRow[i].name,
-                //   field.field_type.toString(),
-                //   clonedRow[i].resolvedKeyValue,
-                //   "is",
-                //   getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
-                // );
-                packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
-              }
+          const clonedRow = rowWithBothKeyAndRefToSave ?? rowToSave;
+          if (clonedRow && packedFile.tableSchema) {
+            let packFileSize = 0;
+            for (let i = 0; i < clonedRow.length; i++) {
+              const field = packedFile.tableSchema.fields[i];
+              // console.log(
+              //   "field size of",
+              //   clonedRow[i].name,
+              //   field.field_type.toString(),
+              //   clonedRow[i].resolvedKeyValue,
+              //   "is",
+              //   getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type)
+              // );
+              packFileSize += getFieldSize(clonedRow[i].resolvedKeyValue, field.field_type);
+            }
 
-              const version = packedFile.version;
-              if (version) packFileSize += 8; // size of version data
+            const version = packedFile.version;
+            if (version) packFileSize += 8; // size of version data
 
-              packFileSize += 5; // number of rows + 1 unknown byte
+            packFileSize += 5; // number of rows + 1 unknown byte
 
-              const newPFName = `db\\${tableName}\\test`;
-              if (!toSave.some((pf) => pf.name == newPFName)) {
-                toSave.push({
-                  name: newPFName,
-                  schemaFields: clonedRow,
-                  file_size: packFileSize,
-                  version: packedFile.version,
-                  tableSchema: packedFile.tableSchema,
-                });
-              } else {
-                console.log("PACKED FILE ALREADY EXISTS IN TOSAVE:", newPFName);
-              }
+            const newPFName = `db\\${tableName}\\test`;
+            if (!toSave.some((pf) => pf.name == newPFName)) {
+              toSave.push({
+                name: newPFName,
+                schemaFields: clonedRow,
+                file_size: packFileSize,
+                version: packedFile.version,
+                tableSchema: packedFile.tableSchema,
+              });
+            } else {
+              console.log("PACKED FILE ALREADY EXISTS IN TOSAVE:", newPFName);
             }
           }
         }
@@ -1046,6 +1071,8 @@ export async function executeDBDuplication(
 
     console.log("nodesToDuplicate:", nodesToDuplicate);
     console.log("newNodesToDuplicate:", newNodesToDuplicate);
+    console.log("indirectRefsToHandle:", indirectRefsToHandle);
+    console.log("nodeNameToRenameValue:", nodeNameToRenameValue);
     // second pass that handles indirect children of indirect nodes
     await handleRefs(indirectRefsToHandle, newNodesToDuplicate);
 

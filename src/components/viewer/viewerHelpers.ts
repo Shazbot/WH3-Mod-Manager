@@ -29,3 +29,25 @@ export const findNodeInTree = (
   }
   return null;
 };
+
+export const findParentOfNode = (
+  tree: IViewerTreeNodeWithData | IViewerTreeNode,
+  targetName: string
+): IViewerTreeNodeWithData | IViewerTreeNode | null => {
+  const findParentOfNodeIter = (
+    tree: IViewerTreeNodeWithData | IViewerTreeNode,
+    targetName: string,
+    parentNode: IViewerTreeNodeWithData | IViewerTreeNode
+  ): IViewerTreeNodeWithData | IViewerTreeNode | null => {
+    if (tree.name === targetName) return parentNode;
+    if (tree.children) {
+      for (const child of tree.children) {
+        const found = findParentOfNodeIter(child, targetName, tree);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  return findParentOfNodeIter(tree, targetName, tree);
+};
