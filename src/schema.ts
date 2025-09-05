@@ -489,6 +489,7 @@ export const getSchemaCacheStatus = (): {
 export const tablesToIgnore = [
   "main_unit_ownership_content_pack_junctions_tables",
   "allied_recruitment_core_units_tables",
+  "agent_subtype_ownership_content_pack_junctions_tables"
 ];
 
 // import * as fs from "fs";

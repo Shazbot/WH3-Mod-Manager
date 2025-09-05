@@ -2218,7 +2218,7 @@ export const readPack = async (
     });
 
     if (packReadingOptions.tablesToRead) {
-      if (dbPackFiles.length < 1) console.log(`NO DB TABLES PRESENT IN PACK`);
+      if (dbPackFiles.length < 1) console.log(`NO DB TABLES PRESENT IN PACK:`, modPath);
       else console.log(`readPack: TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));
     }
 
