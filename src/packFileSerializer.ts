@@ -1610,11 +1610,6 @@ export const readFromExistingPack = async (
   }
 
   console.log("done reading");
-  // const mod = toRead.find((iterMod) => modName === iterMod.name);
-  // if (mod) {
-  //   toRead.splice(toRead.indexOf(mod), 1);
-  // }
-  // console.log(toRead.map((mod) => mod.name));
 
   let readTables: string[] | "all" = "all";
   if (packReadingOptions.skipParsingTables) readTables = [];
@@ -1649,14 +1644,7 @@ const readDBPackedFiles = async (
       console.log("READING TABLE ", pack_file.name);
     }
 
-    // if (
-    //   nodePath.basename(modPath) == "data.pack" &&
-    //   !pack_file.name.includes("\\units_custom_battle_permissions_tables\\")
-    // )
-    //   continue;
-    // if (!dbPackFiles.find((iterPackFile) => iterPackFile === pack_file)) continue;
     currentPos = pack_file.start_pos - startPos;
-    // console.log(currentPos);
 
     const dbNameMatch = pack_file.name.match(matchDBFileRegex);
     if (dbNameMatch == null) continue;
@@ -2052,15 +2040,9 @@ export const readPack = async (
         }
       }
 
-      // if (name.startsWith("db")) {
-      //   console.log(name);
-      // }
-
       // if (i === 1000) {
       // console.log(console.timeEnd("1000files"));
       // }
-      // console.log("name is:", name);
-      //   console.log("file_size is " + file_size);
 
       pack_files.push({
         name,
@@ -2090,22 +2072,6 @@ export const readPack = async (
         dependencyPacks,
       } as Pack;
     }
-
-    // console.log("num pack files: " + pack_files.length);
-
-    // console.log("DONE READING FILE");
-
-    // pack_files.forEach((pack_file) => {
-    //   const db_name = pack_file.name.match(matchDBFileRegex);
-    //   if (db_name != null) {
-    //     console.log(db_name);
-    //     // console.log(pack_file.name);
-    //   }
-    // });
-
-    // const battle_permissions = pack_files.filter((pack) =>
-    //   pack.name.startsWith("db\\units_custom_battle_permissions_tables")
-    // );
 
     if (packReadingOptions.readScripts) {
       const scriptFiles: PackedFile[] = [];
