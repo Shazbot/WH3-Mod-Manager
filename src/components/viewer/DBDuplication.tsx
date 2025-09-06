@@ -53,6 +53,9 @@ const DBDuplication = memo(() => {
   const [nodeNameToRenameValue, setNodeNameToRenameValue] = useState<Record<string, string>>({});
   const [treeData, setTreeData] = useState<IViewerTreeNodeWithData | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [isAppendSave, setIsAppendSave] = useState<boolean>(false);
+  const [savePackedFileName, setSavePackedFileName] = useState<string>("");
+  const [savePackFileName, setSavePackFileName] = useState<string>("");
 
   // Dispatch event to get indirect references for newly expanded node
   const getIndirectReferences = async (
@@ -446,7 +449,8 @@ const DBDuplication = memo(() => {
       nodeNameToData,
       nodeNameToRenameValue,
       defaultNodeNameToRenameValue,
-      treeData
+      treeData,
+      { isAppendSave, savePackedFileName, savePackFileName }
     );
 
     if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
@@ -470,23 +474,49 @@ const DBDuplication = memo(() => {
         </div>
       </MemoizedFloatingOverlay>
 
-      <div className="absolute right-8 top-24">
-        <button
-          id="continueGame"
-          className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 w-24 m-auto ${
-            (!isSavingPossible() &&
-              "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
-            ""
-          }`}
-          onClick={async () => await onSave()}
-          disabled={!isSavingPossible()}
-        >
-          <div className="make-tooltip-w-full">
-            <Tooltip placement="left" content={"TODO"}>
-              <span className="ml-[-25%]">{"Save"}</span>
-            </Tooltip>
-          </div>
-        </button>
+      <div className="absolute right-8 top-24 flex flex-col gap-6">
+        <div>
+          <button
+            className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 w-24 m-auto ${
+              (!isSavingPossible() &&
+                "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
+              ""
+            }`}
+            onClick={async () => await onSave()}
+            disabled={!isSavingPossible()}
+          >
+            <div>
+              <span>{"Save"}</span>
+            </div>
+          </button>
+        </div>
+        <div className="flex items-center mt-2">
+          <input
+            type="checkbox"
+            id="enable-closed-on-play"
+            checked={isAppendSave}
+            onChange={() => setIsAppendSave(!isAppendSave)}
+          ></input>
+          <label className="ml-2" htmlFor="enable-closed-on-play">
+            {"Append Existing Pack"}
+          </label>
+        </div>
+        <div>
+          <input
+            defaultValue={savePackedFileName}
+            placeholder={"Name for new tables"}
+            onChange={(e) => setSavePackedFileName(e.target.value)}
+            className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <div>
+          <input
+            defaultValue={savePackFileName}
+            placeholder={"Name for new pack"}
+            onChange={(e) => setSavePackFileName(e.target.value)}
+            className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+          />
+        </div>
       </div>
       <div>Cloning {toClone.resolvedKeyValue}</div>
       <div className="checkbox dark:text-gray-300">

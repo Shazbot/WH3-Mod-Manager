@@ -586,4 +586,10 @@ declare global {
   }
 
   type DBCell = [tableName: string, tableColumnName: string, resolveKeyValue: string];
+
+  interface DBCloneSaveOptions {
+    isAppendSave: boolean;
+    savePackedFileName: string;
+    savePackFileName: string;
+  }
 }

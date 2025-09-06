@@ -229,7 +229,8 @@ const api = {
     nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
     nodeNameToRenameValue: Record<string, string>,
     defaultNodeNameToRenameValue: Record<string, string>,
-    treeData: IViewerTreeNodeWithData
+    treeData: IViewerTreeNodeWithData,
+    DBCloneSaveOptions: DBCloneSaveOptions
   ) =>
     ipcRenderer.invoke(
       "executeDBDuplication",
@@ -238,7 +239,8 @@ const api = {
       nodeNameToRef,
       nodeNameToRenameValue,
       defaultNodeNameToRenameValue,
-      treeData
+      treeData,
+      DBCloneSaveOptions
     ),
   buildDBReferenceTree: (
     packPath: string,

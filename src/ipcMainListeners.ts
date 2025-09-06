@@ -238,13 +238,11 @@ export const getLocsTrie = (pack: Pack) => {
 
 export const readModsByPath = async (
   modPaths: string[],
-  skipParsingTables = true,
-  skipCollisionCheck = true,
-  readScripts = false,
-  readLocs = false,
-  tablesToRead?: string[],
-  filesToRead?: string[]
+  packReadingOptions: PackReadingOptions,
+  skipCollisionCheck = true
 ) => {
+  const { skipParsingTables, tablesToRead, readLocs, readScripts, filesToRead } = packReadingOptions;
+
   console.log("readModsByPath:", modPaths);
   // console.log("readModsByPath skipParsingTables:", skipParsingTables);
   // console.log("readModsByPath skipCollisionCheck:", skipCollisionCheck);
@@ -370,7 +368,11 @@ export const registerIpcMainListeners = (
             !packName.startsWith("terrain"))
       )
       .map((packName) => nodePath.join(dataFolder, packName));
-    await readModsByPath(vanillaPacksToRead, false, true, false, true, tablesToRead);
+    await readModsByPath(
+      vanillaPacksToRead,
+      { skipParsingTables: false, readLocs: true, tablesToRead },
+      true
+    );
 
     const unsortedPacksTableData = getPacksTableData(
       appData.packsData.filter(
@@ -1732,9 +1734,8 @@ export const registerIpcMainListeners = (
             (!packName.startsWith("audio_") && !packName.startsWith("local_"))
         )
         .map((packName) => nodePath.join(dataFolder, packName)),
-      false,
-      true,
-      appData.isCompatCheckingVanillaPacks
+      { readScripts: appData.isCompatCheckingVanillaPacks },
+      true
     );
 
     mainWindow?.webContents.send(
@@ -2902,7 +2903,8 @@ export const registerIpcMainListeners = (
       nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
       nodeNameToRenameValue: Record<string, string>,
       defaultNodeNameToRenameValue: Record<string, string>,
-      treeData: IViewerTreeNodeWithData
+      treeData: IViewerTreeNodeWithData,
+      DBCloneSaveOptions: DBCloneSaveOptions
     ) => {
       const { executeDBDuplication } = await import("./DBClone");
       await executeDBDuplication(
@@ -2911,7 +2913,8 @@ export const registerIpcMainListeners = (
         nodeNameToRef,
         nodeNameToRenameValue,
         defaultNodeNameToRenameValue,
-        treeData
+        treeData,
+        DBCloneSaveOptions
       );
     }
   );

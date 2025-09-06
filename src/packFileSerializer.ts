@@ -622,6 +622,8 @@ export const getDBVersionByTableName = (packFile: PackedFile, dbName: string) =>
 };
 
 export const getDBVersion = (packFile: PackedFile) => {
+  if (packFile.name.endsWith(".loc")) return LocVersion;
+
   // console.log("GETTING DB VERSION FOR", packFile.name);
   const dbName = getDBName(packFile);
   // console.log("GETTING DB VERSION, DBNAME IS", dbName);
@@ -1287,32 +1289,33 @@ export const writePack = async (packFiles: NewPackedFile[], path: string) => {
     }
 
     for (const packFile of packFiles) {
-      if (!packFile.schemaFields) continue;
+      if (packFile.buffer) {
+        await writeField(outFile, { type: "Buffer", fields: [{ type: "Buffer", val: packFile.buffer }] });
+      } else if (packFile.schemaFields && packFile.tableSchema) {
+        if (packFile.name.endsWith(".loc")) {
+          await outFile.write(Buffer.from([0xff, 0xfe]));
+          await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
+        } else if (packFile.version != null) {
+          console.log(packFile.name, "version:", packFile.version);
+          await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+          await outFile.writeInt32(packFile.version); // db version
+        }
 
-      if (packFile.name.endsWith(".loc")) {
-        await outFile.write(Buffer.from([0xff, 0xfe]));
-        await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
-      } else if (packFile.version != null) {
-        console.log(packFile.name, "version:", packFile.version);
-        await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
-        await outFile.writeInt32(packFile.version); // db version
-      }
+        if (packFile.name.endsWith(".loc")) {
+          await outFile.writeInt8(1);
+          await outFile.writeInt32(1);
+        } else {
+          await outFile.writeInt8(1);
+        }
+        console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
+        await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
-      if (packFile.name.endsWith(".loc")) {
-        await outFile.writeInt8(1);
-        await outFile.writeInt32(1);
+        for (let i = 0; i < packFile.schemaFields.length; i++) {
+          const field = packFile.schemaFields[i];
+          await writeField(outFile, field);
+        }
       } else {
-        await outFile.writeInt8(1);
-      }
-      console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
-      await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
-
-      // console.log(general_unit_index);
-      // console.log(dbVersionNumFields);
-
-      for (let i = 0; i < packFile.schemaFields.length; i++) {
-        const field = packFile.schemaFields[i];
-        await writeField(outFile, field);
+        console.log("NO BUFFER AND NO SCHEMA DATA FOR", packFile.name);
       }
     }
   } finally {
