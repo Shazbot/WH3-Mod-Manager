@@ -767,16 +767,12 @@ export async function executeDBDuplication(
       buffer?: Buffer;
     }
 
-    // const toSave = [] as (SavePackedFileDataWithSchema | SavePackedFileDataWithBuffer)[];
     const toSaveWithSchema = [] as SavePackedFileDataWithSchema[];
-    // const toSaveWithBuffer = [] as SavePackedFileDataWithBuffer[];
 
     const numericIdTables = gameToTablesWithNumericIds[appData.currentGame];
 
     console.log("to duplicate", nodesNamesToDuplicate);
     console.log("nodeNameToRenameValue:", nodeNameToRenameValue);
-
-    // TODO we GET CHILDRENT HERE BUT WE DON"T HAVNDLE THEM CORRECTLY CHECK WHAT THE PARENT INDIRECT WAS CHANGED TO
 
     const getIndirectChildrenNodes = (node: IViewerTreeNodeWithData) => {
       const getIndirectChildrenNodesIter = (
