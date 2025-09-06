@@ -268,7 +268,7 @@ const Categories = memo(() => {
     return selectedMods;
   }, [hotRef]);
 
-  console.log("currentlySelectedMods:", getCurrentlySelectedMods());
+  // console.log("currentlySelectedMods:", getCurrentlySelectedMods());
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const BadgesRowRenderer = (props: HotRendererProps) => {
@@ -301,9 +301,9 @@ const Categories = memo(() => {
     if (!rowData) return <></>;
 
     if (rowData && isCategoryRow(rowData)) {
-      props.TD.style.background = "rgb(89, 22, 139)"; // purple-900
+      props.TD.style.background = "rgba(89, 22, 139, 0.5)"; // purple-900
 
-      if (isRowCurrentlySelected) props.TD.style.background = "rgb(60, 3, 102)"; // purple-950
+      if (isRowCurrentlySelected) props.TD.style.background = "rgb(60, 3, 102, 0.5)"; // purple-950
     }
 
     const mod = (mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
@@ -618,7 +618,7 @@ const Categories = memo(() => {
 
     const rowData = flattenedData[row];
     if (rowData && isCategoryRow(rowData)) {
-      td.style.background = "oklch(38.1% 0.176 304.987)";
+      td.style.background = "oklch(38.1% 0.176 304.987 / .5)";
     }
   }
 
@@ -879,8 +879,8 @@ const Categories = memo(() => {
               if (mod) selectedMods.push(mod);
             }
           }
-          console.log("CSM:", getCurrentlySelectedMods());
-          console.log("NEW CSM:", selectedMods);
+          // console.log("CSM:", getCurrentlySelectedMods());
+          // console.log("NEW CSM:", selectedMods);
           // setCurrentlySelectedMods(selectedMods);
           setIsContextMenuOpen(true);
         }}
