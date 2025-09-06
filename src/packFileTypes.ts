@@ -13,10 +13,11 @@ export interface AmendedSchemaField extends SchemaField {
 
 export interface NewPackedFile {
   name: string;
-  schemaFields: SchemaField[];
+  schemaFields?: SchemaField[];
   file_size: number;
   version?: number;
-  tableSchema: DBVersion;
+  tableSchema?: DBVersion;
+  buffer?: Buffer;
 }
 
 export interface PackedFile {

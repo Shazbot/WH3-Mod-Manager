@@ -23,6 +23,8 @@ import {
 import { getDBNameFromString, getDBPackedFilePath, getDBVersion } from "./utility/packFileHelpers";
 import Queue from "./utility/queue";
 import { gameToPackWithDBTablesName } from "./supportedGames";
+import { format } from "date-fns";
+import * as fs from "fs";
 
 const wasPackAlreadyRead = (newPackPath: string, tableToRead: string) => {
   const packData = appData.packsData.find((pack) => pack.path == newPackPath);
@@ -69,7 +71,7 @@ export const buildDBReferenceTree = async (
 
   let existingPack = appData.packsData.find((pack) => pack.path == packPath);
   if (!existingPack) {
-    await readModsByPath([packPath], true, true, false, false);
+    await readModsByPath([packPath], { skipParsingTables: true }, true);
 
     existingPack = appData.packsData.find((pack) => pack.path == packPath);
     if (!existingPack) {
@@ -110,9 +112,10 @@ export const buildDBReferenceTree = async (
       packPath,
       packsWithReadLocsByPackPath.includes(packPath)
     );
-    await readModsByPath([packPath], false, true, false, !packsWithReadLocsByPackPath.includes(packPath), [
-      tableToRead,
-    ]);
+    await readModsByPath([packPath], {
+      readLocs: !packsWithReadLocsByPackPath.includes(packPath),
+      tablesToRead: [tableToRead],
+    });
     if (!packsWithReadLocsByPackPath.includes(packPath)) {
       packsWithReadLocsByPackPath.push(packPath);
     }
@@ -181,9 +184,10 @@ export const buildDBReferenceTree = async (
     const packPath = pack.path;
 
     if (!wasPackAlreadyRead(packPath, tableToRead)) {
-      await readModsByPath([packPath], false, true, false, !packsWithReadLocsByPackPath.includes(packPath), [
-        tableToRead,
-      ]);
+      await readModsByPath([packPath], {
+        readLocs: !packsWithReadLocsByPackPath.includes(packPath),
+        tablesToRead: [tableToRead],
+      });
 
       if (!packsWithReadLocsByPackPath.includes(packPath)) {
         packsWithReadLocsByPackPath.push(packPath);
@@ -734,22 +738,38 @@ export async function executeDBDuplication(
   nodeNameToRef: Record<string, IViewerTreeNodeWithData>,
   nodeNameToRenameValue: Record<string, string>,
   defaultNodeNameToRenameValue: Record<string, string>,
-  treeData: IViewerTreeNodeWithData
+  treeData: IViewerTreeNodeWithData,
+  DBCloneSaveOptions: DBCloneSaveOptions
 ): Promise<void> {
   try {
+    const timestamp = format(new Date(), "ddMMyyyy_HHmmss");
+    const packedFileBaseName =
+      DBCloneSaveOptions.savePackedFileName != ""
+        ? DBCloneSaveOptions.savePackedFileName
+        : `dbclone_${timestamp}_`;
+
     const pack = appData.packsData.find((pack) => pack.path == packPath);
     if (!pack) {
       console.log("executeDBDuplication: pack not found");
       return;
     }
 
-    const toSave = [] as {
+    interface SavePackedFileDataWithSchema {
       name: string;
       schemaFields: AmendedSchemaField[];
       file_size: number;
       version?: number;
       tableSchema: DBVersion;
-    }[];
+    }
+    interface SavePackedFileDataWithBuffer {
+      name: string;
+      file_size: number;
+      buffer?: Buffer;
+    }
+
+    // const toSave = [] as (SavePackedFileDataWithSchema | SavePackedFileDataWithBuffer)[];
+    const toSaveWithSchema = [] as SavePackedFileDataWithSchema[];
+    // const toSaveWithBuffer = [] as SavePackedFileDataWithBuffer[];
 
     const numericIdTables = gameToTablesWithNumericIds[appData.currentGame];
 
@@ -1075,9 +1095,9 @@ export async function executeDBDuplication(
 
             packFileSize += 5; // number of rows + 1 unknown byte
 
-            const newPFName = `db\\${tableName}\\test`;
-            if (!toSave.some((pf) => pf.name == newPFName)) {
-              toSave.push({
+            const newPFName = `db\\${tableName}\\${packedFileBaseName}`;
+            if (!toSaveWithSchema.some((pf) => pf.name == newPFName)) {
+              toSaveWithSchema.push({
                 name: newPFName,
                 schemaFields: clonedRows.flat(),
                 file_size: packFileSize,
@@ -1114,7 +1134,7 @@ export async function executeDBDuplication(
     const locs = [] as string[];
     const origLocToNewLoc = {} as Record<string, string>;
 
-    for (const pf of toSave) {
+    for (const pf of toSaveWithSchema) {
       const tableName = getDBNameFromString(pf.name);
       if (!tableName) {
         console.log("ERROR: no tableName");
@@ -1208,7 +1228,14 @@ export async function executeDBDuplication(
     const nodePath = await import("path");
     const localePath = nodePath.join(dataPath, "local_en.pack");
 
-    const localePackArray = await readModsByPath([localePath], true, true, false, true);
+    const localePackArray = await readModsByPath(
+      [localePath],
+      {
+        skipParsingTables: true,
+        readLocs: true,
+      },
+      true
+    );
     if (!localePackArray || localePackArray.length < 1) {
       console.log("ERROR: couldn't read local_en.pack");
       return;
@@ -1262,8 +1289,8 @@ export async function executeDBDuplication(
       }
     }
 
-    toSave.push({
-      name: "text/db/testLocs.loc",
+    toSaveWithSchema.push({
+      name: `text/db/${packedFileBaseName}.loc`,
       schemaFields: locFields,
       file_size: locFileSize + 14,
       version: 1,
@@ -1276,10 +1303,68 @@ export async function executeDBDuplication(
 
     const { writePack } = await import("./packFileSerializer");
 
-    await writePack(
-      toSave,
-      nodePath.join(appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string, "test.pack")
-    );
+    const toSave = toSaveWithSchema as (SavePackedFileDataWithSchema | SavePackedFileDataWithBuffer)[];
+
+    const packFileBaseName =
+      DBCloneSaveOptions.savePackFileName != ""
+        ? DBCloneSaveOptions.savePackFileName
+        : `dbclone_${timestamp}`;
+
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
+    const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);
+
+    if (DBCloneSaveOptions.isAppendSave && fs.existsSync(newPackPath)) {
+      let existingPacks = await readModsByPath([newPackPath], { skipParsingTables: true }, true);
+      let existingPack = existingPacks[0];
+
+      if (existingPack) {
+        existingPacks = await readModsByPath(
+          [newPackPath],
+          { filesToRead: existingPack.packedFiles.map((pf) => pf.name) },
+          true
+        );
+        existingPack = existingPacks[0];
+      }
+      if (existingPack) {
+        for (const packedFileToAdd of existingPack.packedFiles) {
+          let duplicatePackedFile = null;
+          do {
+            duplicatePackedFile = toSave.find((inToSave) => inToSave.name == packedFileToAdd.name);
+            if (duplicatePackedFile) {
+              const lastIndexOfDot = duplicatePackedFile.name.lastIndexOf(".");
+              if (lastIndexOfDot != -1) {
+                duplicatePackedFile.name =
+                  duplicatePackedFile.name.slice(0, lastIndexOfDot) +
+                  "_" +
+                  duplicatePackedFile.name.slice(lastIndexOfDot);
+              } else {
+                duplicatePackedFile.name += "_";
+              }
+            }
+          } while (duplicatePackedFile);
+
+          if (packedFileToAdd.schemaFields && packedFileToAdd.tableSchema) {
+            toSave.push({
+              name: packedFileToAdd.name,
+              schemaFields: packedFileToAdd.schemaFields as AmendedSchemaField[],
+              file_size: packedFileToAdd.file_size,
+              version: packedFileToAdd.version,
+              tableSchema: packedFileToAdd.tableSchema,
+            } as SavePackedFileDataWithSchema);
+          } else if (packedFileToAdd.buffer) {
+            toSave.push({
+              name: packedFileToAdd.name,
+              file_size: packedFileToAdd.file_size,
+              buffer: packedFileToAdd.buffer,
+            } as SavePackedFileDataWithBuffer);
+          } else {
+            console.log("CANNOT APPEND DBCLONE PACK WITH", packedFileToAdd.name);
+          }
+        }
+      }
+    }
+
+    await writePack(toSave, newPackPath);
   } catch (e) {
     console.log(e);
   }

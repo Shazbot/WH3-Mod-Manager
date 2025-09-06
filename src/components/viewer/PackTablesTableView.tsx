@@ -180,17 +180,6 @@ const PackTablesTableView = memo(() => {
   );
 
   useEffect(() => {
-    if (!hotRef || !hotRef.current || !handsontableLoaded) return;
-    const hot = hotRef.current.hotInstance;
-    if (!hot) return;
-    const plugin = hot.getPlugin("autoColumnSize");
-
-    if (plugin?.isEnabled()) {
-      // code...
-    }
-  }, [handsontableLoaded]);
-
-  useEffect(() => {
     if (!startArgs.includes("-testDBClone")) return;
 
     const autoDispatchTimer = setTimeout(() => {
