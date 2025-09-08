@@ -1,6 +1,6 @@
 # Warhammer 3 Mod Manager
 
-Mod manager for the Steam version of Total War: Warhammer 3, Total War: Three Kingdoms and Total War: Warhammer 2.
+Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2.
 
 Features not present in the CA launcher:
 
@@ -8,7 +8,6 @@ Features not present in the CA launcher:
 - mod filtering and presets
 - options to skip into videos or enable script logging
 - view database tables of mods or the base game
-- merge mods to get around the mod limit
 - compatibility checker to inspect which mod will have priority and overwrite another
 - can also update your mods directly like the CA launcher
 - add tags/categories to organize your mods
@@ -30,6 +29,6 @@ yarn start
 yarn make
 ```
 
-I build with yarn 1.22.19 and node v18.12.1.
+I build with yarn 1.22.22 and node v20.18.1. You can try using `yarn install --frozen-lockfile --ignore-engines` if you end up with dependency errors.
 
 Note that yarn start does hot-reloading, but hot-reloading files related to the main Electron process (basically index.ts, the stuff related to the OS and files) won't work but hot-reloading the renderer process works (basically everything user facing).
