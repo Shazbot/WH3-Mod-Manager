@@ -242,8 +242,8 @@
     "unzipper": "^0.12.3",
     "winreg": "^1.2.4"
   },
-  "packageManager": "yarn@v1.22.22",
+  "packageManager": "yarn@1.22.22",
   "engines": {
-    "node": "20.18.0"
+    "node": "20.18.1"
   }
 }

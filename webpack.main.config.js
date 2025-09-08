@@ -8,6 +8,10 @@ const AssetRelocatorPatch = require("@electron-forge/plugin-webpack/dist/util/As
 const isProduction = process.argv[process.argv.indexOf("--mode") + 1] === "production";
 
 module.exports = {
+  infrastructureLogging: {
+    level: "verbose",
+  },
+  stats: "verbose",
   /**
    * This is the main entry point for your application, it's the first file
    * that runs in the main process.
