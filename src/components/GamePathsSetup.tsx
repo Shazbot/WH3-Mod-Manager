@@ -26,6 +26,7 @@ const supportedGameToMainGameFolderLocalization: Record<SupportedGames, string> 
   pharaoh: "mainPharaohFolder",
   dynasties: "mainDynastiesFolder",
   rome2: "mainRome2Folder",
+  shogun2: "mainShogun2Folder",
 };
 const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2Folder",
@@ -36,6 +37,7 @@ const supportedGameToGameFolderLocalization: Record<SupportedGames, string> = {
   pharaoh: "pharaohFolder",
   dynasties: "dynastiesFolder",
   rome2: "rome2Folder",
+  shogun2: "shogun2Folder",
 };
 const supportedGameToContentFolderLocalization: Record<SupportedGames, string> = {
   wh2: "wh2ContentFolder",
@@ -46,6 +48,7 @@ const supportedGameToContentFolderLocalization: Record<SupportedGames, string> =
   pharaoh: "pharaohContentFolder",
   dynasties: "dynastiesContentFolder",
   rome2: "rome2ContentFolder",
+  shogun2: "shogun2ContentFolder",
 };
 const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = {
   wh2: "selectWH2Folder",
@@ -56,6 +59,7 @@ const supportedGameToSelectFolderLocalization: Record<SupportedGames, string> = 
   pharaoh: "selectPharaohFolder",
   dynasties: "selectDynastiesFolder",
   rome2: "selectRome2Folder",
+  shogun2: "selectShogun2Folder",
 };
 const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyWH2",
@@ -66,6 +70,7 @@ const supportedGameToSetFolderPathsManuallyLocalization: Record<SupportedGames, 
   pharaoh: "setFolderPathsManuallyPharaoh",
   dynasties: "setFolderPathsManuallyDynasties",
   rome2: "setFolderPathsManuallyRome2",
+  shogun2: "setFolderPathsManuallyShogun2",
 };
 const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<SupportedGames, string> = {
   wh2: "setFolderPathsManuallyOptionallyWH2",
@@ -76,6 +81,7 @@ const supportedGameToSetFolderPathsManuallyOptionallyLocalization: Record<Suppor
   pharaoh: "setFolderPathsManuallyOptionallyPharaoh",
   dynasties: "setFolderPathsManuallyOptionallyDynasties",
   rome2: "setFolderPathsManuallyOptionallyRome2",
+  shogun2: "setFolderPathsManuallyOptionallyShogun2",
 };
 
 const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {

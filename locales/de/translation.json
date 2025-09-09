@@ -497,5 +497,12 @@
   "renameNFiles": "{{count}} Dateien umbenennen",
   "testRename": "Test-Umbenennung (Keine Änderungen)",
   "noFilesToRename": "Keine Dateien zum Umbenennen",
-  "renamePackedFiles": "Gepackte Dateien umbenennen"
+  "renamePackedFiles": "Gepackte Dateien umbenennen",
+  "setFolderPathsManuallyShogun2": "Der Mod-Manager hat versucht, die Shogun-2-Ordnerstandorte aus der Windows-Registrierung abzurufen, konnte sie jedoch nicht finden! Sie müssen sie manuell festlegen!",
+  "setFolderPathsManuallyOptionallyShogun2": "Der Mod-Manager hat die Shogun-2-Ordnerpfade automatisch in der Windows-Registrierung gefunden, aber Sie können sie hier manuell festlegen.",
+  "shogun2": "Shogun 2",
+  "mainShogun2Folder": "Der Hauptordner von Shogun 2, der Three_Kingdoms.exe enthält, z. B. C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
+  "shogun2Folder": "Shogun-2-Ordner:",
+  "selectShogun2Folder": "Shogun-2-Ordner auswählen",
+  "shogun2ContentFolder": "Der Shogun-2-Steam-Workshop-Ordner namens 201270 (die Steam-ID von Shogun 2), der Mods enthält, z. B. C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270"
 }

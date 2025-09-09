@@ -497,5 +497,12 @@
   "renameNFiles": "{{count}}개 파일 이름 변경",
   "testRename": "테스트 이름 변경 (변경 사항 없음)",
   "noFilesToRename": "이름을 변경할 파일 없음",
-  "renamePackedFiles": "팩된 파일 이름 변경"
+  "renamePackedFiles": "팩된 파일 이름 변경",
+  "setFolderPathsManuallyShogun2": "모드 관리자가 Windows 레지스트리에서 Shogun 2 폴더 위치를 가져오려 했지만 찾을 수 없었습니다! 수동으로 설정해야 합니다!",
+  "setFolderPathsManuallyOptionallyShogun2": "모드 관리자가 Windows 레지스트리에서 Shogun 2 폴더 경로를 자동으로 찾았지만, 여기에서 수동으로 설정할 수도 있습니다.",
+  "shogun2": "Shogun 2",
+  "mainShogun2Folder": "Three_Kingdoms.exe가 포함된 Shogun 2 메인 폴더, 예: C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
+  "shogun2Folder": "Shogun 2 폴더:",
+  "selectShogun2Folder": "Shogun 2 폴더 선택",
+  "shogun2ContentFolder": "Shogun 2의 Steam 워크숍 콘텐츠 폴더 201270 (Shogun 2의 Steam ID)로, 모드가 포함되어 있습니다. 예: C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270"
 }

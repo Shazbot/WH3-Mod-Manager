@@ -497,5 +497,12 @@
   "renameNFiles": "{{count}} Dosyayı Yeniden Adlandır",
   "testRename": "Test Yeniden Adlandırma (Değişiklik Yok)",
   "noFilesToRename": "Yeniden Adlandırılacak Dosya Yok",
-  "renamePackedFiles": "Paketlenmiş Dosyaları Yeniden Adlandır"
+  "renamePackedFiles": "Paketlenmiş Dosyaları Yeniden Adlandır",
+  "setFolderPathsManuallyShogun2": "Mod yöneticisi, Windows Kayıt Defteri'nden Shogun 2 klasör konumlarını almaya çalıştı ancak bulamadı! Bunları manuel olarak ayarlamanız gerekiyor!",
+  "setFolderPathsManuallyOptionallyShogun2": "Mod yöneticisi, Windows Kayıt Defteri'nden Shogun 2 klasör yollarını otomatik olarak buldu, ancak bunları burada manuel olarak ayarlayabilirsiniz.",
+  "shogun2": "Shogun 2",
+  "mainShogun2Folder": "Three_Kingdoms.exe dosyasını içeren ana Shogun 2 klasörü, örneğin C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
+  "shogun2Folder": "Shogun 2 klasörü:",
+  "selectShogun2Folder": "Shogun 2 Klasörünü Seç",
+  "shogun2ContentFolder": "Shogun 2 Steam Workshop içerik klasörü 201270 (Shogun 2'nin Steam ID’si) adlı, modları içeren klasör, örneğin C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270"
 }
