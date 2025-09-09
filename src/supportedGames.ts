@@ -7,6 +7,7 @@ export const supportedGames = [
   "pharaoh",
   "dynasties",
   "rome2",
+  "shogun2",
 ] as const;
 export type SupportedGames = (typeof supportedGames)[number];
 
@@ -37,6 +38,7 @@ export const gameToGameFolder: Record<SupportedGames, string> = {
   pharaoh: "Total War Pharaoh",
   dynasties: "Total War PHARAOH DYNASTIES",
   rome2: "Total War Rome II",
+  shogun2: "Total War SHOGUN 2",
 };
 
 export const gameToGameName: Record<SupportedGames, string> = {
@@ -48,6 +50,7 @@ export const gameToGameName: Record<SupportedGames, string> = {
   pharaoh: "Pharaoh",
   dynasties: "Pharaoh Dynasties",
   rome2: "Rome 2",
+  shogun2: "Shogun 2",
 };
 
 export const gameToSteamId: Record<SupportedGames, string> = {
@@ -59,6 +62,7 @@ export const gameToSteamId: Record<SupportedGames, string> = {
   pharaoh: "1937780",
   dynasties: "2951630",
   rome2: "214950",
+  shogun2: "201270",
 };
 
 export const gameToProcessName: Record<SupportedGames, string> = {
@@ -70,6 +74,7 @@ export const gameToProcessName: Record<SupportedGames, string> = {
   pharaoh: "Pharaoh.exe",
   dynasties: "Pharaoh.exe",
   rome2: "Rome2.exe",
+  shogun2: "shogun2.exe",
 };
 
 export const gameToAppDataFolderName: Record<SupportedGames, string> = {
@@ -81,6 +86,7 @@ export const gameToAppDataFolderName: Record<SupportedGames, string> = {
   pharaoh: "Pharaoh",
   dynasties: "PharaohDynasties",
   rome2: "Rome2",
+  shogun2: "Shogun2",
 };
 
 export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
@@ -92,6 +98,7 @@ export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
   pharaoh: "data.pack",
   dynasties: "data_db.pack",
   rome2: "data_rome2.pack",
+  shogun2: "data.exe",
 };
 
 export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> = {
@@ -140,6 +147,7 @@ export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> 
       name: "data_rome2.pack",
     },
   ],
+  shogun2: [{ name: "data.pack" }, { name: "data_fots.pack" }],
 };
 
 export const vanillaPackNames: string[] = [];
@@ -169,6 +177,7 @@ export const gameToIntroMovies: Record<SupportedGames, string[]> = {
   pharaoh: [],
   dynasties: [],
   rome2: [],
+  shogun2: [],
 };
 
 export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOptions[]> = {
@@ -180,6 +189,7 @@ export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOpt
   pharaoh: ["ScriptLogging"],
   dynasties: ["ScriptLogging"],
   rome2: [],
+  shogun2: [],
 };
 
 export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
@@ -679,6 +689,21 @@ export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
     "gaul.pack",
     "blood_rome2.pack",
     "punic.pack",
+  ],
+  shogun2: [
+    "local_en.pack",
+    "movies_fots.pack",
+    "data_fots.pack",
+    "terrain.pack",
+    "sound.pack",
+    "shaders.pack",
+    "movies2.pack",
+    "movies.pack",
+    "models2.pack",
+    "models.pack",
+    "data.pack",
+    "bp_orig.pack",
+    "boot.pack",
   ],
 };
 

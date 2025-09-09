@@ -27,6 +27,7 @@ export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion
   pharaoh: {},
   dynasties: {},
   rome2: {},
+  shogun2: {},
 };
 
 const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
@@ -42,7 +43,8 @@ const getSchemaFileName = (game: SupportedGames): string => {
     troy: "schema_troy.json.zst",
     pharaoh: "schema_ph.json.zst",
     dynasties: "schema_ph_dyn.json.zst",
-    rome2: "schema_rome2.json.zst", // assuming this exists
+    rome2: "schema_rome2.json.zst",
+    shogun2: "schema_sho2.json.zst",
   };
   return schemaMap[game];
 };
@@ -160,6 +162,7 @@ export const gameToReferences: Record<SupportedGames, Record<string, string[]>> 
   pharaoh: {},
   dynasties: {},
   rome2: {},
+  shogun2: {},
 };
 
 const processReferencesForGame = async (game: SupportedGames): Promise<void> => {
@@ -235,6 +238,7 @@ export const gameToDBFieldsThatReference: Record<
   pharaoh: {},
   dynasties: {},
   rome2: {},
+  shogun2: {},
 };
 
 const processDBFieldsThatReferenceForGame = async (game: SupportedGames): Promise<void> => {
@@ -296,6 +300,7 @@ export const gameToDBFieldsReferencedBy: Record<
   pharaoh: {},
   dynasties: {},
   rome2: {},
+  shogun2: {},
 };
 
 const processDBFieldsReferencedByForGame = async (game: SupportedGames): Promise<void> => {
@@ -357,6 +362,7 @@ export const gameToTablesWithNumericIds: Record<SupportedGames, Record<DBFileNam
   pharaoh: {},
   dynasties: {},
   rome2: {},
+  shogun2: {},
 };
 gameToTablesWithNumericIds.wh3 = {
   //main_units_tables: "", // unused by the game
@@ -489,7 +495,7 @@ export const getSchemaCacheStatus = (): {
 export const tablesToIgnore = [
   "main_unit_ownership_content_pack_junctions_tables",
   "allied_recruitment_core_units_tables",
-  "agent_subtype_ownership_content_pack_junctions_tables"
+  "agent_subtype_ownership_content_pack_junctions_tables",
 ];
 
 // import * as fs from "fs";

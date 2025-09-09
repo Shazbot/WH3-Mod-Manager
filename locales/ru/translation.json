@@ -497,5 +497,12 @@
   "renameNFiles": "Переименовать {{count}} файлов",
   "testRename": "Тестовое переименование (без изменений)",
   "noFilesToRename": "Нет файлов для переименования",
-  "renamePackedFiles": "Переименовать упакованные файлы"
+  "renamePackedFiles": "Переименовать упакованные файлы",
+  "setFolderPathsManuallyShogun2": "Менеджер модов попытался получить пути к папкам Shogun 2 из реестра Windows, но не смог их найти! Вам придется указать их вручную!",
+  "setFolderPathsManuallyOptionallyShogun2": "Менеджер модов автоматически нашел пути к папкам Shogun 2 в реестре Windows, но вы можете указать их вручную здесь.",
+  "shogun2": "Shogun 2",
+  "mainShogun2Folder": "Основная папка Shogun 2, содержащая Three_Kingdoms.exe, например C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Rome II",
+  "shogun2Folder": "Папка Shogun 2:",
+  "selectShogun2Folder": "Выбрать папку Shogun 2",
+  "shogun2ContentFolder": "Папка Steam Workshop Shogun 2 с названием 214950 (Steam ID игры Shogun 2), содержащая моды, например C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\214950"
 }
