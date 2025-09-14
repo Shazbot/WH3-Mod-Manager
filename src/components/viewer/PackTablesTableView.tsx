@@ -6,6 +6,8 @@ import { AmendedSchemaField, DBVersion, SCHEMA_FIELD_TYPE } from "../../packFile
 import { setDeepCloneTarget } from "@/src/appSlice";
 import { dataFromBackend } from "./packDataStore";
 import debounce from "just-debounce-it";
+import { homedir } from "node:os";
+import Handsontable from "handsontable";
 
 // Lazy load Handsontable components
 const LazyHotTable = React.lazy(async () => {
@@ -89,11 +91,48 @@ const HandsontableWrapper = memo(
               row_below: {},
               about: {
                 name() {
+                  if (!hotRef || !hotRef.current) return "<b>Deep clone</b>";
+                  const hot = hotRef.current.hotInstance as Handsontable;
+                  if (!hot) return "<b>Deep clone</b>";
+
+                  const lastSelected = hot.getSelected();
+                  if (!lastSelected) return "<b>Deep clone</b>";
+                  if (lastSelected.length != 1) return "<b>Deep clone</b>";
+                  const [startRow, startCol, endRow, endCol] = lastSelected[0];
+
+                  if (startRow != endRow || startCol != endCol) return "<b>Deep clone</b>";
+
+                  const keyColumnNames =
+                    dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
+
+                  if (keyColumnNames.length == 0) return "<b>Deep clone</b>";
+
+                  // case we directly click a key column cell
+                  for (let i = 0; i < currentSchema.fields.length; i++) {
+                    const field = currentSchema.fields[i];
+                    console.log("checking", field.name, "index is", i, "startCol is", startCol);
+                    if (i == startCol && keyColumnNames.indexOf(field.name) > -1) {
+                      console.log("clicked ref column", field.name);
+                      const cellValue = hot.getDataAtCell(startRow, startCol);
+                      return `<b>Deep clone ${cellValue}</b>`;
+                    }
+                  }
+
+                  // case we click on a non-key column cell find the cell with the key column in that row
+                  for (let i = 0; i < currentSchema.fields.length; i++) {
+                    const field = currentSchema.fields[i];
+                    console.log("checking", field.name, "index is", i, "startCol is", startCol);
+                    if (keyColumnNames.indexOf(field.name) > -1) {
+                      const cellValue = hot.getDataAtCell(startRow, i);
+                      return `<b>Deep clone ${cellValue}</b>`;
+                    }
+                  }
+
                   return "<b>Deep clone</b>";
                 },
                 hidden() {
                   if (!hotRef || !hotRef.current) return;
-                  const hot = hotRef.current.hotInstance;
+                  const hot = hotRef.current.hotInstance as Handsontable;
                   if (!hot) return true;
 
                   const lastSelected = hot.getSelected();
@@ -111,22 +150,14 @@ const HandsontableWrapper = memo(
                   );
                   const keyColumnNames =
                     dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
-                  // console.log("current schema:", currentSchema);
-                  // currentSchema.fields.find(field=>field.name == )
-                  for (let i = 0; i < currentSchema.fields.length; i++) {
-                    const field = currentSchema.fields[i];
-                    console.log("checking", field.name, "index is", i, "startCol is", startCol);
-                    if (i == startCol && keyColumnNames.indexOf(field.name) > -1) {
-                      console.log("clicked ref column", field.name);
-                      return false;
-                    }
-                  }
 
-                  return true;
+                  if (keyColumnNames.length == 0) return true;
+
+                  return false;
                 },
                 callback(key, selection, clickEvent) {
                   if (!hotRef || !hotRef.current) return;
-                  const hot = hotRef.current.hotInstance;
+                  const hot = hotRef.current.hotInstance as Handsontable;
                   if (!hot) return true;
 
                   const lastSelected = hot.getSelected();
@@ -135,7 +166,31 @@ const HandsontableWrapper = memo(
                   const [startRow, startCol, endRow, endCol] = lastSelected[0];
                   if (startRow != endRow || startCol != endCol) return;
 
-                  onContextMenuCallback(hot.toPhysicalRow(startRow), hot.toPhysicalColumn(startCol));
+                  const keyColumnNames =
+                    dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
+
+                  if (keyColumnNames.length == 0) return false;
+
+                  // case we directly click a key column cell
+                  for (let i = 0; i < currentSchema.fields.length; i++) {
+                    const field = currentSchema.fields[i];
+                    console.log("checking", field.name, "index is", i, "startCol is", startCol);
+                    if (i == startCol && keyColumnNames.indexOf(field.name) > -1) {
+                      console.log("clicked ref column", field.name);
+                      onContextMenuCallback(hot.toPhysicalRow(startRow), hot.toPhysicalColumn(startCol));
+                      return;
+                    }
+                  }
+
+                  // case we click on a non-key column cell find the cell with the key column in that row
+                  for (let i = 0; i < currentSchema.fields.length; i++) {
+                    const field = currentSchema.fields[i];
+                    console.log("checking", field.name, "index is", i, "startCol is", startCol);
+                    if (keyColumnNames.indexOf(field.name) > -1) {
+                      onContextMenuCallback(hot.toPhysicalRow(startRow), hot.toPhysicalColumn(i));
+                      return;
+                    }
+                  }
                 },
               },
             },
