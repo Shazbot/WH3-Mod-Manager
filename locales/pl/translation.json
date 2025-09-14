@@ -501,7 +501,7 @@
   "setFolderPathsManuallyShogun2": "Menedżer modów próbował uzyskać lokalizacje folderów Shogun 2 z rejestru Windows, ale nie udało się ich znaleźć! Musisz je ustawić ręcznie!",
   "setFolderPathsManuallyOptionallyShogun2": "Menedżer modów automatycznie znalazł ścieżki folderów Shogun 2 w rejestrze Windows, ale możesz je tutaj ustawić ręcznie.",
   "shogun2": "Shogun 2",
-  "mainShogun2Folder": "Główny folder Shogun 2, który zawiera Three_Kingdoms.exe, np. C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
+  "mainShogun2Folder": "Główny folder Shogun 2, który zawiera shogun2.exe, np. C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Folder Shogun 2:",
   "selectShogun2Folder": "Wybierz folder Shogun 2",
   "shogun2ContentFolder": "Folder zawartości Steam Workshop Shogun 2 o nazwie 201270 (Steam ID Shogun 2) zawierający mody, np. C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
