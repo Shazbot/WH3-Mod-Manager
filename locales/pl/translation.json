@@ -504,5 +504,6 @@
   "mainShogun2Folder": "Główny folder Shogun 2, który zawiera Three_Kingdoms.exe, np. C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Folder Shogun 2:",
   "selectShogun2Folder": "Wybierz folder Shogun 2",
-  "shogun2ContentFolder": "Folder zawartości Steam Workshop Shogun 2 o nazwie 201270 (Steam ID Shogun 2) zawierający mody, np. C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270"
+  "shogun2ContentFolder": "Folder zawartości Steam Workshop Shogun 2 o nazwie 201270 (Steam ID Shogun 2) zawierający mody, np. C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
+  "copyModToData": "Skopiuj mod do folderu data"
 }

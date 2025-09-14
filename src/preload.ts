@@ -38,6 +38,7 @@ const api = {
   openPack: (path: string) => ipcRenderer.send("openPack", path),
   getPacksInSave: (saveName: string) => ipcRenderer.send("getPacksInSave", saveName),
   putPathInClipboard: (path: string) => ipcRenderer.send("putPathInClipboard", path),
+  copyModToData: (path: string) => ipcRenderer.send("copyModToData", path),
   updateMod: (mod: Mod, contentMod: Mod) => ipcRenderer.send("updateMod", mod, contentMod),
   uploadMod: (mod: Mod) => ipcRenderer.send("uploadMod", mod),
   fakeUpdatePack: (mod: Mod) => ipcRenderer.send("fakeUpdatePack", mod),

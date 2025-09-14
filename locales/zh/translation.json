@@ -426,5 +426,6 @@
   "mainShogun2Folder": "包含 Three_Kingdoms.exe 的 Shogun 2 主文件夹，例如 C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Shogun 2 文件夹：",
   "selectShogun2Folder": "选择 Shogun 2 文件夹",
-  "shogun2ContentFolder": "Shogun 2 的 Steam 创意工坊内容文件夹，名为 201270（即 Shogun 2 的 Steam ID），其中包含模组，例如 C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270"
+  "shogun2ContentFolder": "Shogun 2 的 Steam 创意工坊内容文件夹，名为 201270（即 Shogun 2 的 Steam ID），其中包含模组，例如 C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
+  "copyModToData": "复制模组到 data 文件夹"
 }
