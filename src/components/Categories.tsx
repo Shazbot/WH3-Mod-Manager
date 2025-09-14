@@ -327,6 +327,7 @@ const Categories = memo(() => {
       if (e.key === "Shift") isShiftDown = true;
       if (e.key === "Control") isControlDown = true;
       if (e.key === " ") {
+        if (isContextMenuOpen) return;
         const selectedMods = getSelectedMods();
         if (selectedMods.length > 0) {
           const toEnable = selectedMods.some((mod) => !mod.isEnabled);
