@@ -10,8 +10,10 @@ import hash from "object-hash";
 import { chunkTableIntoRows, findNodeInTree } from "./viewerHelpers";
 import { packDataStore } from "./packDataStore";
 import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
-import { Spinner, Tooltip } from "flowbite-react";
+import { Spinner } from "flowbite-react";
 import { FloatingOverlay } from "@floating-ui/react";
+import { useLocalizations } from "@/src/localizationContext";
+import { Modal } from "../../flowbite";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -56,6 +58,9 @@ const DBDuplication = memo(() => {
   const [isAppendSave, setIsAppendSave] = useState<boolean>(false);
   const [savePackedFileName, setSavePackedFileName] = useState<string>("");
   const [savePackFileName, setSavePackFileName] = useState<string>("");
+  const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+
+  const localized = useLocalizations();
 
   // Dispatch event to get indirect references for newly expanded node
   const getIndirectReferences = async (
@@ -464,6 +469,62 @@ const DBDuplication = memo(() => {
 
   return (
     <>
+      {isHelpOpen && (
+        <Modal
+          show={isHelpOpen}
+          // show={true}
+          onClose={() => setIsHelpOpen(false)}
+          size="2xl"
+          position="top-center"
+          explicitClasses={[
+            "mt-8",
+            "!max-w-5xl",
+            "md:!h-full",
+            ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
+            "modalDontOverflowWindowHeight",
+          ]}
+        >
+          <Modal.Header>
+            <span className="max-w-5xl">{localized.help}</span>
+          </Modal.Header>
+
+          <Modal.Body>
+            <div className="flex flex-col gap-8">
+              <p>
+                Deep DB Cloning allows you to clone a row in a table. We can only clone tables that have a key
+                column that uniquely identifies that row, for example for the main_units_table that would be
+                the "unit" column.
+              </p>
+              <p>
+                We look at the row we're cloning and look at all the tables that are referenced from that row,
+                for main_units those would be: unit_castes_tables, land_units_tables, naval_units_tables,
+                unit_weights_tables, ui_unit_groupings_tables, unit_porthole_camera_settings_tables,
+                audio_vo_actor_groups_tables.
+              </p>
+              <p>
+                So we look inside each of those tables and find the rows that references the main_unit we're
+                aiming to clone. We then in turn find all the refences to other tables in those rows, and so
+                on.
+              </p>
+              <p>
+                We end up with a tree of refences and we select what refences we want to clone and which ones
+                should be left the same. So for example we could also clone the land_unit of our main_unit but
+                leave the unit_castes_tables the same.
+              </p>
+              <p>
+                References in <span className="text-amber-500">yellow</span> are non-direct references. These
+                are from tables that reference the key we're duplicating but they're not directly referenced
+                from the table we're cloning. For example units_to_groupings_military_permissions_tables
+                refences the main_units table but the main_units table doesn't reference it.
+              </p>
+              <p>
+                Non-direct refences are always included in the clone if the parent in the tree is being
+                selected for cloning.
+              </p>
+            </div>
+          </Modal.Body>
+        </Modal>
+      )}
       <MemoizedFloatingOverlay
         ref={overlayRef}
         className={`absolute h-full w-full z-50 dark flex justify-center bg-black opacity-25`}
@@ -517,6 +578,15 @@ const DBDuplication = memo(() => {
             className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
           />
         </div>
+        <div className="text-center">
+          <button
+            onClick={() => setIsHelpOpen(true)}
+            className="w-28 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:border-blue-500 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+            type="button"
+          >
+            {localized.help}
+          </button>
+        </div>
       </div>
       <div>Cloning {toClone.resolvedKeyValue}</div>
       <div className="checkbox dark:text-gray-300">
@@ -557,7 +627,11 @@ const DBDuplication = memo(() => {
               >
                 {isBranch && <ArrowIcon isOpen={isExpanded} />}
                 <CheckBoxIcon
-                  className={`checkbox-icon scale-125 ${!isBranch && "!ml-[26px]"}`}
+                  className={`checkbox-icon scale-125 ${!isBranch && "!ml-[26px]"} ${
+                    nodeNameToData[element.name].isIndirectRef &&
+                    nodeNameToData[element.name].children.length == 0 &&
+                    "collapse"
+                  }`}
                   onClick={(e) => {
                     // handleSelect(e);
                     onNodeToggled(element.name);
