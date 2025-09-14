@@ -37,6 +37,26 @@ const wasPackAlreadyRead = (newPackPath: string, tableToRead: string) => {
   );
 };
 
+const wasPackAlreadyReadAll = (newPackPath: string, tablesToRead: string[]) => {
+  const packData = appData.packsData.find((pack) => pack.path == newPackPath);
+  if (!packData) return false;
+
+  for (const tableToRead of tablesToRead) {
+    if (
+      !packData.packedFiles.some(
+        (packedFile) =>
+          packedFile.name.startsWith(tableToRead) &&
+          packedFile.schemaFields &&
+          packedFile.schemaFields.length > 0
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 export const buildDBReferenceTree = async (
   packPath: string,
   currentDBTableSelection: DBTableSelection,
@@ -88,10 +108,13 @@ export const buildDBReferenceTree = async (
 
     tablesToReadInDataPack = Array.from(new Set(tablesToReadInDataPack));
     console.log("tables to read from data pack:", tablesToReadInDataPack);
-    await readModsByPath([dataPackPath], { tablesToRead: tablesToReadInDataPack }, true);
-    const existingDataPack = appData.packsData.find((pack) => pack.path == dataPackPath);
-    if (existingDataPack) {
-      getPacksTableData([existingDataPack], tablesToReadInDataPack);
+
+    if (!wasPackAlreadyReadAll(dataPackPath, tablesToReadInDataPack)) {
+      await readModsByPath([dataPackPath], { tablesToRead: tablesToReadInDataPack }, true);
+      const existingDataPack = appData.packsData.find((pack) => pack.path == dataPackPath);
+      if (existingDataPack) {
+        getPacksTableData([existingDataPack], tablesToReadInDataPack);
+      }
     }
   }
 
@@ -408,17 +431,17 @@ export const buildDBReferenceTree = async (
     resolvedKeyValue: string,
     isIndirectReference: boolean
   ) => {
-    if (!isIndirectReference) {
-      if (
-        acc.some(
-          (dbCell) =>
-            dbCell[0] == newTableName && dbCell[1] == newTableColumnName && dbCell[2] == resolvedKeyValue
-        )
+    // if (!isIndirectReference) {
+    if (
+      acc.some(
+        (dbCell) =>
+          dbCell[0] == newTableName && dbCell[1] == newTableColumnName && dbCell[2] == resolvedKeyValue
       )
-        return;
+    )
+      return;
 
-      acc.push([newTableName, newTableColumnName, resolvedKeyValue]);
-    }
+    acc.push([newTableName, newTableColumnName, resolvedKeyValue]);
+    // }
     // console.log("SEARCH", newTableName, newTableColumnName, resolvedKeyValue);
 
     let newPackFile = await tryGetPackWithReference(
@@ -669,8 +692,11 @@ export const buildDBReferenceTree = async (
         ) {
           const tableToRead = `db\\${tableName}`;
           console.log("reading from data pack:", tableToRead);
-          await readModsByPath([packToGet.path], { tablesToRead: [tableToRead] }, true);
-          getPacksTableData([packToGet], [tableToRead]);
+
+          if (!wasPackAlreadyRead(packToGet.path, tableToRead)) {
+            await readModsByPath([packToGet.path], { tablesToRead: [tableToRead] }, true);
+            getPacksTableData([packToGet], [tableToRead]);
+          }
         }
 
         packsToGet.push(packToGet);
@@ -781,10 +807,15 @@ export async function executeDBDuplication(
         ? DBCloneSaveOptions.savePackedFileName
         : `dbclone_${timestamp}_`;
 
-    const pack = appData.packsData.find((pack) => pack.path == packPath);
+    let pack = appData.packsData.find((pack) => pack.path == packPath);
     if (!pack) {
-      console.log("executeDBDuplication: pack not found");
-      return;
+      console.log("executeDBDuplication: pack not found, trying to read it");
+      await readModsByPath([packPath], { skipParsingTables: true }, true);
+      pack = appData.packsData.find((pack) => pack.path == packPath);
+      if (!pack) {
+        console.log("executeDBDuplication: pack not found");
+        return;
+      }
     }
 
     const nodePath = await import("path");
@@ -1356,7 +1387,7 @@ export async function executeDBDuplication(
     }
 
     toSaveWithSchema.push({
-      name: `text/db/${packedFileBaseName}.loc`,
+      name: `text\\db\\${packedFileBaseName}.loc`,
       schemaFields: locFields,
       file_size: locFileSize + 14,
       version: 1,
@@ -1379,17 +1410,18 @@ export async function executeDBDuplication(
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
     const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);
 
+    let existingPack = undefined as Pack | undefined;
     if (DBCloneSaveOptions.isAppendSave && fs.existsSync(newPackPath)) {
-      let existingPacks = await readModsByPath([newPackPath], { skipParsingTables: true }, true);
-      let existingPack = existingPacks[0];
+      const existingPacks = await readModsByPath([newPackPath], { skipParsingTables: true }, true);
+      existingPack = existingPacks[0];
 
       if (existingPack) {
-        existingPacks = await readModsByPath(
-          [newPackPath],
-          { filesToRead: existingPack.packedFiles.map((pf) => pf.name) },
-          true
-        );
-        existingPack = existingPacks[0];
+        // existingPacks = await readModsByPath(
+        //   [newPackPath],
+        //   { filesToRead: existingPack.packedFiles.map((pf) => pf.name) },
+        //   true
+        // );
+        // existingPack = existingPacks[0];
       }
       if (existingPack) {
         for (const packedFileToAdd of existingPack.packedFiles) {
@@ -1409,28 +1441,31 @@ export async function executeDBDuplication(
             }
           } while (duplicatePackedFile);
 
-          if (packedFileToAdd.schemaFields && packedFileToAdd.tableSchema) {
-            toSave.push({
-              name: packedFileToAdd.name,
-              schemaFields: packedFileToAdd.schemaFields as AmendedSchemaField[],
-              file_size: packedFileToAdd.file_size,
-              version: packedFileToAdd.version,
-              tableSchema: packedFileToAdd.tableSchema,
-            } as SavePackedFileDataWithSchema);
-          } else if (packedFileToAdd.buffer) {
-            toSave.push({
-              name: packedFileToAdd.name,
-              file_size: packedFileToAdd.file_size,
-              buffer: packedFileToAdd.buffer,
-            } as SavePackedFileDataWithBuffer);
-          } else {
-            console.log("CANNOT APPEND DBCLONE PACK WITH", packedFileToAdd.name);
-          }
+          // if (packedFileToAdd.schemaFields && packedFileToAdd.tableSchema) {
+          //   toSave.push({
+          //     name: packedFileToAdd.name,
+          //     schemaFields: packedFileToAdd.schemaFields as AmendedSchemaField[],
+          //     file_size: packedFileToAdd.file_size,
+          //     version: packedFileToAdd.version,
+          //     tableSchema: packedFileToAdd.tableSchema,
+          //   } as SavePackedFileDataWithSchema);
+          // } else if (packedFileToAdd.buffer) {
+          //   toSave.push({
+          //     name: packedFileToAdd.name,
+          //     file_size: packedFileToAdd.file_size,
+          //     buffer: packedFileToAdd.buffer,
+          //   } as SavePackedFileDataWithBuffer);
+          // } else {
+          //   console.log("CANNOT APPEND DBCLONE PACK WITH", packedFileToAdd.name);
+          // }
         }
       }
     }
 
-    await writePack(toSave, newPackPath);
+    const sortedToSave = toSave.toSorted((firstPf, secondPf) => {
+      return firstPf.name.localeCompare(secondPf.name);
+    });
+    await writePack(sortedToSave, newPackPath, existingPack);
   } catch (e) {
     console.log(e);
   }

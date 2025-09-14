@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "2.14.5",
+  "version": "2.15.0",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "sideEffects": [

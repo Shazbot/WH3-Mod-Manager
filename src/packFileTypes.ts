@@ -18,6 +18,7 @@ export interface NewPackedFile {
   version?: number;
   tableSchema?: DBVersion;
   buffer?: Buffer;
+  readBuffer?: boolean;
 }
 
 export interface PackedFile {

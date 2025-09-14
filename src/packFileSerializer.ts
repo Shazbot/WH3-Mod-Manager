@@ -36,6 +36,7 @@ import * as fs from "fs";
 import { collator } from "./utility/packFileSorting";
 import bs from "binary-search";
 import { decompress } from "@mongodb-js/zstd";
+import { readModsByPath } from "./ipcMainListeners";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -712,8 +713,14 @@ export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], g
   console.log(
     "getPacksTableData:",
     packs.map((pack) => pack.name),
-    tables
+    "num tables:",
+    tables.length
   );
+  // console.log(
+  //   "getPacksTableData:",
+  //   packs.map((pack) => pack.name),
+  //   tables
+  // );
   const results: PackViewData[] = [];
   for (const pack of packs) {
     const locFiles: Record<string, PackedFile> = {};
@@ -1255,8 +1262,12 @@ export const writeCopyPack = async (
   }
 };
 
-export const writePack = async (packFiles: NewPackedFile[], path: string) => {
+export const writePack = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
   let outFile: BinaryFile | undefined;
+
+  const timestamp = format(new Date(), "ddMMyy_HHmmss");
+  const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
+
   try {
     const header = "PFH5";
     const byteMask = 3;
@@ -1265,48 +1276,117 @@ export const writePack = async (packFiles: NewPackedFile[], path: string) => {
 
     if (packFiles.length < 1) return;
 
-    outFile = new BinaryFile(path, "w", true);
+    outFile = new BinaryFile(outPath, "w", true);
     await outFile.open();
     await outFile.writeString(header);
     await outFile.writeInt32(byteMask);
     await outFile.writeInt32(refFileCount);
     await outFile.writeInt32(pack_file_index_size);
 
-    await outFile.writeInt32(packFiles.length);
+    const allPackFiles = existingPackToAppend
+      ? [
+          ...packFiles,
+          ...existingPackToAppend.packedFiles.map(
+            (pf) =>
+              ({
+                name: pf.name,
+                file_size: pf.file_size,
+                readBuffer: true,
+              } as NewPackedFile)
+          ),
+        ]
+      : packFiles;
 
-    const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
+    await outFile.writeInt32(allPackFiles.length);
+
+    allPackFiles.sort((firstPf, secondPf) => {
+      return firstPf.name.localeCompare(secondPf.name);
+    });
+
+    const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
     await outFile.writeInt32(index_size);
     await outFile.writeInt32(0x7fffffff); // header_buffer
 
-    for (const packFile of packFiles) {
+    console.log("position after header:", outFile.tell());
+
+    // const positionForFile = {} as Record<string, number>;
+    // let currentPos = 0;
+
+    for (const packFile of allPackFiles) {
       // const { name, file_size, start_pos, is_compressed } = packFile;
       const { name, file_size } = packFile;
-      // console.log("file size is " + file_size);
-      await outFile.writeInt32(file_size);
+      // console.log("writing packed file", packFile.name, "file size is ", file_size);
+      if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
+        // await outFile.writeInt32(file_size + 78); // if using guid, guid size is 78
+        await outFile.writeInt32(file_size);
+      } else {
+        await outFile.writeInt32(file_size);
+      }
       // await outFile.writeInt8(is_compressed);
       await outFile.writeInt8(0);
       await outFile.writeString(name + "\0");
     }
 
-    for (const packFile of packFiles) {
-      if (packFile.buffer) {
+    // console.log("position after FILES header:", outFile.tell());
+    // const posAfterFilesHeader = outFile.tell();
+
+    // currentPos = posAfterFilesHeader;
+    // for (const packFile of packFiles) {
+    //   // const { name, file_size, start_pos, is_compressed } = packFile;
+    //   const { name, file_size } = packFile;
+    //   let sizeInc = 0;
+    //   // console.log("writing packed file", packFile.name, "file size is ", file_size);
+    //   if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
+    //     sizeInc = file_size + 78;
+    //   } else {
+    //     sizeInc = file_size;
+    //   }
+    //   currentPos = currentPos + sizeInc;
+    //   positionForFile[name] = currentPos;
+    // }
+
+    for (const packFile of allPackFiles) {
+      if (packFile.readBuffer && existingPackToAppend) {
+        const existingPack = await readPack(existingPackToAppend.path, { filesToRead: [packFile.name] });
+        if (existingPack) {
+          const readPF = existingPack.packedFiles.find((pf) => pf.name == packFile.name);
+          if (readPF) {
+            // console.log("READ BUFFER OF", readPF.name);
+            await writeField(outFile, { type: "Buffer", fields: [{ type: "Buffer", val: readPF.buffer }] });
+            readPF.buffer = undefined;
+          }
+        }
+      } else if (packFile.buffer) {
         await writeField(outFile, { type: "Buffer", fields: [{ type: "Buffer", val: packFile.buffer }] });
       } else if (packFile.schemaFields && packFile.tableSchema) {
         if (packFile.name.endsWith(".loc")) {
           await outFile.write(Buffer.from([0xff, 0xfe]));
           await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
-        } else if (packFile.version != null) {
-          console.log(packFile.name, "version:", packFile.version);
-          await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
-          await outFile.writeInt32(packFile.version); // db version
+        } else {
+          // optionally include the GUID
+          // const newGuid = getGUID();
+          // const view = new DataView(new ArrayBuffer(2));
+          // console.log("GUID LENGTS IS", newGuid.length / 2);
+          // view.setInt16(0, newGuid.length, true);
+
+          // await outFile.write(Buffer.from([0xfd, 0xfe, 0xfc, 0xff]));
+          // await outFile.write(Buffer.from(view.buffer));
+          // await outFile.write(Buffer.from(newGuid, "utf16le"));
+
+          if (packFile.version != null) {
+            console.log(packFile.name, "version:", packFile.version);
+            await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+            await outFile.writeInt32(packFile.version); // db version
+          }
         }
 
         if (packFile.name.endsWith(".loc")) {
-          await outFile.writeInt8(1);
+          await outFile.writeInt8(0);
           await outFile.writeInt32(1);
         } else {
           await outFile.writeInt8(1);
         }
+        // await outFile.writeInt8(1);
         console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
         await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
@@ -1314,9 +1394,17 @@ export const writePack = async (packFiles: NewPackedFile[], path: string) => {
           const field = packFile.schemaFields[i];
           await writeField(outFile, field);
         }
+
+        console.log("WROTE FILE:", packFile.name);
+        // console.log("current pos:", outFile.tell());
+        // console.log("saved pos:", positionForFile[packFile.name]);
       } else {
         console.log("NO BUFFER AND NO SCHEMA DATA FOR", packFile.name);
       }
+    }
+
+    if (existingPackToAppend) {
+      await fsExtra.move(outPath, path, { overwrite: true });
     }
   } finally {
     if (outFile) await outFile.close();
@@ -1640,9 +1728,9 @@ const readDBPackedFiles = async (
     )
       continue;
 
-    if (packReadingOptions.tablesToRead) {
-      console.log("READING TABLE ", pack_file.name);
-    }
+    // if (packReadingOptions.tablesToRead) {
+    //   console.log("READING TABLE ", pack_file.name);
+    // }
 
     currentPos = pack_file.start_pos - startPos;
 
@@ -2151,12 +2239,12 @@ export const readPack = async (
 
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {
       for (const fileToRead of packReadingOptions.filesToRead) {
-        console.log("FIND", fileToRead);
+        // console.log("FIND", fileToRead);
         const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
           collator.compare(a.name, b)
         );
         if (indexOfFileToRead >= 0) {
-          console.log("FOUND", fileToRead);
+          // console.log("FOUND", fileToRead);
           const packedFileToRead = pack_files[indexOfFileToRead];
           let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
