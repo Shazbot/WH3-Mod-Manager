@@ -504,5 +504,6 @@
   "mainShogun2Folder": "A pasta principal do Shogun 2 que contém Three_Kingdoms.exe, por exemplo C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Pasta do Shogun 2:",
   "selectShogun2Folder": "Selecionar pasta do Shogun 2",
-  "shogun2ContentFolder": "A pasta de conteúdo do Steam Workshop do Shogun 2 chamada 201270 (que é o ID Steam do Shogun 2) que contém mods, por exemplo C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270"
+  "shogun2ContentFolder": "A pasta de conteúdo do Steam Workshop do Shogun 2 chamada 201270 (que é o ID Steam do Shogun 2) que contém mods, por exemplo C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
+  "copyModToData": "Copiar mod para a pasta data"
 }

@@ -239,7 +239,8 @@ export const getLocsTrie = (pack: Pack) => {
 export const readModsByPath = async (
   modPaths: string[],
   packReadingOptions: PackReadingOptions,
-  skipCollisionCheck = true
+  skipCollisionCheck = true,
+  
 ) => {
   const { skipParsingTables, tablesToRead, readLocs, readScripts, filesToRead } = packReadingOptions;
 
@@ -2330,6 +2331,15 @@ export const registerIpcMainListeners = (
   });
   ipcMain.on("putPathInClipboard", (event, path: string) => {
     clipboard.writeText(path);
+  });
+  ipcMain.on("copyModToData", (event, path: string) => {
+    const baseName = nodePath.basename(path);
+
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+    if (!dataFolder) return;
+
+    const destPath = nodePath.join(dataFolder, baseName);
+    fs.copyFileSync(path, destPath);
   });
   const checkIsModThumbnailValid = (modThumbnailPath: string) => {
     if (modThumbnailPath == "" || !fs.existsSync(modThumbnailPath)) {

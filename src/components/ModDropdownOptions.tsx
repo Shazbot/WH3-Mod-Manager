@@ -16,6 +16,7 @@ import {
   FaRegClipboard,
   FaDownload,
   FaEdit,
+  FaRegCopy,
 } from "react-icons/fa";
 import { GoListOrdered } from "react-icons/go";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
@@ -44,6 +45,10 @@ const openInViewer = (mod: Mod) => {
 const putPathInClipboard = (mod: Mod) => {
   console.log(mod);
   window.api?.putPathInClipboard(mod.path);
+};
+const copyModToData = (mod: Mod) => {
+  console.log(mod);
+  window.api?.copyModToData(mod.path);
 };
 const makePackBackup = (mod: Mod) => {
   window.api?.makePackBackup(mod);
@@ -392,6 +397,22 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </span>
               </a>
             </li>
+            {!props.mod?.isInData && (
+              <li>
+                <a
+                  onClick={() => {
+                    if (props.mod) copyModToData(props.mod);
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <span className="flex items-center gap-2">
+                    <FaRegCopy className="w-5 h-5"></FaRegCopy>
+                    {localized.copyModToData}
+                  </span>
+                </a>
+              </li>
+            )}
             {/* {props.mod?.isInData &&
               !allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) && (
                 <li>

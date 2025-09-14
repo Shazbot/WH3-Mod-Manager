@@ -504,5 +504,6 @@
   "renameNFiles": "Rename {{count}} Files",
   "testRename": "Test Rename (No Changes)",
   "noFilesToRename": "No Files to Rename",
-  "renamePackedFiles": "Rename Packed Files"
+  "renamePackedFiles": "Rename Packed Files",
+  "copyModToData": "Copy mod to data"
 }
