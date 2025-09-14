@@ -521,6 +521,19 @@ const DBDuplication = memo(() => {
                 Non-direct refences are always included in the clone if the parent in the tree is being
                 selected for cloning.
               </p>
+              <p>
+                With "Append Existing Pack" enabled we will append an existing pack file instead of creating a
+                new one, using the pack name from "(Optional) Name for new pack".
+              </p>
+              <p>
+                "(Optional) Name for new tables" specifices what name the new DB tables will have. Leave it
+                blank for an automaitc name with a timestamp (e.g. dbclone_140925_152525_).
+              </p>
+              <p>
+                "(Optional) Name for new pack" specifices what name the new pack will have. Leave it blank for
+                an automaitc name with a timestamp (e.g. dbclone_140925_152525.pack). WARNING: Using an
+                existing pack name WITHOUT "Append Existing Pack" enabled will OVERWRITE the existing pack.
+              </p>
             </div>
           </Modal.Body>
         </Modal>
@@ -551,7 +564,7 @@ const DBDuplication = memo(() => {
             </div>
           </button>
         </div>
-        <div className="flex items-center mt-2">
+        <div className="flex items-center justify-center mt-2">
           <input
             type="checkbox"
             id="enable-closed-on-play"
@@ -565,17 +578,17 @@ const DBDuplication = memo(() => {
         <div>
           <input
             defaultValue={savePackedFileName}
-            placeholder={"Name for new tables"}
+            placeholder={"(Optional) Name for new tables"}
             onChange={(e) => setSavePackedFileName(e.target.value)}
-            className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+            className="bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
           />
         </div>
         <div>
           <input
             defaultValue={savePackFileName}
-            placeholder={"Name for new pack"}
+            placeholder={"(Optional) Name for new pack"}
             onChange={(e) => setSavePackFileName(e.target.value)}
-            className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+            className="bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
           />
         </div>
         <div className="text-center">
