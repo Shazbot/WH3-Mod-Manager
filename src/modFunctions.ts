@@ -345,10 +345,6 @@ const getSteamAppsFolder = async (newGame?: SupportedGames) => {
       console.log("Unable to find steam directory at " + steamPath);
       return;
     }
-    if (false) { // This condition is now handled by the try/catch above
-      console.log("Unable to find steam directory at " + steamPath);
-      return;
-    }
     installPath = steamPath;
   }
 
@@ -522,22 +518,24 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
     dataMods.filter((mod) => mod.isSymbolicLink)
   );
 
-  const files = await dumbfs.readdirSync(contentFolder, { withFileTypes: true });
-  const newMods = files
-    .filter((file) => file.isDirectory())
-    .map(async (contentSubFolder) => {
-      // log(`Reading folder ${contentFolder}\\${file.name}`);
-      return getContentModInFolder(contentSubFolder.name, log);
-    });
+  if (appData.currentGame != "shogun2") {
+    const files = await dumbfs.readdirSync(contentFolder, { withFileTypes: true });
+    const newMods = files
+      .filter((file) => file.isDirectory())
+      .map(async (contentSubFolder) => {
+        // log(`Reading folder ${contentFolder}\\${file.name}`);
+        return getContentModInFolder(contentSubFolder.name, log);
+      });
 
-  const settledMods = await Promise.allSettled(newMods);
-  (settledMods.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
-    const mod = r.value;
-    // if a content folder is empty it'll be undefined
-    if (mod != null) {
-      mods.push(mod);
-    }
-  });
+    const settledMods = await Promise.allSettled(newMods);
+    (settledMods.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
+      const mod = r.value;
+      // if a content folder is empty it'll be undefined
+      if (mod != null) {
+        mods.push(mod);
+      }
+    });
+  }
 
   // if a mod in data is missing a thumbnail, use the content mod's thumbnail
   for (const mod of mods) {

@@ -154,31 +154,35 @@ const GamePathsSetup = memo(({ isOpen, setIsOpen }: GamePathsSetupProps) => {
                   </button>
                 </div>
               </div>
-              <div className="border w-full border-gray-600"></div>
-              <div className="max-w-[90%]">
-                <p className="m-auto max-w-[95%] text-center">
-                  {localized[supportedGameToContentFolderLocalization[currentGame]]}
-                </p>
-                <div className="flex gap-x-4 items-center w-full mt-4">
-                  <span className="whitespace-nowrap">{localized.contentFolder}</span>
-                  <span className="w-full">
-                    <input
-                      type="text"
-                      disabled
-                      value={appFolderPaths.contentFolder}
-                      className="cursor-not-allowed bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-                    ></input>
-                  </span>
-                  <button
-                    className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-64"
-                    onClick={() => {
-                      onSelectContentFolder(requestFolderPathsForGame);
-                    }}
-                  >
-                    <span className="uppercase">{localized.selectContentFolder}</span>
-                  </button>
-                </div>
-              </div>
+              {currentGame != "shogun2" && (
+                <>
+                  <div className="border w-full border-gray-600"></div>
+                  <div className="max-w-[90%]">
+                    <p className="m-auto max-w-[95%] text-center">
+                      {localized[supportedGameToContentFolderLocalization[currentGame]]}
+                    </p>
+                    <div className="flex gap-x-4 items-center w-full mt-4">
+                      <span className="whitespace-nowrap">{localized.contentFolder}</span>
+                      <span className="w-full">
+                        <input
+                          type="text"
+                          disabled
+                          value={appFolderPaths.contentFolder}
+                          className="cursor-not-allowed bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                        ></input>
+                      </span>
+                      <button
+                        className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-64"
+                        onClick={() => {
+                          onSelectContentFolder(requestFolderPathsForGame);
+                        }}
+                      >
+                        <span className="uppercase">{localized.selectContentFolder}</span>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </Modal.Body>
         </Modal>

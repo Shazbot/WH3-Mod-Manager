@@ -940,6 +940,7 @@ export const registerIpcMainListeners = (
       const dataFolder = appData.gamesToGameFolderPaths[newGame].dataFolder;
       const contentFolder = appData.gamesToGameFolderPaths[newGame].contentFolder;
       const gamePath = appData.gamesToGameFolderPaths[newGame].gamePath;
+
       if (!gamePath || !contentFolder || !dataFolder) {
         await getFolderPaths(log, newGame);
         if (appData.gamesToGameFolderPaths[newGame].contentFolder) {
@@ -960,6 +961,7 @@ export const registerIpcMainListeners = (
         console.log("Setting current game 2");
         appData.currentGame = newGame;
         initializeAllSchemaForGame(newGame);
+        await getAllMods();
         console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
         // mainWindow?.webContents.send("setCurrentGameNaive", newGame);
         mainWindow?.webContents.send("setAppFolderPaths", {
@@ -1658,6 +1660,13 @@ export const registerIpcMainListeners = (
           appData.gamesToGameFolderPaths[game].contentFolder = calculatedContentPath;
           mainWindow?.webContents.send("setContentFolder", calculatedContentPath);
         }
+
+        // shogun 2 doesn't use the content folder, puts subscribed to mods directly into data
+        if (requestedGame == "shogun2") {
+          appData.gamesToGameFolderPaths[game].contentFolder = wh3FolderPath;
+          mainWindow?.webContents.send("setContentFolder", wh3FolderPath);
+        }
+
         refreshModsIfFoldersValid(requestedGame);
       }
     } catch (e) {

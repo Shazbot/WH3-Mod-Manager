@@ -13,6 +13,8 @@ let dataToWrite: AppStateToWrite | undefined;
 let isWriting = false;
 let hasConfigBeenRead = false;
 
+const configFileName = "config.json";
+
 const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
   const gameToCurrentPreset = deepClone(appData.gameToCurrentPreset);
   gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
@@ -123,7 +125,7 @@ export function writeAppConfig(data: AppState) {
           // write to the dir where the exe is due to bizarre file permission issues
           const exeDirPath = nodePath.dirname(app.getPath("exe"));
           const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
-          const exeDirConfigPath = nodePath.join(exeDirPath, "config.json");
+          const exeDirConfigPath = nodePath.join(exeDirPath, configFileName);
           await fs.promises.writeFile(exeDirTempConfigPath, stringifiedData);
           const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
           await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
@@ -138,7 +140,7 @@ export function writeAppConfig(data: AppState) {
 
         const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
         await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
-        const configFilePath = nodePath.join(userData, "config.json");
+        const configFilePath = nodePath.join(userData, configFileName);
         await move(tempFilePath, configFilePath, { overwrite: true });
 
         console.log("done writing config file");
@@ -154,14 +156,14 @@ export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProp
   let data: string | undefined;
   try {
     const userData = app.getPath("userData");
-    const userDataConfigFilePath = nodePath.join(userData, "config.json");
+    const userDataConfigFilePath = nodePath.join(userData, configFileName);
     data = await fs.promises.readFile(userDataConfigFilePath, "utf8");
     // eslint-disable-next-line no-empty
   } catch (err) {}
 
   try {
     if (!data) {
-      const exeDirConfigPath = nodePath.join(nodePath.dirname(app.getPath("exe")), "config.json");
+      const exeDirConfigPath = nodePath.join(nodePath.dirname(app.getPath("exe")), configFileName);
       data = await fs.promises.readFile(exeDirConfigPath, "utf8");
     }
     // eslint-disable-next-line no-empty
