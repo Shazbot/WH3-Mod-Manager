@@ -239,8 +239,7 @@ export const getLocsTrie = (pack: Pack) => {
 export const readModsByPath = async (
   modPaths: string[],
   packReadingOptions: PackReadingOptions,
-  skipCollisionCheck = true,
-  
+  skipCollisionCheck = true
 ) => {
   const { skipParsingTables, tablesToRead, readLocs, readScripts, filesToRead } = packReadingOptions;
 
@@ -3232,8 +3231,9 @@ export const registerIpcMainListeners = (
 
         let fileNameWithModList = "used_mods.txt";
         try {
+          const encoding = appData.currentGame == "shogun2" ? "utf16le" : "utf8";
           log("writing used_mods.txt");
-          await fs.writeFileSync(usedModsPath, text);
+          await fs.writeFileSync(usedModsPath, text, { encoding });
         } catch (e) {
           log("failed writing to used_mods.txt, trying to use my_mods.txt");
           fileNameWithModList = "my_mods.txt";
@@ -3249,7 +3249,11 @@ export const registerIpcMainListeners = (
         batData += ` ${fileNameWithModList};`;
 
         // Create steam_appid.txt for Attila
-        if (appData.currentGame === "attila" || appData.currentGame === "rome2") {
+        if (
+          appData.currentGame === "attila" ||
+          appData.currentGame === "rome2" ||
+          appData.currentGame == "shogun2"
+        ) {
           const steamAppIdPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "steam_appid.txt"
