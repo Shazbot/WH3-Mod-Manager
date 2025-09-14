@@ -423,7 +423,7 @@
   "setFolderPathsManuallyShogun2": "模组管理器尝试从 Windows 注册表获取 Shogun 2 文件夹位置，但未找到！您需要手动设置！",
   "setFolderPathsManuallyOptionallyShogun2": "模组管理器已自动从 Windows 注册表找到 Shogun 2 文件夹路径，但您也可以在此手动设置。",
   "shogun2": "Shogun 2",
-  "mainShogun2Folder": "包含 Three_Kingdoms.exe 的 Shogun 2 主文件夹，例如 C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
+  "mainShogun2Folder": "包含 shogun2.exe 的 Shogun 2 主文件夹，例如 C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Shogun 2 文件夹：",
   "selectShogun2Folder": "选择 Shogun 2 文件夹",
   "shogun2ContentFolder": "Shogun 2 的 Steam 创意工坊内容文件夹，名为 201270（即 Shogun 2 的 Steam ID），其中包含模组，例如 C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
