@@ -1391,7 +1391,251 @@ export const writePackStream = async (packFiles: NewPackedFile[], path: string, 
   }
 };
 
+// Fast append-only implementation for existing packs - much faster than sorted insertion
+export const writePackAppendFast = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
+  let outFile: BinaryFile | undefined;
+  let sourceFile: BinaryFile | undefined;
+
+  const timestamp = format(new Date(), "ddMMyy_HHmmss");
+  const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
+
+  try {
+    if (packFiles.length < 1) return;
+
+    if (existingPackToAppend) {
+      // FAST PATH: Clone existing pack and append new files
+      console.log("Fast append mode: cloning existing pack and appending new files");
+      
+      // Open source file for reading
+      sourceFile = new BinaryFile(existingPackToAppend.path, "r", true);
+      await sourceFile.open();
+      
+      // Open output file for writing
+      outFile = new BinaryFile(outPath, "w", true);
+      await outFile.open();
+
+      // Calculate new counts and sizes
+      const originalFileCount = existingPackToAppend.packedFiles.length;
+      const newFileCount = originalFileCount + packFiles.length;
+      
+      // Calculate additional index size needed for new files
+      const newIndexSize = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
+      
+      // For pack files, the packed_file_index_size in header refers to the file index section
+      // We need to calculate the total size of existing + new file index entries
+      const existingIndexSize = existingPackToAppend.packedFiles.reduce((acc, pf) => acc + new Blob([pf.name]).size + 1 + 5, 0);
+      const totalIndexSize = existingIndexSize + newIndexSize;
+
+      // Write updated header with new counts
+      const headerAccumulator = new BufferAccumulator(outFile);
+      headerAccumulator.addString("PFH5");
+      headerAccumulator.addInt32(existingPackToAppend.packHeader.byteMask);
+      headerAccumulator.addInt32(existingPackToAppend.packHeader.refFileCount);
+      headerAccumulator.addInt32(0); // pack_file_index_size - typically 0
+      headerAccumulator.addInt32(newFileCount); // Updated file count
+      headerAccumulator.addInt32(totalIndexSize); // Updated index size
+      headerAccumulator.addInt32(0x7fffffff); // header_buffer
+      await headerAccumulator.flush();
+
+      console.log(`Original files: ${originalFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`);
+
+      // Copy existing file index entries directly from source
+      console.log("Copying existing file index entries...");
+      const existingIndexStartPos = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
+      const existingIndexEndPos = existingIndexStartPos + existingIndexSize;
+      
+      await sourceFile.seek(existingIndexStartPos);
+      const existingIndexBuffer = await sourceFile.read(existingIndexSize);
+      await outFile.write(existingIndexBuffer);
+
+      // Write new file index entries
+      console.log("Writing new file index entries...");
+      const newIndexAccumulator = new BufferAccumulator(outFile);
+      for (const packFile of packFiles) {
+        const { name, file_size } = packFile;
+        if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
+          newIndexAccumulator.addInt32(file_size);
+        } else {
+          newIndexAccumulator.addInt32(file_size);
+        }
+        newIndexAccumulator.addInt8(0); // is_compressed
+        newIndexAccumulator.addString(name + "\0");
+        await newIndexAccumulator.flushIfNeeded();
+      }
+      await newIndexAccumulator.flush();
+
+      // Copy existing file data directly from source
+      console.log("Copying existing file data...");
+      const existingDataStartPos = existingIndexEndPos;
+      const sourceFileSize = await sourceFile.size();
+      const existingDataSize = sourceFileSize - existingDataStartPos;
+      
+      if (existingDataSize > 0) {
+        await sourceFile.seek(existingDataStartPos);
+        
+        // Copy in chunks for better memory usage
+        const chunkSize = 1024 * 1024; // 1MB chunks
+        let remainingBytes = existingDataSize;
+        
+        while (remainingBytes > 0) {
+          const bytesToRead = Math.min(chunkSize, remainingBytes);
+          const chunk = await sourceFile.read(bytesToRead);
+          await outFile.write(chunk);
+          remainingBytes -= bytesToRead;
+        }
+      }
+
+      // Append new file data
+      console.log("Appending new file data...");
+      for (const packFile of packFiles) {
+        if (packFile.buffer) {
+          await outFile.write(packFile.buffer);
+        } else if (packFile.schemaFields && packFile.tableSchema) {
+          if (packFile.name.endsWith(".loc")) {
+            await outFile.write(Buffer.from([0xff, 0xfe]));
+            await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
+          } else {
+            if (packFile.version != null) {
+              console.log(packFile.name, "version:", packFile.version);
+              await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+              await outFile.writeInt32(packFile.version); // db version
+            }
+          }
+
+          if (packFile.name.endsWith(".loc")) {
+            await outFile.writeInt8(0);
+            await outFile.writeInt32(1);
+          } else {
+            await outFile.writeInt8(1);
+          }
+          
+          console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
+          await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
+
+          // Use buffered field writing
+          await writeFieldBuffered(outFile, packFile.schemaFields);
+
+          console.log("WROTE FILE:", packFile.name);
+        } else {
+          console.log("NO BUFFER AND NO SCHEMA DATA FOR", packFile.name);
+        }
+      }
+
+      console.log("Fast append completed successfully");
+    } else {
+      // SLOW PATH: No existing pack, use regular sorted approach
+      console.log("No existing pack, using regular sorted approach");
+      return await writePackSorted(packFiles, path);
+    }
+
+    // Move temp file to final location
+    if (existingPackToAppend) {
+      await fsExtra.move(outPath, path, { overwrite: true });
+    }
+  } finally {
+    if (outFile) await outFile.close();
+    if (sourceFile) await sourceFile.close();
+  }
+};
+
+// Original sorted implementation for when no existing pack is provided
+const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
+  let outFile: BinaryFile | undefined;
+
+  try {
+    const header = "PFH5";
+    const byteMask = 3;
+    const refFileCount = 0;
+    const pack_file_index_size = 0;
+
+    if (packFiles.length < 1) return;
+
+    outFile = new BinaryFile(path, "w", true);
+    await outFile.open();
+    
+    // Sort files for consistent ordering
+    packFiles.sort((firstPf, secondPf) => {
+      return firstPf.name.localeCompare(secondPf.name);
+    });
+
+    const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
+    
+    // Write header
+    const headerAccumulator = new BufferAccumulator(outFile);
+    headerAccumulator.addString(header);
+    headerAccumulator.addInt32(byteMask);
+    headerAccumulator.addInt32(refFileCount);
+    headerAccumulator.addInt32(pack_file_index_size);
+    headerAccumulator.addInt32(packFiles.length);
+    headerAccumulator.addInt32(index_size);
+    headerAccumulator.addInt32(0x7fffffff); // header_buffer
+    await headerAccumulator.flush();
+
+    // Write file index
+    const indexAccumulator = new BufferAccumulator(outFile);
+    for (const packFile of packFiles) {
+      const { name, file_size } = packFile;
+      if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
+        indexAccumulator.addInt32(file_size);
+      } else {
+        indexAccumulator.addInt32(file_size);
+      }
+      indexAccumulator.addInt8(0); // is_compressed
+      indexAccumulator.addString(name + "\0");
+      await indexAccumulator.flushIfNeeded();
+    }
+    await indexAccumulator.flush();
+
+    // Write file contents
+    for (const packFile of packFiles) {
+      if (packFile.buffer) {
+        await outFile.write(packFile.buffer);
+      } else if (packFile.schemaFields && packFile.tableSchema) {
+        if (packFile.name.endsWith(".loc")) {
+          await outFile.write(Buffer.from([0xff, 0xfe]));
+          await outFile.write(Buffer.from([0x4c, 0x4f, 0x43]));
+        } else {
+          if (packFile.version != null) {
+            console.log(packFile.name, "version:", packFile.version);
+            await outFile.write(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+            await outFile.writeInt32(packFile.version); // db version
+          }
+        }
+
+        if (packFile.name.endsWith(".loc")) {
+          await outFile.writeInt8(0);
+          await outFile.writeInt32(1);
+        } else {
+          await outFile.writeInt8(1);
+        }
+        
+        console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
+        await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
+
+        await writeFieldBuffered(outFile, packFile.schemaFields);
+
+        console.log("WROTE FILE:", packFile.name);
+      } else {
+        console.log("NO BUFFER AND NO SCHEMA DATA FOR", packFile.name);
+      }
+    }
+  } finally {
+    if (outFile) await outFile.close();
+  }
+};
+
 export const writePack = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
+  // Use fast append implementation when we have an existing pack
+  if (existingPackToAppend) {
+    return await writePackAppendFast(packFiles, path, existingPackToAppend);
+  }
+  
+  // Fallback to sorted implementation for new packs
+  return await writePackSorted(packFiles, path);
+};
+
+// Legacy implementation (kept for reference, but replaced by the optimized versions above)
+export const writePackLegacy = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
   let outFile: BinaryFile | undefined;
 
   const timestamp = format(new Date(), "ddMMyy_HHmmss");
