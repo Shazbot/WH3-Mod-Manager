@@ -1390,10 +1390,8 @@ export const writePack = async (packFiles: NewPackedFile[], path: string, existi
         console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
         await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
-        for (let i = 0; i < packFile.schemaFields.length; i++) {
-          const field = packFile.schemaFields[i];
-          await writeField(outFile, field);
-        }
+        // Use buffered approach to write all schema fields at once
+        await writeFieldBuffered(outFile, packFile.schemaFields);
 
         console.log("WROTE FILE:", packFile.name);
         // console.log("current pos:", outFile.tell());
@@ -1486,78 +1484,104 @@ export const writeStartGamePack = async (
       // console.log(general_unit_index);
       // console.log(dbVersionNumFields);
 
-      for (let i = 0; i < packFile.schemaFields.length; i++) {
-        const field = packFile.schemaFields[i];
-        await writeField(outFile, field);
-      }
+      // Use buffered approach to write all schema fields at once
+      await writeFieldBuffered(outFile, packFile.schemaFields);
     }
   } finally {
     if (outFile) await outFile.close();
   }
 };
 
-const writeField = async (file: BinaryFile, schemaField: SchemaField) => {
-  // console.log(field);
-  for (const field of schemaField.fields) {
-    switch (field.type) {
-      case "UInt8":
-        {
-          await file.writeUInt8(field.val as number);
-        }
-        break;
-      case "F32":
-        {
-          await file.writeFloat(field.val as number);
-        }
-        break;
-      case "I32":
-        {
-          await file.writeInt32(field.val as number);
-        }
-        break;
-      case "I16":
-        {
-          await file.writeInt16(field.val as number);
-        }
-        break;
-      case "I64":
-        {
-          const buffer = Buffer.alloc(8);
-          buffer.writeBigInt64LE(BigInt(field.val as number));
-          await file.write(buffer);
-          // await file.writeInt64(field.val as number);
-        }
-        break;
-      case "F64":
-        {
-          await file.writeDouble(field.val as number);
-        }
-        break;
-      case "Int8":
-        {
-          await file.writeInt8(field.val as number);
-        }
-        break;
-      case "Int16":
-        {
-          await file.writeUInt16(field.val as number);
-        }
-        break;
-      case "String":
-        {
-          await file.writeString(field.val as string);
-        }
-        break;
-      case "Buffer":
-        {
-          await file.write(field.val as Buffer);
-        }
-        break;
-      default:
-        throw new Error("NO WAY TO RESOLVE " + field.type);
-        break;
-    }
+// Pre-allocated buffers for common types to reduce memory allocations
+const reusableBuffers = {
+  i64: Buffer.allocUnsafe(8),
+  f64: Buffer.allocUnsafe(8),
+  i32: Buffer.allocUnsafe(4),
+  f32: Buffer.allocUnsafe(4),
+  i16: Buffer.allocUnsafe(2),
+  i8: Buffer.allocUnsafe(1),
+};
+
+// Helper function to serialize a single field to buffer without writing
+const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
+  switch (field.type) {
+    case "UInt8":
+    case "Int8":
+      {
+        reusableBuffers.i8.writeUInt8(field.val as number, 0);
+        return Buffer.from(reusableBuffers.i8);
+      }
+    case "F32":
+      {
+        reusableBuffers.f32.writeFloatLE(field.val as number, 0);
+        return Buffer.from(reusableBuffers.f32);
+      }
+    case "I32":
+      {
+        reusableBuffers.i32.writeInt32LE(field.val as number, 0);
+        return Buffer.from(reusableBuffers.i32);
+      }
+    case "I16":
+      {
+        reusableBuffers.i16.writeInt16LE(field.val as number, 0);
+        return Buffer.from(reusableBuffers.i16);
+      }
+    case "Int16":
+      {
+        reusableBuffers.i16.writeUInt16LE(field.val as number, 0);
+        return Buffer.from(reusableBuffers.i16);
+      }
+    case "I64":
+      {
+        reusableBuffers.i64.writeBigInt64LE(BigInt(field.val as number), 0);
+        return Buffer.from(reusableBuffers.i64);
+      }
+    case "F64":
+      {
+        reusableBuffers.f64.writeDoubleLE(field.val as number, 0);
+        return Buffer.from(reusableBuffers.f64);
+      }
+    case "String":
+      {
+        return Buffer.from(field.val as string, 'utf8');
+      }
+    case "Buffer":
+      {
+        return field.val as Buffer;
+      }
+    default:
+      throw new Error("NO WAY TO RESOLVE " + field.type);
   }
+};
+
+// Serialize an entire schema field to buffer
+const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
+  const fieldBuffers: Buffer[] = [];
+  for (const field of schemaField.fields) {
+    fieldBuffers.push(serializeFieldToBuffer(field));
+  }
+  return Buffer.concat(fieldBuffers);
+};
+
+// Buffered version of writeField that collects all fields before writing
+const writeFieldBuffered = async (file: BinaryFile, schemaFields: SchemaField[]) => {
+  const fieldBuffers: Buffer[] = [];
+  
+  // Serialize all fields to buffers first
+  for (const schemaField of schemaFields) {
+    fieldBuffers.push(serializeSchemaFieldToBuffer(schemaField));
+  }
+  
+  // Write all buffers in one operation
+  const combinedBuffer = Buffer.concat(fieldBuffers);
+  await file.write(combinedBuffer);
+};
+
+// Original writeField function (kept for compatibility)
+const writeField = async (file: BinaryFile, schemaField: SchemaField) => {
+  // Use the buffered approach for single field
+  const buffer = serializeSchemaFieldToBuffer(schemaField);
+  await file.write(buffer);
 };
 
 const readUTFString = async (fileIn: BinaryFile) => {
