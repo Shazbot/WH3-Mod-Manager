@@ -1278,11 +1278,7 @@ export const writePack = async (packFiles: NewPackedFile[], path: string, existi
 
     outFile = new BinaryFile(outPath, "w", true);
     await outFile.open();
-    await outFile.writeString(header);
-    await outFile.writeInt32(byteMask);
-    await outFile.writeInt32(refFileCount);
-    await outFile.writeInt32(pack_file_index_size);
-
+    
     const allPackFiles = existingPackToAppend
       ? [
           ...packFiles,
@@ -1297,35 +1293,46 @@ export const writePack = async (packFiles: NewPackedFile[], path: string, existi
         ]
       : packFiles;
 
-    await outFile.writeInt32(allPackFiles.length);
-
     allPackFiles.sort((firstPf, secondPf) => {
       return firstPf.name.localeCompare(secondPf.name);
     });
 
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-    await outFile.writeInt32(index_size);
-    await outFile.writeInt32(0x7fffffff); // header_buffer
+    
+    // Use BufferAccumulator to batch header writes and reduce Promise overhead
+    const headerAccumulator = new BufferAccumulator(outFile);
+    headerAccumulator.addString(header);
+    headerAccumulator.addInt32(byteMask);
+    headerAccumulator.addInt32(refFileCount);
+    headerAccumulator.addInt32(pack_file_index_size);
+    headerAccumulator.addInt32(allPackFiles.length);
+    headerAccumulator.addInt32(index_size);
+    headerAccumulator.addInt32(0x7fffffff); // header_buffer
+    await headerAccumulator.flush();
 
     console.log("position after header:", outFile.tell());
 
     // const positionForFile = {} as Record<string, number>;
     // let currentPos = 0;
 
+    // Use BufferAccumulator to batch file index writes
+    const indexAccumulator = new BufferAccumulator(outFile);
     for (const packFile of allPackFiles) {
-      // const { name, file_size, start_pos, is_compressed } = packFile;
       const { name, file_size } = packFile;
       // console.log("writing packed file", packFile.name, "file size is ", file_size);
       if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
-        // await outFile.writeInt32(file_size + 78); // if using guid, guid size is 78
-        await outFile.writeInt32(file_size);
+        // indexAccumulator.addInt32(file_size + 78); // if using guid, guid size is 78
+        indexAccumulator.addInt32(file_size);
       } else {
-        await outFile.writeInt32(file_size);
+        indexAccumulator.addInt32(file_size);
       }
-      // await outFile.writeInt8(is_compressed);
-      await outFile.writeInt8(0);
-      await outFile.writeString(name + "\0");
+      indexAccumulator.addInt8(0); // is_compressed
+      indexAccumulator.addString(name + "\0");
+      
+      // Flush periodically to avoid excessive memory usage
+      await indexAccumulator.flushIfNeeded();
     }
+    await indexAccumulator.flush();
 
     // console.log("position after FILES header:", outFile.tell());
     // const posAfterFilesHeader = outFile.tell();
@@ -1434,26 +1441,33 @@ export const writeStartGamePack = async (
 
     outFile = new BinaryFile(path, "w", true);
     await outFile.open();
-    await outFile.writeString(header);
-    await outFile.writeInt32(byteMask);
-    await outFile.writeInt32(refFileCount);
-    await outFile.writeInt32(pack_file_index_size);
-
-    await outFile.writeInt32(packFiles.length);
-
+    
     const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-    await outFile.writeInt32(index_size);
-    await outFile.writeInt32(0x7fffffff); // header_buffer
+    
+    // Use BufferAccumulator to batch header writes
+    const startGameHeaderAccumulator = new BufferAccumulator(outFile);
+    startGameHeaderAccumulator.addString(header);
+    startGameHeaderAccumulator.addInt32(byteMask);
+    startGameHeaderAccumulator.addInt32(refFileCount);
+    startGameHeaderAccumulator.addInt32(pack_file_index_size);
+    startGameHeaderAccumulator.addInt32(packFiles.length);
+    startGameHeaderAccumulator.addInt32(index_size);
+    startGameHeaderAccumulator.addInt32(0x7fffffff); // header_buffer
+    await startGameHeaderAccumulator.flush();
 
+    // Use BufferAccumulator to batch file index writes
+    const startGameIndexAccumulator = new BufferAccumulator(outFile);
     for (const packFile of packFiles) {
-      // const { name, file_size, start_pos, is_compressed } = packFile;
       const { name, file_size } = packFile;
       // console.log("file size is " + file_size);
-      await outFile.writeInt32(file_size);
-      // await outFile.writeInt8(is_compressed);
-      await outFile.writeInt8(0);
-      await outFile.writeString(name + "\0");
+      startGameIndexAccumulator.addInt32(file_size);
+      startGameIndexAccumulator.addInt8(0); // is_compressed
+      startGameIndexAccumulator.addString(name + "\0");
+      
+      // Flush periodically to avoid excessive memory usage
+      await startGameIndexAccumulator.flushIfNeeded();
     }
+    await startGameIndexAccumulator.flush();
 
     for (const packFile of packFiles) {
       if (!packFile.schemaFields) continue;
@@ -1563,18 +1577,76 @@ const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
   return Buffer.concat(fieldBuffers);
 };
 
-// Buffered version of writeField that collects all fields before writing
+// Buffer accumulator class for batching writes and reducing Promise overhead
+class BufferAccumulator {
+  private buffers: Buffer[] = [];
+  private file: BinaryFile;
+  private batchSize: number;
+
+  constructor(file: BinaryFile, batchSize: number = 1024 * 1024) { // 1MB batch size by default
+    this.file = file;
+    this.batchSize = batchSize;
+  }
+
+  // Synchronously add buffer to accumulator
+  addBuffer(buffer: Buffer): void {
+    this.buffers.push(buffer);
+  }
+
+  // Synchronously add integer as buffer
+  addInt32(value: number): void {
+    reusableBuffers.i32.writeInt32LE(value, 0);
+    this.buffers.push(Buffer.from(reusableBuffers.i32));
+  }
+
+  // Synchronously add byte as buffer
+  addInt8(value: number): void {
+    reusableBuffers.i8.writeInt8(value, 0);
+    this.buffers.push(Buffer.from(reusableBuffers.i8));
+  }
+
+  // Synchronously add string as buffer
+  addString(value: string): void {
+    this.buffers.push(Buffer.from(value, 'utf8'));
+  }
+
+  // Get current accumulated size
+  getCurrentSize(): number {
+    return this.buffers.reduce((size, buf) => size + buf.length, 0);
+  }
+
+  // Flush buffers when batch size is reached or manually called
+  async flushIfNeeded(): Promise<void> {
+    if (this.getCurrentSize() >= this.batchSize) {
+      await this.flush();
+    }
+  }
+
+  // Force flush all accumulated buffers
+  async flush(): Promise<void> {
+    if (this.buffers.length > 0) {
+      const combinedBuffer = Buffer.concat(this.buffers);
+      await this.file.write(combinedBuffer);
+      this.buffers = []; // Reset buffers
+    }
+  }
+}
+
+// Optimized buffered version with reduced Promise overhead
 const writeFieldBuffered = async (file: BinaryFile, schemaFields: SchemaField[]) => {
-  const fieldBuffers: Buffer[] = [];
+  const accumulator = new BufferAccumulator(file);
   
-  // Serialize all fields to buffers first
+  // Synchronously serialize all fields to buffers
   for (const schemaField of schemaFields) {
-    fieldBuffers.push(serializeSchemaFieldToBuffer(schemaField));
+    const buffer = serializeSchemaFieldToBuffer(schemaField);
+    accumulator.addBuffer(buffer);
+    
+    // Flush periodically to avoid memory buildup
+    await accumulator.flushIfNeeded();
   }
   
-  // Write all buffers in one operation
-  const combinedBuffer = Buffer.concat(fieldBuffers);
-  await file.write(combinedBuffer);
+  // Final flush
+  await accumulator.flush();
 };
 
 // Original writeField function (kept for compatibility)
