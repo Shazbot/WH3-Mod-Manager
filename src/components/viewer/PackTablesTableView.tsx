@@ -17,6 +17,8 @@ const LazyHotTable = React.lazy(async () => {
     import("@handsontable/react-wrapper"),
     import("handsontable/registry"),
     import("handsontable"),
+    import("handsontable/styles/handsontable.min.css"),
+    import("handsontable/styles/ht-theme-main.min.css"),
   ]);
 
   // Register modules once loaded
