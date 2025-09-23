@@ -1,4 +1,7 @@
 import BinaryFile from "binary-file";
+import { createWriteStream, WriteStream } from "fs";
+import { pipeline, Writable } from "stream";
+import { promisify } from "util";
 import {
   Field,
   FIELD_TYPE,
@@ -1262,6 +1265,132 @@ export const writeCopyPack = async (
   }
 };
 
+// Stream-based version of writePack with better performance for large files
+export const writePackStream = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
+  let streamWriter: StreamWriter | undefined;
+
+  const timestamp = format(new Date(), "ddMMyy_HHmmss");
+  const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
+
+  try {
+    const header = "PFH5";
+    const byteMask = 3;
+    const refFileCount = 0;
+    const pack_file_index_size = 0;
+
+    if (packFiles.length < 1) return;
+
+    streamWriter = new StreamWriter(outPath);
+    
+    const allPackFiles = existingPackToAppend
+      ? [
+          ...packFiles,
+          ...existingPackToAppend.packedFiles.map(
+            (pf) =>
+              ({
+                name: pf.name,
+                file_size: pf.file_size,
+                readBuffer: true,
+              } as NewPackedFile)
+          ),
+        ]
+      : packFiles;
+
+    allPackFiles.sort((firstPf, secondPf) => {
+      return firstPf.name.localeCompare(secondPf.name);
+    });
+
+    const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
+    
+    // Use StreamWriter to batch header writes with backpressure handling
+    streamWriter.addString(header);
+    streamWriter.addInt32(byteMask);
+    streamWriter.addInt32(refFileCount);
+    streamWriter.addInt32(pack_file_index_size);
+    streamWriter.addInt32(allPackFiles.length);
+    streamWriter.addInt32(index_size);
+    streamWriter.addInt32(0x7fffffff); // header_buffer
+    await streamWriter.flush();
+
+    // Write file index with stream batching
+    for (const packFile of allPackFiles) {
+      const { name, file_size } = packFile;
+      if (packFile.schemaFields && packFile.tableSchema && !packFile.name.endsWith(".loc")) {
+        streamWriter.addInt32(file_size);
+      } else {
+        streamWriter.addInt32(file_size);
+      }
+      streamWriter.addInt8(0); // is_compressed
+      streamWriter.addString(name + "\0");
+      
+      // Flush periodically with backpressure handling
+      await streamWriter.flushIfNeeded();
+    }
+    await streamWriter.flush();
+
+    // Write file contents
+    for (const packFile of allPackFiles) {
+      if (packFile.readBuffer && existingPackToAppend) {
+        const existingPack = await readPack(existingPackToAppend.path, { filesToRead: [packFile.name] });
+        if (existingPack) {
+          const readPF = existingPack.packedFiles.find((pf) => pf.name == packFile.name);
+          if (readPF) {
+            streamWriter.addBuffer(readPF.buffer!);
+            readPF.buffer = undefined;
+            await streamWriter.flushIfNeeded();
+          }
+        }
+      } else if (packFile.buffer) {
+        streamWriter.addBuffer(packFile.buffer);
+        await streamWriter.flushIfNeeded();
+      } else if (packFile.schemaFields && packFile.tableSchema) {
+        if (packFile.name.endsWith(".loc")) {
+          streamWriter.addBuffer(Buffer.from([0xff, 0xfe]));
+          streamWriter.addBuffer(Buffer.from([0x4c, 0x4f, 0x43]));
+        } else {
+          if (packFile.version != null) {
+            console.log(packFile.name, "version:", packFile.version);
+            streamWriter.addBuffer(Buffer.from([0xfc, 0xfd, 0xfe, 0xff])); // version marker
+            streamWriter.addInt32(packFile.version); // db version
+          }
+        }
+
+        if (packFile.name.endsWith(".loc")) {
+          streamWriter.addInt8(0);
+          streamWriter.addInt32(1);
+        } else {
+          streamWriter.addInt8(1);
+        }
+        
+        console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
+        streamWriter.addInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
+
+        // Use stream-based field writing for better memory management
+        await writeFieldBufferedStream(streamWriter, packFile.schemaFields);
+
+        console.log("WROTE FILE:", packFile.name);
+      } else {
+        console.log("NO BUFFER AND NO SCHEMA DATA FOR", packFile.name);
+      }
+    }
+
+    if (existingPackToAppend) {
+      await streamWriter.close();
+      await fsExtra.move(outPath, path, { overwrite: true });
+    } else {
+      await streamWriter.close();
+    }
+  } finally {
+    if (streamWriter) {
+      try {
+        await streamWriter.close();
+      } catch (e) {
+        // Stream might already be closed
+      }
+    }
+  }
+};
+
 export const writePack = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
   let outFile: BinaryFile | undefined;
 
@@ -1577,7 +1706,142 @@ const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
   return Buffer.concat(fieldBuffers);
 };
 
-// Buffer accumulator class for batching writes and reducing Promise overhead
+// Stream-based writing system with write queuing for better performance
+class StreamWriter {
+  private writeStream: WriteStream;
+  private writeQueue: Buffer[] = [];
+  private isWriting: boolean = false;
+  private batchSize: number;
+  private highWaterMark: number;
+  private queuedSize: number = 0;
+  private writePromises: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+
+  constructor(filePath: string, batchSize: number = 1024 * 1024, highWaterMark: number = 16 * 1024) {
+    this.batchSize = batchSize;
+    this.highWaterMark = highWaterMark;
+    this.writeStream = createWriteStream(filePath, { 
+      highWaterMark: this.highWaterMark,
+      flags: 'w'
+    });
+    
+    this.writeStream.on('error', (error) => {
+      this.writePromises.forEach(({ reject }) => reject(error));
+      this.writePromises = [];
+    });
+  }
+
+  // Synchronously add buffer to queue
+  addBuffer(buffer: Buffer): void {
+    this.writeQueue.push(buffer);
+    this.queuedSize += buffer.length;
+  }
+
+  // Synchronously add integer as buffer
+  addInt32(value: number): void {
+    reusableBuffers.i32.writeInt32LE(value, 0);
+    this.addBuffer(Buffer.from(reusableBuffers.i32));
+  }
+
+  // Synchronously add byte as buffer
+  addInt8(value: number): void {
+    reusableBuffers.i8.writeInt8(value, 0);
+    this.addBuffer(Buffer.from(reusableBuffers.i8));
+  }
+
+  // Synchronously add string as buffer
+  addString(value: string): void {
+    this.addBuffer(Buffer.from(value, 'utf8'));
+  }
+
+  // Get current queued size
+  getQueuedSize(): number {
+    return this.queuedSize;
+  }
+
+  // Process write queue with backpressure handling
+  private async processQueue(): Promise<void> {
+    if (this.isWriting || this.writeQueue.length === 0) {
+      return;
+    }
+
+    this.isWriting = true;
+    
+    try {
+      while (this.writeQueue.length > 0) {
+        const batchBuffers: Buffer[] = [];
+        let batchSize = 0;
+        
+        // Collect buffers up to batch size
+        while (this.writeQueue.length > 0 && batchSize < this.batchSize) {
+          const buffer = this.writeQueue.shift()!;
+          batchBuffers.push(buffer);
+          batchSize += buffer.length;
+          this.queuedSize -= buffer.length;
+        }
+        
+        if (batchBuffers.length > 0) {
+          const combinedBuffer = Buffer.concat(batchBuffers);
+          await this.writeToStream(combinedBuffer);
+        }
+      }
+    } finally {
+      this.isWriting = false;
+      
+      // Resolve any pending promises
+      this.writePromises.forEach(({ resolve }) => resolve());
+      this.writePromises = [];
+    }
+  }
+
+  // Write buffer to stream with backpressure handling
+  private writeToStream(buffer: Buffer): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const canContinue = this.writeStream.write(buffer);
+      
+      if (canContinue) {
+        resolve();
+      } else {
+        // Handle backpressure
+        this.writeStream.once('drain', resolve);
+        this.writeStream.once('error', reject);
+      }
+    });
+  }
+
+  // Flush queue when batch size is reached
+  async flushIfNeeded(): Promise<void> {
+    if (this.queuedSize >= this.batchSize) {
+      await this.flush();
+    }
+  }
+
+  // Force flush all queued buffers
+  async flush(): Promise<void> {
+    const promise = new Promise<void>((resolve, reject) => {
+      this.writePromises.push({ resolve, reject });
+    });
+    
+    this.processQueue();
+    return promise;
+  }
+
+  // Close the stream
+  async close(): Promise<void> {
+    await this.flush();
+    
+    return new Promise((resolve, reject) => {
+      this.writeStream.end((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+}
+
+// Buffer accumulator class for batching writes and reducing Promise overhead (kept for compatibility)
 class BufferAccumulator {
   private buffers: Buffer[] = [];
   private file: BinaryFile;
@@ -1632,7 +1896,22 @@ class BufferAccumulator {
   }
 }
 
-// Optimized buffered version with reduced Promise overhead
+// Stream-based version of writeFieldBuffered with better memory management
+const writeFieldBufferedStream = async (streamWriter: StreamWriter, schemaFields: SchemaField[]) => {
+  // Synchronously serialize all fields to stream queue
+  for (const schemaField of schemaFields) {
+    const buffer = serializeSchemaFieldToBuffer(schemaField);
+    streamWriter.addBuffer(buffer);
+    
+    // Flush periodically to avoid memory buildup and handle backpressure
+    await streamWriter.flushIfNeeded();
+  }
+  
+  // Final flush
+  await streamWriter.flush();
+};
+
+// Optimized buffered version with reduced Promise overhead (kept for compatibility)
 const writeFieldBuffered = async (file: BinaryFile, schemaFields: SchemaField[]) => {
   const accumulator = new BufferAccumulator(file);
   
