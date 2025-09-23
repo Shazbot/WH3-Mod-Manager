@@ -44,18 +44,18 @@ const NodeSidebar: React.FC<{
   onDragStart: (event: DragEvent, nodeType: DraggableNodeData) => void;
 }> = ({ onDragStart }) => {
   return (
-    <div className="w-64 bg-gray-100 border-r border-gray-300 p-4">
-      <h3 className="font-bold text-lg mb-4">Node Types</h3>
+    <div className="w-64 bg-gray-800 border-r border-gray-600 p-4">
+      <h3 className="font-bold text-lg mb-4 text-white">Node Types</h3>
       <div className="space-y-2">
         {nodeTypes.map((nodeType) => (
           <div
             key={nodeType.type}
             draggable
             onDragStart={(event) => onDragStart(event, nodeType)}
-            className="p-3 bg-white border border-gray-300 rounded-lg cursor-move hover:bg-gray-50 shadow-sm"
+            className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm"
           >
-            <div className="font-medium text-sm">{nodeType.label}</div>
-            <div className="text-xs text-gray-600 mt-1">{nodeType.description}</div>
+            <div className="font-medium text-sm text-white">{nodeType.label}</div>
+            <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>
           </div>
         ))}
       </div>
@@ -109,7 +109,8 @@ const NodeEditor: React.FC = () => {
           border: '2px solid #3b82f6',
           borderRadius: '8px',
           padding: '10px',
-          background: '#ffffff',
+          background: '#374151',
+          color: '#ffffff',
         },
       };
 
