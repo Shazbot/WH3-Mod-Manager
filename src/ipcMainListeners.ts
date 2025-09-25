@@ -1540,6 +1540,35 @@ export const registerIpcMainListeners = (
     }
   );
 
+  ipcMain.handle(
+    "executeNode",
+    async (
+      event,
+      nodeExecutionRequest: {
+        nodeId: string;
+        nodeType: string;
+        textValue: string;
+        inputData: any;
+      }
+    ): Promise<{ success: boolean; data?: any; error?: string }> => {
+      try {
+        console.log(`Executing node ${nodeExecutionRequest.nodeId} (${nodeExecutionRequest.nodeType}) in backend`);
+
+        // Import node execution functions
+        const { executeNodeAction } = await import("./nodeExecutor");
+
+        const result = await executeNodeAction(nodeExecutionRequest);
+        return result;
+      } catch (error) {
+        console.error("Failed to execute node:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown execution error'
+        };
+      }
+    }
+  );
+
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {

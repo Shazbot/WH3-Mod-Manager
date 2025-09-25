@@ -274,6 +274,14 @@ const api = {
     pathFilter?: string
   ): Promise<void> =>
     ipcRenderer.invoke("renamePackedFiles", packPath, searchRegex, replaceText, useRegex, isDev, pathFilter),
+
+  executeNode: (nodeExecutionRequest: {
+    nodeId: string;
+    nodeType: string;
+    textValue: string;
+    inputData: any;
+  }): Promise<{ success: boolean; data?: any; error?: string }> =>
+    ipcRenderer.invoke("executeNode", nodeExecutionRequest),
 };
 
 export type api = typeof api;
