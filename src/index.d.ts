@@ -593,5 +593,5 @@ declare global {
     savePackFileName: string;
   }
 
-  type NodeEdgeTypes = "PackedFiles" | "DBData" | "TableSelection" | "ColumnSelection" | "ChangedColumnSelection";
+  type NodeEdgeTypes = "PackFiles" | "DBData" | "TableSelection" | "ColumnSelection" | "ChangedColumnSelection";
 }
