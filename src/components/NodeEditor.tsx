@@ -74,6 +74,12 @@ interface ColumnSelectionNodeData extends NodeData {
   outputType: 'ColumnSelection';
 }
 
+interface NumericAdjustmentNodeData extends NodeData {
+  textValue: string;
+  inputType: 'ColumnSelection';
+  outputType: 'ChangedColumnSelection';
+}
+
 interface DraggableNodeData {
   type: string;
   label: string;
@@ -204,31 +210,84 @@ const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string 
         className="w-3 h-3 bg-orange-500"
         data-input-type="TableSelection"
       />
-      
+
       <div className="text-white font-medium text-sm mb-2">
         {data.label}
       </div>
-      
+
       <div className="text-xs text-gray-400 mb-2">
         Input: TableSelection
       </div>
-      
+
       <textarea
         value={textValue}
         onChange={handleTextChange}
         placeholder="Enter column selection criteria..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-emerald-400"
       />
-      
+
       <div className="mt-2 text-xs text-gray-400">
         Output: ColumnSelection
       </div>
-      
+
       <Handle
         type="source"
         position={Position.Right}
         className="w-3 h-3 bg-pink-500"
         data-output-type="ColumnSelection"
+      />
+    </div>
+  );
+};
+
+// Custom NumericAdjustment node component that accepts ColumnSelection input and outputs ChangedColumnSelection
+const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: string }> = ({ data, id }) => {
+  const [textValue, setTextValue] = useState(data.textValue || '');
+
+  const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent('nodeDataUpdate', {
+      detail: { nodeId: id, textValue: newValue }
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-yellow-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-pink-500"
+        data-input-type="ColumnSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">
+        {data.label}
+      </div>
+
+      <div className="text-xs text-gray-400 mb-2">
+        Input: ColumnSelection
+      </div>
+
+      <textarea
+        value={textValue}
+        onChange={handleTextChange}
+        placeholder="Enter numeric adjustments (e.g., +10, *1.5, /2)..."
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
+      />
+
+      <div className="mt-2 text-xs text-gray-400">
+        Output: ChangedColumnSelection
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-cyan-500"
+        data-output-type="ChangedColumnSelection"
       />
     </div>
   );
@@ -243,6 +302,7 @@ const nodeTypes = [
   { type: 'packedfiles', label: 'PackedFiles Node', description: 'Node with textbox that outputs PackedFiles' },
   { type: 'tableselection', label: 'Table Selection Node', description: 'Accepts PackedFiles input, outputs TableSelection' },
   { type: 'columnselection', label: 'Column Selection Node', description: 'Accepts TableSelection input, outputs ColumnSelection' },
+  { type: 'numericadjustment', label: 'Numeric Adjustment Node', description: 'Accepts ColumnSelection input, outputs ChangedColumnSelection' },
 ];
 
 // Register custom node types for ReactFlow
@@ -250,6 +310,7 @@ const reactFlowNodeTypes = {
   packedfiles: PackedFilesNode,
   tableselection: TableSelectionNode,
   columnselection: ColumnSelectionNode,
+  numericadjustment: NumericAdjustmentNode,
 };
 
 const initialNodes: Node<NodeData>[] = [];
@@ -339,6 +400,8 @@ const NodeEditor: React.FC = () => {
         sourceOutputType = (sourceNode.data as TableSelectionNodeData).outputType;
       } else if (sourceNode.type === 'columnselection' && sourceNode.data) {
         sourceOutputType = (sourceNode.data as ColumnSelectionNodeData).outputType;
+      } else if (sourceNode.type === 'numericadjustment' && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as NumericAdjustmentNodeData).outputType;
       }
 
       // Get input type from target node
@@ -347,6 +410,8 @@ const NodeEditor: React.FC = () => {
         targetInputType = (targetNode.data as TableSelectionNodeData).inputType;
       } else if (targetNode.type === 'columnselection' && targetNode.data) {
         targetInputType = (targetNode.data as ColumnSelectionNodeData).inputType;
+      } else if (targetNode.type === 'numericadjustment' && targetNode.data) {
+        targetInputType = (targetNode.data as NumericAdjustmentNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -432,6 +497,20 @@ const NodeEditor: React.FC = () => {
             inputType: 'TableSelection' as NodeEdgeTypes,
             outputType: 'ColumnSelection' as NodeEdgeTypes,
           } as ColumnSelectionNodeData,
+        };
+      } else if (nodeData.type === 'numericadjustment') {
+        // Create NumericAdjustment node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: 'numericadjustment',
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            textValue: '',
+            inputType: 'ColumnSelection' as NodeEdgeTypes,
+            outputType: 'ChangedColumnSelection' as NodeEdgeTypes,
+          } as NumericAdjustmentNodeData,
         };
       } else {
         // Create standard node
@@ -595,6 +674,42 @@ const NodeEditor: React.FC = () => {
     event.target.value = '';
   }, [loadNodeGraph]);
 
+  // Handle keyboard events for node deletion
+  React.useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      // Delete or Backspace key
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Prevent default behavior if we're not in a text input
+        const target = event.target as HTMLElement;
+        if (target.tagName !== 'TEXTAREA' && target.tagName !== 'INPUT') {
+          event.preventDefault();
+
+          // Find selected nodes
+          const selectedNodes = nodes.filter(node => node.selected);
+          if (selectedNodes.length > 0) {
+            const selectedNodeIds = selectedNodes.map(node => node.id);
+
+            // Remove selected nodes
+            setNodes((nds) => nds.filter(node => !selectedNodeIds.includes(node.id)));
+
+            // Remove edges connected to deleted nodes
+            setEdges((eds) => eds.filter(edge =>
+              !selectedNodeIds.includes(edge.source || '') &&
+              !selectedNodeIds.includes(edge.target || '')
+            ));
+
+            console.log(`Deleted ${selectedNodes.length} nodes and their connections`);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [nodes, setNodes, setEdges]);
+
   return (
     <div className="flex h-screen">
       <NodeSidebar onDragStart={onDragStart} />
@@ -616,7 +731,7 @@ const NodeEditor: React.FC = () => {
             <Background />
           </ReactFlow>
 
-          {/* Save and Load buttons positioned in top-right corner */}
+          {/* Save, Load, and Delete buttons positioned in top-right corner */}
           <div className="absolute top-4 right-4 z-10 flex gap-2">
             {/* Hidden file input */}
             <input
@@ -626,6 +741,32 @@ const NodeEditor: React.FC = () => {
               className="hidden"
               id="load-graph-input"
             />
+
+            {/* Delete selected nodes button */}
+            <button
+              onClick={() => {
+                const selectedNodes = nodes.filter(node => node.selected);
+                if (selectedNodes.length > 0) {
+                  const selectedNodeIds = selectedNodes.map(node => node.id);
+                  setNodes((nds) => nds.filter(node => !selectedNodeIds.includes(node.id)));
+                  setEdges((eds) => eds.filter(edge =>
+                    !selectedNodeIds.includes(edge.source || '') &&
+                    !selectedNodeIds.includes(edge.target || '')
+                  ));
+                }
+              }}
+              disabled={!nodes.some(node => node.selected)}
+              className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                nodes.some(node => node.selected)
+                  ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                  : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete
+            </button>
 
             {/* Load button */}
             <label
