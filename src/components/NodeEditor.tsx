@@ -320,133 +320,26 @@ const nodeTypes = [
   { type: 'numericadjustment', label: 'Numeric Adjustment Node', description: 'Accepts ColumnSelection input, outputs ChangedColumnSelection' },
 ];
 
-// Node action functions
-const nodeActionFunctions: Record<string, NodeActionFunction> = {
-  packedfiles: async (context: NodeExecutionContext): Promise<NodeExecutionResult> => {
-    const textValue = (context.nodeData as any).textValue || '';
-    console.log(`PackFiles Node ${context.nodeId}: Processing "${textValue}"`);
+// Backend execution service
+const executeNodeInBackend = async (context: NodeExecutionContext): Promise<NodeExecutionResult> => {
+  try {
+    const response = await window.api?.executeNode({
+      nodeId: context.nodeId,
+      nodeType: context.nodeData.type,
+      textValue: (context.nodeData as any).textValue || '',
+      inputData: context.inputData
+    });
 
-    // Simulate pack files processing
-    const packFiles = textValue.split('\n').filter(line => line.trim()).map(line => ({
-      name: line.trim(),
-      path: `data/${line.trim()}`,
-      loaded: true
-    }));
-
-    return {
-      success: true,
-      data: {
-        type: 'PackFiles',
-        files: packFiles,
-        count: packFiles.length
-      }
-    };
-  },
-
-  tableselection: async (context: NodeExecutionContext): Promise<NodeExecutionResult> => {
-    const textValue = (context.nodeData as any).textValue || '';
-    console.log(`TableSelection Node ${context.nodeId}: Processing "${textValue}" with input:`, context.inputData);
-
-    if (!context.inputData || context.inputData.type !== 'PackFiles') {
-      return { success: false, error: 'Invalid input: Expected PackFiles data' };
+    if (!response) {
+      return { success: false, error: 'Backend API not available' };
     }
 
-    // Simulate table selection from packed files
-    const selectedTables = textValue.split('\n').filter(line => line.trim()).map(tableName => ({
-      name: tableName.trim(),
-      source: context.inputData.files.find((f: any) => f.name.includes(tableName.trim())),
-      columns: ['id', 'name', 'value', 'description'] // Mock columns
-    }));
-
+    return response;
+  } catch (error) {
+    console.error(`Error executing node ${context.nodeId} in backend:`, error);
     return {
-      success: true,
-      data: {
-        type: 'TableSelection',
-        tables: selectedTables,
-        sourceFiles: context.inputData.files
-      }
-    };
-  },
-
-  columnselection: async (context: NodeExecutionContext): Promise<NodeExecutionResult> => {
-    const textValue = (context.nodeData as any).textValue || '';
-    console.log(`ColumnSelection Node ${context.nodeId}: Processing "${textValue}" with input:`, context.inputData);
-
-    if (!context.inputData || context.inputData.type !== 'TableSelection') {
-      return { success: false, error: 'Invalid input: Expected TableSelection data' };
-    }
-
-    // Simulate column selection
-    const selectedColumns = textValue.split('\n').filter(line => line.trim());
-    const columnData = context.inputData.tables.map((table: any) => ({
-      tableName: table.name,
-      selectedColumns: selectedColumns.filter(col => table.columns.includes(col.trim())),
-      data: selectedColumns.map(col => ({
-        column: col.trim(),
-        values: Array.from({length: 5}, (_, i) => `${col}_value_${i + 1}`)
-      }))
-    }));
-
-    return {
-      success: true,
-      data: {
-        type: 'ColumnSelection',
-        columns: columnData,
-        sourceTables: context.inputData.tables
-      }
-    };
-  },
-
-  numericadjustment: async (context: NodeExecutionContext): Promise<NodeExecutionResult> => {
-    const textValue = (context.nodeData as any).textValue || '';
-    console.log(`NumericAdjustment Node ${context.nodeId}: Processing "${textValue}" with input:`, context.inputData);
-
-    if (!context.inputData || context.inputData.type !== 'ColumnSelection') {
-      return { success: false, error: 'Invalid input: Expected ColumnSelection data' };
-    }
-
-    // Parse adjustment operations (+10, *1.5, /2, etc.)
-    const adjustments = textValue.split('\n').filter(line => line.trim()).map(line => {
-      const match = line.match(/([+\-*/])(\d*\.?\d+)/);
-      if (match) {
-        return { operation: match[1], value: parseFloat(match[2]) };
-      }
-      return null;
-    }).filter(Boolean);
-
-    // Apply adjustments to numeric columns
-    const adjustedData = context.inputData.columns.map((table: any) => ({
-      ...table,
-      data: table.data.map((col: any) => ({
-        ...col,
-        adjustedValues: col.values.map((val: string) => {
-          const numVal = parseFloat(val.replace(/[^\d.-]/g, ''));
-          if (isNaN(numVal)) return val;
-
-          let result = numVal;
-          adjustments.forEach(adj => {
-            if (adj) {
-              switch (adj.operation) {
-                case '+': result += adj.value; break;
-                case '-': result -= adj.value; break;
-                case '*': result *= adj.value; break;
-                case '/': result /= adj.value; break;
-              }
-            }
-          });
-          return result.toString();
-        })
-      }))
-    }));
-
-    return {
-      success: true,
-      data: {
-        type: 'ChangedColumnSelection',
-        adjustedColumns: adjustedData,
-        appliedAdjustments: adjustments,
-        originalData: context.inputData
-      }
+      success: false,
+      error: error instanceof Error ? error.message : 'Backend execution failed'
     };
   }
 };
@@ -856,107 +749,108 @@ const NodeEditor: React.FC = () => {
     };
   }, [nodes, setNodes, setEdges]);
 
+  // Execution state
+  const [isExecuting, setIsExecuting] = useState(false);
+
   // Node execution system
   const executeNodeGraph = useCallback(async () => {
-    console.log('Starting node graph execution...');
+    if (isExecuting) return;
 
-    // Build execution graph
-    const nodeMap = new Map(nodes.map(node => [node.id, node]));
-    const edgeMap = new Map<string, string[]>();
+    setIsExecuting(true);
+    console.log('Starting node graph execution in backend...');
 
-    // Build adjacency list for connections
-    edges.forEach(edge => {
-      if (!edge.source || !edge.target) return;
-      if (!edgeMap.has(edge.source)) {
-        edgeMap.set(edge.source, []);
-      }
-      edgeMap.get(edge.source)?.push(edge.target);
-    });
+    try {
+      // Build execution graph
+      const nodeMap = new Map(nodes.map(node => [node.id, node]));
+      const edgeMap = new Map<string, string[]>();
 
-    // Find starting nodes (nodes with no incoming edges)
-    const incomingEdges = new Set(edges.map(edge => edge.target).filter(Boolean));
-    const startingNodes = nodes.filter(node => !incomingEdges.has(node.id));
-
-    if (startingNodes.length === 0) {
-      console.error('No starting nodes found in the graph');
-      alert('No starting nodes found. Add nodes without inputs to begin execution.');
-      return;
-    }
-
-    // Execute nodes in topological order using BFS
-    const executionResults = new Map<string, any>();
-    const executionQueue = [...startingNodes.map(node => ({ node, inputData: null }))];
-    const executed = new Set<string>();
-
-    while (executionQueue.length > 0) {
-      const { node, inputData } = executionQueue.shift()!;
-
-      if (executed.has(node.id)) continue;
-
-      try {
-        console.log(`Executing node: ${node.id} (${node.type})`);
-
-        // Get action function for this node type
-        const actionFunction = nodeActionFunctions[node.type || 'default'];
-        if (!actionFunction) {
-          console.warn(`No action function found for node type: ${node.type}`);
-          executionResults.set(node.id, { success: false, error: 'No action function' });
-          executed.add(node.id);
-          continue;
+      // Build adjacency list for connections
+      edges.forEach(edge => {
+        if (!edge.source || !edge.target) return;
+        if (!edgeMap.has(edge.source)) {
+          edgeMap.set(edge.source, []);
         }
+        edgeMap.get(edge.source)?.push(edge.target);
+      });
 
-        // Execute the node
-        const result = await actionFunction({
-          nodeId: node.id,
-          inputData: inputData,
-          nodeData: node.data || {}
-        });
+      // Find starting nodes (nodes with no incoming edges)
+      const incomingEdges = new Set(edges.map(edge => edge.target).filter(Boolean));
+      const startingNodes = nodes.filter(node => !incomingEdges.has(node.id));
 
-        executionResults.set(node.id, result);
-        executed.add(node.id);
+      if (startingNodes.length === 0) {
+        console.error('No starting nodes found in the graph');
+        alert('No starting nodes found. Add nodes without inputs to begin execution.');
+        return;
+      }
 
-        if (result.success) {
-          console.log(`Node ${node.id} executed successfully:`, result.data);
+      // Execute nodes in topological order using BFS
+      const executionResults = new Map<string, any>();
+      const executionQueue = [...startingNodes.map(node => ({ node, inputData: null }))];
+      const executed = new Set<string>();
 
-          // Queue connected nodes for execution
-          const connectedNodeIds = edgeMap.get(node.id) || [];
-          connectedNodeIds.forEach(targetNodeId => {
-            const targetNode = nodeMap.get(targetNodeId);
-            if (targetNode && !executed.has(targetNodeId)) {
-              executionQueue.push({
-                node: targetNode,
-                inputData: result.data
-              });
-            }
+      while (executionQueue.length > 0) {
+        const { node, inputData } = executionQueue.shift()!;
+
+        if (executed.has(node.id)) continue;
+
+        try {
+          console.log(`Executing node: ${node.id} (${node.type}) in backend...`);
+
+          // Execute the node in the backend
+          const result = await executeNodeInBackend({
+            nodeId: node.id,
+            inputData: inputData,
+            nodeData: node.data || {}
           });
-        } else {
-          console.error(`Node ${node.id} execution failed:`, result.error);
+
+          executionResults.set(node.id, result);
+          executed.add(node.id);
+
+          if (result.success) {
+            console.log(`Node ${node.id} executed successfully:`, result.data);
+
+            // Queue connected nodes for execution
+            const connectedNodeIds = edgeMap.get(node.id) || [];
+            connectedNodeIds.forEach(targetNodeId => {
+              const targetNode = nodeMap.get(targetNodeId);
+              if (targetNode && !executed.has(targetNodeId)) {
+                executionQueue.push({
+                  node: targetNode,
+                  inputData: result.data
+                });
+              }
+            });
+          } else {
+            console.error(`Node ${node.id} execution failed:`, result.error);
+          }
+
+        } catch (error) {
+          console.error(`Error executing node ${node.id}:`, error);
+          executionResults.set(node.id, {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+          executed.add(node.id);
         }
-
-      } catch (error) {
-        console.error(`Error executing node ${node.id}:`, error);
-        executionResults.set(node.id, {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-        executed.add(node.id);
       }
+
+      // Summary
+      const successCount = Array.from(executionResults.values()).filter(r => r.success).length;
+      const totalCount = executionResults.size;
+
+      console.log(`Backend execution completed: ${successCount}/${totalCount} nodes succeeded`);
+
+      // Show results in alert (in a real app, you'd show this in a better UI)
+      const summary = Array.from(executionResults.entries())
+        .map(([nodeId, result]) => `${nodeId}: ${result.success ? '✅' : '❌' + (result.error ? ` (${result.error})` : '')}`)
+        .join('\n');
+
+      alert(`Backend Execution Summary:\n${summary}\n\nCheck console for detailed results.`);
+
+    } finally {
+      setIsExecuting(false);
     }
-
-    // Summary
-    const successCount = Array.from(executionResults.values()).filter(r => r.success).length;
-    const totalCount = executionResults.size;
-
-    console.log(`Execution completed: ${successCount}/${totalCount} nodes succeeded`);
-
-    // Show results in alert (in a real app, you'd show this in a better UI)
-    const summary = Array.from(executionResults.entries())
-      .map(([nodeId, result]) => `${nodeId}: ${result.success ? '✓' : '✗' + (result.error ? ` (${result.error})` : '')}`)
-      .join('\n');
-
-    alert(`Execution Summary:\n${summary}\n\nCheck console for detailed results.`);
-
-  }, [nodes, edges]);
+  }, [nodes, edges, isExecuting]);
 
   return (
     <div className="flex h-screen">
@@ -993,17 +887,29 @@ const NodeEditor: React.FC = () => {
             {/* Run button */}
             <button
               onClick={executeNodeGraph}
-              disabled={nodes.length === 0}
+              disabled={nodes.length === 0 || isExecuting}
               className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                nodes.length > 0
+                nodes.length > 0 && !isExecuting
                   ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer'
                   : 'bg-gray-400 text-gray-600 cursor-not-allowed'
               }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Run
+              {isExecuting ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Running...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Run
+                </>
+              )}
             </button>
 
             {/* Delete selected nodes button */}
