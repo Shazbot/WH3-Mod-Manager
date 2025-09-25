@@ -200,58 +200,88 @@ async function executeColumnSelectionNode(nodeId: string, textValue: string, inp
   };
 }
 
+// Formula evaluation function
+function evaluateFormula(formula: string, x: number): number {
+  // Sanitize the formula - only allow safe mathematical operations
+  const sanitized = formula
+    .replace(/\s+/g, '') // Remove whitespace
+    .replace(/\^/g, '**') // Convert ^ to ** for exponentiation
+    .replace(/[^x0-9+\-*/().\s]/g, ''); // Remove any unsafe characters
+
+  // Replace 'x' with the actual value
+  const expression = sanitized.replace(/x/g, x.toString());
+
+  // Validate that the expression only contains safe characters
+  if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
+    throw new Error('Invalid formula: contains unsafe characters');
+  }
+
+  try {
+    // Use Function constructor for safe evaluation (better than eval)
+    const result = new Function('return ' + expression)();
+
+    if (typeof result !== 'number' || isNaN(result) || !isFinite(result)) {
+      throw new Error('Formula evaluation resulted in invalid number');
+    }
+
+    return result;
+  } catch (error) {
+    throw new Error(`Formula evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 async function executeNumericAdjustmentNode(nodeId: string, textValue: string, inputData: any): Promise<NodeExecutionResult> {
-  console.log(`NumericAdjustment Node ${nodeId}: Processing "${textValue}" with input:`, inputData);
+  console.log(`NumericAdjustment Node ${nodeId}: Processing formula "${textValue}" with input:`, inputData);
 
   if (!inputData || inputData.type !== 'ColumnSelection') {
     return { success: false, error: 'Invalid input: Expected ColumnSelection data' };
   }
 
-  // Parse adjustment operations (+10, *1.5, /2, etc.)
-  const adjustmentLines = textValue.split('\n').filter(line => line.trim());
-  const adjustments = [];
+  const formula = textValue.trim();
 
-  for (const line of adjustmentLines) {
-    const match = line.trim().match(/^([+\-*/])(\d*\.?\d+)$/);
-    if (match) {
-      adjustments.push({
-        operation: match[1],
-        value: parseFloat(match[2]),
-        raw: line.trim()
-      });
-    } else {
-      console.warn(`Invalid adjustment format: ${line}`);
-    }
-  }
-
-  if (adjustments.length === 0) {
+  if (!formula) {
     return {
       success: false,
-      error: 'No valid adjustments found. Use format: +10, -5, *1.5, /2'
+      error: 'No formula provided. Enter a mathematical expression using x as the input variable.'
     };
   }
 
-  // Apply adjustments to numeric columns
+  // Validate that the formula contains 'x' variable
+  if (!formula.includes('x')) {
+    return {
+      success: false,
+      error: 'Formula must contain variable x representing the input value.'
+    };
+  }
+
+  // Test the formula with a sample value to check for syntax errors
+  try {
+    evaluateFormula(formula, 1);
+  } catch (error) {
+    return {
+      success: false,
+      error: `Invalid formula: ${error instanceof Error ? error.message : 'Syntax error'}`
+    };
+  }
+
+  // Apply formula to numeric columns
   const adjustedData = inputData.columns.map((table: any) => ({
     ...table,
     data: table.data.map((col: any) => ({
       ...col,
-      adjustments: adjustments,
-      // In real implementation, you'd apply adjustments to actual numeric data
+      formula: formula,
+      // In real implementation, you'd apply formula to actual numeric data
       adjustedSampleValues: col.sampleValues?.map((val: string) => {
         const numVal = parseFloat(val.replace(/[^\d.-]/g, ''));
-        if (isNaN(numVal)) return val;
+        if (isNaN(numVal)) return val; // Keep non-numeric values as-is
 
-        let result = numVal;
-        adjustments.forEach(adj => {
-          switch (adj.operation) {
-            case '+': result += adj.value; break;
-            case '-': result -= adj.value; break;
-            case '*': result *= adj.value; break;
-            case '/': result /= adj.value; break;
-          }
-        });
-        return result.toString();
+        try {
+          const result = evaluateFormula(formula, numVal);
+          return result.toString();
+        } catch (error) {
+          console.warn(`Failed to apply formula to value ${numVal}:`, error);
+          return val; // Return original value on error
+        }
       }) || []
     }))
   }));
@@ -261,9 +291,11 @@ async function executeNumericAdjustmentNode(nodeId: string, textValue: string, i
     data: {
       type: 'ChangedColumnSelection',
       adjustedColumns: adjustedData,
-      appliedAdjustments: adjustments,
+      appliedFormula: formula,
       originalData: inputData,
-      adjustmentCount: adjustments.length
+      processedValues: adjustedData.reduce((count, table) =>
+        count + table.data.reduce((colCount: number, col: any) =>
+          colCount + (col.adjustedSampleValues?.length || 0), 0), 0)
     }
   };
 }

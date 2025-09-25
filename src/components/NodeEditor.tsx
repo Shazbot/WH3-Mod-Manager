@@ -290,7 +290,7 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder="Enter numeric adjustments (e.g., +10, *1.5, /2)..."
+        placeholder="Enter formula using x as input (e.g., x + 10, x * 1.5, x^2 + 3*x - 5)..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
       />
 
