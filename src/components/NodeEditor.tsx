@@ -17,6 +17,39 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+// Serialization types
+interface SerializedNode {
+  id: string;
+  type: string;
+  position: XYPosition;
+  data: {
+    label: string;
+    type: string;
+    textValue?: string;
+    outputType?: NodeEdgeTypes;
+    inputType?: NodeEdgeTypes;
+  };
+}
+
+interface SerializedConnection {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  sourceType?: NodeEdgeTypes;
+  targetType?: NodeEdgeTypes;
+}
+
+interface SerializedNodeGraph {
+  version: string;
+  timestamp: number;
+  nodes: SerializedNode[];
+  connections: SerializedConnection[];
+  metadata: {
+    nodeCount: number;
+    connectionCount: number;
+  };
+}
+
 interface NodeData {
   label: string;
   type: string;
@@ -52,8 +85,14 @@ const PackedFilesNode: React.FC<{ data: PackedFilesNodeData; id: string }> = ({ 
   const [textValue, setTextValue] = useState(data.textValue || '');
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setTextValue(event.target.value);
-    // Update the node data (in a real implementation, you'd update the nodes state)
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent('nodeDataUpdate', {
+      detail: { nodeId: id, textValue: newValue }
+    });
+    window.dispatchEvent(updateEvent);
   };
 
   return (
@@ -94,8 +133,14 @@ const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: string }>
   const [textValue, setTextValue] = useState(data.textValue || '');
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setTextValue(event.target.value);
-    // Update the node data (in a real implementation, you'd update the nodes state)
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent('nodeDataUpdate', {
+      detail: { nodeId: id, textValue: newValue }
+    });
+    window.dispatchEvent(updateEvent);
   };
 
   return (
@@ -141,8 +186,14 @@ const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string 
   const [textValue, setTextValue] = useState(data.textValue || '');
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setTextValue(event.target.value);
-    // Update the node data (in a real implementation, you'd update the nodes state)
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent('nodeDataUpdate', {
+      detail: { nodeId: id, textValue: newValue }
+    });
+    window.dispatchEvent(updateEvent);
   };
 
   return (
@@ -241,6 +292,32 @@ const NodeEditor: React.FC = () => {
   React.useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  // Listen for node data updates from child components
+  React.useEffect(() => {
+    const handleNodeDataUpdate = (event: CustomEvent) => {
+      const { nodeId, textValue } = event.detail;
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                textValue: textValue,
+              },
+            };
+          }
+          return node;
+        })
+      );
+    };
+
+    window.addEventListener('nodeDataUpdate', handleNodeDataUpdate as EventListener);
+    return () => {
+      window.removeEventListener('nodeDataUpdate', handleNodeDataUpdate as EventListener);
+    };
+  }, [setNodes]);
 
 
   const onConnect = useCallback(
@@ -386,10 +463,65 @@ const NodeEditor: React.FC = () => {
     event.dataTransfer.effectAllowed = 'move';
   };
 
+  const serializeNodeGraph = useCallback((): SerializedNodeGraph => {
+    const serializedNodes: SerializedNode[] = nodes.map(node => ({
+      id: node.id,
+      type: node.type || 'default',
+      position: node.position,
+      data: {
+        label: node.data?.label || '',
+        type: node.data?.type || '',
+        textValue: (node.data as any)?.textValue || '',
+        outputType: (node.data as any)?.outputType,
+        inputType: (node.data as any)?.inputType,
+      }
+    }));
+
+    const serializedConnections: SerializedConnection[] = edges.map(edge => {
+      const sourceNode = nodes.find(n => n.id === edge.source);
+      const targetNode = nodes.find(n => n.id === edge.target);
+
+      return {
+        id: edge.id || `${edge.source}-${edge.target}`,
+        sourceId: edge.source || '',
+        targetId: edge.target || '',
+        sourceType: (sourceNode?.data as any)?.outputType,
+        targetType: (targetNode?.data as any)?.inputType,
+      };
+    });
+
+    return {
+      version: '1.0',
+      timestamp: Date.now(),
+      nodes: serializedNodes,
+      connections: serializedConnections,
+      metadata: {
+        nodeCount: nodes.length,
+        connectionCount: edges.length,
+      }
+    };
+  }, [nodes, edges]);
+
+  const saveNodeGraph = useCallback(() => {
+    const serializedGraph = serializeNodeGraph();
+    const jsonString = JSON.stringify(serializedGraph, null, 2);
+
+    // Create and trigger download
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `node-graph-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [serializeNodeGraph]);
+
   return (
     <div className="flex h-screen">
       <NodeSidebar onDragStart={onDragStart} />
-      <div className="flex-1" ref={reactFlowWrapper}>
+      <div className="flex-1 relative" ref={reactFlowWrapper}>
         <ReactFlowProvider>
           <ReactFlow
             nodes={nodes}
@@ -406,6 +538,19 @@ const NodeEditor: React.FC = () => {
             <Controls />
             <Background />
           </ReactFlow>
+
+          {/* Save button positioned in top-right corner */}
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={saveNodeGraph}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Save Graph
+            </button>
+          </div>
         </ReactFlowProvider>
       </div>
     </div>
