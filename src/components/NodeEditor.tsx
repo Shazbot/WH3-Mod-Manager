@@ -518,6 +518,83 @@ const NodeEditor: React.FC = () => {
     URL.revokeObjectURL(url);
   }, [serializeNodeGraph]);
 
+  const loadNodeGraph = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const jsonContent = event.target?.result as string;
+        const serializedGraph: SerializedNodeGraph = JSON.parse(jsonContent);
+
+        // Validate the loaded data structure
+        if (!serializedGraph.nodes || !serializedGraph.connections) {
+          throw new Error('Invalid file format: missing nodes or connections');
+        }
+
+        // Convert serialized nodes back to ReactFlow nodes
+        const loadedNodes: Node<NodeData>[] = serializedGraph.nodes.map(serializedNode => {
+          const node: Node<NodeData> = {
+            id: serializedNode.id,
+            type: serializedNode.type,
+            position: serializedNode.position,
+            data: serializedNode.data,
+          };
+
+          // Add styling for default nodes
+          if (serializedNode.type === 'default') {
+            node.style = {
+              border: '2px solid #3b82f6',
+              borderRadius: '8px',
+              padding: '10px',
+              background: '#374151',
+              color: '#ffffff',
+            };
+          }
+
+          return node;
+        });
+
+        // Convert serialized connections back to ReactFlow edges
+        const loadedEdges: Edge[] = serializedGraph.connections.map(serializedConnection => ({
+          id: serializedConnection.id,
+          source: serializedConnection.sourceId,
+          target: serializedConnection.targetId,
+          type: 'default',
+          style: { stroke: '#3b82f6', strokeWidth: 2 },
+          animated: true,
+        }));
+
+        // Update node ID counter to avoid conflicts
+        const maxNodeId = Math.max(
+          ...serializedGraph.nodes
+            .map(node => parseInt(node.id.replace('node_', ''), 10))
+            .filter(id => !isNaN(id)),
+          -1
+        );
+        nodeId = maxNodeId + 1;
+
+        // Set the loaded data
+        setNodes(loadedNodes);
+        setEdges(loadedEdges);
+
+        console.log(`Loaded graph with ${loadedNodes.length} nodes and ${loadedEdges.length} connections`);
+      } catch (error) {
+        console.error('Failed to load node graph:', error);
+        alert('Failed to load the node graph file. Please check the file format.');
+      }
+    };
+
+    reader.readAsText(file);
+  }, [setNodes, setEdges]);
+
+  const handleFileInput = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      loadNodeGraph(file);
+    }
+    // Clear the input so the same file can be loaded again
+    event.target.value = '';
+  }, [loadNodeGraph]);
+
   return (
     <div className="flex h-screen">
       <NodeSidebar onDragStart={onDragStart} />
@@ -539,8 +616,29 @@ const NodeEditor: React.FC = () => {
             <Background />
           </ReactFlow>
 
-          {/* Save button positioned in top-right corner */}
-          <div className="absolute top-4 right-4 z-10">
+          {/* Save and Load buttons positioned in top-right corner */}
+          <div className="absolute top-4 right-4 z-10 flex gap-2">
+            {/* Hidden file input */}
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleFileInput}
+              className="hidden"
+              id="load-graph-input"
+            />
+
+            {/* Load button */}
+            <label
+              htmlFor="load-graph-input"
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+              </svg>
+              Load Graph
+            </label>
+
+            {/* Save button */}
             <button
               onClick={saveNodeGraph}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
