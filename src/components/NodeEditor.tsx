@@ -235,9 +235,58 @@ const NodeEditor: React.FC = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const nodesRef = useRef(nodes);
+
+  // Keep the ref updated with current nodes
+  React.useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    (params: Connection) => {
+      // Validate connection types before allowing the connection
+      if (!params.source || !params.target) return;
+
+      const currentNodes = nodesRef.current;
+      const sourceNode = currentNodes.find(node => node.id === params.source);
+      const targetNode = currentNodes.find(node => node.id === params.target);
+
+      if (!sourceNode || !targetNode) return;
+
+      // Get output type from source node
+      let sourceOutputType: NodeEdgeTypes | undefined;
+      if (sourceNode.type === 'packedfiles' && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as PackedFilesNodeData).outputType;
+      } else if (sourceNode.type === 'tableselection' && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as TableSelectionNodeData).outputType;
+      } else if (sourceNode.type === 'columnselection' && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as ColumnSelectionNodeData).outputType;
+      }
+
+      // Get input type from target node
+      let targetInputType: NodeEdgeTypes | undefined;
+      if (targetNode.type === 'tableselection' && targetNode.data) {
+        targetInputType = (targetNode.data as TableSelectionNodeData).inputType;
+      } else if (targetNode.type === 'columnselection' && targetNode.data) {
+        targetInputType = (targetNode.data as ColumnSelectionNodeData).inputType;
+      }
+
+      // Allow connection only if types are compatible
+      if (sourceOutputType && targetInputType && sourceOutputType === targetInputType) {
+        setEdges((eds) => {
+          const newEdge = {
+            ...params,
+            id: `edge-${params.source}-${params.target}`,
+            type: 'default',
+            style: { stroke: '#3b82f6', strokeWidth: 2 },
+            animated: true,
+          };
+          return [...eds, newEdge];
+        });
+      }
+      // If types don't match or are undefined, the connection is rejected silently
+    },
     [setEdges]
   );
 
