@@ -282,6 +282,35 @@ const api = {
     inputData: any;
   }): Promise<{ success: boolean; data?: any; error?: string }> =>
     ipcRenderer.invoke("executeNode", nodeExecutionRequest),
+
+  executeNodeGraph: (graphExecutionRequest: {
+    nodes: Array<{
+      id: string;
+      type: string;
+      data: {
+        label: string;
+        type: string;
+        textValue?: string;
+        outputType?: string;
+        inputType?: string;
+      };
+    }>;
+    connections: Array<{
+      id: string;
+      sourceId: string;
+      targetId: string;
+      sourceType?: string;
+      targetType?: string;
+    }>;
+  }): Promise<{
+    success: boolean;
+    executionResults: Array<[string, { success: boolean; data?: any; error?: string }]>;
+    totalExecuted: number;
+    successCount: number;
+    failureCount: number;
+    error?: string;
+  }> =>
+    ipcRenderer.invoke("executeNodeGraph", graphExecutionRequest),
 };
 
 export type api = typeof api;

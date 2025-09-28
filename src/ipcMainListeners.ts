@@ -1569,6 +1569,67 @@ export const registerIpcMainListeners = (
     }
   );
 
+  ipcMain.handle(
+    "executeNodeGraph",
+    async (
+      event,
+      graphExecutionRequest: {
+        nodes: Array<{
+          id: string;
+          type: string;
+          data: {
+            label: string;
+            type: string;
+            textValue?: string;
+            outputType?: string;
+            inputType?: string;
+          };
+        }>;
+        connections: Array<{
+          id: string;
+          sourceId: string;
+          targetId: string;
+          sourceType?: string;
+          targetType?: string;
+        }>;
+      }
+    ): Promise<{
+      success: boolean;
+      executionResults: Array<[string, { success: boolean; data?: any; error?: string }]>;
+      totalExecuted: number;
+      successCount: number;
+      failureCount: number;
+      error?: string;
+    }> => {
+      try {
+        console.log(`Executing node graph with ${graphExecutionRequest.nodes.length} nodes and ${graphExecutionRequest.connections.length} connections`);
+
+        // Import graph execution function
+        const { executeNodeGraph } = await import("./nodeGraphExecutor");
+
+        const result = await executeNodeGraph(graphExecutionRequest);
+
+        // Convert Map to Array for serialization
+        const serializedExecutionResults = Array.from(result.executionResults.entries());
+
+        return {
+          ...result,
+          executionResults: serializedExecutionResults
+        };
+      } catch (error) {
+        console.error("Failed to execute node graph:", error);
+        return {
+          success: false,
+          executionResults: [],
+          totalExecuted: 0,
+          successCount: 0,
+          failureCount: 0,
+          error: error instanceof Error ? error.message : 'Unknown graph execution error'
+        };
+      }
+    }
+  );
+
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {
