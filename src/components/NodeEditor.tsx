@@ -57,15 +57,7 @@ interface NodeExecutionResult {
   error?: string;
 }
 
-interface NodeExecutionContext {
-  nodeId: string;
-  inputData: any;
-  nodeData: NodeData;
-}
-
-type NodeActionFunction = (context: NodeExecutionContext) => Promise<NodeExecutionResult>;
-
-interface NodeData {
+interface NodeData extends Record<string, unknown> {
   label: string;
   type: string;
   textValue?: string;
@@ -309,37 +301,79 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
 };
 
 const nodeTypes = [
-  { type: 'input', label: 'Input Node', description: 'Starting point for data flow' },
-  { type: 'output', label: 'Output Node', description: 'End point for data flow' },
-  { type: 'process', label: 'Process Node', description: 'Transform or process data' },
-  { type: 'decision', label: 'Decision Node', description: 'Conditional logic' },
-  { type: 'data', label: 'Data Node', description: 'Store or retrieve data' },
   { type: 'packedfiles', label: 'PackFiles Node', description: 'Node with textbox that outputs PackFiles' },
   { type: 'tableselection', label: 'Table Selection Node', description: 'Accepts PackFiles input, outputs TableSelection' },
   { type: 'columnselection', label: 'Column Selection Node', description: 'Accepts TableSelection input, outputs ColumnSelection' },
   { type: 'numericadjustment', label: 'Numeric Adjustment Node', description: 'Accepts ColumnSelection input, outputs ChangedColumnSelection' },
 ];
 
-// Backend execution service
-const executeNodeInBackend = async (context: NodeExecutionContext): Promise<NodeExecutionResult> => {
+// Backend graph execution service
+const executeGraphInBackend = async (nodes: Node[], edges: Edge[]): Promise<{
+  success: boolean;
+  executionResults: Map<string, NodeExecutionResult>;
+  totalExecuted: number;
+  successCount: number;
+  failureCount: number;
+  error?: string;
+}> => {
   try {
-    const response = await window.api?.executeNode({
-      nodeId: context.nodeId,
-      nodeType: context.nodeData.type,
-      textValue: (context.nodeData as any).textValue || '',
-      inputData: context.inputData
+    // Convert nodes and edges to serialized format for backend
+    const serializedNodes = nodes.map(node => ({
+      id: node.id,
+      type: node.type || 'default',
+      data: {
+        label: node.data?.label ? String(node.data.label) : '',
+        type: node.data?.type ? String(node.data.type) : '',
+        textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : '',
+        outputType: (node.data as any)?.outputType,
+        inputType: (node.data as any)?.inputType,
+      }
+    }));
+
+    const serializedConnections = edges.map(edge => ({
+      id: edge.id || `${edge.source}-${edge.target}`,
+      sourceId: edge.source || '',
+      targetId: edge.target || '',
+      sourceType: (nodes.find(n => n.id === edge.source)?.data as any)?.outputType,
+      targetType: (nodes.find(n => n.id === edge.target)?.data as any)?.inputType,
+    }));
+
+    const response = await window.api?.executeNodeGraph({
+      nodes: serializedNodes,
+      connections: serializedConnections
     });
 
     if (!response) {
-      return { success: false, error: 'Backend API not available' };
+      return {
+        success: false,
+        executionResults: new Map(),
+        totalExecuted: 0,
+        successCount: 0,
+        failureCount: 0,
+        error: 'Backend API not available'
+      };
     }
 
-    return response;
+    // Convert serialized execution results back to Map
+    const executionResults = new Map(response.executionResults);
+
+    return {
+      success: response.success,
+      executionResults,
+      totalExecuted: response.totalExecuted,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      error: response.error
+    };
   } catch (error) {
-    console.error(`Error executing node ${context.nodeId} in backend:`, error);
+    console.error('Error executing node graph in backend:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Backend execution failed'
+      executionResults: new Map(),
+      totalExecuted: 0,
+      successCount: 0,
+      failureCount: 0,
+      error: error instanceof Error ? error.message : 'Backend graph execution failed'
     };
   }
 };
@@ -352,7 +386,7 @@ const reactFlowNodeTypes = {
   numericadjustment: NumericAdjustmentNode,
 };
 
-const initialNodes: Node<NodeData>[] = [];
+const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
 
 let nodeId = 0;
@@ -434,23 +468,23 @@ const NodeEditor: React.FC = () => {
       // Get output type from source node
       let sourceOutputType: NodeEdgeTypes | undefined;
       if (sourceNode.type === 'packedfiles' && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as PackFilesNodeData).outputType;
+        sourceOutputType = (sourceNode.data as unknown as PackFilesNodeData).outputType;
       } else if (sourceNode.type === 'tableselection' && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as TableSelectionNodeData).outputType;
+        sourceOutputType = (sourceNode.data as unknown as TableSelectionNodeData).outputType;
       } else if (sourceNode.type === 'columnselection' && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as ColumnSelectionNodeData).outputType;
+        sourceOutputType = (sourceNode.data as unknown as ColumnSelectionNodeData).outputType;
       } else if (sourceNode.type === 'numericadjustment' && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as NumericAdjustmentNodeData).outputType;
+        sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
       }
 
       // Get input type from target node
       let targetInputType: NodeEdgeTypes | undefined;
       if (targetNode.type === 'tableselection' && targetNode.data) {
-        targetInputType = (targetNode.data as TableSelectionNodeData).inputType;
+        targetInputType = (targetNode.data as unknown as TableSelectionNodeData).inputType;
       } else if (targetNode.type === 'columnselection' && targetNode.data) {
-        targetInputType = (targetNode.data as ColumnSelectionNodeData).inputType;
+        targetInputType = (targetNode.data as unknown as ColumnSelectionNodeData).inputType;
       } else if (targetNode.type === 'numericadjustment' && targetNode.data) {
-        targetInputType = (targetNode.data as NumericAdjustmentNodeData).inputType;
+        targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -494,7 +528,7 @@ const NodeEditor: React.FC = () => {
         y: event.clientY - reactFlowBounds.top,
       });
 
-      let newNode: Node<NodeData>;
+      let newNode: Node;
 
       if (nodeData.type === 'packedfiles') {
         // Create PackFiles node with special data structure
@@ -587,9 +621,9 @@ const NodeEditor: React.FC = () => {
       type: node.type || 'default',
       position: node.position,
       data: {
-        label: node.data?.label || '',
-        type: node.data?.type || '',
-        textValue: (node.data as any)?.textValue || '',
+        label: String(node.data?.label || ''),
+        type: String(node.data?.type || ''),
+        textValue: String((node.data as any)?.textValue || ''),
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
       }
@@ -649,8 +683,8 @@ const NodeEditor: React.FC = () => {
         }
 
         // Convert serialized nodes back to ReactFlow nodes
-        const loadedNodes: Node<NodeData>[] = serializedGraph.nodes.map(serializedNode => {
-          const node: Node<NodeData> = {
+        const loadedNodes: Node[] = serializedGraph.nodes.map(serializedNode => {
+          const node: Node = {
             id: serializedNode.id,
             type: serializedNode.type,
             position: serializedNode.position,
@@ -760,93 +794,35 @@ const NodeEditor: React.FC = () => {
     console.log('Starting node graph execution in backend...');
 
     try {
-      // Build execution graph
-      const nodeMap = new Map(nodes.map(node => [node.id, node]));
-      const edgeMap = new Map<string, string[]>();
-
-      // Build adjacency list for connections
-      edges.forEach(edge => {
-        if (!edge.source || !edge.target) return;
-        if (!edgeMap.has(edge.source)) {
-          edgeMap.set(edge.source, []);
-        }
-        edgeMap.get(edge.source)?.push(edge.target);
-      });
-
-      // Find starting nodes (nodes with no incoming edges)
-      const incomingEdges = new Set(edges.map(edge => edge.target).filter(Boolean));
-      const startingNodes = nodes.filter(node => !incomingEdges.has(node.id));
-
-      if (startingNodes.length === 0) {
-        console.error('No starting nodes found in the graph');
-        alert('No starting nodes found. Add nodes without inputs to begin execution.');
+      if (nodes.length === 0) {
+        console.error('No nodes found in the graph');
+        alert('No nodes found. Add nodes to the graph before executing.');
         return;
       }
 
-      // Execute nodes in topological order using BFS
-      const executionResults = new Map<string, any>();
-      const executionQueue = [...startingNodes.map(node => ({ node, inputData: null }))];
-      const executed = new Set<string>();
+      // Execute the entire graph in the backend
+      const result = await executeGraphInBackend(nodes, edges);
 
-      while (executionQueue.length > 0) {
-        const { node, inputData } = executionQueue.shift()!;
+      console.log(`Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`);
 
-        if (executed.has(node.id)) continue;
-
-        try {
-          console.log(`Executing node: ${node.id} (${node.type}) in backend...`);
-
-          // Execute the node in the backend
-          const result = await executeNodeInBackend({
-            nodeId: node.id,
-            inputData: inputData,
-            nodeData: node.data || {}
-          });
-
-          executionResults.set(node.id, result);
-          executed.add(node.id);
-
-          if (result.success) {
-            console.log(`Node ${node.id} executed successfully:`, result.data);
-
-            // Queue connected nodes for execution
-            const connectedNodeIds = edgeMap.get(node.id) || [];
-            connectedNodeIds.forEach(targetNodeId => {
-              const targetNode = nodeMap.get(targetNodeId);
-              if (targetNode && !executed.has(targetNodeId)) {
-                executionQueue.push({
-                  node: targetNode,
-                  inputData: result.data
-                });
-              }
-            });
-          } else {
-            console.error(`Node ${node.id} execution failed:`, result.error);
-          }
-
-        } catch (error) {
-          console.error(`Error executing node ${node.id}:`, error);
-          executionResults.set(node.id, {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          });
-          executed.add(node.id);
-        }
+      if (result.error) {
+        console.error('Graph execution error:', result.error);
       }
 
-      // Summary
-      const successCount = Array.from(executionResults.values()).filter(r => r.success).length;
-      const totalCount = executionResults.size;
-
-      console.log(`Backend execution completed: ${successCount}/${totalCount} nodes succeeded`);
-
       // Show results in alert (in a real app, you'd show this in a better UI)
-      const summary = Array.from(executionResults.entries())
-        .map(([nodeId, result]) => `${nodeId}: ${result.success ? '✅' : '❌' + (result.error ? ` (${result.error})` : '')}`)
+      const summary = Array.from(result.executionResults.entries())
+        .map(([nodeId, nodeResult]) => `${nodeId}: ${nodeResult.success ? '✅' : '❌' + (nodeResult.error ? ` (${nodeResult.error})` : '')}`)
         .join('\n');
 
-      alert(`Backend Execution Summary:\n${summary}\n\nCheck console for detailed results.`);
+      const statusMessage = result.success
+        ? `✅ Graph execution successful!`
+        : `❌ Graph execution ${result.failureCount > 0 ? 'completed with errors' : 'failed'}`;
 
+      alert(`${statusMessage}\n\nExecution Summary (${result.successCount}/${result.totalExecuted} nodes succeeded):\n${summary}\n\nCheck console for detailed results.`);
+
+    } catch (error) {
+      console.error('Error during graph execution:', error);
+      alert(`Graph execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsExecuting(false);
     }
