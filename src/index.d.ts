@@ -619,7 +619,12 @@ declare global {
 
   interface NodeExecutionResult {
     success: boolean;
-    data?: PackFilesNodeData | DBTablesNodeData | DBColumnSelectionNodeData | DBNumericAdjustmentNodeData;
+    data?:
+      | PackFilesNodeData
+      | DBTablesNodeData
+      | DBColumnSelectionNodeData
+      | DBNumericAdjustmentNodeData
+      | DBSaveChangesNodeData;
     error?: string;
   }
 
@@ -676,5 +681,8 @@ declare global {
 
   interface DBSaveChangesNodeData {
     type: "SaveResult";
+    savedTo: string;
+    format: string;
+    message: string;
   }
 }

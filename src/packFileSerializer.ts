@@ -1266,7 +1266,11 @@ export const writeCopyPack = async (
 };
 
 // Stream-based version of writePack with better performance for large files
-export const writePackStream = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
+export const writePackStream = async (
+  packFiles: NewPackedFile[],
+  path: string,
+  existingPackToAppend?: Pack
+) => {
   let streamWriter: StreamWriter | undefined;
 
   const timestamp = format(new Date(), "ddMMyy_HHmmss");
@@ -1281,7 +1285,7 @@ export const writePackStream = async (packFiles: NewPackedFile[], path: string, 
     if (packFiles.length < 1) return;
 
     streamWriter = new StreamWriter(outPath);
-    
+
     const allPackFiles = existingPackToAppend
       ? [
           ...packFiles,
@@ -1301,7 +1305,7 @@ export const writePackStream = async (packFiles: NewPackedFile[], path: string, 
     });
 
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-    
+
     // Use StreamWriter to batch header writes with backpressure handling
     streamWriter.addString(header);
     streamWriter.addInt32(byteMask);
@@ -1322,7 +1326,7 @@ export const writePackStream = async (packFiles: NewPackedFile[], path: string, 
       }
       streamWriter.addInt8(0); // is_compressed
       streamWriter.addString(name + "\0");
-      
+
       // Flush periodically with backpressure handling
       await streamWriter.flushIfNeeded();
     }
@@ -1361,7 +1365,7 @@ export const writePackStream = async (packFiles: NewPackedFile[], path: string, 
         } else {
           streamWriter.addInt8(1);
         }
-        
+
         console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
         streamWriter.addInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
@@ -1392,7 +1396,12 @@ export const writePackStream = async (packFiles: NewPackedFile[], path: string, 
 };
 
 // Fast append-only implementation for existing packs - much faster than sorted insertion
-export const writePackAppendFast = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
+export const writePackAppendFast = async (
+  packFiles: NewPackedFile[],
+  path: string,
+  existingPackToAppend?: Pack,
+  replaceDuplicates?: boolean
+) => {
   let outFile: BinaryFile | undefined;
   let sourceFile: BinaryFile | undefined;
 
@@ -1405,26 +1414,37 @@ export const writePackAppendFast = async (packFiles: NewPackedFile[], path: stri
     if (existingPackToAppend) {
       // FAST PATH: Clone existing pack and append new files
       console.log("Fast append mode: cloning existing pack and appending new files");
-      
+
       // Open source file for reading
       sourceFile = new BinaryFile(existingPackToAppend.path, "r", true);
       await sourceFile.open();
-      
+
       // Open output file for writing
       outFile = new BinaryFile(outPath, "w", true);
       await outFile.open();
 
+      // Handle duplicate replacement logic
+      const newFileNames = new Set(packFiles.map(pf => pf.name));
+      const filesToKeep = replaceDuplicates
+        ? existingPackToAppend.packedFiles.filter(pf => !newFileNames.has(pf.name))
+        : existingPackToAppend.packedFiles;
+
       // Calculate new counts and sizes
       const originalFileCount = existingPackToAppend.packedFiles.length;
-      const newFileCount = originalFileCount + packFiles.length;
-      
+      const keptFileCount = filesToKeep.length;
+      const replacedFileCount = originalFileCount - keptFileCount;
+      const newFileCount = keptFileCount + packFiles.length;
+
       // Calculate additional index size needed for new files
       const newIndexSize = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-      
+
       // For pack files, the packed_file_index_size in header refers to the file index section
       // We need to calculate the total size of existing + new file index entries
-      const existingIndexSize = existingPackToAppend.packedFiles.reduce((acc, pf) => acc + new Blob([pf.name]).size + 1 + 5, 0);
-      const totalIndexSize = existingIndexSize + newIndexSize;
+      const keptIndexSize = filesToKeep.reduce(
+        (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
+        0
+      );
+      const totalIndexSize = keptIndexSize + newIndexSize;
 
       // Write updated header with new counts
       const headerAccumulator = new BufferAccumulator(outFile);
@@ -1437,16 +1457,34 @@ export const writePackAppendFast = async (packFiles: NewPackedFile[], path: stri
       headerAccumulator.addInt32(0x7fffffff); // header_buffer
       await headerAccumulator.flush();
 
-      console.log(`Original files: ${originalFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`);
+      console.log(
+        `Original files: ${originalFileCount}, Kept files: ${keptFileCount}, Replaced files: ${replacedFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`
+      );
 
-      // Copy existing file index entries directly from source
-      console.log("Copying existing file index entries...");
-      const existingIndexStartPos = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
-      const existingIndexEndPos = existingIndexStartPos + existingIndexSize;
-      
-      await sourceFile.seek(existingIndexStartPos);
-      const existingIndexBuffer = await sourceFile.read(existingIndexSize);
-      await outFile.write(existingIndexBuffer);
+      // Copy file index entries (selectively if replacing duplicates)
+      if (replaceDuplicates && replacedFileCount > 0) {
+        console.log("Selectively copying file index entries (excluding duplicates)...");
+        // Write index entries for files we're keeping
+        const keptIndexAccumulator = new BufferAccumulator(outFile);
+        for (const keptFile of filesToKeep) {
+          keptIndexAccumulator.addInt32(keptFile.file_size);
+          keptIndexAccumulator.addInt8(keptFile.is_compressed ? 1 : 0);
+          keptIndexAccumulator.addString(keptFile.name + "\0");
+          await keptIndexAccumulator.flushIfNeeded();
+        }
+        await keptIndexAccumulator.flush();
+      } else {
+        console.log("Copying existing file index entries...");
+        const existingIndexStartPos = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
+        const existingIndexSize = existingPackToAppend.packedFiles.reduce(
+          (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
+          0
+        );
+
+        await sourceFile.seek(existingIndexStartPos);
+        const existingIndexBuffer = await sourceFile.read(existingIndexSize);
+        await outFile.write(existingIndexBuffer);
+      }
 
       // Write new file index entries
       console.log("Writing new file index entries...");
@@ -1464,24 +1502,39 @@ export const writePackAppendFast = async (packFiles: NewPackedFile[], path: stri
       }
       await newIndexAccumulator.flush();
 
-      // Copy existing file data directly from source
-      console.log("Copying existing file data...");
-      const existingDataStartPos = existingIndexEndPos;
-      const sourceFileSize = await sourceFile.size();
-      const existingDataSize = sourceFileSize - existingDataStartPos;
-      
-      if (existingDataSize > 0) {
-        await sourceFile.seek(existingDataStartPos);
-        
-        // Copy in chunks for better memory usage
-        const chunkSize = 1024 * 1024; // 1MB chunks
-        let remainingBytes = existingDataSize;
-        
-        while (remainingBytes > 0) {
-          const bytesToRead = Math.min(chunkSize, remainingBytes);
-          const chunk = await sourceFile.read(bytesToRead);
-          await outFile.write(chunk);
-          remainingBytes -= bytesToRead;
+      // Copy file data (selectively if replacing duplicates)
+      if (replaceDuplicates && replacedFileCount > 0) {
+        console.log("Selectively copying file data (excluding duplicates)...");
+        // Copy data for files we're keeping
+        for (const keptFile of filesToKeep) {
+          await sourceFile.seek(keptFile.start_pos);
+          const fileData = await sourceFile.read(keptFile.file_size);
+          await outFile.write(fileData);
+        }
+      } else {
+        console.log("Copying existing file data...");
+        const headerSize = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
+        const indexSize = existingPackToAppend.packedFiles.reduce(
+          (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
+          0
+        );
+        const dataStartPos = headerSize + indexSize;
+        const sourceFileSize = await sourceFile.size();
+        const dataSize = sourceFileSize - dataStartPos;
+
+        if (dataSize > 0) {
+          await sourceFile.seek(dataStartPos);
+
+          // Copy in chunks for better memory usage
+          const chunkSize = 1024 * 1024; // 1MB chunks
+          let remainingBytes = dataSize;
+
+          while (remainingBytes > 0) {
+            const bytesToRead = Math.min(chunkSize, remainingBytes);
+            const chunk = await sourceFile.read(bytesToRead);
+            await outFile.write(chunk);
+            remainingBytes -= bytesToRead;
+          }
         }
       }
 
@@ -1508,7 +1561,7 @@ export const writePackAppendFast = async (packFiles: NewPackedFile[], path: stri
           } else {
             await outFile.writeInt8(1);
           }
-          
+
           console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
           await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
@@ -1552,14 +1605,14 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
 
     outFile = new BinaryFile(path, "w", true);
     await outFile.open();
-    
+
     // Sort files for consistent ordering
     packFiles.sort((firstPf, secondPf) => {
       return firstPf.name.localeCompare(secondPf.name);
     });
 
     const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-    
+
     // Write header
     const headerAccumulator = new BufferAccumulator(outFile);
     headerAccumulator.addString(header);
@@ -1608,7 +1661,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
         } else {
           await outFile.writeInt8(1);
         }
-        
+
         console.log("num rows:", packFile.schemaFields.length / packFile.tableSchema.fields.length);
         await outFile.writeInt32(packFile.schemaFields.length / packFile.tableSchema.fields.length);
 
@@ -1624,18 +1677,22 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
   }
 };
 
-export const writePack = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
+export const writePack = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack, replaceDuplicates?: boolean) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
-    return await writePackAppendFast(packFiles, path, existingPackToAppend);
+    return await writePackAppendFast(packFiles, path, existingPackToAppend, replaceDuplicates);
   }
-  
+
   // Fallback to sorted implementation for new packs
   return await writePackSorted(packFiles, path);
 };
 
 // Legacy implementation (kept for reference, but replaced by the optimized versions above)
-export const writePackLegacy = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack) => {
+export const writePackLegacy = async (
+  packFiles: NewPackedFile[],
+  path: string,
+  existingPackToAppend?: Pack
+) => {
   let outFile: BinaryFile | undefined;
 
   const timestamp = format(new Date(), "ddMMyy_HHmmss");
@@ -1651,7 +1708,7 @@ export const writePackLegacy = async (packFiles: NewPackedFile[], path: string, 
 
     outFile = new BinaryFile(outPath, "w", true);
     await outFile.open();
-    
+
     const allPackFiles = existingPackToAppend
       ? [
           ...packFiles,
@@ -1671,7 +1728,7 @@ export const writePackLegacy = async (packFiles: NewPackedFile[], path: string, 
     });
 
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-    
+
     // Use BufferAccumulator to batch header writes and reduce Promise overhead
     const headerAccumulator = new BufferAccumulator(outFile);
     headerAccumulator.addString(header);
@@ -1701,7 +1758,7 @@ export const writePackLegacy = async (packFiles: NewPackedFile[], path: string, 
       }
       indexAccumulator.addInt8(0); // is_compressed
       indexAccumulator.addString(name + "\0");
-      
+
       // Flush periodically to avoid excessive memory usage
       await indexAccumulator.flushIfNeeded();
     }
@@ -1814,9 +1871,9 @@ export const writeStartGamePack = async (
 
     outFile = new BinaryFile(path, "w", true);
     await outFile.open();
-    
+
     const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
-    
+
     // Use BufferAccumulator to batch header writes
     const startGameHeaderAccumulator = new BufferAccumulator(outFile);
     startGameHeaderAccumulator.addString(header);
@@ -1836,7 +1893,7 @@ export const writeStartGamePack = async (
       startGameIndexAccumulator.addInt32(file_size);
       startGameIndexAccumulator.addInt8(0); // is_compressed
       startGameIndexAccumulator.addString(name + "\0");
-      
+
       // Flush periodically to avoid excessive memory usage
       await startGameIndexAccumulator.flushIfNeeded();
     }
@@ -1893,49 +1950,40 @@ const reusableBuffers = {
 const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
   switch (field.type) {
     case "UInt8":
-    case "Int8":
-      {
-        reusableBuffers.i8.writeUInt8(field.val as number, 0);
-        return Buffer.from(reusableBuffers.i8);
-      }
-    case "F32":
-      {
-        reusableBuffers.f32.writeFloatLE(field.val as number, 0);
-        return Buffer.from(reusableBuffers.f32);
-      }
-    case "I32":
-      {
-        reusableBuffers.i32.writeInt32LE(field.val as number, 0);
-        return Buffer.from(reusableBuffers.i32);
-      }
-    case "I16":
-      {
-        reusableBuffers.i16.writeInt16LE(field.val as number, 0);
-        return Buffer.from(reusableBuffers.i16);
-      }
-    case "Int16":
-      {
-        reusableBuffers.i16.writeUInt16LE(field.val as number, 0);
-        return Buffer.from(reusableBuffers.i16);
-      }
-    case "I64":
-      {
-        reusableBuffers.i64.writeBigInt64LE(BigInt(field.val as number), 0);
-        return Buffer.from(reusableBuffers.i64);
-      }
-    case "F64":
-      {
-        reusableBuffers.f64.writeDoubleLE(field.val as number, 0);
-        return Buffer.from(reusableBuffers.f64);
-      }
-    case "String":
-      {
-        return Buffer.from(field.val as string, 'utf8');
-      }
-    case "Buffer":
-      {
-        return field.val as Buffer;
-      }
+    case "Int8": {
+      reusableBuffers.i8.writeUInt8(field.val as number, 0);
+      return Buffer.from(reusableBuffers.i8);
+    }
+    case "F32": {
+      reusableBuffers.f32.writeFloatLE(field.val as number, 0);
+      return Buffer.from(reusableBuffers.f32);
+    }
+    case "I32": {
+      reusableBuffers.i32.writeInt32LE(field.val as number, 0);
+      return Buffer.from(reusableBuffers.i32);
+    }
+    case "I16": {
+      reusableBuffers.i16.writeInt16LE(field.val as number, 0);
+      return Buffer.from(reusableBuffers.i16);
+    }
+    case "Int16": {
+      reusableBuffers.i16.writeUInt16LE(field.val as number, 0);
+      return Buffer.from(reusableBuffers.i16);
+    }
+    case "I64": {
+      reusableBuffers.i64.writeBigInt64LE(BigInt(field.val as number), 0);
+      return Buffer.from(reusableBuffers.i64);
+    }
+    case "F64": {
+      reusableBuffers.f64.writeDoubleLE(field.val as number, 0);
+      return Buffer.from(reusableBuffers.f64);
+    }
+    case "String": {
+      return Buffer.from(field.val as string, "utf8");
+    }
+    case "Buffer": {
+      return field.val as Buffer;
+    }
     default:
       throw new Error("NO WAY TO RESOLVE " + field.type);
   }
@@ -1963,12 +2011,12 @@ class StreamWriter {
   constructor(filePath: string, batchSize: number = 1024 * 1024, highWaterMark: number = 16 * 1024) {
     this.batchSize = batchSize;
     this.highWaterMark = highWaterMark;
-    this.writeStream = createWriteStream(filePath, { 
+    this.writeStream = createWriteStream(filePath, {
       highWaterMark: this.highWaterMark,
-      flags: 'w'
+      flags: "w",
     });
-    
-    this.writeStream.on('error', (error) => {
+
+    this.writeStream.on("error", (error) => {
       this.writePromises.forEach(({ reject }) => reject(error));
       this.writePromises = [];
     });
@@ -1994,7 +2042,7 @@ class StreamWriter {
 
   // Synchronously add string as buffer
   addString(value: string): void {
-    this.addBuffer(Buffer.from(value, 'utf8'));
+    this.addBuffer(Buffer.from(value, "utf8"));
   }
 
   // Get current queued size
@@ -2009,12 +2057,12 @@ class StreamWriter {
     }
 
     this.isWriting = true;
-    
+
     try {
       while (this.writeQueue.length > 0) {
         const batchBuffers: Buffer[] = [];
         let batchSize = 0;
-        
+
         // Collect buffers up to batch size
         while (this.writeQueue.length > 0 && batchSize < this.batchSize) {
           const buffer = this.writeQueue.shift()!;
@@ -2022,7 +2070,7 @@ class StreamWriter {
           batchSize += buffer.length;
           this.queuedSize -= buffer.length;
         }
-        
+
         if (batchBuffers.length > 0) {
           const combinedBuffer = Buffer.concat(batchBuffers);
           await this.writeToStream(combinedBuffer);
@@ -2030,7 +2078,7 @@ class StreamWriter {
       }
     } finally {
       this.isWriting = false;
-      
+
       // Resolve any pending promises
       this.writePromises.forEach(({ resolve }) => resolve());
       this.writePromises = [];
@@ -2041,13 +2089,13 @@ class StreamWriter {
   private writeToStream(buffer: Buffer): Promise<void> {
     return new Promise((resolve, reject) => {
       const canContinue = this.writeStream.write(buffer);
-      
+
       if (canContinue) {
         resolve();
       } else {
         // Handle backpressure
-        this.writeStream.once('drain', resolve);
-        this.writeStream.once('error', reject);
+        this.writeStream.once("drain", resolve);
+        this.writeStream.once("error", reject);
       }
     });
   }
@@ -2064,7 +2112,7 @@ class StreamWriter {
     const promise = new Promise<void>((resolve, reject) => {
       this.writePromises.push({ resolve, reject });
     });
-    
+
     this.processQueue();
     return promise;
   }
@@ -2072,7 +2120,7 @@ class StreamWriter {
   // Close the stream
   async close(): Promise<void> {
     await this.flush();
-    
+
     return new Promise((resolve, reject) => {
       this.writeStream.end((error) => {
         if (error) {
@@ -2091,7 +2139,8 @@ class BufferAccumulator {
   private file: BinaryFile;
   private batchSize: number;
 
-  constructor(file: BinaryFile, batchSize: number = 1024 * 1024) { // 1MB batch size by default
+  constructor(file: BinaryFile, batchSize: number = 1024 * 1024) {
+    // 1MB batch size by default
     this.file = file;
     this.batchSize = batchSize;
   }
@@ -2115,7 +2164,7 @@ class BufferAccumulator {
 
   // Synchronously add string as buffer
   addString(value: string): void {
-    this.buffers.push(Buffer.from(value, 'utf8'));
+    this.buffers.push(Buffer.from(value, "utf8"));
   }
 
   // Get current accumulated size
@@ -2146,11 +2195,11 @@ const writeFieldBufferedStream = async (streamWriter: StreamWriter, schemaFields
   for (const schemaField of schemaFields) {
     const buffer = serializeSchemaFieldToBuffer(schemaField);
     streamWriter.addBuffer(buffer);
-    
+
     // Flush periodically to avoid memory buildup and handle backpressure
     await streamWriter.flushIfNeeded();
   }
-  
+
   // Final flush
   await streamWriter.flush();
 };
@@ -2158,16 +2207,16 @@ const writeFieldBufferedStream = async (streamWriter: StreamWriter, schemaFields
 // Optimized buffered version with reduced Promise overhead (kept for compatibility)
 const writeFieldBuffered = async (file: BinaryFile, schemaFields: SchemaField[]) => {
   const accumulator = new BufferAccumulator(file);
-  
+
   // Synchronously serialize all fields to buffers
   for (const schemaField of schemaFields) {
     const buffer = serializeSchemaFieldToBuffer(schemaField);
     accumulator.addBuffer(buffer);
-    
+
     // Flush periodically to avoid memory buildup
     await accumulator.flushIfNeeded();
   }
-  
+
   // Final flush
   await accumulator.flush();
 };

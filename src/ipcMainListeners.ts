@@ -1578,7 +1578,7 @@ export const registerIpcMainListeners = (
       graphExecutionRequest: {
         nodes: Array<{
           id: string;
-          type: string;
+          type: FlowNodeType;
           data: {
             label: string;
             type: string;
