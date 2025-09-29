@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, DragEvent } from 'react';
+import React, { useCallback, useState, useRef, DragEvent } from "react";
 import {
   ReactFlow,
   Node,
@@ -14,8 +14,8 @@ import {
   XYPosition,
   Handle,
   Position,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 // Serialization types
 interface SerializedNode {
@@ -66,25 +66,30 @@ interface NodeData extends Record<string, unknown> {
 
 interface PackFilesNodeData extends NodeData {
   textValue: string;
-  outputType: 'PackFiles';
+  outputType: "PackFiles";
 }
 
 interface TableSelectionNodeData extends NodeData {
   textValue: string;
-  inputType: 'PackFiles';
-  outputType: 'TableSelection';
+  inputType: "PackFiles";
+  outputType: "TableSelection";
 }
 
 interface ColumnSelectionNodeData extends NodeData {
   textValue: string;
-  inputType: 'TableSelection';
-  outputType: 'ColumnSelection';
+  inputType: "TableSelection";
+  outputType: "ColumnSelection";
 }
 
 interface NumericAdjustmentNodeData extends NodeData {
   textValue: string;
-  inputType: 'ColumnSelection';
-  outputType: 'ChangedColumnSelection';
+  inputType: "ColumnSelection";
+  outputType: "ChangedColumnSelection";
+}
+
+interface SaveChangesNodeData extends NodeData {
+  textValue: string;
+  inputType: "ChangedColumnSelection";
 }
 
 interface DraggableNodeData {
@@ -95,41 +100,33 @@ interface DraggableNodeData {
 
 // Custom PackFiles node component with built-in textbox
 const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data, id }) => {
-  const [textValue, setTextValue] = useState(data.textValue || '');
+  const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
     setTextValue(newValue);
 
     // Update the node data by dispatching a custom event that the parent can listen to
-    const updateEvent = new CustomEvent('nodeDataUpdate', {
-      detail: { nodeId: id, textValue: newValue }
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
 
   return (
     <div className="bg-gray-700 border-2 border-blue-500 rounded-lg p-4 min-w-[200px]">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-blue-500"
-      />
-      
-      <div className="text-white font-medium text-sm mb-2">
-        {data.label}
-      </div>
-      
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
       <textarea
         value={textValue}
         onChange={handleTextChange}
         placeholder="Enter pack files configuration..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-blue-400"
       />
-      
-      <div className="mt-2 text-xs text-gray-400">
-        Output: PackFiles
-      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: PackFiles</div>
 
       <Handle
         type="source"
@@ -143,15 +140,15 @@ const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data
 
 // Custom TableSelection node component that accepts PackedFiles input and outputs TableSelection
 const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: string }> = ({ data, id }) => {
-  const [textValue, setTextValue] = useState(data.textValue || '');
+  const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
     setTextValue(newValue);
 
     // Update the node data by dispatching a custom event that the parent can listen to
-    const updateEvent = new CustomEvent('nodeDataUpdate', {
-      detail: { nodeId: id, textValue: newValue }
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -164,26 +161,20 @@ const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: string }>
         className="w-3 h-3 bg-blue-500"
         data-input-type="PackFiles"
       />
-      
-      <div className="text-white font-medium text-sm mb-2">
-        {data.label}
-      </div>
-      
-      <div className="text-xs text-gray-400 mb-2">
-        Input: PackFiles
-      </div>
-      
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: PackFiles</div>
+
       <textarea
         value={textValue}
         onChange={handleTextChange}
         placeholder="Enter table selection criteria..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-purple-400"
       />
-      
-      <div className="mt-2 text-xs text-gray-400">
-        Output: TableSelection
-      </div>
-      
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
       <Handle
         type="source"
         position={Position.Right}
@@ -196,15 +187,15 @@ const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: string }>
 
 // Custom ColumnSelection node component that accepts TableSelection input and outputs ColumnSelection
 const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string }> = ({ data, id }) => {
-  const [textValue, setTextValue] = useState(data.textValue || '');
+  const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
     setTextValue(newValue);
 
     // Update the node data by dispatching a custom event that the parent can listen to
-    const updateEvent = new CustomEvent('nodeDataUpdate', {
-      detail: { nodeId: id, textValue: newValue }
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -218,13 +209,9 @@ const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string 
         data-input-type="TableSelection"
       />
 
-      <div className="text-white font-medium text-sm mb-2">
-        {data.label}
-      </div>
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">
-        Input: TableSelection
-      </div>
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
 
       <textarea
         value={textValue}
@@ -233,9 +220,7 @@ const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string 
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-emerald-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">
-        Output: ColumnSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">Output: ColumnSelection</div>
 
       <Handle
         type="source"
@@ -249,15 +234,15 @@ const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string 
 
 // Custom NumericAdjustment node component that accepts ColumnSelection input and outputs ChangedColumnSelection
 const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: string }> = ({ data, id }) => {
-  const [textValue, setTextValue] = useState(data.textValue || '');
+  const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
     setTextValue(newValue);
 
     // Update the node data by dispatching a custom event that the parent can listen to
-    const updateEvent = new CustomEvent('nodeDataUpdate', {
-      detail: { nodeId: id, textValue: newValue }
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -271,13 +256,9 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
         data-input-type="ColumnSelection"
       />
 
-      <div className="text-white font-medium text-sm mb-2">
-        {data.label}
-      </div>
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">
-        Input: ColumnSelection
-      </div>
+      <div className="text-xs text-gray-400 mb-2">Input: ColumnSelection</div>
 
       <textarea
         value={textValue}
@@ -286,9 +267,7 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">
-        Output: ChangedColumnSelection
-      </div>
+      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
 
       <Handle
         type="source"
@@ -300,15 +279,75 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
   );
 };
 
+// Custom SaveChanges node component that accepts ChangedColumnSelection input
+const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ data, id }) => {
+  const [textValue, setTextValue] = useState(data.textValue || "");
+
+  const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-cyan-500"
+        data-input-type="ChangedColumnSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: ChangedColumnSelection</div>
+
+      <textarea
+        value={textValue}
+        onChange={handleTextChange}
+        placeholder="Enter save configuration (file path, format, etc.)..."
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-green-400"
+      />
+
+      <div className="mt-2 text-xs text-gray-400">Final save operation</div>
+    </div>
+  );
+};
+
 const nodeTypes = [
-  { type: 'packedfiles', label: 'PackFiles Node', description: 'Node with textbox that outputs PackFiles' },
-  { type: 'tableselection', label: 'Table Selection Node', description: 'Accepts PackFiles input, outputs TableSelection' },
-  { type: 'columnselection', label: 'Column Selection Node', description: 'Accepts TableSelection input, outputs ColumnSelection' },
-  { type: 'numericadjustment', label: 'Numeric Adjustment Node', description: 'Accepts ColumnSelection input, outputs ChangedColumnSelection' },
-];
+  { type: "packedfiles", label: "PackFiles Node", description: "Node with textbox that outputs PackFiles" },
+  {
+    type: "tableselection",
+    label: "Table Selection Node",
+    description: "Accepts PackFiles input, outputs TableSelection",
+  },
+  {
+    type: "columnselection",
+    label: "Column Selection Node",
+    description: "Accepts TableSelection input, outputs ColumnSelection",
+  },
+  {
+    type: "numericadjustment",
+    label: "Numeric Adjustment Node",
+    description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
+  },
+  {
+    type: "savechanges",
+    label: "Save Changes Node",
+    description: "Accepts ChangedColumnSelection input and saves the changes",
+  },
+] as { type: FlowNodeType; label: string; description: string }[];
 
 // Backend graph execution service
-const executeGraphInBackend = async (nodes: Node[], edges: Edge[]): Promise<{
+const executeGraphInBackend = async (
+  nodes: Node[],
+  edges: Edge[]
+): Promise<{
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
   totalExecuted: number;
@@ -318,29 +357,29 @@ const executeGraphInBackend = async (nodes: Node[], edges: Edge[]): Promise<{
 }> => {
   try {
     // Convert nodes and edges to serialized format for backend
-    const serializedNodes = nodes.map(node => ({
+    const serializedNodes = nodes.map((node) => ({
       id: node.id,
-      type: node.type || 'default',
+      type: node.type || "default",
       data: {
-        label: node.data?.label ? String(node.data.label) : '',
-        type: node.data?.type ? String(node.data.type) : '',
-        textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : '',
+        label: node.data?.label ? String(node.data.label) : "",
+        type: node.data?.type ? String(node.data.type) : "",
+        textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : "",
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
-      }
+      },
     }));
 
-    const serializedConnections = edges.map(edge => ({
+    const serializedConnections = edges.map((edge) => ({
       id: edge.id || `${edge.source}-${edge.target}`,
-      sourceId: edge.source || '',
-      targetId: edge.target || '',
-      sourceType: (nodes.find(n => n.id === edge.source)?.data as any)?.outputType,
-      targetType: (nodes.find(n => n.id === edge.target)?.data as any)?.inputType,
+      sourceId: edge.source || "",
+      targetId: edge.target || "",
+      sourceType: (nodes.find((n) => n.id === edge.source)?.data as any)?.outputType,
+      targetType: (nodes.find((n) => n.id === edge.target)?.data as any)?.inputType,
     }));
 
     const response = await window.api?.executeNodeGraph({
       nodes: serializedNodes,
-      connections: serializedConnections
+      connections: serializedConnections,
     });
 
     if (!response) {
@@ -350,7 +389,7 @@ const executeGraphInBackend = async (nodes: Node[], edges: Edge[]): Promise<{
         totalExecuted: 0,
         successCount: 0,
         failureCount: 0,
-        error: 'Backend API not available'
+        error: "Backend API not available",
       };
     }
 
@@ -363,17 +402,17 @@ const executeGraphInBackend = async (nodes: Node[], edges: Edge[]): Promise<{
       totalExecuted: response.totalExecuted,
       successCount: response.successCount,
       failureCount: response.failureCount,
-      error: response.error
+      error: response.error,
     };
   } catch (error) {
-    console.error('Error executing node graph in backend:', error);
+    console.error("Error executing node graph in backend:", error);
     return {
       success: false,
       executionResults: new Map(),
       totalExecuted: 0,
       successCount: 0,
       failureCount: 0,
-      error: error instanceof Error ? error.message : 'Backend graph execution failed'
+      error: error instanceof Error ? error.message : "Backend graph execution failed",
     };
   }
 };
@@ -384,6 +423,7 @@ const reactFlowNodeTypes = {
   tableselection: TableSelectionNode,
   columnselection: ColumnSelectionNode,
   numericadjustment: NumericAdjustmentNode,
+  savechanges: SaveChangesNode,
 };
 
 const initialNodes: Node[] = [];
@@ -447,12 +487,11 @@ const NodeEditor: React.FC = () => {
       );
     };
 
-    window.addEventListener('nodeDataUpdate', handleNodeDataUpdate as EventListener);
+    window.addEventListener("nodeDataUpdate", handleNodeDataUpdate as EventListener);
     return () => {
-      window.removeEventListener('nodeDataUpdate', handleNodeDataUpdate as EventListener);
+      window.removeEventListener("nodeDataUpdate", handleNodeDataUpdate as EventListener);
     };
   }, [setNodes]);
-
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -460,31 +499,33 @@ const NodeEditor: React.FC = () => {
       if (!params.source || !params.target) return;
 
       const currentNodes = nodesRef.current;
-      const sourceNode = currentNodes.find(node => node.id === params.source);
-      const targetNode = currentNodes.find(node => node.id === params.target);
+      const sourceNode = currentNodes.find((node) => node.id === params.source);
+      const targetNode = currentNodes.find((node) => node.id === params.target);
 
       if (!sourceNode || !targetNode) return;
 
       // Get output type from source node
       let sourceOutputType: NodeEdgeTypes | undefined;
-      if (sourceNode.type === 'packedfiles' && sourceNode.data) {
+      if (sourceNode.type === "packedfiles" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as PackFilesNodeData).outputType;
-      } else if (sourceNode.type === 'tableselection' && sourceNode.data) {
+      } else if (sourceNode.type === "tableselection" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TableSelectionNodeData).outputType;
-      } else if (sourceNode.type === 'columnselection' && sourceNode.data) {
+      } else if (sourceNode.type === "columnselection" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as ColumnSelectionNodeData).outputType;
-      } else if (sourceNode.type === 'numericadjustment' && sourceNode.data) {
+      } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
       }
 
       // Get input type from target node
       let targetInputType: NodeEdgeTypes | undefined;
-      if (targetNode.type === 'tableselection' && targetNode.data) {
+      if (targetNode.type === "tableselection" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as TableSelectionNodeData).inputType;
-      } else if (targetNode.type === 'columnselection' && targetNode.data) {
+      } else if (targetNode.type === "columnselection" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as ColumnSelectionNodeData).inputType;
-      } else if (targetNode.type === 'numericadjustment' && targetNode.data) {
+      } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
+      } else if (targetNode.type === "savechanges" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as SaveChangesNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -493,8 +534,8 @@ const NodeEditor: React.FC = () => {
           const newEdge = {
             ...params,
             id: `edge-${params.source}-${params.target}`,
-            type: 'default',
-            style: { stroke: '#3b82f6', strokeWidth: 2 },
+            type: "default",
+            style: { stroke: "#3b82f6", strokeWidth: 2 },
             animated: true,
           };
           return [...eds, newEdge];
@@ -507,7 +548,7 @@ const NodeEditor: React.FC = () => {
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
+    event.dataTransfer.dropEffect = "move";
   }, []);
 
   const onDrop = useCallback(
@@ -515,14 +556,14 @@ const NodeEditor: React.FC = () => {
       event.preventDefault();
 
       const reactFlowBounds = reactFlowWrapper.current?.getBoundingClientRect();
-      const type = event.dataTransfer.getData('application/reactflow');
+      const type = event.dataTransfer.getData("application/reactflow");
 
-      if (typeof type === 'undefined' || !type || !reactFlowBounds || !reactFlowInstance) {
+      if (typeof type === "undefined" || !type || !reactFlowBounds || !reactFlowInstance) {
         return;
       }
 
       const nodeData = JSON.parse(type) as DraggableNodeData;
-      
+
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top,
@@ -530,77 +571,90 @@ const NodeEditor: React.FC = () => {
 
       let newNode: Node;
 
-      if (nodeData.type === 'packedfiles') {
+      if (nodeData.type === "packedfiles") {
         // Create PackFiles node with special data structure
         newNode = {
           id: getNodeId(),
-          type: 'packedfiles',
+          type: "packedfiles",
           position,
           data: {
             label: nodeData.label,
             type: nodeData.type,
-            textValue: '',
-            outputType: 'PackFiles' as NodeEdgeTypes,
+            textValue: "",
+            outputType: "PackFiles" as NodeEdgeTypes,
           } as PackFilesNodeData,
         };
-      } else if (nodeData.type === 'tableselection') {
+      } else if (nodeData.type === "tableselection") {
         // Create TableSelection node with special data structure
         newNode = {
           id: getNodeId(),
-          type: 'tableselection',
+          type: "tableselection",
           position,
           data: {
             label: nodeData.label,
             type: nodeData.type,
-            textValue: '',
-            inputType: 'PackFiles' as NodeEdgeTypes,
-            outputType: 'TableSelection' as NodeEdgeTypes,
+            textValue: "",
+            inputType: "PackFiles" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
           } as TableSelectionNodeData,
         };
-      } else if (nodeData.type === 'columnselection') {
+      } else if (nodeData.type === "columnselection") {
         // Create ColumnSelection node with special data structure
         newNode = {
           id: getNodeId(),
-          type: 'columnselection',
+          type: "columnselection",
           position,
           data: {
             label: nodeData.label,
             type: nodeData.type,
-            textValue: '',
-            inputType: 'TableSelection' as NodeEdgeTypes,
-            outputType: 'ColumnSelection' as NodeEdgeTypes,
+            textValue: "",
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "ColumnSelection" as NodeEdgeTypes,
           } as ColumnSelectionNodeData,
         };
-      } else if (nodeData.type === 'numericadjustment') {
+      } else if (nodeData.type === "numericadjustment") {
         // Create NumericAdjustment node with special data structure
         newNode = {
           id: getNodeId(),
-          type: 'numericadjustment',
+          type: "numericadjustment",
           position,
           data: {
             label: nodeData.label,
             type: nodeData.type,
-            textValue: '',
-            inputType: 'ColumnSelection' as NodeEdgeTypes,
-            outputType: 'ChangedColumnSelection' as NodeEdgeTypes,
+            textValue: "",
+            inputType: "ColumnSelection" as NodeEdgeTypes,
+            outputType: "ChangedColumnSelection" as NodeEdgeTypes,
           } as NumericAdjustmentNodeData,
+        };
+      } else if (nodeData.type === "savechanges") {
+        // Create SaveChanges node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "savechanges",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            textValue: "",
+            inputType: "ChangedColumnSelection" as NodeEdgeTypes,
+          } as SaveChangesNodeData,
         };
       } else {
         // Create standard node
         newNode = {
           id: getNodeId(),
-          type: 'default',
+          type: "default",
           position,
           data: {
             label: nodeData.label,
             type: nodeData.type,
           },
           style: {
-            border: '2px solid #3b82f6',
-            borderRadius: '8px',
-            padding: '10px',
-            background: '#374151',
-            color: '#ffffff',
+            border: "2px solid #3b82f6",
+            borderRadius: "8px",
+            padding: "10px",
+            background: "#374151",
+            color: "#ffffff",
           },
         };
       }
@@ -611,46 +665,46 @@ const NodeEditor: React.FC = () => {
   );
 
   const onDragStart = (event: DragEvent, nodeType: DraggableNodeData) => {
-    event.dataTransfer.setData('application/reactflow', JSON.stringify(nodeType));
-    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData("application/reactflow", JSON.stringify(nodeType));
+    event.dataTransfer.effectAllowed = "move";
   };
 
   const serializeNodeGraph = useCallback((): SerializedNodeGraph => {
-    const serializedNodes: SerializedNode[] = nodes.map(node => ({
+    const serializedNodes: SerializedNode[] = nodes.map((node) => ({
       id: node.id,
-      type: node.type || 'default',
+      type: node.type || "default",
       position: node.position,
       data: {
-        label: String(node.data?.label || ''),
-        type: String(node.data?.type || ''),
-        textValue: String((node.data as any)?.textValue || ''),
+        label: String(node.data?.label || ""),
+        type: String(node.data?.type || ""),
+        textValue: String((node.data as any)?.textValue || ""),
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
-      }
+      },
     }));
 
-    const serializedConnections: SerializedConnection[] = edges.map(edge => {
-      const sourceNode = nodes.find(n => n.id === edge.source);
-      const targetNode = nodes.find(n => n.id === edge.target);
+    const serializedConnections: SerializedConnection[] = edges.map((edge) => {
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      const targetNode = nodes.find((n) => n.id === edge.target);
 
       return {
         id: edge.id || `${edge.source}-${edge.target}`,
-        sourceId: edge.source || '',
-        targetId: edge.target || '',
+        sourceId: edge.source || "",
+        targetId: edge.target || "",
         sourceType: (sourceNode?.data as any)?.outputType,
         targetType: (targetNode?.data as any)?.inputType,
       };
     });
 
     return {
-      version: '1.0',
+      version: "1.0",
       timestamp: Date.now(),
       nodes: serializedNodes,
       connections: serializedConnections,
       metadata: {
         nodeCount: nodes.length,
         connectionCount: edges.length,
-      }
+      },
     };
   }, [nodes, edges]);
 
@@ -659,117 +713,125 @@ const NodeEditor: React.FC = () => {
     const jsonString = JSON.stringify(serializedGraph, null, 2);
 
     // Create and trigger download
-    const blob = new Blob([jsonString], { type: 'application/json' });
+    const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `node-graph-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    link.download = `node-graph-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, [serializeNodeGraph]);
 
-  const loadNodeGraph = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const jsonContent = event.target?.result as string;
-        const serializedGraph: SerializedNodeGraph = JSON.parse(jsonContent);
+  const loadNodeGraph = useCallback(
+    (file: File) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const jsonContent = event.target?.result as string;
+          const serializedGraph: SerializedNodeGraph = JSON.parse(jsonContent);
 
-        // Validate the loaded data structure
-        if (!serializedGraph.nodes || !serializedGraph.connections) {
-          throw new Error('Invalid file format: missing nodes or connections');
-        }
-
-        // Convert serialized nodes back to ReactFlow nodes
-        const loadedNodes: Node[] = serializedGraph.nodes.map(serializedNode => {
-          const node: Node = {
-            id: serializedNode.id,
-            type: serializedNode.type,
-            position: serializedNode.position,
-            data: serializedNode.data,
-          };
-
-          // Add styling for default nodes
-          if (serializedNode.type === 'default') {
-            node.style = {
-              border: '2px solid #3b82f6',
-              borderRadius: '8px',
-              padding: '10px',
-              background: '#374151',
-              color: '#ffffff',
-            };
+          // Validate the loaded data structure
+          if (!serializedGraph.nodes || !serializedGraph.connections) {
+            throw new Error("Invalid file format: missing nodes or connections");
           }
 
-          return node;
-        });
+          // Convert serialized nodes back to ReactFlow nodes
+          const loadedNodes: Node[] = serializedGraph.nodes.map((serializedNode) => {
+            const node: Node = {
+              id: serializedNode.id,
+              type: serializedNode.type,
+              position: serializedNode.position,
+              data: serializedNode.data,
+            };
 
-        // Convert serialized connections back to ReactFlow edges
-        const loadedEdges: Edge[] = serializedGraph.connections.map(serializedConnection => ({
-          id: serializedConnection.id,
-          source: serializedConnection.sourceId,
-          target: serializedConnection.targetId,
-          type: 'default',
-          style: { stroke: '#3b82f6', strokeWidth: 2 },
-          animated: true,
-        }));
+            // Add styling for default nodes
+            if (serializedNode.type === "default") {
+              node.style = {
+                border: "2px solid #3b82f6",
+                borderRadius: "8px",
+                padding: "10px",
+                background: "#374151",
+                color: "#ffffff",
+              };
+            }
 
-        // Update node ID counter to avoid conflicts
-        const maxNodeId = Math.max(
-          ...serializedGraph.nodes
-            .map(node => parseInt(node.id.replace('node_', ''), 10))
-            .filter(id => !isNaN(id)),
-          -1
-        );
-        nodeId = maxNodeId + 1;
+            return node;
+          });
 
-        // Set the loaded data
-        setNodes(loadedNodes);
-        setEdges(loadedEdges);
+          // Convert serialized connections back to ReactFlow edges
+          const loadedEdges: Edge[] = serializedGraph.connections.map((serializedConnection) => ({
+            id: serializedConnection.id,
+            source: serializedConnection.sourceId,
+            target: serializedConnection.targetId,
+            type: "default",
+            style: { stroke: "#3b82f6", strokeWidth: 2 },
+            animated: true,
+          }));
 
-        console.log(`Loaded graph with ${loadedNodes.length} nodes and ${loadedEdges.length} connections`);
-      } catch (error) {
-        console.error('Failed to load node graph:', error);
-        alert('Failed to load the node graph file. Please check the file format.');
+          // Update node ID counter to avoid conflicts
+          const maxNodeId = Math.max(
+            ...serializedGraph.nodes
+              .map((node) => parseInt(node.id.replace("node_", ""), 10))
+              .filter((id) => !isNaN(id)),
+            -1
+          );
+          nodeId = maxNodeId + 1;
+
+          // Set the loaded data
+          setNodes(loadedNodes);
+          setEdges(loadedEdges);
+
+          console.log(`Loaded graph with ${loadedNodes.length} nodes and ${loadedEdges.length} connections`);
+        } catch (error) {
+          console.error("Failed to load node graph:", error);
+          alert("Failed to load the node graph file. Please check the file format.");
+        }
+      };
+
+      reader.readAsText(file);
+    },
+    [setNodes, setEdges]
+  );
+
+  const handleFileInput = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        loadNodeGraph(file);
       }
-    };
-
-    reader.readAsText(file);
-  }, [setNodes, setEdges]);
-
-  const handleFileInput = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      loadNodeGraph(file);
-    }
-    // Clear the input so the same file can be loaded again
-    event.target.value = '';
-  }, [loadNodeGraph]);
+      // Clear the input so the same file can be loaded again
+      event.target.value = "";
+    },
+    [loadNodeGraph]
+  );
 
   // Handle keyboard events for node deletion
   React.useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
       // Delete or Backspace key
-      if (event.key === 'Delete' || event.key === 'Backspace') {
+      if (event.key === "Delete" || event.key === "Backspace") {
         // Prevent default behavior if we're not in a text input
         const target = event.target as HTMLElement;
-        if (target.tagName !== 'TEXTAREA' && target.tagName !== 'INPUT') {
+        if (target.tagName !== "TEXTAREA" && target.tagName !== "INPUT") {
           event.preventDefault();
 
           // Find selected nodes
-          const selectedNodes = nodes.filter(node => node.selected);
+          const selectedNodes = nodes.filter((node) => node.selected);
           if (selectedNodes.length > 0) {
-            const selectedNodeIds = selectedNodes.map(node => node.id);
+            const selectedNodeIds = selectedNodes.map((node) => node.id);
 
             // Remove selected nodes
-            setNodes((nds) => nds.filter(node => !selectedNodeIds.includes(node.id)));
+            setNodes((nds) => nds.filter((node) => !selectedNodeIds.includes(node.id)));
 
             // Remove edges connected to deleted nodes
-            setEdges((eds) => eds.filter(edge =>
-              !selectedNodeIds.includes(edge.source || '') &&
-              !selectedNodeIds.includes(edge.target || '')
-            ));
+            setEdges((eds) =>
+              eds.filter(
+                (edge) =>
+                  !selectedNodeIds.includes(edge.source || "") && !selectedNodeIds.includes(edge.target || "")
+              )
+            );
 
             console.log(`Deleted ${selectedNodes.length} nodes and their connections`);
           }
@@ -777,9 +839,9 @@ const NodeEditor: React.FC = () => {
       }
     };
 
-    document.addEventListener('keydown', handleKeyPress);
+    document.addEventListener("keydown", handleKeyPress);
     return () => {
-      document.removeEventListener('keydown', handleKeyPress);
+      document.removeEventListener("keydown", handleKeyPress);
     };
   }, [nodes, setNodes, setEdges]);
 
@@ -791,38 +853,46 @@ const NodeEditor: React.FC = () => {
     if (isExecuting) return;
 
     setIsExecuting(true);
-    console.log('Starting node graph execution in backend...');
+    console.log("Starting node graph execution in backend...");
 
     try {
       if (nodes.length === 0) {
-        console.error('No nodes found in the graph');
-        alert('No nodes found. Add nodes to the graph before executing.');
+        console.error("No nodes found in the graph");
+        alert("No nodes found. Add nodes to the graph before executing.");
         return;
       }
 
       // Execute the entire graph in the backend
       const result = await executeGraphInBackend(nodes, edges);
 
-      console.log(`Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`);
+      console.log(
+        `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`
+      );
 
       if (result.error) {
-        console.error('Graph execution error:', result.error);
+        console.error("Graph execution error:", result.error);
       }
 
       // Show results in alert (in a real app, you'd show this in a better UI)
       const summary = Array.from(result.executionResults.entries())
-        .map(([nodeId, nodeResult]) => `${nodeId}: ${nodeResult.success ? '✅' : '❌' + (nodeResult.error ? ` (${nodeResult.error})` : '')}`)
-        .join('\n');
+        .map(
+          ([nodeId, nodeResult]) =>
+            `${nodeId}: ${
+              nodeResult.success ? "✅" : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "")
+            }`
+        )
+        .join("\n");
 
       const statusMessage = result.success
         ? `✅ Graph execution successful!`
-        : `❌ Graph execution ${result.failureCount > 0 ? 'completed with errors' : 'failed'}`;
+        : `❌ Graph execution ${result.failureCount > 0 ? "completed with errors" : "failed"}`;
 
-      alert(`${statusMessage}\n\nExecution Summary (${result.successCount}/${result.totalExecuted} nodes succeeded):\n${summary}\n\nCheck console for detailed results.`);
-
+      alert(
+        `${statusMessage}\n\nExecution Summary (${result.successCount}/${result.totalExecuted} nodes succeeded):\n${summary}\n\nCheck console for detailed results.`
+      );
     } catch (error) {
-      console.error('Error during graph execution:', error);
-      alert(`Graph execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error during graph execution:", error);
+      alert(`Graph execution failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setIsExecuting(false);
     }
@@ -866,22 +936,38 @@ const NodeEditor: React.FC = () => {
               disabled={nodes.length === 0 || isExecuting}
               className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
                 nodes.length > 0 && !isExecuting
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer'
-                  : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                  ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
+                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
               }`}
             >
               {isExecuting ? (
                 <>
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   Running...
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                   Run
                 </>
@@ -891,25 +977,33 @@ const NodeEditor: React.FC = () => {
             {/* Delete selected nodes button */}
             <button
               onClick={() => {
-                const selectedNodes = nodes.filter(node => node.selected);
+                const selectedNodes = nodes.filter((node) => node.selected);
                 if (selectedNodes.length > 0) {
-                  const selectedNodeIds = selectedNodes.map(node => node.id);
-                  setNodes((nds) => nds.filter(node => !selectedNodeIds.includes(node.id)));
-                  setEdges((eds) => eds.filter(edge =>
-                    !selectedNodeIds.includes(edge.source || '') &&
-                    !selectedNodeIds.includes(edge.target || '')
-                  ));
+                  const selectedNodeIds = selectedNodes.map((node) => node.id);
+                  setNodes((nds) => nds.filter((node) => !selectedNodeIds.includes(node.id)));
+                  setEdges((eds) =>
+                    eds.filter(
+                      (edge) =>
+                        !selectedNodeIds.includes(edge.source || "") &&
+                        !selectedNodeIds.includes(edge.target || "")
+                    )
+                  );
                 }
               }}
-              disabled={!nodes.some(node => node.selected)}
+              disabled={!nodes.some((node) => node.selected)}
               className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                nodes.some(node => node.selected)
-                  ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
-                  : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                nodes.some((node) => node.selected)
+                  ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
               }`}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
               </svg>
               Delete
             </button>
@@ -920,7 +1014,12 @@ const NodeEditor: React.FC = () => {
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                />
               </svg>
               Load Graph
             </label>
@@ -931,7 +1030,12 @@ const NodeEditor: React.FC = () => {
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                />
               </svg>
               Save Graph
             </button>
