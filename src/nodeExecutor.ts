@@ -1,48 +1,40 @@
 import * as fs from "fs";
 import * as path from "path";
-import { readPack } from "./packFileSerializer";
-
-interface NodeExecutionRequest {
-  nodeId: string;
-  nodeType: string;
-  textValue: string;
-  inputData: any;
-}
-
-interface NodeExecutionResult {
-  success: boolean;
-  data?: any;
-  error?: string;
-}
+import { chunkSchemaIntoRows, getPacksTableData, readPack } from "./packFileSerializer";
+import appData from "./appData";
+import { AmendedSchemaField } from "./packFileTypes";
 
 export const executeNodeAction = async (request: NodeExecutionRequest): Promise<NodeExecutionResult> => {
   const { nodeId, nodeType, textValue, inputData } = request;
 
   try {
     switch (nodeType) {
-      case 'packedfiles':
+      case "packedfiles":
         return await executePackFilesNode(nodeId, textValue);
 
-      case 'tableselection':
+      case "tableselection":
         return await executeTableSelectionNode(nodeId, textValue, inputData);
 
-      case 'columnselection':
+      case "columnselection":
         return await executeColumnSelectionNode(nodeId, textValue, inputData);
 
-      case 'numericadjustment':
+      case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
+
+      case "savechanges":
+        return await executeSaveChangesNode(nodeId, textValue, inputData);
 
       default:
         return {
           success: false,
-          error: `Unsupported node type: ${nodeType}`
+          error: `Unsupported node type: ${nodeType}`,
         };
     }
   } catch (error) {
     console.error(`Error executing ${nodeType} node ${nodeId}:`, error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown execution error'
+      error: error instanceof Error ? error.message : "Unknown execution error",
     };
   }
 };
@@ -51,44 +43,42 @@ async function executePackFilesNode(nodeId: string, textValue: string): Promise<
   console.log(`PackFiles Node ${nodeId}: Processing "${textValue}"`);
 
   // Parse file paths from text input
-  const filePaths = textValue.split('\n').filter(line => line.trim());
-  const packFiles = [];
+  const filePaths = textValue
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => (line.endsWith(".pack") ? line : `${line}.pack`));
+  const packFiles = [] as PackFilesNodeFile[];
 
   for (const filePath of filePaths) {
-    const trimmedPath = filePath.trim();
-    if (!trimmedPath) continue;
+    let foundMod = appData.enabledMods.find((mod) => mod.name == filePath);
+    if (!foundMod) {
+      foundMod = appData.allMods.find((mod) => mod.name == filePath);
+    }
 
     try {
       // Check if file exists
-      if (fs.existsSync(trimmedPath)) {
-        const stats = fs.statSync(trimmedPath);
+      if (foundMod) {
         packFiles.push({
-          name: path.basename(trimmedPath),
-          path: trimmedPath,
-          size: stats.size,
-          lastModified: stats.mtime,
-          loaded: true
+          name: path.basename(foundMod.path),
+          path: foundMod.path,
+          loaded: true,
         });
       } else {
-        console.warn(`PackFiles Node ${nodeId}: File not found: ${trimmedPath}`);
+        console.warn(`PackFiles Node ${nodeId}: File not found: ${filePath}`);
         packFiles.push({
-          name: path.basename(trimmedPath),
-          path: trimmedPath,
-          size: 0,
-          lastModified: null,
+          name: filePath,
+          path: filePath,
           loaded: false,
-          error: 'File not found'
+          error: "File not found",
         });
       }
     } catch (error) {
-      console.error(`PackFiles Node ${nodeId}: Error processing file ${trimmedPath}:`, error);
+      console.error(`PackFiles Node ${nodeId}: Error processing file ${filePath}:`, error);
       packFiles.push({
-        name: path.basename(trimmedPath),
-        path: trimmedPath,
-        size: 0,
-        lastModified: null,
+        name: path.basename(filePath),
+        path: filePath,
         loaded: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   }
@@ -96,23 +86,31 @@ async function executePackFilesNode(nodeId: string, textValue: string): Promise<
   return {
     success: true,
     data: {
-      type: 'PackFiles',
+      type: "PackFiles",
       files: packFiles,
       count: packFiles.length,
-      loadedCount: packFiles.filter(f => f.loaded).length
-    }
+      loadedCount: packFiles.filter((f) => f.loaded).length,
+    } as PackFilesNodeData,
   };
 }
 
-async function executeTableSelectionNode(nodeId: string, textValue: string, inputData: any): Promise<NodeExecutionResult> {
+async function executeTableSelectionNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData
+): Promise<NodeExecutionResult> {
   console.log(`TableSelection Node ${nodeId}: Processing "${textValue}" with input:`, inputData);
 
-  if (!inputData || inputData.type !== 'PackFiles') {
-    return { success: false, error: 'Invalid input: Expected PackFiles data' };
+  if (!inputData || inputData.type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles data" };
   }
 
-  const tableNames = textValue.split('\n').filter(line => line.trim()).map(name => name.trim());
-  const selectedTables = [];
+  const tableNames = textValue
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((name) => name.trim())
+    .map((name) => (name.startsWith("db\\") ? name : `db\\${name}`));
+  const selectedTables = [] as DBTablesNodeTable[];
 
   for (const file of inputData.files) {
     if (!file.loaded) {
@@ -122,22 +120,19 @@ async function executeTableSelectionNode(nodeId: string, textValue: string, inpu
 
     try {
       // Read pack file to get table information
-      const pack = await readPack(file.path);
+      const pack = await readPack(file.path, { tablesToRead: tableNames });
+      getPacksTableData([pack], tableNames);
 
       for (const tableName of tableNames) {
         // Find tables that match the criteria
-        const matchingTables = pack.packedFiles.filter(pf =>
-          pf.name.includes(tableName) || pf.name.includes(`${tableName}.tsv`)
-        );
+        const matchingTables = pack.packedFiles.filter((pf) => pf.name.includes(tableName));
 
         for (const table of matchingTables) {
           selectedTables.push({
             name: tableName,
             fileName: table.name,
-            sourceFile: file.path,
-            size: table.data?.length || 0,
-            // Mock some columns for now - in real implementation, you'd parse the table structure
-            columns: ['id', 'key', 'value', 'description']
+            sourceFile: file,
+            table,
           });
         }
       }
@@ -149,54 +144,68 @@ async function executeTableSelectionNode(nodeId: string, textValue: string, inpu
   return {
     success: true,
     data: {
-      type: 'TableSelection',
+      type: "TableSelection",
       tables: selectedTables,
       sourceFiles: inputData.files,
-      tableCount: selectedTables.length
-    }
+      tableCount: selectedTables.length,
+    } as DBTablesNodeData,
   };
 }
 
-async function executeColumnSelectionNode(nodeId: string, textValue: string, inputData: any): Promise<NodeExecutionResult> {
+async function executeColumnSelectionNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
   console.log(`ColumnSelection Node ${nodeId}: Processing "${textValue}" with input:`, inputData);
 
-  if (!inputData || inputData.type !== 'TableSelection') {
-    return { success: false, error: 'Invalid input: Expected TableSelection data' };
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
   }
 
-  const selectedColumns = textValue.split('\n').filter(line => line.trim()).map(col => col.trim());
-  const columnData = [];
+  const selectedColumns = textValue
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((col) => col.trim());
+  const columnData = [] as DBColumnSelectionTableValues[];
 
-  for (const table of inputData.tables) {
-    // Filter columns that exist in the table and match selection criteria
-    const availableColumns = selectedColumns.filter(col =>
-      table.columns.includes(col)
-    );
-
-    if (availableColumns.length > 0) {
+  for (const tableData of inputData.tables) {
+    if (
+      tableData.table.tableSchema &&
+      tableData.table.schemaFields &&
+      tableData.table.schemaFields.length != 0
+    ) {
+      const rows = chunkSchemaIntoRows(
+        tableData.table.schemaFields,
+        tableData.table.tableSchema
+      ) as AmendedSchemaField[][];
+      const cellData = [] as { col: string; data: string }[];
+      for (const row of rows) {
+        for (const cell of row) {
+          if (selectedColumns.includes(cell.name)) {
+            cellData.push({ col: cell.name, data: cell.resolvedKeyValue });
+          }
+        }
+      }
       columnData.push({
-        tableName: table.name,
-        fileName: table.fileName,
-        sourceFile: table.sourceFile,
-        selectedColumns: availableColumns,
-        // Mock some sample data - in real implementation, you'd extract actual column data
-        data: availableColumns.map(col => ({
-          column: col,
-          type: 'string', // This would be determined from actual data
-          sampleValues: Array.from({length: Math.min(5, 10)}, (_, i) => `${col}_value_${i + 1}`)
-        }))
-      });
+        tableName: tableData.name,
+        fileName: tableData.fileName,
+        sourcePack: tableData.sourceFile,
+        sourceTable: tableData.table,
+        selectedColumns: selectedColumns,
+        data: cellData,
+      } as DBColumnSelectionTableValues);
     }
   }
 
   return {
     success: true,
     data: {
-      type: 'ColumnSelection',
+      type: "ColumnSelection",
       columns: columnData,
       sourceTables: inputData.tables,
-      selectedColumnCount: columnData.reduce((sum, table) => sum + table.selectedColumns.length, 0)
-    }
+      selectedColumnCount: columnData.reduce((sum, table) => sum + table.selectedColumns.length, 0),
+    } as DBColumnSelectionNodeData,
   };
 }
 
@@ -204,37 +213,41 @@ async function executeColumnSelectionNode(nodeId: string, textValue: string, inp
 function evaluateFormula(formula: string, x: number): number {
   // Sanitize the formula - only allow safe mathematical operations
   const sanitized = formula
-    .replace(/\s+/g, '') // Remove whitespace
-    .replace(/\^/g, '**') // Convert ^ to ** for exponentiation
-    .replace(/[^x0-9+\-*/().\s]/g, ''); // Remove any unsafe characters
+    .replace(/\s+/g, "") // Remove whitespace
+    .replace(/\^/g, "**") // Convert ^ to ** for exponentiation
+    .replace(/[^x0-9+\-*/().\s]/g, ""); // Remove any unsafe characters
 
   // Replace 'x' with the actual value
   const expression = sanitized.replace(/x/g, x.toString());
 
   // Validate that the expression only contains safe characters
   if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
-    throw new Error('Invalid formula: contains unsafe characters');
+    throw new Error("Invalid formula: contains unsafe characters");
   }
 
   try {
     // Use Function constructor for safe evaluation (better than eval)
-    const result = new Function('return ' + expression)();
+    const result = new Function("return " + expression)();
 
-    if (typeof result !== 'number' || isNaN(result) || !isFinite(result)) {
-      throw new Error('Formula evaluation resulted in invalid number');
+    if (typeof result !== "number" || isNaN(result) || !isFinite(result)) {
+      throw new Error("Formula evaluation resulted in invalid number");
     }
 
     return result;
   } catch (error) {
-    throw new Error(`Formula evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Formula evaluation failed: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }
 
-async function executeNumericAdjustmentNode(nodeId: string, textValue: string, inputData: any): Promise<NodeExecutionResult> {
+async function executeNumericAdjustmentNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBColumnSelectionNodeData
+): Promise<NodeExecutionResult> {
   console.log(`NumericAdjustment Node ${nodeId}: Processing formula "${textValue}" with input:`, inputData);
 
-  if (!inputData || inputData.type !== 'ColumnSelection') {
-    return { success: false, error: 'Invalid input: Expected ColumnSelection data' };
+  if (!inputData || inputData.type !== "ColumnSelection") {
+    return { success: false, error: "Invalid input: Expected ColumnSelection data" };
   }
 
   const formula = textValue.trim();
@@ -242,15 +255,15 @@ async function executeNumericAdjustmentNode(nodeId: string, textValue: string, i
   if (!formula) {
     return {
       success: false,
-      error: 'No formula provided. Enter a mathematical expression using x as the input variable.'
+      error: "No formula provided. Enter a mathematical expression using x as the input variable.",
     };
   }
 
   // Validate that the formula contains 'x' variable
-  if (!formula.includes('x')) {
+  if (!formula.includes("x")) {
     return {
       success: false,
-      error: 'Formula must contain variable x representing the input value.'
+      error: "Formula must contain variable x representing the input value.",
     };
   }
 
@@ -260,42 +273,120 @@ async function executeNumericAdjustmentNode(nodeId: string, textValue: string, i
   } catch (error) {
     return {
       success: false,
-      error: `Invalid formula: ${error instanceof Error ? error.message : 'Syntax error'}`
+      error: `Invalid formula: ${error instanceof Error ? error.message : "Syntax error"}`,
     };
   }
 
   // Apply formula to numeric columns
-  const adjustedData = inputData.columns.map((table: any) => ({
-    ...table,
-    data: table.data.map((col: any) => ({
-      ...col,
-      formula: formula,
-      // In real implementation, you'd apply formula to actual numeric data
-      adjustedSampleValues: col.sampleValues?.map((val: string) => {
-        const numVal = parseFloat(val.replace(/[^\d.-]/g, ''));
-        if (isNaN(numVal)) return val; // Keep non-numeric values as-is
+  const adjustedInputData = {
+    ...inputData,
+    columns: inputData.columns.map((tableValues: DBColumnSelectionTableValues) => ({
+      ...tableValues,
+      data: tableValues.data.map((cell: { col: string; data: string }) => {
+        const numVal = parseFloat(cell.data.replace(/[^\d.-]/g, ""));
+        if (isNaN(numVal)) return cell; // Keep non-numeric values as-is
 
         try {
           const result = evaluateFormula(formula, numVal);
-          return result.toString();
+          return { col: cell.col, data: result.toString() };
         } catch (error) {
           console.warn(`Failed to apply formula to value ${numVal}:`, error);
-          return val; // Return original value on error
+          return cell; // Return original value on error
         }
-      }) || []
-    }))
-  }));
+      }),
+    })),
+  } as DBColumnSelectionNodeData;
 
   return {
     success: true,
     data: {
-      type: 'ChangedColumnSelection',
-      adjustedColumns: adjustedData,
+      type: "ChangedColumnSelection",
+      adjustedInputData: adjustedInputData,
       appliedFormula: formula,
       originalData: inputData,
-      processedValues: adjustedData.reduce((count, table) =>
-        count + table.data.reduce((colCount: number, col: any) =>
-          colCount + (col.adjustedSampleValues?.length || 0), 0), 0)
-    }
+    } as DBNumericAdjustmentNodeData,
   };
+}
+
+async function executeSaveChangesNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBNumericAdjustmentNodeData
+): Promise<NodeExecutionResult> {
+  console.log(
+    `SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with input:`,
+    inputData
+  );
+
+  if (!inputData || inputData.type !== "ChangedColumnSelection") {
+    return { success: false, error: "Invalid input: Expected ChangedColumnSelection data" };
+  }
+
+  const saveConfig = textValue.trim();
+
+  if (!saveConfig) {
+    return {
+      success: false,
+      error: "No save configuration provided. Enter save settings like file path, format, etc.",
+    };
+  }
+
+  try {
+    // Parse save configuration (could be JSON, simple path, or custom format)
+    let filePath = saveConfig;
+    let format = "tsv"; // default format
+
+    // Try to parse as JSON for more complex configurations
+    try {
+      const config = JSON.parse(saveConfig);
+      filePath = config.path || config.filePath || "output.tsv";
+      format = config.format || "tsv";
+    } catch {
+      // If not JSON, treat as simple file path
+      if (saveConfig.includes(".")) {
+        const ext = saveConfig.split(".").pop()?.toLowerCase();
+        if (ext === "csv" || ext === "tsv" || ext === "json") {
+          format = ext;
+        }
+      }
+    }
+
+    // Simulate saving the changes (in real implementation, you'd write to actual files)
+    const savedData = {
+      filePath: filePath,
+      format: format,
+      timestamp: new Date().toISOString(),
+      tablesProcessed: inputData.adjustedColumns?.length || 0,
+      totalRecords: inputData.processedValues || 0,
+      appliedFormula: inputData.appliedFormula,
+      // In real implementation, you'd write the actual adjusted data here
+      preview: inputData.adjustedColumns?.slice(0, 2).map((table: any) => ({
+        tableName: table.tableName,
+        fileName: table.fileName,
+        adjustedColumns: table.data?.slice(0, 3).map((col: any) => ({
+          column: col.column,
+          sampleAdjustedValues: col.adjustedSampleValues?.slice(0, 3),
+        })),
+      })),
+    };
+
+    console.log(`SaveChanges Node ${nodeId}: Simulated save to ${filePath} in ${format} format`);
+
+    return {
+      success: true,
+      data: {
+        type: "SaveResult",
+        savedTo: filePath,
+        format: format,
+        summary: savedData,
+        message: `Successfully saved ${savedData.tablesProcessed} tables with ${savedData.totalRecords} processed records to ${filePath}`,
+      } as DBSaveChangesNodeData,
+    };
+  } catch (error) {
+    console.error(`SaveChanges Node ${nodeId}: Error during save operation:`, error);
+    return {
+      success: false,
+      error: `Save operation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
 }

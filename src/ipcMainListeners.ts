@@ -1552,7 +1552,9 @@ export const registerIpcMainListeners = (
       }
     ): Promise<{ success: boolean; data?: any; error?: string }> => {
       try {
-        console.log(`Executing node ${nodeExecutionRequest.nodeId} (${nodeExecutionRequest.nodeType}) in backend`);
+        console.log(
+          `Executing node ${nodeExecutionRequest.nodeId} (${nodeExecutionRequest.nodeType}) in backend`
+        );
 
         // Import node execution functions
         const { executeNodeAction } = await import("./nodeExecutor");
@@ -1563,7 +1565,7 @@ export const registerIpcMainListeners = (
         console.error("Failed to execute node:", error);
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown execution error'
+          error: error instanceof Error ? error.message : "Unknown execution error",
         };
       }
     }
@@ -1602,7 +1604,11 @@ export const registerIpcMainListeners = (
       error?: string;
     }> => {
       try {
-        console.log(`Executing node graph with ${graphExecutionRequest.nodes.length} nodes and ${graphExecutionRequest.connections.length} connections`);
+        console.log(
+          `Executing node graph with ${graphExecutionRequest.nodes.length} nodes and ${graphExecutionRequest.connections.length} connections`
+        );
+
+        console.log("graphExecutionRequest:", graphExecutionRequest);
 
         // Import graph execution function
         const { executeNodeGraph } = await import("./nodeGraphExecutor");
@@ -1614,7 +1620,7 @@ export const registerIpcMainListeners = (
 
         return {
           ...result,
-          executionResults: serializedExecutionResults
+          executionResults: serializedExecutionResults,
         };
       } catch (error) {
         console.error("Failed to execute node graph:", error);
@@ -1624,7 +1630,7 @@ export const registerIpcMainListeners = (
           totalExecuted: 0,
           successCount: 0,
           failureCount: 0,
-          error: error instanceof Error ? error.message : 'Unknown graph execution error'
+          error: error instanceof Error ? error.message : "Unknown graph execution error",
         };
       }
     }
@@ -1966,6 +1972,7 @@ export const registerIpcMainListeners = (
       (iterMod) => iterMod.isEnabled || data.alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
     );
     appData.enabledMods = enabledMods;
+    appData.allMods = data.allMods;
     appData.isCompatCheckingVanillaPacks = data.isCompatCheckingVanillaPacks;
     appData.isChangingGameProcessPriority = data.isChangingGameProcessPriority;
     const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>

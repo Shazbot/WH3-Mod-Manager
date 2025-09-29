@@ -35,6 +35,7 @@ interface AppData {
   overwrittenDataPackedFiles: Record<string, string[]>;
   outdatedPackFiles: Record<string, string[]>;
   enabledMods: Mod[];
+  allMods: Mod[];
   startArgs: string[];
   isAdmin: boolean;
   gameUpdates: GameUpdateData[];
@@ -86,6 +87,7 @@ const appData = {
   overwrittenDataPackedFiles: {},
   outdatedPackFiles: {},
   enabledMods: [],
+  allMods: [],
   startArgs: [],
   isAdmin: false,
   gameUpdates: [],

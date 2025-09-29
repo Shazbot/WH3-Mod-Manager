@@ -3,6 +3,7 @@ import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
 import { UgcItemVisibility } from "../node_modules/steamworks.js/client.d";
+import { string } from "ts-pattern/dist/patterns";
 export {};
 
 declare global {
@@ -593,5 +594,87 @@ declare global {
     savePackFileName: string;
   }
 
-  type NodeEdgeTypes = "PackFiles" | "DBData" | "TableSelection" | "ColumnSelection" | "ChangedColumnSelection";
+  type NodeEdgeTypes =
+    | "PackFiles"
+    | "DBData"
+    | "TableSelection"
+    | "ColumnSelection"
+    | "ChangedColumnSelection";
+
+  type FlowNodeType =
+    | "packedfiles"
+    | "tableselection"
+    | "columnselection"
+    | "numericadjustment"
+    | "savechanges";
+
+  // FlowNodeData = "string"|
+
+  interface NodeExecutionRequest {
+    nodeId: string;
+    nodeType: string;
+    textValue: string;
+    inputData: any;
+  }
+
+  interface NodeExecutionResult {
+    success: boolean;
+    data?: PackFilesNodeData | DBTablesNodeData | DBColumnSelectionNodeData | DBNumericAdjustmentNodeData;
+    error?: string;
+  }
+
+  interface PackFilesNodeFile {
+    name: string;
+    path: string;
+    loaded: boolean;
+    error?: Error | string;
+  }
+
+  interface PackFilesNodeData {
+    type: "PackFiles";
+    files: PackFilesNodeFile[];
+    count: number;
+    loadedCount: number;
+  }
+
+  interface DBTablesNodeTable {
+    name: string;
+    fileName: string;
+    sourceFile: Pack;
+    table: PackedFile;
+  }
+
+  interface DBTablesNodeData {
+    type: "TableSelection";
+    tables: DBTablesNodeTable[];
+    sourceFiles: PackFilesNodeFile[];
+    tableCount: number;
+  }
+
+  interface DBColumnSelectionTableValues {
+    tableName: string;
+    fileName: string;
+    sourcePack: Pack;
+    sourceTable: PackedFile;
+    selectedColumns: string[];
+    data: { col: string; data: string }[];
+  }
+
+  interface DBColumnSelectionNodeData {
+    type: "ColumnSelection";
+    columns: DBColumnSelectionTableValues[];
+    sourceTables: DBTablesNodeTable[];
+    selectedColumnCount: number;
+  }
+
+  interface DBNumericAdjustmentNodeData {
+    type: "ChangedColumnSelection";
+    appliedFormula: string;
+    adjustedInputData: DBColumnSelectionNodeData;
+    originalData: DBColumnSelectionNodeData;
+  }
+
+  interface DBSaveChangesNodeData {
+    type: "SaveResult";
+  }
 }
