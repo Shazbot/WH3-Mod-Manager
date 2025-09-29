@@ -352,23 +352,23 @@ async function executeSaveChangesNode(
     }
 
     // Simulate saving the changes (in real implementation, you'd write to actual files)
-    const savedData = {
-      filePath: filePath,
-      format: format,
-      timestamp: new Date().toISOString(),
-      tablesProcessed: inputData.adjustedColumns?.length || 0,
-      totalRecords: inputData.processedValues || 0,
-      appliedFormula: inputData.appliedFormula,
-      // In real implementation, you'd write the actual adjusted data here
-      preview: inputData.adjustedColumns?.slice(0, 2).map((table: any) => ({
-        tableName: table.tableName,
-        fileName: table.fileName,
-        adjustedColumns: table.data?.slice(0, 3).map((col: any) => ({
-          column: col.column,
-          sampleAdjustedValues: col.adjustedSampleValues?.slice(0, 3),
-        })),
-      })),
-    };
+    // const savedData = {
+    //   filePath: filePath,
+    //   format: format,
+    //   timestamp: new Date().toISOString(),
+    //   tablesProcessed: inputData.adjustedColumns?.length || 0,
+    //   totalRecords: inputData.processedValues || 0,
+    //   appliedFormula: inputData.appliedFormula,
+    //   // In real implementation, you'd write the actual adjusted data here
+    //   preview: inputData.adjustedColumns?.slice(0, 2).map((table: any) => ({
+    //     tableName: table.tableName,
+    //     fileName: table.fileName,
+    //     adjustedColumns: table.data?.slice(0, 3).map((col: any) => ({
+    //       column: col.column,
+    //       sampleAdjustedValues: col.adjustedSampleValues?.slice(0, 3),
+    //     })),
+    //   })),
+    // };
 
     console.log(`SaveChanges Node ${nodeId}: Simulated save to ${filePath} in ${format} format`);
 
@@ -378,8 +378,9 @@ async function executeSaveChangesNode(
         type: "SaveResult",
         savedTo: filePath,
         format: format,
-        summary: savedData,
-        message: `Successfully saved ${savedData.tablesProcessed} tables with ${savedData.totalRecords} processed records to ${filePath}`,
+        // summary: savedData,
+        message: `Successfully saved to ${filePath}`,
+        // message: `Successfully saved ${savedData.tablesProcessed} tables with ${savedData.totalRecords} processed records to ${filePath}`,
       } as DBSaveChangesNodeData,
     };
   } catch (error) {
