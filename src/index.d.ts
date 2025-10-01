@@ -603,6 +603,7 @@ declare global {
 
   type FlowNodeType =
     | "packedfiles"
+    | "packfilesdropdown"
     | "tableselection"
     | "columnselection"
     | "numericadjustment"
