@@ -1,8 +1,15 @@
 import * as fs from "fs";
 import * as path from "path";
-import { chunkSchemaIntoRows, getPacksTableData, readPack } from "./packFileSerializer";
+import {
+  chunkSchemaIntoRows,
+  getFieldSize,
+  getPacksTableData,
+  readPack,
+  writePack,
+} from "./packFileSerializer";
 import appData from "./appData";
-import { AmendedSchemaField } from "./packFileTypes";
+import { AmendedSchemaField, NewPackedFile } from "./packFileTypes";
+import { format } from "date-fns";
 
 export const executeNodeAction = async (request: NodeExecutionRequest): Promise<NodeExecutionResult> => {
   const { nodeId, nodeType, textValue, inputData } = request;
@@ -278,24 +285,46 @@ async function executeNumericAdjustmentNode(
   }
 
   // Apply formula to numeric columns
-  const adjustedInputData = {
-    ...inputData,
-    columns: inputData.columns.map((tableValues: DBColumnSelectionTableValues) => ({
-      ...tableValues,
-      data: tableValues.data.map((cell: { col: string; data: string }) => {
-        const numVal = parseFloat(cell.data.replace(/[^\d.-]/g, ""));
-        if (isNaN(numVal)) return cell; // Keep non-numeric values as-is
+  const adjustedInputData = structuredClone(inputData);
 
-        try {
-          const result = evaluateFormula(formula, numVal);
-          return { col: cell.col, data: result.toString() };
-        } catch (error) {
-          console.warn(`Failed to apply formula to value ${numVal}:`, error);
-          return cell; // Return original value on error
+  for (const column of adjustedInputData.columns) {
+    if (!column.sourceTable.schemaFields || !column.sourceTable.tableSchema) {
+      console.log("MISSING SCHEMA!");
+      continue;
+    }
+    console.log("selected columns:", column.selectedColumns);
+
+    const rows = chunkSchemaIntoRows(
+      column.sourceTable.schemaFields,
+      column.sourceTable.tableSchema
+    ) as AmendedSchemaField[][];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        // newTable[i][j] = cell;
+        if (column.selectedColumns.includes(cell.name)) {
+          const numVal = parseFloat(cell.resolvedKeyValue.replace(/[^\d.-]/g, ""));
+          if (isNaN(numVal)) {
+            console.log("Not a number!");
+            continue; // Keep non-numeric values as-is
+          }
+
+          try {
+            const result = evaluateFormula(formula, numVal);
+            rows[i][j].resolvedKeyValue = result.toString();
+            rows[i][j].fields[0].val = result;
+            console.log("New numeric value of", numVal, "is", result.toString());
+          } catch (error) {
+            console.warn(`Failed to apply formula to value ${numVal}:`, error);
+          }
         }
-      }),
-    })),
-  } as DBColumnSelectionNodeData;
+      }
+    }
+
+    column.sourceTable.schemaFields = rows.flat();
+  }
 
   return {
     success: true,
@@ -324,12 +353,51 @@ async function executeSaveChangesNode(
 
   const saveConfig = textValue.trim();
 
-  if (!saveConfig) {
-    return {
-      success: false,
-      error: "No save configuration provided. Enter save settings like file path, format, etc.",
-    };
+  // if (!saveConfig) {
+  //   return {
+  //     success: false,
+  //     error: "No save configuration provided. Enter save settings like file path, format, etc.",
+  //   };
+  // }
+
+  const toSave = [] as NewPackedFile[];
+  for (const column of inputData.adjustedInputData.columns) {
+    if (!column.sourceTable.schemaFields || !column.sourceTable.tableSchema) continue;
+
+    let packFileSize = 0;
+    const rows = chunkSchemaIntoRows(
+      column.sourceTable.schemaFields,
+      column.sourceTable.tableSchema
+    ) as AmendedSchemaField[][];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        const field = column.sourceTable.tableSchema.fields[j];
+        packFileSize += getFieldSize(cell.resolvedKeyValue, field.field_type);
+      }
+    }
+
+    if (column.sourceTable.version) packFileSize += 8; // size of version data
+    packFileSize += 5;
+
+    toSave.push({
+      name: column.fileName,
+      schemaFields: column.sourceTable.schemaFields,
+      file_size: packFileSize,
+      version: column.sourceTable.version,
+      tableSchema: column.sourceTable.tableSchema,
+    });
   }
+
+  const nodePath = await import("path");
+
+  const timestamp = format(new Date(), "ddMMyy_HHmmss");
+  const packFileBaseName = `dbflow_${timestamp}`;
+  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
+  const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);
+  await writePack(toSave, newPackPath);
 
   try {
     // Parse save configuration (could be JSON, simple path, or custom format)
