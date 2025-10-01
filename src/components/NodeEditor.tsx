@@ -127,6 +127,29 @@ interface DraggableNodeData {
   description: string;
 }
 
+// Flow options interfaces
+interface BaseFlowOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+interface TextboxFlowOption extends BaseFlowOption {
+  type: "textbox";
+  value: string;
+  placeholder?: string;
+}
+
+interface RangeSliderFlowOption extends BaseFlowOption {
+  type: "range";
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+}
+
+type FlowOption = TextboxFlowOption | RangeSliderFlowOption;
+
 // Custom PackFiles dropdown node component
 const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
   const allMods = useAppSelector((state) => state.app.currentPreset.mods).toSorted((firstMod, secondMod) => {
@@ -181,8 +204,10 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
   data,
   id,
 }) => {
-  const tableNames = data.tableNames;
+  const tableNames = data.tableNames || [];
   const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
+
+  console.log("data.selectedTable is", data.selectedTable, "selectedTable is", selectedTable);
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -214,11 +239,16 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
         className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
       >
         <option value="">Select a table...</option>
-        {tableNames.map((tableName) => (
-          <option key={tableName} value={tableName}>
-            {tableName}
+        {(tableNames.length > 0 &&
+          tableNames.map((tableName) => (
+            <option key={tableName} value={tableName}>
+              {tableName}
+            </option>
+          ))) || (
+          <option key={selectedTable} value={selectedTable}>
+            {selectedTable}
           </option>
-        ))}
+        )}
       </select>
 
       <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
@@ -529,6 +559,336 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
   );
 };
 
+// Flow Options Modal Component
+const FlowOptionsModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  options: FlowOption[];
+  onOptionsChange: (options: FlowOption[]) => void;
+}> = ({ isOpen, onClose, options, onOptionsChange }) => {
+  const [editingOption, setEditingOption] = useState<FlowOption | null>(null);
+  const [isAddingOption, setIsAddingOption] = useState(false);
+  const [newOptionType, setNewOptionType] = useState<"textbox" | "range">("textbox");
+
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    value: "",
+    placeholder: "",
+    min: 0,
+    max: 100,
+    step: 1,
+  });
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      description: "",
+      value: "",
+      placeholder: "",
+      min: 0,
+      max: 100,
+      step: 1,
+    });
+    setEditingOption(null);
+    setIsAddingOption(false);
+  };
+
+  const handleAddOption = () => {
+    if (!formData.name.trim()) return;
+
+    const newOption: FlowOption =
+      newOptionType === "textbox"
+        ? {
+            id: Date.now().toString(),
+            type: "textbox",
+            name: formData.name,
+            description: formData.description || undefined,
+            value: formData.value,
+            placeholder: formData.placeholder || undefined,
+          }
+        : {
+            id: Date.now().toString(),
+            type: "range",
+            name: formData.name,
+            description: formData.description || undefined,
+            value: Number(formData.value) || formData.min,
+            min: formData.min,
+            max: formData.max,
+            step: formData.step,
+          };
+
+    onOptionsChange([...options, newOption]);
+    resetForm();
+  };
+
+  const handleEditOption = (option: FlowOption) => {
+    setEditingOption(option);
+    setFormData({
+      name: option.name,
+      description: option.description || "",
+      value: option.type === "textbox" ? option.value : option.value.toString(),
+      placeholder: option.type === "textbox" ? option.placeholder || "" : "",
+      min: option.type === "range" ? option.min : 0,
+      max: option.type === "range" ? option.max : 100,
+      step: option.type === "range" ? option.step : 1,
+    });
+    setNewOptionType(option.type);
+  };
+
+  const handleUpdateOption = () => {
+    if (!editingOption || !formData.name.trim()) return;
+
+    const updatedOption: FlowOption =
+      editingOption.type === "textbox"
+        ? {
+            ...editingOption,
+            name: formData.name,
+            description: formData.description || undefined,
+            value: formData.value,
+            placeholder: formData.placeholder || undefined,
+          }
+        : {
+            ...editingOption,
+            name: formData.name,
+            description: formData.description || undefined,
+            value: Number(formData.value) || editingOption.min,
+            min: formData.min,
+            max: formData.max,
+            step: formData.step,
+          };
+
+    onOptionsChange(options.map((opt) => (opt.id === editingOption.id ? updatedOption : opt)));
+    resetForm();
+  };
+
+  const handleDeleteOption = (optionId: string) => {
+    onOptionsChange(options.filter((opt) => opt.id !== optionId));
+  };
+
+  const handleOptionValueChange = (optionId: string, newValue: string | number) => {
+    onOptionsChange(
+      options.map((opt) => (opt.id === optionId ? ({ ...opt, value: newValue } as FlowOption) : opt))
+    );
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-white">Flow Options</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
+            ×
+          </button>
+        </div>
+
+        {/* Current Options */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-white mb-3">Current Options</h3>
+          {options.length === 0 ? (
+            <p className="text-gray-400 text-sm">No options configured yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {options.map((option) => (
+                <div key={option.id} className="bg-gray-700 rounded p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h4 className="text-white font-medium">{option.name}</h4>
+                      {option.description && <p className="text-gray-300 text-sm">{option.description}</p>}
+                      <span className="inline-block bg-gray-600 text-xs px-2 py-1 rounded mt-1">
+                        {option.type}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditOption(option)}
+                        className="text-blue-400 hover:text-blue-300 text-sm"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteOption(option.id)}
+                        className="text-red-400 hover:text-red-300 text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Option Value Input */}
+                  {option.type === "textbox" ? (
+                    <input
+                      type="text"
+                      value={option.value}
+                      onChange={(e) => handleOptionValueChange(option.id, e.target.value)}
+                      placeholder={option.placeholder}
+                      className="w-full p-2 bg-gray-600 text-white rounded text-sm"
+                    />
+                  ) : (
+                    <div>
+                      <input
+                        type="range"
+                        min={option.min}
+                        max={option.max}
+                        step={option.step}
+                        value={option.value}
+                        onChange={(e) => handleOptionValueChange(option.id, Number(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-gray-300 mt-1">
+                        <span>{option.min}</span>
+                        <span className="font-medium">{option.value}</span>
+                        <span>{option.max}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Add/Edit Option Form */}
+        {(isAddingOption || editingOption) && (
+          <div className="mb-6 bg-gray-700 rounded p-4">
+            <h3 className="text-lg font-semibold text-white mb-3">
+              {editingOption ? "Edit Option" : "Add New Option"}
+            </h3>
+
+            {!editingOption && (
+              <div className="mb-4">
+                <label className="block text-white text-sm font-medium mb-2">Option Type</label>
+                <select
+                  value={newOptionType}
+                  onChange={(e) => setNewOptionType(e.target.value as "textbox" | "range")}
+                  className="w-full p-2 bg-gray-600 text-white rounded"
+                >
+                  <option value="textbox">Textbox</option>
+                  <option value="range">Range Slider</option>
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">Name *</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full p-2 bg-gray-600 text-white rounded"
+                  placeholder="Option name"
+                />
+              </div>
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">Description</label>
+                <input
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full p-2 bg-gray-600 text-white rounded"
+                  placeholder="Optional description"
+                />
+              </div>
+            </div>
+
+            {newOptionType === "textbox" ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Default Value</label>
+                  <input
+                    type="text"
+                    value={formData.value}
+                    onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                    className="w-full p-2 bg-gray-600 text-white rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Placeholder</label>
+                  <input
+                    type="text"
+                    value={formData.placeholder}
+                    onChange={(e) => setFormData({ ...formData, placeholder: e.target.value })}
+                    className="w-full p-2 bg-gray-600 text-white rounded"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Min</label>
+                  <input
+                    type="number"
+                    value={formData.min}
+                    onChange={(e) => setFormData({ ...formData, min: Number(e.target.value) })}
+                    className="w-full p-2 bg-gray-600 text-white rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Max</label>
+                  <input
+                    type="number"
+                    value={formData.max}
+                    onChange={(e) => setFormData({ ...formData, max: Number(e.target.value) })}
+                    className="w-full p-2 bg-gray-600 text-white rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Step</label>
+                  <input
+                    type="number"
+                    value={formData.step}
+                    onChange={(e) => setFormData({ ...formData, step: Number(e.target.value) })}
+                    className="w-full p-2 bg-gray-600 text-white rounded"
+                    step="0.1"
+                    min="0.1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">Default</label>
+                  <input
+                    type="number"
+                    value={formData.value}
+                    onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                    className="w-full p-2 bg-gray-600 text-white rounded"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={editingOption ? handleUpdateOption : handleAddOption}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+              >
+                {editingOption ? "Update" : "Add"} Option
+              </button>
+              <button
+                onClick={resetForm}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Add Option Button */}
+        {!isAddingOption && !editingOption && (
+          <button
+            onClick={() => setIsAddingOption(true)}
+            className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded font-medium"
+          >
+            Add New Option
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 interface NodeTypeSection {
   title: string;
   nodes: { type: FlowNodeType; label: string; description: string }[];
@@ -538,7 +898,11 @@ const nodeTypeSections: NodeTypeSection[] = [
   {
     title: "Pack Files",
     nodes: [
-      { type: "packedfiles", label: "Textbox Input", description: "Node with textbox that outputs PackFiles" },
+      {
+        type: "packedfiles",
+        label: "Textbox Input",
+        description: "Node with textbox that outputs PackFiles",
+      },
       {
         type: "packfilesdropdown",
         label: "Dropdown Input",
@@ -733,6 +1097,10 @@ const NodeEditor: React.FC = () => {
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
     undefined
   );
+
+  // Flow options state
+  const [flowOptions, setFlowOptions] = useState<FlowOption[]>([]);
+  const [isFlowOptionsModalOpen, setIsFlowOptionsModalOpen] = useState(false);
 
   // Keep the ref updated with current nodes
   React.useEffect(() => {
@@ -1310,6 +1678,22 @@ const NodeEditor: React.FC = () => {
               id="load-graph-input"
             />
 
+            {/* Flow Options button */}
+            <button
+              onClick={() => setIsFlowOptionsModalOpen(true)}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
+                />
+              </svg>
+              Flow Options
+            </button>
+
             {/* Run button */}
             <button
               onClick={executeNodeGraph}
@@ -1422,6 +1806,14 @@ const NodeEditor: React.FC = () => {
           </div>
         </ReactFlowProvider>
       </div>
+
+      {/* Flow Options Modal */}
+      <FlowOptionsModal
+        isOpen={isFlowOptionsModalOpen}
+        onClose={() => setIsFlowOptionsModalOpen(false)}
+        options={flowOptions}
+        onOptionsChange={setFlowOptions}
+      />
     </div>
   );
 };
