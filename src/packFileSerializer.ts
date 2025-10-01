@@ -1424,9 +1424,9 @@ export const writePackAppendFast = async (
       await outFile.open();
 
       // Handle duplicate replacement logic
-      const newFileNames = new Set(packFiles.map(pf => pf.name));
+      const newFileNames = new Set(packFiles.map((pf) => pf.name));
       const filesToKeep = replaceDuplicates
-        ? existingPackToAppend.packedFiles.filter(pf => !newFileNames.has(pf.name))
+        ? existingPackToAppend.packedFiles.filter((pf) => !newFileNames.has(pf.name))
         : existingPackToAppend.packedFiles;
 
       // Calculate new counts and sizes
@@ -1440,10 +1440,7 @@ export const writePackAppendFast = async (
 
       // For pack files, the packed_file_index_size in header refers to the file index section
       // We need to calculate the total size of existing + new file index entries
-      const keptIndexSize = filesToKeep.reduce(
-        (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
-        0
-      );
+      const keptIndexSize = filesToKeep.reduce((acc, pf) => acc + new Blob([pf.name]).size + 1 + 5, 0);
       const totalIndexSize = keptIndexSize + newIndexSize;
 
       // Write updated header with new counts
@@ -1642,6 +1639,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
     // Write file contents
     for (const packFile of packFiles) {
       if (packFile.buffer) {
+        console.log("WRITE AS BUFFER:", packFile.name);
         await outFile.write(packFile.buffer);
       } else if (packFile.schemaFields && packFile.tableSchema) {
         if (packFile.name.endsWith(".loc")) {
@@ -1677,7 +1675,12 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
   }
 };
 
-export const writePack = async (packFiles: NewPackedFile[], path: string, existingPackToAppend?: Pack, replaceDuplicates?: boolean) => {
+export const writePack = async (
+  packFiles: NewPackedFile[],
+  path: string,
+  existingPackToAppend?: Pack,
+  replaceDuplicates?: boolean
+) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
     return await writePackAppendFast(packFiles, path, existingPackToAppend, replaceDuplicates);
