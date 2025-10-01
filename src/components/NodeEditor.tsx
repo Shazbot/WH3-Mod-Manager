@@ -26,6 +26,7 @@ interface SerializedNode {
     label: string;
     type: string;
     textValue?: string;
+    selectedPack?: string;
     outputType?: NodeEdgeTypes;
     inputType?: NodeEdgeTypes;
   };
@@ -92,11 +93,63 @@ interface SaveChangesNodeData extends NodeData {
   inputType: "ChangedColumnSelection";
 }
 
+interface PackFilesDropdownNodeData extends NodeData {
+  selectedPack: string;
+  outputType: "PackFiles";
+}
+
 interface DraggableNodeData {
   type: string;
   label: string;
   description: string;
 }
+
+// Custom PackFiles dropdown node component
+const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
+  const allMods = window.api?.getAppState?.()?.allMods || [];
+  const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
+
+  const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedPack(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedPack: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-cyan-500 rounded-lg p-4 min-w-[200px]">
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-cyan-500" />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <select
+        value={selectedPack}
+        onChange={handleDropdownChange}
+        className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+      >
+        <option value="">Select a pack...</option>
+        {allMods.map((mod) => (
+          <option key={mod.name} value={mod.name}>
+            {mod.humanName || mod.name}
+          </option>
+        ))}
+      </select>
+
+      <div className="mt-2 text-xs text-gray-400">Output: PackFiles</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-green-500"
+        data-output-type="PackFiles"
+      />
+    </div>
+  );
+};
 
 // Custom PackFiles node component with built-in textbox
 const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data, id }) => {
@@ -321,6 +374,7 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
 
 const nodeTypes = [
   { type: "packedfiles", label: "PackFiles Node", description: "Node with textbox that outputs PackFiles" },
+  { type: "packfilesdropdown", label: "PackFiles Dropdown", description: "Node with dropdown for pack selection" },
   {
     type: "tableselection",
     label: "Table Selection Node",
@@ -364,6 +418,7 @@ const executeGraphInBackend = async (
         label: node.data?.label ? String(node.data.label) : "",
         type: node.data?.type ? String(node.data.type) : "",
         textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : "",
+        selectedPack: (node.data as any)?.selectedPack ? String((node.data as any).selectedPack) : "",
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
       },
@@ -420,6 +475,7 @@ const executeGraphInBackend = async (
 // Register custom node types for ReactFlow
 const reactFlowNodeTypes = {
   packedfiles: PackFilesNode,
+  packfilesdropdown: PackFilesDropdownNode,
   tableselection: TableSelectionNode,
   columnselection: ColumnSelectionNode,
   numericadjustment: NumericAdjustmentNode,
@@ -470,7 +526,7 @@ const NodeEditor: React.FC = () => {
   // Listen for node data updates from child components
   React.useEffect(() => {
     const handleNodeDataUpdate = (event: CustomEvent) => {
-      const { nodeId, textValue } = event.detail;
+      const { nodeId, textValue, selectedPack } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
@@ -479,6 +535,7 @@ const NodeEditor: React.FC = () => {
               data: {
                 ...node.data,
                 textValue: textValue,
+                selectedPack: selectedPack,
               },
             };
           }
@@ -508,6 +565,8 @@ const NodeEditor: React.FC = () => {
       let sourceOutputType: NodeEdgeTypes | undefined;
       if (sourceNode.type === "packedfiles" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as PackFilesNodeData).outputType;
+      } else if (sourceNode.type === "packfilesdropdown" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as PackFilesDropdownNodeData).outputType;
       } else if (sourceNode.type === "tableselection" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TableSelectionNodeData).outputType;
       } else if (sourceNode.type === "columnselection" && sourceNode.data) {
@@ -583,6 +642,19 @@ const NodeEditor: React.FC = () => {
             textValue: "",
             outputType: "PackFiles" as NodeEdgeTypes,
           } as PackFilesNodeData,
+        };
+      } else if (nodeData.type === "packfilesdropdown") {
+        // Create PackFiles dropdown node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "packfilesdropdown",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedPack: "",
+            outputType: "PackFiles" as NodeEdgeTypes,
+          } as PackFilesDropdownNodeData,
         };
       } else if (nodeData.type === "tableselection") {
         // Create TableSelection node with special data structure
@@ -678,6 +750,7 @@ const NodeEditor: React.FC = () => {
         label: String(node.data?.label || ""),
         type: String(node.data?.type || ""),
         textValue: String((node.data as any)?.textValue || ""),
+        selectedPack: String((node.data as any)?.selectedPack || ""),
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
       },

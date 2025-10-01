@@ -16,7 +16,6 @@ import { format } from "date-fns";
 import { SupportedGames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
-import { staticTextIds } from "./localizationContext";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;

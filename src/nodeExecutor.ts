@@ -19,6 +19,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "packedfiles":
         return await executePackFilesNode(nodeId, textValue);
 
+      case "packfilesdropdown":
+        return await executePackFilesDropdownNode(nodeId, textValue);
+
       case "tableselection":
         return await executeTableSelectionNode(nodeId, textValue, inputData);
 
@@ -88,6 +91,57 @@ async function executePackFilesNode(nodeId: string, textValue: string): Promise<
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
+  }
+
+  return {
+    success: true,
+    data: {
+      type: "PackFiles",
+      files: packFiles,
+      count: packFiles.length,
+      loadedCount: packFiles.filter((f) => f.loaded).length,
+    } as PackFilesNodeData,
+  };
+}
+
+async function executePackFilesDropdownNode(nodeId: string, selectedPack: string): Promise<NodeExecutionResult> {
+  console.log(`PackFiles Dropdown Node ${nodeId}: Processing selected pack "${selectedPack}"`);
+
+  const packFiles = [] as PackFilesNodeFile[];
+
+  if (!selectedPack || selectedPack.trim() === "") {
+    return {
+      success: false,
+      error: "No pack selected. Please select a pack from the dropdown.",
+    };
+  }
+
+  try {
+    // Find the selected mod by name
+    let foundMod = appData.enabledMods.find((mod) => mod.name === selectedPack);
+    if (!foundMod) {
+      foundMod = appData.allMods.find((mod) => mod.name === selectedPack);
+    }
+
+    if (foundMod) {
+      packFiles.push({
+        name: path.basename(foundMod.path),
+        path: foundMod.path,
+        loaded: true,
+      });
+    } else {
+      console.warn(`PackFiles Dropdown Node ${nodeId}: Pack not found: ${selectedPack}`);
+      return {
+        success: false,
+        error: `Pack not found: ${selectedPack}`,
+      };
+    }
+  } catch (error) {
+    console.error(`PackFiles Dropdown Node ${nodeId}: Error processing pack ${selectedPack}:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
   }
 
   return {
