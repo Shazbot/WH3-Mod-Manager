@@ -529,44 +529,69 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
   );
 };
 
-const nodeTypes = [
-  { type: "packedfiles", label: "PackFiles Node", description: "Node with textbox that outputs PackFiles" },
+interface NodeTypeSection {
+  title: string;
+  nodes: { type: FlowNodeType; label: string; description: string }[];
+}
+
+const nodeTypeSections: NodeTypeSection[] = [
   {
-    type: "packfilesdropdown",
-    label: "PackFiles Dropdown",
-    description: "Node with dropdown for pack selection",
+    title: "Pack Files",
+    nodes: [
+      { type: "packedfiles", label: "Textbox Input", description: "Node with textbox that outputs PackFiles" },
+      {
+        type: "packfilesdropdown",
+        label: "Dropdown Input",
+        description: "Node with dropdown for pack selection",
+      },
+    ],
   },
   {
-    type: "tableselection",
-    label: "Table Selection Node",
-    description: "Accepts PackFiles input, outputs TableSelection",
+    title: "Table Selection",
+    nodes: [
+      {
+        type: "tableselection",
+        label: "Textbox Input",
+        description: "Accepts PackFiles input, outputs TableSelection",
+      },
+      {
+        type: "tableselectiondropdown",
+        label: "Dropdown Input",
+        description: "Node with dropdown for table selection",
+      },
+    ],
   },
   {
-    type: "tableselectiondropdown",
-    label: "Table Selection Dropdown",
-    description: "Node with dropdown for table selection",
+    title: "Column Selection",
+    nodes: [
+      {
+        type: "columnselection",
+        label: "Textbox Input",
+        description: "Accepts TableSelection input, outputs ColumnSelection",
+      },
+      {
+        type: "columnselectiondropdown",
+        label: "Dropdown Input",
+        description: "Node with dropdown for column selection",
+      },
+    ],
   },
   {
-    type: "columnselection",
-    label: "Column Selection Node",
-    description: "Accepts TableSelection input, outputs ColumnSelection",
+    title: "Processing",
+    nodes: [
+      {
+        type: "numericadjustment",
+        label: "Numeric Adjustment",
+        description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
+      },
+      {
+        type: "savechanges",
+        label: "Save Changes",
+        description: "Accepts ChangedColumnSelection input and saves the changes",
+      },
+    ],
   },
-  {
-    type: "columnselectiondropdown",
-    label: "Column Selection Dropdown",
-    description: "Node with dropdown for column selection",
-  },
-  {
-    type: "numericadjustment",
-    label: "Numeric Adjustment Node",
-    description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
-  },
-  {
-    type: "savechanges",
-    label: "Save Changes Node",
-    description: "Accepts ChangedColumnSelection input and saves the changes",
-  },
-] as { type: FlowNodeType; label: string; description: string }[];
+];
 
 // Backend graph execution service
 const executeGraphInBackend = async (
@@ -671,18 +696,27 @@ const NodeSidebar: React.FC<{
   onDragStart: (event: DragEvent, nodeType: DraggableNodeData) => void;
 }> = ({ onDragStart }) => {
   return (
-    <div className="w-64 bg-gray-800 border-r border-gray-600 p-4">
+    <div className="w-64 bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto">
       <h3 className="font-bold text-lg mb-4 text-white">Node Types</h3>
-      <div className="space-y-2">
-        {nodeTypes.map((nodeType) => (
-          <div
-            key={nodeType.type}
-            draggable
-            onDragStart={(event) => onDragStart(event, nodeType)}
-            className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm"
-          >
-            <div className="font-medium text-sm text-white">{nodeType.label}</div>
-            <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>
+      <div className="space-y-4">
+        {nodeTypeSections.map((section) => (
+          <div key={section.title} className="space-y-2">
+            <h4 className="font-semibold text-sm text-gray-300 uppercase tracking-wide border-b border-gray-600 pb-1">
+              {section.title}
+            </h4>
+            <div className="space-y-2">
+              {section.nodes.map((nodeType) => (
+                <div
+                  key={nodeType.type}
+                  draggable
+                  onDragStart={(event) => onDragStart(event, nodeType)}
+                  className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm transition-colors duration-150"
+                >
+                  <div className="font-medium text-sm text-white">{nodeType.label}</div>
+                  <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
