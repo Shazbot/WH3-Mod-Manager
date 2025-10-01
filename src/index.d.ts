@@ -605,6 +605,7 @@ declare global {
     | "packedfiles"
     | "packfilesdropdown"
     | "tableselection"
+    | "tableselectiondropdown"
     | "columnselection"
     | "numericadjustment"
     | "savechanges";

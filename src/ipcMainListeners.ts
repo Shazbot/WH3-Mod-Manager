@@ -3132,6 +3132,10 @@ export const registerIpcMainListeners = (
     }
   );
 
+  ipcMain.handle("getDBNameToDBVersions", async (event) => {
+    return DBNameToDBVersions[appData.currentGame];
+  });
+
   ipcMain.on(
     "startGame",
     async (
