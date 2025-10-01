@@ -25,6 +25,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "tableselection":
         return await executeTableSelectionNode(nodeId, textValue, inputData);
 
+      case "tableselectiondropdown":
+        return await executeTableSelectionDropdownNode(nodeId, textValue, inputData);
+
       case "columnselection":
         return await executeColumnSelectionNode(nodeId, textValue, inputData);
 
@@ -196,6 +199,66 @@ async function executeTableSelectionNode(
             table,
           });
         }
+      }
+    } catch (error) {
+      console.error(`Error reading pack file ${file.path}:`, error);
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: selectedTables,
+      sourceFiles: inputData.files,
+      tableCount: selectedTables.length,
+    } as DBTablesNodeData,
+  };
+}
+
+async function executeTableSelectionDropdownNode(
+  nodeId: string,
+  selectedTable: string,
+  inputData: PackFilesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`TableSelection Dropdown Node ${nodeId}: Processing selected table "${selectedTable}" with input:`, inputData);
+
+  if (!inputData || inputData.type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles data" };
+  }
+
+  if (!selectedTable || selectedTable.trim() === "") {
+    return {
+      success: false,
+      error: "No table selected. Please select a table from the dropdown.",
+    };
+  }
+
+  // Convert the selected table name to the db\ format if needed
+  const tableName = selectedTable.startsWith("db\\") ? selectedTable : `db\\${selectedTable}`;
+  const selectedTables = [] as DBTablesNodeTable[];
+
+  for (const file of inputData.files) {
+    if (!file.loaded) {
+      console.warn(`Skipping unloaded file: ${file.path}`);
+      continue;
+    }
+
+    try {
+      // Read pack file to get table information
+      const pack = await readPack(file.path, { tablesToRead: [tableName] });
+      getPacksTableData([pack], [tableName]);
+
+      // Find tables that match the criteria
+      const matchingTables = pack.packedFiles.filter((pf) => pf.name.includes(tableName));
+
+      for (const table of matchingTables) {
+        selectedTables.push({
+          name: tableName,
+          fileName: table.name,
+          sourceFile: file,
+          table,
+        });
       }
     } catch (error) {
       console.error(`Error reading pack file ${file.path}:`, error);

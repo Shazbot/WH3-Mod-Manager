@@ -16,6 +16,9 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { dataFromBackend } from "./viewer/packDataStore";
+import { useAppSelector } from "../hooks";
+import { DBVersion } from "../packFileTypes";
 
 // Serialization types
 interface SerializedNode {
@@ -27,6 +30,7 @@ interface SerializedNode {
     type: string;
     textValue?: string;
     selectedPack?: string;
+    selectedTable?: string;
     outputType?: NodeEdgeTypes;
     inputType?: NodeEdgeTypes;
   };
@@ -98,6 +102,13 @@ interface PackFilesDropdownNodeData extends NodeData {
   outputType: "PackFiles";
 }
 
+interface TableSelectionDropdownNodeData extends NodeData {
+  selectedTable: string;
+  inputType: "PackFiles";
+  outputType: "TableSelection";
+  tableNames: string[];
+}
+
 interface DraggableNodeData {
   type: string;
   label: string;
@@ -106,7 +117,9 @@ interface DraggableNodeData {
 
 // Custom PackFiles dropdown node component
 const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
-  const allMods = window.api?.getAppState?.()?.allMods || [];
+  const allMods = useAppSelector((state) => state.app.currentPreset.mods).toSorted((firstMod, secondMod) => {
+    return firstMod.name.localeCompare(secondMod.name);
+  });
   const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -129,7 +142,7 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
       <select
         value={selectedPack}
         onChange={handleDropdownChange}
-        className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
       >
         <option value="">Select a pack...</option>
         {allMods.map((mod) => (
@@ -146,6 +159,63 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
         position={Position.Right}
         className="w-3 h-3 bg-green-500"
         data-output-type="PackFiles"
+      />
+    </div>
+  );
+};
+
+// Custom TableSelection dropdown node component
+const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeData; id: string }> = ({
+  data,
+  id,
+}) => {
+  const tableNames = data.tableNames;
+  const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
+
+  const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedTable(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedTable: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-orange-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-blue-500"
+        data-input-type="PackFiles"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: PackFiles</div>
+
+      <select
+        value={selectedTable}
+        onChange={handleDropdownChange}
+        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
+      >
+        <option value="">Select a table...</option>
+        {tableNames.map((tableName) => (
+          <option key={tableName} value={tableName}>
+            {tableName}
+          </option>
+        ))}
+      </select>
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
       />
     </div>
   );
@@ -374,11 +444,20 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
 
 const nodeTypes = [
   { type: "packedfiles", label: "PackFiles Node", description: "Node with textbox that outputs PackFiles" },
-  { type: "packfilesdropdown", label: "PackFiles Dropdown", description: "Node with dropdown for pack selection" },
+  {
+    type: "packfilesdropdown",
+    label: "PackFiles Dropdown",
+    description: "Node with dropdown for pack selection",
+  },
   {
     type: "tableselection",
     label: "Table Selection Node",
     description: "Accepts PackFiles input, outputs TableSelection",
+  },
+  {
+    type: "tableselectiondropdown",
+    label: "Table Selection Dropdown",
+    description: "Node with dropdown for table selection",
   },
   {
     type: "columnselection",
@@ -419,6 +498,7 @@ const executeGraphInBackend = async (
         type: node.data?.type ? String(node.data.type) : "",
         textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : "",
         selectedPack: (node.data as any)?.selectedPack ? String((node.data as any).selectedPack) : "",
+        selectedTable: (node.data as any)?.selectedTable ? String((node.data as any).selectedTable) : "",
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
       },
@@ -477,6 +557,7 @@ const reactFlowNodeTypes = {
   packedfiles: PackFilesNode,
   packfilesdropdown: PackFilesDropdownNode,
   tableselection: TableSelectionNode,
+  tableselectiondropdown: TableSelectionDropdownNode,
   columnselection: ColumnSelectionNode,
   numericadjustment: NumericAdjustmentNode,
   savechanges: SaveChangesNode,
@@ -517,16 +598,27 @@ const NodeEditor: React.FC = () => {
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);
+  const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
+    undefined
+  );
 
   // Keep the ref updated with current nodes
   React.useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
 
+  React.useEffect(() => {
+    console.log("getDBNameToDBVersions");
+    window.api?.getDBNameToDBVersions().then((data) => {
+      console.log("getDBNameToDBVersions:", Object.keys(data));
+      setDBNameToDBVersions(data);
+    });
+  }, []);
+
   // Listen for node data updates from child components
   React.useEffect(() => {
     const handleNodeDataUpdate = (event: CustomEvent) => {
-      const { nodeId, textValue, selectedPack } = event.detail;
+      const { nodeId, textValue, selectedPack, selectedTable } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
@@ -536,6 +628,7 @@ const NodeEditor: React.FC = () => {
                 ...node.data,
                 textValue: textValue,
                 selectedPack: selectedPack,
+                selectedTable: selectedTable,
               },
             };
           }
@@ -569,6 +662,8 @@ const NodeEditor: React.FC = () => {
         sourceOutputType = (sourceNode.data as unknown as PackFilesDropdownNodeData).outputType;
       } else if (sourceNode.type === "tableselection" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TableSelectionNodeData).outputType;
+      } else if (sourceNode.type === "tableselectiondropdown" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as TableSelectionDropdownNodeData).outputType;
       } else if (sourceNode.type === "columnselection" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as ColumnSelectionNodeData).outputType;
       } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
@@ -579,6 +674,8 @@ const NodeEditor: React.FC = () => {
       let targetInputType: NodeEdgeTypes | undefined;
       if (targetNode.type === "tableselection" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as TableSelectionNodeData).inputType;
+      } else if (targetNode.type === "tableselectiondropdown" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as TableSelectionDropdownNodeData).inputType;
       } else if (targetNode.type === "columnselection" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as ColumnSelectionNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
@@ -670,6 +767,23 @@ const NodeEditor: React.FC = () => {
             outputType: "TableSelection" as NodeEdgeTypes,
           } as TableSelectionNodeData,
         };
+      } else if (nodeData.type === "tableselectiondropdown") {
+        // Create TableSelection dropdown node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "tableselectiondropdown",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedTable: "",
+            inputType: "PackFiles" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            tableNames: Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
+              return firstTableName.localeCompare(secondTableName);
+            }),
+          } as TableSelectionDropdownNodeData,
+        };
       } else if (nodeData.type === "columnselection") {
         // Create ColumnSelection node with special data structure
         newNode = {
@@ -733,7 +847,7 @@ const NodeEditor: React.FC = () => {
 
       setNodes((nds) => nds.concat(newNode));
     },
-    [reactFlowInstance, setNodes]
+    [reactFlowInstance, setNodes, DBNameToDBVersions]
   );
 
   const onDragStart = (event: DragEvent, nodeType: DraggableNodeData) => {
@@ -751,6 +865,7 @@ const NodeEditor: React.FC = () => {
         type: String(node.data?.type || ""),
         textValue: String((node.data as any)?.textValue || ""),
         selectedPack: String((node.data as any)?.selectedPack || ""),
+        selectedTable: String((node.data as any)?.selectedTable || ""),
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
       },

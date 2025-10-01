@@ -22,6 +22,7 @@ interface SerializedNode {
     type: string;
     textValue?: string;
     selectedPack?: string;
+    selectedTable?: string;
     outputType?: string;
     inputType?: string;
   };
@@ -96,9 +97,14 @@ export const executeNodeGraph = async (
         console.log(`Executing node: ${node.id} (${node.type})`);
 
         // Execute the node using existing backend executor
-        const textValueToUse = node.type === "packfilesdropdown"
-          ? (node.data.selectedPack || "")
-          : (node.data.textValue || "");
+        let textValueToUse = "";
+        if (node.type === "packfilesdropdown") {
+          textValueToUse = node.data.selectedPack || "";
+        } else if (node.type === "tableselectiondropdown") {
+          textValueToUse = node.data.selectedTable || "";
+        } else {
+          textValueToUse = node.data.textValue || "";
+        }
 
         const result = await executeNodeAction({
           nodeId: node.id,

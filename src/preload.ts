@@ -261,6 +261,9 @@ const api = {
       existingTree
     ),
 
+  getDBNameToDBVersions: (): Promise<Record<string, DBVersion[]>> =>
+    ipcRenderer.invoke("getDBNameToDBVersions"),
+
   getListOfPacksInSave: (saveName: string): Promise<string[]> =>
     ipcRenderer.invoke("getListOfPacksInSave", saveName),
 
@@ -309,8 +312,7 @@ const api = {
     successCount: number;
     failureCount: number;
     error?: string;
-  }> =>
-    ipcRenderer.invoke("executeNodeGraph", graphExecutionRequest),
+  }> => ipcRenderer.invoke("executeNodeGraph", graphExecutionRequest),
 };
 
 export type api = typeof api;
