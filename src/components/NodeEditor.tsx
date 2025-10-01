@@ -31,6 +31,9 @@ interface SerializedNode {
     textValue?: string;
     selectedPack?: string;
     selectedTable?: string;
+    selectedColumn?: string;
+    columnNames?: string[];
+    connectedTableName?: string;
     outputType?: NodeEdgeTypes;
     inputType?: NodeEdgeTypes;
   };
@@ -107,6 +110,15 @@ interface TableSelectionDropdownNodeData extends NodeData {
   inputType: "PackFiles";
   outputType: "TableSelection";
   tableNames: string[];
+}
+
+interface ColumnSelectionDropdownNodeData extends NodeData {
+  selectedColumn: string;
+  inputType: "TableSelection";
+  outputType: "ColumnSelection";
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
 interface DraggableNodeData {
@@ -355,6 +367,81 @@ const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string 
   );
 };
 
+// Custom ColumnSelection dropdown node component
+const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeData; id: string }> = ({
+  data,
+  id,
+}) => {
+  const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Update column names when connected table changes
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        // Update the node data with new column names
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: fieldNames },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+
+  const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedColumn(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedColumn: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-teal-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <select
+        value={selectedColumn}
+        onChange={handleDropdownChange}
+        className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+      >
+        <option value="">Select a column...</option>
+        {columnNames.map((columnName) => (
+          <option key={columnName} value={columnName}>
+            {columnName}
+          </option>
+        ))}
+      </select>
+
+      <div className="mt-2 text-xs text-gray-400">Output: ColumnSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-pink-500"
+        data-output-type="ColumnSelection"
+      />
+    </div>
+  );
+};
+
 // Custom NumericAdjustment node component that accepts ColumnSelection input and outputs ChangedColumnSelection
 const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
@@ -465,6 +552,11 @@ const nodeTypes = [
     description: "Accepts TableSelection input, outputs ColumnSelection",
   },
   {
+    type: "columnselectiondropdown",
+    label: "Column Selection Dropdown",
+    description: "Node with dropdown for column selection",
+  },
+  {
     type: "numericadjustment",
     label: "Numeric Adjustment Node",
     description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
@@ -499,6 +591,11 @@ const executeGraphInBackend = async (
         textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : "",
         selectedPack: (node.data as any)?.selectedPack ? String((node.data as any).selectedPack) : "",
         selectedTable: (node.data as any)?.selectedTable ? String((node.data as any).selectedTable) : "",
+        selectedColumn: (node.data as any)?.selectedColumn ? String((node.data as any).selectedColumn) : "",
+        columnNames: (node.data as any)?.columnNames || [],
+        connectedTableName: (node.data as any)?.connectedTableName
+          ? String((node.data as any).connectedTableName)
+          : "",
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
       },
@@ -559,6 +656,7 @@ const reactFlowNodeTypes = {
   tableselection: TableSelectionNode,
   tableselectiondropdown: TableSelectionDropdownNode,
   columnselection: ColumnSelectionNode,
+  columnselectiondropdown: ColumnSelectionDropdownNode,
   numericadjustment: NumericAdjustmentNode,
   savechanges: SaveChangesNode,
 };
@@ -618,7 +716,7 @@ const NodeEditor: React.FC = () => {
   // Listen for node data updates from child components
   React.useEffect(() => {
     const handleNodeDataUpdate = (event: CustomEvent) => {
-      const { nodeId, textValue, selectedPack, selectedTable } = event.detail;
+      const { nodeId, textValue, selectedPack, selectedTable, selectedColumn, columnNames } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
@@ -629,6 +727,8 @@ const NodeEditor: React.FC = () => {
                 textValue: textValue,
                 selectedPack: selectedPack,
                 selectedTable: selectedTable,
+                selectedColumn: selectedColumn,
+                columnNames: columnNames,
               },
             };
           }
@@ -666,6 +766,8 @@ const NodeEditor: React.FC = () => {
         sourceOutputType = (sourceNode.data as unknown as TableSelectionDropdownNodeData).outputType;
       } else if (sourceNode.type === "columnselection" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as ColumnSelectionNodeData).outputType;
+      } else if (sourceNode.type === "columnselectiondropdown" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as ColumnSelectionDropdownNodeData).outputType;
       } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
       }
@@ -678,6 +780,8 @@ const NodeEditor: React.FC = () => {
         targetInputType = (targetNode.data as unknown as TableSelectionDropdownNodeData).inputType;
       } else if (targetNode.type === "columnselection" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as ColumnSelectionNodeData).inputType;
+      } else if (targetNode.type === "columnselectiondropdown" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as ColumnSelectionDropdownNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
       } else if (targetNode.type === "savechanges" && targetNode.data) {
@@ -696,10 +800,45 @@ const NodeEditor: React.FC = () => {
           };
           return [...eds, newEdge];
         });
+
+        // Update column selection dropdown nodes when connected to table selection nodes
+        if (
+          targetNode.type === "columnselectiondropdown" &&
+          (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
+        ) {
+          const tableName =
+            sourceNode.type === "tableselectiondropdown"
+              ? (sourceNode.data as unknown as TableSelectionDropdownNodeData).selectedTable
+              : undefined; // For tableselection, we'd need to parse the textValue
+
+          if (tableName && DBNameToDBVersions) {
+            const tableVersions = DBNameToDBVersions[tableName];
+            if (tableVersions && tableVersions.length > 0) {
+              const tableFields = tableVersions[0].fields || [];
+              const fieldNames = tableFields.map((field) => field.name);
+
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === params.target) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        columnNames: fieldNames,
+                        connectedTableName: tableName,
+                      },
+                    };
+                  }
+                  return node;
+                })
+              );
+            }
+          }
+        }
       }
       // If types don't match or are undefined, the connection is rejected silently
     },
-    [setEdges]
+    [setEdges, DBNameToDBVersions, setNodes]
   );
 
   const onDragOver = useCallback((event: DragEvent) => {
@@ -798,6 +937,22 @@ const NodeEditor: React.FC = () => {
             outputType: "ColumnSelection" as NodeEdgeTypes,
           } as ColumnSelectionNodeData,
         };
+      } else if (nodeData.type === "columnselectiondropdown") {
+        // Create ColumnSelection dropdown node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "columnselectiondropdown",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedColumn: "",
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "ColumnSelection" as NodeEdgeTypes,
+            columnNames: [],
+            DBNameToDBVersions,
+          } as ColumnSelectionDropdownNodeData,
+        };
       } else if (nodeData.type === "numericadjustment") {
         // Create NumericAdjustment node with special data structure
         newNode = {
@@ -866,6 +1021,9 @@ const NodeEditor: React.FC = () => {
         textValue: String((node.data as any)?.textValue || ""),
         selectedPack: String((node.data as any)?.selectedPack || ""),
         selectedTable: String((node.data as any)?.selectedTable || ""),
+        selectedColumn: String((node.data as any)?.selectedColumn || ""),
+        columnNames: (node.data as any)?.columnNames || [],
+        connectedTableName: String((node.data as any)?.connectedTableName || ""),
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
       },

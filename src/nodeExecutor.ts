@@ -31,6 +31,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "columnselection":
         return await executeColumnSelectionNode(nodeId, textValue, inputData);
 
+      case "columnselectiondropdown":
+        return await executeColumnSelectionDropdownNode(nodeId, textValue, inputData);
+
       case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
 
@@ -361,6 +364,67 @@ function evaluateFormula(formula: string, x: number): number {
   } catch (error) {
     throw new Error(`Formula evaluation failed: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
+}
+
+async function executeColumnSelectionDropdownNode(
+  nodeId: string,
+  selectedColumn: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`ColumnSelection Dropdown Node ${nodeId}: Processing selected column "${selectedColumn}" with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  if (!selectedColumn || selectedColumn.trim() === "") {
+    return {
+      success: false,
+      error: "No column selected. Please select a column from the dropdown.",
+    };
+  }
+
+  const selectedColumns = [selectedColumn.trim()];
+  const columnData = [] as DBColumnSelectionTableValues[];
+
+  for (const tableData of inputData.tables) {
+    if (
+      tableData.table.tableSchema &&
+      tableData.table.schemaFields &&
+      tableData.table.schemaFields.length != 0
+    ) {
+      const rows = chunkSchemaIntoRows(
+        tableData.table.schemaFields,
+        tableData.table.tableSchema
+      ) as AmendedSchemaField[][];
+      const cellData = [] as { col: string; data: string }[];
+      for (const row of rows) {
+        for (const cell of row) {
+          if (selectedColumns.includes(cell.name)) {
+            cellData.push({ col: cell.name, data: cell.resolvedKeyValue });
+          }
+        }
+      }
+      columnData.push({
+        tableName: tableData.name,
+        fileName: tableData.fileName,
+        sourcePack: tableData.sourceFile,
+        sourceTable: tableData.table,
+        selectedColumns: selectedColumns,
+        data: cellData,
+      } as DBColumnSelectionTableValues);
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      type: "ColumnSelection",
+      columns: columnData,
+      sourceTables: inputData.tables,
+      selectedColumnCount: columnData.reduce((sum, table) => sum + table.selectedColumns.length, 0),
+    } as DBColumnSelectionNodeData,
+  };
 }
 
 async function executeNumericAdjustmentNode(

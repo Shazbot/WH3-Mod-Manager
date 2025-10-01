@@ -607,6 +607,7 @@ declare global {
     | "tableselection"
     | "tableselectiondropdown"
     | "columnselection"
+    | "columnselectiondropdown"
     | "numericadjustment"
     | "savechanges";
 
