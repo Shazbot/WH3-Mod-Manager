@@ -44,6 +44,7 @@ import {
   readFromExistingPack,
   readPack,
   writeStartGamePack,
+  writePack,
 } from "./packFileSerializer";
 import { AmendedSchemaField, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { resolveTable } from "./resolveTable";
@@ -1672,6 +1673,60 @@ export const registerIpcMainListeners = (
       return {
         success: false,
         error: error instanceof Error ? error.message : "Failed to save flow",
+      };
+    }
+  });
+
+  ipcMain.handle("savePackWithUnsavedFiles", async (event, packPath: string) => {
+    try {
+      console.log("savePackWithUnsavedFiles:", packPath);
+
+      const unsavedFiles = appData.unsavedPacksData[packPath];
+      if (!unsavedFiles || unsavedFiles.length === 0) {
+        return {
+          success: false,
+          error: "No unsaved files found for this pack",
+        };
+      }
+
+      // Read the original pack
+      const pack = await readPack(packPath, { skipParsingTables: true });
+
+      // Convert unsaved files to format for writePack (similar to DBClone.ts)
+      const filesToSave = unsavedFiles.map((file) => {
+        const buffer = file.buffer || Buffer.from(file.text || "");
+        return {
+          name: file.name,
+          buffer: buffer,
+          file_size: buffer.length,
+        };
+      });
+
+      // Sort files by name (as done in DBClone.ts)
+      const sortedFilesToSave = filesToSave.toSorted((firstPf, secondPf) => {
+        return firstPf.name.localeCompare(secondPf.name);
+      });
+
+      // Generate new pack path
+      const packDir = nodePath.dirname(packPath);
+      const packName = nodePath.basename(packPath, ".pack");
+      const savePath = nodePath.join(packDir, `${packName}_modified.pack`);
+
+      // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
+      await writePack(sortedFilesToSave, savePath, pack, true);
+
+      console.log(`Pack saved to: ${savePath}`);
+
+      // Clear unsaved files for this pack
+      delete appData.unsavedPacksData[packPath];
+      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
+
+      return { success: true, savedPath: savePath };
+    } catch (error) {
+      console.error("Error saving pack with unsaved files:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to save pack",
       };
     }
   });

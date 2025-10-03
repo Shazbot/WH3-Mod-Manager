@@ -326,6 +326,12 @@ const api = {
     filePath?: string;
     error?: string;
   }> => ipcRenderer.invoke("saveNodeFlow", flowName, flowData, packPath),
+
+  savePackWithUnsavedFiles: (packPath: string): Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("savePackWithUnsavedFiles", packPath),
 };
 
 export type api = typeof api;
