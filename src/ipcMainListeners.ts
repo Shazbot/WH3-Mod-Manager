@@ -1653,7 +1653,7 @@ export const registerIpcMainListeners = (
         name: flowName,
         file_size: buffer.length,
         start_pos: -1,
-        buffer: buffer,
+        text: flowData,
       } as PackedFile;
 
       const existingFileIndex = unsavedFiles.findIndex((file) => file.name == flowName);
@@ -1662,6 +1662,9 @@ export const registerIpcMainListeners = (
       } else {
         unsavedFiles.push(newFile);
       }
+
+      mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
 
       return { success: true, filePath: flowName };
     } catch (error) {

@@ -93,6 +93,11 @@ declare global {
     pack: Pack;
   }
 
+  interface SetUnsavedPacksDataPayload {
+    packPath: string;
+    unsavedFileData: PackedFile[];
+  }
+
   interface AppState {
     categories: string[];
     categoryColors: Record<string, string>;
@@ -123,6 +128,7 @@ declare global {
     isChangingGameProcessPriority: boolean;
     allMods: Mod[];
     packsData: Record<string, PackViewData>;
+    unsavedPacksData: Record<string, PackedFile[]>;
     packCollisions: PackCollisions;
     packCollisionsCheckProgress: PackCollisionsCheckProgressData;
     dataFromConfig?: AppStateToRead;
@@ -135,6 +141,7 @@ declare global {
     outdatedPackFiles: Record<string, string[]>;
     dataModLastChangedLocal?: number;
     currentDBTableSelection?: DBTableSelection;
+    currentFlowFileSelection?: string;
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;

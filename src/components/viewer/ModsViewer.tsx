@@ -11,10 +11,12 @@ import { gameToPackWithDBTablesName } from "../../supportedGames";
 import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
 import { selectDBTable, setDeepCloneTarget } from "@/src/appSlice";
+import NodeEditor from "../NodeEditor";
 
 const ModsViewer = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
+  const currentFlowFileSelection = useAppSelector((state) => state.app.currentFlowFileSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const packPath =
@@ -163,7 +165,7 @@ const ModsViewer = memo(() => {
                 </div>
               </Resizable>
               <div style={{ width: "100%", minWidth: "1px" }}>
-                <PackTablesTableView />
+                {(currentFlowFileSelection && <NodeEditor />) || <PackTablesTableView />}
               </div>
             </div>
 

@@ -5,7 +5,7 @@ import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-acce
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
 import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
-import { selectDBTable } from "../../appSlice";
+import { selectDBTable, selectFlowFile } from "../../appSlice";
 import { gameToPackWithDBTablesName } from "../../supportedGames";
 
 type PackTablesTreeViewProps = {
@@ -18,6 +18,7 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
   const currentGame = useAppSelector((state) => state.app.currentGame);
 
   const packsData = useAppSelector((state) => state.app.packsData);
+  const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
 
   // Context menu state
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
@@ -60,12 +61,25 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
       { name: "", children: [] } as TreeData
     );
 
+  const unsavedFiles = unsavedPacksData[packPath];
+  if (unsavedFiles) {
+    for (const unsavedFile of unsavedFiles.toReversed()) {
+      result.children?.splice(0, 0, { name: unsavedFile.name, children: [] });
+    }
+  }
+
   // console.log(result);
   const data = flattenTree(result);
 
   const onTreeSelect = (props: ITreeViewOnSelectProps) => {
     // console.log("ON TREE SELECT");
     // console.log(props);
+
+    if (props.element.name.startsWith("whmmflows\\")) {
+      dispatch(selectFlowFile(props.element.name));
+      return;
+    }
+
     if (
       props.isSelected &&
       props.element.parent &&
@@ -79,6 +93,7 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
         const dbSubname = props.element.name;
         console.log(`SENT GET PACK DATA ${packPath + " " + dbName + " " + dbSubname}}`);
         window.api?.getPackData(packPath, { dbName, dbSubname });
+        dispatch(selectFlowFile(undefined));
         dispatch(
           selectDBTable({
             packPath: packData.packPath,
@@ -194,14 +209,14 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
       const result = await window.api?.saveNodeFlow(newFlowName, flowData, packData.packPath);
       if (result?.success) {
         console.log("Flow created successfully at:", result.filePath);
-        alert(`Flow "${newFlowName}" created successfully!`);
+        // alert(`Flow "${newFlowName}" created successfully!`);
       } else {
         console.error("Failed to create flow:", result?.error);
-        alert(`Failed to create flow: ${result?.error || "Unknown error"}`);
+        // alert(`Failed to create flow: ${result?.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Error creating flow:", error);
-      alert(`Error creating flow: ${error instanceof Error ? error.message : "Unknown error"}`);
+      // alert(`Error creating flow: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
 
     setIsNewFlowDialogOpen(false);
