@@ -165,7 +165,9 @@ const ModsViewer = memo(() => {
                 </div>
               </Resizable>
               <div style={{ width: "100%", minWidth: "1px" }}>
-                {(currentFlowFileSelection && <NodeEditor />) || <PackTablesTableView />}
+                {(currentFlowFileSelection && (
+                  <NodeEditor currentFile={currentFlowFileSelection} currentPack={packPath} />
+                )) || <PackTablesTableView />}
               </div>
             </div>
 
