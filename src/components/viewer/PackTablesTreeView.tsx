@@ -68,6 +68,12 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
     }
   }
 
+  for (const flowFile of packData.tables.filter((pf) => pf.startsWith("whmmflows\\"))) {
+    if (unsavedFiles && unsavedFiles.some((unsavedFile) => unsavedFile.name == flowFile)) continue;
+
+    result.children?.splice(0, 0, { name: flowFile, children: [] });
+  }
+
   // console.log(result);
   const data = flattenTree(result);
 

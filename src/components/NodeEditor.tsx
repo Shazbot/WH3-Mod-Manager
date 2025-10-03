@@ -1773,14 +1773,36 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   }, [nodes, edges, isExecuting]);
 
   useEffect(() => {
-    if (currentFile && currentPack) {
+    const loadFileContent = async () => {
+      if (!currentFile || !currentPack) return;
+
+      // First try to load from unsaved files
       const unsavedFiles = unsavedPacksData[currentPack];
       if (unsavedFiles) {
         const unsavedFile = unsavedFiles.find((file) => file.name == currentFile);
-        if (unsavedFile && unsavedFile.text) loadNodeGraph(unsavedFile.text);
+        if (unsavedFile && unsavedFile.text) {
+          loadNodeGraph(unsavedFile.text);
+          return;
+        }
       }
-    }
-  }, [currentFile, currentPack]);
+
+      // If not in unsaved files, read from pack
+      try {
+        const result = await window.api?.readFileFromPack(currentPack, currentFile);
+        if (result?.success && result.text) {
+          loadNodeGraph(result.text);
+        } else {
+          console.error("Failed to read file from pack:", result?.error);
+          alert(`Failed to load file: ${result?.error || "Unknown error"}`);
+        }
+      } catch (error) {
+        console.error("Error loading file:", error);
+        alert(`Error loading file: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
+    };
+
+    loadFileContent();
+  }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph]);
 
   return (
     <div className="flex h-screen">
