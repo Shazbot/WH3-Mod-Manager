@@ -1731,6 +1731,45 @@ export const registerIpcMainListeners = (
     }
   });
 
+  ipcMain.handle("readFileFromPack", async (event, packPath: string, fileName: string) => {
+    try {
+      console.log("readFileFromPack:", packPath, fileName);
+
+      // Read the pack with the specific file
+      const pack = await readPack(packPath, { filesToRead: [fileName] });
+
+      // Find the file
+      const file = pack.packedFiles.find((pf) => pf.name === fileName);
+      if (!file) {
+        return {
+          success: false,
+          error: `File "${fileName}" not found in pack`,
+        };
+      }
+
+      // Convert buffer to text
+      let text: string;
+      if (file.text) {
+        text = file.text;
+      } else if (file.buffer) {
+        text = file.buffer.toString("utf-8");
+      } else {
+        return {
+          success: false,
+          error: "File has no readable content",
+        };
+      }
+
+      return { success: true, text };
+    } catch (error) {
+      console.error("Error reading file from pack:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to read file from pack",
+      };
+    }
+  });
+
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {

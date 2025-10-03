@@ -332,6 +332,12 @@ const api = {
     savedPath?: string;
     error?: string;
   }> => ipcRenderer.invoke("savePackWithUnsavedFiles", packPath),
+
+  readFileFromPack: (packPath: string, fileName: string): Promise<{
+    success: boolean;
+    text?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("readFileFromPack", packPath, fileName),
 };
 
 export type api = typeof api;
