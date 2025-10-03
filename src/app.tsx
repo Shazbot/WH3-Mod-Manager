@@ -81,7 +81,7 @@ const App = React.memo(() => {
           <div
             ref={scrollElement}
             id="mod-rows-scroll"
-            className="m-auto pb-4 ml-14 pt-11 height-without-topbar overflow-y-scroll scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+            className="m-auto pb-4 ml-14 pt-11 height-without-topbar overflow-y-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
           >
             <Onboarding></Onboarding>
             <LeftSidebar />

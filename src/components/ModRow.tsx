@@ -322,14 +322,14 @@ const ModRow = memo(
                   onCustomizeModClicked(e, mod);
                 }}
                 onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
-                className="bigger-gear-icon cursor-pointer"
+                className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
                 color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
               />
             )}
           {customizableMods[mod.path] &&
             customizableMods[mod.path].some((file) => file.startsWith("whmmflows\\")) && (
               <Icons.SettingsKnobs
-                className="bigger-gear-icon cursor-pointer"
+                className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
                 color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
               />
             )}
