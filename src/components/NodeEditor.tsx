@@ -27,7 +27,7 @@ interface SerializedNode {
   position: XYPosition;
   data: {
     label: string;
-    type: string;
+    type: FlowNodeType;
     textValue?: string;
     selectedPack?: string;
     selectedTable?: string;
@@ -36,6 +36,8 @@ interface SerializedNode {
     connectedTableName?: string;
     outputType?: NodeEdgeTypes;
     inputType?: NodeEdgeTypes;
+    tableNames?: string[];
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
   };
 }
 
@@ -204,6 +206,7 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
   data,
   id,
 }) => {
+  console.log("tableNames:", data.tableNames);
   const tableNames = data.tableNames || [];
   const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
 
@@ -1415,11 +1418,11 @@ const NodeEditor: React.FC = () => {
   const serializeNodeGraph = useCallback((): SerializedNodeGraph => {
     const serializedNodes: SerializedNode[] = nodes.map((node) => ({
       id: node.id,
-      type: node.type || "default",
+      type: node.type || ("default" as FlowNodeType),
       position: node.position,
       data: {
         label: String(node.data?.label || ""),
-        type: String(node.data?.type || ""),
+        type: String(node.data?.type || "") as FlowNodeType,
         textValue: String((node.data as any)?.textValue || ""),
         selectedPack: String((node.data as any)?.selectedPack || ""),
         selectedTable: String((node.data as any)?.selectedTable || ""),
@@ -1505,6 +1508,16 @@ const NodeEditor: React.FC = () => {
               };
             }
 
+            console.log("ser type:", node.data.type);
+            if (node.data.type === "columnselectiondropdown" || node.data.type === "tableselectiondropdown") {
+              console.log("ser type!!!:", DBNameToDBVersions);
+              node.data.DBNameToDBVersions = DBNameToDBVersions;
+              node.data.tableNames = Object.keys(DBNameToDBVersions || {}).toSorted(
+                (firstTableName, secondTableName) => {
+                  return firstTableName.localeCompare(secondTableName);
+                }
+              );
+            }
             return node;
           });
 
@@ -1531,6 +1544,81 @@ const NodeEditor: React.FC = () => {
           setNodes(loadedNodes);
           setEdges(loadedEdges);
 
+          // Recreate onconnection callbacks for all edges
+          setTimeout(() => {
+            loadedEdges.forEach((edge) => {
+              const sourceNode = loadedNodes.find((n) => n.id === edge.source);
+              const targetNode = loadedNodes.find((n) => n.id === edge.target);
+
+              if (!sourceNode || !targetNode) return;
+
+              // Update column selection dropdown nodes when connected to table selection nodes
+              if (
+                targetNode.type === "columnselectiondropdown" &&
+                (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
+              ) {
+                const tableName =
+                  sourceNode.type === "tableselectiondropdown"
+                    ? (sourceNode.data as unknown as TableSelectionDropdownNodeData).selectedTable
+                    : undefined;
+
+                if (tableName && DBNameToDBVersions) {
+                  const tableVersions = DBNameToDBVersions[tableName];
+                  if (tableVersions && tableVersions.length > 0) {
+                    const tableFields = tableVersions[0].fields || [];
+                    const fieldNames = tableFields.map((field) => field.name);
+
+                    setNodes((nds) =>
+                      nds.map((node) => {
+                        if (node.id === targetNode.id) {
+                          return {
+                            ...node,
+                            data: {
+                              ...node.data,
+                              columnNames: fieldNames,
+                              connectedTableName: tableName,
+                            },
+                          };
+                        }
+                        return node;
+                      })
+                    );
+                  }
+                }
+              }
+
+              // Update table selection dropdown nodes when connected to pack files nodes
+              if (
+                targetNode.type === "tableselectiondropdown" &&
+                (sourceNode.type === "packedfiles" || sourceNode.type === "packfilesdropdown")
+              ) {
+                const selectedPack =
+                  sourceNode.type === "packfilesdropdown"
+                    ? (sourceNode.data as unknown as PackFilesDropdownNodeData).selectedPack
+                    : undefined;
+
+                if (selectedPack) {
+                  // Here you could populate table names based on the selected pack
+                  // For now, we'll just ensure the connection is recognized
+                  setNodes((nds) =>
+                    nds.map((node) => {
+                      if (node.id === targetNode.id) {
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            // Keep existing tableNames, just ensure data structure is correct
+                          },
+                        };
+                      }
+                      return node;
+                    })
+                  );
+                }
+              }
+            });
+          }, 100);
+
           console.log(`Loaded graph with ${loadedNodes.length} nodes and ${loadedEdges.length} connections`);
         } catch (error) {
           console.error("Failed to load node graph:", error);
@@ -1540,7 +1628,7 @@ const NodeEditor: React.FC = () => {
 
       reader.readAsText(file);
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges, DBNameToDBVersions]
   );
 
   const handleFileInput = useCallback(

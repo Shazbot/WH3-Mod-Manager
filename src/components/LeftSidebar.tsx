@@ -9,7 +9,7 @@ import localizationContext from "../localizationContext";
 
 // const Tab = () => {}
 
-const tabIndexToTabType: MainWindowTab[] = ["mods", "enabledMods", "categories"];
+const tabIndexToTabType: MainWindowTab[] = ["mods", "enabledMods", "categories", "nodeEditor"];
 
 const LeftSidebar = memo(() => {
   const dispatch = useAppDispatch();
@@ -34,6 +34,9 @@ const LeftSidebar = memo(() => {
             break;
           case "3":
             onTabSelected(2);
+            break;
+          case "4":
+            onTabSelected(3);
             break;
         }
       }
@@ -74,6 +77,13 @@ const LeftSidebar = memo(() => {
               <MdCategory size="1.5rem" />
               <span className="ml-2 mr-2 hidden-child">{localized.categories}</span>
               <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+3</span>
+            </div>
+          </Tab>
+          <Tab>
+            <div className="flex items-center h-full parent-unhide-child relative">
+              <MdCategory size="1.5rem" />
+              <span className="ml-2 mr-2 hidden-child">Node Editor</span>
+              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+4</span>
             </div>
           </Tab>
         </TabList>
