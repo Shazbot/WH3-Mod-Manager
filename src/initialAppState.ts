@@ -30,6 +30,7 @@ const initialState = {
   isCompatCheckingVanillaPacks: false,
   allMods: [],
   packsData: {},
+  unsavedPacksData: {},
   packCollisions: {
     packTableCollisions: [],
     packFileCollisions: [],

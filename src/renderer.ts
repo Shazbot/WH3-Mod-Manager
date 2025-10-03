@@ -13,6 +13,7 @@ import {
   enableModsByName,
   setPackHeaderData,
   setPacksData,
+  setUnsavedPacksData,
   setSkillsData,
   setPackCollisions,
   createdMergedPack,
@@ -275,6 +276,16 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
   //   console.log("GOT COMPAT DATA");
   //   store.dispatch(setPackCollisions(data));
   // });
+});
+
+window.api?.setUnsavedPacksData((event, packPath: string, unsavedFileData: PackedFile[]) => {
+  if (!unsavedFileData || unsavedFileData.length == 0) {
+    console.log("setUnsavedPacksData: unsavedPacksData is invalid:", unsavedFileData);
+    return;
+  }
+  console.log(`INVOKED: UNSAVED PACK DATA RECIEVED FOR ${unsavedFileData.map((pf) => pf.name).join(",")}`);
+
+  store.dispatch(setUnsavedPacksData({ packPath, unsavedFileData } as SetUnsavedPacksDataPayload));
 });
 
 window.api?.setSkillsData((event, skillsData: SkillsData) => {

@@ -715,6 +715,28 @@ const appSlice = createSlice({
         packsData.map((pd) => pd.packName)
       );
     },
+    setUnsavedPacksData: (state: AppState, action: PayloadAction<SetUnsavedPacksDataPayload>) => {
+      const { packPath, unsavedFileData } = action.payload;
+
+      const unsavedPackData = state.unsavedPacksData[packPath] || [];
+
+      for (const unsavedFile of unsavedFileData) {
+        const existingFileIndex = unsavedPackData.findIndex((file) => file.name == unsavedFile.name);
+        if (existingFileIndex != -1) {
+          unsavedPackData.splice(existingFileIndex, 1, unsavedFile);
+        } else {
+          unsavedPackData.push(unsavedFile);
+        }
+      }
+
+      state.unsavedPacksData[packPath] = unsavedPackData;
+
+      console.log(
+        "APPSLICE setUnsavedPacksData:",
+        window.location.pathname,
+        unsavedFileData.map((pd) => pd.name)
+      );
+    },
     setPacksDataRead: (state: AppState, action: PayloadAction<string[]>) => {
       const packPaths = action.payload;
 
@@ -1195,6 +1217,10 @@ const appSlice = createSlice({
       console.log("APPSLICE selectDBTable:", action.payload);
       state.currentDBTableSelection = action.payload;
     },
+    selectFlowFile: (state: AppState, action: PayloadAction<string | undefined>) => {
+      console.log("APPSLICE flow file:", action.payload);
+      state.currentFlowFileSelection = action.payload;
+    },
     setCurrentTab: (state: AppState, action: PayloadAction<MainWindowTab>) => {
       const tabType = action.payload;
       state.currentTab = tabType;
@@ -1343,6 +1369,7 @@ export const {
   importSteamCollection,
   enableModsByName,
   setPacksData,
+  setUnsavedPacksData,
   setPacksDataRead,
   setPackCollisions,
   setPackCollisionsCheckProgress,
@@ -1357,6 +1384,7 @@ export const {
   setCurrentlyReadingMod,
   setLastModThatWasRead,
   selectDBTable,
+  selectFlowFile,
   setCurrentTab,
   setAreModsEnabled,
   setIsCreateSteamCollectionOpen,

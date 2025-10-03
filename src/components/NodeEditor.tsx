@@ -1091,7 +1091,13 @@ const NodeSidebar: React.FC<{
   );
 };
 
-const NodeEditor: React.FC = () => {
+const NodeEditor: React.FC = ({
+  currentFile,
+  currentPack,
+}: {
+  currentFile?: string;
+  currentPack?: string;
+}) => {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);

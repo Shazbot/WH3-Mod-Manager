@@ -115,6 +115,9 @@ const api = {
     ipcRenderer.on("setPackHeaderData", callback),
   setPacksData: (callback: (event: Electron.IpcRendererEvent, packsData: PackViewData[]) => void) =>
     ipcRenderer.on("setPacksData", callback),
+  setUnsavedPacksData: (
+    callback: (event: Electron.IpcRendererEvent, packPath: string, unsavedFileData: PackedFile[]) => void
+  ) => ipcRenderer.on("setUnsavedPacksData", callback),
   setSkillsData: (callback: (event: Electron.IpcRendererEvent, skillsData: SkillsData) => void) =>
     ipcRenderer.on("setSkillsData", callback),
   setPackCollisionsCheckProgress: (
