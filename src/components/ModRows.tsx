@@ -530,7 +530,7 @@ const ModRows = memo((props: ModRowsProps) => {
     [isDropdownOpen]
   );
 
-  const onCustomizeModClicked = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => {
+  const onCustomizeModClicked = useCallback((e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
     if (isDropdownOpen) return;
     console.log("onCustomizeModClicked:", mod);
     dispatch(setModBeingCustomized(mod));
@@ -543,7 +543,7 @@ const ModRows = memo((props: ModRowsProps) => {
   }, []);
 
   const onCustomizeModRightClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => {
+    (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
       if (isDropdownOpen) return;
       console.log("onCustomizeModRightClick:", mod);
       dispatch(removeAllPackDataOverwrites(mod.path));

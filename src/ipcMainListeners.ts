@@ -1477,27 +1477,18 @@ export const registerIpcMainListeners = (
   ipcMain.on("getCustomizableMods", (event, modPaths: string[], tables: string[]) => {
     const packs = appData.packsData.filter((pack) => modPaths.includes(pack.path));
 
-    // console.log("modPaths:", modPaths);
-    // console.log(
-    //   "modPaths packsdata:",
-    //   appData.packsData.map((pd) => pd.name)
-    // );
-    // console.log(packs.map((pack) => pack.packedFiles.map((pf) => pf.name).join(",")));
-
-    // console.log("tables for matching:", tables);
-
     const tablesForMatching = tables.map((table) => `db\\${table}\\`);
-    // console.log("tables for matching 2:", tablesForMatching);
+    tablesForMatching.push("whmmflows\\");
+
     const customizableMods = packs.reduce((acc, currentPack) => {
       const foundTables = tablesForMatching.filter((tableForMatching) =>
-        currentPack.packedFiles.some((packedFile) => packedFile.name.includes(tableForMatching))
+        currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching))
       );
       if (foundTables.length > 0) {
         acc[currentPack.path] = foundTables;
       }
       return acc;
     }, {} as Record<string, string[]>);
-    // console.log("customizable mods:", customizableMods);
 
     mainWindow?.webContents.send("setCustomizableMods", customizableMods);
   });

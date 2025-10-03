@@ -26,8 +26,8 @@ type ModRowProps = {
   onDragEnd: (e: React.DragEvent<HTMLDivElement>) => void;
   onModToggled: (mod: Mod) => void;
   onModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
-  onCustomizeModClicked: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
-  onCustomizeModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
+  onCustomizeModClicked: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
+  onCustomizeModRightClick: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
   onRemoveModOrder: (mod: Mod) => void;
   loadOrder: number;
   isEnabledInMergedMod: boolean;
@@ -314,19 +314,25 @@ const ModRow = memo(
             {timeColumnValue}
           </label>
         </div>
-        <div
-          className="flex place-items-center justify-center"
-          onClick={(e) => {
-            onCustomizeModClicked(e, mod);
-          }}
-          onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
-        >
-          {customizableMods[mod.path] && (
-            <Icons.Gear
-              className="bigger-gear-icon cursor-pointer"
-              color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
-            />
-          )}
+        <div className="flex place-items-center justify-center gap-2">
+          {customizableMods[mod.path] &&
+            customizableMods[mod.path].some((file) => file.startsWith("db\\")) && (
+              <Icons.Gear
+                onClick={(e) => {
+                  onCustomizeModClicked(e, mod);
+                }}
+                onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
+                className="bigger-gear-icon cursor-pointer"
+                color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
+              />
+            )}
+          {customizableMods[mod.path] &&
+            customizableMods[mod.path].some((file) => file.startsWith("whmmflows\\")) && (
+              <Icons.SettingsKnobs
+                className="bigger-gear-icon cursor-pointer"
+                color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
+              />
+            )}
         </div>
         {isLast && (
           <div onDrop={(e) => onDrop(e, true)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
