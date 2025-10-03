@@ -18,6 +18,7 @@ const ModsViewer = memo(() => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const currentFlowFileSelection = useAppSelector((state) => state.app.currentFlowFileSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
+  const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const packPath =
     currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
@@ -40,6 +41,29 @@ const ModsViewer = memo(() => {
 
   const clearFilter = () => {
     setDBTableFilter("");
+  };
+
+  const hasUnsavedFiles = useMemo(() => {
+    const unsavedFiles = unsavedPacksData[packPath];
+    return unsavedFiles && unsavedFiles.length > 0;
+  }, [unsavedPacksData, packPath]);
+
+  const handleSavePack = async () => {
+    if (!hasUnsavedFiles) return;
+
+    try {
+      const result = await window.api?.savePackWithUnsavedFiles(packPath);
+      if (result?.success) {
+        console.log("Pack saved successfully:", result.savedPath);
+        alert(`Pack saved successfully to: ${result.savedPath}`);
+      } else {
+        console.error("Failed to save pack:", result?.error);
+        alert(`Failed to save pack: ${result?.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error saving pack:", error);
+      alert(`Error saving pack: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
   };
 
   useEffect(() => {
@@ -123,6 +147,26 @@ const ModsViewer = memo(() => {
       <div className="dark:text-gray-300">
         {isOpen && (
           <>
+            {/* Save Pack Button */}
+            {hasUnsavedFiles && (
+              <div className="flex justify-end p-2 bg-gray-800 border-b border-gray-600">
+                <button
+                  onClick={handleSavePack}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  Save Pack
+                </button>
+              </div>
+            )}
+
             <div
               style={{
                 width: "100%",
