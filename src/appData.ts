@@ -1,4 +1,4 @@
-import { Pack, PackCollisions } from "./packFileTypes";
+import { Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
 import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
 import Trie from "./utility/trie";
@@ -28,6 +28,7 @@ interface AppData {
   isMakeUnitsGeneralsEnabled: boolean;
   hasReadConfig: boolean;
   packsData: Pack[];
+  unsavedPacksData: Record<string, PackedFile[]>;
   compatData: PackCollisions;
   currentlyReadingModPaths: string[];
   vanillaPacks: Pack[];
@@ -74,6 +75,7 @@ const appData = {
   isMakeUnitsGeneralsEnabled: false,
   hasReadConfig: false,
   packsData: [],
+  unsavedPacksData: {},
   compatData: {
     packTableCollisions: [],
     packFileCollisions: [],

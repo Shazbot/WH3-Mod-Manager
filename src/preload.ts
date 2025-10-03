@@ -313,6 +313,16 @@ const api = {
     failureCount: number;
     error?: string;
   }> => ipcRenderer.invoke("executeNodeGraph", graphExecutionRequest),
+
+  saveNodeFlow: (
+    flowName: string,
+    flowData: string,
+    packPath: string
+  ): Promise<{
+    success: boolean;
+    filePath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("saveNodeFlow", flowName, flowData, packPath),
 };
 
 export type api = typeof api;
