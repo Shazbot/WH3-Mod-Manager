@@ -182,12 +182,10 @@ const ModsViewer = memo(() => {
                 minWidth="1"
               >
                 <div>
-                  {/* <div className="overflow-auto hover:-scale-x-100 overflow-y-scroll h-[90vh] hover:overflow-x-visible hover:overflow-y-scroll hover:absolute hover:z-50"> */}
                   <div className="overflow-auto  h-[85vh]">
-                    {/* <div className="hover:-scale-x-100"> */}
                     <PackTablesTreeView tableFilter={dbTableFilter} />
                   </div>
-                  {/* </div> */}
+
                   <div className="flex items-center mt-3">
                     <span className="text-slate-100">{localized.filter}</span>
                     <span className="relative">

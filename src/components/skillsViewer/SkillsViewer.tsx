@@ -78,9 +78,7 @@ const SkillsViewer = memo(() => {
               minWidth="1"
             >
               <div>
-                {/* <div className="overflow-auto hover:-scale-x-100 overflow-y-scroll h-[90vh] hover:overflow-x-visible hover:overflow-y-scroll hover:absolute hover:z-50"> */}
                 <div className="overflow-auto  h-[85vh]">
-                  {/* <div className="hover:-scale-x-100"> */}
                   <SkillsTreeView tableFilter={dbTableFilter} />
                 </div>
                 {/* </div> */}
@@ -88,15 +86,6 @@ const SkillsViewer = memo(() => {
             </Resizable>
             <div style={{ width: "100%", minWidth: "1px" }}>{skills && <SkillsView />}</div>
           </div>
-
-          {/* <div className="grid grid-cols-10 dark:text-gray-300">
-            <div className="col-span-2 overflow-scroll h-[90vh]">
-              <PackTablesTreeView tableFilter={modFilter} />
-            </div>
-            <div className="col-span-8">
-              <PackTablesTableView />
-            </div>
-          </div> */}
 
           <div className="flex items-center">
             <span className="relative">

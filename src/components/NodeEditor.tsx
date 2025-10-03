@@ -1805,7 +1805,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph]);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex">
       <NodeSidebar onDragStart={onDragStart} />
       <div className="flex-1 relative" ref={reactFlowWrapper}>
         <ReactFlowProvider>
