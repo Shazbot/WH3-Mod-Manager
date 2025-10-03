@@ -10,6 +10,7 @@ import { BiSolidRightArrow, BiSolidDownArrow } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
 import { FiSettings } from "react-icons/fi";
 import { AiOutlineQuestionCircle } from "react-icons/ai";
+import { GiSettingsKnobs } from "react-icons/gi";
 
 // Create lazy-loaded icon components for heavy icons
 import React, { Suspense } from "react";
@@ -70,6 +71,7 @@ export const Icons = {
   Drag: MdDragIndicator,
   Settings: FiSettings,
   Help: AiOutlineQuestionCircle,
+  SettingsKnobs: GiSettingsKnobs,
 } as const;
 
 export type IconName = keyof typeof Icons;
