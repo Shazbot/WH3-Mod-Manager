@@ -19,6 +19,11 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
 
   const packsData = useAppSelector((state) => state.app.packsData);
 
+  // Context menu state
+  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const [isNewFlowDialogOpen, setIsNewFlowDialogOpen] = React.useState(false);
+  const [newFlowName, setNewFlowName] = React.useState("");
+
   const packPath =
     currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const packData = packsData[packPath];
@@ -143,10 +148,48 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
     );
   };
 
+  // Handle right-click to show context menu
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  // Close context menu when clicking outside
+  React.useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    if (contextMenu) {
+      document.addEventListener("click", handleClick);
+      return () => document.removeEventListener("click", handleClick);
+    }
+  }, [contextMenu]);
+
+  // Handle "Add New Flow" action
+  const handleAddNewFlow = () => {
+    setContextMenu(null);
+    setIsNewFlowDialogOpen(true);
+  };
+
+  // Handle new flow creation
+  const handleCreateNewFlow = () => {
+    if (!newFlowName.trim()) {
+      alert("Please enter a valid flow name");
+      return;
+    }
+
+    // TODO: Implement the actual flow creation logic
+    console.log("Creating new flow with name:", newFlowName);
+
+    // Callback stub - this is where you would save the flow
+    // For example: window.api?.createNewFlow(newFlowName);
+
+    setIsNewFlowDialogOpen(false);
+    setNewFlowName("");
+  };
+
   // console.log("TREE DATA is", data);
 
   return (
-    <div>
+    <div onContextMenu={handleContextMenu} className="relative">
       <TreeView
         data={data}
         aria-label="Controlled expanded node tree"
@@ -184,6 +227,68 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
           );
         }}
       />
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[150px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={handleAddNewFlow}
+            className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+          >
+            Add New Flow
+          </button>
+        </div>
+      )}
+
+      {/* New Flow Dialog */}
+      {isNewFlowDialogOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-white mb-4">Create New Flow</h2>
+
+            <div className="mb-4">
+              <label className="block text-white text-sm font-medium mb-2">Flow Name</label>
+              <input
+                type="text"
+                value={newFlowName}
+                onChange={(e) => setNewFlowName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleCreateNewFlow();
+                  } else if (e.key === "Escape") {
+                    setIsNewFlowDialogOpen(false);
+                    setNewFlowName("");
+                  }
+                }}
+                className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+                placeholder="Enter flow name..."
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setIsNewFlowDialogOpen(false);
+                  setNewFlowName("");
+                }}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateNewFlow}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
