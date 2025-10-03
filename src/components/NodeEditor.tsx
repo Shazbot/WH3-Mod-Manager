@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, DragEvent } from "react";
+import React, { useCallback, useState, useRef, DragEvent, useEffect } from "react";
 import {
   ReactFlow,
   Node,
@@ -1091,13 +1091,13 @@ const NodeSidebar: React.FC<{
   );
 };
 
-const NodeEditor: React.FC = ({
-  currentFile,
-  currentPack,
-}: {
+interface NodeEditorProps {
   currentFile?: string;
   currentPack?: string;
-}) => {
+}
+
+const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: NodeEditorProps) => {
+  const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -1482,130 +1482,95 @@ const NodeEditor: React.FC = ({
   }, [serializeNodeGraph]);
 
   const loadNodeGraph = useCallback(
-    (file: File) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const jsonContent = event.target?.result as string;
-          const serializedGraph: SerializedNodeGraph = JSON.parse(jsonContent);
+    (jsonContent: string) => {
+      try {
+        const serializedGraph: SerializedNodeGraph = JSON.parse(jsonContent);
 
-          // Validate the loaded data structure
-          if (!serializedGraph.nodes || !serializedGraph.connections) {
-            throw new Error("Invalid file format: missing nodes or connections");
+        // Validate the loaded data structure
+        if (!serializedGraph.nodes || !serializedGraph.connections) {
+          throw new Error("Invalid file format: missing nodes or connections");
+        }
+
+        // Convert serialized nodes back to ReactFlow nodes
+        const loadedNodes: Node[] = serializedGraph.nodes.map((serializedNode) => {
+          const node: Node = {
+            id: serializedNode.id,
+            type: serializedNode.type,
+            position: serializedNode.position,
+            data: serializedNode.data,
+          };
+
+          // Add styling for default nodes
+          if (serializedNode.type === "default") {
+            node.style = {
+              border: "2px solid #3b82f6",
+              borderRadius: "8px",
+              padding: "10px",
+              background: "#374151",
+              color: "#ffffff",
+            };
           }
 
-          // Convert serialized nodes back to ReactFlow nodes
-          const loadedNodes: Node[] = serializedGraph.nodes.map((serializedNode) => {
-            const node: Node = {
-              id: serializedNode.id,
-              type: serializedNode.type,
-              position: serializedNode.position,
-              data: serializedNode.data,
-            };
-
-            // Add styling for default nodes
-            if (serializedNode.type === "default") {
-              node.style = {
-                border: "2px solid #3b82f6",
-                borderRadius: "8px",
-                padding: "10px",
-                background: "#374151",
-                color: "#ffffff",
-              };
-            }
-
-            console.log("ser type:", node.data.type);
-            if (node.data.type === "columnselectiondropdown" || node.data.type === "tableselectiondropdown") {
-              console.log("ser type!!!:", DBNameToDBVersions);
-              node.data.DBNameToDBVersions = DBNameToDBVersions;
-              node.data.tableNames = Object.keys(DBNameToDBVersions || {}).toSorted(
-                (firstTableName, secondTableName) => {
-                  return firstTableName.localeCompare(secondTableName);
-                }
-              );
-            }
-            return node;
-          });
-
-          // Convert serialized connections back to ReactFlow edges
-          const loadedEdges: Edge[] = serializedGraph.connections.map((serializedConnection) => ({
-            id: serializedConnection.id,
-            source: serializedConnection.sourceId,
-            target: serializedConnection.targetId,
-            type: "default",
-            style: { stroke: "#3b82f6", strokeWidth: 2 },
-            animated: true,
-          }));
-
-          // Update node ID counter to avoid conflicts
-          const maxNodeId = Math.max(
-            ...serializedGraph.nodes
-              .map((node) => parseInt(node.id.replace("node_", ""), 10))
-              .filter((id) => !isNaN(id)),
-            -1
-          );
-          nodeId = maxNodeId + 1;
-
-          // Set the loaded data
-          setNodes(loadedNodes);
-          setEdges(loadedEdges);
-
-          // Recreate onconnection callbacks for all edges
-          setTimeout(() => {
-            loadedEdges.forEach((edge) => {
-              const sourceNode = loadedNodes.find((n) => n.id === edge.source);
-              const targetNode = loadedNodes.find((n) => n.id === edge.target);
-
-              if (!sourceNode || !targetNode) return;
-
-              // Update column selection dropdown nodes when connected to table selection nodes
-              if (
-                targetNode.type === "columnselectiondropdown" &&
-                (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
-              ) {
-                const tableName =
-                  sourceNode.type === "tableselectiondropdown"
-                    ? (sourceNode.data as unknown as TableSelectionDropdownNodeData).selectedTable
-                    : undefined;
-
-                if (tableName && DBNameToDBVersions) {
-                  const tableVersions = DBNameToDBVersions[tableName];
-                  if (tableVersions && tableVersions.length > 0) {
-                    const tableFields = tableVersions[0].fields || [];
-                    const fieldNames = tableFields.map((field) => field.name);
-
-                    setNodes((nds) =>
-                      nds.map((node) => {
-                        if (node.id === targetNode.id) {
-                          return {
-                            ...node,
-                            data: {
-                              ...node.data,
-                              columnNames: fieldNames,
-                              connectedTableName: tableName,
-                            },
-                          };
-                        }
-                        return node;
-                      })
-                    );
-                  }
-                }
+          console.log("ser type:", node.data.type);
+          if (node.data.type === "columnselectiondropdown" || node.data.type === "tableselectiondropdown") {
+            console.log("ser type!!!:", DBNameToDBVersions);
+            node.data.DBNameToDBVersions = DBNameToDBVersions;
+            node.data.tableNames = Object.keys(DBNameToDBVersions || {}).toSorted(
+              (firstTableName, secondTableName) => {
+                return firstTableName.localeCompare(secondTableName);
               }
+            );
+          }
+          return node;
+        });
 
-              // Update table selection dropdown nodes when connected to pack files nodes
-              if (
-                targetNode.type === "tableselectiondropdown" &&
-                (sourceNode.type === "packedfiles" || sourceNode.type === "packfilesdropdown")
-              ) {
-                const selectedPack =
-                  sourceNode.type === "packfilesdropdown"
-                    ? (sourceNode.data as unknown as PackFilesDropdownNodeData).selectedPack
-                    : undefined;
+        // Convert serialized connections back to ReactFlow edges
+        const loadedEdges: Edge[] = serializedGraph.connections.map((serializedConnection) => ({
+          id: serializedConnection.id,
+          source: serializedConnection.sourceId,
+          target: serializedConnection.targetId,
+          type: "default",
+          style: { stroke: "#3b82f6", strokeWidth: 2 },
+          animated: true,
+        }));
 
-                if (selectedPack) {
-                  // Here you could populate table names based on the selected pack
-                  // For now, we'll just ensure the connection is recognized
+        // Update node ID counter to avoid conflicts
+        const maxNodeId = Math.max(
+          ...serializedGraph.nodes
+            .map((node) => parseInt(node.id.replace("node_", ""), 10))
+            .filter((id) => !isNaN(id)),
+          -1
+        );
+        nodeId = maxNodeId + 1;
+
+        // Set the loaded data
+        setNodes(loadedNodes);
+        setEdges(loadedEdges);
+
+        // Recreate onconnection callbacks for all edges
+        setTimeout(() => {
+          loadedEdges.forEach((edge) => {
+            const sourceNode = loadedNodes.find((n) => n.id === edge.source);
+            const targetNode = loadedNodes.find((n) => n.id === edge.target);
+
+            if (!sourceNode || !targetNode) return;
+
+            // Update column selection dropdown nodes when connected to table selection nodes
+            if (
+              targetNode.type === "columnselectiondropdown" &&
+              (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
+            ) {
+              const tableName =
+                sourceNode.type === "tableselectiondropdown"
+                  ? (sourceNode.data as unknown as TableSelectionDropdownNodeData).selectedTable
+                  : undefined;
+
+              if (tableName && DBNameToDBVersions) {
+                const tableVersions = DBNameToDBVersions[tableName];
+                if (tableVersions && tableVersions.length > 0) {
+                  const tableFields = tableVersions[0].fields || [];
+                  const fieldNames = tableFields.map((field) => field.name);
+
                   setNodes((nds) =>
                     nds.map((node) => {
                       if (node.id === targetNode.id) {
@@ -1613,7 +1578,8 @@ const NodeEditor: React.FC = ({
                           ...node,
                           data: {
                             ...node.data,
-                            // Keep existing tableNames, just ensure data structure is correct
+                            columnNames: fieldNames,
+                            connectedTableName: tableName,
                           },
                         };
                       }
@@ -1622,31 +1588,72 @@ const NodeEditor: React.FC = ({
                   );
                 }
               }
-            });
-          }, 100);
+            }
 
-          console.log(`Loaded graph with ${loadedNodes.length} nodes and ${loadedEdges.length} connections`);
-        } catch (error) {
-          console.error("Failed to load node graph:", error);
-          alert("Failed to load the node graph file. Please check the file format.");
-        }
+            // Update table selection dropdown nodes when connected to pack files nodes
+            if (
+              targetNode.type === "tableselectiondropdown" &&
+              (sourceNode.type === "packedfiles" || sourceNode.type === "packfilesdropdown")
+            ) {
+              const selectedPack =
+                sourceNode.type === "packfilesdropdown"
+                  ? (sourceNode.data as unknown as PackFilesDropdownNodeData).selectedPack
+                  : undefined;
+
+              if (selectedPack) {
+                // Here you could populate table names based on the selected pack
+                // For now, we'll just ensure the connection is recognized
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (node.id === targetNode.id) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          // Keep existing tableNames, just ensure data structure is correct
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              }
+            }
+          });
+        }, 100);
+
+        console.log(`Loaded graph with ${loadedNodes.length} nodes and ${loadedEdges.length} connections`);
+      } catch (error) {
+        console.error("Failed to load node graph:", error);
+        alert("Failed to load the node graph file. Please check the file format.");
+      }
+    },
+    [setNodes, setEdges, DBNameToDBVersions]
+  );
+
+  const loadNodeGraphFile = useCallback(
+    (file: File) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const jsonContent = event.target?.result as string;
+        loadNodeGraph(jsonContent);
       };
 
       reader.readAsText(file);
     },
-    [setNodes, setEdges, DBNameToDBVersions]
+    [loadNodeGraph]
   );
 
   const handleFileInput = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (file) {
-        loadNodeGraph(file);
+        loadNodeGraphFile(file);
       }
       // Clear the input so the same file can be loaded again
       event.target.value = "";
     },
-    [loadNodeGraph]
+    [loadNodeGraphFile]
   );
 
   // Handle keyboard events for node deletion
@@ -1689,6 +1696,31 @@ const NodeEditor: React.FC = ({
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
+
+  // Save current file handler
+  const saveCurrentFile = useCallback(async () => {
+    if (!currentFile || !currentPack) {
+      console.error("No current file or pack to save to");
+      return;
+    }
+
+    const serializedGraph = serializeNodeGraph();
+    const flowData = JSON.stringify(serializedGraph, null, 2);
+
+    try {
+      const result = await window.api?.saveNodeFlow(currentFile, flowData, currentPack);
+      if (result?.success) {
+        console.log("Flow saved successfully to:", result.filePath);
+        alert(`Flow saved successfully!`);
+      } else {
+        console.error("Failed to save flow:", result?.error);
+        alert(`Failed to save flow: ${result?.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error saving flow:", error);
+      alert(`Error saving flow: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }, [currentFile, currentPack, serializeNodeGraph]);
 
   // Node execution system
   const executeNodeGraph = useCallback(async () => {
@@ -1740,6 +1772,16 @@ const NodeEditor: React.FC = ({
     }
   }, [nodes, edges, isExecuting]);
 
+  useEffect(() => {
+    if (currentFile && currentPack) {
+      const unsavedFiles = unsavedPacksData[currentPack];
+      if (unsavedFiles) {
+        const unsavedFile = unsavedFiles.find((file) => file.name == currentFile);
+        if (unsavedFile && unsavedFile.text) loadNodeGraph(unsavedFile.text);
+      }
+    }
+  }, [currentFile, currentPack]);
+
   return (
     <div className="flex h-screen">
       <NodeSidebar onDragStart={onDragStart} />
@@ -1787,6 +1829,24 @@ const NodeEditor: React.FC = ({
               </svg>
               Flow Options
             </button>
+
+            {/* Save button - only shown when currentFile exists */}
+            {currentFile && (
+              <button
+                onClick={saveCurrentFile}
+                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                Save
+              </button>
+            )}
 
             {/* Run button */}
             <button
