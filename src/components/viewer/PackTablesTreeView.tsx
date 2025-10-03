@@ -170,17 +170,39 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
   };
 
   // Handle new flow creation
-  const handleCreateNewFlow = () => {
+  const handleCreateNewFlow = async () => {
     if (!newFlowName.trim()) {
       alert("Please enter a valid flow name");
       return;
     }
 
-    // TODO: Implement the actual flow creation logic
-    console.log("Creating new flow with name:", newFlowName);
+    // Create an empty flow structure
+    const emptyFlow = {
+      version: "1.0",
+      timestamp: Date.now(),
+      nodes: [],
+      connections: [],
+      metadata: {
+        nodeCount: 0,
+        connectionCount: 0,
+      },
+    };
 
-    // Callback stub - this is where you would save the flow
-    // For example: window.api?.createNewFlow(newFlowName);
+    const flowData = JSON.stringify(emptyFlow, null, 2);
+
+    try {
+      const result = await window.api?.saveNodeFlow(newFlowName, flowData, packData.packPath);
+      if (result?.success) {
+        console.log("Flow created successfully at:", result.filePath);
+        alert(`Flow "${newFlowName}" created successfully!`);
+      } else {
+        console.error("Failed to create flow:", result?.error);
+        alert(`Failed to create flow: ${result?.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error creating flow:", error);
+      alert(`Error creating flow: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
 
     setIsNewFlowDialogOpen(false);
     setNewFlowName("");

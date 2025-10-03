@@ -1,5 +1,26 @@
+import assert from "assert";
+import bs from "binary-search";
+import * as cheerio from "cheerio";
+import { exec, fork } from "child_process";
+import chokidar from "chokidar";
+import { format } from "date-fns";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import windowStateKeeper from "electron-window-state";
+import * as fs from "fs";
+import * as fsExtra from "fs-extra";
+import debounce from "just-debounce-it";
+import fetch from "node-fetch";
+import * as nodePath from "path";
+import { version } from "react";
+import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
 import appData, { GameFolderPaths } from "./appData";
+import { packDataStore } from "./components/viewer/packDataStore";
+import i18n from "./configs/i18next.config";
+import { buildDBReferenceTree } from "./DBClone";
+import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
+import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
+import { emptyAllCompatDataCollections, getCompatData } from "./modCompat/packFileCompatManager";
+import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modCompat/packTableCollisions";
 import {
   fetchModData,
   getContentModInFolder,
@@ -8,6 +29,8 @@ import {
   getLastUpdated,
   getMods,
 } from "./modFunctions";
+import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { readPackHeader } from "./packFileHandler";
 import {
   addFakeUpdate,
   amendSchemaField,
@@ -22,6 +45,23 @@ import {
   readPack,
   writeStartGamePack,
 } from "./packFileSerializer";
+import { AmendedSchemaField, Pack, PackCollisions, PackedFile } from "./packFileTypes";
+import { resolveTable } from "./resolveTable";
+import {
+  DBNameToDBVersions,
+  gameToDBFieldsThatReference,
+  gameToReferences,
+  initializeAllSchemaForGame,
+} from "./schema";
+import {
+  appendLocalizationsToSkills,
+  getNodeRequirements,
+  getNodesToParents,
+  getSkills,
+  NodeLinks,
+  NodeSkill,
+  SkillAndIcons,
+} from "./skills";
 import {
   gameToGameName,
   gameToProcessName,
@@ -34,51 +74,11 @@ import {
   supportedGames,
   SupportedLanguage,
 } from "./supportedGames";
-import i18n from "./configs/i18next.config";
-import debounce from "just-debounce-it";
-import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
-import { exec, fork } from "child_process";
-import * as nodePath from "path";
-import * as fs from "fs";
-import chokidar from "chokidar";
-import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
-import { readPackHeader } from "./packFileHandler";
-import { collator } from "./utility/packFileSorting";
-import { AmendedSchemaField, Pack, PackCollisions, PackedFile } from "./packFileTypes";
-import * as fsExtra from "fs-extra";
-import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
-import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modCompat/packTableCollisions";
-import { version } from "react";
-import { getCompatData, emptyAllCompatDataCollections } from "./modCompat/packFileCompatManager";
-import windowStateKeeper from "electron-window-state";
-import * as cheerio from "cheerio";
-import { format } from "date-fns";
-import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { tryOpenFile } from "./utility/fileHelpers";
-import steamCollectionScript from "./utility/steamCollectionScript";
-import { resolveTable } from "./resolveTable";
-import bs from "binary-search";
-import Trie from "./utility/trie";
 import getPackTableData from "./utility/frontend/packDataHandling";
-import {
-  appendLocalizationsToSkills,
-  getNodeRequirements,
-  getNodesToParents,
-  getSkills,
-  NodeLinks,
-  NodeSkill,
-  SkillAndIcons,
-} from "./skills";
-import fetch from "node-fetch";
-import assert from "assert";
-import { packDataStore } from "./components/viewer/packDataStore";
-import {
-  DBNameToDBVersions,
-  gameToDBFieldsThatReference,
-  gameToReferences,
-  initializeAllSchemaForGame,
-} from "./schema";
-import { buildDBReferenceTree } from "./DBClone";
+import { collator } from "./utility/packFileSorting";
+import steamCollectionScript from "./utility/steamCollectionScript";
+import Trie from "./utility/trie";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -1635,6 +1635,43 @@ export const registerIpcMainListeners = (
       }
     }
   );
+
+  ipcMain.handle("saveNodeFlow", async (event, flowName: string, flowData: string, packPath: string) => {
+    try {
+      console.log("saveNodeFlow:", flowName);
+      let unsavedFiles = appData.unsavedPacksData[packPath];
+      if (!unsavedFiles) {
+        unsavedFiles = [];
+        appData.unsavedPacksData[packPath] = unsavedFiles;
+      }
+
+      if (!flowName.startsWith("whmmflows\\")) flowName = `whmmflows\\${flowName}`;
+
+      const buffer = Buffer.from(flowData);
+
+      const newFile = {
+        name: flowName,
+        file_size: buffer.length,
+        start_pos: -1,
+        buffer: buffer,
+      } as PackedFile;
+
+      const existingFileIndex = unsavedFiles.findIndex((file) => file.name == flowName);
+      if (existingFileIndex != -1) {
+        unsavedFiles.splice(existingFileIndex, 1, newFile);
+      } else {
+        unsavedFiles.push(newFile);
+      }
+
+      return { success: true, filePath: flowName };
+    } catch (error) {
+      console.error("Error saving node flow:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to save flow",
+      };
+    }
+  });
 
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
