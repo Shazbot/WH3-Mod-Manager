@@ -80,6 +80,7 @@ const initialState = {
   currentModToUpload: undefined,
   isLocalizingSubtypes: false,
   currentLocalization: {},
+  userFlowOptions: {},
 
   // skills
   skillNodesToLevel: {},

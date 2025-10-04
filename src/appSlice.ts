@@ -828,6 +828,7 @@ const appSlice = createSlice({
       // state.currentLanguage = fromConfigAppState.currentLanguage || "en"; // handled elsewhere
       state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
       state.currentGame = fromConfigAppState.currentGame || "wh3";
+      state.userFlowOptions = fromConfigAppState.userFlowOptions || {};
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -1317,6 +1318,16 @@ const appSlice = createSlice({
     setPackDataStore: (state: AppState, action: PayloadAction<SetPackDataStorePayload>) => {
       packDataStore[action.payload.packPath] = action.payload.pack;
     },
+    setUserFlowOptions: (
+      state: AppState,
+      action: PayloadAction<{ packPath: string; flowFileName: string; values: UserFlowOptionValues }>
+    ) => {
+      const { packPath, flowFileName, values } = action.payload;
+      if (!state.userFlowOptions[packPath]) {
+        state.userFlowOptions[packPath] = {};
+      }
+      state.userFlowOptions[packPath][flowFileName] = values;
+    },
   },
 });
 
@@ -1413,6 +1424,7 @@ export const {
   setSkillsData,
   setPackSearchResults,
   setIsLocalizingSubtypes,
+  setUserFlowOptions,
 
   // for DB viewer
   setDeepCloneTarget,

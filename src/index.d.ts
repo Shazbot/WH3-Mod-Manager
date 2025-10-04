@@ -165,6 +165,7 @@ declare global {
     currentModToUpload: Mod | undefined;
     skillsData?: SkillsData;
     packSearchResults?: string[];
+    userFlowOptions: UserFlowOptions;
 
     // DB viewer
     deepCloneTarget?: DeepCloneTarget;
@@ -198,6 +199,7 @@ declare global {
     | "currentGame"
     | "packDataOverwrites"
     | "isCompatCheckingVanillaPacks"
+    | "userFlowOptions"
   > &
     AppStateMainProcessExtras;
 
@@ -309,6 +311,13 @@ declare global {
     skipSorting?: boolean;
     readFlows?: boolean;
   }
+
+  interface UserFlowOptionValues {
+    optionValues: Record<string, any>; // option id -> value
+    graphEnabled?: boolean; // only if the flow has isGraphEnabled
+  }
+
+  type UserFlowOptions = Record<string, Record<string, UserFlowOptionValues>>; // packPath -> flowFileName -> values
 
   type ToastType = "info" | "success" | "warning";
 
