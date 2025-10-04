@@ -150,7 +150,12 @@ interface RangeSliderFlowOption extends BaseFlowOption {
   step: number;
 }
 
-type FlowOption = TextboxFlowOption | RangeSliderFlowOption;
+interface CheckboxFlowOption extends BaseFlowOption {
+  type: "checkbox";
+  value: boolean;
+}
+
+type FlowOption = TextboxFlowOption | RangeSliderFlowOption | CheckboxFlowOption;
 
 // Custom PackFiles dropdown node component
 const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
@@ -571,7 +576,9 @@ const FlowOptionsModal: React.FC<{
 }> = ({ isOpen, onClose, options, onOptionsChange }) => {
   const [editingOption, setEditingOption] = useState<FlowOption | null>(null);
   const [isAddingOption, setIsAddingOption] = useState(false);
-  const [newOptionType, setNewOptionType] = useState<"textbox" | "range">("textbox");
+  const [newOptionType, setNewOptionType] = useState<"textbox" | "range" | "checkbox">("textbox");
+  const [isGraphEnabled, setIsGraphEnabled] = useState(true);
+  const [graphStartsEnabled, setGraphStartsEnabled] = useState(true);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -581,6 +588,7 @@ const FlowOptionsModal: React.FC<{
     min: 0,
     max: 100,
     step: 1,
+    checked: false,
   });
 
   const resetForm = () => {
@@ -592,6 +600,7 @@ const FlowOptionsModal: React.FC<{
       min: 0,
       max: 100,
       step: 1,
+      checked: false,
     });
     setEditingOption(null);
     setIsAddingOption(false);
@@ -610,7 +619,8 @@ const FlowOptionsModal: React.FC<{
             value: formData.value,
             placeholder: formData.placeholder || undefined,
           }
-        : {
+        : newOptionType === "range"
+        ? {
             id: Date.now().toString(),
             type: "range",
             name: formData.name,
@@ -619,6 +629,13 @@ const FlowOptionsModal: React.FC<{
             min: formData.min,
             max: formData.max,
             step: formData.step,
+          }
+        : {
+            id: Date.now().toString(),
+            type: "checkbox",
+            name: formData.name,
+            description: formData.description || undefined,
+            value: formData.checked,
           };
 
     onOptionsChange([...options, newOption]);
@@ -630,11 +647,13 @@ const FlowOptionsModal: React.FC<{
     setFormData({
       name: option.name,
       description: option.description || "",
-      value: option.type === "textbox" ? option.value : option.value.toString(),
+      value:
+        option.type === "textbox" ? option.value : option.type === "range" ? option.value.toString() : "",
       placeholder: option.type === "textbox" ? option.placeholder || "" : "",
       min: option.type === "range" ? option.min : 0,
       max: option.type === "range" ? option.max : 100,
       step: option.type === "range" ? option.step : 1,
+      checked: option.type === "checkbox" ? option.value : false,
     });
     setNewOptionType(option.type);
   };
@@ -651,7 +670,8 @@ const FlowOptionsModal: React.FC<{
             value: formData.value,
             placeholder: formData.placeholder || undefined,
           }
-        : {
+        : editingOption.type === "range"
+        ? {
             ...editingOption,
             name: formData.name,
             description: formData.description || undefined,
@@ -659,6 +679,12 @@ const FlowOptionsModal: React.FC<{
             min: formData.min,
             max: formData.max,
             step: formData.step,
+          }
+        : {
+            ...editingOption,
+            name: formData.name,
+            description: formData.description || undefined,
+            value: formData.checked,
           };
 
     onOptionsChange(options.map((opt) => (opt.id === editingOption.id ? updatedOption : opt)));
@@ -685,6 +711,39 @@ const FlowOptionsModal: React.FC<{
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
             ×
           </button>
+        </div>
+
+        {/* Global Graph Toggle */}
+        <div className="mb-6 p-4 bg-gray-700 rounded-lg border-2 border-indigo-500">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isGraphEnabled}
+              onChange={(e) => setIsGraphEnabled(e.target.checked)}
+              className="w-5 h-5"
+            />
+            <div>
+              <span className="text-white font-semibold text-lg">User Can Disable Flow</span>
+              <p className="text-gray-300 text-sm">
+                If enabled the user options will have a checkbox that disables or enables the whole flow.
+              </p>
+            </div>
+          </label>
+
+          {/* Default state checkbox - only shown when global toggle is enabled */}
+          {isGraphEnabled && (
+            <div className="mt-3 ml-8 pl-4 border-l-2 border-indigo-400">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={graphStartsEnabled}
+                  onChange={(e) => setGraphStartsEnabled(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-gray-300 text-sm">Flow starts enabled by default</span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Current Options */}
@@ -729,7 +788,7 @@ const FlowOptionsModal: React.FC<{
                       placeholder={option.placeholder}
                       className="w-full p-2 bg-gray-600 text-white rounded text-sm"
                     />
-                  ) : (
+                  ) : option.type === "range" ? (
                     <div>
                       <input
                         type="range"
@@ -746,6 +805,16 @@ const FlowOptionsModal: React.FC<{
                         <span>{option.max}</span>
                       </div>
                     </div>
+                  ) : (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={option.value}
+                        onChange={(e) => handleOptionValueChange(option.id, e.target.checked)}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm text-gray-300">{option.value ? "Checked" : "Unchecked"}</span>
+                    </label>
                   )}
                 </div>
               ))}
@@ -765,11 +834,12 @@ const FlowOptionsModal: React.FC<{
                 <label className="block text-white text-sm font-medium mb-2">Option Type</label>
                 <select
                   value={newOptionType}
-                  onChange={(e) => setNewOptionType(e.target.value as "textbox" | "range")}
+                  onChange={(e) => setNewOptionType(e.target.value as "textbox" | "range" | "checkbox")}
                   className="w-full p-2 bg-gray-600 text-white rounded"
                 >
                   <option value="textbox">Textbox</option>
                   <option value="range">Range Slider</option>
+                  <option value="checkbox">Checkbox</option>
                 </select>
               </div>
             )}
@@ -818,7 +888,7 @@ const FlowOptionsModal: React.FC<{
                   />
                 </div>
               </div>
-            ) : (
+            ) : newOptionType === "range" ? (
               <div className="grid grid-cols-4 gap-4">
                 <div>
                   <label className="block text-white text-sm font-medium mb-2">Min</label>
@@ -858,6 +928,20 @@ const FlowOptionsModal: React.FC<{
                     className="w-full p-2 bg-gray-600 text-white rounded"
                   />
                 </div>
+              </div>
+            ) : (
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.checked}
+                    onChange={(e) => setFormData({ ...formData, checked: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-white text-sm font-medium">
+                    Default: {formData.checked ? "Checked" : "Unchecked"}
+                  </span>
+                </label>
               </div>
             )}
 
