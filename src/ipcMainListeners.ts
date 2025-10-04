@@ -1761,6 +1761,65 @@ export const registerIpcMainListeners = (
     }
   });
 
+  ipcMain.handle("getFlowFilesFromPack", async (event, packPath: string) => {
+    try {
+      console.log("getFlowFilesFromPack:", packPath);
+
+      // Check if there are unsaved flow files for this pack
+      const unsavedFiles = appData.unsavedPacksData[packPath] || [];
+      const unsavedFlowFiles = unsavedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
+
+      // Read the pack to get flow files
+      const pack = await readPack(packPath, { skipParsingTables: true, readFlows: true });
+
+      // Find all flow files in the pack
+      const packFlowFiles = pack.packedFiles.filter((pf) => pf.name.startsWith("whmmflows\\"));
+
+      // Combine pack files with unsaved files (unsaved takes priority)
+      const flowFiles: { name: string; content: string }[] = [];
+
+      // Add pack flow files
+      for (const file of packFlowFiles) {
+        // Skip if there's an unsaved version
+        if (unsavedFlowFiles.some((uf) => uf.name === file.name)) continue;
+
+        let text: string;
+        if (file.text) {
+          text = file.text;
+        } else if (file.buffer) {
+          text = file.buffer.toString("utf-8");
+        } else {
+          console.log("CANNOT GET TEXT FOR FLOW FILE");
+          continue;
+        }
+
+        flowFiles.push({ name: file.name, content: text });
+      }
+
+      // Add unsaved flow files
+      for (const file of unsavedFlowFiles) {
+        let text: string;
+        if (file.text) {
+          text = file.text;
+        } else if (file.buffer) {
+          text = file.buffer.toString("utf-8");
+        } else {
+          continue;
+        }
+
+        flowFiles.push({ name: file.name, content: text });
+      }
+
+      return { success: true, flowFiles };
+    } catch (error) {
+      console.error("Error getting flow files from pack:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to get flow files from pack",
+      };
+    }
+  });
+
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {

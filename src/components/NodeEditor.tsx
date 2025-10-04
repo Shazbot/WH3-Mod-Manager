@@ -573,12 +573,23 @@ const FlowOptionsModal: React.FC<{
   onClose: () => void;
   options: FlowOption[];
   onOptionsChange: (options: FlowOption[]) => void;
-}> = ({ isOpen, onClose, options, onOptionsChange }) => {
+  isGraphEnabled: boolean;
+  onGraphEnabledChange: (enabled: boolean) => void;
+  graphStartsEnabled: boolean;
+  onGraphStartsEnabledChange: (enabled: boolean) => void;
+}> = ({
+  isOpen,
+  onClose,
+  options,
+  onOptionsChange,
+  isGraphEnabled,
+  onGraphEnabledChange,
+  graphStartsEnabled,
+  onGraphStartsEnabledChange,
+}) => {
   const [editingOption, setEditingOption] = useState<FlowOption | null>(null);
   const [isAddingOption, setIsAddingOption] = useState(false);
   const [newOptionType, setNewOptionType] = useState<"textbox" | "range" | "checkbox">("textbox");
-  const [isGraphEnabled, setIsGraphEnabled] = useState(true);
-  const [graphStartsEnabled, setGraphStartsEnabled] = useState(true);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -719,7 +730,7 @@ const FlowOptionsModal: React.FC<{
             <input
               type="checkbox"
               checked={isGraphEnabled}
-              onChange={(e) => setIsGraphEnabled(e.target.checked)}
+              onChange={(e) => onGraphEnabledChange(e.target.checked)}
               className="w-5 h-5"
             />
             <div>
@@ -737,7 +748,7 @@ const FlowOptionsModal: React.FC<{
                 <input
                   type="checkbox"
                   checked={graphStartsEnabled}
-                  onChange={(e) => setGraphStartsEnabled(e.target.checked)}
+                  onChange={(e) => onGraphStartsEnabledChange(e.target.checked)}
                   className="w-4 h-4"
                 />
                 <span className="text-gray-300 text-sm">Flow starts enabled by default</span>
@@ -1194,6 +1205,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   // Flow options state
   const [flowOptions, setFlowOptions] = useState<FlowOption[]>([]);
   const [isFlowOptionsModalOpen, setIsFlowOptionsModalOpen] = useState(false);
+  const [isGraphEnabled, setIsGraphEnabled] = useState(false);
+  const [graphStartsEnabled, setGraphStartsEnabled] = useState(true);
 
   // Keep the ref updated with current nodes
   React.useEffect(() => {
@@ -1546,8 +1559,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         nodeCount: nodes.length,
         connectionCount: edges.length,
       },
+      options: flowOptions,
+      isGraphEnabled,
+      graphStartsEnabled,
     };
-  }, [nodes, edges]);
+  }, [nodes, edges, flowOptions, isGraphEnabled, graphStartsEnabled]);
 
   const saveNodeGraph = useCallback(() => {
     const serializedGraph = serializeNodeGraph();
@@ -1631,6 +1647,17 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         setNodes(loadedNodes);
         setEdges(loadedEdges);
 
+        // Load flow options if they exist
+        if ((serializedGraph as any).options) {
+          setFlowOptions((serializedGraph as any).options);
+        }
+        if ((serializedGraph as any).isGraphEnabled !== undefined) {
+          setIsGraphEnabled((serializedGraph as any).isGraphEnabled);
+        }
+        if ((serializedGraph as any).graphStartsEnabled !== undefined) {
+          setGraphStartsEnabled((serializedGraph as any).graphStartsEnabled);
+        }
+
         // Recreate onconnection callbacks for all edges
         setTimeout(() => {
           loadedEdges.forEach((edge) => {
@@ -1712,7 +1739,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         alert("Failed to load the node graph file. Please check the file format.");
       }
     },
-    [setNodes, setEdges, DBNameToDBVersions]
+    [setNodes, setEdges, DBNameToDBVersions, setFlowOptions, setIsGraphEnabled, setGraphStartsEnabled]
   );
 
   const loadNodeGraphFile = useCallback(
@@ -2073,6 +2100,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         onClose={() => setIsFlowOptionsModalOpen(false)}
         options={flowOptions}
         onOptionsChange={setFlowOptions}
+        isGraphEnabled={isGraphEnabled}
+        onGraphEnabledChange={setIsGraphEnabled}
+        graphStartsEnabled={graphStartsEnabled}
+        onGraphStartsEnabledChange={setGraphStartsEnabled}
       />
     </div>
   );

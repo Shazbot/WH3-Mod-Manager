@@ -2818,6 +2818,7 @@ export const readPack = async (
     if (
       !packReadingOptions.readScripts &&
       !packReadingOptions.readLocs &&
+      !packReadingOptions.readFlows &&
       (!packReadingOptions.filesToRead || packReadingOptions.filesToRead.length === 0) &&
       packReadingOptions.skipParsingTables
     ) {
@@ -2924,6 +2925,19 @@ export const readPack = async (
           }
           packedFileToRead.buffer = buffer;
         }
+      }
+    }
+
+    if (packReadingOptions.readFlows) {
+      const flowFiles = pack_files.filter((packFile) => packFile.name.startsWith("whmmflows\\"));
+
+      for (const flowFile of flowFiles) {
+        let buffer = Buffer.allocUnsafe(flowFile.file_size);
+        fs.readSync(fileId, buffer, 0, buffer.length, flowFile.start_pos);
+        if (flowFile.is_compressed) {
+          buffer = Buffer.from(await decompress(buffer.subarray(4)));
+        }
+        flowFile.buffer = buffer;
       }
     }
 
