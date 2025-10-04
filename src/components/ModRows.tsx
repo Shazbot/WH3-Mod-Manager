@@ -33,6 +33,7 @@ import ModRow from "./ModRow";
 import localizationContext from "../localizationContext";
 import { GoGear } from "react-icons/go";
 import ModCustomization from "./ModCustomization";
+import UserFlowOptionsModal from "./UserFlowOptionsModal";
 import { WindowScroller, AutoSizer, List, CellMeasurerCache, CellMeasurer } from "react-virtualized";
 import { MeasuredCellParent } from "react-virtualized/dist/es/CellMeasurer";
 import { GridCoreProps } from "react-virtualized/dist/es/Grid";
@@ -139,6 +140,8 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isCustomizeModOpen, setIsCustomizeModOpen] = useState<boolean>(false);
+  const [isFlowOptionsModalOpen, setIsFlowOptionsModalOpen] = useState<boolean>(false);
+  const [flowOptionsModSelected, setFlowOptionsModSelected] = useState<Mod | undefined>();
   // const [modBeingCustomized, setModBeingCustomized] = useState<Mod>();
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
@@ -542,6 +545,16 @@ const ModRows = memo((props: ModRowsProps) => {
     e.stopPropagation();
   }, []);
 
+  const onFlowOptionsClicked = useCallback((e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
+    if (isDropdownOpen) return;
+    console.log("onFlowOptionsClicked:", mod);
+    setFlowOptionsModSelected(mod);
+    setIsFlowOptionsModalOpen(true);
+
+    e.defaultPrevented = true;
+    e.stopPropagation();
+  }, []);
+
   const onCustomizeModRightClick = useCallback(
     (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => {
       if (isDropdownOpen) return;
@@ -671,6 +684,7 @@ const ModRows = memo((props: ModRowsProps) => {
                 onModRightClick,
                 onCustomizeModClicked,
                 onCustomizeModRightClick,
+                onFlowOptionsClicked,
                 onRemoveModOrder,
                 sortingType,
                 currentTab,
@@ -719,6 +733,13 @@ const ModRows = memo((props: ModRowsProps) => {
           ></ModDropdown>
         </MemoizedFloatingOverlay>
         {modBeingCustomized && modBeingCustomized.path && <ModCustomization />}
+        {flowOptionsModSelected && (
+          <UserFlowOptionsModal
+            isOpen={isFlowOptionsModalOpen}
+            onClose={() => setIsFlowOptionsModalOpen(false)}
+            mod={flowOptionsModSelected}
+          />
+        )}
 
         <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
           <div
@@ -903,6 +924,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   onModRightClick,
                   onCustomizeModClicked,
                   onCustomizeModRightClick,
+                  onFlowOptionsClicked,
                   onRemoveModOrder,
                   sortingType,
                   currentTab,

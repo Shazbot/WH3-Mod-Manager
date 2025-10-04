@@ -28,6 +28,7 @@ type ModRowProps = {
   onModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
   onCustomizeModClicked: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
   onCustomizeModRightClick: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
+  onFlowOptionsClicked: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
   onRemoveModOrder: (mod: Mod) => void;
   loadOrder: number;
   isEnabledInMergedMod: boolean;
@@ -79,6 +80,7 @@ const ModRow = memo(
     currentTab,
     onCustomizeModClicked,
     onCustomizeModRightClick,
+    onFlowOptionsClicked,
     gridClass,
     registerChild,
   }: ModRowProps) => {
@@ -329,6 +331,9 @@ const ModRow = memo(
           {customizableMods[mod.path] &&
             customizableMods[mod.path].some((file) => file.startsWith("whmmflows\\")) && (
               <Icons.SettingsKnobs
+                onClick={(e) => {
+                  onFlowOptionsClicked(e, mod);
+                }}
                 className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
                 color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
               />

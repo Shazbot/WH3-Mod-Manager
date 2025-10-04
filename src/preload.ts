@@ -338,6 +338,12 @@ const api = {
     text?: string;
     error?: string;
   }> => ipcRenderer.invoke("readFileFromPack", packPath, fileName),
+
+  getFlowFilesFromPack: (packPath: string): Promise<{
+    success: boolean;
+    flowFiles?: { name: string; content: string }[];
+    error?: string;
+  }> => ipcRenderer.invoke("getFlowFilesFromPack", packPath),
 };
 
 export type api = typeof api;
