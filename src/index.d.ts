@@ -619,7 +619,8 @@ declare global {
     | "ColumnSelection"
     | "ChangedColumnSelection"
     | "Text"
-    | "Text Lines";
+    | "Text Lines"
+    | "GroupedText";
 
   type FlowNodeType =
     | "packedfiles"
@@ -628,6 +629,7 @@ declare global {
     | "tableselectiondropdown"
     | "columnselection"
     | "columnselectiondropdown"
+    | "groupbycolumns"
     | "numericadjustment"
     | "savechanges"
     | "textsurround"

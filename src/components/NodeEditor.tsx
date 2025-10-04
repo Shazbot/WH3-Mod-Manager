@@ -32,12 +32,15 @@ interface SerializedNode {
     selectedPack?: string;
     selectedTable?: string;
     selectedColumn?: string;
+    selectedColumn1?: string;
+    selectedColumn2?: string;
     columnNames?: string[];
     connectedTableName?: string;
     outputType?: NodeEdgeTypes;
     inputType?: NodeEdgeTypes;
     tableNames?: string[];
     DBNameToDBVersions?: Record<string, DBVersion[]>;
+    groupedTextSelection?: "Text" | "Text Lines";
   };
 }
 
@@ -104,14 +107,16 @@ interface SaveChangesNodeData extends NodeData {
 
 interface TextSurroundNodeData extends NodeData {
   textValue: string;
-  inputType: "Text" | "Text Lines";
+  inputType: "Text" | "Text Lines" | "GroupedText";
   outputType: "Text" | "Text Lines";
+  groupedTextSelection?: "Text" | "Text Lines";
 }
 
 interface TextJoinNodeData extends NodeData {
   textValue: string;
-  inputType: "Text Lines";
+  inputType: "Text Lines" | "GroupedText";
   outputType: "Text";
+  groupedTextSelection?: "Text" | "Text Lines";
 }
 
 interface PackFilesDropdownNodeData extends NodeData {
@@ -130,6 +135,16 @@ interface ColumnSelectionDropdownNodeData extends NodeData {
   selectedColumn: string;
   inputType: "TableSelection";
   outputType: "ColumnSelection";
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
+interface GroupByColumnsNodeData extends NodeData {
+  selectedColumn1: string;
+  selectedColumn2: string;
+  inputType: "TableSelection";
+  outputType: "GroupedText";
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
@@ -492,6 +507,110 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
   );
 };
 
+// Custom GroupByColumns node component
+const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }> = ({ data, id }) => {
+  const [selectedColumn1, setSelectedColumn1] = useState(data.selectedColumn1 || "");
+  const [selectedColumn2, setSelectedColumn2] = useState(data.selectedColumn2 || "");
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Update column names when connected table changes
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        // Update the node data with new column names
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: fieldNames },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+
+  const handleDropdown1Change = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedColumn1(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedColumn1: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleDropdown2Change = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedColumn2(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedColumn2: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-fuchsia-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <div className="space-y-2">
+        <div>
+          <label className="text-xs text-gray-300 block mb-1">Column 1</label>
+          <select
+            value={selectedColumn1}
+            onChange={handleDropdown1Change}
+            className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-fuchsia-400"
+          >
+            <option value="">Select a column...</option>
+            {columnNames.map((columnName) => (
+              <option key={columnName} value={columnName}>
+                {columnName}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-gray-300 block mb-1">Column 2</label>
+          <select
+            value={selectedColumn2}
+            onChange={handleDropdown2Change}
+            className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-fuchsia-400"
+          >
+            <option value="">Select a column...</option>
+            {columnNames.map((columnName) => (
+              <option key={columnName} value={columnName}>
+                {columnName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: GroupedText</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-fuchsia-500"
+        data-output-type="GroupedText"
+      />
+    </div>
+  );
+};
+
 // Custom NumericAdjustment node component that accepts ColumnSelection input and outputs ChangedColumnSelection
 const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
@@ -579,9 +698,12 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
   );
 };
 
-// Custom TextSurround node component that accepts Text or Text Lines input and outputs the same type
+// Custom TextSurround node component that accepts Text, Text Lines, or GroupedText input and outputs the same type
 const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
+  const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
+    data.groupedTextSelection || "Text"
+  );
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
@@ -593,6 +715,20 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
     });
     window.dispatchEvent(updateEvent);
   };
+
+  const handleGroupedTextSelectionChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value as "Text" | "Text Lines";
+    setGroupedTextSelection(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    // Also update the outputType to match the selection
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, groupedTextSelection: newValue, outputType: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const isGroupedTextInput = data.inputType === "GroupedText";
 
   return (
     <div className="bg-gray-700 border-2 border-rose-500 rounded-lg p-4 min-w-[200px]">
@@ -605,7 +741,23 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input/Output: {data.inputType || "Text or Text Lines"}</div>
+      <div className="text-xs text-gray-400 mb-2">
+        Input: {data.inputType || "Text, Text Lines, or GroupedText"}
+      </div>
+
+      {isGroupedTextInput && (
+        <div className="mb-2">
+          <label className="text-xs text-gray-300 block mb-1">Use from GroupedText:</label>
+          <select
+            value={groupedTextSelection}
+            onChange={handleGroupedTextSelectionChange}
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-rose-400"
+          >
+            <option value="Text">Text</option>
+            <option value="Text Lines">Text Lines</option>
+          </select>
+        </div>
+      )}
 
       <textarea
         value={textValue}
@@ -613,6 +765,10 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
         placeholder="Enter surround text configuration..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-rose-400"
       />
+
+      <div className="mt-2 text-xs text-gray-400">
+        Output: {isGroupedTextInput ? groupedTextSelection : data.outputType || "Text or Text Lines"}
+      </div>
 
       <Handle
         type="source"
@@ -624,9 +780,12 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
   );
 };
 
-// Custom TextJoin node component that accepts Text Lines input and outputs Text
+// Custom TextJoin node component that accepts Text Lines or GroupedText input and outputs Text
 const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
+  const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
+    data.groupedTextSelection || "Text Lines"
+  );
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
@@ -639,18 +798,45 @@ const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, 
     window.dispatchEvent(updateEvent);
   };
 
+  const handleGroupedTextSelectionChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value as "Text" | "Text Lines";
+    setGroupedTextSelection(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, groupedTextSelection: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const isGroupedTextInput = data.inputType === "GroupedText";
+
   return (
     <div className="bg-gray-700 border-2 border-sky-500 rounded-lg p-4 min-w-[200px]">
       <Handle
         type="target"
         position={Position.Left}
         className="w-3 h-3 bg-lime-500"
-        data-input-type="Text Lines"
+        data-input-type={data.inputType}
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: Text Lines</div>
+      <div className="text-xs text-gray-400 mb-2">Input: {data.inputType || "Text Lines or GroupedText"}</div>
+
+      {isGroupedTextInput && (
+        <div className="mb-2">
+          <label className="text-xs text-gray-300 block mb-1">Use from GroupedText:</label>
+          <select
+            value={groupedTextSelection}
+            onChange={handleGroupedTextSelectionChange}
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-sky-400"
+          >
+            <option value="Text">Text</option>
+            <option value="Text Lines">Text Lines</option>
+          </select>
+        </div>
+      )}
 
       <textarea
         value={textValue}
@@ -1140,6 +1326,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Dropdown Input",
         description: "Node with dropdown for column selection",
       },
+      {
+        type: "groupbycolumns",
+        label: "Group By Columns",
+        description: "Accepts TableSelection, two column dropdowns, outputs GroupedText",
+      },
     ],
   },
   {
@@ -1263,6 +1454,7 @@ const reactFlowNodeTypes = {
   tableselectiondropdown: TableSelectionDropdownNode,
   columnselection: ColumnSelectionNode,
   columnselectiondropdown: ColumnSelectionDropdownNode,
+  groupbycolumns: GroupByColumnsNode,
   numericadjustment: NumericAdjustmentNode,
   savechanges: SaveChangesNode,
   textsurround: TextSurroundNode,
@@ -1345,7 +1537,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   // Listen for node data updates from child components
   React.useEffect(() => {
     const handleNodeDataUpdate = (event: CustomEvent) => {
-      const { nodeId, textValue, selectedPack, selectedTable, selectedColumn, columnNames } = event.detail;
+      const {
+        nodeId,
+        textValue,
+        selectedPack,
+        selectedTable,
+        selectedColumn,
+        selectedColumn1,
+        selectedColumn2,
+        columnNames,
+        groupedTextSelection,
+        outputType,
+      } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
@@ -1353,11 +1556,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               ...node,
               data: {
                 ...node.data,
-                textValue: textValue,
-                selectedPack: selectedPack,
-                selectedTable: selectedTable,
-                selectedColumn: selectedColumn,
-                columnNames: columnNames,
+                textValue: textValue !== undefined ? textValue : node.data.textValue,
+                selectedPack: selectedPack !== undefined ? selectedPack : node.data.selectedPack,
+                selectedTable: selectedTable !== undefined ? selectedTable : node.data.selectedTable,
+                selectedColumn: selectedColumn !== undefined ? selectedColumn : node.data.selectedColumn,
+                selectedColumn1: selectedColumn1 !== undefined ? selectedColumn1 : node.data.selectedColumn1,
+                selectedColumn2: selectedColumn2 !== undefined ? selectedColumn2 : node.data.selectedColumn2,
+                columnNames: columnNames !== undefined ? columnNames : node.data.columnNames,
+                groupedTextSelection:
+                  groupedTextSelection !== undefined ? groupedTextSelection : node.data.groupedTextSelection,
+                outputType: outputType !== undefined ? outputType : node.data.outputType,
               },
             };
           }
@@ -1399,6 +1607,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as ColumnSelectionDropdownNodeData).outputType;
       } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
+      } else if (sourceNode.type === "groupbycolumns" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
       } else if (sourceNode.type === "textsurround" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
       } else if (sourceNode.type === "textjoin" && sourceNode.data) {
@@ -1426,14 +1636,20 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
 
       // Allow connection only if types are compatible
-      // Special case for textsurround: it accepts both "Text" and "Text Lines"
+      // Special case for textsurround: it accepts "Text", "Text Lines", or "GroupedText"
       const isTextSurroundCompatible =
         targetNode.type === "textsurround" &&
-        (sourceOutputType === "Text" || sourceOutputType === "Text Lines");
+        (sourceOutputType === "Text" || sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+
+      // Special case for textjoin: it accepts "Text Lines" or "GroupedText"
+      const isTextJoinCompatible =
+        targetNode.type === "textjoin" &&
+        (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
 
       if (
         (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
-        isTextSurroundCompatible
+        isTextSurroundCompatible ||
+        isTextJoinCompatible
       ) {
         setEdges((eds) => {
           const newEdge = {
@@ -1451,12 +1667,36 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           setNodes((nds) =>
             nds.map((node) => {
               if (node.id === params.target) {
+                // For GroupedText input, output depends on the selection
+                const outputType =
+                  sourceOutputType === "GroupedText"
+                    ? ((node.data as any).groupedTextSelection as NodeEdgeTypes) || "Text"
+                    : sourceOutputType;
+
                 return {
                   ...node,
                   data: {
                     ...node.data,
                     inputType: sourceOutputType,
-                    outputType: sourceOutputType,
+                    outputType: outputType,
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        }
+
+        // Update textjoin node input type when connected to GroupedText
+        if (targetNode.type === "textjoin" && sourceOutputType === "GroupedText") {
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === params.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    inputType: "GroupedText",
                   },
                 };
               }
@@ -1467,7 +1707,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
         // Update column selection dropdown nodes when connected to table selection nodes
         if (
-          targetNode.type === "columnselectiondropdown" &&
+          (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
         ) {
           const tableName =
@@ -1617,6 +1857,23 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             DBNameToDBVersions,
           } as ColumnSelectionDropdownNodeData,
         };
+      } else if (nodeData.type === "groupbycolumns") {
+        // Create GroupByColumns node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "groupbycolumns",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedColumn1: "",
+            selectedColumn2: "",
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "GroupedText" as NodeEdgeTypes,
+            columnNames: [],
+            DBNameToDBVersions,
+          } as GroupByColumnsNodeData,
+        };
       } else if (nodeData.type === "numericadjustment") {
         // Create NumericAdjustment node with special data structure
         newNode = {
@@ -1714,10 +1971,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         selectedPack: String((node.data as any)?.selectedPack || ""),
         selectedTable: String((node.data as any)?.selectedTable || ""),
         selectedColumn: String((node.data as any)?.selectedColumn || ""),
+        selectedColumn1: String((node.data as any)?.selectedColumn1 || ""),
+        selectedColumn2: String((node.data as any)?.selectedColumn2 || ""),
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: String((node.data as any)?.connectedTableName || ""),
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
+        groupedTextSelection: (node.data as any)?.groupedTextSelection,
       },
     }));
 
@@ -1796,14 +2056,20 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
 
           console.log("ser type:", node.data.type);
-          if (node.data.type === "columnselectiondropdown" || node.data.type === "tableselectiondropdown") {
+          if (
+            node.data.type === "columnselectiondropdown" ||
+            node.data.type === "tableselectiondropdown" ||
+            node.data.type === "groupbycolumns"
+          ) {
             console.log("ser type!!!:", DBNameToDBVersions);
             node.data.DBNameToDBVersions = DBNameToDBVersions;
-            node.data.tableNames = Object.keys(DBNameToDBVersions || {}).toSorted(
-              (firstTableName, secondTableName) => {
-                return firstTableName.localeCompare(secondTableName);
-              }
-            );
+            if (node.data.type === "tableselectiondropdown") {
+              node.data.tableNames = Object.keys(DBNameToDBVersions || {}).toSorted(
+                (firstTableName, secondTableName) => {
+                  return firstTableName.localeCompare(secondTableName);
+                }
+              );
+            }
           }
           return node;
         });
@@ -1850,9 +2116,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
             if (!sourceNode || !targetNode) return;
 
-            // Update column selection dropdown nodes when connected to table selection nodes
+            // Update column selection dropdown and groupbycolumns nodes when connected to table selection nodes
             if (
-              targetNode.type === "columnselectiondropdown" &&
+              (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
               (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
             ) {
               const tableName =
