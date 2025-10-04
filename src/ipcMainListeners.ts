@@ -36,6 +36,7 @@ import {
   amendSchemaField,
   chunkSchemaIntoRows,
   createOverwritePack,
+  executeFlowsForPack,
   getDBVersion,
   getPacksInSave,
   getPacksTableData,
@@ -3480,6 +3481,28 @@ export const registerIpcMainListeners = (
           }
         }
 
+        console.log("userFlowOptions:", startGameOptions.userFlowOptions);
+
+        // Execute flows for enabled mods
+        const enabledModsWithFlows = sortedMods.filter((iterMod) => {
+          const packFlowOptions = startGameOptions.userFlowOptions[iterMod.path];
+          return packFlowOptions && Object.keys(packFlowOptions).length > 0;
+        });
+
+        if (enabledModsWithFlows.length > 0) {
+          console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
+
+          for (const pack of enabledModsWithFlows) {
+            console.log(`Executing flows for pack: ${pack.name}`);
+            await executeFlowsForPack(
+              pack.path,
+              "", // No target path needed - flows modify data in-place
+              startGameOptions.userFlowOptions,
+              pack.path
+            );
+          }
+        }
+
         const text =
           enabledModsWithoutMergedInMods
             .filter((mod) => !mod.isInModding)
@@ -3563,9 +3586,9 @@ export const registerIpcMainListeners = (
         mainWindow?.webContents.send("handleLog", "starting game:");
         mainWindow?.webContents.send("handleLog", batData);
 
-        exec(batData, (error) => {
-          console.error(error);
-        });
+        // exec(batData, (error) => {
+        //   console.error(error);
+        // });
 
         appData.compatData = {
           packTableCollisions: [],

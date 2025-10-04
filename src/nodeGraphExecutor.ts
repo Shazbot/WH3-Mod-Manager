@@ -98,6 +98,7 @@ export const executeNodeGraph = async (
 
       try {
         console.log(`Executing node: ${node.id} (${node.type})`);
+        console.log(`Node data:`, node.data);
 
         // Execute the node using existing backend executor
         let textValueToUse = "";

@@ -61,7 +61,9 @@ const PackComparisonModal = memo(
           "modalDontOverflowWindowHeight",
         ]}
       >
-        <Modal.Header>{localized.comparingModsInSave} - {comparison.saveName}</Modal.Header>
+        <Modal.Header>
+          {localized.comparingModsInSave} - {comparison.saveName}
+        </Modal.Header>
         <Modal.Body>
           <div className="space-y-4">
             <div>
@@ -145,6 +147,7 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
+  const userFlowOptions = useAppSelector((state) => state.app.userFlowOptions);
   const savesState = useAppSelector((state) => state.app.saves);
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
@@ -174,6 +177,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           isAutoStartCustomBattleEnabled,
           isClosedOnPlay,
           packDataOverwrites,
+          userFlowOptions,
         },
         name
       );

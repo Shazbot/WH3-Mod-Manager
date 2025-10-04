@@ -40,6 +40,7 @@ import { collator } from "./utility/packFileSorting";
 import bs from "binary-search";
 import { decompress } from "@mongodb-js/zstd";
 import { readModsByPath } from "./ipcMainListeners";
+import { executeNodeGraph } from "./nodeGraphExecutor";
 
 // console.log(DBNameToDBVersions.land_units_officers_tables);
 
@@ -1144,6 +1145,104 @@ export const createOverwritePack = async (
   //   } as PackedFile,
   // ];
   await writeCopyPack(pathSource, pathTarget, packFilesToAdd, sourceMod);
+};
+
+export const executeFlowsForPack = async (
+  pathSource: string,
+  pathTarget: string,
+  userFlowOptions: UserFlowOptions,
+  packPath: string
+) => {
+  try {
+    console.log("Executing flows for pack:", packPath);
+
+    // Read the pack to get flow files
+    const sourceMod = await readPack(pathSource, { readFlows: true, skipParsingTables: true });
+
+    // Filter for flow files
+    const flowFiles = sourceMod.packedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
+
+    if (flowFiles.length === 0) {
+      console.log("No flow files found in pack");
+      return;
+    }
+
+    console.log(`Found ${flowFiles.length} flow files in pack`);
+
+    // Get user options for this pack
+    const packFlowOptions = userFlowOptions[packPath] || {};
+
+    // Execute each flow
+    for (const flowFile of flowFiles) {
+      try {
+        // Parse flow JSON
+        const flowContent = flowFile.text || (flowFile.buffer ? flowFile.buffer.toString("utf-8") : "");
+        if (!flowContent) {
+          console.warn(`Flow file ${flowFile.name} has no content`);
+          continue;
+        }
+
+        const flowData: SerializedNodeGraph = JSON.parse(flowContent);
+        const flowFileName = flowFile.name;
+
+        // Check if this flow is enabled
+        const flowOptions = packFlowOptions[flowFileName];
+        if (flowData.isGraphEnabled && flowOptions?.graphEnabled === false) {
+          console.log(`Flow ${flowFileName} is disabled by user, skipping`);
+          continue;
+        }
+
+        console.log(`Executing flow: ${flowFileName}`);
+
+        // Inject user option values into nodes
+        if (flowData.options && flowOptions?.optionValues) {
+          for (const node of flowData.nodes) {
+            // Find option references in textValue and replace with user values
+            const textValue = node.data.textValue || "";
+            let modifiedTextValue = textValue;
+
+            for (const option of flowData.options) {
+              const userValue = flowOptions.optionValues[option.id];
+              if (userValue !== undefined) {
+                // Replace option placeholders like {{optionId}} with user values
+                const placeholder = `{{${option.id}}}`;
+                if (modifiedTextValue.includes(placeholder)) {
+                  modifiedTextValue = modifiedTextValue.replace(
+                    new RegExp(placeholder, "g"),
+                    String(userValue)
+                  );
+                }
+              }
+            }
+
+            node.data.textValue = modifiedTextValue;
+          }
+        }
+
+        // Execute the flow
+        const result = await executeNodeGraph({
+          nodes: flowData.nodes,
+          connections: flowData.connections,
+        });
+
+        if (result.success) {
+          console.log(`Flow ${flowFileName} executed successfully`);
+          console.log(`Executed ${result.successCount}/${result.totalExecuted} nodes`);
+        } else {
+          console.error(`Flow ${flowFileName} execution failed:`, result.error);
+        }
+      } catch (error) {
+        console.error(`Error executing flow ${flowFile.name}:`, error);
+      }
+    }
+
+    // Note: The flows handle their own pack modifications via SaveChanges nodes
+    // We don't need to generate a separate pack file like overwrites do
+    // The modified data is already saved by the flow execution
+    console.log("Flow execution completed for pack:", packPath);
+  } catch (error) {
+    console.error("Error in executeFlowsForPack:", error);
+  }
 };
 
 export const writeCopyPack = async (
