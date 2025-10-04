@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { useAppDispatch, useAppSelector } from "../hooks";
+import { setUserFlowOptions } from "../appSlice";
 
 interface FlowWithOptions {
   flowName: string;
@@ -12,6 +14,8 @@ const UserFlowOptionsModal: React.FC<{
   onClose: () => void;
   mod: Mod;
 }> = ({ isOpen, onClose, mod }) => {
+  const dispatch = useAppDispatch();
+  const userFlowOptions = useAppSelector((state) => state.app.userFlowOptions);
   const [flows, setFlows] = useState<FlowWithOptions[]>([]);
   const [userValues, setUserValues] = useState<Record<string, any>>({});
 
@@ -19,7 +23,8 @@ const UserFlowOptionsModal: React.FC<{
     if (isOpen && mod) {
       loadFlowOptions();
     }
-  }, [isOpen, mod]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, mod, userFlowOptions]);
 
   const loadFlowOptions = async () => {
     try {
@@ -28,6 +33,7 @@ const UserFlowOptionsModal: React.FC<{
       if (!result) return;
 
       const loadedFlows: FlowWithOptions[] = [];
+      const initialValues: Record<string, any> = {};
 
       for (const flowFile of result.flowFiles) {
         try {
@@ -35,7 +41,6 @@ const UserFlowOptionsModal: React.FC<{
           const flowData = JSON.parse(flowFile.content);
 
           // Extract options from the serialized graph
-          // Note: Flow options should be stored in the serialized graph metadata
           const options = flowData.options || [];
           const isGraphEnabled = flowData.isGraphEnabled || false;
           const graphStartsEnabled = flowData.graphStartsEnabled !== false;
@@ -46,12 +51,31 @@ const UserFlowOptionsModal: React.FC<{
             graphStartsEnabled,
             options,
           });
+
+          // Load saved user values from app state
+          const packOptions = userFlowOptions[mod.path];
+          if (packOptions && packOptions[flowFile.name]) {
+            const savedValues = packOptions[flowFile.name];
+
+            // Load graph enabled state if available
+            if (isGraphEnabled && savedValues.graphEnabled !== undefined) {
+              initialValues[`${flowFile.name}_graphEnabled`] = savedValues.graphEnabled;
+            }
+
+            // Load option values
+            if (savedValues.optionValues) {
+              for (const [optionId, value] of Object.entries(savedValues.optionValues)) {
+                initialValues[`${flowFile.name}_${optionId}`] = value;
+              }
+            }
+          }
         } catch (e) {
           console.error(`Failed to parse flow file ${flowFile.name}:`, e);
         }
       }
 
       setFlows(loadedFlows);
+      setUserValues(initialValues);
     } catch (error) {
       console.error("Error loading flow options:", error);
     }
@@ -201,8 +225,39 @@ const UserFlowOptionsModal: React.FC<{
           </button>
           <button
             onClick={() => {
-              // TODO: Save user values
-              console.log("User values:", userValues);
+              // Save user values to app state
+              flows.forEach((flow) => {
+                const optionValues: Record<string, any> = {};
+                let graphEnabled: boolean | undefined = undefined;
+
+                // Extract option values for this flow
+                flow.options.forEach((option) => {
+                  const key = `${flow.flowName}_${option.id}`;
+                  if (userValues[key] !== undefined) {
+                    optionValues[option.id] = userValues[key];
+                  }
+                });
+
+                // Extract graph enabled state if applicable
+                if (flow.isGraphEnabled) {
+                  const graphKey = `${flow.flowName}_graphEnabled`;
+                  graphEnabled =
+                    userValues[graphKey] !== undefined ? userValues[graphKey] : flow.graphStartsEnabled;
+                }
+
+                // Dispatch to save in app state
+                dispatch(
+                  setUserFlowOptions({
+                    packPath: mod.path,
+                    flowFileName: flow.flowName,
+                    values: {
+                      optionValues,
+                      graphEnabled,
+                    },
+                  })
+                );
+              });
+
               onClose();
             }}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"

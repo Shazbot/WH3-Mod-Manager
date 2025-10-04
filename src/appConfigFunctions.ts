@@ -41,6 +41,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     currentLanguage: appState.currentLanguage,
     currentGame: appState.currentGame,
     packDataOverwrites: appState.packDataOverwrites,
+    userFlowOptions: appState.userFlowOptions,
     // from appData
     gameFolderPaths: appData.gamesToGameFolderPaths,
     gameToCurrentPreset,
