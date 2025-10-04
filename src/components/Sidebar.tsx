@@ -38,6 +38,7 @@ const Sidebar = memo(() => {
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
+  const userFlowOptions = useAppSelector((state) => state.app.userFlowOptions);
   const filter = useAppSelector((state) => state.app.filter);
   const overwrittenDataPackedFiles = useAppSelector((state) => state.app.overwrittenDataPackedFiles);
   const outdatedPackFiles = useAppSelector((state) => state.app.outdatedPackFiles);
@@ -105,6 +106,7 @@ const Sidebar = memo(() => {
             isAutoStartCustomBattleEnabled,
             isClosedOnPlay,
             packDataOverwrites,
+            userFlowOptions,
           });
         }, forcedDelayTime || 3500);
       }
@@ -118,6 +120,7 @@ const Sidebar = memo(() => {
       isAutoStartCustomBattleEnabled,
       isClosedOnPlay,
       packDataOverwrites,
+      userFlowOptions,
     });
   };
 
@@ -154,6 +157,7 @@ const Sidebar = memo(() => {
               isAutoStartCustomBattleEnabled,
               isClosedOnPlay,
               packDataOverwrites,
+              userFlowOptions,
             },
             saves[0]?.name
           );
@@ -172,6 +176,7 @@ const Sidebar = memo(() => {
         isAutoStartCustomBattleEnabled,
         isClosedOnPlay,
         packDataOverwrites,
+        userFlowOptions,
       },
       saves[0]?.name
     );

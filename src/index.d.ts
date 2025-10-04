@@ -231,7 +231,8 @@ declare global {
     | "isAutoStartCustomBattleEnabled"
   >;
 
-  type StartGameOptions = StartGameSpecificOptions & Pick<AppState, "isClosedOnPlay" | "packDataOverwrites">;
+  type StartGameOptions = StartGameSpecificOptions &
+    Pick<AppState, "isClosedOnPlay" | "packDataOverwrites" | "userFlowOptions">;
 
   interface ModLoadOrderPayload {
     modName: string;
