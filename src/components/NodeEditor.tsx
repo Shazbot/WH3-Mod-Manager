@@ -102,6 +102,18 @@ interface SaveChangesNodeData extends NodeData {
   inputType: "ChangedColumnSelection";
 }
 
+interface TextSurroundNodeData extends NodeData {
+  textValue: string;
+  inputType: "Text" | "Text Lines";
+  outputType: "Text" | "Text Lines";
+}
+
+interface TextJoinNodeData extends NodeData {
+  textValue: string;
+  inputType: "Text Lines";
+  outputType: "Text";
+}
+
 interface PackFilesDropdownNodeData extends NodeData {
   selectedPack: string;
   outputType: "PackFiles";
@@ -563,6 +575,98 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
       />
 
       <div className="mt-2 text-xs text-gray-400">Final save operation</div>
+    </div>
+  );
+};
+
+// Custom TextSurround node component that accepts Text or Text Lines input and outputs the same type
+const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = ({ data, id }) => {
+  const [textValue, setTextValue] = useState(data.textValue || "");
+
+  const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-rose-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-amber-500"
+        data-input-type={data.inputType}
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input/Output: {data.inputType || "Text or Text Lines"}</div>
+
+      <textarea
+        value={textValue}
+        onChange={handleTextChange}
+        placeholder="Enter surround text configuration..."
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-rose-400"
+      />
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-amber-500"
+        data-output-type={data.outputType}
+      />
+    </div>
+  );
+};
+
+// Custom TextJoin node component that accepts Text Lines input and outputs Text
+const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, id }) => {
+  const [textValue, setTextValue] = useState(data.textValue || "");
+
+  const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-sky-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-lime-500"
+        data-input-type="Text Lines"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: Text Lines</div>
+
+      <textarea
+        value={textValue}
+        onChange={handleTextChange}
+        placeholder="Enter join configuration (separator, etc.)..."
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-sky-400"
+      />
+
+      <div className="mt-2 text-xs text-gray-400">Output: Text</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-violet-500"
+        data-output-type="Text"
+      />
     </div>
   );
 };
@@ -1053,6 +1157,21 @@ const nodeTypeSections: NodeTypeSection[] = [
       },
     ],
   },
+  {
+    title: "Text",
+    nodes: [
+      {
+        type: "textsurround",
+        label: "Text Surround",
+        description: "Accepts Text or Text Lines, outputs same type with surrounding text",
+      },
+      {
+        type: "textjoin",
+        label: "Text Join",
+        description: "Accepts Text Lines input, outputs joined Text",
+      },
+    ],
+  },
 ];
 
 // Backend graph execution service
@@ -1146,6 +1265,8 @@ const reactFlowNodeTypes = {
   columnselectiondropdown: ColumnSelectionDropdownNode,
   numericadjustment: NumericAdjustmentNode,
   savechanges: SaveChangesNode,
+  textsurround: TextSurroundNode,
+  textjoin: TextJoinNode,
 };
 
 const initialNodes: Node[] = [];
@@ -1278,6 +1399,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as ColumnSelectionDropdownNodeData).outputType;
       } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
+      } else if (sourceNode.type === "textsurround" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
+      } else if (sourceNode.type === "textjoin" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as TextJoinNodeData).outputType;
       }
 
       // Get input type from target node
@@ -1294,10 +1419,22 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
       } else if (targetNode.type === "savechanges" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as SaveChangesNodeData).inputType;
+      } else if (targetNode.type === "textsurround" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as TextSurroundNodeData).inputType;
+      } else if (targetNode.type === "textjoin" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as TextJoinNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
-      if (sourceOutputType && targetInputType && sourceOutputType === targetInputType) {
+      // Special case for textsurround: it accepts both "Text" and "Text Lines"
+      const isTextSurroundCompatible =
+        targetNode.type === "textsurround" &&
+        (sourceOutputType === "Text" || sourceOutputType === "Text Lines");
+
+      if (
+        (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
+        isTextSurroundCompatible
+      ) {
         setEdges((eds) => {
           const newEdge = {
             ...params,
@@ -1308,6 +1445,25 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           };
           return [...eds, newEdge];
         });
+
+        // Update textsurround node input/output types to match connected source
+        if (targetNode.type === "textsurround" && sourceOutputType) {
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === params.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    inputType: sourceOutputType,
+                    outputType: sourceOutputType,
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        }
 
         // Update column selection dropdown nodes when connected to table selection nodes
         if (
@@ -1487,6 +1643,34 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             textValue: "",
             inputType: "ChangedColumnSelection" as NodeEdgeTypes,
           } as SaveChangesNodeData,
+        };
+      } else if (nodeData.type === "textsurround") {
+        // Create TextSurround node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "textsurround",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            textValue: "",
+            inputType: "Text" as NodeEdgeTypes,
+            outputType: "Text" as NodeEdgeTypes,
+          } as TextSurroundNodeData,
+        };
+      } else if (nodeData.type === "textjoin") {
+        // Create TextJoin node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "textjoin",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            textValue: "",
+            inputType: "Text Lines" as NodeEdgeTypes,
+            outputType: "Text" as NodeEdgeTypes,
+          } as TextJoinNodeData,
         };
       } else {
         // Create standard node

@@ -617,7 +617,9 @@ declare global {
     | "DBData"
     | "TableSelection"
     | "ColumnSelection"
-    | "ChangedColumnSelection";
+    | "ChangedColumnSelection"
+    | "Text"
+    | "Text Lines";
 
   type FlowNodeType =
     | "packedfiles"
@@ -627,7 +629,9 @@ declare global {
     | "columnselection"
     | "columnselectiondropdown"
     | "numericadjustment"
-    | "savechanges";
+    | "savechanges"
+    | "textsurround"
+    | "textjoin";
 
   // FlowNodeData = "string"|
 
