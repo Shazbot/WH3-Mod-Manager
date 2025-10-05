@@ -102,7 +102,9 @@ interface NumericAdjustmentNodeData extends NodeData {
 
 interface SaveChangesNodeData extends NodeData {
   textValue: string;
-  inputType: "ChangedColumnSelection";
+  packName: string;
+  packedFileName: string;
+  inputType: "ChangedColumnSelection" | "Text";
 }
 
 interface TextSurroundNodeData extends NodeData {
@@ -117,6 +119,13 @@ interface TextJoinNodeData extends NodeData {
   inputType: "Text Lines" | "GroupedText";
   outputType: "Text";
   groupedTextSelection?: "Text" | "Text Lines";
+}
+
+interface GroupedColumnsToTextNodeData extends NodeData {
+  pattern: string;
+  joinSeparator: string;
+  inputType: "GroupedText";
+  outputType: "Text";
 }
 
 interface PackFilesDropdownNodeData extends NodeData {
@@ -663,37 +672,85 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
 // Custom SaveChanges node component that accepts ChangedColumnSelection input
 const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
+  const [packName, setPackName] = useState(data.packName || "");
+  const [packedFileName, setPackedFileName] = useState(data.packedFileName || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
     setTextValue(newValue);
 
-    // Update the node data by dispatching a custom event that the parent can listen to
     const updateEvent = new CustomEvent("nodeDataUpdate", {
       detail: { nodeId: id, textValue: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
 
+  const handlePackNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setPackName(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, packName: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handlePackedFileNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setPackedFileName(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, packedFileName: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
   return (
-    <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[200px]">
+    <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[250px]">
       <Handle
         type="target"
         position={Position.Left}
         className="w-3 h-3 bg-cyan-500"
-        data-input-type="ChangedColumnSelection"
+        data-input-type={data.inputType}
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: ChangedColumnSelection</div>
+      <div className="text-xs text-gray-400 mb-2">Input: {data.inputType || "ChangedColumnSelection or Text"}</div>
 
-      <textarea
-        value={textValue}
-        onChange={handleTextChange}
-        placeholder="Enter save configuration (file path, format, etc.)..."
-        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-green-400"
-      />
+      <div className="space-y-2">
+        <div>
+          <label className="text-xs text-gray-300 block mb-1">Pack name (optional):</label>
+          <input
+            type="text"
+            value={packName}
+            onChange={handlePackNameChange}
+            placeholder="Leave blank for auto-generated name"
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-300 block mb-1">Packed file name (optional):</label>
+          <input
+            type="text"
+            value={packedFileName}
+            onChange={handlePackedFileNameChange}
+            placeholder="Leave blank for auto-generated name"
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-300 block mb-1">Additional config:</label>
+          <textarea
+            value={textValue}
+            onChange={handleTextChange}
+            placeholder="Enter additional save configuration..."
+            className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-green-400"
+          />
+        </div>
+      </div>
 
       <div className="mt-2 text-xs text-gray-400">Final save operation</div>
     </div>
@@ -846,6 +903,77 @@ const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, 
         placeholder="Enter join configuration (separator, etc.)..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-sky-400"
       />
+
+      <div className="mt-2 text-xs text-gray-400">Output: Text</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-violet-500"
+        data-output-type="Text"
+      />
+    </div>
+  );
+};
+
+// Custom GroupedColumnsToText node component that accepts GroupedText and outputs formatted Text
+const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; id: string }> = ({ data, id }) => {
+  const [pattern, setPattern] = useState(data.pattern || "{0}: {1}");
+  const [joinSeparator, setJoinSeparator] = useState(data.joinSeparator || "\\n");
+
+  const handlePatternChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = event.target.value;
+    setPattern(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, pattern: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleJoinSeparatorChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setJoinSeparator(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, joinSeparator: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-emerald-500 rounded-lg p-4 min-w-[250px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-fuchsia-500"
+        data-input-type="GroupedText"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: GroupedText</div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Pattern ({"{0}"} = key, {"{1}"} = values):</label>
+        <textarea
+          value={pattern}
+          onChange={handlePatternChange}
+          placeholder="{0}: {1}"
+          className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Join separator (use \n for newline):</label>
+        <input
+          type="text"
+          value={joinSeparator}
+          onChange={handleJoinSeparatorChange}
+          placeholder="\n"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-emerald-400"
+        />
+      </div>
 
       <div className="mt-2 text-xs text-gray-400">Output: Text</div>
 
@@ -1363,6 +1491,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Text Join",
         description: "Accepts Text Lines input, outputs joined Text",
       },
+      {
+        type: "groupedcolumnstotext",
+        label: "Grouped Columns to Text",
+        description: "Formats GroupedText using pattern and join separator",
+      },
     ],
   },
 ];
@@ -1393,6 +1526,10 @@ const executeGraphInBackend = async (
         selectedColumn: (node.data as any)?.selectedColumn ? String((node.data as any).selectedColumn) : "",
         selectedColumn1: (node.data as any)?.selectedColumn1 ? String((node.data as any).selectedColumn1) : "",
         selectedColumn2: (node.data as any)?.selectedColumn2 ? String((node.data as any).selectedColumn2) : "",
+        packName: (node.data as any)?.packName ? String((node.data as any).packName) : "",
+        packedFileName: (node.data as any)?.packedFileName ? String((node.data as any).packedFileName) : "",
+        pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
+        joinSeparator: (node.data as any)?.joinSeparator ? String((node.data as any).joinSeparator) : "",
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
           ? String((node.data as any).connectedTableName)
@@ -1463,6 +1600,7 @@ const reactFlowNodeTypes = {
   savechanges: SaveChangesNode,
   textsurround: TextSurroundNode,
   textjoin: TextJoinNode,
+  groupedcolumnstotext: GroupedColumnsToTextNode,
 };
 
 const initialNodes: Node[] = [];
@@ -1552,6 +1690,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         columnNames,
         groupedTextSelection,
         outputType,
+        pattern,
+        joinSeparator,
+        packName,
+        packedFileName,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -1570,6 +1712,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 groupedTextSelection:
                   groupedTextSelection !== undefined ? groupedTextSelection : node.data.groupedTextSelection,
                 outputType: outputType !== undefined ? outputType : node.data.outputType,
+                pattern: pattern !== undefined ? pattern : node.data.pattern,
+                joinSeparator: joinSeparator !== undefined ? joinSeparator : node.data.joinSeparator,
+                packName: packName !== undefined ? packName : node.data.packName,
+                packedFileName: packedFileName !== undefined ? packedFileName : node.data.packedFileName,
               },
             };
           }
@@ -1617,6 +1763,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
       } else if (sourceNode.type === "textjoin" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TextJoinNodeData).outputType;
+      } else if (sourceNode.type === "groupedcolumnstotext" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as GroupedColumnsToTextNodeData).outputType;
       }
 
       // Get input type from target node
@@ -1639,6 +1787,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as TextSurroundNodeData).inputType;
       } else if (targetNode.type === "textjoin" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as TextJoinNodeData).inputType;
+      } else if (targetNode.type === "groupedcolumnstotext" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as GroupedColumnsToTextNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -1652,10 +1802,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetNode.type === "textjoin" &&
         (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
 
+      // Special case for savechanges: it accepts "ChangedColumnSelection" or "Text"
+      const isSaveChangesCompatible =
+        targetNode.type === "savechanges" &&
+        (sourceOutputType === "ChangedColumnSelection" || sourceOutputType === "Text");
+
       if (
         (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
         isTextSurroundCompatible ||
-        isTextJoinCompatible
+        isTextJoinCompatible ||
+        isSaveChangesCompatible
       ) {
         setEdges((eds) => {
           const newEdge = {
@@ -1904,6 +2060,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             label: nodeData.label,
             type: nodeData.type,
             textValue: "",
+            packName: "",
+            packedFileName: "",
             inputType: "ChangedColumnSelection" as NodeEdgeTypes,
           } as SaveChangesNodeData,
         };
@@ -1934,6 +2092,21 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             inputType: "Text Lines" as NodeEdgeTypes,
             outputType: "Text" as NodeEdgeTypes,
           } as TextJoinNodeData,
+        };
+      } else if (nodeData.type === "groupedcolumnstotext") {
+        // Create GroupedColumnsToText node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "groupedcolumnstotext",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            pattern: "{0}: {1}",
+            joinSeparator: "\\n",
+            inputType: "GroupedText" as NodeEdgeTypes,
+            outputType: "Text" as NodeEdgeTypes,
+          } as GroupedColumnsToTextNodeData,
         };
       } else {
         // Create standard node

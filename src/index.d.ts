@@ -633,7 +633,8 @@ declare global {
     | "numericadjustment"
     | "savechanges"
     | "textsurround"
-    | "textjoin";
+    | "textjoin"
+    | "groupedcolumnstotext";
 
   // FlowNodeData = "string"|
 
@@ -651,7 +652,9 @@ declare global {
       | DBTablesNodeData
       | DBColumnSelectionNodeData
       | DBNumericAdjustmentNodeData
-      | DBSaveChangesNodeData;
+      | DBSaveChangesNodeData
+      | GroupedTextNodeData
+      | TextNodeData;
     error?: string;
   }
 
@@ -710,6 +713,19 @@ declare global {
     type: "SaveResult";
     savedTo: string;
     format: string;
+    fileName?: string;
     message: string;
+  }
+
+  interface GroupedTextNodeData {
+    type: "GroupedText";
+    text: string[];
+    textLines: string[][];
+    groupCount?: number;
+  }
+
+  interface TextNodeData {
+    type: "Text";
+    text: string;
   }
 }
