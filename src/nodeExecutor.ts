@@ -34,11 +34,20 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "columnselectiondropdown":
         return await executeColumnSelectionDropdownNode(nodeId, textValue, inputData);
 
+      case "groupbycolumns":
+        return await executeGroupByColumnsNode(nodeId, textValue, inputData);
+
       case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
 
       case "savechanges":
         return await executeSaveChangesNode(nodeId, textValue, inputData);
+
+      case "textsurround":
+        return await executeTextSurroundNode(nodeId, textValue, inputData);
+
+      case "textjoin":
+        return await executeTextJoinNode(nodeId, textValue, inputData);
 
       default:
         return {
@@ -110,7 +119,10 @@ async function executePackFilesNode(nodeId: string, textValue: string): Promise<
   };
 }
 
-async function executePackFilesDropdownNode(nodeId: string, selectedPack: string): Promise<NodeExecutionResult> {
+async function executePackFilesDropdownNode(
+  nodeId: string,
+  selectedPack: string
+): Promise<NodeExecutionResult> {
   console.log(`PackFiles Dropdown Node ${nodeId}: Processing selected pack "${selectedPack}"`);
 
   const packFiles = [] as PackFilesNodeFile[];
@@ -224,7 +236,10 @@ async function executeTableSelectionDropdownNode(
   selectedTable: string,
   inputData: PackFilesNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`TableSelection Dropdown Node ${nodeId}: Processing selected table "${selectedTable}" with input:`, inputData);
+  console.log(
+    `TableSelection Dropdown Node ${nodeId}: Processing selected table "${selectedTable}" with input:`,
+    inputData
+  );
 
   if (!inputData || inputData.type !== "PackFiles") {
     return { success: false, error: "Invalid input: Expected PackFiles data" };
@@ -336,6 +351,104 @@ async function executeColumnSelectionNode(
   };
 }
 
+async function executeGroupByColumnsNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`GroupByColumns Node ${nodeId}: Processing with textValue:`, textValue);
+  console.log(`GroupByColumns Node ${nodeId}: Input data:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse the column selections from textValue
+  let column1: string;
+  let column2: string;
+  try {
+    const parsed = JSON.parse(textValue);
+    console.log(`GroupByColumns Node ${nodeId}: Parsed columns:`, parsed);
+    column1 = parsed.column1;
+    column2 = parsed.column2;
+  } catch (error) {
+    return {
+      success: false,
+      error: "Invalid column configuration. Expected JSON with column1 and column2 fields.",
+    };
+  }
+
+  if (!column1 || column1.trim() === "" || !column2 || column2.trim() === "") {
+    return {
+      success: false,
+      error: `Both column1 and column2 must be selected. Received: column1="${column1}", column2="${column2}"`,
+    };
+  }
+
+  // Process each table
+  const groupedData = new Map<string, string[]>();
+  const textLinesArray: string[] = [];
+
+  for (const tableData of inputData.tables) {
+    if (
+      !tableData.table.tableSchema ||
+      !tableData.table.schemaFields ||
+      tableData.table.schemaFields.length === 0
+    ) {
+      console.log(`Missing table data, skipping ${tableData.name}!`);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    // Find the column indices
+    const column1Index = tableData.table.tableSchema.fields.findIndex((f) => f.name === column1);
+    const column2Index = tableData.table.tableSchema.fields.findIndex((f) => f.name === column2);
+
+    if (column1Index === -1 || column2Index === -1) {
+      console.warn(
+        `Columns ${column1} or ${column2} not found in table ${tableData.name}. Skipping this table.`
+      );
+      continue;
+    }
+
+    // Group the data
+    for (const row of rows) {
+      if (row.length > column1Index && row.length > column2Index) {
+        const key = row[column1Index].resolvedKeyValue;
+        const value = row[column2Index].resolvedKeyValue;
+
+        if (!groupedData.has(key)) {
+          groupedData.set(key, []);
+        }
+        groupedData.get(key)!.push(value);
+      }
+    }
+  }
+
+  // Convert map to text format
+  // Text format: JSON stringified map
+  const textOutput = JSON.stringify(Object.fromEntries(groupedData));
+
+  // Text Lines format: each line is "key: value1, value2, ..."
+  for (const [key, values] of groupedData.entries()) {
+    textLinesArray.push(`${key}: ${values.join(", ")}`);
+  }
+
+  return {
+    success: true,
+    data: {
+      type: "GroupedText",
+      text: textOutput,
+      textLines: textLinesArray,
+      groupCount: groupedData.size,
+    },
+  };
+}
+
 // Formula evaluation function
 function evaluateFormula(formula: string, x: number): number {
   // Sanitize the formula - only allow safe mathematical operations
@@ -371,7 +484,10 @@ async function executeColumnSelectionDropdownNode(
   selectedColumn: string,
   inputData: DBTablesNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`ColumnSelection Dropdown Node ${nodeId}: Processing selected column "${selectedColumn}" with input:`, inputData);
+  console.log(
+    `ColumnSelection Dropdown Node ${nodeId}: Processing selected column "${selectedColumn}" with input:`,
+    inputData
+  );
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -639,4 +755,94 @@ async function executeSaveChangesNode(
       error: `Save operation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
     };
   }
+}
+
+async function executeTextSurroundNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`TextSurround Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
+
+  if (!inputData) {
+    return { success: false, error: "Invalid input: No input data provided" };
+  }
+
+  // Parse the surround configuration (could be prefix/suffix separated by | or just a prefix)
+  const parts = textValue.split("|");
+  const prefix = parts[0] || "";
+  const suffix = parts[1] || parts[0] || "";
+
+  let outputText: string | undefined;
+  let outputTextLines: string[] | undefined;
+
+  // Handle GroupedText input
+  if (inputData.type === "GroupedText") {
+    // The actual selection is handled in the serialization, so we just use what's provided
+    // For now, assume both text and textLines are available
+    if (inputData.text) {
+      outputText = `${prefix}${inputData.text}${suffix}`;
+    }
+    if (inputData.textLines && Array.isArray(inputData.textLines)) {
+      outputTextLines = inputData.textLines.map((line: string) => `${prefix}${line}${suffix}`);
+    }
+  } else if (typeof inputData === "string") {
+    // Simple text input
+    outputText = `${prefix}${inputData}${suffix}`;
+  } else if (Array.isArray(inputData)) {
+    // Text Lines input
+    outputTextLines = inputData.map((line: string) => `${prefix}${line}${suffix}`);
+  }
+
+  return {
+    success: true,
+    data: {
+      type: inputData.type || "Text",
+      text: outputText,
+      textLines: outputTextLines,
+    },
+  };
+}
+
+async function executeTextJoinNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`TextJoin Node ${nodeId}: Processing with separator "${textValue}" and input:`, inputData);
+
+  if (!inputData) {
+    return { success: false, error: "Invalid input: No input data provided" };
+  }
+
+  const separator = textValue || "\n";
+  let linesToJoin: string[] = [];
+
+  // Handle GroupedText input
+  if (inputData.type === "GroupedText") {
+    // Use textLines from GroupedText
+    if (inputData.textLines && Array.isArray(inputData.textLines)) {
+      linesToJoin = inputData.textLines;
+    } else {
+      return { success: false, error: "GroupedText input does not contain textLines" };
+    }
+  } else if (Array.isArray(inputData)) {
+    // Direct Text Lines input
+    linesToJoin = inputData;
+  } else {
+    return {
+      success: false,
+      error: "Invalid input: Expected Text Lines or GroupedText",
+    };
+  }
+
+  const joinedText = linesToJoin.join(separator);
+
+  return {
+    success: true,
+    data: {
+      type: "Text",
+      text: joinedText,
+    },
+  };
 }
