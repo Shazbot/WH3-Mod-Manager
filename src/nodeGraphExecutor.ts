@@ -26,6 +26,10 @@ interface SerializedNode {
     selectedColumn?: string;
     selectedColumn1?: string;
     selectedColumn2?: string;
+    packName?: string;
+    packedFileName?: string;
+    pattern?: string;
+    joinSeparator?: string;
     columnNames?: string[];
     connectedTableName?: string;
     outputType?: string;
@@ -114,6 +118,17 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             column1: node.data.selectedColumn1 || "",
             column2: node.data.selectedColumn2 || "",
+          });
+        } else if (node.type === "groupedcolumnstotext") {
+          textValueToUse = JSON.stringify({
+            pattern: (node.data as any).pattern || "{0}: {1}",
+            joinSeparator: (node.data as any).joinSeparator || "\\n",
+          });
+        } else if (node.type === "savechanges") {
+          textValueToUse = JSON.stringify({
+            packName: (node.data as any).packName || "",
+            packedFileName: (node.data as any).packedFileName || "",
+            additionalConfig: node.data.textValue || "",
           });
         } else {
           textValueToUse = node.data.textValue || "";

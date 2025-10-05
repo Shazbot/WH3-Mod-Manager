@@ -49,6 +49,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "textjoin":
         return await executeTextJoinNode(nodeId, textValue, inputData);
 
+      case "groupedcolumnstotext":
+        return await executeGroupedColumnsToTextNode(nodeId, textValue, inputData);
+
       default:
         return {
           success: false,
@@ -631,21 +634,99 @@ async function executeNumericAdjustmentNode(
   };
 }
 
+async function executeSaveTextNode(
+  nodeId: string,
+  textContent: string,
+  packName: string,
+  packedFileName: string
+): Promise<NodeExecutionResult> {
+  console.log(
+    `SaveText Node ${nodeId}: Saving text file with packName="${packName}", packedFileName="${packedFileName}"`
+  );
+
+  try {
+    const nodePath = await import("path");
+    const { format } = await import("date-fns");
+
+    // Generate default names if not provided
+    const timestamp = format(new Date(), "ddMMyy_HHmmss");
+    const packFileBaseName = packName || `textflow_${timestamp}`;
+    const textFileName = packedFileName || `output_${timestamp}.txt`;
+
+    // Create buffer from text content
+    const buffer = Buffer.from(textContent, "utf8");
+
+    // Create NewPackedFile object
+    const newFile: NewPackedFile = {
+      name: textFileName,
+      buffer: buffer,
+      file_size: buffer.length,
+    };
+
+    // Determine pack path
+    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
+    const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);
+
+    // Write the pack file
+    await writePack([newFile], newPackPath);
+
+    console.log(`SaveText Node ${nodeId}: Successfully saved text file to ${newPackPath}`);
+
+    return {
+      success: true,
+      data: {
+        type: "SaveResult",
+        savedTo: newPackPath,
+        format: "text",
+        fileName: textFileName,
+        message: `Successfully saved text file to ${packFileBaseName}.pack`,
+      },
+    };
+  } catch (error) {
+    console.error(`SaveText Node ${nodeId}: Error saving text file:`, error);
+    return {
+      success: false,
+      error: `Failed to save text file: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+}
+
 async function executeSaveChangesNode(
   nodeId: string,
   textValue: string,
-  inputData: DBNumericAdjustmentNodeData
+  inputData: any
 ): Promise<NodeExecutionResult> {
   console.log(
     `SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with input:`,
     inputData
   );
 
-  if (!inputData || inputData.type !== "ChangedColumnSelection") {
-    return { success: false, error: "Invalid input: Expected ChangedColumnSelection data" };
+  // Parse configuration from textValue
+  let packName = "";
+  let packedFileName = "";
+  let additionalConfig = "";
+
+  try {
+    const config = JSON.parse(textValue);
+    packName = config.packName || "";
+    packedFileName = config.packedFileName || "";
+    additionalConfig = config.additionalConfig || "";
+  } catch {
+    // If not JSON, treat textValue as additionalConfig
+    additionalConfig = textValue.trim();
   }
 
-  const saveConfig = textValue.trim();
+  // Handle Text input - save as text file
+  if (inputData && inputData.type === "Text") {
+    return await executeSaveTextNode(nodeId, inputData.text || "", packName, packedFileName);
+  }
+
+  // Handle ChangedColumnSelection input - save database changes
+  if (!inputData || inputData.type !== "ChangedColumnSelection") {
+    return { success: false, error: "Invalid input: Expected ChangedColumnSelection or Text data" };
+  }
+
+  const saveConfig = additionalConfig;
 
   // if (!saveConfig) {
   //   return {
@@ -688,7 +769,7 @@ async function executeSaveChangesNode(
   const nodePath = await import("path");
 
   const timestamp = format(new Date(), "ddMMyy_HHmmss");
-  const packFileBaseName = `dbflow_${timestamp}`;
+  const packFileBaseName = packName || `dbflow_${timestamp}`;
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
   const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);
   await writePack(toSave, newPackPath);
@@ -862,6 +943,74 @@ async function executeTextJoinNode(
     data: {
       type: "Text",
       text: joinedText,
+    },
+  };
+}
+
+async function executeGroupedColumnsToTextNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
+
+  if (!inputData) {
+    return { success: false, error: "Invalid input: No input data provided" };
+  }
+
+  if (inputData.type !== "GroupedText") {
+    return { success: false, error: "Invalid input: Expected GroupedText" };
+  }
+
+  // Parse the configuration from textValue (pattern and joinSeparator are stored separately in node data)
+  // For now, textValue might contain JSON with both pattern and joinSeparator
+  let pattern = "{0}: {1}";
+  let joinSeparator = "\n";
+
+  try {
+    const config = JSON.parse(textValue);
+    pattern = config.pattern || pattern;
+    joinSeparator = config.joinSeparator || joinSeparator;
+  } catch {
+    // If not JSON, treat textValue as pattern
+    pattern = textValue || pattern;
+  }
+
+  // Process the escape sequences in joinSeparator
+  joinSeparator = joinSeparator.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+
+  const keysArray: string[] = inputData.text || [];
+  const valuesArray: string[][] = inputData.textLines || [];
+
+  if (keysArray.length !== valuesArray.length) {
+    return {
+      success: false,
+      error: `Mismatched keys and values arrays: ${keysArray.length} keys, ${valuesArray.length} value arrays`,
+    };
+  }
+
+  // Format each key-values pair using the pattern
+  const formattedLines: string[] = [];
+  for (let i = 0; i < keysArray.length; i++) {
+    const key = keysArray[i];
+    const values = valuesArray[i];
+
+    // Join the values array with comma-space by default
+    const valuesString = values.join(", ");
+
+    // Replace {0} with key and {1} with values string
+    const formattedLine = pattern.replace(/\{0\}/g, key).replace(/\{1\}/g, valuesString);
+    formattedLines.push(formattedLine);
+  }
+
+  // Join all lines with the separator
+  const finalText = formattedLines.join(joinSeparator);
+
+  return {
+    success: true,
+    data: {
+      type: "Text",
+      text: finalText,
     },
   };
 }
