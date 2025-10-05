@@ -1151,10 +1151,10 @@ export const executeFlowsForPack = async (
   pathSource: string,
   pathTarget: string,
   userFlowOptions: UserFlowOptions,
-  packPath: string
+  packName: string
 ) => {
   try {
-    console.log("Executing flows for pack:", packPath);
+    console.log("Executing flows for pack:", packName);
 
     // Read the pack to get flow files
     const sourceMod = await readPack(pathSource, { readFlows: true, skipParsingTables: true });
@@ -1170,7 +1170,7 @@ export const executeFlowsForPack = async (
     console.log(`Found ${flowFiles.length} flow files in pack`);
 
     // Get user options for this pack
-    const packFlowOptions = userFlowOptions[packPath] || {};
+    const packFlowOptions = userFlowOptions[packName] || {};
 
     // Execute each flow
     for (const flowFile of flowFiles) {

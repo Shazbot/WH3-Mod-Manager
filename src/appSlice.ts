@@ -1320,13 +1320,13 @@ const appSlice = createSlice({
     },
     setUserFlowOptions: (
       state: AppState,
-      action: PayloadAction<{ packPath: string; flowFileName: string; values: UserFlowOptionValues }>
+      action: PayloadAction<{ packName: string; flowFileName: string; values: UserFlowOptionValues }>
     ) => {
-      const { packPath, flowFileName, values } = action.payload;
-      if (!state.userFlowOptions[packPath]) {
-        state.userFlowOptions[packPath] = {};
+      const { packName, flowFileName, values } = action.payload;
+      if (!state.userFlowOptions[packName]) {
+        state.userFlowOptions[packName] = {};
       }
-      state.userFlowOptions[packPath][flowFileName] = values;
+      state.userFlowOptions[packName][flowFileName] = values;
     },
   },
 });
