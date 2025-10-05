@@ -633,6 +633,7 @@ declare global {
     | "numericadjustment"
     | "savechanges"
     | "textsurround"
+    | "appendtext"
     | "textjoin"
     | "groupedcolumnstotext";
 
