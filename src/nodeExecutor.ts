@@ -846,8 +846,21 @@ async function executeTextSurroundNode(
     return { success: false, error: "Invalid input: No input data provided" };
   }
 
+  // Parse configuration
+  let surroundText = textValue;
+  let groupedTextSelection: "Text" | "Text Lines" = "Text";
+
+  try {
+    const config = JSON.parse(textValue);
+    surroundText = config.surroundText || "";
+    groupedTextSelection = config.groupedTextSelection || "Text";
+  } catch {
+    // If not JSON, treat as simple surround text
+    surroundText = textValue;
+  }
+
   // Parse the surround configuration (could be prefix/suffix separated by | or just a prefix)
-  const parts = textValue.split("|");
+  const parts = surroundText.split("|");
   const prefix = parts[0] || "";
   const suffix = parts[1] || parts[0] || "";
 
@@ -864,19 +877,20 @@ async function executeTextSurroundNode(
     outputText = inputData.text;
     outputTextLines = inputData.textLines;
 
-    // Note: The actual selection (Text vs Text Lines) is handled by the groupedTextSelection
-    // which should be passed through the node data. For now, we'll modify both and let
-    // the consumer decide which to use. But ideally we should get groupedTextSelection here.
-
-    // For now, surround both the text array (keys) and textLines array (values)
-    if (inputData.text && Array.isArray(inputData.text)) {
-      outputText = inputData.text.map((key: string) => `${prefix}${key}${suffix}`);
-    }
-    if (inputData.textLines && Array.isArray(inputData.textLines)) {
-      // TextLines is array of arrays - surround each value within each array
-      outputTextLines = inputData.textLines.map((valueArray: string[]) =>
-        valueArray.map((value: string) => `${prefix}${value}${suffix}`)
-      );
+    // Only modify the selected field
+    if (groupedTextSelection === "Text") {
+      // Modify text array (keys) only
+      if (inputData.text && Array.isArray(inputData.text)) {
+        outputText = inputData.text.map((key: string) => `${prefix}${key}${suffix}`);
+      }
+    } else {
+      // Modify textLines array (values) only
+      if (inputData.textLines && Array.isArray(inputData.textLines)) {
+        // TextLines is array of arrays - surround each value within each array
+        outputTextLines = inputData.textLines.map((valueArray: string[]) =>
+          valueArray.map((value: string) => `${prefix}${value}${suffix}`)
+        );
+      }
     }
 
     // Output is still GroupedText
