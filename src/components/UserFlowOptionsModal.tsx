@@ -53,7 +53,7 @@ const UserFlowOptionsModal: React.FC<{
           });
 
           // Load saved user values from app state
-          const packOptions = userFlowOptions[mod.path];
+          const packOptions = userFlowOptions[mod.name];
           if (packOptions && packOptions[flowFile.name]) {
             const savedValues = packOptions[flowFile.name];
 
@@ -248,7 +248,7 @@ const UserFlowOptionsModal: React.FC<{
                 // Dispatch to save in app state
                 dispatch(
                   setUserFlowOptions({
-                    packPath: mod.path,
+                    packName: mod.name,
                     flowFileName: flow.flowName,
                     values: {
                       optionValues,

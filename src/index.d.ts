@@ -318,7 +318,7 @@ declare global {
     graphEnabled?: boolean; // only if the flow has isGraphEnabled
   }
 
-  type UserFlowOptions = Record<string, Record<string, UserFlowOptionValues>>; // packPath -> flowFileName -> values
+  type UserFlowOptions = Record<string, Record<string, UserFlowOptionValues>>; // packName -> flowFileName -> values
 
   type ToastType = "info" | "success" | "warning";
 

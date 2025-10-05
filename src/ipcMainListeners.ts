@@ -3485,7 +3485,7 @@ export const registerIpcMainListeners = (
 
         // Execute flows for enabled mods
         const enabledModsWithFlows = sortedMods.filter((iterMod) => {
-          const packFlowOptions = startGameOptions.userFlowOptions[iterMod.path];
+          const packFlowOptions = startGameOptions.userFlowOptions[iterMod.name];
           return packFlowOptions && Object.keys(packFlowOptions).length > 0;
         });
 
@@ -3498,7 +3498,7 @@ export const registerIpcMainListeners = (
               pack.path,
               "", // No target path needed - flows modify data in-place
               startGameOptions.userFlowOptions,
-              pack.path
+              pack.name
             );
           }
         }
