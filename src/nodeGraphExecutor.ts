@@ -31,6 +31,8 @@ interface SerializedNode {
     pattern?: string;
     joinSeparator?: string;
     groupedTextSelection?: string;
+    beforeText?: string;
+    afterText?: string;
     columnNames?: string[];
     connectedTableName?: string;
     outputType?: string;
@@ -134,6 +136,12 @@ export const executeNodeGraph = async (
         } else if (node.type === "textsurround") {
           textValueToUse = JSON.stringify({
             surroundText: node.data.textValue || "",
+            groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
+          });
+        } else if (node.type === "appendtext") {
+          textValueToUse = JSON.stringify({
+            beforeText: (node.data as any).beforeText || "",
+            afterText: (node.data as any).afterText || "",
             groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
           });
         } else {

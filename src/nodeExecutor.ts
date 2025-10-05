@@ -46,6 +46,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "textsurround":
         return await executeTextSurroundNode(nodeId, textValue, inputData);
 
+      case "appendtext":
+        return await executeAppendTextNode(nodeId, textValue, inputData);
+
       case "textjoin":
         return await executeTextJoinNode(nodeId, textValue, inputData);
 
@@ -861,8 +864,12 @@ async function executeTextSurroundNode(
 
   // Parse the surround configuration (could be prefix/suffix separated by | or just a prefix)
   const parts = surroundText.split("|");
-  const prefix = parts[0] || "";
-  const suffix = parts[1] || parts[0] || "";
+  let prefix = parts[0] || "";
+  let suffix = parts[1] || parts[0] || "";
+
+  // Process escape sequences
+  prefix = prefix.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+  suffix = suffix.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
 
   let outputText: any;
   let outputTextLines: any;
@@ -914,6 +921,112 @@ async function executeTextSurroundNode(
   };
 }
 
+async function executeAppendTextNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`AppendText Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
+
+  if (!inputData) {
+    return { success: false, error: "Invalid input: No input data provided" };
+  }
+
+  // Parse configuration
+  let beforeText = "";
+  let afterText = "";
+  let groupedTextSelection: "Text" | "Text Lines" = "Text";
+
+  try {
+    const config = JSON.parse(textValue);
+    beforeText = config.beforeText || "";
+    afterText = config.afterText || "";
+    groupedTextSelection = config.groupedTextSelection || "Text";
+  } catch {
+    // If not JSON, treat as empty configuration
+    beforeText = "";
+    afterText = "";
+  }
+
+  // Process escape sequences
+  beforeText = beforeText.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+  afterText = afterText.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+
+  let outputText: any;
+  let outputTextLines: any;
+  let outputType = inputData.type || "Text";
+
+  // Handle GroupedText input - preserve structure
+  if (inputData.type === "GroupedText") {
+    // Default: keep both unchanged
+    outputText = inputData.text;
+    outputTextLines = inputData.textLines;
+
+    // Only modify the selected field
+    if (groupedTextSelection === "Text") {
+      // Modify text array (keys) only
+      if (inputData.text && Array.isArray(inputData.text)) {
+        outputText = inputData.text.map((key: string) => `${beforeText}${key}${afterText}`);
+      }
+    } else {
+      // Modify textLines array (values) only
+      if (inputData.textLines && Array.isArray(inputData.textLines)) {
+        // TextLines is array of arrays - append to each value within each array
+        outputTextLines = inputData.textLines.map((valueArray: string[]) =>
+          valueArray.map((value: string) => `${beforeText}${value}${afterText}`)
+        );
+      }
+    }
+
+    // Output is still GroupedText
+    outputType = "GroupedText";
+  } else if (typeof inputData === "string") {
+    // Simple text input
+    outputText = `${beforeText}${inputData}${afterText}`;
+  } else if (Array.isArray(inputData)) {
+    // Text Lines input (array of strings)
+    outputText = inputData.map((line: string) => `${beforeText}${line}${afterText}`);
+    outputType = "Text Lines";
+  } else if (inputData.type === "Text") {
+    // Structured Text input
+    outputText = `${beforeText}${inputData.text}${afterText}`;
+  } else if (inputData.type === "Text Lines" && Array.isArray(inputData.textLines)) {
+    // Structured Text Lines input
+    outputText = inputData.textLines.map((line: string) => `${beforeText}${line}${afterText}`);
+    outputType = "Text Lines";
+  } else {
+    return { success: false, error: `Unsupported input type: ${inputData.type || typeof inputData}` };
+  }
+
+  // Return result based on type
+  if (outputType === "GroupedText") {
+    return {
+      success: true,
+      data: {
+        type: "GroupedText",
+        text: outputText,
+        textLines: outputTextLines,
+      },
+    };
+  } else if (outputType === "Text Lines") {
+    return {
+      success: true,
+      data: {
+        type: "Text Lines",
+        textLines: outputText,
+      },
+    };
+  } else {
+    return {
+      success: true,
+      data: {
+        type: "Text",
+        text: outputText,
+      },
+    };
+  }
+}
+
 async function executeTextJoinNode(
   nodeId: string,
   textValue: string,
@@ -925,7 +1038,11 @@ async function executeTextJoinNode(
     return { success: false, error: "Invalid input: No input data provided" };
   }
 
-  const separator = textValue || "\n";
+  let separator = textValue || "\n";
+
+  // Process escape sequences
+  separator = separator.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+
   let linesToJoin: string[] = [];
 
   // Handle GroupedText input

@@ -114,6 +114,14 @@ interface TextSurroundNodeData extends NodeData {
   groupedTextSelection?: "Text" | "Text Lines";
 }
 
+interface AppendTextNodeData extends NodeData {
+  beforeText: string;
+  afterText: string;
+  inputType: "Text" | "Text Lines" | "GroupedText";
+  outputType: "Text" | "Text Lines" | "GroupedText";
+  groupedTextSelection?: "Text" | "Text Lines";
+}
+
 interface TextJoinNodeData extends NodeData {
   textValue: string;
   inputType: "Text Lines" | "GroupedText";
@@ -839,6 +847,114 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
   );
 };
 
+// Custom AppendText node component that accepts Text, Text Lines, or GroupedText input and outputs the same type
+const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> = ({ data, id }) => {
+  const [beforeText, setBeforeText] = useState(data.beforeText || "");
+  const [afterText, setAfterText] = useState(data.afterText || "");
+  const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
+    data.groupedTextSelection || "Text"
+  );
+
+  const handleBeforeTextChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setBeforeText(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, beforeText: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleAfterTextChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setAfterText(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, afterText: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleGroupedTextSelectionChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value as "Text" | "Text Lines";
+    setGroupedTextSelection(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, groupedTextSelection: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const isGroupedTextInput = data.inputType === "GroupedText";
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-amber-500"
+        data-input-type={data.inputType}
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">
+        Input: {data.inputType || "Text, Text Lines, or GroupedText"}
+      </div>
+
+      {isGroupedTextInput && (
+        <div className="mb-2">
+          <label className="text-xs text-gray-300 block mb-1">Use from GroupedText:</label>
+          <select
+            value={groupedTextSelection}
+            onChange={handleGroupedTextSelectionChange}
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+          >
+            <option value="Text">Text</option>
+            <option value="Text Lines">Text Lines</option>
+          </select>
+        </div>
+      )}
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Before Text:</label>
+        <input
+          type="text"
+          value={beforeText}
+          onChange={handleBeforeTextChange}
+          placeholder="Text to add before..."
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+        />
+      </div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">After Text:</label>
+        <input
+          type="text"
+          value={afterText}
+          onChange={handleAfterTextChange}
+          placeholder="Text to add after..."
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+        />
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        Output: {isGroupedTextInput ? "GroupedText" : data.outputType || "Text or Text Lines"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-amber-500"
+        data-output-type={data.outputType}
+      />
+    </div>
+  );
+};
+
 // Custom TextJoin node component that accepts Text Lines or GroupedText input and outputs Text
 const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
@@ -1487,6 +1603,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Accepts Text or Text Lines, outputs same type with surrounding text",
       },
       {
+        type: "appendtext",
+        label: "Append Text",
+        description: "Accepts Text, Text Lines, or GroupedText, adds text before and after",
+      },
+      {
         type: "textjoin",
         label: "Text Join",
         description: "Accepts Text Lines input, outputs joined Text",
@@ -1531,6 +1652,8 @@ const executeGraphInBackend = async (
         pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
         joinSeparator: (node.data as any)?.joinSeparator ? String((node.data as any).joinSeparator) : "",
         groupedTextSelection: (node.data as any)?.groupedTextSelection ? String((node.data as any).groupedTextSelection) : "",
+        beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
+        afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
           ? String((node.data as any).connectedTableName)
@@ -1600,6 +1723,7 @@ const reactFlowNodeTypes = {
   numericadjustment: NumericAdjustmentNode,
   savechanges: SaveChangesNode,
   textsurround: TextSurroundNode,
+  appendtext: AppendTextNode,
   textjoin: TextJoinNode,
   groupedcolumnstotext: GroupedColumnsToTextNode,
 };
@@ -1695,6 +1819,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         joinSeparator,
         packName,
         packedFileName,
+        beforeText,
+        afterText,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -1717,6 +1843,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 joinSeparator: joinSeparator !== undefined ? joinSeparator : node.data.joinSeparator,
                 packName: packName !== undefined ? packName : node.data.packName,
                 packedFileName: packedFileName !== undefined ? packedFileName : node.data.packedFileName,
+                beforeText: beforeText !== undefined ? beforeText : node.data.beforeText,
+                afterText: afterText !== undefined ? afterText : node.data.afterText,
               },
             };
           }
@@ -1762,6 +1890,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
       } else if (sourceNode.type === "textsurround" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
+      } else if (sourceNode.type === "appendtext" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as AppendTextNodeData).outputType;
       } else if (sourceNode.type === "textjoin" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TextJoinNodeData).outputType;
       } else if (sourceNode.type === "groupedcolumnstotext" && sourceNode.data) {
@@ -1786,6 +1916,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as SaveChangesNodeData).inputType;
       } else if (targetNode.type === "textsurround" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as TextSurroundNodeData).inputType;
+      } else if (targetNode.type === "appendtext" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as AppendTextNodeData).inputType;
       } else if (targetNode.type === "textjoin" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as TextJoinNodeData).inputType;
       } else if (targetNode.type === "groupedcolumnstotext" && targetNode.data) {
@@ -1796,6 +1928,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       // Special case for textsurround: it accepts "Text", "Text Lines", or "GroupedText"
       const isTextSurroundCompatible =
         targetNode.type === "textsurround" &&
+        (sourceOutputType === "Text" || sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+
+      // Special case for appendtext: it accepts "Text", "Text Lines", or "GroupedText"
+      const isAppendTextCompatible =
+        targetNode.type === "appendtext" &&
         (sourceOutputType === "Text" || sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
 
       // Special case for textjoin: it accepts "Text Lines" or "GroupedText"
@@ -1811,6 +1948,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       if (
         (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
         isTextSurroundCompatible ||
+        isAppendTextCompatible ||
         isTextJoinCompatible ||
         isSaveChangesCompatible
       ) {
@@ -1832,6 +1970,28 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               if (node.id === params.target) {
                 // For GroupedText input, output is also GroupedText
                 // For other types (Text, Text Lines), output matches input
+                const outputType = sourceOutputType;
+
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    inputType: sourceOutputType,
+                    outputType: outputType,
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        }
+
+        // Update appendtext node input/output types to match connected source
+        if (targetNode.type === "appendtext" && sourceOutputType) {
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === params.target) {
+                // Output type matches input type
                 const outputType = sourceOutputType;
 
                 return {
@@ -2084,6 +2244,21 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             inputType: "Text" as NodeEdgeTypes,
             outputType: "Text" as NodeEdgeTypes,
           } as TextSurroundNodeData,
+        };
+      } else if (nodeData.type === "appendtext") {
+        // Create AppendText node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "appendtext",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            beforeText: "",
+            afterText: "",
+            inputType: "Text" as NodeEdgeTypes,
+            outputType: "Text" as NodeEdgeTypes,
+          } as AppendTextNodeData,
         };
       } else if (nodeData.type === "textjoin") {
         // Create TextJoin node with special data structure
