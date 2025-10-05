@@ -387,7 +387,6 @@ async function executeGroupByColumnsNode(
 
   // Process each table
   const groupedData = new Map<string, string[]>();
-  const textLinesArray: string[] = [];
 
   for (const tableData of inputData.tables) {
     if (
@@ -429,21 +428,19 @@ async function executeGroupByColumnsNode(
     }
   }
 
-  // Convert map to text format
-  // Text format: JSON stringified map
-  const textOutput = JSON.stringify(Object.fromEntries(groupedData));
+  // Convert map to output formats
+  // Text format: Array of keys (column1 values)
+  const keysArray = Array.from(groupedData.keys());
 
-  // Text Lines format: each line is "key: value1, value2, ..."
-  for (const [key, values] of groupedData.entries()) {
-    textLinesArray.push(`${key}: ${values.join(", ")}`);
-  }
+  // Text Lines format: Array of arrays containing values for each key
+  const valuesArray = Array.from(groupedData.values());
 
   return {
     success: true,
     data: {
       type: "GroupedText",
-      text: textOutput,
-      textLines: textLinesArray,
+      text: keysArray,
+      textLines: valuesArray,
       groupCount: groupedData.size,
     },
   };
@@ -773,19 +770,36 @@ async function executeTextSurroundNode(
   const prefix = parts[0] || "";
   const suffix = parts[1] || parts[0] || "";
 
-  let outputText: string | undefined;
-  let outputTextLines: string[] | undefined;
+  let outputText: any;
+  let outputTextLines: any;
+  let outputType = inputData.type || "Text";
 
-  // Handle GroupedText input
+  // Handle GroupedText input - preserve structure
   if (inputData.type === "GroupedText") {
-    // The actual selection is handled in the serialization, so we just use what's provided
-    // For now, assume both text and textLines are available
-    if (inputData.text) {
-      outputText = `${prefix}${inputData.text}${suffix}`;
+    // GroupedText has both text (array of keys) and textLines (array of arrays of values)
+    // We modify only the selected one and keep the other unchanged
+
+    // Default: keep both unchanged
+    outputText = inputData.text;
+    outputTextLines = inputData.textLines;
+
+    // Note: The actual selection (Text vs Text Lines) is handled by the groupedTextSelection
+    // which should be passed through the node data. For now, we'll modify both and let
+    // the consumer decide which to use. But ideally we should get groupedTextSelection here.
+
+    // For now, surround both the text array (keys) and textLines array (values)
+    if (inputData.text && Array.isArray(inputData.text)) {
+      outputText = inputData.text.map((key: string) => `${prefix}${key}${suffix}`);
     }
     if (inputData.textLines && Array.isArray(inputData.textLines)) {
-      outputTextLines = inputData.textLines.map((line: string) => `${prefix}${line}${suffix}`);
+      // TextLines is array of arrays - surround each value within each array
+      outputTextLines = inputData.textLines.map((valueArray: string[]) =>
+        valueArray.map((value: string) => `${prefix}${value}${suffix}`)
+      );
     }
+
+    // Output is still GroupedText
+    outputType = "GroupedText";
   } else if (typeof inputData === "string") {
     // Simple text input
     outputText = `${prefix}${inputData}${suffix}`;
@@ -797,9 +811,10 @@ async function executeTextSurroundNode(
   return {
     success: true,
     data: {
-      type: inputData.type || "Text",
+      type: outputType,
       text: outputText,
       textLines: outputTextLines,
+      groupCount: inputData.groupCount,
     },
   };
 }
@@ -820,11 +835,15 @@ async function executeTextJoinNode(
 
   // Handle GroupedText input
   if (inputData.type === "GroupedText") {
-    // Use textLines from GroupedText
-    if (inputData.textLines && Array.isArray(inputData.textLines)) {
-      linesToJoin = inputData.textLines;
+    // text is array of keys, textLines is array of arrays of values
+    if (inputData.text && Array.isArray(inputData.text)) {
+      // Use array of keys
+      linesToJoin = inputData.text;
+    } else if (inputData.textLines && Array.isArray(inputData.textLines)) {
+      // Flatten array of arrays of values
+      linesToJoin = inputData.textLines.flat();
     } else {
-      return { success: false, error: "GroupedText input does not contain textLines" };
+      return { success: false, error: "GroupedText input does not contain text or textLines" };
     }
   } else if (Array.isArray(inputData)) {
     // Direct Text Lines input
