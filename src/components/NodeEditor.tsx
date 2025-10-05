@@ -826,7 +826,7 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
       />
 
       <div className="mt-2 text-xs text-gray-400">
-        Output: {isGroupedTextInput ? groupedTextSelection : data.outputType || "Text or Text Lines"}
+        Output: {isGroupedTextInput ? "GroupedText" : data.outputType || "Text or Text Lines"}
       </div>
 
       <Handle
@@ -1530,6 +1530,7 @@ const executeGraphInBackend = async (
         packedFileName: (node.data as any)?.packedFileName ? String((node.data as any).packedFileName) : "",
         pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
         joinSeparator: (node.data as any)?.joinSeparator ? String((node.data as any).joinSeparator) : "",
+        groupedTextSelection: (node.data as any)?.groupedTextSelection ? String((node.data as any).groupedTextSelection) : "",
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
           ? String((node.data as any).connectedTableName)
@@ -1829,11 +1830,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           setNodes((nds) =>
             nds.map((node) => {
               if (node.id === params.target) {
-                // For GroupedText input, output depends on the selection
-                const outputType =
-                  sourceOutputType === "GroupedText"
-                    ? ((node.data as any).groupedTextSelection as NodeEdgeTypes) || "Text"
-                    : sourceOutputType;
+                // For GroupedText input, output is also GroupedText
+                // For other types (Text, Text Lines), output matches input
+                const outputType = sourceOutputType;
 
                 return {
                   ...node,
@@ -1905,6 +1904,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       // If types don't match or are undefined, the connection is rejected silently
     },
     [setEdges, DBNameToDBVersions, setNodes]
+  );
+
+  const onEdgeClick = useCallback(
+    (_event: React.MouseEvent, edge: Edge) => {
+      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+    },
+    [setEdges]
   );
 
   const onDragOver = useCallback((event: DragEvent) => {
@@ -2567,6 +2573,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onEdgeClick={onEdgeClick}
             onInit={setReactFlowInstance}
             onDrop={onDrop}
             onDragOver={onDragOver}

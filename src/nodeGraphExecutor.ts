@@ -30,6 +30,7 @@ interface SerializedNode {
     packedFileName?: string;
     pattern?: string;
     joinSeparator?: string;
+    groupedTextSelection?: string;
     columnNames?: string[];
     connectedTableName?: string;
     outputType?: string;
@@ -129,6 +130,11 @@ export const executeNodeGraph = async (
             packName: (node.data as any).packName || "",
             packedFileName: (node.data as any).packedFileName || "",
             additionalConfig: node.data.textValue || "",
+          });
+        } else if (node.type === "textsurround") {
+          textValueToUse = JSON.stringify({
+            surroundText: node.data.textValue || "",
+            groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
           });
         } else {
           textValueToUse = node.data.textValue || "";
