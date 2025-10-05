@@ -513,6 +513,8 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
   const [selectedColumn2, setSelectedColumn2] = useState(data.selectedColumn2 || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
+  console.log(`GroupByColumnsNode ${id}: selectedColumn1=${selectedColumn1}, selectedColumn2=${selectedColumn2}`);
+
   // Update column names when connected table changes
   React.useEffect(() => {
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -1389,6 +1391,8 @@ const executeGraphInBackend = async (
         selectedPack: (node.data as any)?.selectedPack ? String((node.data as any).selectedPack) : "",
         selectedTable: (node.data as any)?.selectedTable ? String((node.data as any).selectedTable) : "",
         selectedColumn: (node.data as any)?.selectedColumn ? String((node.data as any).selectedColumn) : "",
+        selectedColumn1: (node.data as any)?.selectedColumn1 ? String((node.data as any).selectedColumn1) : "",
+        selectedColumn2: (node.data as any)?.selectedColumn2 ? String((node.data as any).selectedColumn2) : "",
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
           ? String((node.data as any).connectedTableName)
@@ -1625,6 +1629,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as ColumnSelectionNodeData).inputType;
       } else if (targetNode.type === "columnselectiondropdown" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as ColumnSelectionDropdownNodeData).inputType;
+      } else if (targetNode.type === "groupbycolumns" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as GroupByColumnsNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
       } else if (targetNode.type === "savechanges" && targetNode.data) {
@@ -1960,26 +1966,38 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   };
 
   const serializeNodeGraph = useCallback((): SerializedNodeGraph => {
-    const serializedNodes: SerializedNode[] = nodes.map((node) => ({
-      id: node.id,
-      type: node.type || ("default" as FlowNodeType),
-      position: node.position,
-      data: {
-        label: String(node.data?.label || ""),
-        type: String(node.data?.type || "") as FlowNodeType,
-        textValue: String((node.data as any)?.textValue || ""),
-        selectedPack: String((node.data as any)?.selectedPack || ""),
-        selectedTable: String((node.data as any)?.selectedTable || ""),
-        selectedColumn: String((node.data as any)?.selectedColumn || ""),
-        selectedColumn1: String((node.data as any)?.selectedColumn1 || ""),
-        selectedColumn2: String((node.data as any)?.selectedColumn2 || ""),
-        columnNames: (node.data as any)?.columnNames || [],
-        connectedTableName: String((node.data as any)?.connectedTableName || ""),
-        outputType: (node.data as any)?.outputType,
-        inputType: (node.data as any)?.inputType,
-        groupedTextSelection: (node.data as any)?.groupedTextSelection,
-      },
-    }));
+    const serializedNodes: SerializedNode[] = nodes.map((node) => {
+      const serialized = {
+        id: node.id,
+        type: node.type || ("default" as FlowNodeType),
+        position: node.position,
+        data: {
+          label: String(node.data?.label || ""),
+          type: String(node.data?.type || "") as FlowNodeType,
+          textValue: String((node.data as any)?.textValue || ""),
+          selectedPack: String((node.data as any)?.selectedPack || ""),
+          selectedTable: String((node.data as any)?.selectedTable || ""),
+          selectedColumn: String((node.data as any)?.selectedColumn || ""),
+          selectedColumn1: String((node.data as any)?.selectedColumn1 || ""),
+          selectedColumn2: String((node.data as any)?.selectedColumn2 || ""),
+          columnNames: (node.data as any)?.columnNames || [],
+          connectedTableName: String((node.data as any)?.connectedTableName || ""),
+          outputType: (node.data as any)?.outputType,
+          inputType: (node.data as any)?.inputType,
+          groupedTextSelection: (node.data as any)?.groupedTextSelection,
+        },
+      };
+
+      if (node.type === "groupbycolumns") {
+        console.log(`Serializing groupbycolumns node ${node.id}:`, {
+          selectedColumn1: serialized.data.selectedColumn1,
+          selectedColumn2: serialized.data.selectedColumn2,
+          rawData: node.data,
+        });
+      }
+
+      return serialized;
+    });
 
     const serializedConnections: SerializedConnection[] = edges.map((edge) => {
       const sourceNode = nodes.find((n) => n.id === edge.source);

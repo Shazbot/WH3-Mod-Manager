@@ -24,6 +24,8 @@ interface SerializedNode {
     selectedPack?: string;
     selectedTable?: string;
     selectedColumn?: string;
+    selectedColumn1?: string;
+    selectedColumn2?: string;
     columnNames?: string[];
     connectedTableName?: string;
     outputType?: string;
@@ -108,6 +110,11 @@ export const executeNodeGraph = async (
           textValueToUse = node.data.selectedTable || "";
         } else if (node.type === "columnselectiondropdown") {
           textValueToUse = node.data.selectedColumn || "";
+        } else if (node.type === "groupbycolumns") {
+          textValueToUse = JSON.stringify({
+            column1: node.data.selectedColumn1 || "",
+            column2: node.data.selectedColumn2 || "",
+          });
         } else {
           textValueToUse = node.data.textValue || "";
         }
