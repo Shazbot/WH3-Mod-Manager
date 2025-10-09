@@ -10,6 +10,7 @@ import {
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
   toggleIsChangingGameProcessPriority,
+  toggleIsFeaturesForModdersEnabled,
   setIsCreateSteamCollectionOpen,
   setIsImportSteamCollectionOpen,
   setDataModsToEnableByName,
@@ -72,6 +73,7 @@ const OptionsDrawer = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const isDev = useAppSelector((state) => state.app.isDev);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
@@ -605,6 +607,18 @@ const OptionsDrawer = memo(() => {
                     >
                       {localized.changeGameProcessPriority}
                     </Tooltip>
+                  </label>
+                </div>
+                <div className="flex items-center ml-1 mt-2">
+                  <input
+                    className=""
+                    type="checkbox"
+                    id="toggleIsFeaturesForModdersEnabled"
+                    checked={!!isFeaturesForModdersEnabled}
+                    onChange={() => dispatch(toggleIsFeaturesForModdersEnabled())}
+                  ></input>
+                  <label className="ml-2" htmlFor="toggleIsFeaturesForModdersEnabled">
+                    {localized.featuresForModders || "Features For Modders"}
                   </label>
                 </div>
               </>

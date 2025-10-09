@@ -3,6 +3,7 @@ import { Tab, TabList, TabPanel, Tabs } from "react-tabs";
 import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
+import { FaProjectDiagram } from "react-icons/fa";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -14,6 +15,8 @@ const tabIndexToTabType: MainWindowTab[] = ["mods", "enabledMods", "categories",
 const LeftSidebar = memo(() => {
   const dispatch = useAppDispatch();
   const currentTab = useAppSelector((state) => state.app.currentTab);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+
   const onTabSelected = (index: number) => {
     const tabType = tabIndexToTabType[index];
     console.log("setting tab", tabType);
@@ -79,13 +82,15 @@ const LeftSidebar = memo(() => {
               <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+3</span>
             </div>
           </Tab>
-          <Tab>
-            <div className="flex items-center h-full parent-unhide-child relative">
-              <MdCategory size="1.5rem" />
-              <span className="ml-2 mr-2 hidden-child">Node Editor</span>
-              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+4</span>
-            </div>
-          </Tab>
+          {isFeaturesForModdersEnabled && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <FaProjectDiagram size="1.5rem" />
+                <span className="ml-2 mr-2 hidden-child">Node Editor</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+4</span>
+              </div>
+            </Tab>
+          )}
         </TabList>
         <TabPanel></TabPanel>
         <TabPanel></TabPanel>
