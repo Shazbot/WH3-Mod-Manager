@@ -1476,6 +1476,9 @@ export const registerIpcMainListeners = (
   });
 
   ipcMain.on("getCustomizableMods", (event, modPaths: string[], tables: string[]) => {
+    if (modPaths.length == 0) return;
+    // console.log("getCustomizableMods:", modPaths);
+
     modPaths.sort((firstPath, secondPath) => firstPath.localeCompare(secondPath));
 
     const newPaths = [] as string[];
@@ -1493,6 +1496,7 @@ export const registerIpcMainListeners = (
 
         const comparison = firstMod.localeCompare(secondMod);
 
+        // console.log("comparing", firstMod, secondMod, comparison);
         if (comparison == 0) {
           i++;
           j++;
@@ -1504,25 +1508,45 @@ export const registerIpcMainListeners = (
         }
       }
 
-      console.log("new getCustomizableMods paths:", newPaths);
+      // console.log("old getCustomizableMods paths:", modPaths);
+      // console.log("new getCustomizableMods paths:", newPaths);
       if (newPaths.length == 0) {
         appData.lastGetCustomizableMods = modPaths;
         return;
       }
     }
 
-    const packs = appData.packsData.filter((pack) => newPaths.includes(pack.path));
+    const pathToPack = modPaths.reduce((acc, currentPath) => {
+      const pack = appData.packsData.find((pack) => pack.path == currentPath);
+      if (pack) {
+        acc[currentPath] = pack;
+      }
+      return acc;
+    }, {} as Record<string, Pack>);
 
-    if (packs.length != newPaths.length) {
+    const newPacks = Object.entries(pathToPack)
+      .filter(([path]) => {
+        return newPaths.includes(path);
+      })
+      .map(([, pack]) => pack);
+    // const packs = appData.packsData.filter((pack) => newPaths.includes(pack.path));
+
+    if (newPacks.length != newPaths.length) {
       console.log("Some of the mods not yet read for getCustomizableMods.");
       return;
     }
-    appData.lastGetCustomizableMods = modPaths;
+
+    const pathsWithPackedFiles = [];
+    for (const path of modPaths) {
+      const pack = pathToPack[path];
+      if (pack && pack.packedFiles.length > 0) pathsWithPackedFiles.push(path);
+    }
+    appData.lastGetCustomizableMods = pathsWithPackedFiles;
 
     const tablesForMatching = tables.map((table) => `db\\${table}\\`);
     tablesForMatching.push("whmmflows\\");
 
-    const customizableMods = packs.reduce((acc, currentPack) => {
+    const customizableMods = newPacks.reduce((acc, currentPack) => {
       const foundTables = tablesForMatching.filter((tableForMatching) =>
         currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching))
       );
