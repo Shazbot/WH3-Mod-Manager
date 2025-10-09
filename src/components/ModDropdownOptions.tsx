@@ -17,6 +17,7 @@ import {
   FaDownload,
   FaEdit,
   FaRegCopy,
+  FaTrash,
 } from "react-icons/fa";
 import { GoListOrdered } from "react-icons/go";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
@@ -74,6 +75,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const [loadOrderHasError, setLoadOrderHasError] = useState(false);
   const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -228,6 +230,49 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
         {props.mod && (
           <RenameModal show={isRenameModalOpen} onClose={() => setIsRenameModalOpen(false)} mod={props.mod} />
         )}
+
+        <Modal
+          onClose={() => setIsDeleteConfirmOpen(false)}
+          show={isDeleteConfirmOpen}
+          size="md"
+          position="center"
+        >
+          <Modal.Header>
+            {localized.deleteMod || "Delete Mod"}
+          </Modal.Header>
+          <Modal.Body>
+            <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
+              {localized.deleteModConfirmMessage || "Are you sure you want to delete this mod from the data folder?"}
+              <br />
+              <br />
+              <span className="font-semibold text-gray-900 dark:text-white">{props.mod?.name}</span>
+              <br />
+              <br />
+              <span className="text-red-600 font-semibold">
+                {localized.deleteModWarning || "This action cannot be undone!"}
+              </span>
+            </p>
+          </Modal.Body>
+          <Modal.Footer>
+            <button
+              className="px-4 py-2 bg-gray-500 text-white font-medium text-sm rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400"
+              onClick={() => setIsDeleteConfirmOpen(false)}
+            >
+              {localized.cancel || "Cancel"}
+            </button>
+            <button
+              className="px-4 py-2 bg-red-600 text-white font-medium text-sm rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              onClick={() => {
+                if (props.mod) {
+                  deletePack(props.mod);
+                  setIsDeleteConfirmOpen(false);
+                }
+              }}
+            >
+              {localized.delete || "Delete"}
+            </button>
+          </Modal.Footer>
+        </Modal>
 
         <div>
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
@@ -557,21 +602,46 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {props.mod?.mergedModsData && (
+            {props.mod?.isInData && (
               <li>
                 <a
                   onClick={() => {
-                    if (props.mod) deletePack(props.mod);
+                    setIsDeleteConfirmOpen(true);
                   }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip}</div>}
+                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this mod from the data folder"}</div>}
                     style="light"
                   >
-                    {localized.deleteMod}
+                    <span className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                      <FaTrash className="w-5 h-5"></FaTrash>
+                      {localized.deleteMod || "Delete Mod"}
+                    </span>
+                  </Tooltip>
+                </a>
+              </li>
+            )}
+            {props.mod?.mergedModsData && (
+              <li>
+                <a
+                  onClick={() => {
+                    setIsDeleteConfirmOpen(true);
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip
+                    placement="right"
+                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this merged mod"}</div>}
+                    style="light"
+                  >
+                    <span className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                      <FaTrash className="w-5 h-5"></FaTrash>
+                      {localized.deleteMod || "Delete Mod"}
+                    </span>
                   </Tooltip>
                 </a>
               </li>
