@@ -1476,7 +1476,48 @@ export const registerIpcMainListeners = (
   });
 
   ipcMain.on("getCustomizableMods", (event, modPaths: string[], tables: string[]) => {
-    const packs = appData.packsData.filter((pack) => modPaths.includes(pack.path));
+    modPaths.sort((firstPath, secondPath) => firstPath.localeCompare(secondPath));
+
+    const newPaths = [] as string[];
+    if (appData.lastGetCustomizableMods) {
+      for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length; ) {
+        if (i == modPaths.length) {
+          break;
+        }
+        if (j == appData.lastGetCustomizableMods.length) {
+          newPaths.push(...modPaths.slice(i));
+          break;
+        }
+        const firstMod = modPaths[i];
+        const secondMod = appData.lastGetCustomizableMods[j];
+
+        const comparison = firstMod.localeCompare(secondMod);
+
+        if (comparison == 0) {
+          i++;
+          j++;
+        } else if (comparison < 1) {
+          newPaths.push(firstMod);
+          i++;
+        } else {
+          j++;
+        }
+      }
+
+      console.log("new getCustomizableMods paths:", newPaths);
+      if (newPaths.length == 0) {
+        appData.lastGetCustomizableMods = modPaths;
+        return;
+      }
+    }
+
+    const packs = appData.packsData.filter((pack) => newPaths.includes(pack.path));
+
+    if (packs.length != newPaths.length) {
+      console.log("Some of the mods not yet read for getCustomizableMods.");
+      return;
+    }
+    appData.lastGetCustomizableMods = modPaths;
 
     const tablesForMatching = tables.map((table) => `db\\${table}\\`);
     tablesForMatching.push("whmmflows\\");
@@ -1491,7 +1532,11 @@ export const registerIpcMainListeners = (
       return acc;
     }, {} as Record<string, string[]>);
 
-    mainWindow?.webContents.send("setCustomizableMods", customizableMods);
+    for (const [packPath, tables] of Object.entries(customizableMods)) {
+      appData.customizableMods[packPath] = tables;
+    }
+
+    mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
   });
 
   ipcMain.on("getPacksInSave", async (event, saveName: string) => {
