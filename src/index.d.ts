@@ -126,6 +126,7 @@ declare global {
     isSkipIntroMoviesEnabled: boolean;
     isAutoStartCustomBattleEnabled: boolean;
     isChangingGameProcessPriority: boolean;
+    isFeaturesForModdersEnabled: boolean;
     allMods: Mod[];
     packsData: Record<string, PackViewData>;
     unsavedPacksData: Record<string, PackedFile[]>;
@@ -191,6 +192,7 @@ declare global {
     | "isSkipIntroMoviesEnabled"
     | "isAutoStartCustomBattleEnabled"
     | "isChangingGameProcessPriority"
+    | "isFeaturesForModdersEnabled"
     | "isClosedOnPlay"
     | "categories"
     | "categoryColors"
