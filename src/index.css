@@ -377,6 +377,10 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   max-height: calc(100vh - 28px);
 }
 
+.height-without-topbar-and-padding {
+  max-height: calc(100vh - 5.5rem);
+}
+
 .playButtonText {
   font-size: 1.3rem;
   letter-spacing: 0.15rem;
