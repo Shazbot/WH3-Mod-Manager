@@ -1384,7 +1384,8 @@ export const writeCopyPack = async (
 export const writePackStream = async (
   packFiles: NewPackedFile[],
   path: string,
-  existingPackToAppend?: Pack
+  existingPackToAppend?: Pack,
+  dependencyPacks: string[] = []
 ) => {
   let streamWriter: StreamWriter | undefined;
 
@@ -1395,7 +1396,6 @@ export const writePackStream = async (
     const header = "PFH5";
     const byteMask = 3;
     const refFileCount = 0;
-    const pack_file_index_size = 0;
 
     if (packFiles.length < 1) return;
 
@@ -1419,6 +1419,17 @@ export const writePackStream = async (
       return firstPf.name.localeCompare(secondPf.name);
     });
 
+    // Use existing dependency packs if not provided
+    const finalDependencyPacks = dependencyPacks.length > 0
+      ? dependencyPacks
+      : (existingPackToAppend?.dependencyPacks || []);
+
+    // Calculate pack_file_index_size based on dependency packs
+    const pack_file_index_size = finalDependencyPacks.reduce(
+      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
+      0
+    );
+
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
 
     // Use StreamWriter to batch header writes with backpressure handling
@@ -1429,6 +1440,13 @@ export const writePackStream = async (
     streamWriter.addInt32(allPackFiles.length);
     streamWriter.addInt32(index_size);
     streamWriter.addInt32(0x7fffffff); // header_buffer
+    await streamWriter.flush();
+
+    // Write dependency packs
+    for (const dep of finalDependencyPacks) {
+      streamWriter.addString(dep);
+      streamWriter.addInt8(0);
+    }
     await streamWriter.flush();
 
     // Write file index with stream batching
@@ -1515,7 +1533,8 @@ export const writePackAppendFast = async (
   packFiles: NewPackedFile[],
   path: string,
   existingPackToAppend?: Pack,
-  replaceDuplicates?: boolean
+  replaceDuplicates?: boolean,
+  dependencyPacks: string[] = []
 ) => {
   let outFile: BinaryFile | undefined;
   let sourceFile: BinaryFile | undefined;
@@ -1550,6 +1569,17 @@ export const writePackAppendFast = async (
       const replacedFileCount = originalFileCount - keptFileCount;
       const newFileCount = keptFileCount + packFiles.length;
 
+      // Use existing dependency packs if not provided
+      const finalDependencyPacks = dependencyPacks.length > 0
+        ? dependencyPacks
+        : (existingPackToAppend.dependencyPacks || []);
+
+      // Calculate pack_file_index_size based on dependency packs
+      const pack_file_index_size = finalDependencyPacks.reduce(
+        (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
+        0
+      );
+
       // Calculate additional index size needed for new files
       const newIndexSize = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
 
@@ -1563,11 +1593,17 @@ export const writePackAppendFast = async (
       headerAccumulator.addString("PFH5");
       headerAccumulator.addInt32(existingPackToAppend.packHeader.byteMask);
       headerAccumulator.addInt32(existingPackToAppend.packHeader.refFileCount);
-      headerAccumulator.addInt32(0); // pack_file_index_size - typically 0
+      headerAccumulator.addInt32(pack_file_index_size);
       headerAccumulator.addInt32(newFileCount); // Updated file count
       headerAccumulator.addInt32(totalIndexSize); // Updated index size
       headerAccumulator.addInt32(0x7fffffff); // header_buffer
       await headerAccumulator.flush();
+
+      // Write dependency packs
+      for (const dep of finalDependencyPacks) {
+        await outFile.writeString(dep);
+        await outFile.writeUInt8(0);
+      }
 
       console.log(
         `Original files: ${originalFileCount}, Kept files: ${keptFileCount}, Replaced files: ${replacedFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`
@@ -1587,7 +1623,12 @@ export const writePackAppendFast = async (
         await keptIndexAccumulator.flush();
       } else {
         console.log("Copying existing file index entries...");
-        const existingIndexStartPos = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
+        // Calculate the original pack's dependency pack size
+        const originalDependencyPackSize = (existingPackToAppend.dependencyPacks || []).reduce(
+          (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
+          0
+        );
+        const existingIndexStartPos = 4 + 4 + 4 + 4 + 4 + 4 + 4 + originalDependencyPackSize; // After header (7 * 4 bytes) + dependency packs
         const existingIndexSize = existingPackToAppend.packedFiles.reduce(
           (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
           0
@@ -1625,12 +1666,16 @@ export const writePackAppendFast = async (
         }
       } else {
         console.log("Copying existing file data...");
+        const originalDependencyPackSize = (existingPackToAppend.dependencyPacks || []).reduce(
+          (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
+          0
+        );
         const headerSize = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
         const indexSize = existingPackToAppend.packedFiles.reduce(
           (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
           0
         );
-        const dataStartPos = headerSize + indexSize;
+        const dataStartPos = headerSize + originalDependencyPackSize + indexSize;
         const sourceFileSize = await sourceFile.size();
         const dataSize = sourceFileSize - dataStartPos;
 
@@ -1690,7 +1735,7 @@ export const writePackAppendFast = async (
     } else {
       // SLOW PATH: No existing pack, use regular sorted approach
       console.log("No existing pack, using regular sorted approach");
-      return await writePackSorted(packFiles, path);
+      return await writePackSorted(packFiles, path, dependencyPacks);
     }
 
     // Move temp file to final location
@@ -1704,14 +1749,13 @@ export const writePackAppendFast = async (
 };
 
 // Original sorted implementation for when no existing pack is provided
-const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
+const writePackSorted = async (packFiles: NewPackedFile[], path: string, dependencyPacks: string[] = []) => {
   let outFile: BinaryFile | undefined;
 
   try {
     const header = "PFH5";
     const byteMask = 3;
     const refFileCount = 0;
-    const pack_file_index_size = 0;
 
     if (packFiles.length < 1) return;
 
@@ -1722,6 +1766,12 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
     packFiles.sort((firstPf, secondPf) => {
       return firstPf.name.localeCompare(secondPf.name);
     });
+
+    // Calculate pack_file_index_size based on dependency packs
+    const pack_file_index_size = dependencyPacks.reduce(
+      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
+      0
+    );
 
     const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
 
@@ -1735,6 +1785,12 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string) => {
     headerAccumulator.addInt32(index_size);
     headerAccumulator.addInt32(0x7fffffff); // header_buffer
     await headerAccumulator.flush();
+
+    // Write dependency packs
+    for (const dep of dependencyPacks) {
+      await outFile.writeString(dep);
+      await outFile.writeUInt8(0);
+    }
 
     // Write file index
     const indexAccumulator = new BufferAccumulator(outFile);
@@ -1794,22 +1850,24 @@ export const writePack = async (
   packFiles: NewPackedFile[],
   path: string,
   existingPackToAppend?: Pack,
-  replaceDuplicates?: boolean
+  replaceDuplicates?: boolean,
+  dependencyPacks: string[] = []
 ) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
-    return await writePackAppendFast(packFiles, path, existingPackToAppend, replaceDuplicates);
+    return await writePackAppendFast(packFiles, path, existingPackToAppend, replaceDuplicates, dependencyPacks);
   }
 
   // Fallback to sorted implementation for new packs
-  return await writePackSorted(packFiles, path);
+  return await writePackSorted(packFiles, path, dependencyPacks);
 };
 
 // Legacy implementation (kept for reference, but replaced by the optimized versions above)
 export const writePackLegacy = async (
   packFiles: NewPackedFile[],
   path: string,
-  existingPackToAppend?: Pack
+  existingPackToAppend?: Pack,
+  dependencyPacks: string[] = []
 ) => {
   let outFile: BinaryFile | undefined;
 
@@ -1820,7 +1878,6 @@ export const writePackLegacy = async (
     const header = "PFH5";
     const byteMask = 3;
     const refFileCount = 0;
-    const pack_file_index_size = 0;
 
     if (packFiles.length < 1) return;
 
@@ -1845,6 +1902,17 @@ export const writePackLegacy = async (
       return firstPf.name.localeCompare(secondPf.name);
     });
 
+    // Use existing dependency packs if not provided
+    const finalDependencyPacks = dependencyPacks.length > 0
+      ? dependencyPacks
+      : (existingPackToAppend?.dependencyPacks || []);
+
+    // Calculate pack_file_index_size based on dependency packs
+    const pack_file_index_size = finalDependencyPacks.reduce(
+      (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
+      0
+    );
+
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
 
     // Use BufferAccumulator to batch header writes and reduce Promise overhead
@@ -1857,6 +1925,12 @@ export const writePackLegacy = async (
     headerAccumulator.addInt32(index_size);
     headerAccumulator.addInt32(0x7fffffff); // header_buffer
     await headerAccumulator.flush();
+
+    // Write dependency packs
+    for (const dep of finalDependencyPacks) {
+      await outFile.writeString(dep);
+      await outFile.writeUInt8(0);
+    }
 
     console.log("position after header:", outFile.tell());
 
