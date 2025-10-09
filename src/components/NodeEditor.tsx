@@ -530,7 +530,9 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
   const [selectedColumn2, setSelectedColumn2] = useState(data.selectedColumn2 || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
-  console.log(`GroupByColumnsNode ${id}: selectedColumn1=${selectedColumn1}, selectedColumn2=${selectedColumn2}`);
+  console.log(
+    `GroupByColumnsNode ${id}: selectedColumn1=${selectedColumn1}, selectedColumn2=${selectedColumn2}`
+  );
 
   // Update column names when connected table changes
   React.useEffect(() => {
@@ -724,7 +726,9 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: {data.inputType || "ChangedColumnSelection or Text"}</div>
+      <div className="text-xs text-gray-400 mb-2">
+        Input: {data.inputType || "ChangedColumnSelection or Text"}
+      </div>
 
       <div className="space-y-2">
         <div>
@@ -1033,7 +1037,10 @@ const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, 
 };
 
 // Custom GroupedColumnsToText node component that accepts GroupedText and outputs formatted Text
-const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; id: string }> = ({ data, id }) => {
+const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; id: string }> = ({
+  data,
+  id,
+}) => {
   const [pattern, setPattern] = useState(data.pattern || "{0}: {1}");
   const [joinSeparator, setJoinSeparator] = useState(data.joinSeparator || "\\n");
 
@@ -1071,7 +1078,9 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
       <div className="text-xs text-gray-400 mb-2">Input: GroupedText</div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Pattern ({"{0}"} = key, {"{1}"} = values):</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          Pattern ({"{0}"} = key, {"{1}"} = values):
+        </label>
         <textarea
           value={pattern}
           onChange={handlePatternChange}
@@ -1645,13 +1654,19 @@ const executeGraphInBackend = async (
         selectedPack: (node.data as any)?.selectedPack ? String((node.data as any).selectedPack) : "",
         selectedTable: (node.data as any)?.selectedTable ? String((node.data as any).selectedTable) : "",
         selectedColumn: (node.data as any)?.selectedColumn ? String((node.data as any).selectedColumn) : "",
-        selectedColumn1: (node.data as any)?.selectedColumn1 ? String((node.data as any).selectedColumn1) : "",
-        selectedColumn2: (node.data as any)?.selectedColumn2 ? String((node.data as any).selectedColumn2) : "",
+        selectedColumn1: (node.data as any)?.selectedColumn1
+          ? String((node.data as any).selectedColumn1)
+          : "",
+        selectedColumn2: (node.data as any)?.selectedColumn2
+          ? String((node.data as any).selectedColumn2)
+          : "",
         packName: (node.data as any)?.packName ? String((node.data as any).packName) : "",
         packedFileName: (node.data as any)?.packedFileName ? String((node.data as any).packedFileName) : "",
         pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
         joinSeparator: (node.data as any)?.joinSeparator ? String((node.data as any).joinSeparator) : "",
-        groupedTextSelection: (node.data as any)?.groupedTextSelection ? String((node.data as any).groupedTextSelection) : "",
+        groupedTextSelection: (node.data as any)?.groupedTextSelection
+          ? String((node.data as any).groupedTextSelection)
+          : "",
         beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
         afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
         columnNames: (node.data as any)?.columnNames || [],
@@ -1738,7 +1753,7 @@ const NodeSidebar: React.FC<{
   onDragStart: (event: DragEvent, nodeType: DraggableNodeData) => void;
 }> = ({ onDragStart }) => {
   return (
-    <div className="w-64 bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto">
+    <div className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto">
       <h3 className="font-bold text-lg mb-4 text-white">Node Types</h3>
       <div className="space-y-4">
         {nodeTypeSections.map((section) => (
@@ -1928,12 +1943,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       // Special case for textsurround: it accepts "Text", "Text Lines", or "GroupedText"
       const isTextSurroundCompatible =
         targetNode.type === "textsurround" &&
-        (sourceOutputType === "Text" || sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+        (sourceOutputType === "Text" ||
+          sourceOutputType === "Text Lines" ||
+          sourceOutputType === "GroupedText");
 
       // Special case for appendtext: it accepts "Text", "Text Lines", or "GroupedText"
       const isAppendTextCompatible =
         targetNode.type === "appendtext" &&
-        (sourceOutputType === "Text" || sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+        (sourceOutputType === "Text" ||
+          sourceOutputType === "Text Lines" ||
+          sourceOutputType === "GroupedText");
 
       // Special case for textjoin: it accepts "Text Lines" or "GroupedText"
       const isTextJoinCompatible =
