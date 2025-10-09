@@ -87,7 +87,8 @@ const api = {
     ipcRenderer.send("getPackDataWithLocs", packPath, table),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
   readMods: debounce(
-    (mods: Mod[], skipCollisionCheck = true) => ipcRenderer.send("readMods", mods, skipCollisionCheck),
+    (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true) =>
+      ipcRenderer.send("readMods", mods, skipCollisionCheck, canUseCustomizableCache),
     100
   ),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
@@ -327,19 +328,26 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("saveNodeFlow", flowName, flowData, packPath),
 
-  savePackWithUnsavedFiles: (packPath: string): Promise<{
+  savePackWithUnsavedFiles: (
+    packPath: string
+  ): Promise<{
     success: boolean;
     savedPath?: string;
     error?: string;
   }> => ipcRenderer.invoke("savePackWithUnsavedFiles", packPath),
 
-  readFileFromPack: (packPath: string, fileName: string): Promise<{
+  readFileFromPack: (
+    packPath: string,
+    fileName: string
+  ): Promise<{
     success: boolean;
     text?: string;
     error?: string;
   }> => ipcRenderer.invoke("readFileFromPack", packPath, fileName),
 
-  getFlowFilesFromPack: (packPath: string): Promise<{
+  getFlowFilesFromPack: (
+    packPath: string
+  ): Promise<{
     success: boolean;
     flowFiles?: { name: string; content: string }[];
     error?: string;
