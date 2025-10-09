@@ -18,6 +18,8 @@ import {
   FaEdit,
   FaRegCopy,
   FaTrash,
+  FaSync,
+  FaClock,
 } from "react-icons/fa";
 import { GoListOrdered } from "react-icons/go";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
@@ -494,7 +496,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                         style="light"
                         content={<div className="min-w-[10rem]">{localized.updateModTooltip}</div>}
                       >
-                        {localized.updateMod}
+                        <span className="flex items-center gap-2">
+                          <FaSync className="w-5 h-5"></FaSync>
+                          {localized.updateMod}
+                        </span>
                       </Tooltip>
                     </a>
                   </li>
@@ -511,7 +516,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                         style="light"
                         content={<div className="min-w-[10rem]">{localized.fakeUpdatePackTooltip}</div>}
                       >
-                        {localized.fakeUpdatePack}
+                        <span className="flex items-center gap-2">
+                          <FaClock className="w-5 h-5"></FaClock>
+                          {localized.fakeUpdatePack}
+                        </span>
                       </Tooltip>
                     </a>
                   </li>
