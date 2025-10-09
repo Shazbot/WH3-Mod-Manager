@@ -2508,7 +2508,7 @@ export const registerIpcMainListeners = (
   };
 
   let lastReadModsReceived = [];
-  ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true) => {
+  ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true) => {
     if (lastReadModsReceived.length != mods.length) {
       console.log(
         "READ MODS RECEIVED",

@@ -142,7 +142,7 @@ const saveConfig = (appState: AppState) => {
   window.api?.saveConfig(appState);
   const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
   // don't do it if all are enabled, i.e. when user is resetting the enabled column
-  if (enabledMods.length != appState.currentPreset.mods.length) window.api?.readMods(enabledMods);
+  if (enabledMods.length != appState.currentPreset.mods.length) window.api?.readMods(enabledMods, true, true);
 };
 
 const saveConfigDebounced = debounce((appState: AppState) => {
