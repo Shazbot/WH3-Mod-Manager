@@ -16,7 +16,6 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { dataFromBackend } from "./viewer/packDataStore";
 import { useAppSelector } from "../hooks";
 import { DBVersion } from "../packFileTypes";
 
@@ -39,6 +38,7 @@ interface SerializedNode {
     outputType?: NodeEdgeTypes;
     inputType?: NodeEdgeTypes;
     tableNames?: string[];
+    filters?: string;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
     groupedTextSelection?: "Text" | "Text Lines";
   };
@@ -57,6 +57,7 @@ interface SerializedNodeGraph {
   timestamp: number;
   nodes: SerializedNode[];
   connections: SerializedConnection[];
+  options: FlowOption[];
   metadata: {
     nodeCount: number;
     connectionCount: number;
@@ -767,7 +768,9 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
 
   const handleRemoveFilter = (index: number) => {
     const newFilters = filters.filter((_, i) => i !== index);
-    updateFilters(newFilters.length > 0 ? newFilters : [{ column: "", value: "", not: false, operator: "AND" }]);
+    updateFilters(
+      newFilters.length > 0 ? newFilters : [{ column: "", value: "", not: false, operator: "AND" }]
+    );
   };
 
   const handleFilterChange = (index: number, field: keyof FilterRow, value: any) => {
@@ -1934,7 +1937,9 @@ const executeGraphInBackend = async (
           : "",
         beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
         afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
-        useCurrentPack: (node.data as any)?.useCurrentPack ? Boolean((node.data as any).useCurrentPack) : false,
+        useCurrentPack: (node.data as any)?.useCurrentPack
+          ? Boolean((node.data as any).useCurrentPack)
+          : false,
         filters: (node.data as any)?.filters || [],
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
@@ -2695,6 +2700,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           outputType: (node.data as any)?.outputType,
           inputType: (node.data as any)?.inputType,
           groupedTextSelection: (node.data as any)?.groupedTextSelection,
+          filters: (node.data as any)?.filters,
         },
       };
 

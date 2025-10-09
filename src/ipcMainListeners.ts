@@ -3485,8 +3485,8 @@ export const registerIpcMainListeners = (
 
         // Execute flows for enabled mods
         const enabledModsWithFlows = sortedMods.filter((iterMod) => {
-          const packFlowOptions = startGameOptions.userFlowOptions[iterMod.name];
-          return packFlowOptions && Object.keys(packFlowOptions).length > 0;
+          const pack = appData.packsData.find((packData) => packData.path == iterMod.path);
+          return pack && pack.packedFiles.some((file) => file.name.startsWith("whmmflows\\"));
         });
 
         const createdFlowPacks: string[] = [];
@@ -3507,12 +3507,16 @@ export const registerIpcMainListeners = (
 
           for (const pack of enabledModsWithFlows) {
             // Check if this pack has overwrites - if so, use the overwritten pack
-            const hasOverwrites = enabledModsWithOverwrites.some((overwritePack) => overwritePack.path === pack.path);
-            const packPathToUse = hasOverwrites
-              ? nodePath.join(mergedDirPath, pack.name)
-              : pack.path;
+            const hasOverwrites = enabledModsWithOverwrites.some(
+              (overwritePack) => overwritePack.path === pack.path
+            );
+            const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
 
-            console.log(`Executing flows for pack: ${pack.name} (using ${hasOverwrites ? 'overwritten' : 'original'} pack)`);
+            console.log(
+              `Executing flows for pack: ${pack.name} (using ${
+                hasOverwrites ? "overwritten" : "original"
+              } pack)`
+            );
             const packPaths = await executeFlowsForPack(
               packPathToUse,
               "", // No target path needed
@@ -3618,9 +3622,9 @@ export const registerIpcMainListeners = (
         mainWindow?.webContents.send("handleLog", "starting game:");
         mainWindow?.webContents.send("handleLog", batData);
 
-        // exec(batData, (error) => {
-        //   console.error(error);
-        // });
+        exec(batData, (error) => {
+          console.error(error);
+        });
 
         appData.compatData = {
           packTableCollisions: [],
