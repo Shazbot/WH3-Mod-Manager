@@ -858,9 +858,17 @@ async function executeSaveTextNode(
       file_size: buffer.length,
     };
 
-    // Determine pack path
+    // Determine pack path - save to /whmm_flows/ folder
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
-    const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);
+    const whmmFlowsFolder = nodePath.join(dataFolder, "whmm_flows");
+
+    // Create whmm_flows directory if it doesn't exist
+    const fs = await import("fs");
+    if (!fs.existsSync(whmmFlowsFolder)) {
+      fs.mkdirSync(whmmFlowsFolder, { recursive: true });
+    }
+
+    const newPackPath = nodePath.join(whmmFlowsFolder, `${packFileBaseName}.pack`);
 
     // Write the pack file
     await writePack([newFile], newPackPath);
@@ -962,11 +970,19 @@ async function executeSaveChangesNode(
   }
 
   const nodePath = await import("path");
+  const fs = await import("fs");
 
   const timestamp = format(new Date(), "ddMMyy_HHmmss");
   const packFileBaseName = packName || `dbflow_${timestamp}`;
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
-  const newPackPath = nodePath.join(dataFolder, `${packFileBaseName}.pack`);
+  const whmmFlowsFolder = nodePath.join(dataFolder, "whmm_flows");
+
+  // Create whmm_flows directory if it doesn't exist
+  if (!fs.existsSync(whmmFlowsFolder)) {
+    fs.mkdirSync(whmmFlowsFolder, { recursive: true });
+  }
+
+  const newPackPath = nodePath.join(whmmFlowsFolder, `${packFileBaseName}.pack`);
   await writePack(toSave, newPackPath);
 
   try {
