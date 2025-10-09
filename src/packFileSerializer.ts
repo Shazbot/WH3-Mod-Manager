@@ -1219,6 +1219,22 @@ export const executeFlowsForPack = async (
           }
         }
 
+        // Handle useCurrentPack flag - replace pack selection with current pack
+        for (const node of flowData.nodes) {
+          if (node.data.useCurrentPack === true) {
+            // For packfilesdropdown nodes, set selectedPack to current pack
+            if (node.type === "packfilesdropdown") {
+              node.data.selectedPack = packName;
+              console.log(`Node ${node.id}: Using current pack "${packName}" (useCurrentPack enabled)`);
+            }
+            // For packedfiles nodes, set textValue to current pack
+            else if (node.type === "packedfiles") {
+              node.data.textValue = packName;
+              console.log(`Node ${node.id}: Using current pack "${packName}" (useCurrentPack enabled)`);
+            }
+          }
+        }
+
         // Execute the flow
         const result = await executeNodeGraph({
           nodes: flowData.nodes,

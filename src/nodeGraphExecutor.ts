@@ -33,6 +33,7 @@ interface SerializedNode {
     groupedTextSelection?: string;
     beforeText?: string;
     afterText?: string;
+    useCurrentPack?: boolean;
     columnNames?: string[];
     connectedTableName?: string;
     outputType?: string;
