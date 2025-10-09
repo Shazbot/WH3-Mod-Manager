@@ -55,6 +55,8 @@ interface AppData {
   queuedSkillsData: SkillsData | undefined;
   isChangingGameProcessPriority: boolean;
   currentLanguage?: SupportedLanguage;
+  lastGetCustomizableMods?: string[];
+  customizableMods: Record<string, string[]>;
 }
 
 export type GameFolderPaths = {
@@ -107,6 +109,7 @@ const appData = {
   queuedViewerData: [],
   queuedSkillsData: undefined,
   isChangingGameProcessPriority: false,
+  customizableMods: {},
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
