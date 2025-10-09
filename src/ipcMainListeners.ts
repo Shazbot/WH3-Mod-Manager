@@ -3489,17 +3489,49 @@ export const registerIpcMainListeners = (
           return packFlowOptions && Object.keys(packFlowOptions).length > 0;
         });
 
+        const createdFlowPacks: string[] = [];
         if (enabledModsWithFlows.length > 0) {
           console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
 
+          // Create whmm_flows directory if needed
+          const whmmFlowsPath = nodePath.join(dataFolder as string, "whmm_flows");
+          if (!fsExtra.existsSync(whmmFlowsPath)) {
+            fsExtra.mkdirSync(whmmFlowsPath, { recursive: true });
+          }
+
+          // Get the overwrite directory path if it exists
+          const mergedDirPath = nodePath.join(
+            appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+            "/whmm_overwrites/"
+          );
+
           for (const pack of enabledModsWithFlows) {
-            console.log(`Executing flows for pack: ${pack.name}`);
-            await executeFlowsForPack(
-              pack.path,
-              "", // No target path needed - flows modify data in-place
+            // Check if this pack has overwrites - if so, use the overwritten pack
+            const hasOverwrites = enabledModsWithOverwrites.some((overwritePack) => overwritePack.path === pack.path);
+            const packPathToUse = hasOverwrites
+              ? nodePath.join(mergedDirPath, pack.name)
+              : pack.path;
+
+            console.log(`Executing flows for pack: ${pack.name} (using ${hasOverwrites ? 'overwritten' : 'original'} pack)`);
+            const packPaths = await executeFlowsForPack(
+              packPathToUse,
+              "", // No target path needed
               startGameOptions.userFlowOptions,
               pack.name
             );
+            createdFlowPacks.push(...packPaths);
+          }
+
+          console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
+
+          // Add flow packs to the mod list
+          if (createdFlowPacks.length > 0) {
+            extraEnabledMods += `\nadd_working_directory "${linuxBit + whmmFlowsPath}";`;
+            for (const flowPackPath of createdFlowPacks) {
+              const packFileName = nodePath.basename(flowPackPath);
+              extraEnabledMods += `\nmod "${packFileName}";`;
+              console.log(`Added flow pack to mod list: ${packFileName}`);
+            }
           }
         }
 

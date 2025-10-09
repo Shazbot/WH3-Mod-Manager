@@ -1152,7 +1152,9 @@ export const executeFlowsForPack = async (
   pathTarget: string,
   userFlowOptions: UserFlowOptions,
   packName: string
-) => {
+): Promise<string[]> => {
+  const createdPackPaths: string[] = [];
+
   try {
     console.log("Executing flows for pack:", packName);
 
@@ -1164,7 +1166,7 @@ export const executeFlowsForPack = async (
 
     if (flowFiles.length === 0) {
       console.log("No flow files found in pack");
-      return;
+      return createdPackPaths;
     }
 
     console.log(`Found ${flowFiles.length} flow files in pack`);
@@ -1244,6 +1246,17 @@ export const executeFlowsForPack = async (
         if (result.success) {
           console.log(`Flow ${flowFileName} executed successfully`);
           console.log(`Executed ${result.successCount}/${result.totalExecuted} nodes`);
+
+          // Collect created pack paths from SaveChanges/SaveText nodes
+          for (const [nodeId, nodeResult] of result.executionResults.entries()) {
+            if (nodeResult.success && nodeResult.data?.type === "SaveResult") {
+              const savedPath = nodeResult.data.savedTo;
+              if (savedPath && !createdPackPaths.includes(savedPath)) {
+                createdPackPaths.push(savedPath);
+                console.log(`Collected created pack path: ${savedPath}`);
+              }
+            }
+          }
         } else {
           console.error(`Flow ${flowFileName} execution failed:`, result.error);
         }
@@ -1252,13 +1265,13 @@ export const executeFlowsForPack = async (
       }
     }
 
-    // Note: The flows handle their own pack modifications via SaveChanges nodes
-    // We don't need to generate a separate pack file like overwrites do
-    // The modified data is already saved by the flow execution
-    console.log("Flow execution completed for pack:", packPath);
+    console.log(`Flow execution completed for pack: ${packName}`);
+    console.log(`Created ${createdPackPaths.length} pack file(s):`, createdPackPaths);
   } catch (error) {
     console.error("Error in executeFlowsForPack:", error);
   }
+
+  return createdPackPaths;
 };
 
 export const writeCopyPack = async (
