@@ -80,6 +80,7 @@ interface NodeData extends Record<string, unknown> {
 interface PackFilesNodeData extends NodeData {
   textValue: string;
   outputType: "PackFiles";
+  useCurrentPack?: boolean;
 }
 
 interface TableSelectionNodeData extends NodeData {
@@ -139,6 +140,7 @@ interface GroupedColumnsToTextNodeData extends NodeData {
 interface PackFilesDropdownNodeData extends NodeData {
   selectedPack: string;
   outputType: "PackFiles";
+  useCurrentPack?: boolean;
 }
 
 interface TableSelectionDropdownNodeData extends NodeData {
@@ -207,6 +209,7 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
     return firstMod.name.localeCompare(secondMod.name);
   });
   const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
+  const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -215,6 +218,17 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
     // Update the node data by dispatching a custom event that the parent can listen to
     const updateEvent = new CustomEvent("nodeDataUpdate", {
       detail: { nodeId: id, selectedPack: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setUseCurrentPack(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, useCurrentPack: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -237,6 +251,18 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
           </option>
         ))}
       </select>
+
+      <div className="mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useCurrentPack}
+            onChange={handleCheckboxChange}
+            className="w-4 h-4"
+          />
+          <span className="text-xs text-gray-300">When inside pack use that pack</span>
+        </label>
+      </div>
 
       <div className="mt-2 text-xs text-gray-400">Output: PackFiles</div>
 
@@ -318,6 +344,7 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
 // Custom PackFiles node component with built-in textbox
 const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
+  const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
@@ -326,6 +353,17 @@ const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data
     // Update the node data by dispatching a custom event that the parent can listen to
     const updateEvent = new CustomEvent("nodeDataUpdate", {
       detail: { nodeId: id, textValue: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setUseCurrentPack(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, useCurrentPack: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -342,6 +380,18 @@ const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data
         placeholder="Enter pack files configuration..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-blue-400"
       />
+
+      <div className="mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useCurrentPack}
+            onChange={handleCheckboxChange}
+            className="w-4 h-4"
+          />
+          <span className="text-xs text-gray-300">When inside pack use that pack</span>
+        </label>
+      </div>
 
       <div className="mt-2 text-xs text-gray-400">Output: PackFiles</div>
 
@@ -1633,7 +1683,8 @@ const nodeTypeSections: NodeTypeSection[] = [
 // Backend graph execution service
 const executeGraphInBackend = async (
   nodes: Node[],
-  edges: Edge[]
+  edges: Edge[],
+  currentPackName?: string
 ): Promise<{
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
@@ -1643,8 +1694,29 @@ const executeGraphInBackend = async (
   error?: string;
 }> => {
   try {
+    // Handle useCurrentPack flag - replace pack selection with current pack
+    const processedNodes = nodes.map((node) => {
+      if (currentPackName && (node.data as any)?.useCurrentPack === true) {
+        const nodeData = { ...node.data };
+
+        // For packfilesdropdown nodes, set selectedPack to current pack
+        if (node.type === "packfilesdropdown") {
+          nodeData.selectedPack = currentPackName;
+          console.log(`Node ${node.id}: Using current pack "${currentPackName}" (useCurrentPack enabled)`);
+        }
+        // For packedfiles nodes, set textValue to current pack
+        else if (node.type === "packedfiles") {
+          nodeData.textValue = currentPackName;
+          console.log(`Node ${node.id}: Using current pack "${currentPackName}" (useCurrentPack enabled)`);
+        }
+
+        return { ...node, data: nodeData };
+      }
+      return node;
+    });
+
     // Convert nodes and edges to serialized format for backend
-    const serializedNodes = nodes.map((node) => ({
+    const serializedNodes = processedNodes.map((node) => ({
       id: node.id,
       type: node.type || "default",
       data: {
@@ -1669,6 +1741,7 @@ const executeGraphInBackend = async (
           : "",
         beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
         afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
+        useCurrentPack: (node.data as any)?.useCurrentPack ? Boolean((node.data as any).useCurrentPack) : false,
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
           ? String((node.data as any).connectedTableName)
@@ -1836,6 +1909,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         packedFileName,
         beforeText,
         afterText,
+        useCurrentPack,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -1860,6 +1934,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 packedFileName: packedFileName !== undefined ? packedFileName : node.data.packedFileName,
                 beforeText: beforeText !== undefined ? beforeText : node.data.beforeText,
                 afterText: afterText !== undefined ? afterText : node.data.afterText,
+                useCurrentPack: useCurrentPack !== undefined ? useCurrentPack : node.data.useCurrentPack,
               },
             };
           }
@@ -2128,6 +2203,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: nodeData.type,
             textValue: "",
             outputType: "PackFiles" as NodeEdgeTypes,
+            useCurrentPack: false,
           } as PackFilesNodeData,
         };
       } else if (nodeData.type === "packfilesdropdown") {
@@ -2141,6 +2217,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: nodeData.type,
             selectedPack: "",
             outputType: "PackFiles" as NodeEdgeTypes,
+            useCurrentPack: false,
           } as PackFilesDropdownNodeData,
         };
       } else if (nodeData.type === "tableselection") {
@@ -2689,7 +2766,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
 
       // Execute the entire graph in the backend
-      const result = await executeGraphInBackend(nodes, edges);
+      const result = await executeGraphInBackend(nodes, edges, currentPack);
 
       console.log(
         `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`
