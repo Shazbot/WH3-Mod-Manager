@@ -960,8 +960,19 @@ async function executeSaveChangesNode(
     if (column.sourceTable.version) packFileSize += 8; // size of version data
     packFileSize += 5;
 
+    let dbFileName = column.fileName as string;
+    const lastBackslashIndex = dbFileName.lastIndexOf("\\");
+    if (lastBackslashIndex > -1) {
+      dbFileName =
+        dbFileName.substring(0, lastBackslashIndex + 1) + "!" + dbFileName.substring(lastBackslashIndex + 1);
+    } else {
+      dbFileName = "!" + dbFileName;
+    }
+
+    console.log("NEW dbFileName:", dbFileName);
+
     toSave.push({
-      name: column.fileName,
+      name: dbFileName,
       schemaFields: column.sourceTable.schemaFields,
       file_size: packFileSize,
       version: column.sourceTable.version,
@@ -1030,10 +1041,10 @@ async function executeSaveChangesNode(
       success: true,
       data: {
         type: "SaveResult",
-        savedTo: filePath,
+        savedTo: newPackPath,
         format: format,
         // summary: savedData,
-        message: `Successfully saved to ${filePath}`,
+        message: `Successfully saved to ${newPackPath}`,
         // message: `Successfully saved ${savedData.tablesProcessed} tables with ${savedData.totalRecords} processed records to ${filePath}`,
       } as DBSaveChangesNodeData,
     };

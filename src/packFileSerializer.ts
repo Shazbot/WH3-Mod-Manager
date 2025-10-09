@@ -1433,9 +1433,8 @@ export const writePackStream = async (
     });
 
     // Use existing dependency packs if not provided
-    const finalDependencyPacks = dependencyPacks.length > 0
-      ? dependencyPacks
-      : (existingPackToAppend?.dependencyPacks || []);
+    const finalDependencyPacks =
+      dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend?.dependencyPacks || [];
 
     // Calculate pack_file_index_size based on dependency packs
     const pack_file_index_size = finalDependencyPacks.reduce(
@@ -1583,9 +1582,8 @@ export const writePackAppendFast = async (
       const newFileCount = keptFileCount + packFiles.length;
 
       // Use existing dependency packs if not provided
-      const finalDependencyPacks = dependencyPacks.length > 0
-        ? dependencyPacks
-        : (existingPackToAppend.dependencyPacks || []);
+      const finalDependencyPacks =
+        dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend.dependencyPacks || [];
 
       // Calculate pack_file_index_size based on dependency packs
       const pack_file_index_size = finalDependencyPacks.reduce(
@@ -1868,7 +1866,13 @@ export const writePack = async (
 ) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
-    return await writePackAppendFast(packFiles, path, existingPackToAppend, replaceDuplicates, dependencyPacks);
+    return await writePackAppendFast(
+      packFiles,
+      path,
+      existingPackToAppend,
+      replaceDuplicates,
+      dependencyPacks
+    );
   }
 
   // Fallback to sorted implementation for new packs
@@ -1916,9 +1920,8 @@ export const writePackLegacy = async (
     });
 
     // Use existing dependency packs if not provided
-    const finalDependencyPacks = dependencyPacks.length > 0
-      ? dependencyPacks
-      : (existingPackToAppend?.dependencyPacks || []);
+    const finalDependencyPacks =
+      dependencyPacks.length > 0 ? dependencyPacks : existingPackToAppend?.dependencyPacks || [];
 
     // Calculate pack_file_index_size based on dependency packs
     const pack_file_index_size = finalDependencyPacks.reduce(
