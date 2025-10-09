@@ -32,6 +32,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,
     isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
     isChangingGameProcessPriority: appState.isChangingGameProcessPriority,
+    isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
     isClosedOnPlay: appState.isClosedOnPlay,
     isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,
