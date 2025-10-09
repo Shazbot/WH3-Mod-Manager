@@ -625,11 +625,13 @@ declare global {
   type FlowNodeType =
     | "packedfiles"
     | "packfilesdropdown"
+    | "allenabledmods"
     | "tableselection"
     | "tableselectiondropdown"
     | "columnselection"
     | "columnselectiondropdown"
     | "groupbycolumns"
+    | "filter"
     | "numericadjustment"
     | "savechanges"
     | "textsurround"

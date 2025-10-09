@@ -143,6 +143,10 @@ interface PackFilesDropdownNodeData extends NodeData {
   useCurrentPack?: boolean;
 }
 
+interface AllEnabledModsNodeData extends NodeData {
+  outputType: "PackFiles";
+}
+
 interface TableSelectionDropdownNodeData extends NodeData {
   selectedTable: string;
   inputType: "PackFiles";
@@ -164,6 +168,22 @@ interface GroupByColumnsNodeData extends NodeData {
   selectedColumn2: string;
   inputType: "TableSelection";
   outputType: "GroupedText";
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
+interface FilterRow {
+  column: string;
+  value: string;
+  not: boolean;
+  operator: "AND" | "OR";
+}
+
+interface FilterNodeData extends NodeData {
+  filters: FilterRow[];
+  inputType: "TableSelection";
+  outputType: "TableSelection";
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
@@ -265,6 +285,30 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
       </div>
 
       <div className="mt-2 text-xs text-gray-400">Output: PackFiles</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-green-500"
+        data-output-type="PackFiles"
+      />
+    </div>
+  );
+};
+
+// Custom AllEnabledMods node component
+const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: string }> = ({ data, id }) => {
+  return (
+    <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[200px]">
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-green-500" />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-300 mb-2 p-2 bg-gray-800 rounded border border-green-600">
+        This node will use all currently enabled mods
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: PackFiles (All Enabled Mods)</div>
 
       <Handle
         type="source"
@@ -677,6 +721,145 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
         position={Position.Right}
         className="w-3 h-3 bg-fuchsia-500"
         data-output-type="GroupedText"
+      />
+    </div>
+  );
+};
+
+// Custom Filter node component that accepts TableSelection input and outputs filtered TableSelection
+const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }) => {
+  const [filters, setFilters] = useState<FilterRow[]>(
+    data.filters && data.filters.length > 0
+      ? data.filters
+      : [{ column: "", value: "", not: false, operator: "AND" }]
+  );
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Update column names when connected table changes
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        // Update the node data with new column names
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: fieldNames },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+
+  const updateFilters = (newFilters: FilterRow[]) => {
+    setFilters(newFilters);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, filters: newFilters },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleAddFilter = () => {
+    updateFilters([...filters, { column: "", value: "", not: false, operator: "AND" }]);
+  };
+
+  const handleRemoveFilter = (index: number) => {
+    const newFilters = filters.filter((_, i) => i !== index);
+    updateFilters(newFilters.length > 0 ? newFilters : [{ column: "", value: "", not: false, operator: "AND" }]);
+  };
+
+  const handleFilterChange = (index: number, field: keyof FilterRow, value: any) => {
+    const newFilters = [...filters];
+    newFilters[index] = { ...newFilters[index], [field]: value };
+    updateFilters(newFilters);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-yellow-500 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {filters.map((filter, index) => (
+          <div key={index} className="bg-gray-800 p-2 rounded border border-gray-600">
+            <div className="flex items-center gap-2 mb-2">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filter.not}
+                  onChange={(e) => handleFilterChange(index, "not", e.target.checked)}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-gray-300">NOT</span>
+              </label>
+              {filters.length > 1 && (
+                <button
+                  onClick={() => handleRemoveFilter(index)}
+                  className="ml-auto text-red-400 hover:text-red-300 text-xs"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+
+            <select
+              value={filter.column}
+              onChange={(e) => handleFilterChange(index, "column", e.target.value)}
+              className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 focus:outline-none focus:border-yellow-400"
+            >
+              <option value="">Select column...</option>
+              {columnNames.map((columnName) => (
+                <option key={columnName} value={columnName}>
+                  {columnName}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              value={filter.value}
+              onChange={(e) => handleFilterChange(index, "value", e.target.value)}
+              placeholder="Filter value..."
+              className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 focus:outline-none focus:border-yellow-400"
+            />
+
+            {index < filters.length - 1 && (
+              <select
+                value={filter.operator}
+                onChange={(e) => handleFilterChange(index, "operator", e.target.value as "AND" | "OR")}
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+              >
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={handleAddFilter}
+        className="mt-2 w-full px-2 py-1 text-xs bg-yellow-600 hover:bg-yellow-700 text-white rounded"
+      >
+        Add Filter
+      </button>
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection (Filtered)</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-yellow-500"
+        data-output-type="TableSelection"
       />
     </div>
   );
@@ -1601,6 +1784,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Dropdown Input",
         description: "Node with dropdown for pack selection",
       },
+      {
+        type: "allenabledmods",
+        label: "All Enabled Mods",
+        description: "Outputs all currently enabled mods as PackFiles",
+      },
     ],
   },
   {
@@ -1615,6 +1803,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         type: "tableselectiondropdown",
         label: "Dropdown Input",
         description: "Node with dropdown for table selection",
+      },
+      {
+        type: "filter",
+        label: "Filter",
+        description: "Filter table rows with AND/OR conditions",
       },
     ],
   },
@@ -1742,6 +1935,7 @@ const executeGraphInBackend = async (
         beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
         afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
         useCurrentPack: (node.data as any)?.useCurrentPack ? Boolean((node.data as any).useCurrentPack) : false,
+        filters: (node.data as any)?.filters || [],
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
           ? String((node.data as any).connectedTableName)
@@ -1803,11 +1997,13 @@ const executeGraphInBackend = async (
 const reactFlowNodeTypes = {
   packedfiles: PackFilesNode,
   packfilesdropdown: PackFilesDropdownNode,
+  allenabledmods: AllEnabledModsNode,
   tableselection: TableSelectionNode,
   tableselectiondropdown: TableSelectionDropdownNode,
   columnselection: ColumnSelectionNode,
   columnselectiondropdown: ColumnSelectionDropdownNode,
   groupbycolumns: GroupByColumnsNode,
+  filter: FilterNode,
   numericadjustment: NumericAdjustmentNode,
   savechanges: SaveChangesNode,
   textsurround: TextSurroundNode,
@@ -1910,6 +2106,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         beforeText,
         afterText,
         useCurrentPack,
+        filters,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -1935,6 +2132,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 beforeText: beforeText !== undefined ? beforeText : node.data.beforeText,
                 afterText: afterText !== undefined ? afterText : node.data.afterText,
                 useCurrentPack: useCurrentPack !== undefined ? useCurrentPack : node.data.useCurrentPack,
+                filters: filters !== undefined ? filters : node.data.filters,
               },
             };
           }
@@ -1966,6 +2164,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as PackFilesNodeData).outputType;
       } else if (sourceNode.type === "packfilesdropdown" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as PackFilesDropdownNodeData).outputType;
+      } else if (sourceNode.type === "allenabledmods" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as AllEnabledModsNodeData).outputType;
       } else if (sourceNode.type === "tableselection" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TableSelectionNodeData).outputType;
       } else if (sourceNode.type === "tableselectiondropdown" && sourceNode.data) {
@@ -1978,6 +2178,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
       } else if (sourceNode.type === "groupbycolumns" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
+      } else if (sourceNode.type === "filter" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as FilterNodeData).outputType;
       } else if (sourceNode.type === "textsurround" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
       } else if (sourceNode.type === "appendtext" && sourceNode.data) {
@@ -2000,6 +2202,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as ColumnSelectionDropdownNodeData).inputType;
       } else if (targetNode.type === "groupbycolumns" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GroupByColumnsNodeData).inputType;
+      } else if (targetNode.type === "filter" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as FilterNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
       } else if (targetNode.type === "savechanges" && targetNode.data) {
@@ -2122,7 +2326,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
         // Update column selection dropdown nodes when connected to table selection nodes
         if (
-          (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
+          (targetNode.type === "columnselectiondropdown" ||
+            targetNode.type === "groupbycolumns" ||
+            targetNode.type === "filter") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
         ) {
           const tableName =
@@ -2145,6 +2351,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         ...node.data,
                         columnNames: fieldNames,
                         connectedTableName: tableName,
+                        DBNameToDBVersions: DBNameToDBVersions,
                       },
                     };
                   }
@@ -2152,6 +2359,31 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 })
               );
             }
+          }
+        }
+
+        // Update filter nodes when connected to another filter node (chaining filters)
+        if (targetNode.type === "filter" && sourceNode.type === "filter") {
+          const sourceFilterData = sourceNode.data as unknown as FilterNodeData;
+
+          // Propagate the connectedTableName and DBNameToDBVersions from source filter to target filter
+          if (sourceFilterData.connectedTableName && sourceFilterData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceFilterData.columnNames || [],
+                      connectedTableName: sourceFilterData.connectedTableName,
+                      DBNameToDBVersions: sourceFilterData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
           }
         }
       }
@@ -2219,6 +2451,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             outputType: "PackFiles" as NodeEdgeTypes,
             useCurrentPack: false,
           } as PackFilesDropdownNodeData,
+        };
+      } else if (nodeData.type === "allenabledmods") {
+        // Create AllEnabledMods node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "allenabledmods",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            outputType: "PackFiles" as NodeEdgeTypes,
+          } as AllEnabledModsNodeData,
         };
       } else if (nodeData.type === "tableselection") {
         // Create TableSelection node with special data structure
@@ -2297,6 +2541,22 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             columnNames: [],
             DBNameToDBVersions,
           } as GroupByColumnsNodeData,
+        };
+      } else if (nodeData.type === "filter") {
+        // Create Filter node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "filter",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            filters: [{ column: "", value: "", not: false, operator: "AND" }],
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            columnNames: [],
+            DBNameToDBVersions,
+          } as FilterNodeData,
         };
       } else if (nodeData.type === "numericadjustment") {
         // Create NumericAdjustment node with special data structure
@@ -2586,7 +2846,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
             // Update column selection dropdown and groupbycolumns nodes when connected to table selection nodes
             if (
-              (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
+              (targetNode.type === "columnselectiondropdown" ||
+                targetNode.type === "groupbycolumns" ||
+                targetNode.type === "filter") &&
               (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
             ) {
               const tableName =
@@ -2622,7 +2884,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             // Update table selection dropdown nodes when connected to pack files nodes
             if (
               targetNode.type === "tableselectiondropdown" &&
-              (sourceNode.type === "packedfiles" || sourceNode.type === "packfilesdropdown")
+              (sourceNode.type === "packedfiles" ||
+                sourceNode.type === "packfilesdropdown" ||
+                sourceNode.type === "allenabledmods")
             ) {
               const selectedPack =
                 sourceNode.type === "packfilesdropdown"

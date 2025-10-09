@@ -34,6 +34,7 @@ interface SerializedNode {
     beforeText?: string;
     afterText?: string;
     useCurrentPack?: boolean;
+    filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }>;
     columnNames?: string[];
     connectedTableName?: string;
     outputType?: string;
@@ -122,6 +123,10 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             column1: node.data.selectedColumn1 || "",
             column2: node.data.selectedColumn2 || "",
+          });
+        } else if (node.type === "filter") {
+          textValueToUse = JSON.stringify({
+            filters: (node.data as any).filters || [],
           });
         } else if (node.type === "groupedcolumnstotext") {
           textValueToUse = JSON.stringify({

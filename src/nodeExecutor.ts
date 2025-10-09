@@ -22,6 +22,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "packfilesdropdown":
         return await executePackFilesDropdownNode(nodeId, textValue);
 
+      case "allenabledmods":
+        return await executeAllEnabledModsNode(nodeId);
+
       case "tableselection":
         return await executeTableSelectionNode(nodeId, textValue, inputData);
 
@@ -36,6 +39,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "groupbycolumns":
         return await executeGroupByColumnsNode(nodeId, textValue, inputData);
+
+      case "filter":
+        return await executeFilterNode(nodeId, textValue, inputData);
 
       case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
@@ -177,6 +183,57 @@ async function executePackFilesDropdownNode(
       loadedCount: packFiles.filter((f) => f.loaded).length,
     } as PackFilesNodeData,
   };
+}
+
+async function executeAllEnabledModsNode(nodeId: string): Promise<NodeExecutionResult> {
+  console.log(`AllEnabledMods Node ${nodeId}: Processing all enabled mods`);
+
+  const packFiles = [] as PackFilesNodeFile[];
+
+  try {
+    // Get all enabled mods from appData
+    const enabledMods = appData.enabledMods;
+
+    if (enabledMods.length === 0) {
+      console.warn(`AllEnabledMods Node ${nodeId}: No enabled mods found`);
+      return {
+        success: true,
+        data: {
+          type: "PackFiles",
+          files: [],
+          count: 0,
+          loadedCount: 0,
+        } as PackFilesNodeData,
+      };
+    }
+
+    // Add all enabled mods to packFiles
+    for (const mod of enabledMods) {
+      packFiles.push({
+        name: path.basename(mod.path),
+        path: mod.path,
+        loaded: true,
+      });
+    }
+
+    console.log(`AllEnabledMods Node ${nodeId}: Found ${packFiles.length} enabled mods`);
+
+    return {
+      success: true,
+      data: {
+        type: "PackFiles",
+        files: packFiles,
+        count: packFiles.length,
+        loadedCount: packFiles.length,
+      } as PackFilesNodeData,
+    };
+  } catch (error) {
+    console.error(`AllEnabledMods Node ${nodeId}: Error processing enabled mods:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
 
 async function executeTableSelectionNode(
@@ -449,6 +506,141 @@ async function executeGroupByColumnsNode(
       textLines: valuesArray,
       groupCount: groupedData.size,
     },
+  };
+}
+
+async function executeFilterNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Filter Node ${nodeId}: Processing filters with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  console.log("filter text values:", textValue);
+
+  // Parse filters from textValue
+  let filters: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }> = [];
+  try {
+    const parsed = JSON.parse(textValue);
+    filters = parsed.filters || [];
+  } catch (error) {
+    console.error(`Filter Node ${nodeId}: Error parsing filters:`, error);
+    return { success: false, error: "Invalid filter configuration" };
+  }
+
+  if (filters.length === 0 || !filters[0].column || !filters[0].value) {
+    // No filters configured, return all data unchanged
+    console.log(`Filter Node ${nodeId}: No filters configured, passing through all data`);
+    return {
+      success: true,
+      data: inputData,
+    };
+  }
+
+  console.log(
+    `Filter Node ${nodeId}: Applying ${filters.length} filters to ${inputData.tables.length} table(s)`
+  );
+
+  // Create a filtered version of the input data
+  const filteredData: DBTablesNodeData = {
+    ...inputData,
+    tables: [],
+  };
+
+  // Process each table
+  for (const tableData of inputData.tables) {
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      // Skip tables without schema
+      filteredData.tables.push(tableData);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    console.log(`Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
+
+    // Filter rows based on the filter configuration
+    const filteredRows = rows.filter((row) => {
+      // Evaluate each filter
+      const filterResults: boolean[] = [];
+
+      for (const filter of filters) {
+        if (!filter.column) {
+          filterResults.push(true);
+          continue;
+        }
+
+        // Find the cell with matching column name
+        const cell = row.find((c) => c.name === filter.column);
+        if (!cell) {
+          filterResults.push(true); // Column not found, skip filter
+          continue;
+        }
+
+        const cellValue = cell.resolvedKeyValue || "";
+        const filterValue = filter.value;
+
+        // Perform the comparison (case-insensitive contains)
+        let matches = String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
+
+        // Apply NOT if specified
+        if (filter.not) {
+          matches = !matches;
+        }
+
+        filterResults.push(matches);
+      }
+
+      // Combine filter results based on operators
+      if (filterResults.length === 0) return true;
+
+      let result = filterResults[0];
+      for (let i = 1; i < filterResults.length; i++) {
+        const operator = filters[i - 1].operator;
+        if (operator === "AND") {
+          result = result && filterResults[i];
+        } else {
+          result = result || filterResults[i];
+        }
+      }
+
+      return result;
+    });
+
+    console.log(
+      `Filter Node ${nodeId}: ${filteredRows.length} rows passed filters out of ${rows.length} in table "${tableData.name}"`
+    );
+
+    // Flatten filtered rows back into schemaFields array
+    const filteredSchemaFields: AmendedSchemaField[] = [];
+    for (const row of filteredRows) {
+      filteredSchemaFields.push(...row);
+    }
+
+    // Create a new table with filtered data
+    const filteredTableData = {
+      ...tableData,
+      table: {
+        ...tableData.table,
+        schemaFields: filteredSchemaFields,
+      },
+    };
+
+    filteredData.tables.push(filteredTableData);
+  }
+
+  filteredData.tableCount = filteredData.tables.length;
+
+  return {
+    success: true,
+    data: filteredData,
   };
 }
 
@@ -1083,7 +1275,10 @@ async function executeGroupedColumnsToTextNode(
   textValue: string,
   inputData: any
 ): Promise<NodeExecutionResult> {
-  console.log(`GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
+  console.log(
+    `GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}" and input:`,
+    inputData
+  );
 
   if (!inputData) {
     return { success: false, error: "Invalid input: No input data provided" };
