@@ -594,6 +594,7 @@ const ModRows = memo((props: ModRowsProps) => {
       "faction_agent_permitted_subtypes_tables",
       "campaign_group_unique_agents_tables",
     ];
+    console.log("window.api?.getCustomizableMods from modsrows");
     window.api?.getCustomizableMods(
       enabledMods.map((mod) => mod.path),
       customizableTables

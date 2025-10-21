@@ -28,6 +28,7 @@ import * as fsExtra from "fs-extra";
 import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
 import { getDBName } from "./utility/packFileHelpers";
+import { SerializedNodeGraph } from "./components/NodeEditor";
 import getPackTableData, {
   isSchemaFieldNumber,
   isSchemaFieldNumberInteger,
@@ -2330,7 +2331,7 @@ class StreamWriter {
     await this.flush();
 
     return new Promise((resolve, reject) => {
-      this.writeStream.end((error) => {
+      this.writeStream.end((error: Error | undefined) => {
         if (error) {
           reject(error);
         } else {
@@ -2489,8 +2490,11 @@ export const readFromExistingPack = async (
   console.log(`reading from existing pack ${modPath}`);
 
   let lastChangedLocal = -1;
+  let size = 0;
   try {
-    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
+    const stats = await fsExtra.stat(modPath);
+    lastChangedLocal = stats.mtimeMs;
+    size = stats.size;
   } catch (e) {
     console.log(e);
   }
@@ -2540,6 +2544,7 @@ export const readFromExistingPack = async (
         packedFiles: pack_files,
         packHeader,
         lastChangedLocal,
+        size,
         readTables: [],
       } as Pack;
     }
@@ -2861,8 +2866,11 @@ export const readPack = async (
   const dependencyPacks: string[] = [];
 
   let lastChangedLocal = -1;
+  let size = 0;
   try {
-    lastChangedLocal = (await fsExtra.stat(modPath)).mtimeMs;
+    const stats = await fsExtra.stat(modPath);
+    lastChangedLocal = stats.mtimeMs;
+    size = stats.size;
   } catch (e) {
     console.log(e);
   }
@@ -3033,6 +3041,7 @@ export const readPack = async (
         packedFiles: pack_files,
         packHeader,
         lastChangedLocal,
+        size,
         readTables: [],
         dependencyPacks,
       } as Pack;
@@ -3154,6 +3163,7 @@ export const readPack = async (
         packedFiles: pack_files,
         packHeader,
         lastChangedLocal,
+        size,
         readTables: [],
         dependencyPacks,
       } as Pack;
@@ -3177,6 +3187,7 @@ export const readPack = async (
         packedFiles: pack_files,
         packHeader,
         lastChangedLocal,
+        size,
         readTables: [],
         dependencyPacks,
       } as Pack;

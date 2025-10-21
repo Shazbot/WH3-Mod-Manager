@@ -50,6 +50,7 @@ export interface Pack {
   packedFiles: PackedFile[];
   packHeader: PackHeader;
   lastChangedLocal: number;
+  size: number;
   dependencyPacks?: string[];
   readTables: string[] | "all";
 }
