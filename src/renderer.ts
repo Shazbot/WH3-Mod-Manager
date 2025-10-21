@@ -313,6 +313,7 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
     "faction_agent_permitted_subtypes_tables",
     "campaign_group_unique_agents_tables",
   ];
+  console.log("window.api?.getCustomizableMods from setpacksdataread");
   window.api?.getCustomizableMods(
     enabledMods.map((mod) => mod.path),
     customizableTables

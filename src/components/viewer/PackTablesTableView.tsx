@@ -13,18 +13,15 @@ import Handsontable from "handsontable";
 const LazyHotTable = React.lazy(async () => {
   // CSS imports handled via webpack configuration - remove direct imports
 
-  const [{ HotTable }, { registerAllModules }, Handsontable] = await Promise.all([
+  const [{ HotTable }, { registerAllModules }] = await Promise.all([
     import("@handsontable/react-wrapper"),
     import("handsontable/registry"),
-    import("handsontable"),
-    import("handsontable/styles/handsontable.min.css"),
-    import("handsontable/styles/ht-theme-main.min.css"),
   ]);
 
   // Register modules once loaded
   registerAllModules();
 
-  return { default: HotTable, Handsontable };
+  return { default: HotTable };
 });
 
 // Loading component for table

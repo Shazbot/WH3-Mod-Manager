@@ -1475,7 +1475,58 @@ export const registerIpcMainListeners = (
     );
   });
 
-  ipcMain.on("getCustomizableMods", (event, modPaths: string[], tables: string[]) => {
+  // Cache management for getCustomizableMods
+  // This cache stores which tables each pack contains to avoid expensive file scanning
+  // Cache entries are invalidated when pack size or lastChangedLocal changes
+  interface CustomizableModsCacheEntry {
+    size: number;
+    lastChangedLocal: number;
+    customizableTables: string[]; // Tables found in this pack (e.g., ["db\\abilities\\", "whmmflows\\"])
+  }
+
+  type CustomizableModsCache = Record<string, CustomizableModsCacheEntry>; // packPath -> cache entry
+
+  const CACHE_FILE_NAME = "customizable-mods-cache.json";
+
+  // In-memory cache - loaded once and kept in memory
+  let customizableModsCache: CustomizableModsCache | null = null;
+
+  /**
+   * Loads the customizable mods cache from disk into memory (only called once)
+   * @returns Cache object, or empty object if cache doesn't exist or is invalid
+   */
+  const loadCustomizableModsCache = async (): Promise<CustomizableModsCache> => {
+    if (customizableModsCache !== null) {
+      return customizableModsCache;
+    }
+
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), CACHE_FILE_NAME);
+      const data = await fs.promises.readFile(cacheFilePath, "utf8");
+      customizableModsCache = JSON.parse(data);
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      return customizableModsCache!;
+    } catch (err) {
+      // Cache file doesn't exist or is invalid, return empty cache
+      customizableModsCache = {};
+      return customizableModsCache;
+    }
+  };
+
+  /**
+   * Saves the customizable mods cache to disk
+   * @param cache Cache object to save
+   */
+  const saveCustomizableModsCache = async (cache: CustomizableModsCache): Promise<void> => {
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), CACHE_FILE_NAME);
+      await fs.promises.writeFile(cacheFilePath, JSON.stringify(cache, null, 2), "utf8");
+    } catch (err) {
+      console.error("Failed to save customizable mods cache:", err);
+    }
+  };
+
+  ipcMain.on("getCustomizableMods", async (event, modPaths: string[], tables: string[]) => {
     if (modPaths.length == 0) return;
     // console.log("getCustomizableMods:", modPaths);
 
@@ -1546,15 +1597,47 @@ export const registerIpcMainListeners = (
     const tablesForMatching = tables.map((table) => `db\\${table}\\`);
     tablesForMatching.push("whmmflows\\");
 
-    const customizableMods = newPacks.reduce((acc, currentPack) => {
-      const foundTables = tablesForMatching.filter((tableForMatching) =>
-        currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching))
-      );
-      if (foundTables.length > 0) {
-        acc[currentPack.path] = foundTables;
+    // Load cache
+    const cache = await loadCustomizableModsCache();
+    let cacheModified = false;
+
+    const customizableMods = {} as Record<string, string[]>;
+
+    for (const currentPack of newPacks) {
+      const cacheEntry = cache[currentPack.path];
+      let foundTables: string[] | undefined;
+
+      // Check if cache is valid for this pack
+      if (
+        cacheEntry &&
+        cacheEntry.size === currentPack.size &&
+        cacheEntry.lastChangedLocal === currentPack.lastChangedLocal
+      ) {
+        // Use cached result
+        foundTables = cacheEntry.customizableTables;
+      } else {
+        // Calculate and update cache
+        foundTables = tablesForMatching.filter((tableForMatching) =>
+          currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching))
+        );
+
+        cache[currentPack.path] = {
+          size: currentPack.size,
+          lastChangedLocal: currentPack.lastChangedLocal,
+          customizableTables: foundTables,
+        };
+        cacheModified = true;
       }
-      return acc;
-    }, {} as Record<string, string[]>);
+
+      if (foundTables.length > 0) {
+        customizableMods[currentPack.path] = foundTables;
+      }
+    }
+
+    // Save cache if modified
+    if (cacheModified) {
+      await saveCustomizableModsCache(cache);
+    }
 
     for (const [packPath, tables] of Object.entries(customizableMods)) {
       appData.customizableMods[packPath] = tables;
@@ -2577,16 +2660,35 @@ export const registerIpcMainListeners = (
   };
 
   let lastReadModsReceived = [];
-  ipcMain.on("readMods", (event, mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true) => {
-    if (lastReadModsReceived.length != mods.length) {
-      console.log(
-        "READ MODS RECEIVED",
-        mods.map((mod) => mod.name)
-      );
-      lastReadModsReceived = [...mods];
+  ipcMain.on(
+    "readMods",
+    async (event, mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true) => {
+      let modsToRead = mods;
+      if (canUseCustomizableCache) {
+        const customizableModsCache = await loadCustomizableModsCache();
+        const customizableModsCachePaths = Object.keys(customizableModsCache);
+        const modsNotInCustomizableCache = mods.filter(
+          (mod) => !customizableModsCachePaths.includes(mod.path)
+        );
+        if (modsNotInCustomizableCache.length == 0) {
+          console.log("Skipping readMods, all are already in the customizable mods cache!");
+          mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
+          return;
+        }
+
+        modsToRead = modsNotInCustomizableCache;
+      }
+
+      if (lastReadModsReceived.length != mods.length) {
+        console.log(
+          "READ MODS RECEIVED",
+          mods.map((mod) => mod.name)
+        );
+        lastReadModsReceived = [...mods];
+      }
+      readMods(modsToRead, skipCollisionCheck, skipCollisionCheck);
     }
-    readMods(mods, skipCollisionCheck, skipCollisionCheck);
-  });
+  );
 
   const sendQueuedDataToViewer = async () => {
     if (!appData.isViewerReady) {

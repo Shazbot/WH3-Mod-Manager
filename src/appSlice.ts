@@ -1260,6 +1260,7 @@ const appSlice = createSlice({
     setCustomizableMods: (state: AppState, action: PayloadAction<Record<string, string[]>>) => {
       if (hash(state.customizableMods) == hash(action.payload)) {
         console.log("setCustomizableMods for same mods, not updating app state");
+        console.log("customizable:", Object.keys(state.customizableMods));
         return;
       }
       state.customizableMods = action.payload;

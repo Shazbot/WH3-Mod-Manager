@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setUserFlowOptions } from "../appSlice";
+import { FlowOption } from "./NodeEditor";
 
 interface FlowWithOptions {
   flowName: string;

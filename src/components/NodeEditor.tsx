@@ -20,7 +20,7 @@ import { useAppSelector } from "../hooks";
 import { DBVersion } from "../packFileTypes";
 
 // Serialization types
-interface SerializedNode {
+export interface SerializedNode {
   id: string;
   type: string;
   position: XYPosition;
@@ -44,7 +44,7 @@ interface SerializedNode {
   };
 }
 
-interface SerializedConnection {
+export interface SerializedConnection {
   id: string;
   sourceId: string;
   targetId: string;
@@ -52,7 +52,7 @@ interface SerializedConnection {
   targetType?: NodeEdgeTypes;
 }
 
-interface SerializedNodeGraph {
+export interface SerializedNodeGraph {
   version: string;
   timestamp: number;
   nodes: SerializedNode[];
@@ -62,6 +62,8 @@ interface SerializedNodeGraph {
     nodeCount: number;
     connectionCount: number;
   };
+  isGraphEnabled: boolean;
+  graphStartsEnabled: boolean;
 }
 
 // Execution system types
@@ -197,19 +199,19 @@ interface DraggableNodeData {
 }
 
 // Flow options interfaces
-interface BaseFlowOption {
+export interface BaseFlowOption {
   id: string;
   name: string;
   description?: string;
 }
 
-interface TextboxFlowOption extends BaseFlowOption {
+export interface TextboxFlowOption extends BaseFlowOption {
   type: "textbox";
   value: string;
   placeholder?: string;
 }
 
-interface RangeSliderFlowOption extends BaseFlowOption {
+export interface RangeSliderFlowOption extends BaseFlowOption {
   type: "range";
   value: number;
   min: number;
@@ -217,12 +219,12 @@ interface RangeSliderFlowOption extends BaseFlowOption {
   step: number;
 }
 
-interface CheckboxFlowOption extends BaseFlowOption {
+export interface CheckboxFlowOption extends BaseFlowOption {
   type: "checkbox";
   value: boolean;
 }
 
-type FlowOption = TextboxFlowOption | RangeSliderFlowOption | CheckboxFlowOption;
+export type FlowOption = TextboxFlowOption | RangeSliderFlowOption | CheckboxFlowOption;
 
 // Custom PackFiles dropdown node component
 const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
@@ -1487,7 +1489,7 @@ const FlowOptionsModal: React.FC<{
     onOptionsChange(options.filter((opt) => opt.id !== optionId));
   };
 
-  const handleOptionValueChange = (optionId: string, newValue: string | number) => {
+  const handleOptionValueChange = (optionId: string, newValue: string | number | boolean) => {
     onOptionsChange(
       options.map((opt) => (opt.id === optionId ? ({ ...opt, value: newValue } as FlowOption) : opt))
     );
