@@ -142,7 +142,8 @@ const saveConfig = (appState: AppState) => {
   window.api?.saveConfig(appState);
   const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
   // don't do it if all are enabled, i.e. when user is resetting the enabled column
-  if (enabledMods.length != appState.currentPreset.mods.length) window.api?.readMods(enabledMods, true, true);
+  if (enabledMods.length != appState.currentPreset.mods.length)
+    window.api?.readMods(enabledMods, true, true, hash(appState.customizableMods));
 };
 
 const saveConfigDebounced = debounce((appState: AppState) => {
@@ -303,6 +304,7 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
   const appState = store.getState().app;
   const presetMods = appState.currentPreset.mods;
   const alwaysEnabledMods = appState.alwaysEnabledMods;
+  const customizableMods = appState.customizableMods;
   const enabledMods = presetMods.filter(
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
   );
@@ -316,7 +318,8 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
   console.log("window.api?.getCustomizableMods from setpacksdataread");
   window.api?.getCustomizableMods(
     enabledMods.map((mod) => mod.path),
-    customizableTables
+    customizableTables,
+    hash(customizableMods)
   );
 });
 

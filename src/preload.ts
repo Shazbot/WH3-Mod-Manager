@@ -87,8 +87,8 @@ const api = {
     ipcRenderer.send("getPackDataWithLocs", packPath, table),
   saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
   readMods: debounce(
-    (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true) =>
-      ipcRenderer.send("readMods", mods, skipCollisionCheck, canUseCustomizableCache),
+    (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>
+      ipcRenderer.send("readMods", mods, skipCollisionCheck, canUseCustomizableCache, customizableModsHash),
     100
   ),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
@@ -137,7 +137,8 @@ const api = {
     ipcRenderer.on("requestGameFolderPaths", callback),
   getAllModData: (ids: string[]) => ipcRenderer.send("getAllModData", ids),
   getCustomizableMods: debounce(
-    (modPaths: string[], tables: string[]) => ipcRenderer.send("getCustomizableMods", modPaths, tables),
+    (modPaths: string[], tables: string[], customizableModsHash: string) =>
+      ipcRenderer.send("getCustomizableMods", modPaths, tables, customizableModsHash),
     100
   ),
   setCustomizableMods: (
