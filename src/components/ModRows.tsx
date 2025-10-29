@@ -37,6 +37,7 @@ import UserFlowOptionsModal from "./UserFlowOptionsModal";
 import { WindowScroller, AutoSizer, List, CellMeasurerCache, CellMeasurer } from "react-virtualized";
 import { MeasuredCellParent } from "react-virtualized/dist/es/CellMeasurer";
 import { GridCoreProps } from "react-virtualized/dist/es/Grid";
+import hash from "object-hash";
 
 let currentDragTarget: Element;
 let dropOutlineElement: HTMLDivElement;
@@ -597,9 +598,10 @@ const ModRows = memo((props: ModRowsProps) => {
     console.log("window.api?.getCustomizableMods from modsrows");
     window.api?.getCustomizableMods(
       enabledMods.map((mod) => mod.path),
-      customizableTables
+      customizableTables,
+      hash(customizableMods)
     );
-  }, [enabledMods]);
+  }, [enabledMods, customizableMods]);
 
   const visibleMods = useMemo(
     () =>

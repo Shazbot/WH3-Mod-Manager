@@ -57,6 +57,7 @@ interface AppData {
   currentLanguage?: SupportedLanguage;
   lastGetCustomizableMods?: string[];
   customizableMods: Record<string, string[]>;
+  packMetaData: Record<string, { size: number; lastChangedLocal: number }>;
 }
 
 export type GameFolderPaths = {
@@ -110,6 +111,7 @@ const appData = {
   queuedSkillsData: undefined,
   isChangingGameProcessPriority: false,
   customizableMods: {},
+  packMetaData: {},
 } as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {

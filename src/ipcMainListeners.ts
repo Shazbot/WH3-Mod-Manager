@@ -81,6 +81,7 @@ import getPackTableData from "./utility/frontend/packDataHandling";
 import { collator } from "./utility/packFileSorting";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie from "./utility/trie";
+import hash from "object-hash";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -1526,125 +1527,174 @@ export const registerIpcMainListeners = (
     }
   };
 
-  ipcMain.on("getCustomizableMods", async (event, modPaths: string[], tables: string[]) => {
-    if (modPaths.length == 0) return;
-    // console.log("getCustomizableMods:", modPaths);
+  ipcMain.on(
+    "getCustomizableMods",
+    async (event, modPaths: string[], tables: string[], customizableModsHash: string) => {
+      // Load cache
+      const cache = await loadCustomizableModsCache();
+      const customizableMods = {} as Record<string, string[]>;
 
-    modPaths.sort((firstPath, secondPath) => firstPath.localeCompare(secondPath));
-
-    const newPaths = [] as string[];
-    if (appData.lastGetCustomizableMods) {
-      for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length; ) {
-        if (i == modPaths.length) {
-          break;
+      for (const modPath of modPaths) {
+        if (!appData.packMetaData[modPath]) {
+          const stats = await fsExtra.stat(modPath);
+          appData.packMetaData[modPath] = { size: stats.size, lastChangedLocal: stats.mtimeMs };
         }
-        if (j == appData.lastGetCustomizableMods.length) {
-          newPaths.push(...modPaths.slice(i));
-          break;
+      }
+
+      if (modPaths.length == 0) return;
+      // console.log("getCustomizableMods:", modPaths);
+
+      modPaths.sort((firstPath, secondPath) => firstPath.localeCompare(secondPath));
+
+      const newPaths = [] as string[];
+      if (appData.lastGetCustomizableMods) {
+        for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length; ) {
+          if (i == modPaths.length) {
+            break;
+          }
+          if (j == appData.lastGetCustomizableMods.length) {
+            newPaths.push(...modPaths.slice(i));
+            break;
+          }
+          const firstMod = modPaths[i];
+          const secondMod = appData.lastGetCustomizableMods[j];
+
+          const comparison = firstMod.localeCompare(secondMod);
+
+          // console.log("comparing", firstMod, secondMod, comparison);
+          if (comparison == 0) {
+            i++;
+            j++;
+          } else if (comparison < 1) {
+            newPaths.push(firstMod);
+            i++;
+          } else {
+            j++;
+          }
         }
-        const firstMod = modPaths[i];
-        const secondMod = appData.lastGetCustomizableMods[j];
 
-        const comparison = firstMod.localeCompare(secondMod);
+        // console.log("old getCustomizableMods paths:", modPaths);
+        // console.log("new getCustomizableMods paths:", newPaths);
+        if (newPaths.length == 0) {
+          appData.lastGetCustomizableMods = modPaths;
+          return;
+        }
+      }
 
-        // console.log("comparing", firstMod, secondMod, comparison);
-        if (comparison == 0) {
-          i++;
-          j++;
-        } else if (comparison < 1) {
-          newPaths.push(firstMod);
-          i++;
+      const pathToPack = {} as Record<string, Pack>;
+
+      const modPathsFromCache = [] as string[];
+      const modPathsRead = [] as string[];
+
+      for (const modPath of modPaths) {
+        const cacheEntry = cache[modPath];
+        const packMetaData = appData.packMetaData[modPath];
+
+        // console.log(
+        //   "COMPARING:",
+        //   cacheEntry,
+        //   packMetaData,
+        //   cacheEntry.size === packMetaData.size &&
+        //     cacheEntry.lastChangedLocal === packMetaData.lastChangedLocal
+        // );
+
+        if (
+          cacheEntry &&
+          packMetaData &&
+          cacheEntry.size === packMetaData.size &&
+          cacheEntry.lastChangedLocal === packMetaData.lastChangedLocal
+        ) {
+          customizableMods[modPath] = cacheEntry.customizableTables;
+          modPathsFromCache.push(modPath);
+          continue;
+        }
+
+        const pack = appData.packsData.find((pack) => pack.path == modPath);
+        if (pack) {
+          pathToPack[modPath] = pack;
         } else {
-          j++;
+          modPathsRead.push(modPath);
+          const pack = await readModsByPath([modPath], { skipParsingTables: true });
+          if (pack[0]) pathToPack[modPath] = pack[0];
         }
       }
 
-      // console.log("old getCustomizableMods paths:", modPaths);
-      // console.log("new getCustomizableMods paths:", newPaths);
-      if (newPaths.length == 0) {
-        appData.lastGetCustomizableMods = modPaths;
-        return;
+      console.log("getCustomizableMods modPathsFromCache:", modPathsFromCache);
+      console.log("getCustomizableMods modPathsRead:", modPathsRead);
+
+      const newPacks = Object.entries(pathToPack)
+        .filter(([path]) => {
+          return newPaths.includes(path);
+        })
+        .map(([, pack]) => pack);
+      // const packs = appData.packsData.filter((pack) => newPaths.includes(pack.path));
+
+      // if (newPacks.length != newPaths.length) {
+      //   console.log("Some of the mods not yet read for getCustomizableMods.");
+      //   console.log("newPacks:", newPacks);
+      //   console.log("newPaths:", newPaths);
+      //   return;
+      // }
+
+      const pathsWithPackedFiles = [];
+      for (const path of modPaths) {
+        const pack = pathToPack[path];
+        if (pack && pack.packedFiles.length > 0) pathsWithPackedFiles.push(path);
       }
-    }
+      appData.lastGetCustomizableMods = pathsWithPackedFiles;
 
-    const pathToPack = modPaths.reduce((acc, currentPath) => {
-      const pack = appData.packsData.find((pack) => pack.path == currentPath);
-      if (pack) {
-        acc[currentPath] = pack;
+      const tablesForMatching = tables.map((table) => `db\\${table}\\`);
+      tablesForMatching.push("whmmflows\\");
+
+      let cacheModified = false;
+
+      for (const currentPack of newPacks) {
+        const cacheEntry = cache[currentPack.path];
+        let foundTables: string[] | undefined;
+
+        // Check if cache is valid for this pack
+        if (
+          cacheEntry &&
+          cacheEntry.size === currentPack.size &&
+          cacheEntry.lastChangedLocal === currentPack.lastChangedLocal
+        ) {
+          // Use cached result
+          foundTables = cacheEntry.customizableTables;
+        } else {
+          // Calculate and update cache
+          foundTables = tablesForMatching.filter((tableForMatching) =>
+            currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching))
+          );
+
+          cache[currentPack.path] = {
+            size: currentPack.size,
+            lastChangedLocal: currentPack.lastChangedLocal,
+            customizableTables: foundTables,
+          };
+          cacheModified = true;
+        }
+
+        if (foundTables.length > 0) {
+          customizableMods[currentPack.path] = foundTables;
+        }
       }
-      return acc;
-    }, {} as Record<string, Pack>);
 
-    const newPacks = Object.entries(pathToPack)
-      .filter(([path]) => {
-        return newPaths.includes(path);
-      })
-      .map(([, pack]) => pack);
-    // const packs = appData.packsData.filter((pack) => newPaths.includes(pack.path));
+      // Save cache if modified
+      if (cacheModified) {
+        await saveCustomizableModsCache(cache);
+      }
 
-    if (newPacks.length != newPaths.length) {
-      console.log("Some of the mods not yet read for getCustomizableMods.");
-      return;
-    }
+      for (const [packPath, tables] of Object.entries(customizableMods)) {
+        appData.customizableMods[packPath] = tables;
+      }
 
-    const pathsWithPackedFiles = [];
-    for (const path of modPaths) {
-      const pack = pathToPack[path];
-      if (pack && pack.packedFiles.length > 0) pathsWithPackedFiles.push(path);
-    }
-    appData.lastGetCustomizableMods = pathsWithPackedFiles;
-
-    const tablesForMatching = tables.map((table) => `db\\${table}\\`);
-    tablesForMatching.push("whmmflows\\");
-
-    // Load cache
-    const cache = await loadCustomizableModsCache();
-    let cacheModified = false;
-
-    const customizableMods = {} as Record<string, string[]>;
-
-    for (const currentPack of newPacks) {
-      const cacheEntry = cache[currentPack.path];
-      let foundTables: string[] | undefined;
-
-      // Check if cache is valid for this pack
-      if (
-        cacheEntry &&
-        cacheEntry.size === currentPack.size &&
-        cacheEntry.lastChangedLocal === currentPack.lastChangedLocal
-      ) {
-        // Use cached result
-        foundTables = cacheEntry.customizableTables;
+      if (hash(appData.customizableMods) == customizableModsHash) {
+        console.log("customizableModsHash is the same as customizableMods, don't send it");
       } else {
-        // Calculate and update cache
-        foundTables = tablesForMatching.filter((tableForMatching) =>
-          currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching))
-        );
-
-        cache[currentPack.path] = {
-          size: currentPack.size,
-          lastChangedLocal: currentPack.lastChangedLocal,
-          customizableTables: foundTables,
-        };
-        cacheModified = true;
-      }
-
-      if (foundTables.length > 0) {
-        customizableMods[currentPack.path] = foundTables;
+        mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
       }
     }
-
-    // Save cache if modified
-    if (cacheModified) {
-      await saveCustomizableModsCache(cache);
-    }
-
-    for (const [packPath, tables] of Object.entries(customizableMods)) {
-      appData.customizableMods[packPath] = tables;
-    }
-
-    mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
-  });
+  );
 
   ipcMain.on("getPacksInSave", async (event, saveName: string) => {
     mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
@@ -2662,7 +2712,13 @@ export const registerIpcMainListeners = (
   let lastReadModsReceived = [];
   ipcMain.on(
     "readMods",
-    async (event, mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true) => {
+    async (
+      event,
+      mods: Mod[],
+      skipCollisionCheck = true,
+      canUseCustomizableCache = true,
+      customizableModsHash?: string
+    ) => {
       let modsToRead = mods;
       if (canUseCustomizableCache) {
         const customizableModsCache = await loadCustomizableModsCache();
@@ -2672,7 +2728,10 @@ export const registerIpcMainListeners = (
         );
         if (modsNotInCustomizableCache.length == 0) {
           console.log("Skipping readMods, all are already in the customizable mods cache!");
-          mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
+          if (customizableModsHash != hash(appData.customizableMods)) {
+            console.log("Skipping setCustomizableMods in readMods, hash is the same!");
+            mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
+          }
           return;
         }
 
