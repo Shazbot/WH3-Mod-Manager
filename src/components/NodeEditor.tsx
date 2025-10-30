@@ -1375,6 +1375,7 @@ const FlowOptionsModal: React.FC<{
   const [newOptionType, setNewOptionType] = useState<"textbox" | "range" | "checkbox">("textbox");
 
   const [formData, setFormData] = useState({
+    id: "",
     name: "",
     description: "",
     value: "",
@@ -1387,6 +1388,7 @@ const FlowOptionsModal: React.FC<{
 
   const resetForm = () => {
     setFormData({
+      id: "",
       name: "",
       description: "",
       value: "",
@@ -1401,12 +1403,18 @@ const FlowOptionsModal: React.FC<{
   };
 
   const handleAddOption = () => {
-    if (!formData.name.trim()) return;
+    if (!formData.id.trim() || !formData.name.trim()) return;
+
+    // Check for duplicate IDs
+    if (options.some((opt) => opt.id === formData.id.trim())) {
+      alert(`Option ID "${formData.id}" already exists. Please use a unique ID.`);
+      return;
+    }
 
     const newOption: FlowOption =
       newOptionType === "textbox"
         ? {
-            id: Date.now().toString(),
+            id: formData.id.trim(),
             type: "textbox",
             name: formData.name,
             description: formData.description || undefined,
@@ -1415,7 +1423,7 @@ const FlowOptionsModal: React.FC<{
           }
         : newOptionType === "range"
         ? {
-            id: Date.now().toString(),
+            id: formData.id.trim(),
             type: "range",
             name: formData.name,
             description: formData.description || undefined,
@@ -1425,7 +1433,7 @@ const FlowOptionsModal: React.FC<{
             step: formData.step,
           }
         : {
-            id: Date.now().toString(),
+            id: formData.id.trim(),
             type: "checkbox",
             name: formData.name,
             description: formData.description || undefined,
@@ -1439,6 +1447,7 @@ const FlowOptionsModal: React.FC<{
   const handleEditOption = (option: FlowOption) => {
     setEditingOption(option);
     setFormData({
+      id: option.id,
       name: option.name,
       description: option.description || "",
       value:
@@ -1453,12 +1462,21 @@ const FlowOptionsModal: React.FC<{
   };
 
   const handleUpdateOption = () => {
-    if (!editingOption || !formData.name.trim()) return;
+    if (!editingOption || !formData.id.trim() || !formData.name.trim()) return;
+
+    // Check for duplicate IDs (only if ID changed)
+    if (formData.id.trim() !== editingOption.id) {
+      if (options.some((opt) => opt.id === formData.id.trim())) {
+        alert(`Option ID "${formData.id}" already exists. Please use a unique ID.`);
+        return;
+      }
+    }
 
     const updatedOption: FlowOption =
       editingOption.type === "textbox"
         ? {
             ...editingOption,
+            id: formData.id.trim(),
             name: formData.name,
             description: formData.description || undefined,
             value: formData.value,
@@ -1467,6 +1485,7 @@ const FlowOptionsModal: React.FC<{
         : editingOption.type === "range"
         ? {
             ...editingOption,
+            id: formData.id.trim(),
             name: formData.name,
             description: formData.description || undefined,
             value: Number(formData.value) || editingOption.min,
@@ -1476,6 +1495,7 @@ const FlowOptionsModal: React.FC<{
           }
         : {
             ...editingOption,
+            id: formData.id.trim(),
             name: formData.name,
             description: formData.description || undefined,
             value: formData.checked,
@@ -1552,7 +1572,8 @@ const FlowOptionsModal: React.FC<{
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <h4 className="text-white font-medium">{option.name}</h4>
-                      {option.description && <p className="text-gray-300 text-sm">{option.description}</p>}
+                      <p className="text-blue-300 text-xs font-mono mt-1">{`{{${option.id}}}`}</p>
+                      {option.description && <p className="text-gray-300 text-sm mt-1">{option.description}</p>}
                       <span className="inline-block bg-gray-600 text-xs px-2 py-1 rounded mt-1">
                         {option.type}
                       </span>
@@ -1638,15 +1659,28 @@ const FlowOptionsModal: React.FC<{
               </div>
             )}
 
+            <div className="mb-4">
+              <label className="block text-white text-sm font-medium mb-2">
+                ID * <span className="text-gray-400 text-xs">(use in nodes as {`{{id}}`})</span>
+              </label>
+              <input
+                type="text"
+                value={formData.id}
+                onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+                className="w-full p-2 bg-gray-600 text-white rounded"
+                placeholder="e.g. damageMultiplier"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-white text-sm font-medium mb-2">Name *</label>
+                <label className="block text-white text-sm font-medium mb-2">Display Name *</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full p-2 bg-gray-600 text-white rounded"
-                  placeholder="Option name"
+                  placeholder="Damage Multiplier"
                 />
               </div>
               <div>
