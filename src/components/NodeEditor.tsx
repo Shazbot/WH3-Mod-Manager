@@ -1916,7 +1916,8 @@ const nodeTypeSections: NodeTypeSection[] = [
 const executeGraphInBackend = async (
   nodes: Node[],
   edges: Edge[],
-  currentPackName?: string
+  currentPackName?: string,
+  flowOptions?: FlowOption[]
 ): Promise<{
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
@@ -1928,23 +1929,55 @@ const executeGraphInBackend = async (
   try {
     // Handle useCurrentPack flag - replace pack selection with current pack
     const processedNodes = nodes.map((node) => {
-      if (currentPackName && (node.data as any)?.useCurrentPack === true) {
-        const nodeData = { ...node.data };
+      let nodeData = { ...node.data };
+      let modified = false;
 
+      // Handle useCurrentPack
+      if (currentPackName && (node.data as any)?.useCurrentPack === true) {
         // For packfilesdropdown nodes, set selectedPack to current pack
         if (node.type === "packfilesdropdown") {
           nodeData.selectedPack = currentPackName;
           console.log(`Node ${node.id}: Using current pack "${currentPackName}" (useCurrentPack enabled)`);
+          modified = true;
         }
         // For packedfiles nodes, set textValue to current pack
         else if (node.type === "packedfiles") {
           nodeData.textValue = currentPackName;
           console.log(`Node ${node.id}: Using current pack "${currentPackName}" (useCurrentPack enabled)`);
+          modified = true;
         }
-
-        return { ...node, data: nodeData };
       }
-      return node;
+
+      // Handle flow option replacements in all text fields
+      if (flowOptions && flowOptions.length > 0) {
+        // Fields that might contain option placeholders
+        const textFields = ['textValue', 'pattern', 'beforeText', 'afterText', 'joinSeparator', 'packName', 'packedFileName'];
+
+        for (const fieldName of textFields) {
+          const fieldValue = (nodeData as any)?.[fieldName];
+          if (typeof fieldValue === 'string' && fieldValue) {
+            let modifiedValue = fieldValue;
+
+            for (const option of flowOptions) {
+              const placeholder = `{{${option.id}}}`;
+              if (modifiedValue.includes(placeholder)) {
+                modifiedValue = modifiedValue.replace(
+                  new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"),
+                  String(option.value)
+                );
+                console.log(`Node ${node.id}: Replaced ${placeholder} with "${option.value}" in ${fieldName}`);
+                modified = true;
+              }
+            }
+
+            if (modifiedValue !== fieldValue) {
+              (nodeData as any)[fieldName] = modifiedValue;
+            }
+          }
+        }
+      }
+
+      return modified ? { ...node, data: nodeData } : node;
     });
 
     // Convert nodes and edges to serialized format for backend
@@ -3072,7 +3105,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
 
       // Execute the entire graph in the backend
-      const result = await executeGraphInBackend(nodes, edges, currentPack);
+      const result = await executeGraphInBackend(nodes, edges, currentPack, flowOptions);
 
       console.log(
         `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`

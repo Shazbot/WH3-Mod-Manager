@@ -1200,25 +1200,33 @@ export const executeFlowsForPack = async (
         // Inject user option values into nodes
         if (flowData.options && flowOptions?.optionValues) {
           for (const node of flowData.nodes) {
-            // Find option references in textValue and replace with user values
-            const textValue = node.data.textValue || "";
-            let modifiedTextValue = textValue;
+            // Fields that might contain option placeholders
+            const textFields = ["textValue", "pattern", "beforeText", "afterText", "joinSeparator", "packName", "packedFileName"];
 
-            for (const option of flowData.options) {
-              const userValue = flowOptions.optionValues[option.id];
-              if (userValue !== undefined) {
-                // Replace option placeholders like {{optionId}} with user values
-                const placeholder = `{{${option.id}}}`;
-                if (modifiedTextValue.includes(placeholder)) {
-                  modifiedTextValue = modifiedTextValue.replace(
-                    new RegExp(placeholder, "g"),
-                    String(userValue)
-                  );
+            for (const fieldName of textFields) {
+              const fieldValue = (node.data as any)[fieldName];
+              if (typeof fieldValue === "string" && fieldValue) {
+                let modifiedValue = fieldValue;
+
+                for (const option of flowData.options) {
+                  const userValue = flowOptions.optionValues[option.id];
+                  if (userValue !== undefined) {
+                    // Replace option placeholders like {{optionId}} with user values
+                    const placeholder = `{{${option.id}}}`;
+                    if (modifiedValue.includes(placeholder)) {
+                      modifiedValue = modifiedValue.replace(
+                        new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+                        String(userValue)
+                      );
+                    }
+                  }
+                }
+
+                if (modifiedValue !== fieldValue) {
+                  (node.data as any)[fieldName] = modifiedValue;
                 }
               }
             }
-
-            node.data.textValue = modifiedTextValue;
           }
         }
 
