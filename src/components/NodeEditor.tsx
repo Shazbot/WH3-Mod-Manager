@@ -3096,6 +3096,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
     setIsExecuting(true);
     console.log("Starting node graph execution in backend...");
+    console.log("Flow options at execution time:", flowOptions);
 
     try {
       if (nodes.length === 0) {
@@ -3138,7 +3139,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     } finally {
       setIsExecuting(false);
     }
-  }, [nodes, edges, isExecuting]);
+  }, [nodes, edges, isExecuting, currentPack, flowOptions]);
 
   useEffect(() => {
     const loadFileContent = async () => {
