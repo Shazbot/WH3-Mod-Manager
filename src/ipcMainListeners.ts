@@ -2331,6 +2331,23 @@ export const registerIpcMainListeners = (
     });
 
     await Promise.allSettled(deletePromises);
+
+    // Clear whmm_overwrites directory
+    try {
+      const gamePath = appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
+      if (gamePath) {
+        const overwritesDirPath = nodePath.join(gamePath, "whmm_overwrites");
+        if (fsExtra.existsSync(overwritesDirPath)) {
+          console.log(`DELETING whmm_overwrites directory: ${overwritesDirPath}`);
+          fsExtra.removeSync(overwritesDirPath);
+          console.log("Successfully cleared whmm_overwrites");
+        }
+      }
+    } catch (error) {
+      console.log(
+        `Error clearing whmm_overwrites: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
     // getAllMods();
   });
 
@@ -3686,24 +3703,24 @@ export const registerIpcMainListeners = (
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
 
         if (enabledModsWithOverwrites.length > 0) {
-          const mergedDirPath = nodePath.join(
+          const overwritesDirPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "/whmm_overwrites/"
           );
 
-          if (!fsExtra.existsSync(mergedDirPath)) {
-            exec(`mkdir "${mergedDirPath}"`);
+          if (!fsExtra.existsSync(overwritesDirPath)) {
+            exec(`mkdir "${overwritesDirPath}"`);
             await new Promise((resolve) => {
               setTimeout(resolve, 100);
             });
           }
 
-          extraEnabledMods += `\nadd_working_directory "${linuxBit + mergedDirPath}";`;
+          extraEnabledMods += `\nadd_working_directory "${linuxBit + overwritesDirPath}";`;
 
           for (const pack of enabledModsWithOverwrites) {
             await createOverwritePack(
               pack.path,
-              nodePath.join(mergedDirPath, pack.name),
+              nodePath.join(overwritesDirPath, pack.name),
               startGameOptions.packDataOverwrites[pack.path]
             );
 
