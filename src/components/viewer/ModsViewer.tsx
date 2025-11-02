@@ -144,7 +144,7 @@ const ModsViewer = memo(() => {
         </Modal>
       )}
 
-      <div className="dark:text-gray-300">
+      <div className="dark:text-gray-300 explicit-height-without-topbar-and-padding">
         {isOpen && (
           <>
             {/* Save Pack Button */}
@@ -171,18 +171,19 @@ const ModsViewer = memo(() => {
               style={{
                 width: "100%",
                 display: "flex",
+                height: "100%",
               }}
             >
               <Resizable
                 defaultSize={{
                   width: "17%",
-                  height: "85vh",
+                  height: "100%",
                 }}
                 maxWidth="100%"
                 minWidth="1"
               >
-                <div>
-                  <div className="overflow-auto  h-[85vh]">
+                <div className="h-full flex flex-col">
+                  <div className="overflow-auto flex-1">
                     <PackTablesTreeView tableFilter={dbTableFilter} />
                   </div>
 

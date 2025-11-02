@@ -204,7 +204,6 @@ const HandsontableWrapper = memo(
             "filter_action_bar",
           ]}
           width="100%"
-          height="85vh"
           // colHeaders={columnHeaders}
           licenseKey="non-commercial-and-evaluation"
         />
@@ -392,8 +391,8 @@ const PackTablesTableView = memo(() => {
   // console.log("COLUMNS:", columns);
 
   return (
-    <div>
-      <div className="ht-theme-main-dark">
+    <div className="flex flex-col h-full">
+      <div className="ht-theme-main-dark flex-1 max-w-lg">
         <HandsontableWrapper
           data={data}
           columns={columns}

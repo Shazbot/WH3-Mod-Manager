@@ -94,6 +94,7 @@ const LeftSidebar = memo(() => {
         </TabList>
         <TabPanel></TabPanel>
         <TabPanel></TabPanel>
+        <TabPanel></TabPanel>
         {isFeaturesForModdersEnabled && <TabPanel></TabPanel>}
       </Tabs>
     </>
