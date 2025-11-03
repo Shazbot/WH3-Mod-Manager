@@ -26,6 +26,10 @@ const ModsViewer = memo(() => {
   const startArgs = useAppSelector((state) => state.app.startArgs);
 
   const [isOpen, setIsOpen] = React.useState(true);
+  const [isSaveAsModalOpen, setIsSaveAsModalOpen] = React.useState(false);
+  const [saveAsPackName, setSaveAsPackName] = React.useState("");
+  const [saveAsDirectory, setSaveAsDirectory] = React.useState<string | undefined>(undefined);
+  const [isSaveAsProcessing, setIsSaveAsProcessing] = React.useState(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -63,6 +67,57 @@ const ModsViewer = memo(() => {
     } catch (error) {
       console.error("Error saving pack:", error);
       alert(`Error saving pack: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
+  const handleSavePackAs = () => {
+    if (!hasUnsavedFiles) return;
+    setSaveAsPackName("");
+    setSaveAsDirectory(undefined);
+    setIsSaveAsModalOpen(true);
+  };
+
+  const handleSaveAsConfirm = async () => {
+    if (!saveAsPackName.trim() || !saveAsDirectory) {
+      alert("Please enter a pack name and select a directory");
+      return;
+    }
+
+    setIsSaveAsProcessing(true);
+
+    try {
+      const result = await window.api?.savePackAsWithUnsavedFiles(
+        packPath,
+        saveAsPackName.trim(),
+        saveAsDirectory
+      );
+      if (result?.success) {
+        console.log("Pack saved as successfully:", result.savedPath);
+        alert(`Pack saved successfully to: ${result.savedPath}`);
+        setIsSaveAsModalOpen(false);
+        setSaveAsPackName("");
+        setSaveAsDirectory(undefined);
+      } else {
+        console.error("Failed to save pack as:", result?.error);
+        alert(`Failed to save pack as: ${result?.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error saving pack as:", error);
+      alert(`Error saving pack as: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsSaveAsProcessing(false);
+    }
+  };
+
+  const handleSelectSaveAsDirectory = async () => {
+    try {
+      const selectedDirectory = await window.api?.selectDirectory();
+      if (selectedDirectory) {
+        setSaveAsDirectory(selectedDirectory);
+      }
+    } catch (error) {
+      console.error("Error selecting directory:", error);
+      alert(`Error selecting directory: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
 
@@ -144,12 +199,80 @@ const ModsViewer = memo(() => {
         </Modal>
       )}
 
+      {/* Save As Modal */}
+      <Modal
+        onClose={() => setIsSaveAsModalOpen(false)}
+        show={isSaveAsModalOpen}
+        size="md"
+        position="center"
+      >
+        <Modal.Header>Save Pack As</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Pack Name (without .pack extension)
+              </label>
+              <input
+                type="text"
+                value={saveAsPackName}
+                onChange={(e) => setSaveAsPackName(e.target.value)}
+                placeholder="e.g. my_custom_pack"
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                disabled={isSaveAsProcessing}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Save Location
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={saveAsDirectory || ""}
+                  placeholder="Click Browse to select directory"
+                  readOnly
+                  className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-none"
+                />
+                <button
+                  onClick={handleSelectSaveAsDirectory}
+                  disabled={isSaveAsProcessing}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                >
+                  Browse
+                </button>
+              </div>
+              {saveAsDirectory && (
+                <p className="text-xs text-gray-400 mt-1 truncate">{saveAsDirectory}</p>
+              )}
+            </div>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            onClick={() => setIsSaveAsModalOpen(false)}
+            disabled={isSaveAsProcessing}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSaveAsConfirm}
+            disabled={isSaveAsProcessing || !saveAsPackName.trim() || !saveAsDirectory}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaveAsProcessing ? "Saving..." : "Save"}
+          </button>
+        </Modal.Footer>
+      </Modal>
+
       <div className="dark:text-gray-300 explicit-height-without-topbar-and-padding flex flex-col">
         {isOpen && (
           <>
             {/* Save Pack Button */}
             {hasUnsavedFiles && (
-              <div className="flex justify-end p-2 bg-gray-800 border-b border-gray-600">
+              <div className="flex justify-end gap-2 p-2 bg-gray-800 border-b border-gray-600">
                 <button
                   onClick={handleSavePack}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
@@ -163,6 +286,20 @@ const ModsViewer = memo(() => {
                     />
                   </svg>
                   Save Pack
+                </button>
+                <button
+                  onClick={handleSavePackAs}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 19l9 2-9-18-9 18 9-2m0 0v-8m0 8l-6-4m6 4l6-4"
+                    />
+                  </svg>
+                  Save As
                 </button>
               </div>
             )}

@@ -337,6 +337,16 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("savePackWithUnsavedFiles", packPath),
 
+  savePackAsWithUnsavedFiles: (
+    packPath: string,
+    newPackName: string,
+    newPackDirectory: string
+  ): Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("savePackAsWithUnsavedFiles", packPath, newPackName, newPackDirectory),
+
   readFileFromPack: (
     packPath: string,
     fileName: string
@@ -353,6 +363,9 @@ const api = {
     flowFiles?: { name: string; content: string }[];
     error?: string;
   }> => ipcRenderer.invoke("getFlowFilesFromPack", packPath),
+
+  selectDirectory: (): Promise<string | undefined> =>
+    ipcRenderer.invoke("selectDirectory"),
 };
 
 export type api = typeof api;
