@@ -144,7 +144,7 @@ const ModsViewer = memo(() => {
         </Modal>
       )}
 
-      <div className="dark:text-gray-300 explicit-height-without-topbar-and-padding">
+      <div className="dark:text-gray-300 explicit-height-without-topbar-and-padding flex flex-col">
         {isOpen && (
           <>
             {/* Save Pack Button */}
@@ -167,13 +167,7 @@ const ModsViewer = memo(() => {
               </div>
             )}
 
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                height: "100%",
-              }}
-            >
+            <div className="flex flex-1 w-full h-full overflow-hidden">
               <Resizable
                 defaultSize={{
                   width: "17%",
