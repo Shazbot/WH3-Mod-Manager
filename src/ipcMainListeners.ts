@@ -1925,6 +1925,69 @@ export const registerIpcMainListeners = (
     }
   });
 
+  ipcMain.handle(
+    "savePackAsWithUnsavedFiles",
+    async (event, packPath: string, newPackName: string, newPackDirectory: string) => {
+      try {
+        console.log("savePackAsWithUnsavedFiles:", packPath, newPackName, newPackDirectory);
+
+        const unsavedFiles = appData.unsavedPacksData[packPath];
+        if (!unsavedFiles || unsavedFiles.length === 0) {
+          return {
+            success: false,
+            error: "No unsaved files found for this pack",
+          };
+        }
+
+        // Read the original pack
+        const pack = await readPack(packPath, { skipParsingTables: true });
+
+        // Convert unsaved files to format for writePack (similar to DBClone.ts)
+        const filesToSave = unsavedFiles.map((file) => {
+          const buffer = file.buffer || Buffer.from(file.text || "");
+          return {
+            name: file.name,
+            buffer: buffer,
+            file_size: buffer.length,
+          };
+        });
+
+        // Sort files by name (as done in DBClone.ts)
+        const sortedFilesToSave = filesToSave.toSorted((firstPf, secondPf) => {
+          return firstPf.name.localeCompare(secondPf.name);
+        });
+
+        // Create new pack path with user-provided name and directory
+        const savePath = nodePath.join(newPackDirectory, `${newPackName}.pack`);
+
+        // Check if file already exists
+        if (fsExtra.existsSync(savePath)) {
+          return {
+            success: false,
+            error: `Pack file already exists at: ${savePath}`,
+          };
+        }
+
+        // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
+        await writePack(sortedFilesToSave, savePath, pack, true);
+
+        console.log(`Pack saved to: ${savePath}`);
+
+        // Clear unsaved files for this pack
+        delete appData.unsavedPacksData[packPath];
+        windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
+
+        return { success: true, savedPath: savePath };
+      } catch (error) {
+        console.error("Error saving pack as with unsaved files:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to save pack",
+        };
+      }
+    }
+  );
+
   ipcMain.handle("readFileFromPack", async (event, packPath: string, fileName: string) => {
     try {
       console.log("readFileFromPack:", packPath, fileName);
@@ -3897,4 +3960,20 @@ export const registerIpcMainListeners = (
       }
     }
   );
+
+  ipcMain.handle("selectDirectory", async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow || new BrowserWindow(), {
+        properties: ["openDirectory"],
+      });
+
+      if (!result.canceled && result.filePaths.length > 0) {
+        return result.filePaths[0];
+      }
+      return undefined;
+    } catch (error) {
+      console.error("Error selecting directory:", error);
+      return undefined;
+    }
+  });
 };
