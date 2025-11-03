@@ -20,6 +20,7 @@ const ModsViewer = memo(() => {
   const packsData = useAppSelector((state) => state.app.packsData);
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const currentGame = useAppSelector((state) => state.app.currentGame);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const packPath =
     currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
@@ -30,6 +31,10 @@ const ModsViewer = memo(() => {
   const [saveAsPackName, setSaveAsPackName] = React.useState("");
   const [saveAsDirectory, setSaveAsDirectory] = React.useState<string | undefined>(undefined);
   const [isSaveAsProcessing, setIsSaveAsProcessing] = React.useState(false);
+  const [isNewPackModalOpen, setIsNewPackModalOpen] = React.useState(false);
+  const [newPackName, setNewPackName] = React.useState("");
+  const [newPackDirectory, setNewPackDirectory] = React.useState<string | undefined>(undefined);
+  const [isNewPackProcessing, setIsNewPackProcessing] = React.useState(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -114,6 +119,53 @@ const ModsViewer = memo(() => {
       const selectedDirectory = await window.api?.selectDirectory();
       if (selectedDirectory) {
         setSaveAsDirectory(selectedDirectory);
+      }
+    } catch (error) {
+      console.error("Error selecting directory:", error);
+      alert(`Error selecting directory: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
+  const handleNewPack = () => {
+    if (!isFeaturesForModdersEnabled) return;
+    setNewPackName("");
+    setNewPackDirectory(undefined);
+    setIsNewPackModalOpen(true);
+  };
+
+  const handleNewPackConfirm = async () => {
+    if (!newPackName.trim() || !newPackDirectory) {
+      alert("Please enter a pack name and select a directory");
+      return;
+    }
+
+    setIsNewPackProcessing(true);
+
+    try {
+      const result = await window.api?.createNewPack(newPackName.trim(), newPackDirectory);
+      if (result?.success) {
+        console.log("Pack created successfully:", result.packPath);
+        alert(`Pack created successfully at: ${result.packPath}`);
+        setIsNewPackModalOpen(false);
+        setNewPackName("");
+        setNewPackDirectory(undefined);
+      } else {
+        console.error("Failed to create pack:", result?.error);
+        alert(`Failed to create pack: ${result?.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error creating pack:", error);
+      alert(`Error creating pack: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsNewPackProcessing(false);
+    }
+  };
+
+  const handleSelectNewPackDirectory = async () => {
+    try {
+      const selectedDirectory = await window.api?.selectDirectory();
+      if (selectedDirectory) {
+        setNewPackDirectory(selectedDirectory);
       }
     } catch (error) {
       console.error("Error selecting directory:", error);
@@ -267,42 +319,129 @@ const ModsViewer = memo(() => {
         </Modal.Footer>
       </Modal>
 
+      {/* New Pack Modal */}
+      <Modal
+        onClose={() => setIsNewPackModalOpen(false)}
+        show={isNewPackModalOpen}
+        size="md"
+        position="center"
+      >
+        <Modal.Header>Create New Pack</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Pack Name (without .pack extension)
+              </label>
+              <input
+                type="text"
+                value={newPackName}
+                onChange={(e) => setNewPackName(e.target.value)}
+                placeholder="e.g. new_mod_pack"
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                disabled={isNewPackProcessing}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Save Location
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPackDirectory || ""}
+                  placeholder="Click Browse to select directory"
+                  readOnly
+                  className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-none"
+                />
+                <button
+                  onClick={handleSelectNewPackDirectory}
+                  disabled={isNewPackProcessing}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                >
+                  Browse
+                </button>
+              </div>
+              {newPackDirectory && (
+                <p className="text-xs text-gray-400 mt-1 truncate">{newPackDirectory}</p>
+              )}
+            </div>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            onClick={() => setIsNewPackModalOpen(false)}
+            disabled={isNewPackProcessing}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleNewPackConfirm}
+            disabled={isNewPackProcessing || !newPackName.trim() || !newPackDirectory}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isNewPackProcessing ? "Creating..." : "Create"}
+          </button>
+        </Modal.Footer>
+      </Modal>
+
       <div className="dark:text-gray-300 explicit-height-without-topbar-and-padding flex flex-col">
         {isOpen && (
           <>
-            {/* Save Pack Button */}
-            {hasUnsavedFiles && (
-              <div className="flex justify-end gap-2 p-2 bg-gray-800 border-b border-gray-600">
+            {/* Toolbar */}
+            <div className="flex justify-between items-center p-2 bg-gray-800 border-b border-gray-600">
+              {isFeaturesForModdersEnabled && (
                 <button
-                  onClick={handleSavePack}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                  onClick={handleNewPack}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                      d="M12 4v16m8-8H4"
                     />
                   </svg>
-                  Save Pack
+                  New Pack
                 </button>
-                <button
-                  onClick={handleSavePackAs}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2m0 0v-8m0 8l-6-4m6 4l6-4"
-                    />
-                  </svg>
-                  Save As
-                </button>
-              </div>
-            )}
+              )}
+
+              {hasUnsavedFiles && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSavePack}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
+                    Save Pack
+                  </button>
+                  <button
+                    onClick={handleSavePackAs}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 19l9 2-9-18-9 18 9-2m0 0v-8m0 8l-6-4m6 4l6-4"
+                      />
+                    </svg>
+                    Save As
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-1 w-full h-full overflow-hidden">
               <Resizable

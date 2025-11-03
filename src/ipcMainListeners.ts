@@ -3976,4 +3976,34 @@ export const registerIpcMainListeners = (
       return undefined;
     }
   });
+
+  ipcMain.handle("createNewPack", async (event, packName: string, packDirectory: string) => {
+    try {
+      console.log("createNewPack:", packName, packDirectory);
+
+      const savePath = nodePath.join(packDirectory, `${packName}.pack`);
+
+      // Check if file already exists
+      if (fsExtra.existsSync(savePath)) {
+        return {
+          success: false,
+          error: `Pack file already exists at: ${savePath}`,
+        };
+      }
+
+      // Create an empty pack file
+      const { writePack } = await import("./packFileSerializer");
+      await writePack([], savePath);
+
+      console.log(`Pack created at: ${savePath}`);
+
+      return { success: true, packPath: savePath };
+    } catch (error) {
+      console.error("Error creating pack:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to create pack",
+      };
+    }
+  });
 };

@@ -366,6 +366,15 @@ const api = {
 
   selectDirectory: (): Promise<string | undefined> =>
     ipcRenderer.invoke("selectDirectory"),
+
+  createNewPack: (
+    packName: string,
+    packDirectory: string
+  ): Promise<{
+    success: boolean;
+    packPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("createNewPack", packName, packDirectory),
 };
 
 export type api = typeof api;
