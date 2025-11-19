@@ -1,4 +1,6 @@
+import { XYPosition } from "@xyflow/react";
 import { executeNodeAction } from "./nodeExecutor";
+import { DBVersion } from "./packFileTypes";
 
 interface NodeGraphExecutionRequest {
   nodes: SerializedNode[];
@@ -17,9 +19,10 @@ interface NodeGraphExecutionResult {
 interface SerializedNode {
   id: string;
   type: FlowNodeType;
+  position?: XYPosition;
   data: {
     label: string;
-    type: string;
+    type: FlowNodeType;
     textValue?: string;
     selectedPack?: string;
     selectedTable?: string;
@@ -30,7 +33,6 @@ interface SerializedNode {
     packedFileName?: string;
     pattern?: string;
     joinSeparator?: string;
-    groupedTextSelection?: string;
     beforeText?: string;
     afterText?: string;
     useCurrentPack?: boolean;
@@ -39,6 +41,8 @@ interface SerializedNode {
     connectedTableName?: string;
     outputType?: string;
     inputType?: string;
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
+    groupedTextSelection?: "Text" | "Text Lines";
   };
 }
 

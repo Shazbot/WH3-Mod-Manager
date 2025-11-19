@@ -36,6 +36,8 @@ const UserFlowOptionsModal: React.FC<{
       const loadedFlows: FlowWithOptions[] = [];
       const initialValues: Record<string, any> = {};
 
+      if (!result.flowFiles) return;
+
       for (const flowFile of result.flowFiles) {
         try {
           // Parse the flow file JSON
@@ -218,10 +220,7 @@ const UserFlowOptionsModal: React.FC<{
         )}
 
         <div className="mt-6 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-          >
+          <button onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded">
             Close
           </button>
           <button

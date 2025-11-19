@@ -659,7 +659,8 @@ declare global {
       | DBNumericAdjustmentNodeData
       | DBSaveChangesNodeData
       | GroupedTextNodeData
-      | TextNodeData;
+      | TextNodeData
+      | TextLinesNodeData;
     error?: string;
   }
 
@@ -725,6 +726,12 @@ declare global {
   interface GroupedTextNodeData {
     type: "GroupedText";
     text: string[];
+    textLines: string[][];
+    groupCount?: number;
+  }
+
+  interface TextLinesNodeData {
+    type: "Text Lines";
     textLines: string[][];
     groupCount?: number;
   }

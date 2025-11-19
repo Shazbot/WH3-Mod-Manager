@@ -1777,7 +1777,7 @@ export const registerIpcMainListeners = (
           type: FlowNodeType;
           data: {
             label: string;
-            type: string;
+            type: FlowNodeType;
             textValue?: string;
             outputType?: string;
             inputType?: string;
@@ -2892,7 +2892,10 @@ export const registerIpcMainListeners = (
 
     windows.viewerWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.viewerWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
-    windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
+    windows.viewerWindow?.webContents.send(
+      "setIsFeaturesForModdersEnabled",
+      appData.isFeaturesForModdersEnabled
+    );
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {

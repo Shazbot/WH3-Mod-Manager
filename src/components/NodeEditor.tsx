@@ -21,10 +21,10 @@ import { DBVersion } from "../packFileTypes";
 import { addToast } from "../appSlice";
 
 // Serialization types
-export interface SerializedNode {
+interface SerializedNode {
   id: string;
-  type: string;
-  position: XYPosition;
+  type: FlowNodeType;
+  position?: XYPosition;
   data: {
     label: string;
     type: FlowNodeType;
@@ -34,12 +34,18 @@ export interface SerializedNode {
     selectedColumn?: string;
     selectedColumn1?: string;
     selectedColumn2?: string;
+    packName?: string;
+    packedFileName?: string;
+    pattern?: string;
+    joinSeparator?: string;
+    beforeText?: string;
+    afterText?: string;
+    useCurrentPack?: boolean;
+    filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }>;
     columnNames?: string[];
     connectedTableName?: string;
-    outputType?: NodeEdgeTypes;
-    inputType?: NodeEdgeTypes;
-    tableNames?: string[];
-    filters?: string;
+    outputType?: string;
+    inputType?: string;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
     groupedTextSelection?: "Text" | "Text Lines";
   };
@@ -2780,7 +2786,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     const serializedNodes: SerializedNode[] = nodes.map((node) => {
       const serialized = {
         id: node.id,
-        type: node.type || ("default" as FlowNodeType),
+        type: node.type as FlowNodeType,
         position: node.position,
         data: {
           label: String(node.data?.label || ""),
@@ -2870,12 +2876,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           const node: Node = {
             id: serializedNode.id,
             type: serializedNode.type,
-            position: serializedNode.position,
+            position: serializedNode.position ?? { x: 0, y: 0 },
             data: serializedNode.data,
           };
 
           // Add styling for default nodes
-          if (serializedNode.type === "default") {
+          if (!serializedNode.type) {
             node.style = {
               border: "2px solid #3b82f6",
               borderRadius: "8px",
