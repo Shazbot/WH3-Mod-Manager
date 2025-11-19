@@ -1453,6 +1453,7 @@ export const registerIpcMainListeners = (
       }
 
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
+      appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
 
       return appState;
     } finally {
@@ -2871,6 +2872,7 @@ export const registerIpcMainListeners = (
 
     windows.viewerWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.viewerWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
+    windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", appData.isFeaturesForModdersEnabled);
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
