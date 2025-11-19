@@ -4006,4 +4006,10 @@ export const registerIpcMainListeners = (
       };
     }
   });
+
+  ipcMain.on("syncIsFeaturesForModdersEnabled", (event, isFeaturesForModdersEnabled: boolean) => {
+    console.log("syncIsFeaturesForModdersEnabled:", isFeaturesForModdersEnabled);
+    // Send to viewer window
+    windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
+  });
 };

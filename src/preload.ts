@@ -375,6 +375,13 @@ const api = {
     packPath?: string;
     error?: string;
   }> => ipcRenderer.invoke("createNewPack", packName, packDirectory),
+
+  syncIsFeaturesForModdersEnabled: (isFeaturesForModdersEnabled: boolean) =>
+    ipcRenderer.send("syncIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled),
+
+  setIsFeaturesForModdersEnabled: (
+    callback: (event: any, isFeaturesForModdersEnabled: boolean) => void
+  ) => ipcRenderer.on("setIsFeaturesForModdersEnabled", callback),
 };
 
 export type api = typeof api;

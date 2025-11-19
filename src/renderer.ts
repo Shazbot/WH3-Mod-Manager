@@ -42,6 +42,7 @@ import {
   setCurrentGameNaive,
   setPackSearchResults,
   setReferencesHash,
+  setIsFeaturesForModdersEnabled,
 } from "./appSlice";
 import store from "./store";
 import { DBFieldName, DBFileName, DBVersion, Pack, PackCollisions, PackedFile } from "./packFileTypes";
@@ -111,6 +112,11 @@ window.api?.setIsAdmin((event, isAdmin) => {
 window.api?.setIsWH3Running((event, isWH3Running) => {
   console.log("Setting isWH3Running: ", isWH3Running);
   store.dispatch(setIsWH3Running(isWH3Running));
+});
+
+window.api?.setIsFeaturesForModdersEnabled((event, isFeaturesForModdersEnabled) => {
+  console.log("Setting isFeaturesForModdersEnabled: ", isFeaturesForModdersEnabled);
+  store.dispatch(setIsFeaturesForModdersEnabled(isFeaturesForModdersEnabled));
 });
 
 window.api?.addToast((event, toast) => {
