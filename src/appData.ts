@@ -26,6 +26,7 @@ interface AppData {
   gameSaves: GameSave[];
   saveSetupDone: boolean;
   isMakeUnitsGeneralsEnabled: boolean;
+  isFeaturesForModdersEnabled: boolean;
   hasReadConfig: boolean;
   packsData: Pack[];
   unsavedPacksData: Record<string, PackedFile[]>;
@@ -76,6 +77,7 @@ const appData = {
   gameSaves: [],
   saveSetupDone: false,
   isMakeUnitsGeneralsEnabled: false,
+  isFeaturesForModdersEnabled: false,
   hasReadConfig: false,
   packsData: [],
   unsavedPacksData: {},
