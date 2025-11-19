@@ -16,8 +16,9 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useAppSelector } from "../hooks";
+import { useAppSelector, useAppDispatch } from "../hooks";
 import { DBVersion } from "../packFileTypes";
+import { addToast } from "../appSlice";
 
 // Serialization types
 export interface SerializedNode {
@@ -1407,7 +1408,13 @@ const FlowOptionsModal: React.FC<{
 
     // Check for duplicate IDs
     if (options.some((opt) => opt.id === formData.id.trim())) {
-      alert(`Option ID "${formData.id}" already exists. Please use a unique ID.`);
+      dispatch(
+        addToast({
+          type: "warning",
+          messages: [`Option ID "${formData.id}" already exists. Please use a unique ID.`],
+          startTime: Date.now(),
+        })
+      );
       return;
     }
 
@@ -1467,7 +1474,13 @@ const FlowOptionsModal: React.FC<{
     // Check for duplicate IDs (only if ID changed)
     if (formData.id.trim() !== editingOption.id) {
       if (options.some((opt) => opt.id === formData.id.trim())) {
-        alert(`Option ID "${formData.id}" already exists. Please use a unique ID.`);
+        dispatch(
+          addToast({
+            type: "warning",
+            messages: [`Option ID "${formData.id}" already exists. Please use a unique ID.`],
+            startTime: Date.now(),
+          })
+        );
         return;
       }
     }
@@ -2130,6 +2143,7 @@ interface NodeEditorProps {
 }
 
 const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: NodeEditorProps) => {
+  const dispatch = useAppDispatch();
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -2993,10 +3007,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         console.log(`Loaded graph with ${loadedNodes.length} nodes and ${loadedEdges.length} connections`);
       } catch (error) {
         console.error("Failed to load node graph:", error);
-        alert("Failed to load the node graph file. Please check the file format.");
+        dispatch(
+          addToast({
+            type: "warning",
+            messages: ["Failed to load the node graph file. Please check the file format."],
+            startTime: Date.now(),
+          })
+        );
       }
     },
-    [setNodes, setEdges, DBNameToDBVersions, setFlowOptions, setIsGraphEnabled, setGraphStartsEnabled]
+    [setNodes, setEdges, DBNameToDBVersions, setFlowOptions, setIsGraphEnabled, setGraphStartsEnabled, dispatch]
   );
 
   const loadNodeGraphFile = useCallback(
@@ -3079,16 +3099,28 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const result = await window.api?.saveNodeFlow(currentFile, flowData, currentPack);
       if (result?.success) {
         console.log("Flow saved successfully to:", result.filePath);
-        alert(`Flow saved successfully!`);
+        // alert(`Flow saved successfully!`);
       } else {
         console.error("Failed to save flow:", result?.error);
-        alert(`Failed to save flow: ${result?.error || "Unknown error"}`);
+        dispatch(
+          addToast({
+            type: "warning",
+            messages: [`Failed to save flow: ${result?.error || "Unknown error"}`],
+            startTime: Date.now(),
+          })
+        );
       }
     } catch (error) {
       console.error("Error saving flow:", error);
-      alert(`Error saving flow: ${error instanceof Error ? error.message : "Unknown error"}`);
+      dispatch(
+        addToast({
+          type: "warning",
+          messages: [`Error saving flow: ${error instanceof Error ? error.message : "Unknown error"}`],
+          startTime: Date.now(),
+        })
+      );
     }
-  }, [currentFile, currentPack, serializeNodeGraph]);
+  }, [currentFile, currentPack, serializeNodeGraph, dispatch]);
 
   // Node execution system
   const executeNodeGraph = useCallback(async () => {
@@ -3101,7 +3133,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     try {
       if (nodes.length === 0) {
         console.error("No nodes found in the graph");
-        alert("No nodes found. Add nodes to the graph before executing.");
+        dispatch(
+          addToast({
+            type: "warning",
+            messages: ["No nodes found. Add nodes to the graph before executing."],
+            startTime: Date.now(),
+          })
+        );
         return;
       }
 
@@ -3130,16 +3168,28 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         ? `✅ Graph execution successful!`
         : `❌ Graph execution ${result.failureCount > 0 ? "completed with errors" : "failed"}`;
 
-      alert(
-        `${statusMessage}\n\nExecution Summary (${result.successCount}/${result.totalExecuted} nodes succeeded):\n${summary}\n\nCheck console for detailed results.`
+      dispatch(
+        addToast({
+          type: result.successCount === result.totalExecuted ? "success" : "warning",
+          messages: [
+            `${statusMessage}\n\nExecution Summary (${result.successCount}/${result.totalExecuted} nodes succeeded):\n${summary}\n\nCheck console for detailed results.`,
+          ],
+          startTime: Date.now(),
+        })
       );
     } catch (error) {
       console.error("Error during graph execution:", error);
-      alert(`Graph execution failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      dispatch(
+        addToast({
+          type: "warning",
+          messages: [`Graph execution failed: ${error instanceof Error ? error.message : "Unknown error"}`],
+          startTime: Date.now(),
+        })
+      );
     } finally {
       setIsExecuting(false);
     }
-  }, [nodes, edges, isExecuting, currentPack, flowOptions]);
+  }, [nodes, edges, isExecuting, currentPack, flowOptions, dispatch]);
 
   useEffect(() => {
     const loadFileContent = async () => {
@@ -3162,16 +3212,28 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           loadNodeGraph(result.text);
         } else {
           console.error("Failed to read file from pack:", result?.error);
-          alert(`Failed to load file: ${result?.error || "Unknown error"}`);
+          dispatch(
+            addToast({
+              type: "warning",
+              messages: [`Failed to load file: ${result?.error || "Unknown error"}`],
+              startTime: Date.now(),
+            })
+          );
         }
       } catch (error) {
         console.error("Error loading file:", error);
-        alert(`Error loading file: ${error instanceof Error ? error.message : "Unknown error"}`);
+        dispatch(
+          addToast({
+            type: "warning",
+            messages: [`Error loading file: ${error instanceof Error ? error.message : "Unknown error"}`],
+            startTime: Date.now(),
+          })
+        );
       }
     };
 
     loadFileContent();
-  }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph]);
+  }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph, dispatch]);
 
   return (
     <div className="flex">
