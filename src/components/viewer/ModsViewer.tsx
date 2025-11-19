@@ -36,8 +36,34 @@ const ModsViewer = memo(() => {
   const [isNewPackProcessing, setIsNewPackProcessing] = React.useState(false);
 
   const treeViewRef = useRef<PackTablesTreeViewHandle>(null);
+  const saveAsPackNameInputRef = useRef<HTMLInputElement>(null);
+  const newPackNameInputRef = useRef<HTMLInputElement>(null);
 
   const localized: Record<string, string> = useContext(localizationContext);
+
+  // Focus on the Save As pack name input when modal opens
+  useEffect(() => {
+    if (isSaveAsModalOpen && saveAsPackNameInputRef.current) {
+      // First, focus the window itself to ensure the viewer window has focus
+      window.focus();
+      // Then focus the input after the modal is fully rendered
+      setTimeout(() => {
+        saveAsPackNameInputRef.current?.focus();
+      }, 0);
+    }
+  }, [isSaveAsModalOpen]);
+
+  // Focus on the New Pack name input when modal opens
+  useEffect(() => {
+    if (isNewPackModalOpen && newPackNameInputRef.current) {
+      // First, focus the window itself to ensure the viewer window has focus
+      window.focus();
+      // Then focus the input after the modal is fully rendered
+      setTimeout(() => {
+        newPackNameInputRef.current?.focus();
+      }, 0);
+    }
+  }, [isNewPackModalOpen]);
 
   const [dbTableFilter, setDBTableFilter] = useState("");
 
@@ -265,6 +291,7 @@ const ModsViewer = memo(() => {
                 Pack Name (without .pack extension)
               </label>
               <input
+                ref={saveAsPackNameInputRef}
                 type="text"
                 value={saveAsPackName}
                 onChange={(e) => setSaveAsPackName(e.target.value)}
@@ -328,6 +355,7 @@ const ModsViewer = memo(() => {
               Pack Name (without .pack extension)
             </label>
             <input
+              ref={newPackNameInputRef}
               type="text"
               value={newPackName}
               onChange={(e) => setNewPackName(e.target.value)}
