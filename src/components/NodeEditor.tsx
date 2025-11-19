@@ -329,7 +329,7 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
   data,
   id,
 }) => {
-  console.log("tableNames:", data.tableNames);
+  // console.log("tableNames:", data.tableNames);
   const tableNames = data.tableNames || [];
   const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
 
@@ -1371,6 +1371,7 @@ const FlowOptionsModal: React.FC<{
   graphStartsEnabled,
   onGraphStartsEnabledChange,
 }) => {
+  const dispatch = useAppDispatch();
   const [editingOption, setEditingOption] = useState<FlowOption | null>(null);
   const [isAddingOption, setIsAddingOption] = useState(false);
   const [newOptionType, setNewOptionType] = useState<"textbox" | "range" | "checkbox">("textbox");
@@ -1586,7 +1587,9 @@ const FlowOptionsModal: React.FC<{
                     <div>
                       <h4 className="text-white font-medium">{option.name}</h4>
                       <p className="text-blue-300 text-xs font-mono mt-1">{`{{${option.id}}}`}</p>
-                      {option.description && <p className="text-gray-300 text-sm mt-1">{option.description}</p>}
+                      {option.description && (
+                        <p className="text-gray-300 text-sm mt-1">{option.description}</p>
+                      )}
                       <span className="inline-block bg-gray-600 text-xs px-2 py-1 rounded mt-1">
                         {option.type}
                       </span>
@@ -1964,21 +1967,31 @@ const executeGraphInBackend = async (
       // Handle flow option replacements in all text fields
       if (flowOptions && flowOptions.length > 0) {
         // Fields that might contain option placeholders
-        const textFields = ['textValue', 'pattern', 'beforeText', 'afterText', 'joinSeparator', 'packName', 'packedFileName'];
+        const textFields = [
+          "textValue",
+          "pattern",
+          "beforeText",
+          "afterText",
+          "joinSeparator",
+          "packName",
+          "packedFileName",
+        ];
 
         for (const fieldName of textFields) {
           const fieldValue = (nodeData as any)?.[fieldName];
-          if (typeof fieldValue === 'string' && fieldValue) {
+          if (typeof fieldValue === "string" && fieldValue) {
             let modifiedValue = fieldValue;
 
             for (const option of flowOptions) {
               const placeholder = `{{${option.id}}}`;
               if (modifiedValue.includes(placeholder)) {
                 modifiedValue = modifiedValue.replace(
-                  new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"),
+                  new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
                   String(option.value)
                 );
-                console.log(`Node ${node.id}: Replaced ${placeholder} with "${option.value}" in ${fieldName}`);
+                console.log(
+                  `Node ${node.id}: Replaced ${placeholder} with "${option.value}" in ${fieldName}`
+                );
                 modified = true;
               }
             }
@@ -2168,7 +2181,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   React.useEffect(() => {
     console.log("getDBNameToDBVersions");
     window.api?.getDBNameToDBVersions().then((data) => {
-      console.log("getDBNameToDBVersions:", Object.keys(data));
+      // console.log("getDBNameToDBVersions:", Object.keys(data));
       setDBNameToDBVersions(data);
     });
   }, []);
@@ -3016,7 +3029,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         );
       }
     },
-    [setNodes, setEdges, DBNameToDBVersions, setFlowOptions, setIsGraphEnabled, setGraphStartsEnabled, dispatch]
+    [
+      setNodes,
+      setEdges,
+      DBNameToDBVersions,
+      setFlowOptions,
+      setIsGraphEnabled,
+      setGraphStartsEnabled,
+      dispatch,
+    ]
   );
 
   const loadNodeGraphFile = useCallback(
@@ -3100,6 +3121,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       if (result?.success) {
         console.log("Flow saved successfully to:", result.filePath);
         // alert(`Flow saved successfully!`);
+        dispatch(
+          addToast({
+            type: "success",
+            messages: [`Flow saved successfully!`],
+            startTime: Date.now(),
+          })
+        );
       } else {
         console.error("Failed to save flow:", result?.error);
         dispatch(

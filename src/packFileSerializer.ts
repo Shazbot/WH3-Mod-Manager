@@ -1201,7 +1201,15 @@ export const executeFlowsForPack = async (
         if (flowData.options && flowOptions?.optionValues) {
           for (const node of flowData.nodes) {
             // Fields that might contain option placeholders
-            const textFields = ["textValue", "pattern", "beforeText", "afterText", "joinSeparator", "packName", "packedFileName"];
+            const textFields = [
+              "textValue",
+              "pattern",
+              "beforeText",
+              "afterText",
+              "joinSeparator",
+              "packName",
+              "packedFileName",
+            ];
 
             for (const fieldName of textFields) {
               const fieldValue = (node.data as any)[fieldName];
@@ -2219,10 +2227,10 @@ const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
 class StreamWriter {
   private writeStream: WriteStream;
   private writeQueue: Buffer[] = [];
-  private isWriting: boolean = false;
+  private isWriting = false;
   private batchSize: number;
   private highWaterMark: number;
-  private queuedSize: number = 0;
+  private queuedSize = 0;
   private writePromises: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
 
   constructor(filePath: string, batchSize: number = 1024 * 1024, highWaterMark: number = 16 * 1024) {
