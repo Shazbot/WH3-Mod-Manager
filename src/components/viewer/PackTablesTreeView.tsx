@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useImperativeHandle } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
@@ -12,7 +12,12 @@ type PackTablesTreeViewProps = {
   tableFilter: string;
 };
 
-const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
+export type PackTablesTreeViewHandle = {
+  openNewFlowDialog: () => void;
+};
+
+const PackTablesTreeView = React.memo(
+  React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const currentGame = useAppSelector((state) => state.app.currentGame);
@@ -24,6 +29,13 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
   const [isNewFlowDialogOpen, setIsNewFlowDialogOpen] = React.useState(false);
   const [newFlowName, setNewFlowName] = React.useState("");
+
+  useImperativeHandle(ref, () => ({
+    openNewFlowDialog: () => {
+      setContextMenu(null);
+      setIsNewFlowDialogOpen(true);
+    },
+  }));
 
   const packPath =
     currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
@@ -334,6 +346,7 @@ const PackTablesTreeView = React.memo((props: PackTablesTreeViewProps) => {
       )}
     </div>
   );
-});
+  })
+);
 
 export default PackTablesTreeView;
