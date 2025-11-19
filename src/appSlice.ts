@@ -1112,6 +1112,9 @@ const appSlice = createSlice({
     toggleIsFeaturesForModdersEnabled: (state: AppState) => {
       state.isFeaturesForModdersEnabled = !state.isFeaturesForModdersEnabled;
     },
+    setIsFeaturesForModdersEnabled: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isFeaturesForModdersEnabled = action.payload;
+    },
     setIsDev: (state: AppState, action: PayloadAction<boolean>) => {
       state.isDev = action.payload;
     },
@@ -1378,6 +1381,7 @@ export const {
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsChangingGameProcessPriority,
   toggleIsFeaturesForModdersEnabled,
+  setIsFeaturesForModdersEnabled,
   setSharedMod,
   orderImportedMods,
   addMod,

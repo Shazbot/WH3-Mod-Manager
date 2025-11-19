@@ -615,7 +615,11 @@ const OptionsDrawer = memo(() => {
                     type="checkbox"
                     id="toggleIsFeaturesForModdersEnabled"
                     checked={!!isFeaturesForModdersEnabled}
-                    onChange={() => dispatch(toggleIsFeaturesForModdersEnabled())}
+                    onChange={() => {
+                      dispatch(toggleIsFeaturesForModdersEnabled());
+                      const newValue = !isFeaturesForModdersEnabled;
+                      window.api?.syncIsFeaturesForModdersEnabled(newValue);
+                    }}
                   ></input>
                   <label className="ml-2" htmlFor="toggleIsFeaturesForModdersEnabled">
                     {localized.featuresForModders || "Features For Modders"}
