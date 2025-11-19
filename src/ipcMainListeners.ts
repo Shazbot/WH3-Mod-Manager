@@ -1876,6 +1876,14 @@ export const registerIpcMainListeners = (
     try {
       console.log("savePackWithUnsavedFiles:", packPath);
 
+      // Memory packs must use "Save As" since they don't have a disk location
+      if (packPath.startsWith("memory://")) {
+        return {
+          success: false,
+          error: "Memory packs must use 'Save As' to specify a save location",
+        };
+      }
+
       const unsavedFiles = appData.unsavedPacksData[packPath];
       if (!unsavedFiles || unsavedFiles.length === 0) {
         return {
@@ -1940,8 +1948,17 @@ export const registerIpcMainListeners = (
           };
         }
 
-        // Read the original pack
-        const pack = await readPack(packPath, { skipParsingTables: true });
+        // Check if this is a memory pack (created with "New Pack" button)
+        let pack;
+        if (packPath.startsWith("memory://")) {
+          // For memory packs, create an empty pack structure
+          pack = {
+            packedFiles: [],
+          };
+        } else {
+          // For disk packs, read the original pack
+          pack = await readPack(packPath, { skipParsingTables: true });
+        }
 
         // Convert unsaved files to format for writePack (similar to DBClone.ts)
         const filesToSave = unsavedFiles.map((file) => {
