@@ -1949,12 +1949,14 @@ export const registerIpcMainListeners = (
         }
 
         // Check if this is a memory pack (created with "New Pack" button)
+        const isMemoryPack = packPath.startsWith("memory://");
         let pack;
-        if (packPath.startsWith("memory://")) {
-          // For memory packs, create an empty pack structure
-          pack = {
-            packedFiles: [],
-          };
+        let useFastAppendMode = true;
+
+        if (isMemoryPack) {
+          // For memory packs, we don't have a source pack to clone, so don't use fast append mode
+          useFastAppendMode = false;
+          pack = undefined;
         } else {
           // For disk packs, read the original pack
           pack = await readPack(packPath, { skipParsingTables: true });
@@ -1987,7 +1989,8 @@ export const registerIpcMainListeners = (
         }
 
         // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
-        await writePack(sortedFilesToSave, savePath, pack, true);
+        // For memory packs, don't use fast append mode since there's no source pack
+        await writePack(sortedFilesToSave, savePath, pack, useFastAppendMode);
 
         console.log(`Pack saved to: ${savePath}`);
 
