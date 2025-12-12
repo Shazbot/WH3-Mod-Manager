@@ -622,7 +622,17 @@ const OptionsDrawer = memo(() => {
                     }}
                   ></input>
                   <label className="ml-2" htmlFor="toggleIsFeaturesForModdersEnabled">
-                    {localized.featuresForModders || "Features For Modders"}
+                    <Tooltip
+                      placement="bottom"
+                      style="light"
+                      content={
+                        <>
+                          <div>{"Enables features inside the Mod Manager intended for modders."}</div>
+                        </>
+                      }
+                    >
+                      {localized.featuresForModders || "Features For Modders"}
+                    </Tooltip>
                   </label>
                 </div>
               </>
