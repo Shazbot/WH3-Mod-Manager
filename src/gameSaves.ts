@@ -9,7 +9,7 @@ let savesWatcher: chokidar.FSWatcher | undefined;
 
 let saves: GameSave[] = [];
 
-export const getSavesFolderPath = () => {
+export const getSavesFolderPath = () => { 
   const appDataPath = app.getPath("appData");
   return path.join(
     appDataPath,
@@ -20,8 +20,16 @@ export const getSavesFolderPath = () => {
 };
 export const getSaveFiles = async () => {
   saves = [];
+  let files: fs.Dirent[] = [];
   const folderPath = getSavesFolderPath();
-  const files = await fs.readdirSync(folderPath, { withFileTypes: true });
+
+  try {
+    files = fs.readdirSync(folderPath, { withFileTypes: true });
+  } catch (e) {
+    console.error(e)
+
+    return []
+  }
 
   for (const saveFile of files) {
     if (!saves.find((iterSave) => iterSave.name === saveFile.name)) {
