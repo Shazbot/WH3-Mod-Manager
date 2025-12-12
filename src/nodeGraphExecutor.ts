@@ -154,6 +154,10 @@ export const executeNodeGraph = async (
             afterText: (node.data as any).afterText || "",
             groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
           });
+        } else if (node.type === "allenabledmods") {
+          textValueToUse = JSON.stringify({
+            includeBaseGame: (node.data as any).includeBaseGame !== false,
+          });
         } else {
           textValueToUse = node.data.textValue || "";
         }

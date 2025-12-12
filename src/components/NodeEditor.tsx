@@ -155,6 +155,7 @@ interface PackFilesDropdownNodeData extends NodeData {
 
 interface AllEnabledModsNodeData extends NodeData {
   outputType: "PackFiles";
+  includeBaseGame?: boolean;
 }
 
 interface TableSelectionDropdownNodeData extends NodeData {
@@ -308,14 +309,41 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
 
 // Custom AllEnabledMods node component
 const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: string }> = ({ data, id }) => {
+  const [includeBaseGame, setIncludeBaseGame] = React.useState(data.includeBaseGame !== false);
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setIncludeBaseGame(newValue);
+
+    // Update the node data
+    const updatedData = { ...data, includeBaseGame: newValue };
+    const event_custom = new CustomEvent("nodeDataChanged", {
+      detail: { nodeId: id, data: updatedData },
+    });
+    window.dispatchEvent(event_custom);
+  };
+
   return (
-    <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[200px]">
+    <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[250px]">
       <Handle type="target" position={Position.Left} className="w-3 h-3 bg-green-500" />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <div className="text-xs text-gray-300 mb-2 p-2 bg-gray-800 rounded border border-green-600">
         This node will use all currently enabled mods
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          type="checkbox"
+          id={`includeBaseGame-${id}`}
+          checked={includeBaseGame}
+          onChange={handleCheckboxChange}
+          className="w-4 h-4 cursor-pointer"
+        />
+        <label htmlFor={`includeBaseGame-${id}`} className="text-xs text-gray-300 cursor-pointer">
+          Include Base Game
+        </label>
       </div>
 
       <div className="mt-2 text-xs text-gray-400">Output: PackFiles (All Enabled Mods)</div>
@@ -2569,6 +2597,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             label: nodeData.label,
             type: nodeData.type,
             outputType: "PackFiles" as NodeEdgeTypes,
+            includeBaseGame: true,
           } as AllEnabledModsNodeData,
         };
       } else if (nodeData.type === "tableselection") {

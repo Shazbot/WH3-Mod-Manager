@@ -10,6 +10,7 @@ import {
 import appData from "./appData";
 import { AmendedSchemaField, NewPackedFile } from "./packFileTypes";
 import { format } from "date-fns";
+import { gameToPackWithDBTablesName } from "./supportedGames";
 
 export const executeNodeAction = async (request: NodeExecutionRequest): Promise<NodeExecutionResult> => {
   const { nodeId, nodeType, textValue, inputData } = request;
@@ -23,7 +24,7 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
         return await executePackFilesDropdownNode(nodeId, textValue);
 
       case "allenabledmods":
-        return await executeAllEnabledModsNode(nodeId);
+        return await executeAllEnabledModsNode(nodeId, textValue);
 
       case "tableselection":
         return await executeTableSelectionNode(nodeId, textValue, inputData);
@@ -185,27 +186,24 @@ async function executePackFilesDropdownNode(
   };
 }
 
-async function executeAllEnabledModsNode(nodeId: string): Promise<NodeExecutionResult> {
+async function executeAllEnabledModsNode(nodeId: string, textValue: string): Promise<NodeExecutionResult> {
   console.log(`AllEnabledMods Node ${nodeId}: Processing all enabled mods`);
 
   const packFiles = [] as PackFilesNodeFile[];
 
   try {
+    // Parse the textValue to get includeBaseGame flag
+    let includeBaseGame = true;
+    try {
+      const config = JSON.parse(textValue);
+      includeBaseGame = config.includeBaseGame !== false;
+    } catch (e) {
+      // If parsing fails, default to true
+      includeBaseGame = true;
+    }
+
     // Get all enabled mods from appData
     const enabledMods = appData.enabledMods;
-
-    if (enabledMods.length === 0) {
-      console.warn(`AllEnabledMods Node ${nodeId}: No enabled mods found`);
-      return {
-        success: true,
-        data: {
-          type: "PackFiles",
-          files: [],
-          count: 0,
-          loadedCount: 0,
-        } as PackFilesNodeData,
-      };
-    }
 
     // Add all enabled mods to packFiles
     for (const mod of enabledMods) {
@@ -216,7 +214,32 @@ async function executeAllEnabledModsNode(nodeId: string): Promise<NodeExecutionR
       });
     }
 
-    console.log(`AllEnabledMods Node ${nodeId}: Found ${packFiles.length} enabled mods`);
+    // If includeBaseGame is true, add the base game pack from data folder
+    if (includeBaseGame) {
+      const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+      if (baseGamePackName) {
+        const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+        if (baseGameFolder) {
+          const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+          if (fs.existsSync(baseGamePackPath)) {
+            packFiles.push({
+              name: baseGamePackName,
+              path: baseGamePackPath,
+              loaded: true,
+            });
+            console.log(`AllEnabledMods Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
+          } else {
+            console.warn(`AllEnabledMods Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`);
+          }
+        }
+      }
+    }
+
+    if (packFiles.length === 0) {
+      console.warn(`AllEnabledMods Node ${nodeId}: No mods found (includeBaseGame: ${includeBaseGame})`);
+    }
+
+    console.log(`AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`);
 
     return {
       success: true,
