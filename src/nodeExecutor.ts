@@ -1299,12 +1299,14 @@ async function executeSaveChangesNode(
   let packName = "";
   let packedFileName = "";
   let additionalConfig = "";
+  let flowExecutionId = "";
 
   try {
     const config = JSON.parse(textValue);
     packName = config.packName || "";
     packedFileName = config.packedFileName || "";
     additionalConfig = config.additionalConfig || "";
+    flowExecutionId = config.flowExecutionId || "";
   } catch {
     // If not JSON, treat textValue as additionalConfig
     additionalConfig = textValue.trim();
@@ -1374,8 +1376,27 @@ async function executeSaveChangesNode(
   const nodePath = await import("path");
   const fs = await import("fs");
 
-  const timestamp = format(new Date(), "ddMMyy_HHmmss");
-  const packFileBaseName = packName || `dbflow_${timestamp}`;
+  // Use flowExecutionId for consistent pack name across all save changes nodes in the same flow
+  // If no flowExecutionId, fall back to timestamp. If packName is provided, use that.
+  let packFileBaseName: string;
+  if (packName) {
+    packFileBaseName = packName;
+  } else if (flowExecutionId) {
+    // flowExecutionId is in format like "2025-12-14_23-19-58"
+    // Convert to shorter format: "141225_231958"
+    const parts = flowExecutionId.split("_");
+    if (parts.length === 2) {
+      const datePart = parts[0].split("-").reverse().join("").slice(2); // "141225"
+      const timePart = parts[1].replace(/-/g, ""); // "231958"
+      packFileBaseName = `dbflow_${datePart}_${timePart}`;
+    } else {
+      packFileBaseName = `dbflow_${flowExecutionId.replace(/[-:]/g, "")}`;
+    }
+  } else {
+    const timestamp = format(new Date(), "ddMMyy_HHmmss");
+    packFileBaseName = `dbflow_${timestamp}`;
+  }
+
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
   const whmmFlowsFolder = nodePath.join(dataFolder, "whmm_flows");
 
@@ -1385,7 +1406,68 @@ async function executeSaveChangesNode(
   }
 
   const newPackPath = nodePath.join(whmmFlowsFolder, `${packFileBaseName}.pack`);
-  await writePack(toSave, newPackPath);
+
+  // If pack file already exists (from another save changes node in this flow), merge the tables
+  let filesToSave = toSave;
+  if (fs.existsSync(newPackPath)) {
+    console.log(`SaveChanges Node ${nodeId}: Pack file already exists, merging tables`);
+    try {
+      const existingPack = await readPack(newPackPath);
+
+      // Parse the DB tables to populate schemaFields
+      const dbTableNames = existingPack.packedFiles
+        .filter((pf) => pf.name.toLowerCase().startsWith("db\\"))
+        .map((pf) => {
+          // Extract table name like "db\main_units_tables" from "db\main_units_tables\!data__"
+          const parts = pf.name.split("\\");
+          if (parts.length >= 2) {
+            return `${parts[0]}\\${parts[1]}`;
+          }
+          return pf.name;
+        });
+      const uniqueTableNames = [...new Set(dbTableNames)];
+
+      if (uniqueTableNames.length > 0) {
+        console.log(`SaveChanges Node ${nodeId}: Parsing ${uniqueTableNames.length} table(s) from existing pack`);
+        getPacksTableData([existingPack], uniqueTableNames);
+      }
+
+      const existingFiles = existingPack.packedFiles;
+
+      // Merge: keep existing files and add/replace with new ones
+      const fileMap = new Map<string, NewPackedFile>();
+
+      // Add existing files
+      for (const existingFile of existingFiles) {
+        if (existingFile.schemaFields && existingFile.tableSchema) {
+          console.log(`SaveChanges Node ${nodeId}: Adding existing file to map: ${existingFile.name}`);
+          fileMap.set(existingFile.name, {
+            name: existingFile.name,
+            schemaFields: existingFile.schemaFields,
+            file_size: existingFile.file_size,
+            version: existingFile.version,
+            tableSchema: existingFile.tableSchema,
+          });
+        }
+      }
+
+      // Add/replace with new files
+      for (const newFile of toSave) {
+        const action = fileMap.has(newFile.name) ? "Replacing" : "Adding";
+        console.log(`SaveChanges Node ${nodeId}: ${action} file in map: ${newFile.name}`);
+        fileMap.set(newFile.name, newFile);
+      }
+
+      filesToSave = Array.from(fileMap.values());
+      console.log(
+        `SaveChanges Node ${nodeId}: Merged ${existingFiles.length} existing files with ${toSave.length} new files, total ${filesToSave.length} files`
+      );
+    } catch (error) {
+      console.error(`SaveChanges Node ${nodeId}: Error reading existing pack, will overwrite:`, error);
+    }
+  }
+
+  await writePack(filesToSave, newPackPath);
 
   try {
     // Parse save configuration (could be JSON, simple path, or custom format)

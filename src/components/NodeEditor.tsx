@@ -608,13 +608,17 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
   // Update column names when connected table changes
   React.useEffect(() => {
     console.log(
-      `ColumnSelectionDropdownNode ${id}: useEffect triggered, connectedTableName=${data.connectedTableName}, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
+      `ColumnSelectionDropdownNode ${id}: useEffect triggered, connectedTableName=${
+        data.connectedTableName
+      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
     );
 
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       console.log(
-        `ColumnSelectionDropdownNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${data.connectedTableName}`
+        `ColumnSelectionDropdownNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${
+          data.connectedTableName
+        }`
       );
 
       if (tableVersions && tableVersions.length > 0) {
@@ -630,9 +634,7 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
         window.dispatchEvent(updateEvent);
       }
     } else {
-      console.log(
-        `ColumnSelectionDropdownNode ${id}: Missing connectedTableName or DBNameToDBVersions`
-      );
+      console.log(`ColumnSelectionDropdownNode ${id}: Missing connectedTableName or DBNameToDBVersions`);
     }
   }, [data.connectedTableName, id]);
 
@@ -942,13 +944,17 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
   // Update reference table names when connected table changes
   React.useEffect(() => {
     console.log(
-      `ReferenceTableLookupNode ${id}: useEffect triggered, connectedTableName=${data.connectedTableName}, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
+      `ReferenceTableLookupNode ${id}: useEffect triggered, connectedTableName=${
+        data.connectedTableName
+      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
     );
 
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       console.log(
-        `ReferenceTableLookupNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${data.connectedTableName}`
+        `ReferenceTableLookupNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${
+          data.connectedTableName
+        }`
       );
 
       if (tableVersions && tableVersions.length > 0) {
@@ -967,7 +973,10 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
         }
 
         const refTableArray = Array.from(referenceTables).sort();
-        console.log(`ReferenceTableLookupNode ${id}: Found ${refTableArray.length} reference table(s):`, refTableArray);
+        console.log(
+          `ReferenceTableLookupNode ${id}: Found ${refTableArray.length} reference table(s):`,
+          refTableArray
+        );
         setReferenceTableNames(refTableArray);
 
         // Update the node data with reference table names and column names
@@ -981,9 +990,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
         window.dispatchEvent(updateEvent);
       }
     } else {
-      console.log(
-        `ReferenceTableLookupNode ${id}: Missing connectedTableName or DBNameToDBVersions`
-      );
+      console.log(`ReferenceTableLookupNode ${id}: Missing connectedTableName or DBNameToDBVersions`);
     }
   }, [data.connectedTableName, id]);
 
@@ -2047,7 +2054,7 @@ const nodeTypeSections: NodeTypeSection[] = [
       },
       {
         type: "packfilesdropdown",
-        label: "Dropdown Input",
+        label: "Pack Dropdown Input",
         description: "Node with dropdown for pack selection",
       },
       {
@@ -2067,7 +2074,7 @@ const nodeTypeSections: NodeTypeSection[] = [
       },
       {
         type: "tableselectiondropdown",
-        label: "Dropdown Input",
+        label: "Table Dropdown Input",
         description: "Node with dropdown for table selection",
       },
       {
@@ -2092,7 +2099,7 @@ const nodeTypeSections: NodeTypeSection[] = [
       },
       {
         type: "columnselectiondropdown",
-        label: "Dropdown Input",
+        label: "Column Dropdown Input",
         description: "Node with dropdown for column selection",
       },
       {
@@ -2164,10 +2171,20 @@ const executeGraphInBackend = async (
   error?: string;
 }> => {
   try {
+    // Generate a unique flow execution ID for this run
+    // All save changes nodes will use this to save to the same pack file
+    const flowExecutionId = new Date().toISOString().slice(0, 19).replace(/:/g, "-").replace("T", "_");
+
     // Handle useCurrentPack flag - replace pack selection with current pack
     const processedNodes = nodes.map((node) => {
       let nodeData = { ...node.data };
       let modified = false;
+
+      // Add flow execution ID to save changes nodes so they all save to the same pack
+      if (node.type === "savechanges") {
+        nodeData.flowExecutionId = flowExecutionId;
+        modified = true;
+      }
 
       // Handle useCurrentPack
       if (currentPackName && (node.data as any)?.useCurrentPack === true) {
@@ -2258,6 +2275,9 @@ const executeGraphInBackend = async (
         afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
         includeBaseGame: (node.data as any)?.includeBaseGame,
         inputCount: (node.data as any)?.inputCount,
+        flowExecutionId: (node.data as any)?.flowExecutionId
+          ? String((node.data as any).flowExecutionId)
+          : "",
         useCurrentPack: (node.data as any)?.useCurrentPack
           ? Boolean((node.data as any).useCurrentPack)
           : false,
@@ -2465,7 +2485,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 useCurrentPack: useCurrentPack !== undefined ? useCurrentPack : node.data.useCurrentPack,
                 filters: filters !== undefined ? filters : node.data.filters,
                 selectedReferenceTable:
-                  selectedReferenceTable !== undefined ? selectedReferenceTable : node.data.selectedReferenceTable,
+                  selectedReferenceTable !== undefined
+                    ? selectedReferenceTable
+                    : node.data.selectedReferenceTable,
                 referenceTableNames:
                   referenceTableNames !== undefined ? referenceTableNames : node.data.referenceTableNames,
               },
