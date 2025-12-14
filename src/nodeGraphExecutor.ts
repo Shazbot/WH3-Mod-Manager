@@ -148,6 +148,7 @@ export const executeNodeGraph = async (
             packName: (node.data as any).packName || "",
             packedFileName: (node.data as any).packedFileName || "",
             additionalConfig: node.data.textValue || "",
+            flowExecutionId: (node.data as any).flowExecutionId || "",
           });
         } else if (node.type === "textsurround") {
           textValueToUse = JSON.stringify({
