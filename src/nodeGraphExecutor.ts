@@ -133,9 +133,11 @@ export const executeNodeGraph = async (
             filters: (node.data as any).filters || [],
           });
         } else if (node.type === "referencelookup") {
+          console.log(`Reference lookup node ${node.id} data:`, JSON.stringify(node.data, null, 2));
           textValueToUse = JSON.stringify({
             selectedReferenceTable: (node.data as any).selectedReferenceTable || "",
           });
+          console.log(`Reference lookup node ${node.id} textValueToUse:`, textValueToUse);
         } else if (node.type === "groupedcolumnstotext") {
           textValueToUse = JSON.stringify({
             pattern: (node.data as any).pattern || "{0}: {1}",
@@ -191,17 +193,27 @@ export const executeNodeGraph = async (
               );
 
               if (allDependenciesCompleted) {
-                // Get input data from the most recent dependency (or combine if needed)
-                const lastDependencyData =
-                  targetIncomingConnections.length > 0
-                    ? executionResults.get(
-                        targetIncomingConnections[targetIncomingConnections.length - 1].sourceId
-                      )?.data
-                    : null;
+                // For merge changes node, collect all dependency data into an array
+                let inputDataForTarget;
+                if (targetNode.type === "mergechanges") {
+                  // Collect all inputs from all incoming connections
+                  const allInputs = targetIncomingConnections
+                    .map((conn) => executionResults.get(conn.sourceId)?.data)
+                    .filter((data) => data !== null && data !== undefined);
+                  inputDataForTarget = allInputs.length > 0 ? allInputs : null;
+                } else {
+                  // Get input data from the most recent dependency
+                  inputDataForTarget =
+                    targetIncomingConnections.length > 0
+                      ? executionResults.get(
+                          targetIncomingConnections[targetIncomingConnections.length - 1].sourceId
+                        )?.data
+                      : null;
+                }
 
                 executionQueue.push({
                   node: targetNode,
-                  inputData: lastDependencyData,
+                  inputData: inputDataForTarget,
                 });
               }
             }

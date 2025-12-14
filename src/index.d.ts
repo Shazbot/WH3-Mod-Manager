@@ -636,6 +636,7 @@ declare global {
     | "filter"
     | "referencelookup"
     | "numericadjustment"
+    | "mergechanges"
     | "savechanges"
     | "textsurround"
     | "appendtext"

@@ -50,6 +50,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
 
+      case "mergechanges":
+        return await executeMergeChangesNode(nodeId, inputData);
+
       case "savechanges":
         return await executeSaveChangesNode(nodeId, textValue, inputData);
 
@@ -242,7 +245,9 @@ async function executeAllEnabledModsNode(nodeId: string, textValue: string): Pro
       console.warn(`AllEnabledMods Node ${nodeId}: No mods found (includeBaseGame: ${includeBaseGame})`);
     }
 
-    console.log(`AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`);
+    console.log(
+      `AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`
+    );
 
     return {
       success: true,
@@ -725,7 +730,10 @@ async function executeReferenceLookupNode(
     // Find columns that reference the selected table
     // is_reference is an array where [0] is the referenced table name
     const referenceColumns = tableData.table.tableSchema.fields.filter(
-      (field) => field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === selectedReferenceTable
+      (field) =>
+        field.is_reference &&
+        field.is_reference.length > 0 &&
+        field.is_reference[0] === selectedReferenceTable
     );
 
     console.log(
@@ -748,9 +756,7 @@ async function executeReferenceLookupNode(
     }
   }
 
-  console.log(
-    `Reference Lookup Node ${nodeId}: Collected ${referenceValues.size} unique reference value(s)`
-  );
+  console.log(`Reference Lookup Node ${nodeId}: Collected ${referenceValues.size} unique reference value(s)`);
 
   if (referenceValues.size === 0) {
     console.log(`Reference Lookup Node ${nodeId}: No reference values found, returning empty result`);
@@ -801,10 +807,7 @@ async function executeReferenceLookupNode(
         });
       }
     } catch (error) {
-      console.error(
-        `Reference Lookup Node ${nodeId}: Error reading pack file ${sourceFile.path}:`,
-        error
-      );
+      console.error(`Reference Lookup Node ${nodeId}: Error reading pack file ${sourceFile.path}:`, error);
     }
   }
 
@@ -833,7 +836,8 @@ async function executeReferenceLookupNode(
     ) as AmendedSchemaField[][];
 
     // Find the key column (usually the first column or a column with is_key=true)
-    const keyField = tableData.table.tableSchema.fields.find((field) => field.is_key) ||
+    const keyField =
+      tableData.table.tableSchema.fields.find((field) => field.is_key) ||
       tableData.table.tableSchema.fields[0];
 
     if (!keyField) {
@@ -1074,6 +1078,123 @@ async function executeNumericAdjustmentNode(
       adjustedInputData: adjustedInputData,
       appliedFormula: formula,
       originalData: inputData,
+    } as DBNumericAdjustmentNodeData,
+  };
+}
+
+async function executeMergeChangesNode(
+  nodeId: string,
+  inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[]
+): Promise<NodeExecutionResult> {
+  console.log(`MergeChanges Node ${nodeId}: Merging multiple ChangedColumnSelection inputs`);
+
+  // Convert single input to array for uniform handling
+  const inputs = Array.isArray(inputData) ? inputData : [inputData];
+
+  // Validate all inputs are ChangedColumnSelection
+  for (let i = 0; i < inputs.length; i++) {
+    if (!inputs[i] || inputs[i].type !== "ChangedColumnSelection") {
+      return {
+        success: false,
+        error: `Invalid input at index ${i}: Expected ChangedColumnSelection data`,
+      };
+    }
+  }
+
+  if (inputs.length === 0) {
+    return {
+      success: false,
+      error: "No inputs to merge. Connect at least one ChangedColumnSelection node.",
+    };
+  }
+
+  // Start with a deep clone of the first input as the base
+  const mergedData = structuredClone(inputs[0].adjustedInputData);
+
+  // Merge all subsequent inputs
+  for (let i = 1; i < inputs.length; i++) {
+    const currentInput = inputs[i].adjustedInputData;
+
+    // For each table in the current input, merge with the corresponding table in mergedData
+    for (const currentColumn of currentInput.columns) {
+      // Find if this table already exists in mergedData
+      const existingColumn = mergedData.columns.find(
+        (col) =>
+          col.tableName === currentColumn.tableName &&
+          col.fileName === currentColumn.fileName &&
+          col.sourcePack.path === currentColumn.sourcePack.path
+      );
+
+      if (existingColumn) {
+        // Merge the changes from currentColumn into existingColumn
+        // Update the schemaFields to reflect the changes from the current input
+        if (
+          currentColumn.sourceTable.schemaFields &&
+          existingColumn.sourceTable.schemaFields &&
+          currentColumn.sourceTable.tableSchema &&
+          existingColumn.sourceTable.tableSchema
+        ) {
+          // Merge schemaFields row by row
+          const currentRows = chunkSchemaIntoRows(
+            currentColumn.sourceTable.schemaFields,
+            currentColumn.sourceTable.tableSchema
+          ) as AmendedSchemaField[][];
+
+          const existingRows = chunkSchemaIntoRows(
+            existingColumn.sourceTable.schemaFields,
+            existingColumn.sourceTable.tableSchema
+          ) as AmendedSchemaField[][];
+
+          // Update cells in existingRows with values from currentRows if they were changed
+          for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
+            for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
+              const currentCell = currentRows[rowIdx][cellIdx];
+              const existingCell = existingRows[rowIdx][cellIdx];
+
+              // If this column was selected in the current input, update the existing data
+              if (currentColumn.selectedColumns.includes(currentCell.name)) {
+                existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
+                existingCell.fields[0].val = currentCell.fields[0].val;
+              }
+            }
+          }
+
+          // Flatten back to schemaFields
+          existingColumn.sourceTable.schemaFields = existingRows.flat();
+        }
+
+        // Merge selectedColumns
+        for (const col of currentColumn.selectedColumns) {
+          if (!existingColumn.selectedColumns.includes(col)) {
+            existingColumn.selectedColumns.push(col);
+          }
+        }
+
+        // Merge data array
+        for (const newData of currentColumn.data) {
+          const existingData = existingColumn.data.find((d) => d.col === newData.col);
+          if (existingData) {
+            existingData.data = newData.data;
+          } else {
+            existingColumn.data.push(newData);
+          }
+        }
+      } else {
+        // This table doesn't exist in mergedData yet, add it
+        mergedData.columns.push(structuredClone(currentColumn));
+      }
+    }
+  }
+
+  console.log(`MergeChanges Node ${nodeId}: Successfully merged ${inputs.length} input(s)`);
+
+  return {
+    success: true,
+    data: {
+      type: "ChangedColumnSelection",
+      adjustedInputData: mergedData,
+      appliedFormula: `Merged ${inputs.length} inputs`,
+      originalData: inputs[0].originalData, // Use the first input's original data
     } as DBNumericAdjustmentNodeData,
   };
 }

@@ -111,6 +111,12 @@ interface NumericAdjustmentNodeData extends NodeData {
   outputType: "ChangedColumnSelection";
 }
 
+interface MergeChangesNodeData extends NodeData {
+  inputType: "ChangedColumnSelection";
+  outputType: "ChangedColumnSelection";
+  inputCount: number;
+}
+
 interface SaveChangesNodeData extends NodeData {
   textValue: string;
   packName: string;
@@ -601,11 +607,20 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
 
   // Update column names when connected table changes
   React.useEffect(() => {
+    console.log(
+      `ColumnSelectionDropdownNode ${id}: useEffect triggered, connectedTableName=${data.connectedTableName}, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
+    );
+
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      console.log(
+        `ColumnSelectionDropdownNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${data.connectedTableName}`
+      );
+
       if (tableVersions && tableVersions.length > 0) {
         const tableFields = tableVersions[0].fields || [];
         const fieldNames = tableFields.map((field) => field.name);
+        console.log(`ColumnSelectionDropdownNode ${id}: Setting ${fieldNames.length} column names`);
         setColumnNames(fieldNames);
 
         // Update the node data with new column names
@@ -614,8 +629,12 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
         });
         window.dispatchEvent(updateEvent);
       }
+    } else {
+      console.log(
+        `ColumnSelectionDropdownNode ${id}: Missing connectedTableName or DBNameToDBVersions`
+      );
     }
-  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+  }, [data.connectedTableName, id]);
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -672,10 +691,6 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
   const [selectedColumn2, setSelectedColumn2] = useState(data.selectedColumn2 || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
-  console.log(
-    `GroupByColumnsNode ${id}: selectedColumn1=${selectedColumn1}, selectedColumn2=${selectedColumn2}`
-  );
-
   // Update column names when connected table changes
   React.useEffect(() => {
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -692,7 +707,7 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+  }, [data.connectedTableName, id]);
 
   const handleDropdown1Change = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -799,7 +814,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+  }, [data.connectedTableName, id]);
 
   const updateFilters = (newFilters: FilterRow[]) => {
     setFilters(newFilters);
@@ -926,8 +941,16 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
 
   // Update reference table names when connected table changes
   React.useEffect(() => {
+    console.log(
+      `ReferenceTableLookupNode ${id}: useEffect triggered, connectedTableName=${data.connectedTableName}, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
+    );
+
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      console.log(
+        `ReferenceTableLookupNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${data.connectedTableName}`
+      );
+
       if (tableVersions && tableVersions.length > 0) {
         const tableFields = tableVersions[0].fields || [];
         const fieldNames = tableFields.map((field) => field.name);
@@ -944,6 +967,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
         }
 
         const refTableArray = Array.from(referenceTables).sort();
+        console.log(`ReferenceTableLookupNode ${id}: Found ${refTableArray.length} reference table(s):`, refTableArray);
         setReferenceTableNames(refTableArray);
 
         // Update the node data with reference table names and column names
@@ -956,8 +980,12 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
         });
         window.dispatchEvent(updateEvent);
       }
+    } else {
+      console.log(
+        `ReferenceTableLookupNode ${id}: Missing connectedTableName or DBNameToDBVersions`
+      );
     }
-  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+  }, [data.connectedTableName, id]);
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -1052,6 +1080,44 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
       />
 
       <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-cyan-500"
+        data-output-type="ChangedColumnSelection"
+      />
+    </div>
+  );
+};
+
+// Custom MergeChanges node component that accepts multiple ChangedColumnSelection inputs
+const MergeChangesNode: React.FC<{ data: MergeChangesNodeData; id: string }> = ({ data, id }) => {
+  const inputCount = data.inputCount || 2;
+
+  return (
+    <div className="bg-gray-700 border-2 border-cyan-500 rounded-lg p-4 min-w-[200px]">
+      {/* Multiple input handles */}
+      {Array.from({ length: inputCount }).map((_, index) => (
+        <Handle
+          key={`input-${index}`}
+          type="target"
+          position={Position.Left}
+          id={`input-${index}`}
+          style={{ top: `${((index + 1) * 100) / (inputCount + 1)}%` }}
+          className="w-3 h-3 bg-cyan-500"
+          data-input-type="ChangedColumnSelection"
+        />
+      ))}
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: {inputCount}x ChangedColumnSelection</div>
+
+      <div className="text-xs text-gray-300 p-2 bg-gray-800 rounded">
+        Merges multiple column changes into a single output
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection (Combined)</div>
 
       <Handle
         type="source"
@@ -2045,6 +2111,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
       },
       {
+        type: "mergechanges",
+        label: "Merge Changes",
+        description: "Merges multiple ChangedColumnSelection inputs into one output",
+      },
+      {
         type: "savechanges",
         label: "Save Changes",
         description: "Accepts ChangedColumnSelection input and saves the changes",
@@ -2173,6 +2244,9 @@ const executeGraphInBackend = async (
         selectedColumn2: (node.data as any)?.selectedColumn2
           ? String((node.data as any).selectedColumn2)
           : "",
+        selectedReferenceTable: (node.data as any)?.selectedReferenceTable
+          ? String((node.data as any).selectedReferenceTable)
+          : "",
         packName: (node.data as any)?.packName ? String((node.data as any).packName) : "",
         packedFileName: (node.data as any)?.packedFileName ? String((node.data as any).packedFileName) : "",
         pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
@@ -2182,6 +2256,8 @@ const executeGraphInBackend = async (
           : "",
         beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
         afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
+        includeBaseGame: (node.data as any)?.includeBaseGame,
+        inputCount: (node.data as any)?.inputCount,
         useCurrentPack: (node.data as any)?.useCurrentPack
           ? Boolean((node.data as any).useCurrentPack)
           : false,
@@ -2256,6 +2332,7 @@ const reactFlowNodeTypes = {
   filter: FilterNode,
   referencelookup: ReferenceTableLookupNode,
   numericadjustment: NumericAdjustmentNode,
+  mergechanges: MergeChangesNode,
   savechanges: SaveChangesNode,
   textsurround: TextSurroundNode,
   appendtext: AppendTextNode,
@@ -2359,6 +2436,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         afterText,
         useCurrentPack,
         filters,
+        selectedReferenceTable,
+        referenceTableNames,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -2385,12 +2464,61 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 afterText: afterText !== undefined ? afterText : node.data.afterText,
                 useCurrentPack: useCurrentPack !== undefined ? useCurrentPack : node.data.useCurrentPack,
                 filters: filters !== undefined ? filters : node.data.filters,
+                selectedReferenceTable:
+                  selectedReferenceTable !== undefined ? selectedReferenceTable : node.data.selectedReferenceTable,
+                referenceTableNames:
+                  referenceTableNames !== undefined ? referenceTableNames : node.data.referenceTableNames,
               },
             };
           }
           return node;
         })
       );
+
+      // If a reference lookup node's selectedReferenceTable changed, update connected nodes
+      if (selectedReferenceTable !== undefined) {
+        const sourceNode = nodes.find((n) => n.id === nodeId);
+        if (sourceNode && sourceNode.type === "referencelookup") {
+          // Find all edges where this node is the source
+          const connectedEdges = edges.filter((e) => e.source === nodeId);
+
+          // Update all connected target nodes with the new table info
+          if (selectedReferenceTable && DBNameToDBVersions) {
+            const tableVersions = DBNameToDBVersions[selectedReferenceTable];
+            if (tableVersions && tableVersions.length > 0) {
+              const tableFields = tableVersions[0].fields || [];
+              const fieldNames = tableFields.map((field) => field.name);
+
+              connectedEdges.forEach((edge) => {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (
+                      node.id === edge.target &&
+                      (node.type === "columnselectiondropdown" ||
+                        node.type === "groupbycolumns" ||
+                        node.type === "filter" ||
+                        node.type === "referencelookup")
+                    ) {
+                      console.log(
+                        `Updating ${node.type} node ${node.id} with reference table: ${selectedReferenceTable}`
+                      );
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          connectedTableName: selectedReferenceTable,
+                          columnNames: fieldNames,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              });
+            }
+          }
+        }
+      }
     };
 
     window.addEventListener("nodeDataUpdate", handleNodeDataUpdate as EventListener);
@@ -2428,6 +2556,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as ColumnSelectionDropdownNodeData).outputType;
       } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
+      } else if (sourceNode.type === "mergechanges" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as MergeChangesNodeData).outputType;
       } else if (sourceNode.type === "groupbycolumns" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
       } else if (sourceNode.type === "filter" && sourceNode.data) {
@@ -2462,6 +2592,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as ReferenceTableLookupNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
+      } else if (targetNode.type === "mergechanges" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as MergeChangesNodeData).inputType;
       } else if (targetNode.type === "savechanges" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as SaveChangesNodeData).inputType;
       } else if (targetNode.type === "textsurround" && targetNode.data) {
@@ -2699,6 +2831,55 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             );
           }
         }
+
+        // Update column selection dropdown and groupbycolumns when connected to filter or reference lookup nodes
+        if (
+          (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
+          (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+        ) {
+          const sourceData =
+            sourceNode.type === "filter"
+              ? (sourceNode.data as unknown as FilterNodeData)
+              : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+
+          // For reference lookup nodes, use the selected reference table instead of the input table
+          let tableNameToUse = sourceData.connectedTableName;
+          let columnNamesToUse = sourceData.columnNames || [];
+
+          if (sourceNode.type === "referencelookup") {
+            const refLookupData = sourceData as ReferenceTableLookupNodeData;
+            if (refLookupData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
+              tableNameToUse = refLookupData.selectedReferenceTable;
+
+              // Get column names from the selected reference table
+              const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
+              if (tableVersions && tableVersions.length > 0) {
+                const tableFields = tableVersions[0].fields || [];
+                columnNamesToUse = tableFields.map((field) => field.name);
+              }
+            }
+          }
+
+          // Propagate the table info to the target node
+          if (tableNameToUse && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: columnNamesToUse,
+                      connectedTableName: tableNameToUse,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
       }
       // If types don't match or are undefined, the connection is rejected silently
     },
@@ -2903,6 +3084,20 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             outputType: "ChangedColumnSelection" as NodeEdgeTypes,
           } as NumericAdjustmentNodeData,
         };
+      } else if (nodeData.type === "mergechanges") {
+        // Create MergeChanges node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "mergechanges",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            inputType: "ChangedColumnSelection" as NodeEdgeTypes,
+            outputType: "ChangedColumnSelection" as NodeEdgeTypes,
+            inputCount: 2,
+          } as MergeChangesNodeData,
+        };
       } else if (nodeData.type === "savechanges") {
         // Create SaveChanges node with special data structure
         newNode = {
@@ -3027,6 +3222,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           inputType: (node.data as any)?.inputType,
           groupedTextSelection: (node.data as any)?.groupedTextSelection,
           filters: (node.data as any)?.filters,
+          selectedReferenceTable: String((node.data as any)?.selectedReferenceTable || ""),
+          referenceTableNames: (node.data as any)?.referenceTableNames || [],
+          packName: String((node.data as any)?.packName || ""),
+          packedFileName: String((node.data as any)?.packedFileName || ""),
+          pattern: String((node.data as any)?.pattern || ""),
+          joinSeparator: String((node.data as any)?.joinSeparator || ""),
+          beforeText: String((node.data as any)?.beforeText || ""),
+          afterText: String((node.data as any)?.afterText || ""),
+          includeBaseGame: (node.data as any)?.includeBaseGame,
+          inputCount: (node.data as any)?.inputCount,
         },
       };
 
@@ -3119,7 +3324,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           if (
             node.data.type === "columnselectiondropdown" ||
             node.data.type === "tableselectiondropdown" ||
-            node.data.type === "groupbycolumns"
+            node.data.type === "groupbycolumns" ||
+            node.data.type === "filter" ||
+            node.data.type === "referencelookup"
           ) {
             console.log("ser type!!!:", DBNameToDBVersions);
             node.data.DBNameToDBVersions = DBNameToDBVersions;
@@ -3211,6 +3418,158 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     })
                   );
                 }
+              }
+            }
+
+            // Update reference lookup nodes when connected to filter or reference lookup nodes
+            if (
+              targetNode.type === "referencelookup" &&
+              (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+            ) {
+              const sourceData =
+                sourceNode.type === "filter"
+                  ? (sourceNode.data as unknown as FilterNodeData)
+                  : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+
+              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (node.id === targetNode.id) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          columnNames: sourceData.columnNames || [],
+                          connectedTableName: sourceData.connectedTableName,
+                          DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              }
+            }
+
+            // Update filter nodes when connected to reference lookup nodes
+            if (targetNode.type === "filter" && sourceNode.type === "referencelookup") {
+              const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
+
+              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (node.id === targetNode.id) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          columnNames: sourceData.columnNames || [],
+                          connectedTableName: sourceData.connectedTableName,
+                          DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              }
+            }
+
+            // Update filter nodes when connected to filter nodes (chaining)
+            if (targetNode.type === "filter" && sourceNode.type === "filter") {
+              const sourceFilterData = sourceNode.data as unknown as FilterNodeData;
+
+              if (sourceFilterData.connectedTableName && sourceFilterData.DBNameToDBVersions) {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (node.id === targetNode.id) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          columnNames: sourceFilterData.columnNames || [],
+                          connectedTableName: sourceFilterData.connectedTableName,
+                          DBNameToDBVersions: sourceFilterData.DBNameToDBVersions,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              }
+            }
+
+            // Update column selection dropdown and groupbycolumns when connected to filter or reference lookup nodes
+            if (
+              (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
+              (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+            ) {
+              const sourceData =
+                sourceNode.type === "filter"
+                  ? (sourceNode.data as unknown as FilterNodeData)
+                  : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+
+              // For reference lookup nodes, use the selected reference table instead of the input table
+              let tableNameToUse = sourceData.connectedTableName;
+              let columnNamesToUse = sourceData.columnNames || [];
+
+              if (sourceNode.type === "referencelookup") {
+                const refLookupData = sourceData as ReferenceTableLookupNodeData;
+                if (refLookupData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
+                  tableNameToUse = refLookupData.selectedReferenceTable;
+
+                  // Get column names from the selected reference table
+                  const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
+                  if (tableVersions && tableVersions.length > 0) {
+                    const tableFields = tableVersions[0].fields || [];
+                    columnNamesToUse = tableFields.map((field) => field.name);
+                  }
+                } else if (
+                  (targetNode.data as any).connectedTableName &&
+                  (targetNode.data as any).connectedTableName !== sourceData.connectedTableName
+                ) {
+                  // If the target already has a different connectedTableName from the saved file,
+                  // it means it was connected to a reference table, so preserve that data
+                  // and infer the selectedReferenceTable for the reference lookup node
+                  const targetConnectedTable = (targetNode.data as any).connectedTableName;
+                  tableNameToUse = targetConnectedTable;
+                  columnNamesToUse = (targetNode.data as any).columnNames || [];
+
+                  // Update the reference lookup node's selectedReferenceTable
+                  setNodes((nds) =>
+                    nds.map((node) => {
+                      if (node.id === sourceNode.id) {
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            selectedReferenceTable: targetConnectedTable,
+                          },
+                        };
+                      }
+                      return node;
+                    })
+                  );
+                }
+              }
+
+              if (tableNameToUse && sourceData.DBNameToDBVersions) {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (node.id === targetNode.id) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          columnNames: columnNamesToUse,
+                          connectedTableName: tableNameToUse,
+                          DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
               }
             }
 
