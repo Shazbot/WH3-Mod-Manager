@@ -774,15 +774,10 @@ async function executeReferenceLookupNode(
   // Search for tables matching the reference table name in all source files
   const referencedTables = [] as DBTablesNodeTable[];
 
-  // Strip "_tables" suffix if present (schema adds this suffix but pack files don't have it)
-  let tableNameForSearch = selectedReferenceTable;
-  if (tableNameForSearch.endsWith("_tables")) {
-    tableNameForSearch = tableNameForSearch.slice(0, -7); // Remove "_tables"
-  }
-
-  const tableNameToSearch = tableNameForSearch.startsWith("db\\")
-    ? tableNameForSearch
-    : `db\\${tableNameForSearch}`;
+  // Pack files use the full table name including "_tables" suffix
+  const tableNameToSearch = selectedReferenceTable.startsWith("db\\")
+    ? selectedReferenceTable
+    : `db\\${selectedReferenceTable}`;
 
   for (const sourceFile of inputData.sourceFiles || []) {
     if (!sourceFile.loaded) {
@@ -795,8 +790,34 @@ async function executeReferenceLookupNode(
       const pack = await readPack(sourceFile.path, { tablesToRead: [tableNameToSearch] });
       getPacksTableData([pack], [tableNameToSearch]);
 
-      // Find tables that match the reference table name
-      const matchingTables = pack.packedFiles.filter((pf) => pf.name.includes(tableNameToSearch));
+      // Find tables that match the reference table name exactly
+      // Match db\land_units or db\land_units\!variant but NOT db\land_units_to_something
+      console.log(
+        `Reference Lookup Node ${nodeId}: Pack ${sourceFile.name} has ${pack.packedFiles.length} packed files`
+      );
+
+      // Show sample file names to debug
+      const dbFiles = pack.packedFiles.filter((pf) => pf.name.toLowerCase().includes("db\\"));
+      if (dbFiles.length > 0) {
+        console.log(
+          `Reference Lookup Node ${nodeId}: Sample DB files (${dbFiles.length} total):`,
+          dbFiles.slice(0, 5).map((pf) => pf.name)
+        );
+      }
+
+      const matchingTables = pack.packedFiles.filter((pf) => {
+        const tablePath = pf.name.toLowerCase();
+        const searchPath = tableNameToSearch.toLowerCase();
+
+        // Check if path matches exactly or starts with searchPath followed by backslash
+        const matches = tablePath === searchPath || tablePath.startsWith(searchPath + "\\");
+
+        if (matches) {
+          console.log(`Reference Lookup Node ${nodeId}: Matched table: ${pf.name}`);
+        }
+
+        return matches;
+      });
 
       for (const table of matchingTables) {
         referencedTables.push({
