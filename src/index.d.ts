@@ -634,6 +634,7 @@ declare global {
     | "columnselectiondropdown"
     | "groupbycolumns"
     | "filter"
+    | "referencelookup"
     | "numericadjustment"
     | "savechanges"
     | "textsurround"

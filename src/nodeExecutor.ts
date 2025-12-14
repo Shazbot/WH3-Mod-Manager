@@ -44,6 +44,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "filter":
         return await executeFilterNode(nodeId, textValue, inputData);
 
+      case "referencelookup":
+        return await executeReferenceLookupNode(nodeId, textValue, inputData);
+
       case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
 
@@ -664,6 +667,229 @@ async function executeFilterNode(
   return {
     success: true,
     data: filteredData,
+  };
+}
+
+async function executeReferenceLookupNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Reference Lookup Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse selected reference table from textValue
+  let selectedReferenceTable = "";
+  try {
+    const parsed = JSON.parse(textValue);
+    selectedReferenceTable = parsed.selectedReferenceTable || "";
+  } catch (error) {
+    console.error(`Reference Lookup Node ${nodeId}: Error parsing textValue:`, error);
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  if (!selectedReferenceTable || selectedReferenceTable.trim() === "") {
+    console.log(`Reference Lookup Node ${nodeId}: No reference table selected, returning empty result`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  console.log(
+    `Reference Lookup Node ${nodeId}: Looking up references to table "${selectedReferenceTable}" from ${inputData.tables.length} input table(s)`
+  );
+
+  // Collect all reference values from the input tables
+  const referenceValues = new Set<string>();
+
+  for (const tableData of inputData.tables) {
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      console.warn(`Reference Lookup Node ${nodeId}: Skipping table "${tableData.name}" - no schema`);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    // Find columns that reference the selected table
+    // is_reference is an array where [0] is the referenced table name
+    const referenceColumns = tableData.table.tableSchema.fields.filter(
+      (field) => field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === selectedReferenceTable
+    );
+
+    console.log(
+      `Reference Lookup Node ${nodeId}: Found ${referenceColumns.length} reference column(s) in table "${tableData.name}"`
+    );
+
+    // Extract reference values from those columns
+    for (const refColumn of referenceColumns) {
+      const columnName = refColumn.name;
+
+      for (const row of rows) {
+        const cell = row.find((c) => c.name === columnName);
+        if (cell && cell.resolvedKeyValue) {
+          const value = String(cell.resolvedKeyValue).trim();
+          if (value) {
+            referenceValues.add(value);
+          }
+        }
+      }
+    }
+  }
+
+  console.log(
+    `Reference Lookup Node ${nodeId}: Collected ${referenceValues.size} unique reference value(s)`
+  );
+
+  if (referenceValues.size === 0) {
+    console.log(`Reference Lookup Node ${nodeId}: No reference values found, returning empty result`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  // Search for tables matching the reference table name in all source files
+  const referencedTables = [] as DBTablesNodeTable[];
+
+  // Strip "_tables" suffix if present (schema adds this suffix but pack files don't have it)
+  let tableNameForSearch = selectedReferenceTable;
+  if (tableNameForSearch.endsWith("_tables")) {
+    tableNameForSearch = tableNameForSearch.slice(0, -7); // Remove "_tables"
+  }
+
+  const tableNameToSearch = tableNameForSearch.startsWith("db\\")
+    ? tableNameForSearch
+    : `db\\${tableNameForSearch}`;
+
+  for (const sourceFile of inputData.sourceFiles || []) {
+    if (!sourceFile.loaded) {
+      console.warn(`Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
+      continue;
+    }
+
+    try {
+      // Read the pack file to get the referenced table
+      const pack = await readPack(sourceFile.path, { tablesToRead: [tableNameToSearch] });
+      getPacksTableData([pack], [tableNameToSearch]);
+
+      // Find tables that match the reference table name
+      const matchingTables = pack.packedFiles.filter((pf) => pf.name.includes(tableNameToSearch));
+
+      for (const table of matchingTables) {
+        referencedTables.push({
+          name: tableNameToSearch,
+          fileName: table.name,
+          sourceFile: sourceFile,
+          table,
+        });
+      }
+    } catch (error) {
+      console.error(
+        `Reference Lookup Node ${nodeId}: Error reading pack file ${sourceFile.path}:`,
+        error
+      );
+    }
+  }
+
+  console.log(
+    `Reference Lookup Node ${nodeId}: Found ${referencedTables.length} table(s) matching "${selectedReferenceTable}"`
+  );
+
+  // Filter the referenced tables to only include rows with matching key values
+  const filteredReferencedTables: DBTablesNodeData = {
+    type: "TableSelection",
+    tables: [],
+    sourceFiles: inputData.sourceFiles || [],
+    tableCount: 0,
+  };
+
+  for (const tableData of referencedTables) {
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      // No schema, include the whole table
+      filteredReferencedTables.tables.push(tableData);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    // Find the key column (usually the first column or a column with is_key=true)
+    const keyField = tableData.table.tableSchema.fields.find((field) => field.is_key) ||
+      tableData.table.tableSchema.fields[0];
+
+    if (!keyField) {
+      console.warn(
+        `Reference Lookup Node ${nodeId}: No key field found in table "${tableData.name}", skipping`
+      );
+      continue;
+    }
+
+    const keyColumnName = keyField.name;
+    console.log(
+      `Reference Lookup Node ${nodeId}: Using key column "${keyColumnName}" in table "${tableData.name}"`
+    );
+
+    // Filter rows where the key column value is in our reference values set
+    const filteredRows = rows.filter((row) => {
+      const keyCell = row.find((c) => c.name === keyColumnName);
+      if (!keyCell) return false;
+
+      const keyValue = String(keyCell.resolvedKeyValue || "").trim();
+      return referenceValues.has(keyValue);
+    });
+
+    console.log(
+      `Reference Lookup Node ${nodeId}: ${filteredRows.length} row(s) matched out of ${rows.length} in table "${tableData.name}"`
+    );
+
+    if (filteredRows.length > 0) {
+      // Flatten filtered rows back into schemaFields array
+      const filteredSchemaFields: AmendedSchemaField[] = [];
+      for (const row of filteredRows) {
+        filteredSchemaFields.push(...row);
+      }
+
+      // Create a new table with filtered data
+      const filteredTableData = {
+        ...tableData,
+        table: {
+          ...tableData.table,
+          schemaFields: filteredSchemaFields,
+        },
+      };
+
+      filteredReferencedTables.tables.push(filteredTableData);
+    }
+  }
+
+  filteredReferencedTables.tableCount = filteredReferencedTables.tables.length;
+
+  console.log(
+    `Reference Lookup Node ${nodeId}: Returning ${filteredReferencedTables.tableCount} filtered table(s)`
+  );
+
+  return {
+    success: true,
+    data: filteredReferencedTables,
   };
 }
 
