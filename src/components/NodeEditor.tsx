@@ -200,6 +200,16 @@ interface FilterNodeData extends NodeData {
   DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
+interface ReferenceTableLookupNodeData extends NodeData {
+  selectedReferenceTable: string;
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  referenceTableNames: string[];
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
 interface DraggableNodeData {
   type: string;
   label: string;
@@ -899,6 +909,107 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
         type="source"
         position={Position.Right}
         className="w-3 h-3 bg-yellow-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+// Custom Reference Lookup node component that accepts TableSelection input and outputs filtered TableSelection
+const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; id: string }> = ({
+  data,
+  id,
+}) => {
+  const [selectedReferenceTable, setSelectedReferenceTable] = useState(data.selectedReferenceTable || "");
+  const [referenceTableNames, setReferenceTableNames] = useState<string[]>(data.referenceTableNames || []);
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Update reference table names when connected table changes
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        // Find all reference columns (columns that reference other tables)
+        const referenceTables = new Set<string>();
+        for (const field of tableFields) {
+          // Check if this field references another table
+          // is_reference is an array where [0] is the referenced table name
+          if (field.is_reference && field.is_reference.length > 0 && field.is_reference[0]) {
+            referenceTables.add(field.is_reference[0]);
+          }
+        }
+
+        const refTableArray = Array.from(referenceTables).sort();
+        setReferenceTableNames(refTableArray);
+
+        // Update the node data with reference table names and column names
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: {
+            nodeId: id,
+            referenceTableNames: refTableArray,
+            columnNames: fieldNames,
+          },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [data.connectedTableName, data.DBNameToDBVersions, id]);
+
+  const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedReferenceTable(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedReferenceTable: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[250px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Referenced Table</label>
+        <select
+          value={selectedReferenceTable}
+          onChange={handleDropdownChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+        >
+          <option value="">Select referenced table...</option>
+          {referenceTableNames.map((tableName) => (
+            <option key={tableName} value={tableName}>
+              {tableName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {referenceTableNames.length === 0 && data.connectedTableName && (
+        <div className="text-xs text-yellow-300 mb-2 p-2 bg-gray-800 rounded">
+          No reference columns found in the input table
+        </div>
+      )}
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection (Referenced Rows)</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-purple-500"
         data-output-type="TableSelection"
       />
     </div>
@@ -1898,6 +2009,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Filter",
         description: "Filter table rows with AND/OR conditions",
       },
+      {
+        type: "referencelookup",
+        label: "Reference Lookup",
+        description: "Lookup rows in referenced tables based on input table references",
+      },
     ],
   },
   {
@@ -2138,6 +2254,7 @@ const reactFlowNodeTypes = {
   columnselectiondropdown: ColumnSelectionDropdownNode,
   groupbycolumns: GroupByColumnsNode,
   filter: FilterNode,
+  referencelookup: ReferenceTableLookupNode,
   numericadjustment: NumericAdjustmentNode,
   savechanges: SaveChangesNode,
   textsurround: TextSurroundNode,
@@ -2315,6 +2432,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
       } else if (sourceNode.type === "filter" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as FilterNodeData).outputType;
+      } else if (sourceNode.type === "referencelookup" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as ReferenceTableLookupNodeData).outputType;
       } else if (sourceNode.type === "textsurround" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
       } else if (sourceNode.type === "appendtext" && sourceNode.data) {
@@ -2339,6 +2458,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as GroupByColumnsNodeData).inputType;
       } else if (targetNode.type === "filter" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as FilterNodeData).inputType;
+      } else if (targetNode.type === "referencelookup" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as ReferenceTableLookupNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
       } else if (targetNode.type === "savechanges" && targetNode.data) {
@@ -2463,7 +2584,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (
           (targetNode.type === "columnselectiondropdown" ||
             targetNode.type === "groupbycolumns" ||
-            targetNode.type === "filter") &&
+            targetNode.type === "filter" ||
+            targetNode.type === "referencelookup") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
         ) {
           const tableName =
@@ -2513,6 +2635,62 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       columnNames: sourceFilterData.columnNames || [],
                       connectedTableName: sourceFilterData.connectedTableName,
                       DBNameToDBVersions: sourceFilterData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update reference lookup nodes when connected to filter or reference lookup nodes (chaining)
+        if (
+          targetNode.type === "referencelookup" &&
+          (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+        ) {
+          const sourceData =
+            sourceNode.type === "filter"
+              ? (sourceNode.data as unknown as FilterNodeData)
+              : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+
+          // Propagate the connectedTableName and DBNameToDBVersions from source to target
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update filter nodes when connected to reference lookup nodes
+        if (targetNode.type === "filter" && sourceNode.type === "referencelookup") {
+          const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
+
+          // Propagate the connectedTableName and DBNameToDBVersions from source to target
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
                 }
@@ -2693,6 +2871,23 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             columnNames: [],
             DBNameToDBVersions,
           } as FilterNodeData,
+        };
+      } else if (nodeData.type === "referencelookup") {
+        // Create Reference Lookup node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "referencelookup",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedReferenceTable: "",
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            referenceTableNames: [],
+            columnNames: [],
+            DBNameToDBVersions,
+          } as ReferenceTableLookupNodeData,
         };
       } else if (nodeData.type === "numericadjustment") {
         // Create NumericAdjustment node with special data structure
@@ -2985,7 +3180,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             if (
               (targetNode.type === "columnselectiondropdown" ||
                 targetNode.type === "groupbycolumns" ||
-                targetNode.type === "filter") &&
+                targetNode.type === "filter" ||
+                targetNode.type === "referencelookup") &&
               (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
             ) {
               const tableName =

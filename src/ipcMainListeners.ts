@@ -82,6 +82,7 @@ import { collator } from "./utility/packFileSorting";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie from "./utility/trie";
 import hash from "object-hash";
+import { Md10K } from "react-icons/md";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -244,8 +245,6 @@ export const readModsByPath = async (
   packReadingOptions: PackReadingOptions,
   skipCollisionCheck = true
 ) => {
-  const { skipParsingTables, tablesToRead, readLocs, readScripts, filesToRead } = packReadingOptions;
-
   console.log("readModsByPath:", modPaths);
   // console.log("readModsByPath skipParsingTables:", skipParsingTables);
   // console.log("readModsByPath skipCollisionCheck:", skipCollisionCheck);
@@ -268,13 +267,7 @@ export const readModsByPath = async (
     // console.log("READING ", modPath, readLocs);
     appData.currentlyReadingModPaths.push(modPath);
     windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
-    const newPack = await readPack(modPath, {
-      skipParsingTables,
-      readScripts,
-      tablesToRead,
-      filesToRead,
-      readLocs,
-    });
+    const newPack = await readPack(modPath, packReadingOptions);
     windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
     appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
     // if (appData.packsData.every((pack) => pack.path != modPath)) {
@@ -3817,6 +3810,18 @@ export const registerIpcMainListeners = (
         }
 
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
+
+        for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
+          const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
+          if (mod) {
+            console.log("FOUND MOD TO READ FOR FLOWS:", mod.name);
+            const pack = appData.packsData.find((packData) => packData.path == mod.path);
+            if (!pack || (pack && pack.packedFiles.length == 0)) {
+              console.log("need to read pack for flows:", mod.name);
+              await readModsByPath([mod.path], { readFlows: true, skipParsingTables: true });
+            }
+          }
+        }
 
         // Execute flows for enabled mods
         const enabledModsWithFlows = sortedMods.filter((iterMod) => {

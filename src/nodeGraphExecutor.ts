@@ -132,6 +132,10 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             filters: (node.data as any).filters || [],
           });
+        } else if (node.type === "referencelookup") {
+          textValueToUse = JSON.stringify({
+            selectedReferenceTable: (node.data as any).selectedReferenceTable || "",
+          });
         } else if (node.type === "groupedcolumnstotext") {
           textValueToUse = JSON.stringify({
             pattern: (node.data as any).pattern || "{0}: {1}",
