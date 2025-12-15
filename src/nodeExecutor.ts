@@ -920,6 +920,8 @@ async function executeReferenceLookupNode(
 
 // Formula evaluation function
 function evaluateFormula(formula: string, x: number): number {
+  // console.log(`Evaluating formula: "${formula}" with x=${x}`);
+
   // Sanitize the formula - only allow safe mathematical operations
   const sanitized = formula
     .replace(/\s+/g, "") // Remove whitespace
@@ -1081,7 +1083,7 @@ async function executeNumericAdjustmentNode(
             const result = evaluateFormula(formula, numVal);
             rows[i][j].resolvedKeyValue = result.toString();
             rows[i][j].fields[0].val = result;
-            console.log("New numeric value of", numVal, "is", result.toString());
+            // console.log("New numeric value of", numVal, "is", result.toString());
           } catch (error) {
             console.warn(`Failed to apply formula to value ${numVal}:`, error);
           }
@@ -1434,7 +1436,9 @@ async function executeSaveChangesNode(
       const uniqueTableNames = [...new Set(dbTableNames)];
 
       if (uniqueTableNames.length > 0) {
-        console.log(`SaveChanges Node ${nodeId}: Parsing ${uniqueTableNames.length} table(s) from existing pack`);
+        console.log(
+          `SaveChanges Node ${nodeId}: Parsing ${uniqueTableNames.length} table(s) from existing pack`
+        );
         getPacksTableData([existingPack], uniqueTableNames);
       }
 
