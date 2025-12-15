@@ -334,6 +334,7 @@ const api = {
   ): Promise<{
     success: boolean;
     savedPath?: string;
+    warning?: string;
     error?: string;
   }> => ipcRenderer.invoke("savePackWithUnsavedFiles", packPath),
 

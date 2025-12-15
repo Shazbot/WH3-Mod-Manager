@@ -1905,21 +1905,41 @@ export const registerIpcMainListeners = (
         return firstPf.name.localeCompare(secondPf.name);
       });
 
-      // Generate new pack path
-      const packDir = nodePath.dirname(packPath);
-      const packName = nodePath.basename(packPath, ".pack");
-      const savePath = nodePath.join(packDir, `${packName}_modified.pack`);
+      // Try to replace the existing pack
+      let savePath = packPath;
+      let replacedOriginal = true;
 
-      // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
-      await writePack(sortedFilesToSave, savePath, pack, true);
+      try {
+        // Write the pack with unsaved files appended/overwritten
+        await writePack(sortedFilesToSave, savePath, pack, true);
+        console.log(`Pack saved to: ${savePath}`);
+      } catch (error) {
+        // If we can't overwrite (file in use/locked), save as _modified instead
+        if (error instanceof Error && error.message.includes("EPERM")) {
+          console.log("Cannot overwrite pack (file in use), saving as _modified instead");
+          const packDir = nodePath.dirname(packPath);
+          const packName = nodePath.basename(packPath, ".pack");
+          savePath = nodePath.join(packDir, `${packName}_modified.pack`);
+          replacedOriginal = false;
 
-      console.log(`Pack saved to: ${savePath}`);
+          await writePack(sortedFilesToSave, savePath, pack, true);
+          console.log(`Pack saved to: ${savePath}`);
+        } else {
+          throw error;
+        }
+      }
 
       // Clear unsaved files for this pack
       delete appData.unsavedPacksData[packPath];
       windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
 
-      return { success: true, savedPath: savePath };
+      return {
+        success: true,
+        savedPath: savePath,
+        warning: !replacedOriginal
+          ? "Could not replace original pack (file in use). Saved as _modified.pack instead."
+          : undefined,
+      };
     } catch (error) {
       console.error("Error saving pack with unsaved files:", error);
       return {

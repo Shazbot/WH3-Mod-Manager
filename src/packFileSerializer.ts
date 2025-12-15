@@ -1580,7 +1580,9 @@ export const writePackAppendFast = async (
 
       // Open source file for reading
       sourceFile = new BinaryFile(existingPackToAppend.path, "r", true);
+      console.log("trying to open source file:", existingPackToAppend.path);
       await sourceFile.open();
+      console.log("source file opened");
 
       // Open output file for writing
       outFile = new BinaryFile(outPath, "w", true);
@@ -1768,6 +1770,15 @@ export const writePackAppendFast = async (
 
     // Move temp file to final location
     if (existingPackToAppend) {
+      if (outFile) {
+        await outFile.close();
+        outFile = undefined;
+      }
+      if (sourceFile) {
+        await sourceFile.close();
+        sourceFile = undefined;
+      }
+
       await fsExtra.move(outPath, path, { overwrite: true });
     }
   } finally {
