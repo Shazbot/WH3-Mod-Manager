@@ -143,6 +143,7 @@ declare global {
     dataModLastChangedLocal?: number;
     currentDBTableSelection?: DBTableSelection;
     currentFlowFileSelection?: string;
+    currentFlowFilePackPath?: string;
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;

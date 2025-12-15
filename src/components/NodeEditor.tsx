@@ -3254,6 +3254,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           afterText: String((node.data as any)?.afterText || ""),
           includeBaseGame: (node.data as any)?.includeBaseGame,
           inputCount: (node.data as any)?.inputCount,
+          useCurrentPack: (node.data as any)?.useCurrentPack,
         },
       };
 
