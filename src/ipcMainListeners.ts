@@ -1573,6 +1573,8 @@ export const registerIpcMainListeners = (
           appData.lastGetCustomizableMods = modPaths;
           return;
         }
+      } else {
+        newPaths.push(...modPaths);
       }
 
       const pathToPack = {} as Record<string, Pack>;
