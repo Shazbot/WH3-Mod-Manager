@@ -1355,11 +1355,17 @@ async function executeSaveChangesNode(
 
     let dbFileName = column.fileName as string;
     const lastBackslashIndex = dbFileName.lastIndexOf("\\");
+    // Generate random suffix (6 alphanumeric characters)
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
     if (lastBackslashIndex > -1) {
       dbFileName =
-        dbFileName.substring(0, lastBackslashIndex + 1) + "!" + dbFileName.substring(lastBackslashIndex + 1);
+        dbFileName.substring(0, lastBackslashIndex + 1) +
+        "!" +
+        dbFileName.substring(lastBackslashIndex + 1) +
+        "_" +
+        randomSuffix;
     } else {
-      dbFileName = "!" + dbFileName;
+      dbFileName = "!" + dbFileName + "_" + randomSuffix;
     }
 
     console.log("NEW dbFileName:", dbFileName);
