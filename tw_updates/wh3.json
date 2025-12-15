@@ -27,5 +27,15 @@
         "reason": "New table character_skill_node_set_items_tables required."
       }
     ]
+  },
+  {
+    "timestamp": "1764846000",
+    "version": "7.0",
+    "files": [
+      {
+        "regex": "^animations[/\\\\].*\\.animpack$",
+        "reason": "Custom animations in mod need to be remade."
+      }
+    ]
   }
 ]
