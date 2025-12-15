@@ -214,12 +214,18 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   }
 
   let doesThumbnailExist = false;
-  const thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".png"));
+  let thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".png"));
   try {
     await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
     doesThumbnailExist = true;
     // eslint-disable-next-line no-empty
-  } catch {}
+  } catch {
+    try {
+      thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".jpg"));
+      await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
+      doesThumbnailExist = true;
+    } catch {}
+  }
 
   let mergedModsData = null;
   try {
@@ -444,7 +450,8 @@ export async function getContentModInFolder(
   });
 
   const pack = files.find((file) => file.name.endsWith(".pack"));
-  const img = files.find((file) => file.name.endsWith(".png"));
+  const img =
+    files.find((file) => file.name.endsWith(".png")) ?? files.find((file) => file.name.endsWith(".jpg"));
 
   if (!pack) throw new Error(`Content folder ${contentSubFolderName} doesn't contain a pack!`);
 
