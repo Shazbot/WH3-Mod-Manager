@@ -94,7 +94,7 @@ const PackTablesTreeView = React.memo(
     // console.log(props);
 
     if (props.element.name.startsWith("whmmflows\\")) {
-      dispatch(selectFlowFile(props.element.name));
+      dispatch(selectFlowFile({ flowFile: props.element.name, packPath: packData.packPath }));
       return;
     }
 

@@ -17,12 +17,16 @@ const ModsViewer = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const currentFlowFileSelection = useAppSelector((state) => state.app.currentFlowFileSelection);
+  const currentFlowFilePackPath = useAppSelector((state) => state.app.currentFlowFilePackPath);
   const packsData = useAppSelector((state) => state.app.packsData);
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  // Use currentFlowFilePackPath if a flow file is selected, otherwise use DB table pack path
   const packPath =
-    currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
+    currentFlowFilePackPath ??
+    currentDBTableSelection?.packPath ??
+    (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
   const startArgs = useAppSelector((state) => state.app.startArgs);
 
