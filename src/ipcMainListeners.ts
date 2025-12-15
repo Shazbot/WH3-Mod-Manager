@@ -3833,6 +3833,13 @@ export const registerIpcMainListeners = (
 
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
 
+        for (const packPath of sortedMods.map((mod) => mod.path)) {
+          const pack = appData.packsData.find((packData) => packData.path == packPath);
+          if (!pack || (pack && pack.packedFiles.length == 0)) {
+            await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
+          }
+        }
+
         for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
           const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
           if (mod) {
