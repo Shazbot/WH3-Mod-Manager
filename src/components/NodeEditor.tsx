@@ -2049,7 +2049,7 @@ const nodeTypeSections: NodeTypeSection[] = [
     nodes: [
       {
         type: "packedfiles",
-        label: "Textbox Input",
+        label: "Pack Textbox Input",
         description: "Node with textbox that outputs PackFiles",
       },
       {
@@ -2069,7 +2069,7 @@ const nodeTypeSections: NodeTypeSection[] = [
     nodes: [
       {
         type: "tableselection",
-        label: "Textbox Input",
+        label: "Table Textbox Input",
         description: "Accepts PackFiles input, outputs TableSelection",
       },
       {
@@ -2094,7 +2094,7 @@ const nodeTypeSections: NodeTypeSection[] = [
     nodes: [
       {
         type: "columnselection",
-        label: "Textbox Input",
+        label: "Column Textbox Input",
         description: "Accepts TableSelection input, outputs ColumnSelection",
       },
       {
