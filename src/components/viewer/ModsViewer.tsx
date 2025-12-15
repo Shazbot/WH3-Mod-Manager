@@ -91,7 +91,10 @@ const ModsViewer = memo(() => {
       const result = await window.api?.savePackWithUnsavedFiles(packPath);
       if (result?.success) {
         console.log("Pack saved successfully:", result.savedPath);
-        alert(`Pack saved successfully to: ${result.savedPath}`);
+        const message = result.warning
+          ? `${result.warning}\n\nSaved to: ${result.savedPath}`
+          : `Pack saved successfully to: ${result.savedPath}`;
+        alert(message);
       } else {
         console.error("Failed to save pack:", result?.error);
         alert(`Failed to save pack: ${result?.error || "Unknown error"}`);
