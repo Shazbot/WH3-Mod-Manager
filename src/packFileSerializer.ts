@@ -1197,8 +1197,9 @@ export const executeFlowsForPack = async (
 
         console.log(`Executing flow: ${flowFileName}`);
 
-        // Inject user option values into nodes
-        if (flowData.options && flowOptions?.optionValues) {
+        // Inject option values into nodes (user values or defaults)
+        if (flowData.options) {
+          console.log(`options`, flowData.options, flowOptions?.optionValues);
           for (const node of flowData.nodes) {
             // Fields that might contain option placeholders
             const textFields = [
@@ -1217,16 +1218,17 @@ export const executeFlowsForPack = async (
                 let modifiedValue = fieldValue;
 
                 for (const option of flowData.options) {
-                  const userValue = flowOptions.optionValues[option.id];
-                  if (userValue !== undefined) {
-                    // Replace option placeholders like {{optionId}} with user values
-                    const placeholder = `{{${option.id}}}`;
-                    if (modifiedValue.includes(placeholder)) {
-                      modifiedValue = modifiedValue.replace(
-                        new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-                        String(userValue)
-                      );
-                    }
+                  // Use user value if provided, otherwise use default value from option
+                  const userValue = flowOptions?.optionValues?.[option.id];
+                  const valueToUse = userValue !== undefined ? userValue : option.value;
+
+                  // Replace option placeholders like {{optionId}} with values
+                  const placeholder = `{{${option.id}}}`;
+                  if (modifiedValue.includes(placeholder)) {
+                    modifiedValue = modifiedValue.replace(
+                      new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+                      String(valueToUse)
+                    );
                   }
                 }
 
