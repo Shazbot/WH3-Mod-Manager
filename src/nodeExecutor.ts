@@ -1253,7 +1253,6 @@ async function executeSaveTextNode(
 
     // Determine pack path - save to /whmm_flows/ folder
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
-    const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
     const whmmFlowsFolder = nodePath.join(gamePath, "whmm_flows");
 
     // Create whmm_flows directory if it doesn't exist
@@ -1407,7 +1406,6 @@ async function executeSaveChangesNode(
   }
 
   const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
-  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string;
   const whmmFlowsFolder = nodePath.join(gamePath, "whmm_flows");
 
   // Create whmm_flows directory if it doesn't exist

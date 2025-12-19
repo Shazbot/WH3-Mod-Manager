@@ -3863,7 +3863,7 @@ export const registerIpcMainListeners = (
           console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
 
           const whmmFlowsPath = nodePath.join(gamePath as string, "whmm_flows");
-          // Clear whmm_overwrites directory
+          // Clear whmm_flows directory
           try {
             if (fsExtra.existsSync(whmmFlowsPath)) {
               console.log(`DELETING whmm_flows directory: ${whmmFlowsPath}`);
