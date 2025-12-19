@@ -3862,8 +3862,21 @@ export const registerIpcMainListeners = (
         if (enabledModsWithFlows.length > 0) {
           console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
 
-          // Create whmm_flows directory if needed
-          const whmmFlowsPath = nodePath.join(dataFolder as string, "whmm_flows");
+          const whmmFlowsPath = nodePath.join(gamePath as string, "whmm_flows");
+          // Clear whmm_overwrites directory
+          try {
+            if (fsExtra.existsSync(whmmFlowsPath)) {
+              console.log(`DELETING whmm_flows directory: ${whmmFlowsPath}`);
+              fsExtra.removeSync(whmmFlowsPath);
+              console.log("Successfully cleared whmm_flows");
+            }
+          } catch (error) {
+            console.log(
+              `Error clearing whmm_flows: ${error instanceof Error ? error.message : "Unknown error"}`
+            );
+          }
+
+          // Create whmm_flows directory
           if (!fsExtra.existsSync(whmmFlowsPath)) {
             fsExtra.mkdirSync(whmmFlowsPath, { recursive: true });
           }
