@@ -460,11 +460,13 @@ async function executeGroupByColumnsNode(
   // Parse the column selections from textValue
   let column1: string;
   let column2: string;
+  let onlyForMultiple: boolean = false;
   try {
     const parsed = JSON.parse(textValue);
     console.log(`GroupByColumns Node ${nodeId}: Parsed columns:`, parsed);
     column1 = parsed.column1;
     column2 = parsed.column2;
+    onlyForMultiple = parsed.onlyForMultiple || false;
   } catch (error) {
     return {
       success: false,
@@ -519,6 +521,24 @@ async function executeGroupByColumnsNode(
         }
         groupedData.get(key)!.push(value);
       }
+    }
+  }
+
+  // Filter out one-to-one mappings if onlyForMultiple is enabled
+  if (onlyForMultiple) {
+    console.log(`GroupByColumns Node ${nodeId}: Filtering to only include multiple values per key`);
+    const filteredData = new Map<string, string[]>();
+    for (const [key, values] of groupedData.entries()) {
+      if (values.length > 1) {
+        filteredData.set(key, values);
+      }
+    }
+    console.log(
+      `GroupByColumns Node ${nodeId}: Filtered from ${groupedData.size} to ${filteredData.size} groups`
+    );
+    groupedData.clear();
+    for (const [key, values] of filteredData.entries()) {
+      groupedData.set(key, values);
     }
   }
 

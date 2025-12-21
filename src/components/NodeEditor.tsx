@@ -41,6 +41,7 @@ interface SerializedNode {
     beforeText?: string;
     afterText?: string;
     useCurrentPack?: boolean;
+    onlyForMultiple?: boolean;
     filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }>;
     columnNames?: string[];
     connectedTableName?: string;
@@ -188,6 +189,7 @@ interface GroupByColumnsNodeData extends NodeData {
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
+  onlyForMultiple?: boolean;
 }
 
 interface FilterRow {
@@ -692,6 +694,7 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
   const [selectedColumn1, setSelectedColumn1] = useState(data.selectedColumn1 || "");
   const [selectedColumn2, setSelectedColumn2] = useState(data.selectedColumn2 || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [onlyForMultiple, setOnlyForMultiple] = useState(data.onlyForMultiple || false);
 
   // Update column names when connected table changes
   React.useEffect(() => {
@@ -729,6 +732,17 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
     // Update the node data by dispatching a custom event that the parent can listen to
     const updateEvent = new CustomEvent("nodeDataUpdate", {
       detail: { nodeId: id, selectedColumn2: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleOnlyForMultipleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setOnlyForMultiple(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, onlyForMultiple: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -777,6 +791,18 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="mt-3">
+        <label className="flex items-center text-xs text-gray-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={onlyForMultiple}
+            onChange={handleOnlyForMultipleChange}
+            className="mr-2"
+          />
+          Only For Multiple
+        </label>
       </div>
 
       <div className="mt-2 text-xs text-gray-400">Output: GroupedText</div>
@@ -2281,6 +2307,9 @@ const executeGraphInBackend = async (
         useCurrentPack: (node.data as any)?.useCurrentPack
           ? Boolean((node.data as any).useCurrentPack)
           : false,
+        onlyForMultiple: (node.data as any)?.onlyForMultiple
+          ? Boolean((node.data as any).onlyForMultiple)
+          : false,
         filters: (node.data as any)?.filters || [],
         columnNames: (node.data as any)?.columnNames || [],
         connectedTableName: (node.data as any)?.connectedTableName
@@ -2455,6 +2484,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         beforeText,
         afterText,
         useCurrentPack,
+        onlyForMultiple,
         filters,
         selectedReferenceTable,
         referenceTableNames,
@@ -2483,6 +2513,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 beforeText: beforeText !== undefined ? beforeText : node.data.beforeText,
                 afterText: afterText !== undefined ? afterText : node.data.afterText,
                 useCurrentPack: useCurrentPack !== undefined ? useCurrentPack : node.data.useCurrentPack,
+                onlyForMultiple: onlyForMultiple !== undefined ? onlyForMultiple : node.data.onlyForMultiple,
                 filters: filters !== undefined ? filters : node.data.filters,
                 selectedReferenceTable:
                   selectedReferenceTable !== undefined
@@ -3255,6 +3286,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           includeBaseGame: (node.data as any)?.includeBaseGame,
           inputCount: (node.data as any)?.inputCount,
           useCurrentPack: (node.data as any)?.useCurrentPack,
+          onlyForMultiple: (node.data as any)?.onlyForMultiple,
         },
       };
 
@@ -3262,6 +3294,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         console.log(`Serializing groupbycolumns node ${node.id}:`, {
           selectedColumn1: serialized.data.selectedColumn1,
           selectedColumn2: serialized.data.selectedColumn2,
+          onlyForMultiple: serialized.data.onlyForMultiple,
           rawData: node.data,
         });
       }
