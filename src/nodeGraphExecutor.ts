@@ -43,6 +43,7 @@ interface SerializedNode {
     inputType?: string;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
     groupedTextSelection?: "Text" | "Text Lines";
+    onlyForMultiple?: boolean;
   };
 }
 
@@ -127,6 +128,7 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             column1: node.data.selectedColumn1 || "",
             column2: node.data.selectedColumn2 || "",
+            onlyForMultiple: node.data.onlyForMultiple || false,
           });
         } else if (node.type === "filter") {
           textValueToUse = JSON.stringify({
