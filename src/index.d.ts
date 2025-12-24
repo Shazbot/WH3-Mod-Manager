@@ -666,6 +666,7 @@ declare global {
       | GroupedTextNodeData
       | TextNodeData
       | TextLinesNodeData;
+    elseData?: DBTablesNodeData; // For filter node's "else" output handle
     error?: string;
   }
 

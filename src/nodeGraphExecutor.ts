@@ -53,11 +53,14 @@ interface SerializedConnection {
   targetId: string;
   sourceType?: string;
   targetType?: string;
+  sourceHandle?: string | null; // Handle ID for nodes with multiple output handles (e.g., "match", "else")
+  targetHandle?: string | null; // Handle ID for nodes with multiple input handles
 }
 
 interface NodeExecutionResult {
   success: boolean;
   data?: any;
+  elseData?: any; // For filter node's "else" output handle
   error?: string;
 }
 
@@ -201,17 +204,32 @@ export const executeNodeGraph = async (
                 if (targetNode.type === "mergechanges") {
                   // Collect all inputs from all incoming connections
                   const allInputs = targetIncomingConnections
-                    .map((conn) => executionResults.get(conn.sourceId)?.data)
+                    .map((conn) => {
+                      const sourceResult = executionResults.get(conn.sourceId);
+                      // Check if sourceHandle is "else" and use elseData if available
+                      if (conn.sourceHandle === "else" && sourceResult?.elseData) {
+                        return sourceResult.elseData;
+                      }
+                      return sourceResult?.data;
+                    })
                     .filter((data) => data !== null && data !== undefined);
                   inputDataForTarget = allInputs.length > 0 ? allInputs : null;
                 } else {
                   // Get input data from the most recent dependency
-                  inputDataForTarget =
-                    targetIncomingConnections.length > 0
-                      ? executionResults.get(
-                          targetIncomingConnections[targetIncomingConnections.length - 1].sourceId
-                        )?.data
-                      : null;
+                  if (targetIncomingConnections.length > 0) {
+                    const lastConnection =
+                      targetIncomingConnections[targetIncomingConnections.length - 1];
+                    const sourceResult = executionResults.get(lastConnection.sourceId);
+
+                    // Check if sourceHandle is "else" and use elseData if available
+                    if (lastConnection.sourceHandle === "else" && sourceResult?.elseData) {
+                      inputDataForTarget = sourceResult.elseData;
+                    } else {
+                      inputDataForTarget = sourceResult?.data;
+                    }
+                  } else {
+                    inputDataForTarget = null;
+                  }
                 }
 
                 executionQueue.push({

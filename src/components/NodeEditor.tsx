@@ -58,6 +58,8 @@ export interface SerializedConnection {
   targetId: string;
   sourceType?: NodeEdgeTypes;
   targetType?: NodeEdgeTypes;
+  sourceHandle?: string | null; // Handle ID for multi-output nodes (e.g., "match", "else")
+  targetHandle?: string | null; // Handle ID for multi-input nodes
 }
 
 export interface SerializedNodeGraph {
@@ -957,14 +959,30 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
         Add Filter
       </button>
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection (Filtered)</div>
-
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-yellow-500"
-        data-output-type="TableSelection"
-      />
+      <div className="mt-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-gray-400">Match:</div>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="match"
+            className="w-3 h-3 bg-green-500"
+            data-output-type="TableSelection"
+            style={{ position: "relative", right: -8, top: 0, transform: "none" }}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-gray-400">Else:</div>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="else"
+            className="w-3 h-3 bg-red-500"
+            data-output-type="TableSelection"
+            style={{ position: "relative", right: -8, top: 0, transform: "none" }}
+          />
+        </div>
+      </div>
     </div>
   );
 };
@@ -2426,6 +2444,7 @@ const executeGraphInBackend = async (
       targetId: edge.target || "",
       sourceType: (nodes.find((n) => n.id === edge.source)?.data as any)?.outputType,
       targetType: (nodes.find((n) => n.id === edge.target)?.data as any)?.inputType,
+      sourceHandle: edge.sourceHandle, // Include source handle ID for multi-output nodes
     }));
 
     const response = await window.api?.executeNodeGraph({
@@ -3449,6 +3468,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetId: edge.target || "",
         sourceType: (sourceNode?.data as any)?.outputType,
         targetType: (targetNode?.data as any)?.inputType,
+        sourceHandle: edge.sourceHandle, // Preserve source handle for multi-output nodes
+        targetHandle: edge.targetHandle, // Preserve target handle for multi-input nodes
       };
     });
 
@@ -3539,6 +3560,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           id: serializedConnection.id,
           source: serializedConnection.sourceId,
           target: serializedConnection.targetId,
+          sourceHandle: serializedConnection.sourceHandle, // Restore source handle for multi-output nodes
+          targetHandle: serializedConnection.targetHandle, // Restore target handle for multi-input nodes
           type: "default",
           style: { stroke: "#3b82f6", strokeWidth: 2 },
           animated: true,
