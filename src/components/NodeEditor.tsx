@@ -112,6 +112,17 @@ interface NumericAdjustmentNodeData extends NodeData {
   outputType: "ChangedColumnSelection";
 }
 
+interface MathMaxNodeData extends NodeData {
+  textValue: string;
+  inputType: "ChangedColumnSelection";
+  outputType: "ChangedColumnSelection";
+}
+
+interface MathCeilNodeData extends NodeData {
+  inputType: "ChangedColumnSelection";
+  outputType: "ChangedColumnSelection";
+}
+
 interface MergeChangesNodeData extends NodeData {
   inputType: "ChangedColumnSelection";
   outputType: "ChangedColumnSelection";
@@ -1111,6 +1122,85 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
         placeholder="Enter formula using x as input (e.g., x + 10, x * 1.5, x^2 + 3*x - 5)..."
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
       />
+
+      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-cyan-500"
+        data-output-type="ChangedColumnSelection"
+      />
+    </div>
+  );
+};
+
+// Custom MathMax node component that accepts ChangedColumnSelection and outputs ChangedColumnSelection
+const MathMaxNode: React.FC<{ data: MathMaxNodeData; id: string }> = ({ data, id }) => {
+  const [textValue, setTextValue] = useState(data.textValue || "");
+
+  const handleTextChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setTextValue(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, textValue: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-cyan-500"
+        data-input-type="ChangedColumnSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: ChangedColumnSelection</div>
+
+      <div>
+        <label className="text-xs text-gray-300 block mb-1">Lowest Value</label>
+        <input
+          type="text"
+          value={textValue}
+          onChange={handleTextChange}
+          placeholder="Enter value (e.g., 100)..."
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+        />
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-cyan-500"
+        data-output-type="ChangedColumnSelection"
+      />
+    </div>
+  );
+};
+
+// Custom MathCeil node component that accepts ChangedColumnSelection and outputs ChangedColumnSelection
+const MathCeilNode: React.FC<{ data: MathCeilNodeData; id: string }> = ({ data, id }) => {
+  return (
+    <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-cyan-500"
+        data-input-type="ChangedColumnSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: ChangedColumnSelection</div>
+
+      <div className="text-xs text-gray-300 italic">Applies Math.ceil() to all values</div>
 
       <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
 
@@ -2144,6 +2234,16 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
       },
       {
+        type: "mathmax",
+        label: "Math Max",
+        description: "Accepts ChangedColumnSelection, applies Math.max(value, input)",
+      },
+      {
+        type: "mathceil",
+        label: "Math Ceil",
+        description: "Accepts ChangedColumnSelection, applies Math.ceil() to round up",
+      },
+      {
         type: "mergechanges",
         label: "Merge Changes",
         description: "Merges multiple ChangedColumnSelection inputs into one output",
@@ -2381,6 +2481,8 @@ const reactFlowNodeTypes = {
   filter: FilterNode,
   referencelookup: ReferenceTableLookupNode,
   numericadjustment: NumericAdjustmentNode,
+  mathmax: MathMaxNode,
+  mathceil: MathCeilNode,
   mergechanges: MergeChangesNode,
   savechanges: SaveChangesNode,
   textsurround: TextSurroundNode,
@@ -2609,6 +2711,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as ColumnSelectionDropdownNodeData).outputType;
       } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
+      } else if (sourceNode.type === "mathmax" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as MathMaxNodeData).outputType;
+      } else if (sourceNode.type === "mathceil" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as MathCeilNodeData).outputType;
       } else if (sourceNode.type === "mergechanges" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as MergeChangesNodeData).outputType;
       } else if (sourceNode.type === "groupbycolumns" && sourceNode.data) {
@@ -2645,6 +2751,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as ReferenceTableLookupNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
+      } else if (targetNode.type === "mathmax" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as MathMaxNodeData).inputType;
+      } else if (targetNode.type === "mathceil" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as MathCeilNodeData).inputType;
       } else if (targetNode.type === "mergechanges" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as MergeChangesNodeData).inputType;
       } else if (targetNode.type === "savechanges" && targetNode.data) {
@@ -3136,6 +3246,33 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             inputType: "ColumnSelection" as NodeEdgeTypes,
             outputType: "ChangedColumnSelection" as NodeEdgeTypes,
           } as NumericAdjustmentNodeData,
+        };
+      } else if (nodeData.type === "mathmax") {
+        // Create MathMax node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "mathmax",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            textValue: "",
+            inputType: "ChangedColumnSelection" as NodeEdgeTypes,
+            outputType: "ChangedColumnSelection" as NodeEdgeTypes,
+          } as MathMaxNodeData,
+        };
+      } else if (nodeData.type === "mathceil") {
+        // Create MathCeil node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "mathceil",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            inputType: "ChangedColumnSelection" as NodeEdgeTypes,
+            outputType: "ChangedColumnSelection" as NodeEdgeTypes,
+          } as MathCeilNodeData,
         };
       } else if (nodeData.type === "mergechanges") {
         // Create MergeChanges node with special data structure

@@ -50,6 +50,12 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
 
+      case "mathmax":
+        return await executeMathMaxNode(nodeId, textValue, inputData);
+
+      case "mathceil":
+        return await executeMathCeilNode(nodeId, inputData);
+
       case "mergechanges":
         return await executeMergeChangesNode(nodeId, inputData);
 
@@ -1103,7 +1109,7 @@ async function executeNumericAdjustmentNode(
             const result = evaluateFormula(formula, numVal);
             rows[i][j].resolvedKeyValue = result.toString();
             rows[i][j].fields[0].val = result;
-            // console.log("New numeric value of", numVal, "is", result.toString());
+            console.log("New numeric value of", numVal, "is", result.toString());
           } catch (error) {
             console.warn(`Failed to apply formula to value ${numVal}:`, error);
           }
@@ -1121,6 +1127,128 @@ async function executeNumericAdjustmentNode(
       adjustedInputData: adjustedInputData,
       appliedFormula: formula,
       originalData: inputData,
+    } as DBNumericAdjustmentNodeData,
+  };
+}
+
+async function executeMathMaxNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBNumericAdjustmentNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`MathMax Node ${nodeId}: Processing with value "${textValue}" and input:`, inputData);
+
+  if (!inputData || inputData.type !== "ChangedColumnSelection") {
+    return { success: false, error: "Invalid input: Expected ChangedColumnSelection data" };
+  }
+
+  const maxValue = parseFloat(textValue.trim());
+
+  if (isNaN(maxValue)) {
+    return {
+      success: false,
+      error: "Invalid value. Please enter a valid number.",
+    };
+  }
+
+  // Apply Math.max to numeric columns
+  const adjustedInputData = structuredClone(inputData.adjustedInputData);
+
+  for (const column of adjustedInputData.columns) {
+    if (!column.sourceTable.schemaFields || !column.sourceTable.tableSchema) {
+      console.log("MISSING SCHEMA!");
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      column.sourceTable.schemaFields,
+      column.sourceTable.tableSchema
+    ) as AmendedSchemaField[][];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        if (column.selectedColumns.includes(cell.name)) {
+          const numVal = parseFloat(cell.resolvedKeyValue.replace(/[^\d.-]/g, ""));
+          if (isNaN(numVal)) {
+            console.log("Not a number!");
+            continue; // Keep non-numeric values as-is
+          }
+
+          const result = Math.max(numVal, maxValue);
+          rows[i][j].resolvedKeyValue = result.toString();
+          rows[i][j].fields[0].val = result;
+        }
+      }
+    }
+
+    column.sourceTable.schemaFields = rows.flat();
+  }
+
+  return {
+    success: true,
+    data: {
+      type: "ChangedColumnSelection",
+      adjustedInputData: adjustedInputData,
+      appliedFormula: `Math.max(x, ${maxValue})`,
+      originalData: inputData.originalData,
+    } as DBNumericAdjustmentNodeData,
+  };
+}
+
+async function executeMathCeilNode(
+  nodeId: string,
+  inputData: DBNumericAdjustmentNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`MathCeil Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "ChangedColumnSelection") {
+    return { success: false, error: "Invalid input: Expected ChangedColumnSelection data" };
+  }
+
+  // Apply Math.ceil to numeric columns
+  const adjustedInputData = structuredClone(inputData.adjustedInputData);
+
+  for (const column of adjustedInputData.columns) {
+    if (!column.sourceTable.schemaFields || !column.sourceTable.tableSchema) {
+      console.log("MISSING SCHEMA!");
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      column.sourceTable.schemaFields,
+      column.sourceTable.tableSchema
+    ) as AmendedSchemaField[][];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        if (column.selectedColumns.includes(cell.name)) {
+          const numVal = parseFloat(cell.resolvedKeyValue.replace(/[^\d.-]/g, ""));
+          if (isNaN(numVal)) {
+            console.log("Not a number!");
+            continue; // Keep non-numeric values as-is
+          }
+
+          const result = Math.ceil(numVal);
+          rows[i][j].resolvedKeyValue = result.toString();
+          rows[i][j].fields[0].val = result;
+        }
+      }
+    }
+
+    column.sourceTable.schemaFields = rows.flat();
+  }
+
+  return {
+    success: true,
+    data: {
+      type: "ChangedColumnSelection",
+      adjustedInputData: adjustedInputData,
+      appliedFormula: `Math.ceil(x)`,
+      originalData: inputData.originalData,
     } as DBNumericAdjustmentNodeData,
   };
 }

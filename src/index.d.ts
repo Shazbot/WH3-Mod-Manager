@@ -642,7 +642,9 @@ declare global {
     | "textsurround"
     | "appendtext"
     | "textjoin"
-    | "groupedcolumnstotext";
+    | "groupedcolumnstotext"
+    | "mathmax"
+    | "mathceil";
 
   // FlowNodeData = "string"|
 
