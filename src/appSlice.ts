@@ -111,6 +111,7 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
           existingMod.categories = mod.categories;
           if (mod.humanName !== "") existingMod.humanName = mod.humanName;
           if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
+          if (mod.author != "") existingMod.author = mod.author;
         }
       });
   }
