@@ -644,7 +644,8 @@ declare global {
     | "textjoin"
     | "groupedcolumnstotext"
     | "mathmax"
-    | "mathceil";
+    | "mathceil"
+    | "reversereferencelookup";
 
   // FlowNodeData = "string"|
 
