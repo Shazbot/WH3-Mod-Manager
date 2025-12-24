@@ -645,7 +645,7 @@ async function executeFilterNode(
         const filterValue = filter.value;
 
         // Perform the comparison (case-insensitive contains)
-        let matches = String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
+        let matches = String(cellValue).toLowerCase() == filterValue.toLowerCase();
 
         // Apply NOT if specified
         if (filter.not) {
