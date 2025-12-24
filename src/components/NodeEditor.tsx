@@ -620,6 +620,20 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
+  // Sync selectedColumn state with data prop when it changes (e.g., when loading from file)
+  React.useEffect(() => {
+    if (data.selectedColumn !== undefined && data.selectedColumn !== selectedColumn) {
+      setSelectedColumn(data.selectedColumn);
+    }
+  }, [data.selectedColumn]);
+
+  // Sync columnNames state with data prop when it changes
+  React.useEffect(() => {
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+    }
+  }, [data.columnNames]);
+
   // Update column names when connected table changes
   React.useEffect(() => {
     console.log(
@@ -2995,6 +3009,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
           // Propagate the reference table info to the filter node
           if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
+            // Get column names from the selected reference table (OUTPUT table), not the input table
+            const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
+            let columnNamesToUse: string[] = [];
+            if (tableVersions && tableVersions.length > 0) {
+              const tableFields = tableVersions[0].fields || [];
+              columnNamesToUse = tableFields.map((field) => field.name);
+            }
+
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -3002,7 +3024,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: sourceData.columnNames || [],
+                      columnNames: columnNamesToUse,
                       connectedTableName: sourceData.selectedReferenceTable,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
@@ -3672,6 +3694,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
 
               if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
+                // Get column names from the selected reference table (OUTPUT table), not the input table
+                const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
+                let columnNamesToUse: string[] = [];
+                if (tableVersions && tableVersions.length > 0) {
+                  const tableFields = tableVersions[0].fields || [];
+                  columnNamesToUse = tableFields.map((field) => field.name);
+                }
+
                 setNodes((nds) =>
                   nds.map((node) => {
                     if (node.id === targetNode.id) {
@@ -3679,7 +3709,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         ...node,
                         data: {
                           ...node.data,
-                          columnNames: sourceData.columnNames || [],
+                          columnNames: columnNamesToUse,
                           connectedTableName: sourceData.selectedReferenceTable,
                           DBNameToDBVersions: sourceData.DBNameToDBVersions,
                         },
