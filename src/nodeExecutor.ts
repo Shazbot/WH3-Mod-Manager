@@ -695,9 +695,104 @@ async function executeFilterNode(
 
   filteredData.tableCount = filteredData.tables.length;
 
+  // Also create the inverse data (non-matching rows) for the "else" handle
+  const elseData: DBTablesNodeData = {
+    ...inputData,
+    tables: [],
+  };
+
+  // Process each table to get non-matching rows
+  for (const tableData of inputData.tables) {
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      // Skip tables without schema
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    // Filter rows that DON'T match (inverse of the match filter)
+    const elseRows = rows.filter((row) => {
+      // Evaluate each filter
+      const filterResults: boolean[] = [];
+
+      for (const filter of filters) {
+        if (!filter.column) {
+          filterResults.push(true);
+          continue;
+        }
+
+        // Find the cell with matching column name
+        const cell = row.find((c) => c.name === filter.column);
+        if (!cell) {
+          filterResults.push(true); // Column not found, skip filter
+          continue;
+        }
+
+        const cellValue = cell.resolvedKeyValue || "";
+        const filterValue = filter.value;
+
+        // Perform the comparison (case-insensitive contains)
+        let matches = String(cellValue).toLowerCase() == filterValue.toLowerCase();
+
+        // Apply NOT if specified
+        if (filter.not) {
+          matches = !matches;
+        }
+
+        filterResults.push(matches);
+      }
+
+      // Combine filter results based on operators
+      if (filterResults.length === 0) return false; // No match = goes to else
+
+      let result = filterResults[0];
+      for (let i = 1; i < filterResults.length; i++) {
+        const operator = filters[i - 1].operator;
+        if (operator === "AND") {
+          result = result && filterResults[i];
+        } else {
+          result = result || filterResults[i];
+        }
+      }
+
+      // Return the INVERSE for else output
+      return !result;
+    });
+
+    if (elseRows.length > 0) {
+      // Flatten else rows back into schemaFields array
+      const elseSchemaFields: AmendedSchemaField[] = [];
+      for (const row of elseRows) {
+        elseSchemaFields.push(...row);
+      }
+
+      // Create a new table with else data
+      const elseTableData = {
+        ...tableData,
+        table: {
+          ...tableData.table,
+          schemaFields: elseSchemaFields,
+        },
+      };
+
+      elseData.tables.push(elseTableData);
+    }
+  }
+
+  elseData.tableCount = elseData.tables.length;
+
+  console.log(
+    `Filter Node ${nodeId}: Match output has ${filteredData.tableCount} tables, Else output has ${elseData.tableCount} tables`
+  );
+
+  // Return both outputs - the executor will select the correct one based on the connection handle
   return {
     success: true,
     data: filteredData,
+    elseData: elseData, // Add the else output
   };
 }
 
@@ -1109,7 +1204,7 @@ async function executeNumericAdjustmentNode(
             const result = evaluateFormula(formula, numVal);
             rows[i][j].resolvedKeyValue = result.toString();
             rows[i][j].fields[0].val = result;
-            console.log("New numeric value of", numVal, "is", result.toString());
+            // console.log("New numeric value of", numVal, "is", result.toString());
           } catch (error) {
             console.warn(`Failed to apply formula to value ${numVal}:`, error);
           }
