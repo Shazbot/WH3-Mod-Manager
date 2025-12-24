@@ -49,6 +49,10 @@ interface SerializedNode {
     inputType?: string;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
     groupedTextSelection?: "Text" | "Text Lines";
+    selectedReferenceTable?: string;
+    referenceTableNames?: string[];
+    selectedReverseTable?: string;
+    reverseTableNames?: string[];
   };
 }
 
@@ -226,6 +230,16 @@ interface ReferenceTableLookupNodeData extends NodeData {
   inputType: "TableSelection";
   outputType: "TableSelection";
   referenceTableNames: string[];
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
+interface ReverseReferenceLookupNodeData extends NodeData {
+  selectedReverseTable: string;
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  reverseTableNames: string[];
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
@@ -1114,6 +1128,160 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
         type="source"
         position={Position.Right}
         className="w-3 h-3 bg-purple-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+// Custom ReverseReferenceLookup node component - finds tables that reference the input table
+const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeData; id: string }> = ({
+  data,
+  id,
+}) => {
+  const [selectedReverseTable, setSelectedReverseTable] = useState(data.selectedReverseTable || "");
+  const [reverseTableNames, setReverseTableNames] = useState<string[]>(data.reverseTableNames || []);
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Sync selectedReverseTable state with data prop when it changes (e.g., when loading from file)
+  React.useEffect(() => {
+    if (data.selectedReverseTable !== undefined && data.selectedReverseTable !== selectedReverseTable) {
+      setSelectedReverseTable(data.selectedReverseTable);
+    }
+  }, [data.selectedReverseTable]);
+
+  // Sync reverseTableNames state with data prop when it changes
+  React.useEffect(() => {
+    if (data.reverseTableNames && data.reverseTableNames.length > 0) {
+      setReverseTableNames(data.reverseTableNames);
+    }
+  }, [data.reverseTableNames]);
+
+  // Sync columnNames state with data prop when it changes
+  React.useEffect(() => {
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+    }
+  }, [data.columnNames]);
+
+  // Update reverse table names when connected table changes
+  React.useEffect(() => {
+    console.log(
+      `ReverseReferenceLookupNode ${id}: useEffect triggered, connectedTableName=${
+        data.connectedTableName
+      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
+    );
+
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const inputTableName = data.connectedTableName;
+      console.log(`ReverseReferenceLookupNode ${id}: Looking for tables that reference ${inputTableName}`);
+
+      // Find all tables that have fields referencing the input table
+      const reverseTables = new Set<string>();
+      for (const [tableName, tableVersions] of Object.entries(data.DBNameToDBVersions)) {
+        if (tableVersions && tableVersions.length > 0) {
+          const tableFields = tableVersions[0].fields || [];
+          for (const field of tableFields) {
+            // Check if this field references the input table
+            if (field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName) {
+              reverseTables.add(tableName);
+              break; // Found at least one reference, no need to check more fields
+            }
+          }
+        }
+      }
+
+      const reverseTableArray = Array.from(reverseTables).sort();
+      console.log(
+        `ReverseReferenceLookupNode ${id}: Found ${reverseTableArray.length} table(s) that reference ${inputTableName}:`,
+        reverseTableArray
+      );
+      setReverseTableNames(reverseTableArray);
+
+      // Set column names from the input table
+      const tableVersions = data.DBNameToDBVersions[inputTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        // Auto-select the reverse table if there's only one option and nothing is selected
+        let autoSelectedTable = data.selectedReverseTable;
+        if (!autoSelectedTable && reverseTableArray.length === 1) {
+          autoSelectedTable = reverseTableArray[0];
+          setSelectedReverseTable(autoSelectedTable);
+          console.log(
+            `ReverseReferenceLookupNode ${id}: Auto-selected only available table: ${autoSelectedTable}`
+          );
+        }
+
+        // Update the node data with reverse table names and column names
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: {
+            nodeId: id,
+            reverseTableNames: reverseTableArray,
+            columnNames: fieldNames,
+            ...(autoSelectedTable && { selectedReverseTable: autoSelectedTable }),
+          },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    } else {
+      console.log(`ReverseReferenceLookupNode ${id}: Missing connectedTableName or DBNameToDBVersions`);
+    }
+  }, [data.connectedTableName, id]);
+
+  const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedReverseTable(newValue);
+
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedReverseTable: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-indigo-500 rounded-lg p-4 min-w-[250px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Reverse to Table</label>
+        <select
+          value={selectedReverseTable}
+          onChange={handleDropdownChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
+        >
+          <option value="">Select table to reverse to...</option>
+          {reverseTableNames.map((tableName) => (
+            <option key={tableName} value={tableName}>
+              {tableName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {reverseTableNames.length === 0 && data.connectedTableName && (
+        <div className="text-xs text-yellow-300 mb-2 p-2 bg-gray-800 rounded">
+          No tables reference the input table
+        </div>
+      )}
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection (Referencing Rows)</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-indigo-500"
         data-output-type="TableSelection"
       />
     </div>
@@ -2235,6 +2403,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Reference Lookup",
         description: "Lookup rows in referenced tables based on input table references",
       },
+      {
+        type: "reversereferencelookup",
+        label: "Reverse Reference Lookup",
+        description: "Find rows in tables that reference the input table",
+      },
     ],
   },
   {
@@ -2422,6 +2595,9 @@ const executeGraphInBackend = async (
         selectedReferenceTable: (node.data as any)?.selectedReferenceTable
           ? String((node.data as any).selectedReferenceTable)
           : "",
+        selectedReverseTable: (node.data as any)?.selectedReverseTable
+          ? String((node.data as any).selectedReverseTable)
+          : "",
         packName: (node.data as any)?.packName ? String((node.data as any).packName) : "",
         packedFileName: (node.data as any)?.packedFileName ? String((node.data as any).packedFileName) : "",
         pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
@@ -2513,6 +2689,7 @@ const reactFlowNodeTypes = {
   groupbycolumns: GroupByColumnsNode,
   filter: FilterNode,
   referencelookup: ReferenceTableLookupNode,
+  reversereferencelookup: ReverseReferenceLookupNode,
   numericadjustment: NumericAdjustmentNode,
   mathmax: MathMaxNode,
   mathceil: MathCeilNode,
@@ -2623,6 +2800,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         filters,
         selectedReferenceTable,
         referenceTableNames,
+        selectedReverseTable,
+        reverseTableNames,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -2656,6 +2835,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     : node.data.selectedReferenceTable,
                 referenceTableNames:
                   referenceTableNames !== undefined ? referenceTableNames : node.data.referenceTableNames,
+                selectedReverseTable:
+                  selectedReverseTable !== undefined
+                    ? selectedReverseTable
+                    : node.data.selectedReverseTable,
+                reverseTableNames:
+                  reverseTableNames !== undefined ? reverseTableNames : node.data.reverseTableNames,
               },
             };
           }
@@ -2695,6 +2880,52 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         data: {
                           ...node.data,
                           connectedTableName: selectedReferenceTable,
+                          columnNames: fieldNames,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              });
+            }
+          }
+        }
+      }
+
+      // If a reverse reference lookup node's selectedReverseTable changed, update connected nodes
+      if (selectedReverseTable !== undefined) {
+        const sourceNode = nodes.find((n) => n.id === nodeId);
+        if (sourceNode && sourceNode.type === "reversereferencelookup") {
+          // Find all edges where this node is the source
+          const connectedEdges = edges.filter((e) => e.source === nodeId);
+
+          // Update all connected target nodes with the new table info
+          if (selectedReverseTable && DBNameToDBVersions) {
+            const tableVersions = DBNameToDBVersions[selectedReverseTable];
+            if (tableVersions && tableVersions.length > 0) {
+              const tableFields = tableVersions[0].fields || [];
+              const fieldNames = tableFields.map((field) => field.name);
+
+              connectedEdges.forEach((edge) => {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (
+                      node.id === edge.target &&
+                      (node.type === "columnselectiondropdown" ||
+                        node.type === "groupbycolumns" ||
+                        node.type === "filter" ||
+                        node.type === "referencelookup" ||
+                        node.type === "reversereferencelookup")
+                    ) {
+                      console.log(
+                        `Updating ${node.type} node ${node.id} with reverse table: ${selectedReverseTable}`
+                      );
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          connectedTableName: selectedReverseTable,
                           columnNames: fieldNames,
                         },
                       };
@@ -2756,6 +2987,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as FilterNodeData).outputType;
       } else if (sourceNode.type === "referencelookup" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as ReferenceTableLookupNodeData).outputType;
+      } else if (sourceNode.type === "reversereferencelookup" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as ReverseReferenceLookupNodeData).outputType;
       } else if (sourceNode.type === "textsurround" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
       } else if (sourceNode.type === "appendtext" && sourceNode.data) {
@@ -2782,6 +3015,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as FilterNodeData).inputType;
       } else if (targetNode.type === "referencelookup" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as ReferenceTableLookupNodeData).inputType;
+      } else if (targetNode.type === "reversereferencelookup" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as ReverseReferenceLookupNodeData).inputType;
       } else if (targetNode.type === "numericadjustment" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
       } else if (targetNode.type === "mathmax" && targetNode.data) {
@@ -2913,7 +3148,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           (targetNode.type === "columnselectiondropdown" ||
             targetNode.type === "groupbycolumns" ||
             targetNode.type === "filter" ||
-            targetNode.type === "referencelookup") &&
+            targetNode.type === "referencelookup" ||
+            targetNode.type === "reversereferencelookup") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
         ) {
           const tableName =
@@ -2975,12 +3211,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         // Update reference lookup nodes when connected to filter or reference lookup nodes (chaining)
         if (
           targetNode.type === "referencelookup" &&
-          (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+          (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData =
             sourceNode.type === "filter"
               ? (sourceNode.data as unknown as FilterNodeData)
-              : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+              : sourceNode.type === "referencelookup"
+              ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+              : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
           // Propagate the connectedTableName and DBNameToDBVersions from source to target
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
@@ -3003,20 +3241,20 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
-        // Update filter nodes when connected to reference lookup nodes
-        if (targetNode.type === "filter" && sourceNode.type === "referencelookup") {
-          const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
+        // Update reverse reference lookup nodes when connected to filter or reference lookup nodes (chaining)
+        if (
+          targetNode.type === "reversereferencelookup" &&
+          (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+        ) {
+          const sourceData =
+            sourceNode.type === "filter"
+              ? (sourceNode.data as unknown as FilterNodeData)
+              : sourceNode.type === "referencelookup"
+              ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+              : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
-          // Propagate the reference table info to the filter node
-          if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
-            // Get column names from the selected reference table (OUTPUT table), not the input table
-            const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
-            let columnNamesToUse: string[] = [];
-            if (tableVersions && tableVersions.length > 0) {
-              const tableFields = tableVersions[0].fields || [];
-              columnNamesToUse = tableFields.map((field) => field.name);
-            }
-
+          // Propagate the connectedTableName and DBNameToDBVersions from source to target
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -3024,8 +3262,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: columnNamesToUse,
-                      connectedTableName: sourceData.selectedReferenceTable,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
@@ -3036,15 +3274,82 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
+        // Update filter nodes when connected to reference lookup or reverse reference lookup nodes
+        if (targetNode.type === "filter" && (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")) {
+          if (sourceNode.type === "referencelookup") {
+            const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
+
+            // Propagate the reference table info to the filter node
+            if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
+              // Get column names from the selected reference table (OUTPUT table), not the input table
+              const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
+              let columnNamesToUse: string[] = [];
+              if (tableVersions && tableVersions.length > 0) {
+                const tableFields = tableVersions[0].fields || [];
+                columnNamesToUse = tableFields.map((field) => field.name);
+              }
+
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === params.target) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        columnNames: columnNamesToUse,
+                        connectedTableName: sourceData.selectedReferenceTable,
+                        DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                      },
+                    };
+                  }
+                  return node;
+                })
+              );
+            }
+          } else if (sourceNode.type === "reversereferencelookup") {
+            const sourceData = sourceNode.data as unknown as ReverseReferenceLookupNodeData;
+
+            // Propagate the reverse reference table info to the filter node
+            if (sourceData.selectedReverseTable && sourceData.DBNameToDBVersions) {
+              // Get column names from the selected reverse table (OUTPUT table)
+              const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReverseTable];
+              let columnNamesToUse: string[] = [];
+              if (tableVersions && tableVersions.length > 0) {
+                const tableFields = tableVersions[0].fields || [];
+                columnNamesToUse = tableFields.map((field) => field.name);
+              }
+
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === params.target) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        columnNames: columnNamesToUse,
+                        connectedTableName: sourceData.selectedReverseTable,
+                        DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                      },
+                    };
+                  }
+                  return node;
+                })
+              );
+            }
+          }
+        }
+
         // Update column selection dropdown and groupbycolumns when connected to filter or reference lookup nodes
         if (
           (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
-          (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+          (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData =
             sourceNode.type === "filter"
               ? (sourceNode.data as unknown as FilterNodeData)
-              : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+              : sourceNode.type === "referencelookup"
+              ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+              : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
           // For reference lookup nodes, use the selected reference table instead of the input table
           let tableNameToUse = sourceData.connectedTableName;
@@ -3056,6 +3361,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               tableNameToUse = refLookupData.selectedReferenceTable;
 
               // Get column names from the selected reference table
+              const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
+              if (tableVersions && tableVersions.length > 0) {
+                const tableFields = tableVersions[0].fields || [];
+                columnNamesToUse = tableFields.map((field) => field.name);
+              }
+            }
+          } else if (sourceNode.type === "reversereferencelookup") {
+            const revLookupData = sourceData as ReverseReferenceLookupNodeData;
+            if (revLookupData.selectedReverseTable && sourceData.DBNameToDBVersions) {
+              tableNameToUse = revLookupData.selectedReverseTable;
+
+              // Get column names from the selected reverse table
               const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
               if (tableVersions && tableVersions.length > 0) {
                 const tableFields = tableVersions[0].fields || [];
@@ -3274,6 +3591,23 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             DBNameToDBVersions,
           } as ReferenceTableLookupNodeData,
         };
+      } else if (nodeData.type === "reversereferencelookup") {
+        // Create Reverse Reference Lookup node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "reversereferencelookup",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedReverseTable: "",
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            reverseTableNames: [],
+            columnNames: [],
+            DBNameToDBVersions,
+          } as ReverseReferenceLookupNodeData,
+        };
       } else if (nodeData.type === "numericadjustment") {
         // Create NumericAdjustment node with special data structure
         newNode = {
@@ -3455,6 +3789,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           filters: (node.data as any)?.filters,
           selectedReferenceTable: String((node.data as any)?.selectedReferenceTable || ""),
           referenceTableNames: (node.data as any)?.referenceTableNames || [],
+          selectedReverseTable: String((node.data as any)?.selectedReverseTable || ""),
+          reverseTableNames: (node.data as any)?.reverseTableNames || [],
           packName: String((node.data as any)?.packName || ""),
           packedFileName: String((node.data as any)?.packedFileName || ""),
           pattern: String((node.data as any)?.pattern || ""),
@@ -3562,7 +3898,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "tableselectiondropdown" ||
             node.data.type === "groupbycolumns" ||
             node.data.type === "filter" ||
-            node.data.type === "referencelookup"
+            node.data.type === "referencelookup" ||
+            node.data.type === "reversereferencelookup"
           ) {
             console.log("ser type!!!:", DBNameToDBVersions);
             node.data.DBNameToDBVersions = DBNameToDBVersions;
@@ -3602,6 +3939,33 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         setNodes(loadedNodes);
         setEdges(loadedEdges);
 
+        // Populate DBNameToDBVersions for nodes that need it
+        setTimeout(() => {
+          if (DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                // Add DBNameToDBVersions to nodes that need it
+                if (
+                  node.type === "filter" ||
+                  node.type === "referencelookup" ||
+                  node.type === "reversereferencelookup" ||
+                  node.type === "columnselectiondropdown" ||
+                  node.type === "groupbycolumns"
+                ) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      DBNameToDBVersions: DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }, 0);
+
         // Load flow options if they exist
         if ((serializedGraph as any).options) {
           setFlowOptions((serializedGraph as any).options);
@@ -3626,7 +3990,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               (targetNode.type === "columnselectiondropdown" ||
                 targetNode.type === "groupbycolumns" ||
                 targetNode.type === "filter" ||
-                targetNode.type === "referencelookup") &&
+                targetNode.type === "referencelookup" ||
+                targetNode.type === "reversereferencelookup") &&
               (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
             ) {
               const tableName =
@@ -3662,12 +4027,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             // Update reference lookup nodes when connected to filter or reference lookup nodes
             if (
               targetNode.type === "referencelookup" &&
-              (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+              (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
             ) {
               const sourceData =
                 sourceNode.type === "filter"
                   ? (sourceNode.data as unknown as FilterNodeData)
-                  : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+                  : sourceNode.type === "referencelookup"
+                  ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+                  : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
               if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
                 setNodes((nds) =>
@@ -3689,19 +4056,19 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               }
             }
 
-            // Update filter nodes when connected to reference lookup nodes
-            if (targetNode.type === "filter" && sourceNode.type === "referencelookup") {
-              const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
+            // Update reverse reference lookup nodes when connected to filter or reference lookup nodes
+            if (
+              targetNode.type === "reversereferencelookup" &&
+              (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+            ) {
+              const sourceData =
+                sourceNode.type === "filter"
+                  ? (sourceNode.data as unknown as FilterNodeData)
+                  : sourceNode.type === "referencelookup"
+                  ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+                  : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
-              if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
-                // Get column names from the selected reference table (OUTPUT table), not the input table
-                const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
-                let columnNamesToUse: string[] = [];
-                if (tableVersions && tableVersions.length > 0) {
-                  const tableFields = tableVersions[0].fields || [];
-                  columnNamesToUse = tableFields.map((field) => field.name);
-                }
-
+              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
                 setNodes((nds) =>
                   nds.map((node) => {
                     if (node.id === targetNode.id) {
@@ -3709,8 +4076,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         ...node,
                         data: {
                           ...node.data,
-                          columnNames: columnNamesToUse,
-                          connectedTableName: sourceData.selectedReferenceTable,
+                          columnNames: sourceData.columnNames || [],
+                          connectedTableName: sourceData.connectedTableName,
                           DBNameToDBVersions: sourceData.DBNameToDBVersions,
                         },
                       };
@@ -3718,6 +4085,69 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     return node;
                   })
                 );
+              }
+            }
+
+            // Update filter nodes when connected to reference lookup or reverse reference lookup nodes
+            if (targetNode.type === "filter" && (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")) {
+              if (sourceNode.type === "referencelookup") {
+                const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
+
+                if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
+                  // Get column names from the selected reference table (OUTPUT table), not the input table
+                  const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
+                  let columnNamesToUse: string[] = [];
+                  if (tableVersions && tableVersions.length > 0) {
+                    const tableFields = tableVersions[0].fields || [];
+                    columnNamesToUse = tableFields.map((field) => field.name);
+                  }
+
+                  setNodes((nds) =>
+                    nds.map((node) => {
+                      if (node.id === targetNode.id) {
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            columnNames: columnNamesToUse,
+                            connectedTableName: sourceData.selectedReferenceTable,
+                            DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                          },
+                        };
+                      }
+                      return node;
+                    })
+                  );
+                }
+              } else if (sourceNode.type === "reversereferencelookup") {
+                const sourceData = sourceNode.data as unknown as ReverseReferenceLookupNodeData;
+
+                if (sourceData.selectedReverseTable && sourceData.DBNameToDBVersions) {
+                  // Get column names from the selected reverse table (OUTPUT table)
+                  const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReverseTable];
+                  let columnNamesToUse: string[] = [];
+                  if (tableVersions && tableVersions.length > 0) {
+                    const tableFields = tableVersions[0].fields || [];
+                    columnNamesToUse = tableFields.map((field) => field.name);
+                  }
+
+                  setNodes((nds) =>
+                    nds.map((node) => {
+                      if (node.id === targetNode.id) {
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            columnNames: columnNamesToUse,
+                            connectedTableName: sourceData.selectedReverseTable,
+                            DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                          },
+                        };
+                      }
+                      return node;
+                    })
+                  );
+                }
               }
             }
 
@@ -3748,12 +4178,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             // Update column selection dropdown and groupbycolumns when connected to filter or reference lookup nodes
             if (
               (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
-              (sourceNode.type === "filter" || sourceNode.type === "referencelookup")
+              (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
             ) {
               const sourceData =
                 sourceNode.type === "filter"
                   ? (sourceNode.data as unknown as FilterNodeData)
-                  : (sourceNode.data as unknown as ReferenceTableLookupNodeData);
+                  : sourceNode.type === "referencelookup"
+                  ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+                  : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
               // For reference lookup nodes, use the selected reference table instead of the input table
               let tableNameToUse = sourceData.connectedTableName;
@@ -3790,6 +4222,43 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                           data: {
                             ...node.data,
                             selectedReferenceTable: targetConnectedTable,
+                          },
+                        };
+                      }
+                      return node;
+                    })
+                  );
+                }
+              } else if (sourceNode.type === "reversereferencelookup") {
+                const revLookupData = sourceData as ReverseReferenceLookupNodeData;
+                if (revLookupData.selectedReverseTable && sourceData.DBNameToDBVersions) {
+                  tableNameToUse = revLookupData.selectedReverseTable;
+
+                  // Get column names from the selected reverse table
+                  const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
+                  if (tableVersions && tableVersions.length > 0) {
+                    const tableFields = tableVersions[0].fields || [];
+                    columnNamesToUse = tableFields.map((field) => field.name);
+                  }
+                } else if (
+                  (targetNode.data as any).connectedTableName &&
+                  (targetNode.data as any).connectedTableName !== sourceData.connectedTableName
+                ) {
+                  // If the target already has a different connectedTableName from the saved file,
+                  // preserve that data and infer the selectedReverseTable for the reverse lookup node
+                  const targetConnectedTable = (targetNode.data as any).connectedTableName;
+                  tableNameToUse = targetConnectedTable;
+                  columnNamesToUse = (targetNode.data as any).columnNames || [];
+
+                  // Update the reverse lookup node's selectedReverseTable
+                  setNodes((nds) =>
+                    nds.map((node) => {
+                      if (node.id === sourceNode.id) {
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            selectedReverseTable: targetConnectedTable,
                           },
                         };
                       }

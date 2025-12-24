@@ -143,6 +143,12 @@ export const executeNodeGraph = async (
             selectedReferenceTable: (node.data as any).selectedReferenceTable || "",
           });
           console.log(`Reference lookup node ${node.id} textValueToUse:`, textValueToUse);
+        } else if (node.type === "reversereferencelookup") {
+          console.log(`Reverse reference lookup node ${node.id} data:`, JSON.stringify(node.data, null, 2));
+          textValueToUse = JSON.stringify({
+            selectedReverseTable: (node.data as any).selectedReverseTable || "",
+          });
+          console.log(`Reverse reference lookup node ${node.id} textValueToUse:`, textValueToUse);
         } else if (node.type === "groupedcolumnstotext") {
           textValueToUse = JSON.stringify({
             pattern: (node.data as any).pattern || "{0}: {1}",

@@ -47,6 +47,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "referencelookup":
         return await executeReferenceLookupNode(nodeId, textValue, inputData);
 
+      case "reversereferencelookup":
+        return await executeReverseReferenceLookupNode(nodeId, textValue, inputData);
+
       case "numericadjustment":
         return await executeNumericAdjustmentNode(nodeId, textValue, inputData);
 
@@ -1036,6 +1039,331 @@ async function executeReferenceLookupNode(
   return {
     success: true,
     data: filteredReferencedTables,
+  };
+}
+
+async function executeReverseReferenceLookupNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Reverse Reference Lookup Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse selected reverse table from textValue
+  let selectedReverseTable = "";
+  try {
+    const parsed = JSON.parse(textValue);
+    selectedReverseTable = parsed.selectedReverseTable || "";
+  } catch (error) {
+    console.error(`Reverse Reference Lookup Node ${nodeId}: Error parsing textValue:`, error);
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  // Get the input table name to find reverse references
+  let inputTableName = "";
+  if (inputData.tables.length > 0) {
+    inputTableName = inputData.tables[0].name.replace(/^db\\/, "").replace(/\\.*$/, "");
+  }
+
+  // If no reverse table is selected, try to auto-select if there's only one option
+  if ((!selectedReverseTable || selectedReverseTable.trim() === "") && inputTableName) {
+    console.log(
+      `Reverse Reference Lookup Node ${nodeId}: No reverse table selected, checking for auto-selection for input table "${inputTableName}"`
+    );
+
+    // Find all tables that have fields referencing the input table
+    const reverseTableOptions = new Set<string>();
+
+    for (const sourceFile of inputData.sourceFiles || []) {
+      if (!sourceFile.loaded) continue;
+
+      try {
+        // Read the pack without parsing tables to get the list of table names
+        const pack = await readPack(sourceFile.path, { skipParsingTables: true });
+
+        // Get all unique db table names (base names without variants)
+        const dbTableNames = new Set<string>();
+        for (const packedFile of pack.packedFiles) {
+          if (packedFile.name.startsWith("db\\") && !packedFile.name.includes("_to_")) {
+            const baseTableName = packedFile.name.replace(/^db\\/, "").replace(/\\.*$/, "");
+            dbTableNames.add(baseTableName);
+          }
+        }
+
+        console.log(
+          `Reverse Reference Lookup Node ${nodeId}: Found ${dbTableNames.size} potential table(s) in ${sourceFile.name}`
+        );
+
+        // Now read each table's schema to check if it references the input table
+        for (const tableName of dbTableNames) {
+          try {
+            const tableNameToRead = `db\\${tableName}`;
+            const packWithTable = await readPack(sourceFile.path, { tablesToRead: [tableNameToRead] });
+            getPacksTableData([packWithTable], [tableNameToRead]);
+
+            // Check the packed files for schema information
+            for (const packedFile of packWithTable.packedFiles) {
+              if (packedFile.name.startsWith(tableNameToRead) && packedFile.tableSchema) {
+                // Check if this table has any fields that reference the input table
+                const hasReferenceToInput = packedFile.tableSchema.fields.some(
+                  (field) =>
+                    field.is_reference &&
+                    field.is_reference.length > 0 &&
+                    field.is_reference[0] === inputTableName
+                );
+
+                if (hasReferenceToInput) {
+                  reverseTableOptions.add(tableName);
+                  console.log(
+                    `Reverse Reference Lookup Node ${nodeId}: Table "${tableName}" has references to "${inputTableName}"`
+                  );
+                  break; // Found reference in this table, no need to check other variants
+                }
+              }
+            }
+          } catch (error) {
+            // Silently skip tables that fail to read (they might not exist in this pack)
+          }
+        }
+      } catch (error) {
+        console.error(
+          `Reverse Reference Lookup Node ${nodeId}: Error reading pack ${sourceFile.path} for auto-selection:`,
+          error
+        );
+      }
+    }
+
+    console.log(
+      `Reverse Reference Lookup Node ${nodeId}: Found ${reverseTableOptions.size} table(s) that reference "${inputTableName}":`,
+      Array.from(reverseTableOptions)
+    );
+
+    if (reverseTableOptions.size === 1) {
+      selectedReverseTable = Array.from(reverseTableOptions)[0];
+      console.log(
+        `Reverse Reference Lookup Node ${nodeId}: Auto-selected only available reverse table: "${selectedReverseTable}"`
+      );
+    } else if (reverseTableOptions.size === 0) {
+      console.log(
+        `Reverse Reference Lookup Node ${nodeId}: No tables reference "${inputTableName}", returning empty result`
+      );
+      return {
+        success: true,
+        data: {
+          type: "TableSelection",
+          tables: [],
+          sourceFiles: inputData.sourceFiles || [],
+          tableCount: 0,
+        } as DBTablesNodeData,
+      };
+    }
+  }
+
+  if (!selectedReverseTable || selectedReverseTable.trim() === "") {
+    console.log(`Reverse Reference Lookup Node ${nodeId}: No reverse table selected, returning empty result`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  console.log(
+    `Reverse Reference Lookup Node ${nodeId}: Finding rows in "${selectedReverseTable}" that reference ${inputData.tables.length} input table(s)`
+  );
+
+  // Collect all key values from the input tables
+  const inputKeyValues = new Set<string>();
+
+  for (const tableData of inputData.tables) {
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      console.warn(`Reverse Reference Lookup Node ${nodeId}: Skipping table "${tableData.name}" - no schema`);
+      continue;
+    }
+
+    // Get the table name (without db\ prefix and variants)
+    if (!inputTableName) {
+      inputTableName = tableData.name.replace(/^db\\/, "").replace(/\\.*$/, "");
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    // Find key columns (columns marked as is_key)
+    const keyColumns = tableData.table.tableSchema.fields.filter((field) => field.is_key);
+
+    // Extract key values from those columns
+    for (const keyColumn of keyColumns) {
+      const columnName = keyColumn.name;
+
+      for (const row of rows) {
+        const cell = row.find((c) => c.name === columnName);
+        if (cell && cell.resolvedKeyValue) {
+          const value = String(cell.resolvedKeyValue).trim();
+          if (value) {
+            inputKeyValues.add(value);
+          }
+        }
+      }
+    }
+  }
+
+  console.log(
+    `Reverse Reference Lookup Node ${nodeId}: Collected ${inputKeyValues.size} unique key value(s) from input`
+  );
+
+  if (inputKeyValues.size === 0) {
+    console.log(
+      `Reverse Reference Lookup Node ${nodeId}: No key values found in input, returning empty result`
+    );
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  // Search for the reverse table in all source files
+  const reverseTables = [] as DBTablesNodeTable[];
+
+  const tableNameToSearch = selectedReverseTable.startsWith("db\\")
+    ? selectedReverseTable
+    : `db\\${selectedReverseTable}`;
+
+  for (const sourceFile of inputData.sourceFiles || []) {
+    if (!sourceFile.loaded) {
+      console.warn(`Reverse Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
+      continue;
+    }
+
+    try {
+      const pack = await readPack(sourceFile.path, { tablesToRead: [tableNameToSearch] });
+      getPacksTableData([pack], [tableNameToSearch]);
+
+      for (const packedFile of pack.packedFiles) {
+        if (
+          packedFile.name.startsWith(tableNameToSearch) &&
+          !packedFile.name.includes("_to_") &&
+          packedFile.schemaFields &&
+          packedFile.tableSchema
+        ) {
+          reverseTables.push({
+            table: packedFile,
+            name: packedFile.name,
+            fileName: packedFile.name,
+            sourceFile: pack,
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`Reverse Reference Lookup Node ${nodeId}: Error reading pack ${sourceFile.path}:`, error);
+    }
+  }
+
+  console.log(
+    `Reverse Reference Lookup Node ${nodeId}: Found ${reverseTables.length} table(s) from pack files`
+  );
+
+  const filteredReverseTables: DBTablesNodeData = {
+    type: "TableSelection",
+    tables: [],
+    sourceFiles: inputData.sourceFiles || [],
+    tableCount: 0,
+  };
+
+  // Filter rows in reverse tables that reference the input tables
+  for (const tableData of reverseTables) {
+    if (!tableData.table.schemaFields) {
+      console.log(`tableData.table.schemaFields is undefined for table "${tableData.name}", skipping`);
+      continue;
+    }
+
+    if (!tableData.table.tableSchema) {
+      console.log(`tableData.table.tableSchema is undefined for table "${tableData.name}", skipping`);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    // Find columns that reference the input table
+    const referenceColumns = tableData.table.tableSchema.fields.filter(
+      (field) =>
+        field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName
+    );
+
+    if (referenceColumns.length === 0) {
+      console.log(
+        `Reverse Reference Lookup Node ${nodeId}: No reference columns found in "${tableData.name}" pointing to "${inputTableName}"`
+      );
+      continue;
+    }
+
+    console.log(
+      `Reverse Reference Lookup Node ${nodeId}: Found ${referenceColumns.length} reference column(s) in "${tableData.name}"`
+    );
+
+    // Filter rows where reference column values match input key values
+    const filteredRows = rows.filter((row) => {
+      for (const refColumn of referenceColumns) {
+        const cell = row.find((c) => c.name === refColumn.name);
+        if (cell && cell.resolvedKeyValue) {
+          const refValue = String(cell.resolvedKeyValue).trim();
+          if (inputKeyValues.has(refValue)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+
+    console.log(
+      `Reverse Reference Lookup Node ${nodeId}: ${filteredRows.length} row(s) matched out of ${rows.length} in table "${tableData.name}"`
+    );
+
+    if (filteredRows.length > 0) {
+      const filteredSchemaFields: AmendedSchemaField[] = [];
+      for (const row of filteredRows) {
+        filteredSchemaFields.push(...row);
+      }
+
+      const filteredTableData = {
+        ...tableData,
+        table: {
+          ...tableData.table,
+          schemaFields: filteredSchemaFields,
+        },
+      };
+
+      filteredReverseTables.tables.push(filteredTableData);
+    }
+  }
+
+  filteredReverseTables.tableCount = filteredReverseTables.tables.length;
+
+  console.log(
+    `Reverse Reference Lookup Node ${nodeId}: Returning ${filteredReverseTables.tableCount} filtered table(s)`
+  );
+
+  return {
+    success: true,
+    data: filteredReverseTables,
   };
 }
 
