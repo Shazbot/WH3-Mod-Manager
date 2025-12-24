@@ -182,7 +182,7 @@ export function fetchModData(
             fetchModData([workshopId], cb, log, retryIndex + 1);
           }
         });
-    }, i * 20);
+    }, i * 50);
   }
 }
 
