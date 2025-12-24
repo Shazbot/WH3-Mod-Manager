@@ -2974,8 +2974,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (targetNode.type === "filter" && sourceNode.type === "referencelookup") {
           const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
 
-          // Propagate the connectedTableName and DBNameToDBVersions from source to target
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+          // Propagate the reference table info to the filter node
+          if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -2984,7 +2984,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     data: {
                       ...node.data,
                       columnNames: sourceData.columnNames || [],
-                      connectedTableName: sourceData.connectedTableName,
+                      connectedTableName: sourceData.selectedReferenceTable,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
@@ -3648,7 +3648,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             if (targetNode.type === "filter" && sourceNode.type === "referencelookup") {
               const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
 
-              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+              if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
                 setNodes((nds) =>
                   nds.map((node) => {
                     if (node.id === targetNode.id) {
@@ -3657,7 +3657,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         data: {
                           ...node.data,
                           columnNames: sourceData.columnNames || [],
-                          connectedTableName: sourceData.connectedTableName,
+                          connectedTableName: sourceData.selectedReferenceTable,
                           DBNameToDBVersions: sourceData.DBNameToDBVersions,
                         },
                       };
