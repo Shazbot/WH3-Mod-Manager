@@ -9,13 +9,12 @@ import { zonedTimeToUtc } from "date-fns-tz";
 import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
 import * as os from "os";
-import { XMLParser } from "fast-xml-parser";
 import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from "./supportedGames";
 import { decodeHTML } from "entities";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
-const xmlParser = new XMLParser();
+
 export function fetchModData(
   ids: string[],
   cb: (modData: ModData) => void,
@@ -28,163 +27,163 @@ export function fetchModData(
     {}
   );
   child.on("message", (workshopData: WorkshopItemStringInsteadOfBigInt[]) => {
-    for (const workshopItem of workshopData) {
+    for (let i = 0; i < workshopData.length; i++) {
+      const workshopItem = workshopData[i];
+
       if (workshopItem) {
-        fetch(`https://steamcommunity.com/profiles/${workshopItem.owner.steamId64}?xml=1`)
-          .then((data) => data.buffer())
-          .then((data) => {
-            const steamProfile = xmlParser.parse(data);
-            const modData = {
-              workshopId: workshopItem.publishedFileId,
-              humanName: workshopItem.title,
-              author: steamProfile?.profile?.steamID?.toString() ?? "",
-              reqModIdToName: [],
-              lastChanged: workshopItem.timeUpdated * 1000,
-              subscriptionTime: workshopItem.timeAddedToUserList * 1000,
-              isDeleted: false,
-              tags: workshopItem.tags,
-            } as ModData;
-            cb(modData);
-          })
-          .catch();
+        const modData = {
+          workshopId: workshopItem.publishedFileId,
+          humanName: workshopItem.title,
+          author: "",
+          reqModIdToName: [],
+          lastChanged: workshopItem.timeUpdated * 1000,
+          subscriptionTime: workshopItem.timeAddedToUserList * 1000,
+          isDeleted: false,
+          tags: workshopItem.tags,
+        } as ModData;
+        cb(modData);
       }
     }
   });
 
-  ids.forEach(async (workshopId) => {
-    fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
-      .then((res) => res.text())
-      .then((body) => {
-        let isDeleted = false;
-        let humanName = "";
-        try {
-          const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
-          const match = body.match(regexpSize);
-          if (match && match[1] != null) {
-            humanName = decodeHTML(match[1]);
-          } else {
-            log(`failed fetching humanName for ${workshopId}`);
+  for (let i = 0; i < ids.length; i++) {
+    const workshopId = ids[i];
 
-            const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
-            const match = body.match(regexpDeleted);
-            if (match && match[0]) isDeleted = true;
-          }
-        } catch (err) {
-          log(`failed fetching mod page for ${workshopId}`);
-          if (err instanceof Error) log(err.message);
-        }
-
-        let author = "";
-        try {
-          const regexBreadcrumbsMatch = body.match(matchBreadcrumbsInSteamPageHtml);
-          if (regexBreadcrumbsMatch && regexBreadcrumbsMatch[1]) {
-            const breadcrumbs = regexBreadcrumbsMatch[1];
-            const match = breadcrumbs && breadcrumbs.match(matchAuthorNameInSteamHtmlTag);
+    setTimeout(() => {
+      fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
+        .then((res) => res.text())
+        .then((body) => {
+          let isDeleted = false;
+          let humanName = "";
+          try {
+            const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
+            const match = body.match(regexpSize);
             if (match && match[1] != null) {
-              author = decodeHTML(decodeHTML(match[1])); // the author is already encoded in the steam page here for some reason
+              humanName = decodeHTML(match[1]);
+            } else {
+              log(`failed fetching humanName for ${workshopId}`);
+
+              const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
+              const match = body.match(regexpDeleted);
+              if (match && match[0]) isDeleted = true;
+            }
+          } catch (err) {
+            log(`failed fetching mod page for ${workshopId}`);
+            if (err instanceof Error) log(err.message);
+          }
+
+          let author = "";
+          try {
+            const regexBreadcrumbsMatch = body.match(matchBreadcrumbsInSteamPageHtml);
+            if (regexBreadcrumbsMatch && regexBreadcrumbsMatch[1]) {
+              const breadcrumbs = regexBreadcrumbsMatch[1];
+              const match = breadcrumbs && breadcrumbs.match(matchAuthorNameInSteamHtmlTag);
+              if (match && match[1] != null) {
+                author = decodeHTML(decodeHTML(match[1])); // the author is already encoded in the steam page here for some reason
+              } else {
+                log(`failed fetching author for ${workshopId}`);
+              }
             } else {
               log(`failed fetching author for ${workshopId}`);
             }
-          } else {
-            log(`failed fetching author for ${workshopId}`);
+          } catch (err) {
+            log(`failed fetching mod page for ${workshopId}`);
+            if (err instanceof Error) log(err.message);
           }
-        } catch (err) {
-          log(`failed fetching mod page for ${workshopId}`);
-          if (err instanceof Error) log(err.message);
-        }
 
-        const reqModIdToName: [string, string][] = [];
-        try {
-          const requiredItemsContainerInnerRegex = /id="RequiredItems"(.+?)<\/div>/s;
-          const requiredItemsContainerInner = body.match(requiredItemsContainerInnerRegex);
-          if (requiredItemsContainerInner && requiredItemsContainerInner[1]) {
-            const requiredModsIdsRegex = /filedetails\/\?id=(\w+)/gs;
+          const reqModIdToName: [string, string][] = [];
+          try {
+            const requiredItemsContainerInnerRegex = /id="RequiredItems"(.+?)<\/div>/s;
+            const requiredItemsContainerInner = body.match(requiredItemsContainerInnerRegex);
             if (requiredItemsContainerInner && requiredItemsContainerInner[1]) {
-              const requiredModsIds = requiredItemsContainerInner[1].matchAll(requiredModsIdsRegex);
-              const reqIds = [...requiredModsIds]
-                .filter((matchAllResult) => matchAllResult && matchAllResult[1])
-                .map((matchAllResult) => matchAllResult[1]);
+              const requiredModsIdsRegex = /filedetails\/\?id=(\w+)/gs;
+              if (requiredItemsContainerInner && requiredItemsContainerInner[1]) {
+                const requiredModsIds = requiredItemsContainerInner[1].matchAll(requiredModsIdsRegex);
+                const reqIds = [...requiredModsIds]
+                  .filter((matchAllResult) => matchAllResult && matchAllResult[1])
+                  .map((matchAllResult) => matchAllResult[1]);
 
-              const requiredItemHumanNameIdsRegex = /class="requiredItem">[\n\r\t]+(.*?)[\n\r\t]+/gs;
-              const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(
-                requiredItemHumanNameIdsRegex
-              );
-              const reqHumanNames = [...requiredItemHumanNameIds]
-                .filter((matchAllResult) => matchAllResult && matchAllResult[1])
-                .map((matchAllResult) => matchAllResult[1]);
+                const requiredItemHumanNameIdsRegex = /class="requiredItem">[\n\r\t]+(.*?)[\n\r\t]+/gs;
+                const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(
+                  requiredItemHumanNameIdsRegex
+                );
+                const reqHumanNames = [...requiredItemHumanNameIds]
+                  .filter((matchAllResult) => matchAllResult && matchAllResult[1])
+                  .map((matchAllResult) => matchAllResult[1]);
 
-              if (reqIds && reqIds[0] && reqHumanNames && reqHumanNames[0]) {
-                reqModIdToName.push([reqIds[0], reqHumanNames[0]]);
+                if (reqIds && reqIds[0] && reqHumanNames && reqHumanNames[0]) {
+                  reqModIdToName.push([reqIds[0], reqHumanNames[0]]);
+                }
               }
             }
+          } catch (err) {
+            log(`failed fetching mod page for ${workshopId}`);
+            if (err instanceof Error) log(err.message);
           }
-        } catch (err) {
-          log(`failed fetching mod page for ${workshopId}`);
-          if (err instanceof Error) log(err.message);
-        }
 
-        let lastChanged = undefined;
-        try {
-          const detailsStatRightInnerRegex = /class="detailsStatRight">(.+?)<\/div>/gs;
-          const detailsStatRightInner = body.matchAll(detailsStatRightInnerRegex);
-          const timeMatches = [...detailsStatRightInner]
-            .filter((matchAllResult) => matchAllResult[1])
-            .map((matchAllResult) => matchAllResult[1]);
+          let lastChanged = undefined;
+          try {
+            const detailsStatRightInnerRegex = /class="detailsStatRight">(.+?)<\/div>/gs;
+            const detailsStatRightInner = body.matchAll(detailsStatRightInnerRegex);
+            const timeMatches = [...detailsStatRightInner]
+              .filter((matchAllResult) => matchAllResult[1])
+              .map((matchAllResult) => matchAllResult[1]);
 
-          if (timeMatches.length > 0) {
-            // log(humanName);
-            // log(timeMatches);
-            const steamDate = timeMatches[2] ?? timeMatches[1]; // if mod was never updated, just uploaded
-            //steamDate = "2 Oct, 2021 @ 11:25am";
+            if (timeMatches.length > 0) {
+              // log(humanName);
+              // log(timeMatches);
+              const steamDate = timeMatches[2] ?? timeMatches[1]; // if mod was never updated, just uploaded
+              //steamDate = "2 Oct, 2021 @ 11:25am";
 
-            if (steamDate) {
-              const dateFragments = steamDate
-                .replace(",", "")
-                .replace("@", "")
-                .split(" ")
-                .filter((str) => str !== "");
-              const hasYear = dateFragments.length > 3;
+              if (steamDate) {
+                const dateFragments = steamDate
+                  .replace(",", "")
+                  .replace("@", "")
+                  .split(" ")
+                  .filter((str) => str !== "");
+                const hasYear = dateFragments.length > 3;
 
-              const day = dateFragments[0];
-              const date = dateFragments.join(" ");
-              const hours = dateFragments[hasYear ? 3 : 2].split(":")[0];
-              const hourFormat = hours.length > 1 ? "hh" : "h";
-              const dayFormat = day.length > 1 ? "dd" : "d";
+                const day = dateFragments[0];
+                const date = dateFragments.join(" ");
+                const hours = dateFragments[hasYear ? 3 : 2].split(":")[0];
+                const hourFormat = hours.length > 1 ? "hh" : "h";
+                const dayFormat = day.length > 1 ? "dd" : "d";
 
-              // log(`DATE: ${date}`);
-              const format = dayFormat + " MMM " + (hasYear ? "yyyy " : "") + hourFormat + ":mma";
-              // log(`date: ` + date);
-              // log(`FORMAT: ` + format);
-              const result = zonedTimeToUtc(parse(date, format, new Date()), "America/Phoenix");
-              // log(result);
-              lastChanged = getTime(result);
+                // log(`DATE: ${date}`);
+                const format = dayFormat + " MMM " + (hasYear ? "yyyy " : "") + hourFormat + ":mma";
+                // log(`date: ` + date);
+                // log(`FORMAT: ` + format);
+                const result = zonedTimeToUtc(parse(date, format, new Date()), "America/Phoenix");
+                // log(result);
+                lastChanged = getTime(result);
+              }
             }
+          } catch (err) {
+            if (err instanceof Error) log(err.message);
           }
-        } catch (err) {
-          if (err instanceof Error) log(err.message);
-        }
 
-        if (humanName || isDeleted) {
-          const modData = {
-            workshopId,
-            humanName,
-            author,
-            reqModIdToName,
-            lastChanged,
-            isDeleted,
-            subscriptionTime: 0,
-          } as ModData;
-          cb(modData);
-        }
-      })
-      .catch(async () => {
-        if (retryIndex < 3) {
-          log(`Retrying fetching mod data for mod with id ${workshopId}, retry number ${retryIndex}`);
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          fetchModData([workshopId], cb, log, retryIndex + 1);
-        }
-      });
-  });
+          if (humanName || isDeleted) {
+            const modData = {
+              workshopId,
+              humanName,
+              author,
+              reqModIdToName,
+              lastChanged,
+              isDeleted,
+              subscriptionTime: 0,
+            } as ModData;
+            cb(modData);
+          }
+        })
+        .catch(async () => {
+          if (retryIndex < 3) {
+            log(`Retrying fetching mod data for mod with id ${workshopId}, retry number ${retryIndex}`);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            fetchModData([workshopId], cb, log, retryIndex + 1);
+          }
+        });
+    }, i * 20);
+  }
 }
 
 async function getDataPath(log: (msg: string) => void): Promise<string> {

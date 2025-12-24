@@ -1137,14 +1137,14 @@ export const registerIpcMainListeners = (
       while (Date.now() - timeStartedFetchingSubbedIds < 5000 && appData.subscribedModIds.length == 0) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      console.log("before subcription filter:", mods.length);
+      console.log("before subscription filter:", mods.length);
       // for (const mod of mods) {
       //   if (!mod.isInData && !appData.subscribedModIds.includes(mod.workshopId)) console.log(mod.workshopId);
       // }
       if (appData.subscribedModIds.length != 0) {
         mods = mods.filter((mod) => mod.isInData || appData.subscribedModIds.includes(mod.workshopId));
       }
-      console.log("after subcription filter:", mods.length);
+      console.log("after subscription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
 
       mods.forEach(async (mod) => {
