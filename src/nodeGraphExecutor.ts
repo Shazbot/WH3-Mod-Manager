@@ -44,6 +44,28 @@ interface SerializedNode {
     DBNameToDBVersions?: Record<string, DBVersion[]>;
     groupedTextSelection?: "Text" | "Text Lines";
     onlyForMultiple?: boolean;
+    indexColumns?: string[];
+    lookupColumn?: string;
+    joinType?: "inner" | "left" | "nested";
+    tablePrefix?: string;
+    tablePrefixes?: string[];
+    aggregateColumn?: string;
+    aggregateType?: "min" | "max" | "sum" | "avg" | "count";
+    transformations?: Array<{
+      id: string;
+      sourceColumn: string;
+      transformationType: "none" | "prefix" | "suffix";
+      prefix?: string;
+      suffix?: string;
+      outputColumnName: string;
+    }>;
+    outputTables?: Array<{
+      handleId: string;
+      name: string;
+      existingTableName: string;
+      columnMapping: string[];
+    }>;
+    outputCount?: number;
   };
 }
 
@@ -194,6 +216,11 @@ export const executeNodeGraph = async (
             aggregateColumn: (node.data as any).aggregateColumn || "",
             aggregateType: (node.data as any).aggregateType || "min",
           });
+        } else if (node.type === "generaterows") {
+          textValueToUse = JSON.stringify({
+            transformations: (node.data as any).transformations || [],
+            outputTables: (node.data as any).outputTables || [],
+          });
         } else {
           textValueToUse = node.data.textValue || "";
         }
@@ -261,11 +288,28 @@ export const executeNodeGraph = async (
                     const lastConnection =
                       targetIncomingConnections[targetIncomingConnections.length - 1];
                     const sourceResult = executionResults.get(lastConnection.sourceId);
+                    const sourceNode = nodeMap.get(lastConnection.sourceId);
 
-                    // Check if sourceHandle is "else" and use elseData if available
+                    // Check if sourceHandle is "else" and use elseData if available (Filter node)
                     if (lastConnection.sourceHandle === "else" && sourceResult?.elseData) {
                       inputDataForTarget = sourceResult.elseData;
-                    } else {
+                    }
+                    // Check if source is generaterows with multi-output
+                    else if (
+                      sourceNode?.type === "generaterows" &&
+                      lastConnection.sourceHandle &&
+                      sourceResult?.data &&
+                      typeof sourceResult.data === "object" &&
+                      !Array.isArray(sourceResult.data)
+                    ) {
+                      // Extract specific output by handle ID
+                      const outputData = (sourceResult.data as any)[lastConnection.sourceHandle];
+                      inputDataForTarget = outputData || null;
+                      console.log(
+                        `Using output "${lastConnection.sourceHandle}" from generaterows node ${lastConnection.sourceId}`
+                      );
+                    }
+                    else {
                       inputDataForTarget = sourceResult?.data;
                     }
                   } else {

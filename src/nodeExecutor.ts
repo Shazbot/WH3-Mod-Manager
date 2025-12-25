@@ -92,6 +92,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "aggregatenested":
         return await executeAggregateNestedNode(nodeId, textValue, inputData);
 
+      case "generaterows":
+        return await executeGenerateRowsNode(nodeId, textValue, inputData);
+
       default:
         return {
           success: false,
@@ -3026,5 +3029,234 @@ async function executeAggregateNestedNode(
       sourceTable: inputData.sourceTable,
       lookupTable: inputData.lookupTable,
     },
+  };
+}
+
+async function executeGenerateRowsNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Generate Rows Node ${nodeId}: Starting execution`);
+
+  // 1. Parse configuration from textValue
+  let config: {
+    transformations: Array<{
+      sourceColumn: string;
+      transformationType: "none" | "prefix" | "suffix" | "concatenate" | "formula";
+      prefix?: string;
+      suffix?: string;
+      separator?: string;
+      formula?: string;
+      outputColumnName: string;
+    }>;
+    outputTables: Array<{
+      handleId: string;
+      name: string;
+      existingTableName: string;
+      columnMapping: string[];
+    }>;
+  };
+
+  try {
+    config = JSON.parse(textValue);
+  } catch (error) {
+    return {
+      success: false,
+      error: `Invalid configuration: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+
+  if (!config.transformations || !config.outputTables) {
+    return {
+      success: false,
+      error: "Missing transformations or outputTables in configuration",
+    };
+  }
+
+  console.log(`Generate Rows Node ${nodeId}: Configuration parsed`, config);
+
+  // 2. Extract input rows
+  const sourceTable = inputData.tables?.[0];
+  if (!sourceTable) {
+    return {
+      success: false,
+      error: "No input table found",
+    };
+  }
+
+  const rows = sourceTable.schemaFields
+    ? chunkSchemaIntoRows(sourceTable.schemaFields, sourceTable.DBVersion)
+    : [];
+
+  if (rows.length === 0) {
+    return {
+      success: false,
+      error: "No rows found in input table",
+    };
+  }
+
+  console.log(`Generate Rows Node ${nodeId}: Processing ${rows.length} input rows`);
+
+  // 3. Apply transformations to each row
+  const transformedData = new Map<string, any[]>(); // outputColumnName -> array of values
+
+  for (const row of rows) {
+    for (const transformation of config.transformations) {
+      const sourceCell = row.find((c: any) => c.name === transformation.sourceColumn);
+      if (!sourceCell) {
+        console.warn(
+          `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row`
+        );
+        continue;
+      }
+
+      let outputValue: any = sourceCell.resolvedKeyValue;
+
+      // Apply transformation
+      switch (transformation.transformationType) {
+        case "none":
+          // Pass through unchanged
+          break;
+
+        case "prefix":
+          outputValue = (transformation.prefix || "") + String(outputValue);
+          break;
+
+        case "suffix":
+          outputValue = String(outputValue) + (transformation.suffix || "");
+          break;
+
+        case "concatenate":
+          // Combine multiple source columns (for now, just use the one source)
+          // TODO: Support multiple source columns when UI is ready
+          outputValue = String(outputValue);
+          break;
+
+        case "formula":
+          // Simple formula evaluation (for now, just pass through)
+          // TODO: Implement formula parsing when needed
+          console.warn(`Generate Rows Node ${nodeId}: Formula transformation not yet implemented`);
+          break;
+
+        default:
+          console.warn(`Generate Rows Node ${nodeId}: Unknown transformation type "${transformation.transformationType}"`);
+      }
+
+      if (!transformedData.has(transformation.outputColumnName)) {
+        transformedData.set(transformation.outputColumnName, []);
+      }
+      transformedData.get(transformation.outputColumnName)!.push(outputValue);
+    }
+  }
+
+  console.log(`Generate Rows Node ${nodeId}: Transformations applied`, {
+    columnCount: transformedData.size,
+    columns: Array.from(transformedData.keys()),
+  });
+
+  // 4. Create output tables
+  const outputs: Record<string, DBTablesNodeData> = {};
+
+  for (const outputConfig of config.outputTables) {
+    console.log(`Generate Rows Node ${nodeId}: Creating output table "${outputConfig.name}"`);
+
+    // Look up existing table schema from DBNameToDBVersions
+    const versions = inputData.DBNameToDBVersions?.[outputConfig.existingTableName];
+    if (!versions || versions.length === 0) {
+      return {
+        success: false,
+        error: `Table schema "${outputConfig.existingTableName}" not found`,
+      };
+    }
+
+    const schema = versions[0];
+    console.log(`Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`, {
+      fieldCount: schema.fields.length,
+      fields: schema.fields.map((f: any) => f.name),
+    });
+
+    // Build rows for this output
+    const outputRows: SchemaField[] = [];
+    const numRows = transformedData.get(outputConfig.columnMapping[0])?.length || 0;
+
+    for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
+      for (const columnName of outputConfig.columnMapping) {
+        const value = transformedData.get(columnName)?.[rowIdx];
+        const fieldDef = schema.fields.find((f: any) => f.name === columnName);
+
+        if (!fieldDef) {
+          return {
+            success: false,
+            error: `Column "${columnName}" not found in schema "${outputConfig.existingTableName}"`,
+          };
+        }
+
+        // Create SchemaField with auto-detected type
+        let fieldValue: any;
+        switch (fieldDef.type) {
+          case "I32":
+          case "F32":
+          case "I64":
+          case "F64":
+          case "I16":
+            fieldValue = Number(value) || 0;
+            break;
+
+          case "Boolean":
+            fieldValue = Boolean(value);
+            break;
+
+          case "StringU8":
+          case "StringU16":
+          case "OptionalStringU8":
+          case "OptionalStringU16":
+          default:
+            fieldValue = String(value);
+            break;
+        }
+
+        const schemaField: SchemaField = {
+          fieldValue,
+          is_key: fieldDef.is_key || false,
+          is_reference: fieldDef.is_reference || [],
+          is_filename: fieldDef.is_filename || false,
+          column_source_value: fieldDef.column_source_value || "",
+          reference_hint: fieldDef.reference_hint || "",
+        };
+
+        outputRows.push(schemaField);
+      }
+    }
+
+    console.log(`Generate Rows Node ${nodeId}: Created ${numRows} rows for output "${outputConfig.name}"`);
+
+    // Create TableSelection for this output
+    const outputTable: DBTablesNodeTable = {
+      name: outputConfig.existingTableName,
+      fileName: sourceTable.fileName,
+      sourceFile: sourceTable.sourceFile,
+      table: {
+        ...sourceTable.table,
+        DBVersion: schema,
+        schemaFields: outputRows,
+      },
+    };
+
+    outputs[outputConfig.handleId] = {
+      type: "TableSelection",
+      tables: [outputTable],
+      sourceFiles: inputData.sourceFiles || [],
+      tableCount: 1,
+      DBNameToDBVersions: inputData.DBNameToDBVersions,
+    };
+  }
+
+  console.log(`Generate Rows Node ${nodeId}: Generated ${Object.keys(outputs).length} output tables`);
+
+  // 5. Return multi-output result
+  return {
+    success: true,
+    data: outputs,
   };
 }

@@ -652,7 +652,8 @@ declare global {
     | "lookup"
     | "flattennested"
     | "extracttable"
-    | "aggregatenested";
+    | "aggregatenested"
+    | "generaterows";
 
   // FlowNodeData = "string"|
 
@@ -675,7 +676,8 @@ declare global {
       | TextNodeData
       | TextLinesNodeData
       | IndexedTableData
-      | NestedTableSelection;
+      | NestedTableSelection
+      | MultiOutputTablesData;
     elseData?: DBTablesNodeData; // For filter node's "else" output handle
     error?: string;
   }
@@ -776,4 +778,7 @@ declare global {
     sourceTable: DBTablesNodeTable;
     lookupTable: DBTablesNodeTable;
   }
+
+  // Multi-output data for nodes like Generate Rows (map of handleId -> TableSelection)
+  type MultiOutputTablesData = Record<string, DBTablesNodeData>;
 }

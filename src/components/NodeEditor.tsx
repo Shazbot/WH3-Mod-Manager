@@ -60,6 +60,21 @@ interface SerializedNode {
     tablePrefixes?: string[];
     aggregateColumn?: string;
     aggregateType?: "min" | "max" | "sum" | "avg" | "count";
+    transformations?: Array<{
+      id: string;
+      sourceColumn: string;
+      transformationType: "none" | "prefix" | "suffix";
+      prefix?: string;
+      suffix?: string;
+      outputColumnName: string;
+    }>;
+    outputTables?: Array<{
+      handleId: string;
+      name: string;
+      existingTableName: string;
+      columnMapping: string[];
+    }>;
+    outputCount?: number;
   };
 }
 
@@ -291,6 +306,34 @@ interface AggregateNestedNodeData extends NodeData {
   inputType: "NestedTableSelection";
   outputType: "NestedTableSelection";
   columnNames: string[];
+}
+
+interface ColumnTransformation {
+  id: string; // Unique ID for React key
+  sourceColumn: string;
+  transformationType: "none" | "prefix" | "suffix";
+  prefix?: string;
+  suffix?: string;
+  outputColumnName: string;
+}
+
+interface OutputTableConfig {
+  handleId: string; // e.g., "output-table1"
+  name: string; // Display name
+  existingTableName: string; // Table schema to use
+  columnMapping: string[]; // Which transformation outputs go here
+}
+
+interface GenerateRowsNodeData extends NodeData {
+  sourceColumns: string[];
+  transformations: ColumnTransformation[];
+  outputTables: OutputTableConfig[];
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  outputCount: number; // 1-4
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
 interface DraggableNodeData {
@@ -2401,6 +2444,295 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
   );
 };
 
+const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
+  const [transformations, setTransformations] = useState<ColumnTransformation[]>(
+    data.transformations || []
+  );
+  const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
+  const [outputCount, setOutputCount] = useState<number>(data.outputCount || 2);
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [tableNames, setTableNames] = useState<string[]>([]);
+
+  // Extract column names from connected input
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+      }
+    }
+
+    // Extract all available table names from DBNameToDBVersions
+    if (data.DBNameToDBVersions) {
+      const names = Object.keys(data.DBNameToDBVersions);
+      setTableNames(names);
+    }
+  }, [data.connectedTableName, data.DBNameToDBVersions]);
+
+  // Sync transformations to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, updates: { transformations } },
+      })
+    );
+  }, [transformations, id]);
+
+  // Sync outputTables to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, updates: { outputTables, outputCount } },
+      })
+    );
+  }, [outputTables, outputCount, id]);
+
+  const addTransformation = () => {
+    const newTransformation: ColumnTransformation = {
+      id: `trans_${Date.now()}`,
+      sourceColumn: columnNames[0] || "",
+      transformationType: "none",
+      outputColumnName: `output_${transformations.length + 1}`,
+    };
+    setTransformations([...transformations, newTransformation]);
+  };
+
+  const removeTransformation = (transId: string) => {
+    setTransformations(transformations.filter((t) => t.id !== transId));
+  };
+
+  const updateTransformation = (transId: string, updates: Partial<ColumnTransformation>) => {
+    setTransformations(
+      transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t))
+    );
+  };
+
+  const updateOutputCount = (count: number) => {
+    setOutputCount(count);
+
+    // Adjust outputTables array to match count
+    const newOutputTables = [...outputTables];
+    while (newOutputTables.length < count) {
+      newOutputTables.push({
+        handleId: `output-table${newOutputTables.length + 1}`,
+        name: `Table ${newOutputTables.length + 1}`,
+        existingTableName: tableNames[0] || "",
+        columnMapping: [],
+      });
+    }
+    while (newOutputTables.length > count) {
+      newOutputTables.pop();
+    }
+    setOutputTables(newOutputTables);
+  };
+
+  const updateOutputTable = (index: number, updates: Partial<OutputTableConfig>) => {
+    const newOutputTables = [...outputTables];
+    newOutputTables[index] = { ...newOutputTables[index], ...updates };
+    setOutputTables(newOutputTables);
+  };
+
+  const toggleColumnInMapping = (outputIndex: number, columnName: string) => {
+    const currentMapping = outputTables[outputIndex]?.columnMapping || [];
+    const newMapping = currentMapping.includes(columnName)
+      ? currentMapping.filter((c) => c !== columnName)
+      : [...currentMapping, columnName];
+
+    updateOutputTable(outputIndex, { columnMapping: newMapping });
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-green-600 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">Generate Rows</div>
+
+      {/* Transformations Section */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-300">Transformations:</label>
+          <button
+            onClick={addTransformation}
+            className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
+          >
+            + Add
+          </button>
+        </div>
+
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          {transformations.map((trans) => (
+            <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-400">→ {trans.outputColumnName}</span>
+                <button
+                  onClick={() => removeTransformation(trans.id)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <select
+                value={trans.sourceColumn}
+                onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
+                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+              >
+                {columnNames.map((col) => (
+                  <option key={col} value={col}>
+                    {col}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={trans.transformationType}
+                onChange={(e) =>
+                  updateTransformation(trans.id, {
+                    transformationType: e.target.value as "none" | "prefix" | "suffix",
+                  })
+                }
+                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+              >
+                <option value="none">None (pass through)</option>
+                <option value="prefix">Add Prefix</option>
+                <option value="suffix">Add Suffix</option>
+              </select>
+
+              {trans.transformationType === "prefix" && (
+                <input
+                  type="text"
+                  placeholder="Prefix..."
+                  value={trans.prefix || ""}
+                  onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                />
+              )}
+
+              {trans.transformationType === "suffix" && (
+                <input
+                  type="text"
+                  placeholder="Suffix..."
+                  value={trans.suffix || ""}
+                  onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                />
+              )}
+
+              <input
+                type="text"
+                placeholder="Output column name..."
+                value={trans.outputColumnName}
+                onChange={(e) =>
+                  updateTransformation(trans.id, { outputColumnName: e.target.value })
+                }
+                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+              />
+            </div>
+          ))}
+
+          {transformations.length === 0 && (
+            <div className="text-xs text-gray-500 text-center py-2">No transformations yet</div>
+          )}
+        </div>
+      </div>
+
+      {/* Output Count */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">Number of Outputs:</label>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((num) => (
+            <label key={num} className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                checked={outputCount === num}
+                onChange={() => updateOutputCount(num)}
+                className="w-3 h-3"
+              />
+              <span className="text-xs text-white">{num}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Output Tables Configuration */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-2">Output Tables:</label>
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {outputTables.map((output, idx) => (
+            <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="text-xs text-gray-400 mb-1">Output {idx + 1}</div>
+
+              <select
+                value={output.existingTableName}
+                onChange={(e) =>
+                  updateOutputTable(idx, { existingTableName: e.target.value })
+                }
+                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+              >
+                <option value="">Select table schema...</option>
+                {tableNames.map((tableName) => (
+                  <option key={tableName} value={tableName}>
+                    {tableName}
+                  </option>
+                ))}
+              </select>
+
+              <div className="text-xs text-gray-400 mb-1">Columns:</div>
+              <div className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1">
+                {transformations.map((trans) => (
+                  <label
+                    key={trans.id}
+                    className="flex items-center gap-2 cursor-pointer hover:bg-gray-600 p-1 rounded"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={output.columnMapping.includes(trans.outputColumnName)}
+                      onChange={() => toggleColumnInMapping(idx, trans.outputColumnName)}
+                      className="w-3 h-3"
+                    />
+                    <span className="text-xs text-white">{trans.outputColumnName}</span>
+                  </label>
+                ))}
+                {transformations.length === 0 && (
+                  <div className="text-xs text-gray-500 text-center py-1">
+                    Add transformations first
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Outputs: {outputCount} TableSelections</div>
+
+      {/* Output Handles */}
+      {outputTables.map((output, idx) => (
+        <Handle
+          key={output.handleId}
+          type="source"
+          position={Position.Right}
+          id={output.handleId}
+          className="w-3 h-3 bg-green-500"
+          data-output-type="TableSelection"
+          style={{
+            top: `${30 + (idx * 60) / (outputCount - 1 || 1)}%`,
+            position: "absolute",
+            right: -6,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
 // Flow Options Modal Component
 const FlowOptionsModal: React.FC<{
   isOpen: boolean;
@@ -3029,6 +3361,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Aggregate Nested",
         description: "Performs aggregations (min/max/sum/avg/count) on nested arrays",
       },
+      {
+        type: "generaterows",
+        label: "Generate Rows",
+        description: "Creates new table rows with transformations and multiple outputs",
+      },
     ],
   },
 ];
@@ -3259,6 +3596,7 @@ const reactFlowNodeTypes = {
   flattennested: FlattenNestedNode,
   extracttable: ExtractTableNode,
   aggregatenested: AggregateNestedNode,
+  generaterows: GenerateRowsNode,
 };
 
 const initialNodes: Node[] = [];
@@ -3567,6 +3905,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as ExtractTableNodeData).outputType;
       } else if (sourceNode.type === "aggregatenested" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as AggregateNestedNodeData).outputType;
+      } else if (sourceNode.type === "generaterows" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as GenerateRowsNodeData).outputType;
       }
 
       // Get input type from target node
@@ -3621,6 +3961,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as ExtractTableNodeData).inputType;
       } else if (targetNode.type === "aggregatenested" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as AggregateNestedNodeData).inputType;
+      } else if (targetNode.type === "generaterows" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -4322,6 +4664,114 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             outputType: "Text" as NodeEdgeTypes,
           } as GroupedColumnsToTextNodeData,
         };
+      } else if (nodeData.type === "indextable") {
+        newNode = {
+          id: getNodeId(),
+          type: "indextable",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            indexColumns: [],
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "IndexedTable" as NodeEdgeTypes,
+            columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
+          } as IndexTableNodeData,
+        };
+      } else if (nodeData.type === "lookup") {
+        newNode = {
+          id: getNodeId(),
+          type: "lookup",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            lookupColumn: "",
+            joinType: "inner",
+            inputType: "TableSelection" as NodeEdgeTypes,
+            indexedInputType: "IndexedTable" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
+            inputCount: 2,
+          } as LookupNodeData,
+        };
+      } else if (nodeData.type === "flattennested") {
+        newNode = {
+          id: getNodeId(),
+          type: "flattennested",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            inputType: "NestedTableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+          } as FlattenNestedNodeData,
+        };
+      } else if (nodeData.type === "extracttable") {
+        newNode = {
+          id: getNodeId(),
+          type: "extracttable",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            tablePrefix: "",
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            tablePrefixes: [],
+          } as ExtractTableNodeData,
+        };
+      } else if (nodeData.type === "aggregatenested") {
+        newNode = {
+          id: getNodeId(),
+          type: "aggregatenested",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            aggregateColumn: "",
+            aggregateType: "min",
+            inputType: "NestedTableSelection" as NodeEdgeTypes,
+            outputType: "NestedTableSelection" as NodeEdgeTypes,
+            columnNames: [],
+          } as AggregateNestedNodeData,
+        };
+      } else if (nodeData.type === "generaterows") {
+        newNode = {
+          id: getNodeId(),
+          type: "generaterows",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            sourceColumns: [],
+            transformations: [],
+            outputTables: [
+              {
+                handleId: "output-table1",
+                name: "Table 1",
+                existingTableName: "",
+                columnMapping: [],
+              },
+              {
+                handleId: "output-table2",
+                name: "Table 2",
+                existingTableName: "",
+                columnMapping: [],
+              },
+            ],
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            outputCount: 2,
+            columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
+          } as GenerateRowsNodeData,
+        };
       } else {
         // Create standard node
         newNode = {
@@ -4394,6 +4844,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           tablePrefixes: (node.data as any)?.tablePrefixes || [],
           aggregateColumn: String((node.data as any)?.aggregateColumn || ""),
           aggregateType: (node.data as any)?.aggregateType || "min",
+          transformations: (node.data as any)?.transformations || [],
+          outputTables: (node.data as any)?.outputTables || [],
+          outputCount: (node.data as any)?.outputCount || 2,
         },
       };
 
@@ -4551,7 +5004,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   node.type === "indextable" ||
                   node.type === "lookup" ||
                   node.type === "extracttable" ||
-                  node.type === "aggregatenested"
+                  node.type === "aggregatenested" ||
+                  node.type === "generaterows"
                 ) {
                   return {
                     ...node,
