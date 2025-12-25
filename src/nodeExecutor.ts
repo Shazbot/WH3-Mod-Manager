@@ -77,6 +77,21 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "groupedcolumnstotext":
         return await executeGroupedColumnsToTextNode(nodeId, textValue, inputData);
 
+      case "indextable":
+        return await executeIndexTableNode(nodeId, textValue, inputData);
+
+      case "lookup":
+        return await executeLookupNode(nodeId, textValue, inputData);
+
+      case "flattennested":
+        return await executeFlattenNestedNode(nodeId, inputData);
+
+      case "extracttable":
+        return await executeExtractTableNode(nodeId, textValue, inputData);
+
+      case "aggregatenested":
+        return await executeAggregateNestedNode(nodeId, textValue, inputData);
+
       default:
         return {
           success: false,
@@ -2418,6 +2433,598 @@ async function executeGroupedColumnsToTextNode(
     data: {
       type: "Text",
       text: finalText,
+    },
+  };
+}
+
+async function executeIndexTableNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Index Table Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse index columns from textValue
+  let indexColumns: string[] = [];
+  try {
+    const parsed = JSON.parse(textValue);
+    indexColumns = parsed.indexColumns || [];
+  } catch (error) {
+    console.error(`Index Table Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid index configuration" };
+  }
+
+  if (indexColumns.length === 0) {
+    return { success: false, error: "No index columns specified" };
+  }
+
+  console.log(`Index Table Node ${nodeId}: Indexing by columns: ${indexColumns.join(", ")}`);
+
+  // We can only index a single table
+  if (inputData.tables.length === 0) {
+    return { success: false, error: "No tables in input data" };
+  }
+
+  if (inputData.tables.length > 1) {
+    console.log(`Index Table Node ${nodeId}: Multiple tables in input, using first table`);
+  }
+
+  const sourceTable = inputData.tables[0];
+
+  if (!sourceTable.table.schemaFields || !sourceTable.table.tableSchema) {
+    return { success: false, error: "Table has no schema data" };
+  }
+
+  const rows = chunkSchemaIntoRows(
+    sourceTable.table.schemaFields,
+    sourceTable.table.tableSchema
+  ) as AmendedSchemaField[][];
+
+  console.log(`Index Table Node ${nodeId}: Indexing ${rows.length} rows`);
+
+  // Build the index map
+  const indexMap = new Map<string, any[]>();
+
+  for (const row of rows) {
+    // Extract values for the index columns
+    const keyParts: string[] = [];
+    let allColumnsFound = true;
+
+    for (const columnName of indexColumns) {
+      const cell = row.find((c) => c.name === columnName);
+      if (!cell) {
+        console.warn(
+          `Index Table Node ${nodeId}: Column "${columnName}" not found in row, skipping row`
+        );
+        allColumnsFound = false;
+        break;
+      }
+      const value = cell.resolvedKeyValue || "";
+      keyParts.push(String(value));
+    }
+
+    if (!allColumnsFound) {
+      continue;
+    }
+
+    // Create composite key by joining with pipe delimiter
+    const indexKey = keyParts.join("|");
+
+    // Add row to index (support multiple rows with same key)
+    if (!indexMap.has(indexKey)) {
+      indexMap.set(indexKey, []);
+    }
+    indexMap.get(indexKey)!.push(row);
+  }
+
+  console.log(
+    `Index Table Node ${nodeId}: Created index with ${indexMap.size} unique keys for table "${sourceTable.name}"`
+  );
+
+  return {
+    success: true,
+    data: {
+      type: "IndexedTable",
+      indexColumns,
+      indexMap,
+      sourceTable,
+      tableName: sourceTable.name,
+    },
+  };
+}
+
+async function executeLookupNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`Lookup Node ${nodeId}: Processing with input:`, inputData);
+
+  // Parse configuration
+  let lookupColumn: string = "";
+  let joinType: "inner" | "left" | "nested" = "inner";
+  try {
+    const parsed = JSON.parse(textValue);
+    lookupColumn = parsed.lookupColumn || "";
+    joinType = parsed.joinType || "inner";
+  } catch (error) {
+    console.error(`Lookup Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid lookup configuration" };
+  }
+
+  if (!lookupColumn) {
+    return { success: false, error: "No lookup column specified" };
+  }
+
+  // Input should be an array: [sourceData, indexedData]
+  if (!Array.isArray(inputData) || inputData.length !== 2) {
+    return { success: false, error: "Invalid input: Expected array with 2 inputs [source, index]" };
+  }
+
+  const [sourceData, indexedData] = inputData;
+
+  // Validate source data
+  if (!sourceData || sourceData.type !== "TableSelection") {
+    return { success: false, error: "Invalid source input: Expected TableSelection data" };
+  }
+
+  // Validate indexed data
+  if (!indexedData || indexedData.type !== "IndexedTable") {
+    return { success: false, error: "Invalid index input: Expected IndexedTable data" };
+  }
+
+  console.log(
+    `Lookup Node ${nodeId}: Performing ${joinType} join on column "${lookupColumn}"`
+  );
+
+  // Get source table (use first table if multiple)
+  if (sourceData.tables.length === 0) {
+    return { success: false, error: "No tables in source data" };
+  }
+
+  const sourceTable = sourceData.tables[0];
+
+  if (!sourceTable.table.schemaFields || !sourceTable.table.tableSchema) {
+    return { success: false, error: "Source table has no schema data" };
+  }
+
+  const sourceRows = chunkSchemaIntoRows(
+    sourceTable.table.schemaFields,
+    sourceTable.table.tableSchema
+  ) as AmendedSchemaField[][];
+
+  console.log(`Lookup Node ${nodeId}: Processing ${sourceRows.length} source rows`);
+
+  // Get table names for auto-prefixing
+  const sourceTableName = sourceTable.name.replace(/^db\\/, "").replace(/\\.*$/, "");
+  const lookupTableName = indexedData.tableName.replace(/^db\\/, "").replace(/\\.*$/, "");
+
+  // Perform join based on join type
+  if (joinType === "nested") {
+    // Nested join: preserve source rows, add lookup matches as nested array
+    const nestedRows: NestedRow[] = [];
+
+    for (const sourceRow of sourceRows) {
+      const lookupCell = sourceRow.find((c) => c.name === lookupColumn);
+      if (!lookupCell) {
+        console.warn(
+          `Lookup Node ${nodeId}: Column "${lookupColumn}" not found in source row, skipping`
+        );
+        continue;
+      }
+
+      const lookupKey = String(lookupCell.resolvedKeyValue || "");
+      const lookupMatches = indexedData.indexMap.get(lookupKey) || [];
+
+      nestedRows.push({
+        sourceRow,
+        lookupMatches,
+      });
+    }
+
+    console.log(`Lookup Node ${nodeId}: Created ${nestedRows.length} nested rows`);
+
+    return {
+      success: true,
+      data: {
+        type: "NestedTableSelection",
+        rows: nestedRows,
+        sourceTable,
+        lookupTable: indexedData.sourceTable,
+      },
+    };
+  } else {
+    // Inner or Left join: flatten results
+    const joinedTables: DBTablesNodeTable[] = [];
+
+    // Create a new table with joined rows
+    const joinedRows: AmendedSchemaField[][] = [];
+
+    for (const sourceRow of sourceRows) {
+      const lookupCell = sourceRow.find((c) => c.name === lookupColumn);
+      if (!lookupCell) {
+        console.warn(
+          `Lookup Node ${nodeId}: Column "${lookupColumn}" not found in source row, skipping`
+        );
+        continue;
+      }
+
+      const lookupKey = String(lookupCell.resolvedKeyValue || "");
+      const lookupMatches = indexedData.indexMap.get(lookupKey) || [];
+
+      if (lookupMatches.length === 0) {
+        // No match found
+        if (joinType === "left") {
+          // Left join: keep source row with nulls for lookup columns
+          const prefixedSourceRow = sourceRow.map((cell) => ({
+            ...cell,
+            name: `${sourceTableName}_${cell.name}`,
+          }));
+          joinedRows.push(prefixedSourceRow);
+        }
+        // Inner join: skip row
+      } else {
+        // Match found: create joined rows
+        for (const lookupRow of lookupMatches) {
+          const prefixedSourceRow = sourceRow.map((cell) => ({
+            ...cell,
+            name: `${sourceTableName}_${cell.name}`,
+          }));
+          const prefixedLookupRow = lookupRow.map((cell: AmendedSchemaField) => ({
+            ...cell,
+            name: `${lookupTableName}_${cell.name}`,
+          }));
+          joinedRows.push([...prefixedSourceRow, ...prefixedLookupRow]);
+        }
+      }
+    }
+
+    console.log(`Lookup Node ${nodeId}: Created ${joinedRows.length} joined rows`);
+
+    // We need to create a new packed file with the joined data
+    // For now, we'll create a synthetic table structure
+    // In a real implementation, you'd want to properly serialize this
+    const joinedTable: DBTablesNodeTable = {
+      name: `${sourceTableName}_joined_${lookupTableName}`,
+      fileName: `${sourceTableName}_joined_${lookupTableName}`,
+      sourceFile: sourceTable.sourceFile,
+      table: {
+        ...sourceTable.table,
+        name: `db\\${sourceTableName}_joined_${lookupTableName}`,
+        // Store joined rows in schemaFields (will need proper serialization)
+        schemaFields: joinedRows.flat(),
+        tableSchema: {
+          ...sourceTable.table.tableSchema!,
+          fields: joinedRows.length > 0 ? joinedRows[0].map((cell) => cell) : [],
+        },
+      },
+    };
+
+    joinedTables.push(joinedTable);
+
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: joinedTables,
+        sourceFiles: sourceData.sourceFiles,
+        tableCount: joinedTables.length,
+      },
+    };
+  }
+}
+
+async function executeFlattenNestedNode(
+  nodeId: string,
+  inputData: NestedTableSelection
+): Promise<NodeExecutionResult> {
+  console.log(`Flatten Nested Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "NestedTableSelection") {
+    return { success: false, error: "Invalid input: Expected NestedTableSelection data" };
+  }
+
+  console.log(`Flatten Nested Node ${nodeId}: Flattening ${inputData.rows.length} nested rows`);
+
+  // Get table names for prefixing
+  const sourceTableName = inputData.sourceTable.name.replace(/^db\\/, "").replace(/\\.*$/, "");
+  const lookupTableName = inputData.lookupTable.name.replace(/^db\\/, "").replace(/\\.*$/, "");
+
+  // Expand nested rows into flat rows
+  const flatRows: AmendedSchemaField[][] = [];
+
+  for (const nestedRow of inputData.rows) {
+    if (nestedRow.lookupMatches.length === 0) {
+      // No lookup matches: just keep source row with prefixes
+      const prefixedSourceRow = nestedRow.sourceRow.map((cell: AmendedSchemaField) => ({
+        ...cell,
+        name: `${sourceTableName}_${cell.name}`,
+      }));
+      flatRows.push(prefixedSourceRow);
+    } else {
+      // Expand each lookup match into a separate row
+      for (const lookupRow of nestedRow.lookupMatches) {
+        const prefixedSourceRow = nestedRow.sourceRow.map((cell: AmendedSchemaField) => ({
+          ...cell,
+          name: `${sourceTableName}_${cell.name}`,
+        }));
+        const prefixedLookupRow = lookupRow.map((cell: AmendedSchemaField) => ({
+          ...cell,
+          name: `${lookupTableName}_${cell.name}`,
+        }));
+        flatRows.push([...prefixedSourceRow, ...prefixedLookupRow]);
+      }
+    }
+  }
+
+  console.log(`Flatten Nested Node ${nodeId}: Created ${flatRows.length} flat rows`);
+
+  // Create a table with the flattened data
+  const flatTable: DBTablesNodeTable = {
+    name: `${sourceTableName}_flattened_${lookupTableName}`,
+    fileName: `${sourceTableName}_flattened_${lookupTableName}`,
+    sourceFile: inputData.sourceTable.sourceFile,
+    table: {
+      ...inputData.sourceTable.table,
+      name: `db\\${sourceTableName}_flattened_${lookupTableName}`,
+      schemaFields: flatRows.flat(),
+      tableSchema: {
+        ...inputData.sourceTable.table.tableSchema!,
+        fields: flatRows.length > 0 ? flatRows[0].map((cell) => cell) : [],
+      },
+    },
+  };
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: [flatTable],
+      sourceFiles: inputData.sourceTable.sourceFile ? [inputData.sourceTable.sourceFile as any] : [],
+      tableCount: 1,
+    },
+  };
+}
+
+async function executeExtractTableNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Extract Table Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse table prefix from textValue
+  let tablePrefix: string = "";
+  try {
+    const parsed = JSON.parse(textValue);
+    tablePrefix = parsed.tablePrefix || "";
+  } catch (error) {
+    console.error(`Extract Table Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid extract configuration" };
+  }
+
+  if (!tablePrefix) {
+    return { success: false, error: "No table prefix specified" };
+  }
+
+  console.log(`Extract Table Node ${nodeId}: Extracting columns with prefix "${tablePrefix}"`);
+
+  // Process first table
+  if (inputData.tables.length === 0) {
+    return { success: false, error: "No tables in input data" };
+  }
+
+  const sourceTable = inputData.tables[0];
+
+  if (!sourceTable.table.schemaFields || !sourceTable.table.tableSchema) {
+    return { success: false, error: "Table has no schema data" };
+  }
+
+  const rows = chunkSchemaIntoRows(
+    sourceTable.table.schemaFields,
+    sourceTable.table.tableSchema
+  ) as AmendedSchemaField[][];
+
+  console.log(`Extract Table Node ${nodeId}: Processing ${rows.length} rows`);
+
+  // Extract and rename columns
+  const extractedRows: AmendedSchemaField[][] = [];
+
+  for (const row of rows) {
+    const extractedRow: AmendedSchemaField[] = [];
+
+    for (const cell of row) {
+      if (cell.name.startsWith(tablePrefix)) {
+        // Remove prefix from column name
+        const newName = cell.name.substring(tablePrefix.length);
+        extractedRow.push({
+          ...cell,
+          name: newName,
+        });
+      }
+    }
+
+    if (extractedRow.length > 0) {
+      extractedRows.push(extractedRow);
+    }
+  }
+
+  console.log(`Extract Table Node ${nodeId}: Extracted ${extractedRows.length} rows`);
+
+  // Create a table with the extracted data
+  const extractedTableName = tablePrefix.replace(/_$/, ""); // Remove trailing underscore
+  const extractedTable: DBTablesNodeTable = {
+    name: extractedTableName,
+    fileName: extractedTableName,
+    sourceFile: sourceTable.sourceFile,
+    table: {
+      ...sourceTable.table,
+      name: `db\\${extractedTableName}`,
+      schemaFields: extractedRows.flat(),
+      tableSchema: {
+        ...sourceTable.table.tableSchema!,
+        fields: extractedRows.length > 0 ? extractedRows[0].map((cell) => cell) : [],
+      },
+    },
+  };
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: [extractedTable],
+      sourceFiles: inputData.sourceFiles,
+      tableCount: 1,
+    },
+  };
+}
+
+async function executeAggregateNestedNode(
+  nodeId: string,
+  textValue: string,
+  inputData: NestedTableSelection
+): Promise<NodeExecutionResult> {
+  console.log(`Aggregate Nested Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "NestedTableSelection") {
+    return { success: false, error: "Invalid input: Expected NestedTableSelection data" };
+  }
+
+  // Parse configuration
+  let aggregateColumn: string = "";
+  let aggregateType: "min" | "max" | "sum" | "avg" | "count" = "min";
+  try {
+    const parsed = JSON.parse(textValue);
+    aggregateColumn = parsed.aggregateColumn || "";
+    aggregateType = parsed.aggregateType || "min";
+  } catch (error) {
+    console.error(`Aggregate Nested Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid aggregate configuration" };
+  }
+
+  if (!aggregateColumn && (aggregateType === "min" || aggregateType === "max")) {
+    return { success: false, error: "No aggregate column specified" };
+  }
+
+  console.log(
+    `Aggregate Nested Node ${nodeId}: Performing ${aggregateType.toUpperCase()} on column "${aggregateColumn}"`
+  );
+
+  // Process each nested row
+  const aggregatedRows: NestedRow[] = [];
+
+  for (const nestedRow of inputData.rows) {
+    if (nestedRow.lookupMatches.length === 0) {
+      // No lookup matches: keep as is
+      aggregatedRows.push(nestedRow);
+      continue;
+    }
+
+    if (aggregateType === "min" || aggregateType === "max") {
+      // Find row with min/max value
+      let selectedRow: AmendedSchemaField[] | null = null;
+      let selectedValue: number | null = null;
+
+      for (const lookupRow of nestedRow.lookupMatches) {
+        const cell = lookupRow.find((c: AmendedSchemaField) => c.name === aggregateColumn);
+        if (!cell) {
+          console.warn(
+            `Aggregate Nested Node ${nodeId}: Column "${aggregateColumn}" not found in lookup row`
+          );
+          continue;
+        }
+
+        const value = parseFloat(String(cell.resolvedKeyValue || "0"));
+        if (isNaN(value)) {
+          console.warn(
+            `Aggregate Nested Node ${nodeId}: Non-numeric value in column "${aggregateColumn}": ${cell.resolvedKeyValue}`
+          );
+          continue;
+        }
+
+        if (selectedRow === null) {
+          selectedRow = lookupRow;
+          selectedValue = value;
+        } else {
+          if (
+            (aggregateType === "min" && value < selectedValue!) ||
+            (aggregateType === "max" && value > selectedValue!)
+          ) {
+            selectedRow = lookupRow;
+            selectedValue = value;
+          }
+        }
+      }
+
+      // Keep only the selected row
+      aggregatedRows.push({
+        sourceRow: nestedRow.sourceRow,
+        lookupMatches: selectedRow ? [selectedRow] : [],
+      });
+    } else {
+      // Calculate aggregate (sum/avg/count)
+      let aggregateValue: number = 0;
+
+      if (aggregateType === "count") {
+        aggregateValue = nestedRow.lookupMatches.length;
+      } else {
+        let sum = 0;
+        let count = 0;
+
+        for (const lookupRow of nestedRow.lookupMatches) {
+          const cell = lookupRow.find((c: AmendedSchemaField) => c.name === aggregateColumn);
+          if (!cell) continue;
+
+          const value = parseFloat(String(cell.resolvedKeyValue || "0"));
+          if (isNaN(value)) continue;
+
+          sum += value;
+          count++;
+        }
+
+        if (aggregateType === "sum") {
+          aggregateValue = sum;
+        } else if (aggregateType === "avg") {
+          aggregateValue = count > 0 ? sum / count : 0;
+        }
+      }
+
+      // Add aggregate value as new column in source row
+      const columnName = `${aggregateColumn}_${aggregateType}`;
+      const newSourceRow = [...nestedRow.sourceRow];
+      newSourceRow.push({
+        name: columnName,
+        resolvedKeyValue: String(aggregateValue),
+        fieldValue: aggregateValue,
+        is_key: false,
+        is_reference: [],
+      } as AmendedSchemaField);
+
+      // Clear lookup matches since we've aggregated them
+      aggregatedRows.push({
+        sourceRow: newSourceRow,
+        lookupMatches: [],
+      });
+    }
+  }
+
+  console.log(`Aggregate Nested Node ${nodeId}: Aggregated to ${aggregatedRows.length} rows`);
+
+  return {
+    success: true,
+    data: {
+      type: "NestedTableSelection",
+      rows: aggregatedRows,
+      sourceTable: inputData.sourceTable,
+      lookupTable: inputData.lookupTable,
     },
   };
 }

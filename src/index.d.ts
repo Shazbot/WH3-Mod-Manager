@@ -621,6 +621,8 @@ declare global {
     | "TableSelection"
     | "ColumnSelection"
     | "ChangedColumnSelection"
+    | "IndexedTable"
+    | "NestedTableSelection"
     | "Text"
     | "Text Lines"
     | "GroupedText";
@@ -645,7 +647,12 @@ declare global {
     | "groupedcolumnstotext"
     | "mathmax"
     | "mathceil"
-    | "reversereferencelookup";
+    | "reversereferencelookup"
+    | "indextable"
+    | "lookup"
+    | "flattennested"
+    | "extracttable"
+    | "aggregatenested";
 
   // FlowNodeData = "string"|
 
@@ -666,7 +673,9 @@ declare global {
       | DBSaveChangesNodeData
       | GroupedTextNodeData
       | TextNodeData
-      | TextLinesNodeData;
+      | TextLinesNodeData
+      | IndexedTableData
+      | NestedTableSelection;
     elseData?: DBTablesNodeData; // For filter node's "else" output handle
     error?: string;
   }
@@ -746,5 +755,25 @@ declare global {
   interface TextNodeData {
     type: "Text";
     text: string;
+  }
+
+  interface IndexedTableData {
+    type: "IndexedTable";
+    indexColumns: string[];
+    indexMap: Map<string, any[]>;
+    sourceTable: DBTablesNodeTable;
+    tableName: string;
+  }
+
+  interface NestedRow {
+    sourceRow: any;
+    lookupMatches: any[];
+  }
+
+  interface NestedTableSelection {
+    type: "NestedTableSelection";
+    rows: NestedRow[];
+    sourceTable: DBTablesNodeTable;
+    lookupTable: DBTablesNodeTable;
   }
 }

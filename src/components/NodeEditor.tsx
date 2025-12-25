@@ -53,6 +53,13 @@ interface SerializedNode {
     referenceTableNames?: string[];
     selectedReverseTable?: string;
     reverseTableNames?: string[];
+    indexColumns?: string[];
+    lookupColumn?: string;
+    joinType?: "inner" | "left" | "nested";
+    tablePrefix?: string;
+    tablePrefixes?: string[];
+    aggregateColumn?: string;
+    aggregateType?: "min" | "max" | "sum" | "avg" | "count";
   };
 }
 
@@ -243,6 +250,47 @@ interface ReverseReferenceLookupNodeData extends NodeData {
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
+interface IndexTableNodeData extends NodeData {
+  indexColumns: string[];
+  inputType: "TableSelection";
+  outputType: "IndexedTable";
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
+interface LookupNodeData extends NodeData {
+  lookupColumn: string;
+  joinType: "inner" | "left" | "nested";
+  inputType: "TableSelection";
+  indexedInputType: "IndexedTable";
+  outputType: "TableSelection" | "NestedTableSelection";
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+  inputCount: 2;
+}
+
+interface FlattenNestedNodeData extends NodeData {
+  inputType: "NestedTableSelection";
+  outputType: "TableSelection";
+}
+
+interface ExtractTableNodeData extends NodeData {
+  tablePrefix: string;
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  tablePrefixes: string[];
+}
+
+interface AggregateNestedNodeData extends NodeData {
+  aggregateColumn: string;
+  aggregateType: "min" | "max" | "sum" | "avg" | "count";
+  inputType: "NestedTableSelection";
+  outputType: "NestedTableSelection";
+  columnNames: string[];
 }
 
 interface DraggableNodeData {
@@ -1885,6 +1933,474 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
   );
 };
 
+// Index Table Node - Creates indexed version of a table by key column(s)
+const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ data, id }) => {
+  const [indexColumns, setIndexColumns] = useState<string[]>(data.indexColumns || []);
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Update column names when connected table changes
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: fieldNames },
+        });
+        window.dispatchEvent(updateEvent);
+
+        // Auto-select key columns if no selection exists
+        if (indexColumns.length === 0) {
+          const keyColumns = tableFields.filter((field) => field.is_key).map((field) => field.name);
+          if (keyColumns.length > 0) {
+            setIndexColumns(keyColumns);
+            const updateEvent2 = new CustomEvent("nodeDataUpdate", {
+              detail: { nodeId: id, indexColumns: keyColumns },
+            });
+            window.dispatchEvent(updateEvent2);
+          }
+        }
+      }
+    }
+  }, [data.connectedTableName, id]);
+
+  const handleColumnToggle = (columnName: string) => {
+    const newIndexColumns = indexColumns.includes(columnName)
+      ? indexColumns.filter((col) => col !== columnName)
+      : [...indexColumns, columnName];
+
+    setIndexColumns(newIndexColumns);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, indexColumns: newIndexColumns },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-600 rounded-lg p-4 min-w-[250px] max-w-[300px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Index Columns (select multiple):</label>
+        <div className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2">
+          {columnNames.length === 0 ? (
+            <div className="text-xs text-gray-500 italic">Connect a table to see columns</div>
+          ) : (
+            columnNames.map((columnName) => (
+              <label key={columnName} className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded">
+                <input
+                  type="checkbox"
+                  checked={indexColumns.includes(columnName)}
+                  onChange={() => handleColumnToggle(columnName)}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-white">{columnName}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Selected: {indexColumns.length} column(s)</div>
+      <div className="mt-2 text-xs text-gray-400">Output: IndexedTable</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-purple-600"
+        data-output-type="IndexedTable"
+      />
+    </div>
+  );
+};
+
+// Lookup Node - Performs lookups/joins using indexed tables
+const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }) => {
+  const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
+  const [joinType, setJoinType] = useState<"inner" | "left" | "nested">(data.joinType || "inner");
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Update column names when connected table changes
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: fieldNames },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [data.connectedTableName, id]);
+
+  const handleLookupColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setLookupColumn(newValue);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, lookupColumn: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleJoinTypeChange = (newType: "inner" | "left" | "nested") => {
+    setJoinType(newType);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, joinType: newType },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const outputType = joinType === "nested" ? "NestedTableSelection" : "TableSelection";
+
+  return (
+    <div className="bg-gray-700 border-2 border-cyan-500 rounded-lg p-4 min-w-[250px] max-w-[300px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="input-source"
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+        style={{ top: "30%", position: "absolute", left: -6 }}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="input-index"
+        className="w-3 h-3 bg-purple-600"
+        data-input-type="IndexedTable"
+        style={{ top: "70%", position: "absolute", left: -6 }}
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">
+        <div>Source: TableSelection</div>
+        <div>Index: IndexedTable</div>
+      </div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Lookup Column:</label>
+        <select
+          value={lookupColumn}
+          onChange={handleLookupColumnChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+        >
+          <option value="">Select column...</option>
+          {columnNames.map((columnName) => (
+            <option key={columnName} value={columnName}>
+              {columnName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Join Type:</label>
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={joinType === "inner"}
+              onChange={() => handleJoinTypeChange("inner")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">Inner Join</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={joinType === "left"}
+              onChange={() => handleJoinTypeChange("left")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">Left Join</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={joinType === "nested"}
+              onChange={() => handleJoinTypeChange("nested")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">Nested (1-to-many)</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: {outputType}</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-cyan-500"
+        data-output-type={outputType}
+      />
+    </div>
+  );
+};
+
+// Flatten Nested Node - Expands nested table selections into flat rows
+const FlattenNestedNode: React.FC<{ data: FlattenNestedNodeData; id: string }> = ({ data, id }) => {
+  return (
+    <div className="bg-gray-700 border-2 border-gray-400 rounded-lg p-4 min-w-[200px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-cyan-500"
+        data-input-type="NestedTableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: NestedTableSelection</div>
+
+      <div className="text-xs text-gray-300 italic my-3">
+        Expands nested arrays into separate flat rows
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+// Extract Table Node - Filters columns by prefix and removes prefix
+const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = ({ data, id }) => {
+  const [tablePrefix, setTablePrefix] = useState(data.tablePrefix || "");
+  const [tablePrefixes, setTablePrefixes] = useState<string[]>(data.tablePrefixes || []);
+
+  // Auto-detect prefixes from connected table columns
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const prefixSet = new Set<string>();
+
+        for (const field of tableFields) {
+          const underscoreIndex = field.name.indexOf('_');
+          if (underscoreIndex > 0) {
+            const prefix = field.name.substring(0, underscoreIndex + 1);
+            prefixSet.add(prefix);
+          }
+        }
+
+        const detectedPrefixes = Array.from(prefixSet);
+        setTablePrefixes(detectedPrefixes);
+
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, tablePrefixes: detectedPrefixes },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [data.connectedTableName, id]);
+
+  const handlePrefixChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setTablePrefix(newValue);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, tablePrefix: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-blue-400 rounded-lg p-4 min-w-[250px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Extract Table:</label>
+        <select
+          value={tablePrefix}
+          onChange={handlePrefixChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+        >
+          <option value="">Select prefix...</option>
+          {tablePrefixes.map((prefix) => (
+            <option key={prefix} value={prefix}>
+              {prefix}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="text-xs text-gray-300 italic my-2">
+        Filters to columns with prefix and removes it
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+// Aggregate Nested Node - Performs aggregations on nested arrays
+const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string }> = ({ data, id }) => {
+  const [aggregateColumn, setAggregateColumn] = useState(data.aggregateColumn || "");
+  const [aggregateType, setAggregateType] = useState<"min" | "max" | "sum" | "avg" | "count">(
+    data.aggregateType || "min"
+  );
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Update column names when connected table changes
+  React.useEffect(() => {
+    if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: fieldNames },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [data.connectedTableName, id]);
+
+  const handleColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setAggregateColumn(newValue);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, aggregateColumn: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleTypeChange = (newType: "min" | "max" | "sum" | "avg" | "count") => {
+    setAggregateType(newType);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, aggregateType: newType },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-orange-500 rounded-lg p-4 min-w-[250px] max-w-[300px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-cyan-500"
+        data-input-type="NestedTableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: NestedTableSelection</div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Aggregate Column:</label>
+        <select
+          value={aggregateColumn}
+          onChange={handleColumnChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
+        >
+          <option value="">Select column...</option>
+          {columnNames.map((columnName) => (
+            <option key={columnName} value={columnName}>
+              {columnName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Aggregation Type:</label>
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={aggregateType === "min"}
+              onChange={() => handleTypeChange("min")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">MIN (Keep Row)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={aggregateType === "max"}
+              onChange={() => handleTypeChange("max")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">MAX (Keep Row)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={aggregateType === "sum"}
+              onChange={() => handleTypeChange("sum")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">SUM</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={aggregateType === "avg"}
+              onChange={() => handleTypeChange("avg")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">AVG</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={aggregateType === "count"}
+              onChange={() => handleTypeChange("count")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">COUNT</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: NestedTableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-cyan-500"
+        data-output-type="NestedTableSelection"
+      />
+    </div>
+  );
+};
+
 // Flow Options Modal Component
 const FlowOptionsModal: React.FC<{
   isOpen: boolean;
@@ -2485,6 +3001,36 @@ const nodeTypeSections: NodeTypeSection[] = [
       },
     ],
   },
+  {
+    title: "Table Operations",
+    nodes: [
+      {
+        type: "indextable",
+        label: "Index Table",
+        description: "Creates indexed version of table by key column(s) for fast lookups",
+      },
+      {
+        type: "lookup",
+        label: "Lookup (Join)",
+        description: "Performs lookups/joins using indexed tables (inner/left/nested)",
+      },
+      {
+        type: "flattennested",
+        label: "Flatten Nested",
+        description: "Expands nested table selections into flat rows",
+      },
+      {
+        type: "extracttable",
+        label: "Extract Table",
+        description: "Filters columns by prefix and removes prefix",
+      },
+      {
+        type: "aggregatenested",
+        label: "Aggregate Nested",
+        description: "Performs aggregations (min/max/sum/avg/count) on nested arrays",
+      },
+    ],
+  },
 ];
 
 // Backend graph execution service
@@ -2625,6 +3171,15 @@ const executeGraphInBackend = async (
           : "",
         outputType: (node.data as any)?.outputType,
         inputType: (node.data as any)?.inputType,
+        indexColumns: (node.data as any)?.indexColumns || [],
+        lookupColumn: (node.data as any)?.lookupColumn ? String((node.data as any).lookupColumn) : "",
+        joinType: (node.data as any)?.joinType || "inner",
+        tablePrefix: (node.data as any)?.tablePrefix ? String((node.data as any).tablePrefix) : "",
+        tablePrefixes: (node.data as any)?.tablePrefixes || [],
+        aggregateColumn: (node.data as any)?.aggregateColumn
+          ? String((node.data as any).aggregateColumn)
+          : "",
+        aggregateType: (node.data as any)?.aggregateType || "min",
       },
     }));
 
@@ -2699,6 +3254,11 @@ const reactFlowNodeTypes = {
   appendtext: AppendTextNode,
   textjoin: TextJoinNode,
   groupedcolumnstotext: GroupedColumnsToTextNode,
+  indextable: IndexTableNode,
+  lookup: LookupNode,
+  flattennested: FlattenNestedNode,
+  extracttable: ExtractTableNode,
+  aggregatenested: AggregateNestedNode,
 };
 
 const initialNodes: Node[] = [];
@@ -2997,6 +3557,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as TextJoinNodeData).outputType;
       } else if (sourceNode.type === "groupedcolumnstotext" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GroupedColumnsToTextNodeData).outputType;
+      } else if (sourceNode.type === "indextable" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as IndexTableNodeData).outputType;
+      } else if (sourceNode.type === "lookup" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as LookupNodeData).outputType;
+      } else if (sourceNode.type === "flattennested" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as FlattenNestedNodeData).outputType;
+      } else if (sourceNode.type === "extracttable" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as ExtractTableNodeData).outputType;
+      } else if (sourceNode.type === "aggregatenested" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as AggregateNestedNodeData).outputType;
       }
 
       // Get input type from target node
@@ -3035,6 +3605,22 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as TextJoinNodeData).inputType;
       } else if (targetNode.type === "groupedcolumnstotext" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GroupedColumnsToTextNodeData).inputType;
+      } else if (targetNode.type === "indextable" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as IndexTableNodeData).inputType;
+      } else if (targetNode.type === "lookup" && targetNode.data) {
+        // Lookup node has two inputs - need to check the target handle ID
+        const targetHandle = params.targetHandle;
+        if (targetHandle === "input-source") {
+          targetInputType = (targetNode.data as unknown as LookupNodeData).inputType;
+        } else if (targetHandle === "input-index") {
+          targetInputType = (targetNode.data as unknown as LookupNodeData).indexedInputType;
+        }
+      } else if (targetNode.type === "flattennested" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as FlattenNestedNodeData).inputType;
+      } else if (targetNode.type === "extracttable" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as ExtractTableNodeData).inputType;
+      } else if (targetNode.type === "aggregatenested" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as AggregateNestedNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -3801,6 +4387,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           inputCount: (node.data as any)?.inputCount,
           useCurrentPack: (node.data as any)?.useCurrentPack,
           onlyForMultiple: (node.data as any)?.onlyForMultiple,
+          indexColumns: (node.data as any)?.indexColumns || [],
+          lookupColumn: String((node.data as any)?.lookupColumn || ""),
+          joinType: (node.data as any)?.joinType || "inner",
+          tablePrefix: String((node.data as any)?.tablePrefix || ""),
+          tablePrefixes: (node.data as any)?.tablePrefixes || [],
+          aggregateColumn: String((node.data as any)?.aggregateColumn || ""),
+          aggregateType: (node.data as any)?.aggregateType || "min",
         },
       };
 
@@ -3899,7 +4492,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "groupbycolumns" ||
             node.data.type === "filter" ||
             node.data.type === "referencelookup" ||
-            node.data.type === "reversereferencelookup"
+            node.data.type === "reversereferencelookup" ||
+            node.data.type === "indextable" ||
+            node.data.type === "lookup" ||
+            node.data.type === "extracttable" ||
+            node.data.type === "aggregatenested"
           ) {
             console.log("ser type!!!:", DBNameToDBVersions);
             node.data.DBNameToDBVersions = DBNameToDBVersions;
@@ -3950,7 +4547,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   node.type === "referencelookup" ||
                   node.type === "reversereferencelookup" ||
                   node.type === "columnselectiondropdown" ||
-                  node.type === "groupbycolumns"
+                  node.type === "groupbycolumns" ||
+                  node.type === "indextable" ||
+                  node.type === "lookup" ||
+                  node.type === "extracttable" ||
+                  node.type === "aggregatenested"
                 ) {
                   return {
                     ...node,
