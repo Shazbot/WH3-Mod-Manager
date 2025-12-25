@@ -176,6 +176,24 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             includeBaseGame: (node.data as any).includeBaseGame !== false,
           });
+        } else if (node.type === "indextable") {
+          textValueToUse = JSON.stringify({
+            indexColumns: (node.data as any).indexColumns || [],
+          });
+        } else if (node.type === "lookup") {
+          textValueToUse = JSON.stringify({
+            lookupColumn: (node.data as any).lookupColumn || "",
+            joinType: (node.data as any).joinType || "inner",
+          });
+        } else if (node.type === "extracttable") {
+          textValueToUse = JSON.stringify({
+            tablePrefix: (node.data as any).tablePrefix || "",
+          });
+        } else if (node.type === "aggregatenested") {
+          textValueToUse = JSON.stringify({
+            aggregateColumn: (node.data as any).aggregateColumn || "",
+            aggregateType: (node.data as any).aggregateType || "min",
+          });
         } else {
           textValueToUse = node.data.textValue || "";
         }
@@ -220,6 +238,23 @@ export const executeNodeGraph = async (
                     })
                     .filter((data) => data !== null && data !== undefined);
                   inputDataForTarget = allInputs.length > 0 ? allInputs : null;
+                } else if (targetNode.type === "lookup") {
+                  // Lookup node has two inputs: source and indexed table
+                  // Need to collect them in specific order based on targetHandle
+                  const sourceConnection = targetIncomingConnections.find(
+                    (conn) => conn.targetHandle === "input-source"
+                  );
+                  const indexConnection = targetIncomingConnections.find(
+                    (conn) => conn.targetHandle === "input-index"
+                  );
+
+                  if (sourceConnection && indexConnection) {
+                    const sourceResult = executionResults.get(sourceConnection.sourceId);
+                    const indexResult = executionResults.get(indexConnection.sourceId);
+                    inputDataForTarget = [sourceResult?.data, indexResult?.data];
+                  } else {
+                    inputDataForTarget = null;
+                  }
                 } else {
                   // Get input data from the most recent dependency
                   if (targetIncomingConnections.length > 0) {
