@@ -8,7 +8,7 @@ import {
   writePack,
 } from "./packFileSerializer";
 import appData from "./appData";
-import { AmendedSchemaField, NewPackedFile } from "./packFileTypes";
+import { AmendedSchemaField, NewPackedFile, SCHEMA_FIELD_TYPE, DBVersion } from "./packFileTypes";
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 
@@ -2777,7 +2777,18 @@ async function executeFlattenNestedNode(
       schemaFields: flatRows.flat(),
       tableSchema: {
         ...inputData.sourceTable.table.tableSchema!,
-        fields: flatRows.length > 0 ? flatRows[0].map((cell) => cell) : [],
+        fields: flatRows.length > 0 ? flatRows[0].map((cell) => ({
+          name: cell.name,
+          field_type: cell.type as SCHEMA_FIELD_TYPE,
+          is_key: cell.isKey || false,
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: "",
+          ca_order: 0,
+          is_bitwise: 0,
+          enum_values: {},
+        })) : [],
       },
     },
   };
@@ -2874,7 +2885,18 @@ async function executeExtractTableNode(
       schemaFields: extractedRows.flat(),
       tableSchema: {
         ...sourceTable.table.tableSchema!,
-        fields: extractedRows.length > 0 ? extractedRows[0].map((cell) => cell) : [],
+        fields: extractedRows.length > 0 ? extractedRows[0].map((cell) => ({
+          name: cell.name,
+          field_type: cell.type as SCHEMA_FIELD_TYPE,
+          is_key: cell.isKey || false,
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: "",
+          ca_order: 0,
+          is_bitwise: 0,
+          enum_values: {},
+        })) : [],
       },
     },
   };
@@ -3006,9 +3028,9 @@ async function executeAggregateNestedNode(
       newSourceRow.push({
         name: columnName,
         resolvedKeyValue: String(aggregateValue),
-        fieldValue: aggregateValue,
-        is_key: false,
-        is_reference: [],
+        type: typeof aggregateValue === "number" ? "I32" : "StringU8",
+        fields: [{ type: "I32", val: aggregateValue }],
+        isKey: false,
       } as AmendedSchemaField);
 
       // Clear lookup matches since we've aggregated them
@@ -3056,6 +3078,7 @@ async function executeGenerateRowsNode(
       existingTableName: string;
       columnMapping: string[];
     }>;
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
   };
 
   try {
@@ -3085,8 +3108,15 @@ async function executeGenerateRowsNode(
     };
   }
 
-  const rows = sourceTable.schemaFields
-    ? chunkSchemaIntoRows(sourceTable.schemaFields, sourceTable.DBVersion)
+  if (!sourceTable.table.tableSchema) {
+    return {
+      success: false,
+      error: "Input table has no schema information",
+    };
+  }
+
+  const rows = sourceTable.table.schemaFields
+    ? (chunkSchemaIntoRows(sourceTable.table.schemaFields, sourceTable.table.tableSchema) as AmendedSchemaField[][])
     : [];
 
   if (rows.length === 0) {
@@ -3103,7 +3133,7 @@ async function executeGenerateRowsNode(
 
   for (const row of rows) {
     for (const transformation of config.transformations) {
-      const sourceCell = row.find((c: any) => c.name === transformation.sourceColumn);
+      const sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
       if (!sourceCell) {
         console.warn(
           `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row`
@@ -3162,7 +3192,7 @@ async function executeGenerateRowsNode(
     console.log(`Generate Rows Node ${nodeId}: Creating output table "${outputConfig.name}"`);
 
     // Look up existing table schema from DBNameToDBVersions
-    const versions = inputData.DBNameToDBVersions?.[outputConfig.existingTableName];
+    const versions = config.DBNameToDBVersions?.[outputConfig.existingTableName];
     if (!versions || versions.length === 0) {
       return {
         success: false,
@@ -3177,7 +3207,7 @@ async function executeGenerateRowsNode(
     });
 
     // Build rows for this output
-    const outputRows: SchemaField[] = [];
+    const outputRows: AmendedSchemaField[] = [];
     const numRows = transformedData.get(outputConfig.columnMapping[0])?.length || 0;
 
     for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
@@ -3194,7 +3224,7 @@ async function executeGenerateRowsNode(
 
         // Create SchemaField with auto-detected type
         let fieldValue: any;
-        switch (fieldDef.type) {
+        switch (fieldDef.field_type) {
           case "I32":
           case "F32":
           case "I64":
@@ -3210,19 +3240,26 @@ async function executeGenerateRowsNode(
           case "StringU8":
           case "StringU16":
           case "OptionalStringU8":
-          case "OptionalStringU16":
+          case "ColourRGB":
           default:
             fieldValue = String(value);
             break;
         }
 
-        const schemaField: SchemaField = {
-          fieldValue,
-          is_key: fieldDef.is_key || false,
-          is_reference: fieldDef.is_reference || [],
-          is_filename: fieldDef.is_filename || false,
-          column_source_value: fieldDef.column_source_value || "",
-          reference_hint: fieldDef.reference_hint || "",
+        // Map SCHEMA_FIELD_TYPE to FIELD_TYPE for the fields array
+        let fieldType: "I32" | "F32" | "I64" | "F64" | "I16" | "String" = "String";
+        if (fieldDef.field_type === "I32" || fieldDef.field_type === "F32" ||
+            fieldDef.field_type === "I64" || fieldDef.field_type === "F64" ||
+            fieldDef.field_type === "I16") {
+          fieldType = fieldDef.field_type;
+        }
+
+        const schemaField: AmendedSchemaField = {
+          name: columnName,
+          resolvedKeyValue: String(value),
+          type: fieldDef.field_type,
+          fields: [{ type: fieldType, val: fieldValue }],
+          isKey: fieldDef.is_key || false,
         };
 
         outputRows.push(schemaField);
@@ -3238,7 +3275,7 @@ async function executeGenerateRowsNode(
       sourceFile: sourceTable.sourceFile,
       table: {
         ...sourceTable.table,
-        DBVersion: schema,
+        tableSchema: schema,
         schemaFields: outputRows,
       },
     };
@@ -3248,7 +3285,6 @@ async function executeGenerateRowsNode(
       tables: [outputTable],
       sourceFiles: inputData.sourceFiles || [],
       tableCount: 1,
-      DBNameToDBVersions: inputData.DBNameToDBVersions,
     };
   }
 
