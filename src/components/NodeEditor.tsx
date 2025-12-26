@@ -282,8 +282,10 @@ interface LookupNodeData extends NodeData {
   inputType: "TableSelection";
   indexedInputType: "IndexedTable";
   outputType: "TableSelection" | "NestedTableSelection";
-  columnNames: string[];
-  connectedTableName?: string;
+  columnNames: string[]; // Source table columns
+  connectedTableName?: string; // Source table name
+  indexedTableColumns?: string[]; // Indexed table columns
+  indexedTableName?: string; // Indexed table name
   DBNameToDBVersions: Record<string, DBVersion[]>;
   inputCount: 2;
 }
@@ -291,6 +293,9 @@ interface LookupNodeData extends NodeData {
 interface FlattenNestedNodeData extends NodeData {
   inputType: "NestedTableSelection";
   outputType: "TableSelection";
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
 interface ExtractTableNodeData extends NodeData {
@@ -298,6 +303,9 @@ interface ExtractTableNodeData extends NodeData {
   inputType: "TableSelection";
   outputType: "TableSelection";
   tablePrefixes: string[];
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
 interface AggregateNestedNodeData extends NodeData {
@@ -306,6 +314,8 @@ interface AggregateNestedNodeData extends NodeData {
   inputType: "NestedTableSelection";
   outputType: "NestedTableSelection";
   columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
 interface ColumnTransformation {
@@ -1981,6 +1991,13 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
   const [indexColumns, setIndexColumns] = useState<string[]>(data.indexColumns || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
+  // Sync local state with prop changes
+  React.useEffect(() => {
+    if (data.indexColumns) {
+      setIndexColumns(data.indexColumns);
+    }
+  }, [data.indexColumns]);
+
   // Update column names when connected table changes
   React.useEffect(() => {
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -2074,6 +2091,41 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
   const [joinType, setJoinType] = useState<"inner" | "left" | "nested">(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
+  // Sync local state with prop changes
+  React.useEffect(() => {
+    if (data.lookupColumn !== undefined) setLookupColumn(data.lookupColumn);
+    if (data.joinType !== undefined) setJoinType(data.joinType);
+  }, [data.lookupColumn, data.joinType]);
+
+  // Ensure outputType is synced with joinType on mount
+  React.useEffect(() => {
+    const expectedOutputType = joinType === "nested" ? "NestedTableSelection" : "TableSelection";
+    if (data.outputType !== expectedOutputType) {
+      const updateEvent = new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, outputType: expectedOutputType },
+      });
+      window.dispatchEvent(updateEvent);
+    }
+  }, [joinType, data.outputType, id]);
+
+  // Ensure inputType and indexedInputType are always correct (fixes connection issues after loading)
+  React.useEffect(() => {
+    const needsUpdate =
+      data.inputType !== "TableSelection" ||
+      data.indexedInputType !== "IndexedTable";
+
+    if (needsUpdate) {
+      const updateEvent = new CustomEvent("nodeDataUpdate", {
+        detail: {
+          nodeId: id,
+          inputType: "TableSelection",
+          indexedInputType: "IndexedTable"
+        },
+      });
+      window.dispatchEvent(updateEvent);
+    }
+  }, [data.inputType, data.indexedInputType, id]);
+
   // Update column names when connected table changes
   React.useEffect(() => {
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -2102,8 +2154,9 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
   const handleJoinTypeChange = (newType: "inner" | "left" | "nested") => {
     setJoinType(newType);
+    const newOutputType = newType === "nested" ? "NestedTableSelection" : "TableSelection";
     const updateEvent = new CustomEvent("nodeDataUpdate", {
-      detail: { nodeId: id, joinType: newType },
+      detail: { nodeId: id, joinType: newType, outputType: newOutputType },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -2231,6 +2284,12 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
   const [tablePrefix, setTablePrefix] = useState(data.tablePrefix || "");
   const [tablePrefixes, setTablePrefixes] = useState<string[]>(data.tablePrefixes || []);
 
+  // Sync local state with prop changes
+  React.useEffect(() => {
+    if (data.tablePrefix !== undefined) setTablePrefix(data.tablePrefix);
+    if (data.tablePrefixes !== undefined) setTablePrefixes(data.tablePrefixes);
+  }, [data.tablePrefix, data.tablePrefixes]);
+
   // Auto-detect prefixes from connected table columns
   React.useEffect(() => {
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -2318,6 +2377,12 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
     data.aggregateType || "min"
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Sync local state with prop changes
+  React.useEffect(() => {
+    if (data.aggregateColumn !== undefined) setAggregateColumn(data.aggregateColumn);
+    if (data.aggregateType !== undefined) setAggregateType(data.aggregateType);
+  }, [data.aggregateColumn, data.aggregateType]);
 
   // Update column names when connected table changes
   React.useEffect(() => {
@@ -2453,6 +2518,13 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [tableNames, setTableNames] = useState<string[]>([]);
 
+  // Sync local state with prop changes
+  React.useEffect(() => {
+    if (data.transformations !== undefined) setTransformations(data.transformations);
+    if (data.outputTables !== undefined) setOutputTables(data.outputTables);
+    if (data.outputCount !== undefined) setOutputCount(data.outputCount);
+  }, [data.transformations, data.outputTables, data.outputCount]);
+
   // Extract column names from connected input
   React.useEffect(() => {
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -2475,7 +2547,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   React.useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
-        detail: { nodeId: id, updates: { transformations } },
+        detail: { nodeId: id, transformations },
       })
     );
   }, [transformations, id]);
@@ -2484,7 +2556,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   React.useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
-        detail: { nodeId: id, updates: { outputTables, outputCount } },
+        detail: { nodeId: id, outputTables, outputCount },
       })
     );
   }, [outputTables, outputCount, id]);
@@ -3527,6 +3599,7 @@ const executeGraphInBackend = async (
       sourceType: (nodes.find((n) => n.id === edge.source)?.data as any)?.outputType,
       targetType: (nodes.find((n) => n.id === edge.target)?.data as any)?.inputType,
       sourceHandle: edge.sourceHandle, // Include source handle ID for multi-output nodes
+      targetHandle: edge.targetHandle, // Include target handle ID for multi-input nodes
     }));
 
     const response = await window.api?.executeNodeGraph({
@@ -3700,6 +3773,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         referenceTableNames,
         selectedReverseTable,
         reverseTableNames,
+        indexColumns,
+        lookupColumn,
+        joinType,
+        tablePrefix,
+        tablePrefixes,
+        aggregateColumn,
+        aggregateType,
+        transformations,
+        outputTables,
+        outputCount,
+        inputType,
+        indexedInputType,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -3739,6 +3824,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     : node.data.selectedReverseTable,
                 reverseTableNames:
                   reverseTableNames !== undefined ? reverseTableNames : node.data.reverseTableNames,
+                indexColumns: indexColumns !== undefined ? indexColumns : node.data.indexColumns,
+                lookupColumn: lookupColumn !== undefined ? lookupColumn : node.data.lookupColumn,
+                joinType: joinType !== undefined ? joinType : node.data.joinType,
+                tablePrefix: tablePrefix !== undefined ? tablePrefix : node.data.tablePrefix,
+                tablePrefixes: tablePrefixes !== undefined ? tablePrefixes : node.data.tablePrefixes,
+                aggregateColumn: aggregateColumn !== undefined ? aggregateColumn : node.data.aggregateColumn,
+                aggregateType: aggregateType !== undefined ? aggregateType : node.data.aggregateType,
+                transformations: transformations !== undefined ? transformations : node.data.transformations,
+                outputTables: outputTables !== undefined ? outputTables : node.data.outputTables,
+                outputCount: outputCount !== undefined ? outputCount : node.data.outputCount,
+                inputType: inputType !== undefined ? inputType : node.data.inputType,
+                indexedInputType: indexedInputType !== undefined ? indexedInputType : node.data.indexedInputType,
               },
             };
           }
@@ -3985,10 +4082,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetNode.type === "textjoin" &&
         (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
 
-      // Special case for savechanges: it accepts "ChangedColumnSelection" or "Text"
+      // Special case for savechanges: it accepts "ChangedColumnSelection", "Text", or "TableSelection"
       const isSaveChangesCompatible =
         targetNode.type === "savechanges" &&
-        (sourceOutputType === "ChangedColumnSelection" || sourceOutputType === "Text");
+        (sourceOutputType === "ChangedColumnSelection" ||
+         sourceOutputType === "Text" ||
+         sourceOutputType === "TableSelection");
 
       if (
         (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
@@ -4077,7 +4176,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             targetNode.type === "groupbycolumns" ||
             targetNode.type === "filter" ||
             targetNode.type === "referencelookup" ||
-            targetNode.type === "reversereferencelookup") &&
+            targetNode.type === "reversereferencelookup" ||
+            targetNode.type === "indextable" ||
+            targetNode.type === "lookup" ||
+            targetNode.type === "extracttable" ||
+            targetNode.type === "aggregatenested" ||
+            targetNode.type === "generaterows") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
         ) {
           const tableName =
@@ -4182,6 +4286,255 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
           // Propagate the connectedTableName and DBNameToDBVersions from source to target
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update lookup nodes when source or index input is connected
+        if (targetNode.type === "lookup") {
+          const targetLookupData = targetNode.data as unknown as LookupNodeData;
+
+          // Handle index input (from indextable)
+          if (params.targetHandle === "input-index" && sourceNode.type === "indextable") {
+            const sourceIndexData = sourceNode.data as unknown as IndexTableNodeData;
+
+            if (sourceIndexData.connectedTableName && sourceIndexData.DBNameToDBVersions) {
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === params.target) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        // Store indexed table columns for nested joins
+                        indexedTableColumns: sourceIndexData.columnNames || [],
+                        indexedTableName: sourceIndexData.connectedTableName,
+                        DBNameToDBVersions: sourceIndexData.DBNameToDBVersions,
+                      },
+                    };
+                  }
+                  return node;
+                })
+              );
+            }
+          }
+
+          // Handle source input (from various table nodes)
+          if (params.targetHandle === "input-source" &&
+              (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown" ||
+               sourceNode.type === "filter" || sourceNode.type === "referencelookup" ||
+               sourceNode.type === "reversereferencelookup" || sourceNode.type === "lookup" ||
+               sourceNode.type === "extracttable" || sourceNode.type === "flattennested" ||
+               sourceNode.type === "generaterows")) {
+
+            const sourceData = sourceNode.data as any;
+
+            if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === params.target) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        columnNames: sourceData.columnNames || [],
+                        connectedTableName: sourceData.connectedTableName,
+                        DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                      },
+                    };
+                  }
+                  return node;
+                })
+              );
+            }
+          }
+        }
+
+        // Update extracttable nodes when connected to lookup or flattennested
+        if (targetNode.type === "extracttable" &&
+            (sourceNode.type === "lookup" || sourceNode.type === "flattennested")) {
+          const sourceData = sourceNode.data as any;
+
+          if (sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update aggregatenested nodes when connected to lookup
+        if (targetNode.type === "aggregatenested" && sourceNode.type === "lookup") {
+          const sourceData = sourceNode.data as unknown as LookupNodeData;
+
+          if (sourceData.DBNameToDBVersions) {
+            // For nested joins, use indexed table columns (the nested data)
+            // For inner/left joins, use source table columns (the flat joined data)
+            const columnsToUse = sourceData.joinType === "nested"
+              ? (sourceData.indexedTableColumns || sourceData.columnNames || [])
+              : (sourceData.columnNames || []);
+            const tableNameToUse = sourceData.joinType === "nested"
+              ? (sourceData.indexedTableName || sourceData.connectedTableName)
+              : sourceData.connectedTableName;
+
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: columnsToUse,
+                      connectedTableName: tableNameToUse,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update flattennested nodes when connected to lookup or aggregatenested
+        if (targetNode.type === "flattennested" &&
+            (sourceNode.type === "lookup" || sourceNode.type === "aggregatenested")) {
+          const sourceData = sourceNode.data as any;
+
+          if (sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update generaterows nodes when connected to any table source
+        if (targetNode.type === "generaterows" &&
+            (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown" ||
+             sourceNode.type === "filter" || sourceNode.type === "referencelookup" ||
+             sourceNode.type === "reversereferencelookup" || sourceNode.type === "lookup" ||
+             sourceNode.type === "extracttable" || sourceNode.type === "flattennested")) {
+          const sourceData = sourceNode.data as any;
+
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update filter nodes when connected to new table operation nodes
+        if (targetNode.type === "filter" &&
+            (sourceNode.type === "lookup" || sourceNode.type === "extracttable" ||
+             sourceNode.type === "flattennested" || sourceNode.type === "generaterows")) {
+          const sourceData = sourceNode.data as any;
+
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update reference lookup nodes when connected to new table operation nodes
+        if (targetNode.type === "referencelookup" &&
+            (sourceNode.type === "lookup" || sourceNode.type === "extracttable" ||
+             sourceNode.type === "flattennested" || sourceNode.type === "generaterows")) {
+          const sourceData = sourceNode.data as any;
+
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
+        // Update reverse reference lookup nodes when connected to new table operation nodes
+        if (targetNode.type === "reversereferencelookup" &&
+            (sourceNode.type === "lookup" || sourceNode.type === "extracttable" ||
+             sourceNode.type === "flattennested" || sourceNode.type === "generaterows")) {
+          const sourceData = sourceNode.data as any;
+
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
@@ -4695,6 +5048,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             outputType: "TableSelection" as NodeEdgeTypes,
             columnNames: [],
             connectedTableName: "",
+            indexedTableColumns: [],
+            indexedTableName: "",
             DBNameToDBVersions: {},
             inputCount: 2,
           } as LookupNodeData,
@@ -4709,6 +5064,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: nodeData.type,
             inputType: "NestedTableSelection" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
+            columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
           } as FlattenNestedNodeData,
         };
       } else if (nodeData.type === "extracttable") {
@@ -4723,6 +5081,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             inputType: "TableSelection" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
             tablePrefixes: [],
+            columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
           } as ExtractTableNodeData,
         };
       } else if (nodeData.type === "aggregatenested") {
@@ -4738,6 +5099,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             inputType: "NestedTableSelection" as NodeEdgeTypes,
             outputType: "NestedTableSelection" as NodeEdgeTypes,
             columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
           } as AggregateNestedNodeData,
         };
       } else if (nodeData.type === "generaterows") {
