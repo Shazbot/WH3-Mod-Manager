@@ -1903,14 +1903,105 @@ async function executeSaveChangesNode(
     additionalConfig = textValue.trim();
   }
 
+  console.log(`Save Changes Node ${nodeId}: Received inputData type:`, inputData?.type);
+  console.log(`Save Changes Node ${nodeId}: inputData exists:`, !!inputData);
+
   // Handle Text input - save as text file
   if (inputData && inputData.type === "Text") {
     return await executeSaveTextNode(nodeId, inputData.text || "", packName, packedFileName);
   }
 
+  // Handle TableSelection input - save table data
+  if (inputData && inputData.type === "TableSelection") {
+    const toSave = [] as NewPackedFile[];
+
+    for (const table of inputData.tables || []) {
+      if (!table.table.schemaFields || !table.table.tableSchema) continue;
+
+      let packFileSize = 0;
+      const rows = chunkSchemaIntoRows(
+        table.table.schemaFields,
+        table.table.tableSchema
+      ) as AmendedSchemaField[][];
+
+      console.log(`Save Changes Node ${nodeId}: Calculating pack file size for ${table.name}`);
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        for (let j = 0; j < row.length; j++) {
+          const cell = row[j];
+          const field = table.table.tableSchema.fields[j];
+          const fieldSize = getFieldSize(cell.resolvedKeyValue, field.field_type);
+          console.log(`  Field ${field.name} (${field.field_type}): resolvedKeyValue="${cell.resolvedKeyValue}" -> ${fieldSize} bytes`);
+          packFileSize += fieldSize;
+        }
+      }
+
+      if (table.table.version) packFileSize += 8;
+      packFileSize += 5;
+      console.log(`Save Changes Node ${nodeId}: Total calculated size: ${packFileSize} bytes`);
+
+      toSave.push({
+        name: "", // Will be set after we determine pack name
+        schemaFields: table.table.schemaFields,
+        file_size: packFileSize,
+        version: table.table.version,
+        tableSchema: table.table.tableSchema,
+        tableName: table.name, // Store table name for later use
+      } as any);
+    }
+
+    const nodePath = await import("path");
+    const fs = await import("fs");
+
+    let packFileBaseName: string;
+    if (packName) {
+      packFileBaseName = packName;
+    } else if (flowExecutionId) {
+      packFileBaseName = `node_graph_output_${flowExecutionId}`;
+    } else {
+      const timestamp = format(new Date(), "yyyy-MM-dd_HH-mm-ss");
+      packFileBaseName = `node_graph_output_${timestamp}`;
+    }
+
+    // Now set the proper db file paths: db\tablename\packname_randomsuffix
+    for (const file of toSave) {
+      const randomSuffix = Math.random().toString(36).substring(2, 8);
+      const tableName = (file as any).tableName || "unknown_table";
+      const fileName = `${packFileBaseName}_${randomSuffix}`;
+      file.name = `db\\${tableName}\\${fileName}`;
+      delete (file as any).tableName; // Remove temporary property
+    }
+
+    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
+    const outputDir = nodePath.join(gamePath, "data");
+    const packFilePath = nodePath.join(outputDir, `${packFileBaseName}.pack`);
+
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    try {
+      await writePack(toSave, packFilePath);
+      return {
+        success: true,
+        data: {
+          type: "SaveResult",
+          savedTo: packFilePath,
+          format: "pack",
+          message: `Successfully saved ${toSave.length} table(s) to ${packFilePath}`,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to save pack file: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
   // Handle ChangedColumnSelection input - save database changes
   if (!inputData || inputData.type !== "ChangedColumnSelection") {
-    return { success: false, error: "Invalid input: Expected ChangedColumnSelection or Text data" };
+    return { success: false, error: "Invalid input: Expected ChangedColumnSelection, TableSelection, or Text data" };
   }
 
   const saveConfig = additionalConfig;
@@ -2926,10 +3017,16 @@ async function executeAggregateNestedNode(
   // Parse configuration
   let aggregateColumn: string = "";
   let aggregateType: "min" | "max" | "sum" | "avg" | "count" = "min";
+  let filterColumn: string = "";
+  let filterOperator: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual" = "equals";
+  let filterValue: string = "";
   try {
     const parsed = JSON.parse(textValue);
     aggregateColumn = parsed.aggregateColumn || "";
     aggregateType = parsed.aggregateType || "min";
+    filterColumn = parsed.filterColumn || "";
+    filterOperator = parsed.filterOperator || "equals";
+    filterValue = parsed.filterValue || "";
   } catch (error) {
     console.error(`Aggregate Nested Node ${nodeId}: Error parsing configuration:`, error);
     return { success: false, error: "Invalid aggregate configuration" };
@@ -2940,16 +3037,56 @@ async function executeAggregateNestedNode(
   }
 
   console.log(
-    `Aggregate Nested Node ${nodeId}: Performing ${aggregateType.toUpperCase()} on column "${aggregateColumn}"`
+    `Aggregate Nested Node ${nodeId}: Performing ${aggregateType.toUpperCase()} on column "${aggregateColumn}"${
+      filterColumn ? ` with filter ${filterColumn} ${filterOperator} ${filterValue}` : ""
+    }`
   );
+
+  // Helper function to apply filter
+  const applyFilter = (row: AmendedSchemaField[]): boolean => {
+    if (!filterColumn) return true;
+
+    const cell = row.find((c: AmendedSchemaField) => c.name === filterColumn);
+    if (!cell) return false;
+
+    const cellValue = String(cell.resolvedKeyValue || "");
+
+    // Try to parse as number for numeric comparisons
+    const numericCellValue = parseFloat(cellValue);
+    const numericFilterValue = parseFloat(filterValue);
+    const isNumeric = !isNaN(numericCellValue) && !isNaN(numericFilterValue);
+
+    switch (filterOperator) {
+      case "equals":
+        return isNumeric ? numericCellValue === numericFilterValue : cellValue === filterValue;
+      case "notEquals":
+        return isNumeric ? numericCellValue !== numericFilterValue : cellValue !== filterValue;
+      case "greaterThan":
+        return isNumeric && numericCellValue > numericFilterValue;
+      case "lessThan":
+        return isNumeric && numericCellValue < numericFilterValue;
+      case "greaterThanOrEqual":
+        return isNumeric && numericCellValue >= numericFilterValue;
+      case "lessThanOrEqual":
+        return isNumeric && numericCellValue <= numericFilterValue;
+      default:
+        return true;
+    }
+  };
 
   // Process each nested row
   const aggregatedRows: NestedRow[] = [];
 
   for (const nestedRow of inputData.rows) {
-    if (nestedRow.lookupMatches.length === 0) {
-      // No lookup matches: keep as is
-      aggregatedRows.push(nestedRow);
+    // Apply filter to lookup matches
+    const filteredMatches = nestedRow.lookupMatches.filter(applyFilter);
+
+    if (filteredMatches.length === 0) {
+      // No matches after filtering: keep with empty lookup matches
+      aggregatedRows.push({
+        sourceRow: nestedRow.sourceRow,
+        lookupMatches: [],
+      });
       continue;
     }
 
@@ -2958,7 +3095,7 @@ async function executeAggregateNestedNode(
       let selectedRow: AmendedSchemaField[] | null = null;
       let selectedValue: number | null = null;
 
-      for (const lookupRow of nestedRow.lookupMatches) {
+      for (const lookupRow of filteredMatches) {
         const cell = lookupRow.find((c: AmendedSchemaField) => c.name === aggregateColumn);
         if (!cell) {
           console.warn(
@@ -2999,12 +3136,12 @@ async function executeAggregateNestedNode(
       let aggregateValue: number = 0;
 
       if (aggregateType === "count") {
-        aggregateValue = nestedRow.lookupMatches.length;
+        aggregateValue = filteredMatches.length;
       } else {
         let sum = 0;
         let count = 0;
 
-        for (const lookupRow of nestedRow.lookupMatches) {
+        for (const lookupRow of filteredMatches) {
           const cell = lookupRow.find((c: AmendedSchemaField) => c.name === aggregateColumn);
           if (!cell) continue;
 
@@ -3065,9 +3202,10 @@ async function executeGenerateRowsNode(
   let config: {
     transformations: Array<{
       sourceColumn: string;
-      transformationType: "none" | "prefix" | "suffix" | "concatenate" | "formula";
+      transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "concatenate" | "formula";
       prefix?: string;
       suffix?: string;
+      numericValue?: number;
       separator?: string;
       formula?: string;
       outputColumnName: string;
@@ -3077,13 +3215,18 @@ async function executeGenerateRowsNode(
       name: string;
       existingTableName: string;
       columnMapping: string[];
+      staticValues?: Record<string, string>;
     }>;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
   };
 
   try {
+    console.log(`Generate Rows Node ${nodeId}: textValue to parse:`, textValue);
     config = JSON.parse(textValue);
+    console.log(`Generate Rows Node ${nodeId}: Parsed - transformations length:`, (config.transformations || []).length);
+    console.log(`Generate Rows Node ${nodeId}: Parsed - outputTables length:`, (config.outputTables || []).length);
   } catch (error) {
+    console.log(`Generate Rows Node ${nodeId}: JSON parse error:`, error);
     return {
       success: false,
       error: `Invalid configuration: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -3091,13 +3234,18 @@ async function executeGenerateRowsNode(
   }
 
   if (!config.transformations || !config.outputTables) {
+    console.log(`Generate Rows Node ${nodeId}: Missing transformations or outputTables!`);
     return {
       success: false,
       error: "Missing transformations or outputTables in configuration",
     };
   }
 
-  console.log(`Generate Rows Node ${nodeId}: Configuration parsed`, config);
+  console.log(`Generate Rows Node ${nodeId}: Configuration parsed (excluding DBNameToDBVersions):`, {
+    transformations: config.transformations,
+    outputTables: config.outputTables,
+    hasDBNameToDBVersions: !!config.DBNameToDBVersions
+  });
 
   // 2. Extract input rows
   const sourceTable = inputData.tables?.[0];
@@ -3131,15 +3279,21 @@ async function executeGenerateRowsNode(
   // 3. Apply transformations to each row
   const transformedData = new Map<string, any[]>(); // outputColumnName -> array of values
 
-  for (const row of rows) {
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const row = rows[rowIdx];
+    const rowColumnNames = row.map((c: AmendedSchemaField) => c.name);
+    console.log(`Generate Rows Node ${nodeId}: Row ${rowIdx} has columns:`, rowColumnNames);
+
     for (const transformation of config.transformations) {
+      console.log(`Generate Rows Node ${nodeId}: Looking for column "${transformation.sourceColumn}" in row ${rowIdx}`);
       const sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
       if (!sourceCell) {
         console.warn(
-          `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row`
+          `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row ${rowIdx}. Available: ${rowColumnNames.join(', ')}`
         );
         continue;
       }
+      console.log(`Generate Rows Node ${nodeId}: Found column "${transformation.sourceColumn}" with value:`, sourceCell.resolvedKeyValue);
 
       let outputValue: any = sourceCell.resolvedKeyValue;
 
@@ -3156,6 +3310,34 @@ async function executeGenerateRowsNode(
         case "suffix":
           outputValue = String(outputValue) + (transformation.suffix || "");
           break;
+
+        case "add": {
+          const numValue = parseFloat(String(outputValue));
+          const addValue = transformation.numericValue || 0;
+          outputValue = isNaN(numValue) ? 0 : numValue + addValue;
+          break;
+        }
+
+        case "subtract": {
+          const numValue = parseFloat(String(outputValue));
+          const subtractValue = transformation.numericValue || 0;
+          outputValue = isNaN(numValue) ? 0 : numValue - subtractValue;
+          break;
+        }
+
+        case "multiply": {
+          const numValue = parseFloat(String(outputValue));
+          const multiplyValue = transformation.numericValue || 1;
+          outputValue = isNaN(numValue) ? 0 : numValue * multiplyValue;
+          break;
+        }
+
+        case "divide": {
+          const numValue = parseFloat(String(outputValue));
+          const divideValue = transformation.numericValue || 1;
+          outputValue = isNaN(numValue) || divideValue === 0 ? 0 : numValue / divideValue;
+          break;
+        }
 
         case "concatenate":
           // Combine multiple source columns (for now, just use the one source)
@@ -3210,9 +3392,27 @@ async function executeGenerateRowsNode(
     const outputRows: AmendedSchemaField[] = [];
     const numRows = transformedData.get(outputConfig.columnMapping[0])?.length || 0;
 
+    // Get all columns from schema
+    const allSchemaColumns = schema.fields.map((f: any) => f.name);
+
     for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
-      for (const columnName of outputConfig.columnMapping) {
-        const value = transformedData.get(columnName)?.[rowIdx];
+      // Process all columns in the schema
+      for (const columnName of allSchemaColumns) {
+        let value: any;
+
+        // Check if column is from transformed data
+        if (outputConfig.columnMapping.includes(columnName)) {
+          value = transformedData.get(columnName)?.[rowIdx];
+        }
+        // Otherwise use static value if provided
+        else if (outputConfig.staticValues && outputConfig.staticValues[columnName] !== undefined) {
+          value = outputConfig.staticValues[columnName];
+        }
+        // Skip column if no value provided
+        else {
+          continue;
+        }
+
         const fieldDef = schema.fields.find((f: any) => f.name === columnName);
 
         if (!fieldDef) {
@@ -3222,43 +3422,39 @@ async function executeGenerateRowsNode(
           };
         }
 
-        // Create SchemaField with auto-detected type
-        let fieldValue: any;
+        // Convert value to appropriate type before serialization
+        let convertedValue: any = value;
         switch (fieldDef.field_type) {
           case "I32":
           case "F32":
           case "I64":
           case "F64":
           case "I16":
-            fieldValue = Number(value) || 0;
+            convertedValue = Number(value) || 0;
             break;
-
           case "Boolean":
-            fieldValue = Boolean(value);
+            // Convert to number (0 or 1) for pack file serialization
+            convertedValue = value === "true" || value === true || value === 1 ? 1 : 0;
             break;
-
+          // String types keep their string values
           case "StringU8":
           case "StringU16":
           case "OptionalStringU8":
           case "ColourRGB":
           default:
-            fieldValue = String(value);
+            convertedValue = String(value);
             break;
         }
 
-        // Map SCHEMA_FIELD_TYPE to FIELD_TYPE for the fields array
-        let fieldType: "I32" | "F32" | "I64" | "F64" | "I16" | "String" = "String";
-        if (fieldDef.field_type === "I32" || fieldDef.field_type === "F32" ||
-            fieldDef.field_type === "I64" || fieldDef.field_type === "F64" ||
-            fieldDef.field_type === "I16") {
-          fieldType = fieldDef.field_type;
-        }
+        // Use typeToBuffer to create proper pack file format with length prefixes
+        const { typeToBuffer } = await import("./packFileSerializer");
+        const fieldBuffer = await typeToBuffer(fieldDef.field_type, convertedValue);
 
         const schemaField: AmendedSchemaField = {
           name: columnName,
           resolvedKeyValue: String(value),
           type: fieldDef.field_type,
-          fields: [{ type: fieldType, val: fieldValue }],
+          fields: [{ type: "Buffer", val: fieldBuffer }],
           isKey: fieldDef.is_key || false,
         };
 
@@ -3277,8 +3473,11 @@ async function executeGenerateRowsNode(
         ...sourceTable.table,
         tableSchema: schema,
         schemaFields: outputRows,
+        version: schema.version,
       },
     };
+
+    console.log(`Generate Rows Node ${nodeId}: Output table version set to ${schema.version}`);
 
     outputs[outputConfig.handleId] = {
       type: "TableSelection",

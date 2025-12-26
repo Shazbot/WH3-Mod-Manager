@@ -2217,7 +2217,9 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
       return Buffer.from(reusableBuffers.f64);
     }
     case "String": {
-      return Buffer.from(field.val as string, "utf8");
+      const stringVal = field.val as string;
+      console.log(`    serializeFieldToBuffer String: val="${stringVal}" length=${stringVal.length}`);
+      return Buffer.from(stringVal, "utf8");
     }
     case "Buffer": {
       return field.val as Buffer;
@@ -2231,9 +2233,15 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
 const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
   const fieldBuffers: Buffer[] = [];
   for (const field of schemaField.fields) {
-    fieldBuffers.push(serializeFieldToBuffer(field));
+    const buffer = serializeFieldToBuffer(field);
+    fieldBuffers.push(buffer);
   }
-  return Buffer.concat(fieldBuffers);
+  const result = Buffer.concat(fieldBuffers);
+  // Debug: log field name and actual bytes written
+  if ((schemaField as any).name) {
+    console.log(`  Serialized ${(schemaField as any).name}: ${result.length} bytes actual`);
+  }
+  return result;
 };
 
 // Stream-based writing system with write queuing for better performance

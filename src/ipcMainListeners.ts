@@ -14,6 +14,7 @@ import * as nodePath from "path";
 import { version } from "react";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
 import appData, { GameFolderPaths } from "./appData";
+import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
 import { packDataStore } from "./components/viewer/packDataStore";
 import i18n from "./configs/i18next.config";
 import { buildDBReferenceTree } from "./DBClone";
@@ -1767,24 +1768,8 @@ export const registerIpcMainListeners = (
     async (
       event,
       graphExecutionRequest: {
-        nodes: Array<{
-          id: string;
-          type: FlowNodeType;
-          data: {
-            label: string;
-            type: FlowNodeType;
-            textValue?: string;
-            outputType?: string;
-            inputType?: string;
-          };
-        }>;
-        connections: Array<{
-          id: string;
-          sourceId: string;
-          targetId: string;
-          sourceType?: string;
-          targetType?: string;
-        }>;
+        nodes: SerializedNode[];
+        connections: SerializedConnection[];
       }
     ): Promise<{
       success: boolean;
@@ -1798,6 +1783,18 @@ export const registerIpcMainListeners = (
         console.log(
           `Executing node graph with ${graphExecutionRequest.nodes.length} nodes and ${graphExecutionRequest.connections.length} connections`
         );
+
+        // Debug: Check generaterows nodes in the IPC request
+        graphExecutionRequest.nodes.forEach(node => {
+          if (node.type === "generaterows") {
+            console.log(`[IPC-RECEIVED] GenerateRows node ${node.id}:`);
+            console.log(`  transformationsLength: ${((node.data as any).transformations || []).length}`);
+            console.log(`  transformations:`, JSON.stringify((node.data as any).transformations));
+            console.log(`  outputTablesLength: ${((node.data as any).outputTables || []).length}`);
+            console.log(`  outputTables:`, JSON.stringify((node.data as any).outputTables));
+            console.log(`  has DBNameToDBVersions: ${!!(node.data as any).DBNameToDBVersions}`);
+          }
+        });
 
         console.log("graphExecutionRequest:", graphExecutionRequest);
 

@@ -1,6 +1,5 @@
-import { XYPosition } from "@xyflow/react";
 import { executeNodeAction } from "./nodeExecutor";
-import { DBVersion } from "./packFileTypes";
+import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
 
 interface NodeGraphExecutionRequest {
   nodes: SerializedNode[];
@@ -14,69 +13,6 @@ interface NodeGraphExecutionResult {
   successCount: number;
   failureCount: number;
   error?: string;
-}
-
-interface SerializedNode {
-  id: string;
-  type: FlowNodeType;
-  position?: XYPosition;
-  data: {
-    label: string;
-    type: FlowNodeType;
-    textValue?: string;
-    selectedPack?: string;
-    selectedTable?: string;
-    selectedColumn?: string;
-    selectedColumn1?: string;
-    selectedColumn2?: string;
-    packName?: string;
-    packedFileName?: string;
-    pattern?: string;
-    joinSeparator?: string;
-    beforeText?: string;
-    afterText?: string;
-    useCurrentPack?: boolean;
-    filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }>;
-    columnNames?: string[];
-    connectedTableName?: string;
-    outputType?: string;
-    inputType?: string;
-    DBNameToDBVersions?: Record<string, DBVersion[]>;
-    groupedTextSelection?: "Text" | "Text Lines";
-    onlyForMultiple?: boolean;
-    indexColumns?: string[];
-    lookupColumn?: string;
-    joinType?: "inner" | "left" | "nested";
-    tablePrefix?: string;
-    tablePrefixes?: string[];
-    aggregateColumn?: string;
-    aggregateType?: "min" | "max" | "sum" | "avg" | "count";
-    transformations?: Array<{
-      id: string;
-      sourceColumn: string;
-      transformationType: "none" | "prefix" | "suffix";
-      prefix?: string;
-      suffix?: string;
-      outputColumnName: string;
-    }>;
-    outputTables?: Array<{
-      handleId: string;
-      name: string;
-      existingTableName: string;
-      columnMapping: string[];
-    }>;
-    outputCount?: number;
-  };
-}
-
-interface SerializedConnection {
-  id: string;
-  sourceId: string;
-  targetId: string;
-  sourceType?: string;
-  targetType?: string;
-  sourceHandle?: string | null; // Handle ID for nodes with multiple output handles (e.g., "match", "else")
-  targetHandle?: string | null; // Handle ID for nodes with multiple input handles
 }
 
 interface NodeExecutionResult {
@@ -139,7 +75,14 @@ export const executeNodeGraph = async (
 
       try {
         console.log(`Executing node: ${node.id} (${node.type})`);
-        console.log(`Node data:`, node.data);
+
+        // Log node data, but exclude verbose DBNameToDBVersions for generaterows
+        if (node.type === "generaterows") {
+          const { DBNameToDBVersions, ...dataWithoutDB } = node.data as any;
+          console.log(`Node data (DBNameToDBVersions excluded):`, dataWithoutDB);
+        } else {
+          console.log(`Node data:`, node.data);
+        }
 
         // Execute the node using existing backend executor
         let textValueToUse = "";
@@ -215,12 +158,20 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             aggregateColumn: (node.data as any).aggregateColumn || "",
             aggregateType: (node.data as any).aggregateType || "min",
+            filterColumn: (node.data as any).filterColumn || "",
+            filterOperator: (node.data as any).filterOperator || "equals",
+            filterValue: (node.data as any).filterValue || "",
           });
         } else if (node.type === "generaterows") {
+          console.log(`Generate Rows serialization - node.data.transformations:`, (node.data as any).transformations);
+          console.log(`Generate Rows serialization - node.data.outputTables:`, (node.data as any).outputTables);
+          console.log(`Generate Rows serialization - has DBNameToDBVersions:`, !!(node.data as any).DBNameToDBVersions);
           textValueToUse = JSON.stringify({
             transformations: (node.data as any).transformations || [],
             outputTables: (node.data as any).outputTables || [],
+            DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
           });
+          console.log(`Generate Rows serialization - textValueToUse length:`, textValueToUse.length);
         } else {
           textValueToUse = node.data.textValue || "";
         }
@@ -308,6 +259,9 @@ export const executeNodeGraph = async (
                       console.log(
                         `Using output "${lastConnection.sourceHandle}" from generaterows node ${lastConnection.sourceId}`
                       );
+                      console.log(`Available handles in generaterows output:`, Object.keys(sourceResult.data));
+                      console.log(`Extracted outputData:`, outputData);
+                      console.log(`Output data type:`, outputData?.type);
                     }
                     else {
                       inputDataForTarget = sourceResult?.data;
