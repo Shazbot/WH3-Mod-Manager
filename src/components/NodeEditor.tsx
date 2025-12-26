@@ -21,7 +21,7 @@ import { DBVersion } from "../packFileTypes";
 import { addToast } from "../appSlice";
 
 // Serialization types
-interface SerializedNode {
+export interface SerializedNode {
   id: string;
   type: FlowNodeType;
   position?: XYPosition;
@@ -63,9 +63,10 @@ interface SerializedNode {
     transformations?: Array<{
       id: string;
       sourceColumn: string;
-      transformationType: "none" | "prefix" | "suffix";
+      transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide";
       prefix?: string;
       suffix?: string;
+      numericValue?: number;
       outputColumnName: string;
     }>;
     outputTables?: Array<{
@@ -73,6 +74,7 @@ interface SerializedNode {
       name: string;
       existingTableName: string;
       columnMapping: string[];
+      staticValues?: Record<string, string>;
     }>;
     outputCount?: number;
   };
@@ -161,7 +163,7 @@ interface SaveChangesNodeData extends NodeData {
   textValue: string;
   packName: string;
   packedFileName: string;
-  inputType: "ChangedColumnSelection" | "Text";
+  inputType: "ChangedColumnSelection" | "Text" | "TableSelection";
 }
 
 interface TextSurroundNodeData extends NodeData {
@@ -313,17 +315,23 @@ interface AggregateNestedNodeData extends NodeData {
   aggregateType: "min" | "max" | "sum" | "avg" | "count";
   inputType: "NestedTableSelection";
   outputType: "NestedTableSelection";
-  columnNames: string[];
-  connectedTableName?: string;
+  columnNames: string[]; // Indexed/nested table columns
+  connectedTableName?: string; // Indexed/nested table name
+  sourceTableColumns?: string[]; // Source table columns (from the outer row)
+  sourceTableName?: string; // Source table name
   DBNameToDBVersions: Record<string, DBVersion[]>;
+  filterColumn?: string;
+  filterOperator?: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
+  filterValue?: string;
 }
 
 interface ColumnTransformation {
   id: string; // Unique ID for React key
   sourceColumn: string;
-  transformationType: "none" | "prefix" | "suffix";
+  transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide";
   prefix?: string;
   suffix?: string;
+  numericValue?: number;
   outputColumnName: string;
 }
 
@@ -332,6 +340,7 @@ interface OutputTableConfig {
   name: string; // Display name
   existingTableName: string; // Table schema to use
   columnMapping: string[]; // Which transformation outputs go here
+  staticValues?: Record<string, string>; // Static values for columns not in transformations
 }
 
 interface GenerateRowsNodeData extends NodeData {
@@ -1601,7 +1610,7 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <div className="text-xs text-gray-400 mb-2">
-        Input: {data.inputType || "ChangedColumnSelection or Text"}
+        Input: {data.inputType || "ChangedColumnSelection, Text, or TableSelection"}
       </div>
 
       <div className="space-y-2">
@@ -2377,6 +2386,11 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
     data.aggregateType || "min"
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [filterColumn, setFilterColumn] = useState(data.filterColumn || "");
+  const [filterOperator, setFilterOperator] = useState<"equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual">(
+    data.filterOperator || "equals"
+  );
+  const [filterValue, setFilterValue] = useState(data.filterValue || "");
 
   // Sync local state with prop changes
   React.useEffect(() => {
@@ -2414,6 +2428,33 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
     setAggregateType(newType);
     const updateEvent = new CustomEvent("nodeDataUpdate", {
       detail: { nodeId: id, aggregateType: newType },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleFilterColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setFilterColumn(newValue);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, filterColumn: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleFilterOperatorChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value as "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
+    setFilterOperator(newValue);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, filterOperator: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleFilterValueChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setFilterValue(newValue);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, filterValue: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
@@ -2497,6 +2538,47 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
         </div>
       </div>
 
+      <div className="mb-2 border-t border-gray-600 pt-2">
+        <label className="text-xs text-gray-300 block mb-1">Filter (Optional):</label>
+        <select
+          value={filterColumn}
+          onChange={handleFilterColumnChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400 mb-2"
+        >
+          <option value="">No filter</option>
+          {columnNames.map((columnName) => (
+            <option key={columnName} value={columnName}>
+              {columnName}
+            </option>
+          ))}
+        </select>
+
+        {filterColumn && (
+          <>
+            <select
+              value={filterOperator}
+              onChange={handleFilterOperatorChange}
+              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400 mb-2"
+            >
+              <option value="equals">=</option>
+              <option value="notEquals">≠</option>
+              <option value="greaterThan">&gt;</option>
+              <option value="lessThan">&lt;</option>
+              <option value="greaterThanOrEqual">≥</option>
+              <option value="lessThanOrEqual">≤</option>
+            </select>
+
+            <input
+              type="text"
+              value={filterValue}
+              onChange={handleFilterValueChange}
+              placeholder="Filter value..."
+              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
+            />
+          </>
+        )}
+      </div>
+
       <div className="mt-2 text-xs text-gray-400">Output: NestedTableSelection</div>
 
       <Handle
@@ -2520,14 +2602,22 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
   // Sync local state with prop changes
   React.useEffect(() => {
+    console.log(`[GenerateRows ${id}] Syncing props to state:`, {
+      propsTransformations: data.transformations?.length,
+      propsOutputTables: data.outputTables?.length,
+    });
     if (data.transformations !== undefined) setTransformations(data.transformations);
     if (data.outputTables !== undefined) setOutputTables(data.outputTables);
     if (data.outputCount !== undefined) setOutputCount(data.outputCount);
-  }, [data.transformations, data.outputTables, data.outputCount]);
+  }, [data.transformations, data.outputTables, data.outputCount, id]);
 
   // Extract column names from connected input
   React.useEffect(() => {
-    if (data.connectedTableName && data.DBNameToDBVersions) {
+    // Use columnNames from data if already provided (from connection propagation)
+    // Otherwise fall back to looking up schema from DBNameToDBVersions
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+    } else if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
         const tableFields = tableVersions[0].fields || [];
@@ -2541,10 +2631,11 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
       const names = Object.keys(data.DBNameToDBVersions);
       setTableNames(names);
     }
-  }, [data.connectedTableName, data.DBNameToDBVersions]);
+  }, [data.columnNames, data.connectedTableName, data.DBNameToDBVersions]);
 
   // Sync transformations to node data
   React.useEffect(() => {
+    console.log(`[GenerateRows ${id}] Syncing transformations to node.data:`, transformations.length);
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, transformations },
@@ -2554,6 +2645,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
   // Sync outputTables to node data
   React.useEffect(() => {
+    console.log(`[GenerateRows ${id}] Syncing outputTables to node.data:`, outputTables.length);
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, outputTables, outputCount },
@@ -2615,6 +2707,26 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     updateOutputTable(outputIndex, { columnMapping: newMapping });
   };
 
+  const updateStaticValue = (outputIndex: number, columnName: string, value: string) => {
+    const currentStaticValues = outputTables[outputIndex]?.staticValues || {};
+    const newStaticValues = { ...currentStaticValues, [columnName]: value };
+    updateOutputTable(outputIndex, { staticValues: newStaticValues });
+  };
+
+  const getAvailableStaticColumns = (outputIndex: number): string[] => {
+    const output = outputTables[outputIndex];
+    if (!output?.existingTableName || !data.DBNameToDBVersions) return [];
+
+    const versions = data.DBNameToDBVersions[output.existingTableName];
+    if (!versions || versions.length === 0) return [];
+
+    const schema = versions[0];
+    const allColumns = schema.fields.map((f: any) => f.name);
+
+    // Return columns that are NOT in columnMapping (transformed columns)
+    return allColumns.filter((col: string) => !output.columnMapping.includes(col));
+  };
+
   return (
     <div className="bg-gray-700 border-2 border-green-600 rounded-lg p-4 min-w-[300px] max-w-[400px]">
       <Handle
@@ -2667,7 +2779,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 value={trans.transformationType}
                 onChange={(e) =>
                   updateTransformation(trans.id, {
-                    transformationType: e.target.value as "none" | "prefix" | "suffix",
+                    transformationType: e.target.value as "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide",
                   })
                 }
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -2675,6 +2787,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 <option value="none">None (pass through)</option>
                 <option value="prefix">Add Prefix</option>
                 <option value="suffix">Add Suffix</option>
+                <option value="add">Add Number (+)</option>
+                <option value="subtract">Subtract Number (-)</option>
+                <option value="multiply">Multiply (*)</option>
+                <option value="divide">Divide (/)</option>
               </select>
 
               {trans.transformationType === "prefix" && (
@@ -2693,6 +2809,19 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   placeholder="Suffix..."
                   value={trans.suffix || ""}
                   onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                />
+              )}
+
+              {(trans.transformationType === "add" ||
+                trans.transformationType === "subtract" ||
+                trans.transformationType === "multiply" ||
+                trans.transformationType === "divide") && (
+                <input
+                  type="number"
+                  placeholder="Number value..."
+                  value={trans.numericValue ?? ""}
+                  onChange={(e) => updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 />
               )}
@@ -2756,8 +2885,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 ))}
               </select>
 
-              <div className="text-xs text-gray-400 mb-1">Columns:</div>
-              <div className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1">
+              <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
+              <div className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2">
                 {transformations.map((trans) => (
                   <label
                     key={trans.id}
@@ -2775,6 +2904,27 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 {transformations.length === 0 && (
                   <div className="text-xs text-gray-500 text-center py-1">
                     Add transformations first
+                  </div>
+                )}
+              </div>
+
+              <div className="text-xs text-gray-400 mb-1">Static Values (remaining columns):</div>
+              <div className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1">
+                {getAvailableStaticColumns(idx).map((col) => (
+                  <div key={col} className="flex items-center gap-1 mb-1">
+                    <span className="text-xs text-white w-24 truncate" title={col}>{col}:</span>
+                    <input
+                      type="text"
+                      placeholder="value"
+                      value={output.staticValues?.[col] || ""}
+                      onChange={(e) => updateStaticValue(idx, col, e.target.value)}
+                      className="flex-1 bg-gray-600 border border-gray-500 text-white text-xs rounded px-1 py-0.5"
+                    />
+                  </div>
+                ))}
+                {getAvailableStaticColumns(idx).length === 0 && (
+                  <div className="text-xs text-gray-500 text-center py-1">
+                    All columns mapped
                   </div>
                 )}
               </div>
@@ -3531,7 +3681,17 @@ const executeGraphInBackend = async (
     });
 
     // Convert nodes and edges to serialized format for backend
-    const serializedNodes = processedNodes.map((node) => ({
+    const serializedNodes = processedNodes.map((node) => {
+      // Debug: Check generaterows node before serialization
+      if (node.type === "generaterows") {
+        console.log(`[SERIALIZE] GenerateRows node ${node.id} BEFORE serialization:`);
+        console.log(`  transformationsLength: ${((node.data as any)?.transformations || []).length}`);
+        console.log(`  transformations:`, JSON.stringify((node.data as any)?.transformations));
+        console.log(`  outputTablesLength: ${((node.data as any)?.outputTables || []).length}`);
+        console.log(`  outputTables:`, JSON.stringify((node.data as any)?.outputTables));
+      }
+
+      return {
       id: node.id,
       type: node.type || "default",
       data: {
@@ -3589,8 +3749,27 @@ const executeGraphInBackend = async (
           ? String((node.data as any).aggregateColumn)
           : "",
         aggregateType: (node.data as any)?.aggregateType || "min",
+        filterColumn: (node.data as any)?.filterColumn ? String((node.data as any).filterColumn) : "",
+        filterOperator: (node.data as any)?.filterOperator || "equals",
+        filterValue: (node.data as any)?.filterValue ? String((node.data as any).filterValue) : "",
+        transformations: (node.data as any)?.transformations || [],
+        outputTables: (node.data as any)?.outputTables || [],
+        outputCount: (node.data as any)?.outputCount,
+        DBNameToDBVersions: (node.data as any)?.DBNameToDBVersions || {},
       },
-    }));
+    };
+    });
+
+    // Debug: Check what was serialized for generaterows nodes
+    serializedNodes.forEach(sNode => {
+      if (sNode.type === "generaterows") {
+        console.log(`[SERIALIZE] GenerateRows node ${sNode.id} AFTER serialization:`);
+        console.log(`  transformationsLength: ${(sNode.data.transformations || []).length}`);
+        console.log(`  transformations:`, JSON.stringify(sNode.data.transformations));
+        console.log(`  outputTablesLength: ${(sNode.data.outputTables || []).length}`);
+        console.log(`  outputTables:`, JSON.stringify(sNode.data.outputTables));
+      }
+    });
 
     const serializedConnections = edges.map((edge) => ({
       id: edge.id || `${edge.source}-${edge.target}`,
@@ -3780,6 +3959,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         tablePrefixes,
         aggregateColumn,
         aggregateType,
+        filterColumn,
+        filterOperator,
+        filterValue,
         transformations,
         outputTables,
         outputCount,
@@ -3831,6 +4013,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 tablePrefixes: tablePrefixes !== undefined ? tablePrefixes : node.data.tablePrefixes,
                 aggregateColumn: aggregateColumn !== undefined ? aggregateColumn : node.data.aggregateColumn,
                 aggregateType: aggregateType !== undefined ? aggregateType : node.data.aggregateType,
+                filterColumn: filterColumn !== undefined ? filterColumn : node.data.filterColumn,
+                filterOperator: filterOperator !== undefined ? filterOperator : node.data.filterOperator,
+                filterValue: filterValue !== undefined ? filterValue : node.data.filterValue,
                 transformations: transformations !== undefined ? transformations : node.data.transformations,
                 outputTables: outputTables !== undefined ? outputTables : node.data.outputTables,
                 outputCount: outputCount !== undefined ? outputCount : node.data.outputCount,
@@ -4170,6 +4355,24 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           );
         }
 
+        // Update savechanges node input type to match connected source
+        if (targetNode.type === "savechanges" && sourceOutputType) {
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === params.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    inputType: sourceOutputType,
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        }
+
         // Update column selection dropdown nodes when connected to table selection nodes
         if (
           (targetNode.type === "columnselectiondropdown" ||
@@ -4414,6 +4617,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       ...node.data,
                       columnNames: columnsToUse,
                       connectedTableName: tableNameToUse,
+                      sourceTableColumns: sourceData.columnNames || [],
+                      sourceTableName: sourceData.connectedTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
@@ -4430,6 +4635,35 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           const sourceData = sourceNode.data as any;
 
           if (sourceData.DBNameToDBVersions) {
+            // For aggregatenested with min/max, combine source and indexed table columns
+            // For sum/avg/count, use source columns + aggregate column
+            let columnsToUse = sourceData.columnNames || [];
+            if (sourceNode.type === "aggregatenested" && sourceData.sourceTableColumns) {
+              const aggregateType = sourceData.aggregateType;
+              if (aggregateType === "min" || aggregateType === "max") {
+                // Min/max keeps the full row, so combine source + indexed columns
+                // FlattenNested will prefix these, so we need to prefix them here too
+                const sourceTableName = sourceData.sourceTableName || "";
+                const indexedTableName = sourceData.connectedTableName || "";
+                const prefixedSourceColumns = (sourceData.sourceTableColumns || []).map(
+                  (col: string) => `${sourceTableName}_${col}`
+                );
+                const prefixedIndexedColumns = (sourceData.columnNames || []).map(
+                  (col: string) => `${indexedTableName}_${col}`
+                );
+                columnsToUse = [...prefixedSourceColumns, ...prefixedIndexedColumns];
+              } else {
+                // Sum/avg/count creates a new column, so use source columns + aggregate column
+                const aggregateColumn = sourceData.aggregateColumn;
+                const aggregateColumnName = `${aggregateColumn}_${aggregateType}`;
+                const sourceTableName = sourceData.sourceTableName || "";
+                const prefixedSourceColumns = (sourceData.sourceTableColumns || []).map(
+                  (col: string) => `${sourceTableName}_${col}`
+                );
+                columnsToUse = [...prefixedSourceColumns, aggregateColumnName];
+              }
+            }
+
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -4437,7 +4671,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: sourceData.columnNames || [],
+                      columnNames: columnsToUse,
                       connectedTableName: sourceData.connectedTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
@@ -5100,6 +5334,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             outputType: "NestedTableSelection" as NodeEdgeTypes,
             columnNames: [],
             connectedTableName: "",
+            filterColumn: "",
+            filterOperator: "equals" as const,
+            filterValue: "",
             DBNameToDBVersions: {},
           } as AggregateNestedNodeData,
         };
@@ -5207,6 +5444,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           tablePrefixes: (node.data as any)?.tablePrefixes || [],
           aggregateColumn: String((node.data as any)?.aggregateColumn || ""),
           aggregateType: (node.data as any)?.aggregateType || "min",
+          filterColumn: String((node.data as any)?.filterColumn || ""),
+          filterOperator: (node.data as any)?.filterOperator || "equals",
+          filterValue: String((node.data as any)?.filterValue || ""),
           transformations: (node.data as any)?.transformations || [],
           outputTables: (node.data as any)?.outputTables || [],
           outputCount: (node.data as any)?.outputCount || 2,
@@ -5302,6 +5542,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
 
           console.log("ser type:", node.data.type);
+
+          // Debug: Check if generaterows node has transformations when loaded
+          if (node.type === "generaterows") {
+            console.log(`[LOAD] GenerateRows node ${node.id} loaded with:`, {
+              hasTransformations: !!(serializedNode.data as any)?.transformations,
+              transformationsLength: ((serializedNode.data as any)?.transformations || []).length,
+              hasOutputTables: !!(serializedNode.data as any)?.outputTables,
+              outputTablesLength: ((serializedNode.data as any)?.outputTables || []).length,
+              transformations: (serializedNode.data as any)?.transformations,
+              outputTables: (serializedNode.data as any)?.outputTables,
+            });
+          }
           if (
             node.data.type === "columnselectiondropdown" ||
             node.data.type === "tableselectiondropdown" ||
@@ -5312,7 +5564,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "indextable" ||
             node.data.type === "lookup" ||
             node.data.type === "extracttable" ||
-            node.data.type === "aggregatenested"
+            node.data.type === "aggregatenested" ||
+            node.data.type === "generaterows"
           ) {
             console.log("ser type!!!:", DBNameToDBVersions);
             node.data.DBNameToDBVersions = DBNameToDBVersions;
@@ -5893,6 +6146,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         );
         return;
       }
+
+      // Debug: Check generaterows node data before execution
+      const generateRowsNodes = nodes.filter(n => n.type === "generaterows");
+      generateRowsNodes.forEach(grNode => {
+        console.log(`[PRE-EXECUTION] GenerateRows node ${grNode.id} data:`);
+        console.log(`  transformationsLength: ${((grNode.data as any)?.transformations || []).length}`);
+        console.log(`  transformations:`, JSON.stringify((grNode.data as any)?.transformations));
+        console.log(`  outputTablesLength: ${((grNode.data as any)?.outputTables || []).length}`);
+        console.log(`  outputTables:`, JSON.stringify((grNode.data as any)?.outputTables));
+      });
 
       // Execute the entire graph in the backend
       const result = await executeGraphInBackend(nodes, edges, currentPack, flowOptions);
