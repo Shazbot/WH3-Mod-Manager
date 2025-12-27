@@ -172,6 +172,14 @@ export const executeNodeGraph = async (
             DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
           });
           console.log(`Generate Rows serialization - textValueToUse length:`, textValueToUse.length);
+        } else if (node.type === "groupby") {
+          console.log(`Group By serialization - node.data.groupByColumns:`, (node.data as any).groupByColumns);
+          console.log(`Group By serialization - node.data.aggregations:`, (node.data as any).aggregations);
+          textValueToUse = JSON.stringify({
+            groupByColumns: (node.data as any).groupByColumns || [],
+            aggregations: (node.data as any).aggregations || [],
+          });
+          console.log(`Group By serialization - textValueToUse:`, textValueToUse);
         } else {
           textValueToUse = node.data.textValue || "";
         }

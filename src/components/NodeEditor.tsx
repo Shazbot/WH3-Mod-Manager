@@ -19,6 +19,7 @@ import "@xyflow/react/dist/style.css";
 import { useAppSelector, useAppDispatch } from "../hooks";
 import { DBVersion } from "../packFileTypes";
 import { addToast } from "../appSlice";
+import { SupportedGames } from "../supportedGames";
 
 // Serialization types
 export interface SerializedNode {
@@ -321,7 +322,13 @@ interface AggregateNestedNodeData extends NodeData {
   sourceTableName?: string; // Source table name
   DBNameToDBVersions: Record<string, DBVersion[]>;
   filterColumn?: string;
-  filterOperator?: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
+  filterOperator?:
+    | "equals"
+    | "notEquals"
+    | "greaterThan"
+    | "lessThan"
+    | "greaterThanOrEqual"
+    | "lessThanOrEqual";
   filterValue?: string;
 }
 
@@ -391,9 +398,40 @@ export type FlowOption = TextboxFlowOption | RangeSliderFlowOption | CheckboxFlo
 
 // Custom PackFiles dropdown node component
 const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
-  const allMods = useAppSelector((state) => state.app.currentPreset.mods).toSorted((firstMod, secondMod) => {
-    return firstMod.name.localeCompare(secondMod.name);
+  const currentGame = useAppSelector((state) => state.app.currentGame);
+
+  // Get base game pack name
+  const baseGamePackNames: Record<SupportedGames, string> = {
+    wh2: "data.pack",
+    wh3: "db.pack",
+    threeKingdoms: "database.pack",
+    attila: "data.pack",
+    troy: "data.pack",
+    pharaoh: "data.pack",
+    dynasties: "data_db.pack",
+    rome2: "data_rome2.pack",
+    shogun2: "data.exe",
+  };
+  const baseGamePack = baseGamePackNames[currentGame];
+
+  const modsFromState = useAppSelector((state) => state.app.currentPreset.mods);
+
+  // Add base game pack if not already in the list
+  const modsWithBaseGame = modsFromState.some((mod) => mod.name === baseGamePack)
+    ? modsFromState.slice()
+    : [{ name: baseGamePack, humanName: baseGamePack, path: "" }, ...modsFromState];
+
+  const allMods = modsWithBaseGame.sort((firstMod, secondMod) => {
+    // Keep base game pack first
+    if (firstMod.name === baseGamePack) return -1;
+    if (secondMod.name === baseGamePack) return 1;
+
+    // Sort rest alphabetically by display name
+    const firstName = firstMod.humanName || firstMod.name;
+    const secondName = secondMod.humanName || secondMod.name;
+    return firstName.localeCompare(secondName);
   });
+
   const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
   const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
 
@@ -977,8 +1015,15 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
-  // Update column names when connected table changes
+  // Update column names from data.columnNames (set by connection) or from connected table metadata
   React.useEffect(() => {
+    // First priority: use columnNames from data (set by connection propagation)
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+      return;
+    }
+
+    // Fallback: use connectedTableName metadata
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
@@ -993,7 +1038,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.connectedTableName, id]);
+  }, [data.columnNames, data.connectedTableName, id]);
 
   const updateFilters = (newFilters: FilterRow[]) => {
     setFilters(newFilters);
@@ -1055,18 +1100,31 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
               )}
             </div>
 
-            <select
-              value={filter.column}
-              onChange={(e) => handleFilterChange(index, "column", e.target.value)}
-              className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 focus:outline-none focus:border-yellow-400"
-            >
-              <option value="">Select column...</option>
-              {columnNames.map((columnName) => (
-                <option key={columnName} value={columnName}>
-                  {columnName}
-                </option>
-              ))}
-            </select>
+            <div className="mb-1">
+              <label className="text-xs text-gray-400 block mb-1">Column:</label>
+              {columnNames.length > 0 ? (
+                <select
+                  value={filter.column}
+                  onChange={(e) => handleFilterChange(index, "column", e.target.value)}
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+                >
+                  <option value="">Select column...</option>
+                  {columnNames.map((columnName) => (
+                    <option key={columnName} value={columnName}>
+                      {columnName}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={filter.column}
+                  onChange={(e) => handleFilterChange(index, "column", e.target.value)}
+                  placeholder="Enter column name..."
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+                />
+              )}
+            </div>
 
             <input
               type="text"
@@ -1293,7 +1351,11 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
           const tableFields = tableVersions[0].fields || [];
           for (const field of tableFields) {
             // Check if this field references the input table
-            if (field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName) {
+            if (
+              field.is_reference &&
+              field.is_reference.length > 0 &&
+              field.is_reference[0] === inputTableName
+            ) {
               reverseTables.add(tableName);
               break; // Found at least one reference, no need to check more fields
             }
@@ -2067,7 +2129,10 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
             <div className="text-xs text-gray-500 italic">Connect a table to see columns</div>
           ) : (
             columnNames.map((columnName) => (
-              <label key={columnName} className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded">
+              <label
+                key={columnName}
+                className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded"
+              >
                 <input
                   type="checkbox"
                   checked={indexColumns.includes(columnName)}
@@ -2099,6 +2164,8 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
   const [joinType, setJoinType] = useState<"inner" | "left" | "nested">(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [sourceColumnNames, setSourceColumnNames] = useState<string[]>([]);
+  const [indexedColumnNames, setIndexedColumnNames] = useState<string[]>([]);
 
   // Sync local state with prop changes
   React.useEffect(() => {
@@ -2119,38 +2186,94 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
   // Ensure inputType and indexedInputType are always correct (fixes connection issues after loading)
   React.useEffect(() => {
-    const needsUpdate =
-      data.inputType !== "TableSelection" ||
-      data.indexedInputType !== "IndexedTable";
+    const needsUpdate = data.inputType !== "TableSelection" || data.indexedInputType !== "IndexedTable";
 
     if (needsUpdate) {
       const updateEvent = new CustomEvent("nodeDataUpdate", {
         detail: {
           nodeId: id,
           inputType: "TableSelection",
-          indexedInputType: "IndexedTable"
+          indexedInputType: "IndexedTable",
         },
       });
       window.dispatchEvent(updateEvent);
     }
   }, [data.inputType, data.indexedInputType, id]);
 
-  // Update column names when connected table changes
+  // Track source table column names (from input-source connection)
   React.useEffect(() => {
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
         const tableFields = tableVersions[0].fields || [];
         const fieldNames = tableFields.map((field) => field.name);
-        setColumnNames(fieldNames);
+        setSourceColumnNames(fieldNames);
+      }
+    }
+  }, [data.connectedTableName]);
 
+  // Track indexed table column names (from input-index connection)
+  React.useEffect(() => {
+    // Use indexedTableColumnNames if already provided from connection
+    if ((data as any).indexedTableColumnNames && (data as any).indexedTableColumnNames.length > 0) {
+      setIndexedColumnNames((data as any).indexedTableColumnNames);
+      return;
+    }
+
+    // Otherwise look up from connectedIndexTableName
+    const indexedTableName = (data as any).connectedIndexTableName;
+    if (indexedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[indexedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setIndexedColumnNames(fieldNames);
+      }
+    }
+  }, [(data as any).connectedIndexTableName, (data as any).indexedTableColumnNames]);
+
+  // Compute output column names based on join type
+  React.useEffect(() => {
+    // If columnNames are already set externally (e.g., from execution or props), use those
+    if (data.columnNames && data.columnNames.length > 0 && data.columnNames !== columnNames) {
+      setColumnNames(data.columnNames);
+      return;
+    }
+
+    if (joinType === "nested") {
+      // For nested joins, output columns are just source columns (lookup is nested)
+      if (sourceColumnNames.length > 0) {
+        setColumnNames(sourceColumnNames);
         const updateEvent = new CustomEvent("nodeDataUpdate", {
-          detail: { nodeId: id, columnNames: fieldNames },
+          detail: { nodeId: id, columnNames: sourceColumnNames },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    } else {
+      // For inner/left joins, output is prefixed source + prefixed indexed columns
+      if (sourceColumnNames.length > 0 && indexedColumnNames.length > 0) {
+        const sourceTableName = data.connectedTableName || "source";
+        const indexedTableName = (data as any).connectedIndexTableName || "indexed";
+
+        const prefixedSourceColumns = sourceColumnNames.map(col => `${sourceTableName}_${col}`);
+        const prefixedIndexedColumns = indexedColumnNames.map(col => `${indexedTableName}_${col}`);
+        const outputColumns = [...prefixedSourceColumns, ...prefixedIndexedColumns];
+
+        setColumnNames(outputColumns);
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: outputColumns },
+        });
+        window.dispatchEvent(updateEvent);
+      } else if (sourceColumnNames.length > 0) {
+        // Fallback: just use source columns if indexed not available yet
+        setColumnNames(sourceColumnNames);
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: sourceColumnNames },
         });
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.connectedTableName, id]);
+  }, [data.columnNames, sourceColumnNames, indexedColumnNames, joinType, data.connectedTableName, columnNames, id]);
 
   const handleLookupColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -2205,7 +2328,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
         >
           <option value="">Select column...</option>
-          {columnNames.map((columnName) => (
+          {sourceColumnNames.map((columnName) => (
             <option key={columnName} value={columnName}>
               {columnName}
             </option>
@@ -2272,9 +2395,7 @@ const FlattenNestedNode: React.FC<{ data: FlattenNestedNodeData; id: string }> =
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">Input: NestedTableSelection</div>
 
-      <div className="text-xs text-gray-300 italic my-3">
-        Expands nested arrays into separate flat rows
-      </div>
+      <div className="text-xs text-gray-300 italic my-3">Expands nested arrays into separate flat rows</div>
 
       <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
 
@@ -2308,7 +2429,7 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
         const prefixSet = new Set<string>();
 
         for (const field of tableFields) {
-          const underscoreIndex = field.name.indexOf('_');
+          const underscoreIndex = field.name.indexOf("_");
           if (underscoreIndex > 0) {
             const prefix = field.name.substring(0, underscoreIndex + 1);
             prefixSet.add(prefix);
@@ -2363,9 +2484,7 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
         </select>
       </div>
 
-      <div className="text-xs text-gray-300 italic my-2">
-        Filters to columns with prefix and removes it
-      </div>
+      <div className="text-xs text-gray-300 italic my-2">Filters to columns with prefix and removes it</div>
 
       <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
 
@@ -2387,9 +2506,9 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [filterColumn, setFilterColumn] = useState(data.filterColumn || "");
-  const [filterOperator, setFilterOperator] = useState<"equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual">(
-    data.filterOperator || "equals"
-  );
+  const [filterOperator, setFilterOperator] = useState<
+    "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual"
+  >(data.filterOperator || "equals");
   const [filterValue, setFilterValue] = useState(data.filterValue || "");
 
   // Sync local state with prop changes
@@ -2442,7 +2561,13 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
   };
 
   const handleFilterOperatorChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const newValue = event.target.value as "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual";
+    const newValue = event.target.value as
+      | "equals"
+      | "notEquals"
+      | "greaterThan"
+      | "lessThan"
+      | "greaterThanOrEqual"
+      | "lessThanOrEqual";
     setFilterOperator(newValue);
     const updateEvent = new CustomEvent("nodeDataUpdate", {
       detail: { nodeId: id, filterOperator: newValue },
@@ -2591,10 +2716,238 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
   );
 };
 
-const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
-  const [transformations, setTransformations] = useState<ColumnTransformation[]>(
-    data.transformations || []
+const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const [groupByColumns, setGroupByColumns] = useState<string[]>(data.groupByColumns || []);
+  const [aggregations, setAggregations] = useState<
+    Array<{
+      id: string;
+      sourceColumn: string;
+      operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
+      outputName: string;
+    }>
+  >(
+    data.aggregations?.map((agg: any, idx: number) => ({
+      ...agg,
+      id: agg.id || `agg_${idx}`,
+    })) || []
   );
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Sync local state with prop changes (but prevent feedback loops)
+  React.useEffect(() => {
+    if (data.groupByColumns !== undefined && JSON.stringify(data.groupByColumns) !== JSON.stringify(groupByColumns)) {
+      setGroupByColumns(data.groupByColumns);
+    }
+  }, [data.groupByColumns]);
+
+  React.useEffect(() => {
+    if (data.aggregations !== undefined) {
+      // Compare without IDs to prevent loops (we strip IDs when sending to parent)
+      const currentWithoutIds = aggregations.map(({ id, ...rest }) => rest);
+      const incomingWithoutIds = data.aggregations.map(({ id, ...rest }: any) => rest);
+
+      if (JSON.stringify(currentWithoutIds) !== JSON.stringify(incomingWithoutIds)) {
+        setAggregations(
+          data.aggregations.map((agg: any, idx: number) => ({
+            ...agg,
+            id: agg.id || aggregations[idx]?.id || `agg_${idx}`,
+          }))
+        );
+      }
+    }
+  }, [data.aggregations]);
+
+  // Extract column names from connected input
+  React.useEffect(() => {
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+    }
+  }, [data.columnNames]);
+
+  // Sync groupByColumns to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, groupByColumns },
+      })
+    );
+  }, [groupByColumns, id]);
+
+  // Sync aggregations to node data
+  React.useEffect(() => {
+    const aggregationsWithoutId = aggregations.map(({ id, ...rest }) => rest);
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, aggregations: aggregationsWithoutId },
+      })
+    );
+  }, [aggregations, id]);
+
+  // Calculate and propagate output column names based on groupByColumns and aggregations
+  React.useEffect(() => {
+    // Output columns = group by columns + aggregation output names
+    const outputColumnNames = [
+      ...groupByColumns,
+      ...aggregations.map((agg) => agg.outputName),
+    ];
+
+    // Only update if the output columns have changed
+    if (JSON.stringify(outputColumnNames) !== JSON.stringify(data.columnNames)) {
+      window.dispatchEvent(
+        new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: outputColumnNames },
+        })
+      );
+    }
+  }, [groupByColumns, aggregations, id, data.columnNames]);
+
+  const toggleGroupByColumn = (columnName: string) => {
+    setGroupByColumns((prev) =>
+      prev.includes(columnName) ? prev.filter((c) => c !== columnName) : [...prev, columnName]
+    );
+  };
+
+  const addAggregation = () => {
+    const newAggregation = {
+      id: `agg_${Date.now()}`,
+      sourceColumn: columnNames[0] || "",
+      operation: "max" as const,
+      outputName: `agg_${aggregations.length + 1}`,
+    };
+    setAggregations([...aggregations, newAggregation]);
+  };
+
+  const removeAggregation = (aggId: string) => {
+    setAggregations(aggregations.filter((a) => a.id !== aggId));
+  };
+
+  const updateAggregation = (
+    aggId: string,
+    updates: Partial<{
+      sourceColumn: string;
+      operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
+      outputName: string;
+    }>
+  ) => {
+    setAggregations(aggregations.map((a) => (a.id === aggId ? { ...a, ...updates } : a)));
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">Group By</div>
+
+      {/* Group By Columns Section */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">Group By Columns:</label>
+        <div className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2">
+          {columnNames.length === 0 ? (
+            <div className="text-xs text-gray-500">No columns available</div>
+          ) : (
+            columnNames.map((columnName) => (
+              <label key={columnName} className="flex items-center gap-2 cursor-pointer mb-1">
+                <input
+                  type="checkbox"
+                  checked={groupByColumns.includes(columnName)}
+                  onChange={() => toggleGroupByColumn(columnName)}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-white">{columnName}</span>
+              </label>
+            ))
+          )}
+        </div>
+        <div className="text-xs text-gray-400 mt-1">Selected: {groupByColumns.length}</div>
+      </div>
+
+      {/* Aggregations Section */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-300">Aggregations:</label>
+          <button
+            onClick={addAggregation}
+            className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded"
+          >
+            + Add
+          </button>
+        </div>
+
+        <div className="space-y-2 max-h-64 overflow-y-auto">
+          {aggregations.map((agg) => (
+            <div key={agg.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-400">Aggregation</span>
+                <button
+                  onClick={() => removeAggregation(agg.id)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <select
+                value={agg.sourceColumn}
+                onChange={(e) => updateAggregation(agg.id, { sourceColumn: e.target.value })}
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+              >
+                <option value="">Select column...</option>
+                {columnNames.map((col) => (
+                  <option key={col} value={col}>
+                    {col}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={agg.operation}
+                onChange={(e) =>
+                  updateAggregation(agg.id, {
+                    operation: e.target.value as "max" | "min" | "sum" | "avg" | "count" | "first" | "last",
+                  })
+                }
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+              >
+                <option value="max">MAX</option>
+                <option value="min">MIN</option>
+                <option value="sum">SUM</option>
+                <option value="avg">AVG</option>
+                <option value="count">COUNT</option>
+                <option value="first">FIRST</option>
+                <option value="last">LAST</option>
+              </select>
+
+              <input
+                type="text"
+                value={agg.outputName}
+                onChange={(e) => updateAggregation(agg.id, { outputName: e.target.value })}
+                placeholder="Output column name..."
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
+  const [transformations, setTransformations] = useState<ColumnTransformation[]>(data.transformations || []);
   const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
   const [outputCount, setOutputCount] = useState<number>(data.outputCount || 2);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
@@ -2668,9 +3021,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   };
 
   const updateTransformation = (transId: string, updates: Partial<ColumnTransformation>) => {
-    setTransformations(
-      transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t))
-    );
+    setTransformations(transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t)));
   };
 
   const updateOutputCount = (count: number) => {
@@ -2768,6 +3119,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               >
+                <option value="">Select source column...</option>
                 {columnNames.map((col) => (
                   <option key={col} value={col}>
                     {col}
@@ -2779,7 +3131,14 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 value={trans.transformationType}
                 onChange={(e) =>
                   updateTransformation(trans.id, {
-                    transformationType: e.target.value as "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide",
+                    transformationType: e.target.value as
+                      | "none"
+                      | "prefix"
+                      | "suffix"
+                      | "add"
+                      | "subtract"
+                      | "multiply"
+                      | "divide",
                   })
                 }
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -2821,7 +3180,9 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   type="number"
                   placeholder="Number value..."
                   value={trans.numericValue ?? ""}
-                  onChange={(e) => updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
+                  }
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 />
               )}
@@ -2830,9 +3191,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 type="text"
                 placeholder="Output column name..."
                 value={trans.outputColumnName}
-                onChange={(e) =>
-                  updateTransformation(trans.id, { outputColumnName: e.target.value })
-                }
+                onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
               />
             </div>
@@ -2872,9 +3231,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
               <select
                 value={output.existingTableName}
-                onChange={(e) =>
-                  updateOutputTable(idx, { existingTableName: e.target.value })
-                }
+                onChange={(e) => updateOutputTable(idx, { existingTableName: e.target.value })}
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               >
                 <option value="">Select table schema...</option>
@@ -2902,9 +3259,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   </label>
                 ))}
                 {transformations.length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-1">
-                    Add transformations first
-                  </div>
+                  <div className="text-xs text-gray-500 text-center py-1">Add transformations first</div>
                 )}
               </div>
 
@@ -2912,7 +3267,9 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
               <div className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1">
                 {getAvailableStaticColumns(idx).map((col) => (
                   <div key={col} className="flex items-center gap-1 mb-1">
-                    <span className="text-xs text-white w-24 truncate" title={col}>{col}:</span>
+                    <span className="text-xs text-white w-24 truncate" title={col}>
+                      {col}:
+                    </span>
                     <input
                       type="text"
                       placeholder="value"
@@ -2923,9 +3280,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   </div>
                 ))}
                 {getAvailableStaticColumns(idx).length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-1">
-                    All columns mapped
-                  </div>
+                  <div className="text-xs text-gray-500 text-center py-1">All columns mapped</div>
                 )}
               </div>
             </div>
@@ -3584,6 +3939,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Performs aggregations (min/max/sum/avg/count) on nested arrays",
       },
       {
+        type: "groupby",
+        label: "Group By",
+        description: "Groups rows by columns and performs aggregations (SQL-like GROUP BY)",
+      },
+      {
         type: "generaterows",
         label: "Generate Rows",
         description: "Creates new table rows with transformations and multiple outputs",
@@ -3692,76 +4052,78 @@ const executeGraphInBackend = async (
       }
 
       return {
-      id: node.id,
-      type: node.type || "default",
-      data: {
-        label: node.data?.label ? String(node.data.label) : "",
-        type: node.data?.type ? String(node.data.type) : "",
-        textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : "",
-        selectedPack: (node.data as any)?.selectedPack ? String((node.data as any).selectedPack) : "",
-        selectedTable: (node.data as any)?.selectedTable ? String((node.data as any).selectedTable) : "",
-        selectedColumn: (node.data as any)?.selectedColumn ? String((node.data as any).selectedColumn) : "",
-        selectedColumn1: (node.data as any)?.selectedColumn1
-          ? String((node.data as any).selectedColumn1)
-          : "",
-        selectedColumn2: (node.data as any)?.selectedColumn2
-          ? String((node.data as any).selectedColumn2)
-          : "",
-        selectedReferenceTable: (node.data as any)?.selectedReferenceTable
-          ? String((node.data as any).selectedReferenceTable)
-          : "",
-        selectedReverseTable: (node.data as any)?.selectedReverseTable
-          ? String((node.data as any).selectedReverseTable)
-          : "",
-        packName: (node.data as any)?.packName ? String((node.data as any).packName) : "",
-        packedFileName: (node.data as any)?.packedFileName ? String((node.data as any).packedFileName) : "",
-        pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
-        joinSeparator: (node.data as any)?.joinSeparator ? String((node.data as any).joinSeparator) : "",
-        groupedTextSelection: (node.data as any)?.groupedTextSelection
-          ? String((node.data as any).groupedTextSelection)
-          : "",
-        beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
-        afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
-        includeBaseGame: (node.data as any)?.includeBaseGame,
-        inputCount: (node.data as any)?.inputCount,
-        flowExecutionId: (node.data as any)?.flowExecutionId
-          ? String((node.data as any).flowExecutionId)
-          : "",
-        useCurrentPack: (node.data as any)?.useCurrentPack
-          ? Boolean((node.data as any).useCurrentPack)
-          : false,
-        onlyForMultiple: (node.data as any)?.onlyForMultiple
-          ? Boolean((node.data as any).onlyForMultiple)
-          : false,
-        filters: (node.data as any)?.filters || [],
-        columnNames: (node.data as any)?.columnNames || [],
-        connectedTableName: (node.data as any)?.connectedTableName
-          ? String((node.data as any).connectedTableName)
-          : "",
-        outputType: (node.data as any)?.outputType,
-        inputType: (node.data as any)?.inputType,
-        indexColumns: (node.data as any)?.indexColumns || [],
-        lookupColumn: (node.data as any)?.lookupColumn ? String((node.data as any).lookupColumn) : "",
-        joinType: (node.data as any)?.joinType || "inner",
-        tablePrefix: (node.data as any)?.tablePrefix ? String((node.data as any).tablePrefix) : "",
-        tablePrefixes: (node.data as any)?.tablePrefixes || [],
-        aggregateColumn: (node.data as any)?.aggregateColumn
-          ? String((node.data as any).aggregateColumn)
-          : "",
-        aggregateType: (node.data as any)?.aggregateType || "min",
-        filterColumn: (node.data as any)?.filterColumn ? String((node.data as any).filterColumn) : "",
-        filterOperator: (node.data as any)?.filterOperator || "equals",
-        filterValue: (node.data as any)?.filterValue ? String((node.data as any).filterValue) : "",
-        transformations: (node.data as any)?.transformations || [],
-        outputTables: (node.data as any)?.outputTables || [],
-        outputCount: (node.data as any)?.outputCount,
-        DBNameToDBVersions: (node.data as any)?.DBNameToDBVersions || {},
-      },
-    };
+        id: node.id,
+        type: node.type || "default",
+        data: {
+          label: node.data?.label ? String(node.data.label) : "",
+          type: node.data?.type ? String(node.data.type) : "",
+          textValue: (node.data as any)?.textValue ? String((node.data as any).textValue) : "",
+          selectedPack: (node.data as any)?.selectedPack ? String((node.data as any).selectedPack) : "",
+          selectedTable: (node.data as any)?.selectedTable ? String((node.data as any).selectedTable) : "",
+          selectedColumn: (node.data as any)?.selectedColumn ? String((node.data as any).selectedColumn) : "",
+          selectedColumn1: (node.data as any)?.selectedColumn1
+            ? String((node.data as any).selectedColumn1)
+            : "",
+          selectedColumn2: (node.data as any)?.selectedColumn2
+            ? String((node.data as any).selectedColumn2)
+            : "",
+          selectedReferenceTable: (node.data as any)?.selectedReferenceTable
+            ? String((node.data as any).selectedReferenceTable)
+            : "",
+          selectedReverseTable: (node.data as any)?.selectedReverseTable
+            ? String((node.data as any).selectedReverseTable)
+            : "",
+          packName: (node.data as any)?.packName ? String((node.data as any).packName) : "",
+          packedFileName: (node.data as any)?.packedFileName ? String((node.data as any).packedFileName) : "",
+          pattern: (node.data as any)?.pattern ? String((node.data as any).pattern) : "",
+          joinSeparator: (node.data as any)?.joinSeparator ? String((node.data as any).joinSeparator) : "",
+          groupedTextSelection: (node.data as any)?.groupedTextSelection
+            ? String((node.data as any).groupedTextSelection)
+            : "",
+          beforeText: (node.data as any)?.beforeText ? String((node.data as any).beforeText) : "",
+          afterText: (node.data as any)?.afterText ? String((node.data as any).afterText) : "",
+          includeBaseGame: (node.data as any)?.includeBaseGame,
+          inputCount: (node.data as any)?.inputCount,
+          flowExecutionId: (node.data as any)?.flowExecutionId
+            ? String((node.data as any).flowExecutionId)
+            : "",
+          useCurrentPack: (node.data as any)?.useCurrentPack
+            ? Boolean((node.data as any).useCurrentPack)
+            : false,
+          onlyForMultiple: (node.data as any)?.onlyForMultiple
+            ? Boolean((node.data as any).onlyForMultiple)
+            : false,
+          filters: (node.data as any)?.filters || [],
+          columnNames: (node.data as any)?.columnNames || [],
+          connectedTableName: (node.data as any)?.connectedTableName
+            ? String((node.data as any).connectedTableName)
+            : "",
+          outputType: (node.data as any)?.outputType,
+          inputType: (node.data as any)?.inputType,
+          indexColumns: (node.data as any)?.indexColumns || [],
+          lookupColumn: (node.data as any)?.lookupColumn ? String((node.data as any).lookupColumn) : "",
+          joinType: (node.data as any)?.joinType || "inner",
+          tablePrefix: (node.data as any)?.tablePrefix ? String((node.data as any).tablePrefix) : "",
+          tablePrefixes: (node.data as any)?.tablePrefixes || [],
+          aggregateColumn: (node.data as any)?.aggregateColumn
+            ? String((node.data as any).aggregateColumn)
+            : "",
+          aggregateType: (node.data as any)?.aggregateType || "min",
+          filterColumn: (node.data as any)?.filterColumn ? String((node.data as any).filterColumn) : "",
+          filterOperator: (node.data as any)?.filterOperator || "equals",
+          filterValue: (node.data as any)?.filterValue ? String((node.data as any).filterValue) : "",
+          transformations: (node.data as any)?.transformations || [],
+          outputTables: (node.data as any)?.outputTables || [],
+          outputCount: (node.data as any)?.outputCount,
+          groupByColumns: (node.data as any)?.groupByColumns || [],
+          aggregations: (node.data as any)?.aggregations || [],
+          DBNameToDBVersions: (node.data as any)?.DBNameToDBVersions || {},
+        },
+      };
     });
 
     // Debug: Check what was serialized for generaterows nodes
-    serializedNodes.forEach(sNode => {
+    serializedNodes.forEach((sNode) => {
       if (sNode.type === "generaterows") {
         console.log(`[SERIALIZE] GenerateRows node ${sNode.id} AFTER serialization:`);
         console.log(`  transformationsLength: ${(sNode.data.transformations || []).length}`);
@@ -3848,6 +4210,7 @@ const reactFlowNodeTypes = {
   flattennested: FlattenNestedNode,
   extracttable: ExtractTableNode,
   aggregatenested: AggregateNestedNode,
+  groupby: GroupByNode,
   generaterows: GenerateRowsNode,
 };
 
@@ -3967,6 +4330,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         outputCount,
         inputType,
         indexedInputType,
+        groupByColumns,
+        aggregations,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -4001,9 +4366,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 referenceTableNames:
                   referenceTableNames !== undefined ? referenceTableNames : node.data.referenceTableNames,
                 selectedReverseTable:
-                  selectedReverseTable !== undefined
-                    ? selectedReverseTable
-                    : node.data.selectedReverseTable,
+                  selectedReverseTable !== undefined ? selectedReverseTable : node.data.selectedReverseTable,
                 reverseTableNames:
                   reverseTableNames !== undefined ? reverseTableNames : node.data.reverseTableNames,
                 indexColumns: indexColumns !== undefined ? indexColumns : node.data.indexColumns,
@@ -4020,7 +4383,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 outputTables: outputTables !== undefined ? outputTables : node.data.outputTables,
                 outputCount: outputCount !== undefined ? outputCount : node.data.outputCount,
                 inputType: inputType !== undefined ? inputType : node.data.inputType,
-                indexedInputType: indexedInputType !== undefined ? indexedInputType : node.data.indexedInputType,
+                indexedInputType:
+                  indexedInputType !== undefined ? indexedInputType : node.data.indexedInputType,
+                groupByColumns: groupByColumns !== undefined ? groupByColumns : node.data.groupByColumns,
+                aggregations: aggregations !== undefined ? aggregations : node.data.aggregations,
               },
             };
           }
@@ -4189,6 +4555,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as AggregateNestedNodeData).outputType;
       } else if (sourceNode.type === "generaterows" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GenerateRowsNodeData).outputType;
+      } else if (sourceNode.type === "groupby" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as GroupByNodeData).outputType;
       }
 
       // Get input type from target node
@@ -4245,6 +4613,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as AggregateNestedNodeData).inputType;
       } else if (targetNode.type === "generaterows" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
+      } else if (targetNode.type === "groupby" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as GroupByNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -4271,8 +4641,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const isSaveChangesCompatible =
         targetNode.type === "savechanges" &&
         (sourceOutputType === "ChangedColumnSelection" ||
-         sourceOutputType === "Text" ||
-         sourceOutputType === "TableSelection");
+          sourceOutputType === "Text" ||
+          sourceOutputType === "TableSelection");
 
       if (
         (sourceOutputType && targetInputType && sourceOutputType === targetInputType) ||
@@ -4384,6 +4754,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             targetNode.type === "lookup" ||
             targetNode.type === "extracttable" ||
             targetNode.type === "aggregatenested" ||
+            targetNode.type === "groupby" ||
             targetNode.type === "generaterows") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
         ) {
@@ -4418,6 +4789,35 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
+        // Update Lookup node when Index Table connects to its input-index handle
+        if (
+          targetNode.type === "lookup" &&
+          sourceNode.type === "indextable" &&
+          params.targetHandle === "input-index"
+        ) {
+          const indexTableData = sourceNode.data as unknown as IndexTableNodeData;
+          const indexedTableName = indexTableData.connectedTableName;
+          const indexColumnNames = indexTableData.columnNames;
+
+          if (indexedTableName) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      connectedIndexTableName: indexedTableName,
+                      indexedTableColumnNames: indexColumnNames,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
         // Update filter nodes when connected to another filter node (chaining filters)
         if (targetNode.type === "filter" && sourceNode.type === "filter") {
           const sourceFilterData = sourceNode.data as unknown as FilterNodeData;
@@ -4443,10 +4843,43 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
+        // Update Group By node when connected to nodes with TableSelection output (Filter, Lookup, etc.)
+        if (
+          targetNode.type === "groupby" &&
+          (sourceNode.type === "filter" ||
+            sourceNode.type === "lookup" ||
+            sourceNode.type === "referencelookup" ||
+            sourceNode.type === "reversereferencelookup")
+        ) {
+          const sourceData = sourceNode.data as any;
+
+          // Propagate column names from the source node
+          if (sourceData.columnNames && sourceData.columnNames.length > 0) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames,
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
         // Update reference lookup nodes when connected to filter or reference lookup nodes (chaining)
         if (
           targetNode.type === "referencelookup" &&
-          (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+          (sourceNode.type === "filter" ||
+            sourceNode.type === "referencelookup" ||
+            sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData =
             sourceNode.type === "filter"
@@ -4479,7 +4912,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         // Update reverse reference lookup nodes when connected to filter or reference lookup nodes (chaining)
         if (
           targetNode.type === "reversereferencelookup" &&
-          (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+          (sourceNode.type === "filter" ||
+            sourceNode.type === "referencelookup" ||
+            sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData =
             sourceNode.type === "filter"
@@ -4539,13 +4974,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
 
           // Handle source input (from various table nodes)
-          if (params.targetHandle === "input-source" &&
-              (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown" ||
-               sourceNode.type === "filter" || sourceNode.type === "referencelookup" ||
-               sourceNode.type === "reversereferencelookup" || sourceNode.type === "lookup" ||
-               sourceNode.type === "extracttable" || sourceNode.type === "flattennested" ||
-               sourceNode.type === "generaterows")) {
-
+          if (
+            params.targetHandle === "input-source" &&
+            (sourceNode.type === "tableselection" ||
+              sourceNode.type === "tableselectiondropdown" ||
+              sourceNode.type === "filter" ||
+              sourceNode.type === "referencelookup" ||
+              sourceNode.type === "reversereferencelookup" ||
+              sourceNode.type === "lookup" ||
+              sourceNode.type === "extracttable" ||
+              sourceNode.type === "flattennested" ||
+              sourceNode.type === "generaterows")
+          ) {
             const sourceData = sourceNode.data as any;
 
             if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
@@ -4570,8 +5010,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
 
         // Update extracttable nodes when connected to lookup or flattennested
-        if (targetNode.type === "extracttable" &&
-            (sourceNode.type === "lookup" || sourceNode.type === "flattennested")) {
+        if (
+          targetNode.type === "extracttable" &&
+          (sourceNode.type === "lookup" || sourceNode.type === "flattennested")
+        ) {
           const sourceData = sourceNode.data as any;
 
           if (sourceData.DBNameToDBVersions) {
@@ -4601,12 +5043,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           if (sourceData.DBNameToDBVersions) {
             // For nested joins, use indexed table columns (the nested data)
             // For inner/left joins, use source table columns (the flat joined data)
-            const columnsToUse = sourceData.joinType === "nested"
-              ? (sourceData.indexedTableColumns || sourceData.columnNames || [])
-              : (sourceData.columnNames || []);
-            const tableNameToUse = sourceData.joinType === "nested"
-              ? (sourceData.indexedTableName || sourceData.connectedTableName)
-              : sourceData.connectedTableName;
+            const columnsToUse =
+              sourceData.joinType === "nested"
+                ? sourceData.indexedTableColumns || sourceData.columnNames || []
+                : sourceData.columnNames || [];
+            const tableNameToUse =
+              sourceData.joinType === "nested"
+                ? sourceData.indexedTableName || sourceData.connectedTableName
+                : sourceData.connectedTableName;
 
             setNodes((nds) =>
               nds.map((node) => {
@@ -4630,8 +5074,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
 
         // Update flattennested nodes when connected to lookup or aggregatenested
-        if (targetNode.type === "flattennested" &&
-            (sourceNode.type === "lookup" || sourceNode.type === "aggregatenested")) {
+        if (
+          targetNode.type === "flattennested" &&
+          (sourceNode.type === "lookup" || sourceNode.type === "aggregatenested")
+        ) {
           const sourceData = sourceNode.data as any;
 
           if (sourceData.DBNameToDBVersions) {
@@ -4684,11 +5130,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
 
         // Update generaterows nodes when connected to any table source
-        if (targetNode.type === "generaterows" &&
-            (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown" ||
-             sourceNode.type === "filter" || sourceNode.type === "referencelookup" ||
-             sourceNode.type === "reversereferencelookup" || sourceNode.type === "lookup" ||
-             sourceNode.type === "extracttable" || sourceNode.type === "flattennested")) {
+        if (
+          targetNode.type === "generaterows" &&
+          (sourceNode.type === "tableselection" ||
+            sourceNode.type === "tableselectiondropdown" ||
+            sourceNode.type === "filter" ||
+            sourceNode.type === "referencelookup" ||
+            sourceNode.type === "reversereferencelookup" ||
+            sourceNode.type === "lookup" ||
+            sourceNode.type === "extracttable" ||
+            sourceNode.type === "flattennested" ||
+            sourceNode.type === "groupby")
+        ) {
           const sourceData = sourceNode.data as any;
 
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
@@ -4712,9 +5165,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
 
         // Update filter nodes when connected to new table operation nodes
-        if (targetNode.type === "filter" &&
-            (sourceNode.type === "lookup" || sourceNode.type === "extracttable" ||
-             sourceNode.type === "flattennested" || sourceNode.type === "generaterows")) {
+        if (
+          targetNode.type === "filter" &&
+          (sourceNode.type === "lookup" ||
+            sourceNode.type === "extracttable" ||
+            sourceNode.type === "flattennested" ||
+            sourceNode.type === "generaterows")
+        ) {
           const sourceData = sourceNode.data as any;
 
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
@@ -4738,9 +5195,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
 
         // Update reference lookup nodes when connected to new table operation nodes
-        if (targetNode.type === "referencelookup" &&
-            (sourceNode.type === "lookup" || sourceNode.type === "extracttable" ||
-             sourceNode.type === "flattennested" || sourceNode.type === "generaterows")) {
+        if (
+          targetNode.type === "referencelookup" &&
+          (sourceNode.type === "lookup" ||
+            sourceNode.type === "extracttable" ||
+            sourceNode.type === "flattennested" ||
+            sourceNode.type === "generaterows")
+        ) {
           const sourceData = sourceNode.data as any;
 
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
@@ -4764,9 +5225,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
 
         // Update reverse reference lookup nodes when connected to new table operation nodes
-        if (targetNode.type === "reversereferencelookup" &&
-            (sourceNode.type === "lookup" || sourceNode.type === "extracttable" ||
-             sourceNode.type === "flattennested" || sourceNode.type === "generaterows")) {
+        if (
+          targetNode.type === "reversereferencelookup" &&
+          (sourceNode.type === "lookup" ||
+            sourceNode.type === "extracttable" ||
+            sourceNode.type === "flattennested" ||
+            sourceNode.type === "generaterows")
+        ) {
           const sourceData = sourceNode.data as any;
 
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
@@ -4790,7 +5255,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
 
         // Update filter nodes when connected to reference lookup or reverse reference lookup nodes
-        if (targetNode.type === "filter" && (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")) {
+        if (
+          targetNode.type === "filter" &&
+          (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+        ) {
           if (sourceNode.type === "referencelookup") {
             const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
 
@@ -4857,7 +5325,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         // Update column selection dropdown and groupbycolumns when connected to filter or reference lookup nodes
         if (
           (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
-          (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+          (sourceNode.type === "filter" ||
+            sourceNode.type === "referencelookup" ||
+            sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData =
             sourceNode.type === "filter"
@@ -5340,6 +5810,21 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             DBNameToDBVersions: {},
           } as AggregateNestedNodeData,
         };
+      } else if (nodeData.type === "groupby") {
+        newNode = {
+          id: getNodeId(),
+          type: "groupby",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            groupByColumns: [],
+            aggregations: [],
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            columnNames: [],
+          },
+        };
       } else if (nodeData.type === "generaterows") {
         newNode = {
           id: getNodeId(),
@@ -5450,6 +5935,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           transformations: (node.data as any)?.transformations || [],
           outputTables: (node.data as any)?.outputTables || [],
           outputCount: (node.data as any)?.outputCount || 2,
+          groupByColumns: (node.data as any)?.groupByColumns || [],
+          aggregations: (node.data as any)?.aggregations || [],
         },
       };
 
@@ -5458,6 +5945,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           selectedColumn1: serialized.data.selectedColumn1,
           selectedColumn2: serialized.data.selectedColumn2,
           onlyForMultiple: serialized.data.onlyForMultiple,
+          rawData: node.data,
+        });
+      }
+
+      if (node.type === "groupby") {
+        console.log(`Serializing groupby node ${node.id}:`, {
+          groupByColumns: serialized.data.groupByColumns,
+          aggregations: serialized.data.aggregations,
           rawData: node.data,
         });
       }
@@ -5554,6 +6049,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               outputTables: (serializedNode.data as any)?.outputTables,
             });
           }
+
+          // Debug: Check if groupby node has groupByColumns and aggregations when loaded
+          if (node.type === "groupby") {
+            console.log(`[LOAD] GroupBy node ${node.id} loaded with:`, {
+              hasGroupByColumns: !!(serializedNode.data as any)?.groupByColumns,
+              groupByColumnsLength: ((serializedNode.data as any)?.groupByColumns || []).length,
+              hasAggregations: !!(serializedNode.data as any)?.aggregations,
+              aggregationsLength: ((serializedNode.data as any)?.aggregations || []).length,
+              groupByColumns: (serializedNode.data as any)?.groupByColumns,
+              aggregations: (serializedNode.data as any)?.aggregations,
+            });
+          }
           if (
             node.data.type === "columnselectiondropdown" ||
             node.data.type === "tableselectiondropdown" ||
@@ -5565,6 +6072,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "lookup" ||
             node.data.type === "extracttable" ||
             node.data.type === "aggregatenested" ||
+            node.data.type === "groupby" ||
             node.data.type === "generaterows"
           ) {
             console.log("ser type!!!:", DBNameToDBVersions);
@@ -5698,7 +6206,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             // Update reference lookup nodes when connected to filter or reference lookup nodes
             if (
               targetNode.type === "referencelookup" &&
-              (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+              (sourceNode.type === "filter" ||
+                sourceNode.type === "referencelookup" ||
+                sourceNode.type === "reversereferencelookup")
             ) {
               const sourceData =
                 sourceNode.type === "filter"
@@ -5730,7 +6240,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             // Update reverse reference lookup nodes when connected to filter or reference lookup nodes
             if (
               targetNode.type === "reversereferencelookup" &&
-              (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+              (sourceNode.type === "filter" ||
+                sourceNode.type === "referencelookup" ||
+                sourceNode.type === "reversereferencelookup")
             ) {
               const sourceData =
                 sourceNode.type === "filter"
@@ -5760,7 +6272,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             }
 
             // Update filter nodes when connected to reference lookup or reverse reference lookup nodes
-            if (targetNode.type === "filter" && (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")) {
+            if (
+              targetNode.type === "filter" &&
+              (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+            ) {
               if (sourceNode.type === "referencelookup") {
                 const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
 
@@ -5849,7 +6364,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             // Update column selection dropdown and groupbycolumns when connected to filter or reference lookup nodes
             if (
               (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
-              (sourceNode.type === "filter" || sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
+              (sourceNode.type === "filter" ||
+                sourceNode.type === "referencelookup" ||
+                sourceNode.type === "reversereferencelookup")
             ) {
               const sourceData =
                 sourceNode.type === "filter"
@@ -6148,8 +6665,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
 
       // Debug: Check generaterows node data before execution
-      const generateRowsNodes = nodes.filter(n => n.type === "generaterows");
-      generateRowsNodes.forEach(grNode => {
+      const generateRowsNodes = nodes.filter((n) => n.type === "generaterows");
+      generateRowsNodes.forEach((grNode) => {
         console.log(`[PRE-EXECUTION] GenerateRows node ${grNode.id} data:`);
         console.log(`  transformationsLength: ${((grNode.data as any)?.transformations || []).length}`);
         console.log(`  transformations:`, JSON.stringify((grNode.data as any)?.transformations));

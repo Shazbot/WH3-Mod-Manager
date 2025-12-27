@@ -653,7 +653,8 @@ declare global {
     | "flattennested"
     | "extracttable"
     | "aggregatenested"
-    | "generaterows";
+    | "generaterows"
+    | "groupby";
 
   // FlowNodeData = "string"|
 
@@ -777,6 +778,22 @@ declare global {
     rows: NestedRow[];
     sourceTable: DBTablesNodeTable;
     lookupTable: DBTablesNodeTable;
+  }
+
+  interface GroupByNodeData {
+    type: "GroupBy";
+    groupByColumns: string[];
+    aggregations: Array<{
+      sourceColumn: string;
+      operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
+      outputName: string;
+    }>;
+    sourceTables: DBTablesNodeTable[];
+    inputType: NodeEdgeTypes;
+    outputType: NodeEdgeTypes;
+    columnNames: string[];
+    connectedTableName?: string;
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
   }
 
   // Multi-output data for nodes like Generate Rows (map of handleId -> TableSelection)
