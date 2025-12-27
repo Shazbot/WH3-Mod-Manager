@@ -2205,7 +2205,9 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
 // Lookup Node - Performs lookups/joins using indexed tables
 const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }) => {
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
-  const [indexJoinColumn, setIndexJoinColumn] = useState((data as any).indexJoinColumn || "");
+  const [indexJoinColumn, setIndexJoinColumn] = useState(
+    (data as any).indexJoinColumn || ((data as any).indexColumns && (data as any).indexColumns[0]) || ""
+  );
   const [joinType, setJoinType] = useState<"inner" | "left" | "nested">(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [sourceColumnNames, setSourceColumnNames] = useState<string[]>([]);
@@ -2216,8 +2218,13 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
   React.useEffect(() => {
     if (data.lookupColumn !== undefined) setLookupColumn(data.lookupColumn);
     if (data.joinType !== undefined) setJoinType(data.joinType);
-    if ((data as any).indexJoinColumn !== undefined) setIndexJoinColumn((data as any).indexJoinColumn);
-  }, [data.lookupColumn, data.joinType, (data as any).indexJoinColumn]);
+    if ((data as any).indexJoinColumn !== undefined) {
+      setIndexJoinColumn((data as any).indexJoinColumn);
+    } else if ((data as any).indexColumns && (data as any).indexColumns.length > 0) {
+      // Fallback: use first element of indexColumns if indexJoinColumn not set
+      setIndexJoinColumn((data as any).indexColumns[0]);
+    }
+  }, [data.lookupColumn, data.joinType, (data as any).indexJoinColumn, (data as any).indexColumns]);
 
   // Detect whether the input-index connection is from IndexedTable or TableSelection
   React.useEffect(() => {
@@ -2269,23 +2276,64 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
   // Track indexed table column names (from input-index connection)
   React.useEffect(() => {
-    // Use indexedTableColumnNames if already provided from connection
+    // Use indexedTableColumns if already provided from connection (new way - TableSelection)
+    if ((data as any).indexedTableColumns && (data as any).indexedTableColumns.length > 0) {
+      setIndexedColumnNames((data as any).indexedTableColumns);
+      return;
+    }
+
+    // Use indexedTableColumnNames if already provided from connection (old way - IndexedTable)
     if ((data as any).indexedTableColumnNames && (data as any).indexedTableColumnNames.length > 0) {
       setIndexedColumnNames((data as any).indexedTableColumnNames);
       return;
     }
 
-    // Otherwise look up from connectedIndexTableName
-    const indexedTableName = (data as any).connectedIndexTableName;
+    // Otherwise look up from indexedTableName using DBNameToDBVersions
+    const indexedTableName = (data as any).indexedTableName || (data as any).connectedIndexTableName;
     if (indexedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[indexedTableName];
       if (tableVersions && tableVersions.length > 0) {
         const tableFields = tableVersions[0].fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setIndexedColumnNames(fieldNames);
+        return;
       }
     }
-  }, [(data as any).connectedIndexTableName, (data as any).indexedTableColumnNames]);
+
+    // Fallback: extract from columnNames by removing the source table prefix
+    // This handles the case where we loaded from JSON and lost the metadata
+    if (indexedColumnNames.length === 0 && data.columnNames && data.columnNames.length > 0 && data.connectedTableName) {
+      const sourcePrefix = `${data.connectedTableName}_`;
+      // Get columns that don't have the source prefix (these are from the indexed table)
+      const indexedColsWithPrefix = data.columnNames
+        .filter((col: string) => !col.startsWith(sourcePrefix) && !col.startsWith("agg_"));
+
+      if (indexedColsWithPrefix.length > 0) {
+        // Extract the table name from the first column
+        // Pattern: tablename_columnname where tablename ends with _tables
+        const firstCol = indexedColsWithPrefix[0];
+        const tableMatch = firstCol.match(/^(.+?_tables)_/);
+        if (tableMatch) {
+          const extractedTableName = tableMatch[1];
+          // Update indexedTableName if not already set
+          if (!(data as any).indexedTableName) {
+            const updateEvent = new CustomEvent("nodeDataUpdate", {
+              detail: { nodeId: id, indexedTableName: extractedTableName },
+            });
+            window.dispatchEvent(updateEvent);
+          }
+        }
+
+        // Strip the table prefix from each column
+        const indexedCols = indexedColsWithPrefix.map((col: string) => {
+          const match = col.match(/^.+?_tables_(.+)$/);
+          return match ? match[1] : col;
+        });
+
+        setIndexedColumnNames(indexedCols);
+      }
+    }
+  }, [(data as any).connectedIndexTableName, (data as any).indexedTableColumnNames, (data as any).indexedTableColumns, (data as any).indexedTableName, data.columnNames, data.connectedTableName, indexedColumnNames.length]);
 
   // Compute output column names based on join type
   React.useEffect(() => {
@@ -2308,7 +2356,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       // For inner/left joins, output is prefixed source + prefixed indexed columns
       if (sourceColumnNames.length > 0 && indexedColumnNames.length > 0) {
         const sourceTableName = data.connectedTableName || "source";
-        const indexedTableName = (data as any).connectedIndexTableName || "indexed";
+        const indexedTableName = (data as any).indexedTableName || (data as any).connectedIndexTableName || "indexed";
 
         const prefixedSourceColumns = sourceColumnNames.map(col => `${sourceTableName}_${col}`);
         const prefixedIndexedColumns = indexedColumnNames.map(col => `${indexedTableName}_${col}`);
@@ -2863,14 +2911,18 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
   // Extract INPUT column names from connected node (not the calculated output columns)
   React.useEffect(() => {
-    // Only update inputColumnNames from connection propagation, not from stored output columns
-    // Check if data.columnNames looks like output columns (contains aggregation output names)
-    const looksLikeOutputColumns = data.columnNames?.some((col: string) => col.startsWith("agg_"));
+    // Only update inputColumnNames if it's currently empty (initial load/connection)
+    // Once set, don't update it based on columnNames changes (which reflects OUTPUT columns)
+    if (inputColumnNames.length === 0 && data.columnNames && data.columnNames.length > 0) {
+      // Filter out aggregation output columns (those starting with "agg_")
+      // to get the actual input columns from the connected node
+      const inputCols = data.columnNames.filter((col: string) => !col.startsWith("agg_"));
 
-    if (data.columnNames && data.columnNames.length > 0 && !looksLikeOutputColumns) {
-      setInputColumnNames(data.columnNames);
+      if (inputCols.length > 0) {
+        setInputColumnNames(inputCols);
+      }
     }
-  }, [data.columnNames]);
+  }, [data.columnNames, inputColumnNames.length]);
 
   // Sync groupByColumns to node data
   React.useEffect(() => {
@@ -4402,6 +4454,58 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   React.useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  // Fix Lookup nodes that don't have indexedTableName set (e.g., after loading from JSON)
+  React.useEffect(() => {
+    const lookupNodesToFix = nodes.filter((node) => {
+      if (node.type !== "lookup") return false;
+      const nodeData = node.data as any;
+      // Check if indexedTableName is missing or is the fallback "indexed"
+      return !nodeData.indexedTableName || nodeData.indexedTableName === "indexed";
+    });
+
+    if (lookupNodesToFix.length === 0) return;
+
+    // For each lookup node, find what's connected to its input-index handle
+    const updates: any[] = [];
+    for (const lookupNode of lookupNodesToFix) {
+      const incomingEdge = edges.find(
+        (edge) => edge.target === lookupNode.id && edge.targetHandle === "input-index"
+      );
+
+      if (incomingEdge) {
+        const sourceNode = nodes.find((n) => n.id === incomingEdge.source);
+        if (sourceNode) {
+          const sourceData = sourceNode.data as any;
+          if (sourceData.connectedTableName) {
+            updates.push({
+              nodeId: lookupNode.id,
+              indexedTableName: sourceData.connectedTableName,
+            });
+          }
+        }
+      }
+    }
+
+    // Apply updates
+    if (updates.length > 0) {
+      setNodes((nds) =>
+        nds.map((node) => {
+          const update = updates.find((u) => u.nodeId === node.id);
+          if (update) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                indexedTableName: update.indexedTableName,
+              },
+            };
+          }
+          return node;
+        })
+      );
+    }
+  }, [nodes, edges]);
 
   React.useEffect(() => {
     console.log("getDBNameToDBVersions");
