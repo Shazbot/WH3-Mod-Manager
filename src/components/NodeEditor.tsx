@@ -340,6 +340,7 @@ interface ColumnTransformation {
   suffix?: string;
   numericValue?: number;
   outputColumnName: string;
+  targetTableHandleId: string; // Which output table this transformation is for
 }
 
 interface OutputTableConfig {
@@ -3264,6 +3265,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
       sourceColumn: columnNames[0] || "",
       transformationType: "none",
       outputColumnName: `output_${transformations.length + 1}`,
+      targetTableHandleId: outputTables[0]?.handleId || "",
     };
     setTransformations([...transformations, newTransformation]);
   };
@@ -3444,8 +3446,21 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 placeholder="Output column name..."
                 value={trans.outputColumnName}
                 onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
-                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               />
+
+              <select
+                value={trans.targetTableHandleId}
+                onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
+                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+              >
+                <option value="">Select target table...</option>
+                {outputTables.map((table) => (
+                  <option key={table.handleId} value={table.handleId}>
+                    {table.name || table.handleId}
+                  </option>
+                ))}
+              </select>
             </div>
           ))}
 
@@ -3496,22 +3511,27 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
               <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
               <div className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2">
-                {transformations.map((trans) => (
-                  <label
-                    key={trans.id}
-                    className="flex items-center gap-2 cursor-pointer hover:bg-gray-600 p-1 rounded"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={output.columnMapping.includes(trans.outputColumnName)}
-                      onChange={() => toggleColumnInMapping(idx, trans.outputColumnName)}
-                      className="w-3 h-3"
-                    />
-                    <span className="text-xs text-white">{trans.outputColumnName}</span>
-                  </label>
-                ))}
-                {transformations.length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-1">Add transformations first</div>
+                {transformations
+                  .filter((trans) => trans.targetTableHandleId === output.handleId)
+                  .map((trans) => (
+                    <label
+                      key={trans.id}
+                      className="flex items-center gap-2 cursor-pointer hover:bg-gray-600 p-1 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={output.columnMapping.includes(trans.outputColumnName)}
+                        onChange={() => toggleColumnInMapping(idx, trans.outputColumnName)}
+                        className="w-3 h-3"
+                      />
+                      <span className="text-xs text-white">{trans.outputColumnName}</span>
+                    </label>
+                  ))}
+                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId)
+                  .length === 0 && (
+                  <div className="text-xs text-gray-500 text-center py-1">
+                    No transformations for this table
+                  </div>
                 )}
               </div>
 
@@ -4965,9 +4985,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         isSaveChangesCompatible
       ) {
         setEdges((eds) => {
+          // Include sourceHandle and targetHandle in edge ID to allow multiple connections
+          // from different handles of the same source node to the same target node
+          const sourceHandlePart = params.sourceHandle ? `-${params.sourceHandle}` : '';
+          const targetHandlePart = params.targetHandle ? `-${params.targetHandle}` : '';
           const newEdge = {
             ...params,
-            id: `edge-${params.source}-${params.target}`,
+            id: `edge-${params.source}${sourceHandlePart}-${params.target}${targetHandlePart}`,
             type: "default",
             style: { stroke: "#3b82f6", strokeWidth: 2 },
             animated: true,

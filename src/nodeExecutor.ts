@@ -3705,6 +3705,7 @@ async function executeGenerateRowsNode(
       separator?: string;
       formula?: string;
       outputColumnName: string;
+      targetTableHandleId: string; // Which output table this transformation is for
     }>;
     outputTables: Array<{
       handleId: string;
@@ -3782,13 +3783,16 @@ async function executeGenerateRowsNode(
   console.log(`Generate Rows Node ${nodeId}: Processing ${rows.length} input rows`);
 
   // 3. Apply transformations to each row
-  const transformedData = new Map<string, any[]>(); // outputColumnName -> array of values
+  // Note: We'll process transformations per output table to handle targetTableHandleId
+  // For now, build a map of all transformations to support legacy mode (no targetTableHandleId)
+  const globalTransformedData = new Map<string, any[]>(); // outputColumnName -> array of values
 
   for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
     const row = rows[rowIdx];
     const rowColumnNames = row.map((c: AmendedSchemaField) => c.name);
     console.log(`Generate Rows Node ${nodeId}: Row ${rowIdx} has columns:`, rowColumnNames);
 
+    // Process all transformations (will filter per table later)
     for (const transformation of config.transformations) {
       console.log(
         `Generate Rows Node ${nodeId}: Looking for column "${transformation.sourceColumn}" in row ${rowIdx}`
@@ -3889,16 +3893,19 @@ async function executeGenerateRowsNode(
           );
       }
 
-      if (!transformedData.has(transformation.outputColumnName)) {
-        transformedData.set(transformation.outputColumnName, []);
+      // Store with a key that includes targetTableHandleId for filtering
+      const key = `${transformation.targetTableHandleId}:${transformation.outputColumnName}`;
+
+      if (!globalTransformedData.has(key)) {
+        globalTransformedData.set(key, []);
       }
-      transformedData.get(transformation.outputColumnName)!.push(outputValue);
+      globalTransformedData.get(key)!.push(outputValue);
     }
   }
 
   console.log(`Generate Rows Node ${nodeId}: Transformations applied`, {
-    columnCount: transformedData.size,
-    columns: Array.from(transformedData.keys()),
+    columnCount: globalTransformedData.size,
+    keys: Array.from(globalTransformedData.keys()),
   });
 
   // 4. Create output tables
@@ -3924,7 +3931,18 @@ async function executeGenerateRowsNode(
 
     // Build rows for this output
     const outputRows: AmendedSchemaField[] = [];
-    const numRows = transformedData.get(outputConfig.columnMapping[0])?.length || 0;
+
+    // Build a map of transformed data for this specific table
+    const tableTransformedData = new Map<string, any[]>();
+    for (const [key, values] of globalTransformedData.entries()) {
+      const [tableId, colName] = key.split(":");
+      if (tableId === outputConfig.handleId) {
+        tableTransformedData.set(colName, values);
+      }
+    }
+
+    // Get number of rows from any transformation for this table
+    const numRows = tableTransformedData.values().next().value?.length || 0;
 
     // Get all columns from schema
     const allSchemaColumns = schema.fields.map((f: any) => f.name);
@@ -3934,9 +3952,9 @@ async function executeGenerateRowsNode(
       for (const columnName of allSchemaColumns) {
         let value: any;
 
-        // Check if column is from transformed data
-        if (outputConfig.columnMapping.includes(columnName)) {
-          value = transformedData.get(columnName)?.[rowIdx];
+        // Check if column is from transformed data (priority: table-specific transformations)
+        if (tableTransformedData.has(columnName)) {
+          value = tableTransformedData.get(columnName)?.[rowIdx];
         }
         // Otherwise use static value if provided
         else if (outputConfig.staticValues && outputConfig.staticValues[columnName] !== undefined) {

@@ -230,6 +230,62 @@ export const executeNodeGraph = async (
                     })
                     .filter((data) => data !== null && data !== undefined);
                   inputDataForTarget = allInputs.length > 0 ? allInputs : null;
+                } else if (targetNode.type === "savechanges") {
+                  // Save changes node should collect all TableSelection inputs and merge their tables
+                  const allTables: any[] = [];
+                  const allSourceFiles: any[] = [];
+
+                  for (const conn of targetIncomingConnections) {
+                    const sourceResult = executionResults.get(conn.sourceId);
+                    const sourceNode = nodeMap.get(conn.sourceId);
+                    let tableData = null;
+
+                    // Check if sourceHandle is "else" and use elseData if available
+                    if (conn.sourceHandle === "else" && sourceResult?.elseData) {
+                      tableData = sourceResult.elseData;
+                    }
+                    // Check if source is generaterows with multi-output
+                    else if (
+                      sourceNode?.type === "generaterows" &&
+                      conn.sourceHandle &&
+                      sourceResult?.data &&
+                      typeof sourceResult.data === "object" &&
+                      !Array.isArray(sourceResult.data)
+                    ) {
+                      // Extract specific output by handle ID
+                      tableData = (sourceResult.data as any)[conn.sourceHandle];
+                      console.log(
+                        `Save Changes: Using output "${conn.sourceHandle}" from generaterows node ${conn.sourceId}`
+                      );
+                    } else {
+                      tableData = sourceResult?.data;
+                    }
+
+                    // Collect tables from TableSelection data
+                    if (tableData && tableData.type === "TableSelection") {
+                      if (tableData.tables) {
+                        allTables.push(...tableData.tables);
+                      }
+                      if (tableData.sourceFiles) {
+                        allSourceFiles.push(...tableData.sourceFiles);
+                      }
+                    }
+                  }
+
+                  // Merge all tables into a single TableSelection
+                  if (allTables.length > 0) {
+                    inputDataForTarget = {
+                      type: "TableSelection",
+                      tables: allTables,
+                      sourceFiles: allSourceFiles,
+                      tableCount: allTables.length,
+                    };
+                    console.log(
+                      `Save Changes: Merged ${allTables.length} tables from ${targetIncomingConnections.length} input(s)`
+                    );
+                  } else {
+                    inputDataForTarget = null;
+                  }
                 } else if (targetNode.type === "lookup") {
                   // Lookup node has two inputs: source and indexed table
                   // Need to collect them in specific order based on targetHandle
