@@ -2213,6 +2213,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
   const [sourceColumnNames, setSourceColumnNames] = useState<string[]>([]);
   const [indexedColumnNames, setIndexedColumnNames] = useState<string[]>([]);
   const [isIndexedTableInput, setIsIndexedTableInput] = useState(true);
+  const [schemaWarning, setSchemaWarning] = useState<string>("");
 
   // Sync local state with prop changes
   React.useEffect(() => {
@@ -2378,6 +2379,82 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     }
   }, [data.columnNames, sourceColumnNames, indexedColumnNames, joinType, data.connectedTableName, columnNames, id]);
 
+  // Validate schema relationships and show warning if no foreign key reference exists
+  React.useEffect(() => {
+    // Clear warning if we don't have all the required information
+    if (!lookupColumn || !indexJoinColumn || !data.connectedTableName || !data.DBNameToDBVersions) {
+      setSchemaWarning("");
+      return;
+    }
+
+    const indexedTableName = (data as any).indexedTableName || (data as any).connectedIndexTableName;
+    if (!indexedTableName) {
+      setSchemaWarning("");
+      return;
+    }
+
+    // Look up the source table schema
+    const sourceTableVersions = data.DBNameToDBVersions[data.connectedTableName];
+    if (!sourceTableVersions || sourceTableVersions.length === 0) {
+      setSchemaWarning("");
+      return;
+    }
+
+    // Find the lookup column in the source table schema
+    const lookupField = sourceTableVersions[0].fields?.find((field) => field.name === lookupColumn);
+    if (!lookupField) {
+      setSchemaWarning("");
+      return;
+    }
+
+    // Check if the lookup column has a reference to the indexed table
+    // is_reference format: [table1, column1, table2, column2, ...]
+    if (lookupField.is_reference && lookupField.is_reference.length > 0) {
+      // Parse the reference pairs
+      let hasValidReference = false;
+      let hasTableReference = false;
+      const referencedColumns: string[] = [];
+
+      for (let i = 0; i < lookupField.is_reference.length; i += 2) {
+        const refTable = lookupField.is_reference[i];
+        const refColumn = lookupField.is_reference[i + 1];
+
+        if (refTable === indexedTableName) {
+          hasTableReference = true;
+          referencedColumns.push(refColumn);
+          if (refColumn === indexJoinColumn) {
+            hasValidReference = true;
+          }
+        }
+      }
+
+      if (!hasValidReference) {
+        if (hasTableReference) {
+          setSchemaWarning(
+            `Warning: Column "${lookupColumn}" references table "${indexedTableName}", but not column "${indexJoinColumn}". Expected reference columns: ${referencedColumns.join(", ")}`
+          );
+        } else {
+          setSchemaWarning(
+            `Warning: Column "${lookupColumn}" does not have a schema reference to table "${indexedTableName}". This join may produce unexpected results.`
+          );
+        }
+      } else {
+        setSchemaWarning(""); // Valid reference found
+      }
+    } else {
+      setSchemaWarning(
+        `Warning: Column "${lookupColumn}" does not have any schema references. This join may produce unexpected results.`
+      );
+    }
+  }, [
+    lookupColumn,
+    indexJoinColumn,
+    data.connectedTableName,
+    (data as any).indexedTableName,
+    (data as any).connectedIndexTableName,
+    data.DBNameToDBVersions,
+  ]);
+
   const handleLookupColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
     setLookupColumn(newValue);
@@ -2484,6 +2561,12 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
             </select>
           </div>
         </>
+      )}
+
+      {schemaWarning && (
+        <div className="mb-3 p-2 bg-yellow-900 border border-yellow-600 rounded text-xs text-yellow-200">
+          {schemaWarning}
+        </div>
       )}
 
       <div className="mb-2">
