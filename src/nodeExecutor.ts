@@ -8,7 +8,7 @@ import {
   writePack,
 } from "./packFileSerializer";
 import appData from "./appData";
-import { AmendedSchemaField, NewPackedFile, SCHEMA_FIELD_TYPE, DBVersion } from "./packFileTypes";
+import { AmendedSchemaField, NewPackedFile, SCHEMA_FIELD_TYPE, DBVersion, DBField } from "./packFileTypes";
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 
@@ -92,6 +92,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "aggregatenested":
         return await executeAggregateNestedNode(nodeId, textValue, inputData);
 
+      case "groupby":
+        return await executeGroupByNode(nodeId, textValue, inputData);
+
       case "generaterows":
         return await executeGenerateRowsNode(nodeId, textValue, inputData);
 
@@ -165,10 +168,18 @@ async function executePackFilesNode(nodeId: string, textValue: string): Promise<
   };
 }
 
-async function executePackFilesDropdownNode(
-  nodeId: string,
-  selectedPack: string
-): Promise<NodeExecutionResult> {
+async function executePackFilesDropdownNode(nodeId: string, textValue: string): Promise<NodeExecutionResult> {
+  // Parse configuration (or use textValue directly for backwards compatibility)
+  let selectedPack = "";
+
+  try {
+    const config = JSON.parse(textValue);
+    selectedPack = config.selectedPack || "";
+  } catch (e) {
+    // If parsing fails, treat textValue as just the pack name
+    selectedPack = textValue;
+  }
+
   console.log(`PackFiles Dropdown Node ${nodeId}: Processing selected pack "${selectedPack}"`);
 
   const packFiles = [] as PackFilesNodeFile[];
@@ -181,24 +192,70 @@ async function executePackFilesDropdownNode(
   }
 
   try {
-    // Find the selected mod by name
-    let foundMod = appData.enabledMods.find((mod) => mod.name === selectedPack);
-    if (!foundMod) {
-      foundMod = appData.allMods.find((mod) => mod.name === selectedPack);
-    }
+    // Check if selected pack is the base game pack
+    const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+    const isBaseGamePack = selectedPack === baseGamePackName;
 
-    if (foundMod) {
-      packFiles.push({
-        name: path.basename(foundMod.path),
-        path: foundMod.path,
-        loaded: true,
-      });
+    if (isBaseGamePack) {
+      // Add base game pack directly
+      const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      if (baseGameFolder) {
+        const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+        if (fs.existsSync(baseGamePackPath)) {
+          packFiles.push({
+            name: baseGamePackName,
+            path: baseGamePackPath,
+            loaded: true,
+          });
+          console.log(`PackFiles Dropdown Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
+        } else {
+          console.warn(`PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`);
+          return {
+            success: false,
+            error: `Base game pack not found at ${baseGamePackPath}`,
+          };
+        }
+      }
     } else {
-      console.warn(`PackFiles Dropdown Node ${nodeId}: Pack not found: ${selectedPack}`);
-      return {
-        success: false,
-        error: `Pack not found: ${selectedPack}`,
-      };
+      // Find the selected mod by name
+      let foundMod = appData.enabledMods.find((mod) => mod.name === selectedPack);
+      if (!foundMod) {
+        foundMod = appData.allMods.find((mod) => mod.name === selectedPack);
+      }
+
+      if (foundMod) {
+        packFiles.push({
+          name: path.basename(foundMod.path),
+          path: foundMod.path,
+          loaded: true,
+        });
+      } else {
+        console.warn(`PackFiles Dropdown Node ${nodeId}: Pack not found: ${selectedPack}`);
+        return {
+          success: false,
+          error: `Pack not found: ${selectedPack}`,
+        };
+      }
+
+      // Always include the base game pack when a mod is selected
+      if (baseGamePackName) {
+        const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+        if (baseGameFolder) {
+          const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+          if (fs.existsSync(baseGamePackPath)) {
+            packFiles.push({
+              name: baseGamePackName,
+              path: baseGamePackPath,
+              loaded: true,
+            });
+            console.log(`PackFiles Dropdown Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
+          } else {
+            console.warn(
+              `PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`
+            );
+          }
+        }
+      }
     }
   } catch (error) {
     console.error(`PackFiles Dropdown Node ${nodeId}: Error processing pack ${selectedPack}:`, error);
@@ -392,11 +449,30 @@ async function executeTableSelectionDropdownNode(
       const matchingTables = pack.packedFiles.filter((pf) => pf.name.includes(tableName));
 
       for (const table of matchingTables) {
+        // Limit to 300 rows for easier testing
+        let limitedTable = table;
+        if (table.tableSchema && table.schemaFields) {
+          const rows = chunkSchemaIntoRows(table.schemaFields, table.tableSchema) as AmendedSchemaField[][];
+
+          if (rows.length > 300) {
+            console.log(
+              `TableSelection Dropdown Node ${nodeId}: Limiting ${tableName} from ${rows.length} rows to 300 rows`
+            );
+            const limitedRows = rows.slice(0, 300);
+            const limitedSchemaFields = limitedRows.flat();
+
+            limitedTable = {
+              ...table,
+              schemaFields: limitedSchemaFields,
+            };
+          }
+        }
+
         selectedTables.push({
           name: tableName,
           fileName: table.name,
           sourceFile: file,
-          table,
+          table: limitedTable,
         });
       }
     } catch (error) {
@@ -1925,13 +2001,27 @@ async function executeSaveChangesNode(
       ) as AmendedSchemaField[][];
 
       console.log(`Save Changes Node ${nodeId}: Calculating pack file size for ${table.name}`);
+      console.log(
+        `Save Changes Node ${nodeId}: Table has ${table.table.tableSchema.fields.length} schema fields`
+      );
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         for (let j = 0; j < row.length; j++) {
           const cell = row[j];
           const field = table.table.tableSchema.fields[j];
+          if (!field) {
+            console.error(
+              `Save Changes Node ${nodeId}: No schema field at index ${j}, cell name: ${cell.name}`
+            );
+            return {
+              success: false,
+              error: `Schema mismatch: No field definition at index ${j} for ${cell.name}`,
+            };
+          }
           const fieldSize = getFieldSize(cell.resolvedKeyValue, field.field_type);
-          console.log(`  Field ${field.name} (${field.field_type}): resolvedKeyValue="${cell.resolvedKeyValue}" -> ${fieldSize} bytes`);
+          // console.log(
+          //   `  Field ${field.name} (${field.field_type}): resolvedKeyValue="${cell.resolvedKeyValue}" -> ${fieldSize} bytes`
+          // );
           packFileSize += fieldSize;
         }
       }
@@ -2001,7 +2091,10 @@ async function executeSaveChangesNode(
 
   // Handle ChangedColumnSelection input - save database changes
   if (!inputData || inputData.type !== "ChangedColumnSelection") {
-    return { success: false, error: "Invalid input: Expected ChangedColumnSelection, TableSelection, or Text data" };
+    return {
+      success: false,
+      error: "Invalid input: Expected ChangedColumnSelection, TableSelection, or Text data",
+    };
   }
 
   const saveConfig = additionalConfig;
@@ -2591,9 +2684,7 @@ async function executeIndexTableNode(
     for (const columnName of indexColumns) {
       const cell = row.find((c) => c.name === columnName);
       if (!cell) {
-        console.warn(
-          `Index Table Node ${nodeId}: Column "${columnName}" not found in row, skipping row`
-        );
+        console.warn(`Index Table Node ${nodeId}: Column "${columnName}" not found in row, skipping row`);
         allColumnsFound = false;
         break;
       }
@@ -2671,27 +2762,35 @@ async function executeLookupNode(
     return { success: false, error: "Invalid index input: Expected IndexedTable data" };
   }
 
-  console.log(
-    `Lookup Node ${nodeId}: Performing ${joinType} join on column "${lookupColumn}"`
-  );
+  console.log(`Lookup Node ${nodeId}: Performing ${joinType} join on column "${lookupColumn}"`);
 
-  // Get source table (use first table if multiple)
+  // Get all source tables and combine rows from all of them
   if (sourceData.tables.length === 0) {
     return { success: false, error: "No tables in source data" };
   }
 
-  const sourceTable = sourceData.tables[0];
+  // Combine rows from all tables
+  const allSourceRows: AmendedSchemaField[][] = [];
+  let sourceTable = sourceData.tables[0]; // Keep first for metadata
 
-  if (!sourceTable.table.schemaFields || !sourceTable.table.tableSchema) {
-    return { success: false, error: "Source table has no schema data" };
+  for (const table of sourceData.tables) {
+    if (!table.table.schemaFields || !table.table.tableSchema) {
+      console.warn(`Lookup Node ${nodeId}: Skipping table without schema data`);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      table.table.schemaFields,
+      table.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    allSourceRows.push(...rows);
   }
 
-  const sourceRows = chunkSchemaIntoRows(
-    sourceTable.table.schemaFields,
-    sourceTable.table.tableSchema
-  ) as AmendedSchemaField[][];
-
-  console.log(`Lookup Node ${nodeId}: Processing ${sourceRows.length} source rows`);
+  const sourceRows = allSourceRows;
+  console.log(
+    `Lookup Node ${nodeId}: Processing ${sourceRows.length} source rows from ${sourceData.tables.length} pack files`
+  );
 
   // Get table names for auto-prefixing
   const sourceTableName = sourceTable.name.replace(/^db\\/, "").replace(/\\.*$/, "");
@@ -2705,9 +2804,7 @@ async function executeLookupNode(
     for (const sourceRow of sourceRows) {
       const lookupCell = sourceRow.find((c) => c.name === lookupColumn);
       if (!lookupCell) {
-        console.warn(
-          `Lookup Node ${nodeId}: Column "${lookupColumn}" not found in source row, skipping`
-        );
+        console.warn(`Lookup Node ${nodeId}: Column "${lookupColumn}" not found in source row, skipping`);
         continue;
       }
 
@@ -2741,9 +2838,7 @@ async function executeLookupNode(
     for (const sourceRow of sourceRows) {
       const lookupCell = sourceRow.find((c) => c.name === lookupColumn);
       if (!lookupCell) {
-        console.warn(
-          `Lookup Node ${nodeId}: Column "${lookupColumn}" not found in source row, skipping`
-        );
+        console.warn(`Lookup Node ${nodeId}: Column "${lookupColumn}" not found in source row, skipping`);
         continue;
       }
 
@@ -2780,8 +2875,35 @@ async function executeLookupNode(
     console.log(`Lookup Node ${nodeId}: Created ${joinedRows.length} joined rows`);
 
     // We need to create a new packed file with the joined data
-    // For now, we'll create a synthetic table structure
-    // In a real implementation, you'd want to properly serialize this
+    // Build proper DBField schema from joined row structure
+    const schemaFields: DBField[] = [];
+    if (joinedRows.length > 0) {
+      for (const cell of joinedRows[0]) {
+        schemaFields.push({
+          name: cell.name,
+          field_type: cell.type as SCHEMA_FIELD_TYPE,
+          is_key: cell.isKey || false,
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: `Joined column from ${joinType} join`,
+          ca_order: -1,
+          is_bitwise: 0,
+          enum_values: {},
+        });
+      }
+    }
+
+    const schemaVersion = sourceTable.table.tableSchema?.version ?? 1;
+    const tableVersion = sourceTable.table.version;
+
+    console.log(
+      `Lookup Node ${nodeId}: Source table version=${sourceTable.table.version}, schema version=${sourceTable.table.tableSchema?.version}`
+    );
+    console.log(
+      `Lookup Node ${nodeId}: Creating joined table with schema version=${schemaVersion}, table version=${tableVersion}`
+    );
+
     const joinedTable: DBTablesNodeTable = {
       name: `${sourceTableName}_joined_${lookupTableName}`,
       fileName: `${sourceTableName}_joined_${lookupTableName}`,
@@ -2789,11 +2911,10 @@ async function executeLookupNode(
       table: {
         ...sourceTable.table,
         name: `db\\${sourceTableName}_joined_${lookupTableName}`,
-        // Store joined rows in schemaFields (will need proper serialization)
         schemaFields: joinedRows.flat(),
         tableSchema: {
-          ...sourceTable.table.tableSchema!,
-          fields: joinedRows.length > 0 ? joinedRows[0].map((cell) => cell) : [],
+          version: schemaVersion,
+          fields: schemaFields,
         },
       },
     };
@@ -2868,18 +2989,21 @@ async function executeFlattenNestedNode(
       schemaFields: flatRows.flat(),
       tableSchema: {
         ...inputData.sourceTable.table.tableSchema!,
-        fields: flatRows.length > 0 ? flatRows[0].map((cell) => ({
-          name: cell.name,
-          field_type: cell.type as SCHEMA_FIELD_TYPE,
-          is_key: cell.isKey || false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: "",
-          ca_order: 0,
-          is_bitwise: 0,
-          enum_values: {},
-        })) : [],
+        fields:
+          flatRows.length > 0
+            ? flatRows[0].map((cell) => ({
+                name: cell.name,
+                field_type: cell.type as SCHEMA_FIELD_TYPE,
+                is_key: cell.isKey || false,
+                default_value: "",
+                is_filename: false,
+                is_reference: [],
+                description: "",
+                ca_order: 0,
+                is_bitwise: 0,
+                enum_values: {},
+              }))
+            : [],
       },
     },
   };
@@ -2976,18 +3100,21 @@ async function executeExtractTableNode(
       schemaFields: extractedRows.flat(),
       tableSchema: {
         ...sourceTable.table.tableSchema!,
-        fields: extractedRows.length > 0 ? extractedRows[0].map((cell) => ({
-          name: cell.name,
-          field_type: cell.type as SCHEMA_FIELD_TYPE,
-          is_key: cell.isKey || false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: "",
-          ca_order: 0,
-          is_bitwise: 0,
-          enum_values: {},
-        })) : [],
+        fields:
+          extractedRows.length > 0
+            ? extractedRows[0].map((cell) => ({
+                name: cell.name,
+                field_type: cell.type as SCHEMA_FIELD_TYPE,
+                is_key: cell.isKey || false,
+                default_value: "",
+                is_filename: false,
+                is_reference: [],
+                description: "",
+                ca_order: 0,
+                is_bitwise: 0,
+                enum_values: {},
+              }))
+            : [],
       },
     },
   };
@@ -3018,7 +3145,13 @@ async function executeAggregateNestedNode(
   let aggregateColumn: string = "";
   let aggregateType: "min" | "max" | "sum" | "avg" | "count" = "min";
   let filterColumn: string = "";
-  let filterOperator: "equals" | "notEquals" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual" = "equals";
+  let filterOperator:
+    | "equals"
+    | "notEquals"
+    | "greaterThan"
+    | "lessThan"
+    | "greaterThanOrEqual"
+    | "lessThanOrEqual" = "equals";
   let filterValue: string = "";
   try {
     const parsed = JSON.parse(textValue);
@@ -3082,11 +3215,8 @@ async function executeAggregateNestedNode(
     const filteredMatches = nestedRow.lookupMatches.filter(applyFilter);
 
     if (filteredMatches.length === 0) {
-      // No matches after filtering: keep with empty lookup matches
-      aggregatedRows.push({
-        sourceRow: nestedRow.sourceRow,
-        lookupMatches: [],
-      });
+      // No matches after filtering: drop this row
+      console.log(`Aggregate Nested Node ${nodeId}: Dropping row - no matches after filtering`);
       continue;
     }
 
@@ -3178,7 +3308,8 @@ async function executeAggregateNestedNode(
     }
   }
 
-  console.log(`Aggregate Nested Node ${nodeId}: Aggregated to ${aggregatedRows.length} rows`);
+  console.log(`Aggregate Nested Node ${nodeId}: INPUT had ${inputData.rows.length} parent rows`);
+  console.log(`Aggregate Nested Node ${nodeId}: OUTPUT has ${aggregatedRows.length} parent rows`);
 
   return {
     success: true,
@@ -3187,6 +3318,278 @@ async function executeAggregateNestedNode(
       rows: aggregatedRows,
       sourceTable: inputData.sourceTable,
       lookupTable: inputData.lookupTable,
+    },
+  };
+}
+
+async function executeGroupByNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Group By Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse configuration from textValue
+  let groupByColumns: string[] = [];
+  let aggregations: Array<{
+    sourceColumn: string;
+    operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
+    outputName: string;
+  }> = [];
+
+  try {
+    const parsed = JSON.parse(textValue);
+    groupByColumns = parsed.groupByColumns || [];
+    aggregations = parsed.aggregations || [];
+  } catch (error) {
+    console.error(`Group By Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid group by configuration" };
+  }
+
+  if (groupByColumns.length === 0) {
+    return { success: false, error: "No group by columns specified" };
+  }
+
+  if (aggregations.length === 0) {
+    return { success: false, error: "No aggregations specified" };
+  }
+
+  console.log(
+    `Group By Node ${nodeId}: Grouping by [${groupByColumns.join(", ")}] with ${
+      aggregations.length
+    } aggregation(s)`
+  );
+
+  // Process each table
+  const groupedTables: DBTablesNodeTable[] = [];
+
+  for (const tableData of inputData.tables) {
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      // Skip tables without schema
+      groupedTables.push(tableData);
+      continue;
+    }
+
+    // Chunk into rows
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    console.log(`Group By Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
+
+    // Group rows by specified columns
+    const groups = new Map<string, AmendedSchemaField[][]>();
+
+    for (const row of rows) {
+      // Create group key from group by columns
+      const keyParts: string[] = [];
+      for (const colName of groupByColumns) {
+        const cell = row.find((c: AmendedSchemaField) => c.name === colName);
+        if (!cell) {
+          console.warn(
+            `Group By Node ${nodeId}: Group by column "${colName}" not found in row, skipping row`
+          );
+          continue;
+        }
+        keyParts.push(String(cell.resolvedKeyValue || ""));
+      }
+
+      const groupKey = keyParts.join("||"); // Use || as separator
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, []);
+      }
+      groups.get(groupKey)!.push(row);
+    }
+
+    console.log(`Group By Node ${nodeId}: Grouped ${rows.length} rows into ${groups.size} groups`);
+
+    // For each group, compute aggregations
+    const groupedRows: AmendedSchemaField[][] = [];
+
+    for (const [groupKey, groupRows] of groups) {
+      if (groupRows.length === 0) continue;
+
+      // Start with the group key columns from the first row
+      const outputRow: AmendedSchemaField[] = [];
+
+      for (const colName of groupByColumns) {
+        const cell = groupRows[0].find((c: AmendedSchemaField) => c.name === colName);
+        if (cell) {
+          outputRow.push({ ...cell });
+        }
+      }
+
+      // Compute each aggregation
+      for (const agg of aggregations) {
+        let aggregateValue: any;
+
+        if (agg.operation === "count") {
+          aggregateValue = groupRows.length;
+        } else if (agg.operation === "first") {
+          const cell = groupRows[0].find((c: AmendedSchemaField) => c.name === agg.sourceColumn);
+          aggregateValue = cell ? cell.resolvedKeyValue : "";
+        } else if (agg.operation === "last") {
+          const cell = groupRows[groupRows.length - 1].find(
+            (c: AmendedSchemaField) => c.name === agg.sourceColumn
+          );
+          aggregateValue = cell ? cell.resolvedKeyValue : "";
+        } else {
+          // max, min, sum, avg - need numeric values
+          let values: number[] = [];
+
+          for (const row of groupRows) {
+            const cell = row.find((c: AmendedSchemaField) => c.name === agg.sourceColumn);
+            if (!cell) continue;
+
+            const value = parseFloat(String(cell.resolvedKeyValue || "0"));
+            if (!isNaN(value)) {
+              values.push(value);
+            }
+          }
+
+          if (values.length === 0) {
+            aggregateValue = 0;
+          } else {
+            switch (agg.operation) {
+              case "max":
+                aggregateValue = Math.max(...values);
+                break;
+              case "min":
+                aggregateValue = Math.min(...values);
+                break;
+              case "sum":
+                aggregateValue = values.reduce((sum, val) => sum + val, 0);
+                break;
+              case "avg":
+                aggregateValue = values.reduce((sum, val) => sum + val, 0) / values.length;
+                break;
+              default:
+                aggregateValue = 0;
+            }
+          }
+        }
+
+        // Add aggregated value as new column
+        outputRow.push({
+          name: agg.outputName,
+          resolvedKeyValue: aggregateValue,
+          type: typeof aggregateValue === "number" ? "I32" : "StringU8",
+          fields: [
+            typeof aggregateValue === "number"
+              ? { type: "I32", val: aggregateValue }
+              : { type: "StringU8", val: String(aggregateValue) },
+          ],
+          isKey: false,
+        } as AmendedSchemaField);
+      }
+
+      groupedRows.push(outputRow);
+    }
+
+    console.log(
+      `Group By Node ${nodeId}: Output ${groupedRows.length} grouped rows from ${rows.length} input rows`
+    );
+
+    // Flatten grouped rows back into schemaFields array
+    const groupedSchemaFields: AmendedSchemaField[] = [];
+    for (const row of groupedRows) {
+      groupedSchemaFields.push(...row);
+    }
+
+    // Build new table schema that matches the output structure
+    const newSchemaFields: DBField[] = [];
+
+    // Add group by columns to schema
+    for (const colName of groupByColumns) {
+      // Try to find the field in the original schema
+      const originalField = tableData.table.tableSchema?.fields.find(
+        (field: DBField) => field.name === colName
+      );
+
+      if (originalField) {
+        console.log(`Group By: Found original field for ${colName}, type=${originalField.field_type}`);
+        newSchemaFields.push({ ...originalField });
+      } else {
+        // If not found, look in the actual schemaFields to infer the type
+        console.log(`Group By: Original field not found for ${colName}, inferring from data`);
+        const sampleField = groupedRows[0]?.find((f: AmendedSchemaField) => f.name === colName);
+        if (sampleField) {
+          console.log(
+            `Group By: Found sample field: name=${sampleField.name}, type=${sampleField.type}, isKey=${sampleField.isKey}`
+          );
+          newSchemaFields.push({
+            name: colName,
+            field_type: sampleField.type as SCHEMA_FIELD_TYPE,
+            is_key: sampleField.isKey || false,
+            default_value: "",
+            is_filename: false,
+            is_reference: [],
+            description: `Group by column: ${colName}`,
+            ca_order: -1,
+            is_bitwise: 0,
+            enum_values: {},
+          });
+        } else {
+          console.error(`Group By: ERROR - Could not find sample field for ${colName}`);
+        }
+      }
+    }
+
+    // Add aggregation columns to schema
+    for (const agg of aggregations) {
+      newSchemaFields.push({
+        name: agg.outputName,
+        field_type: ["max", "min", "sum", "avg", "count"].includes(agg.operation) ? "I32" : "StringU8",
+        is_key: false,
+        default_value: "",
+        is_filename: false,
+        is_reference: [],
+        description: `Aggregated column from ${agg.operation}(${agg.sourceColumn})`,
+        ca_order: -1,
+        is_bitwise: 0,
+        enum_values: {},
+      });
+    }
+
+    // Create new DBVersion with updated fields
+    const schemaVersion = tableData.table.tableSchema?.version ?? 1;
+    const newTableSchema: DBVersion = {
+      version: schemaVersion,
+      fields: newSchemaFields,
+    };
+
+    console.log(
+      `Group By Node ${nodeId}: Created schema with ${newSchemaFields.length} fields (schema version=${schemaVersion}):`
+    );
+    newSchemaFields.forEach((f, idx) => {
+      console.log(`  [${idx}] ${f.name} (${f.field_type}) key=${f.is_key}`);
+    });
+
+    // Create a new table with grouped data and updated schema
+    const groupedTableData = {
+      ...tableData,
+      table: {
+        ...tableData.table,
+        schemaFields: groupedSchemaFields,
+        tableSchema: newTableSchema,
+      },
+    };
+
+    groupedTables.push(groupedTableData);
+  }
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: groupedTables,
+      sourceFiles: inputData.sourceFiles,
+      tableCount: groupedTables.length,
     },
   };
 }
@@ -3202,7 +3605,16 @@ async function executeGenerateRowsNode(
   let config: {
     transformations: Array<{
       sourceColumn: string;
-      transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "concatenate" | "formula";
+      transformationType:
+        | "none"
+        | "prefix"
+        | "suffix"
+        | "add"
+        | "subtract"
+        | "multiply"
+        | "divide"
+        | "concatenate"
+        | "formula";
       prefix?: string;
       suffix?: string;
       numericValue?: number;
@@ -3223,8 +3635,14 @@ async function executeGenerateRowsNode(
   try {
     console.log(`Generate Rows Node ${nodeId}: textValue to parse:`, textValue);
     config = JSON.parse(textValue);
-    console.log(`Generate Rows Node ${nodeId}: Parsed - transformations length:`, (config.transformations || []).length);
-    console.log(`Generate Rows Node ${nodeId}: Parsed - outputTables length:`, (config.outputTables || []).length);
+    console.log(
+      `Generate Rows Node ${nodeId}: Parsed - transformations length:`,
+      (config.transformations || []).length
+    );
+    console.log(
+      `Generate Rows Node ${nodeId}: Parsed - outputTables length:`,
+      (config.outputTables || []).length
+    );
   } catch (error) {
     console.log(`Generate Rows Node ${nodeId}: JSON parse error:`, error);
     return {
@@ -3244,7 +3662,7 @@ async function executeGenerateRowsNode(
   console.log(`Generate Rows Node ${nodeId}: Configuration parsed (excluding DBNameToDBVersions):`, {
     transformations: config.transformations,
     outputTables: config.outputTables,
-    hasDBNameToDBVersions: !!config.DBNameToDBVersions
+    hasDBNameToDBVersions: !!config.DBNameToDBVersions,
   });
 
   // 2. Extract input rows
@@ -3264,7 +3682,10 @@ async function executeGenerateRowsNode(
   }
 
   const rows = sourceTable.table.schemaFields
-    ? (chunkSchemaIntoRows(sourceTable.table.schemaFields, sourceTable.table.tableSchema) as AmendedSchemaField[][])
+    ? (chunkSchemaIntoRows(
+        sourceTable.table.schemaFields,
+        sourceTable.table.tableSchema
+      ) as AmendedSchemaField[][])
     : [];
 
   if (rows.length === 0) {
@@ -3285,17 +3706,44 @@ async function executeGenerateRowsNode(
     console.log(`Generate Rows Node ${nodeId}: Row ${rowIdx} has columns:`, rowColumnNames);
 
     for (const transformation of config.transformations) {
-      console.log(`Generate Rows Node ${nodeId}: Looking for column "${transformation.sourceColumn}" in row ${rowIdx}`);
+      console.log(
+        `Generate Rows Node ${nodeId}: Looking for column "${transformation.sourceColumn}" in row ${rowIdx}`
+      );
       const sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
+
+      let outputValue: any;
+
       if (!sourceCell) {
         console.warn(
-          `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row ${rowIdx}. Available: ${rowColumnNames.join(', ')}`
+          `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row ${rowIdx}. Using default value.`
         );
-        continue;
-      }
-      console.log(`Generate Rows Node ${nodeId}: Found column "${transformation.sourceColumn}" with value:`, sourceCell.resolvedKeyValue);
 
-      let outputValue: any = sourceCell.resolvedKeyValue;
+        // Use default values based on transformation type
+        switch (transformation.transformationType) {
+          case "add":
+          case "subtract":
+          case "multiply":
+          case "divide":
+            // For numeric transformations, use -1 so that "add 1" results in 0
+            outputValue =
+              transformation.transformationType === "add" && transformation.numericValue === 1 ? -1 : 0;
+            break;
+          case "prefix":
+          case "suffix":
+          case "concatenate":
+          case "none":
+          default:
+            // For string transformations, use empty string
+            outputValue = "";
+            break;
+        }
+      } else {
+        console.log(
+          `Generate Rows Node ${nodeId}: Found column "${transformation.sourceColumn}" with value:`,
+          sourceCell.resolvedKeyValue
+        );
+        outputValue = sourceCell.resolvedKeyValue;
+      }
 
       // Apply transformation
       switch (transformation.transformationType) {
@@ -3352,7 +3800,9 @@ async function executeGenerateRowsNode(
           break;
 
         default:
-          console.warn(`Generate Rows Node ${nodeId}: Unknown transformation type "${transformation.transformationType}"`);
+          console.warn(
+            `Generate Rows Node ${nodeId}: Unknown transformation type "${transformation.transformationType}"`
+          );
       }
 
       if (!transformedData.has(transformation.outputColumnName)) {
@@ -3396,7 +3846,7 @@ async function executeGenerateRowsNode(
     const allSchemaColumns = schema.fields.map((f: any) => f.name);
 
     for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
-      // Process all columns in the schema
+      // Process all columns in the schema IN ORDER (must include all fields for proper pack file structure)
       for (const columnName of allSchemaColumns) {
         let value: any;
 
@@ -3408,9 +3858,28 @@ async function executeGenerateRowsNode(
         else if (outputConfig.staticValues && outputConfig.staticValues[columnName] !== undefined) {
           value = outputConfig.staticValues[columnName];
         }
-        // Skip column if no value provided
+        // For optional fields, use empty string; for required fields, use type-appropriate default
         else {
-          continue;
+          const fieldDef = schema.fields.find((f: any) => f.name === columnName);
+          if (fieldDef?.field_type.startsWith("Optional")) {
+            value = "";
+          } else {
+            // Use type-appropriate default for required fields
+            switch (fieldDef?.field_type) {
+              case "I32":
+              case "I64":
+              case "I16":
+              case "F32":
+              case "F64":
+                value = 0;
+                break;
+              case "Boolean":
+                value = 0;
+                break;
+              default:
+                value = "";
+            }
+          }
         }
 
         const fieldDef = schema.fields.find((f: any) => f.name === columnName);

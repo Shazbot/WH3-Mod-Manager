@@ -2237,10 +2237,6 @@ const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
     fieldBuffers.push(buffer);
   }
   const result = Buffer.concat(fieldBuffers);
-  // Debug: log field name and actual bytes written
-  if ((schemaField as any).name) {
-    console.log(`  Serialized ${(schemaField as any).name}: ${result.length} bytes actual`);
-  }
   return result;
 };
 

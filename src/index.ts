@@ -63,7 +63,7 @@ if (!gotTheLock) {
   if (isMainThread) {
     process.umask(0);
 
-    if (isDev) electronLog.transports.file.maxSize = 100 * 1024; // 100 MB
+    if (isDev) electronLog.transports.file.maxSize = 500 * 1024 * 1024; // 500 MB
 
     console.log = (...args) => {
       electronLog.info(...args);
