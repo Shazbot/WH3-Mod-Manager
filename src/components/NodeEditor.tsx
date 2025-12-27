@@ -1714,6 +1714,49 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
   );
 };
 
+// Custom DumpToTSV node component that exports table data to TSV file
+const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const [filename, setFilename] = useState(data.filename || "");
+
+  const handleFilenameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setFilename(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, filename: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-blue-500 rounded-lg p-4 min-w-[250px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label || "Dump to TSV"}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+
+      <div>
+        <label className="text-xs text-gray-300 block mb-1">Filename (optional):</label>
+        <input
+          type="text"
+          value={filename}
+          onChange={handleFilenameChange}
+          placeholder="Leave blank for auto-generated name"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+        />
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Exports to TSV for inspection</div>
+    </div>
+  );
+};
+
 // Custom TextSurround node component that accepts Text, Text Lines, or GroupedText input and outputs the same type
 const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
@@ -2724,6 +2767,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       sourceColumn: string;
       operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
       outputName: string;
+      defaultValue?: string;
     }>
   >(
     data.aggregations?.map((agg: any, idx: number) => ({
@@ -2731,7 +2775,8 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       id: agg.id || `agg_${idx}`,
     })) || []
   );
-  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  // inputColumnNames: columns available from the connected node (for dropdowns)
+  const [inputColumnNames, setInputColumnNames] = useState<string[]>([]);
 
   // Sync local state with prop changes (but prevent feedback loops)
   React.useEffect(() => {
@@ -2757,10 +2802,14 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     }
   }, [data.aggregations]);
 
-  // Extract column names from connected input
+  // Extract INPUT column names from connected node (not the calculated output columns)
   React.useEffect(() => {
-    if (data.columnNames && data.columnNames.length > 0) {
-      setColumnNames(data.columnNames);
+    // Only update inputColumnNames from connection propagation, not from stored output columns
+    // Check if data.columnNames looks like output columns (contains aggregation output names)
+    const looksLikeOutputColumns = data.columnNames?.some((col: string) => col.startsWith("agg_"));
+
+    if (data.columnNames && data.columnNames.length > 0 && !looksLikeOutputColumns) {
+      setInputColumnNames(data.columnNames);
     }
   }, [data.columnNames]);
 
@@ -2810,7 +2859,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   const addAggregation = () => {
     const newAggregation = {
       id: `agg_${Date.now()}`,
-      sourceColumn: columnNames[0] || "",
+      sourceColumn: inputColumnNames[0] || "",
       operation: "max" as const,
       outputName: `agg_${aggregations.length + 1}`,
     };
@@ -2827,6 +2876,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       sourceColumn: string;
       operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
       outputName: string;
+      defaultValue: string;
     }>
   ) => {
     setAggregations(aggregations.map((a) => (a.id === aggId ? { ...a, ...updates } : a)));
@@ -2847,10 +2897,10 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-1">Group By Columns:</label>
         <div className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2">
-          {columnNames.length === 0 ? (
+          {inputColumnNames.length === 0 ? (
             <div className="text-xs text-gray-500">No columns available</div>
           ) : (
-            columnNames.map((columnName) => (
+            inputColumnNames.map((columnName) => (
               <label key={columnName} className="flex items-center gap-2 cursor-pointer mb-1">
                 <input
                   type="checkbox"
@@ -2897,7 +2947,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
               >
                 <option value="">Select column...</option>
-                {columnNames.map((col) => (
+                {inputColumnNames.map((col) => (
                   <option key={col} value={col}>
                     {col}
                   </option>
@@ -2927,6 +2977,14 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
                 value={agg.outputName}
                 onChange={(e) => updateAggregation(agg.id, { outputName: e.target.value })}
                 placeholder="Output column name..."
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+              />
+
+              <input
+                type="text"
+                value={agg.defaultValue || ""}
+                onChange={(e) => updateAggregation(agg.id, { defaultValue: e.target.value })}
+                placeholder="Default value (if no rows match)..."
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
               />
             </div>
@@ -3948,6 +4006,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Generate Rows",
         description: "Creates new table rows with transformations and multiple outputs",
       },
+      {
+        type: "dumptotsv",
+        label: "Dump to TSV",
+        description: "Exports table data to a TSV file for inspection",
+      },
     ],
   },
 ];
@@ -4212,6 +4275,7 @@ const reactFlowNodeTypes = {
   aggregatenested: AggregateNestedNode,
   groupby: GroupByNode,
   generaterows: GenerateRowsNode,
+  dumptotsv: DumpToTSVNode,
 };
 
 const initialNodes: Node[] = [];
@@ -4615,6 +4679,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
       } else if (targetNode.type === "groupby" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GroupByNodeData).inputType;
+      } else if (targetNode.type === "dumptotsv" && targetNode.data) {
+        targetInputType = "TableSelection" as NodeEdgeTypes;
       }
 
       // Allow connection only if types are compatible
@@ -5663,6 +5729,19 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             inputType: "ChangedColumnSelection" as NodeEdgeTypes,
           } as SaveChangesNodeData,
         };
+      } else if (nodeData.type === "dumptotsv") {
+        // Create DumpToTSV node
+        newNode = {
+          id: getNodeId(),
+          type: "dumptotsv",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            filename: "",
+            inputType: "TableSelection" as NodeEdgeTypes,
+          },
+        };
       } else if (nodeData.type === "textsurround") {
         // Create TextSurround node with special data structure
         newNode = {
@@ -6075,7 +6154,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "groupby" ||
             node.data.type === "generaterows"
           ) {
-            console.log("ser type!!!:", DBNameToDBVersions);
+            console.log("Setting DBNameToDBVersions with", Object.keys(DBNameToDBVersions || {}).length, "tables");
             node.data.DBNameToDBVersions = DBNameToDBVersions;
             if (node.data.type === "tableselectiondropdown") {
               node.data.tableNames = Object.keys(DBNameToDBVersions || {}).toSorted(
