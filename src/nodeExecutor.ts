@@ -98,6 +98,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "generaterows":
         return await executeGenerateRowsNode(nodeId, textValue, inputData);
 
+      case "dumptotsv":
+        return await executeDumpToTSVNode(nodeId, textValue, inputData);
+
       default:
         return {
           success: false,
@@ -451,22 +454,22 @@ async function executeTableSelectionDropdownNode(
       for (const table of matchingTables) {
         // Limit to 300 rows for easier testing
         let limitedTable = table;
-        if (table.tableSchema && table.schemaFields) {
-          const rows = chunkSchemaIntoRows(table.schemaFields, table.tableSchema) as AmendedSchemaField[][];
+        // if (table.tableSchema && table.schemaFields) {
+        //   const rows = chunkSchemaIntoRows(table.schemaFields, table.tableSchema) as AmendedSchemaField[][];
 
-          if (rows.length > 300) {
-            console.log(
-              `TableSelection Dropdown Node ${nodeId}: Limiting ${tableName} from ${rows.length} rows to 300 rows`
-            );
-            const limitedRows = rows.slice(0, 300);
-            const limitedSchemaFields = limitedRows.flat();
+        //   if (rows.length > 300) {
+        //     console.log(
+        //       `TableSelection Dropdown Node ${nodeId}: Limiting ${tableName} from ${rows.length} rows to 300 rows`
+        //     );
+        //     const limitedRows = rows.slice(0, 300);
+        //     const limitedSchemaFields = limitedRows.flat();
 
-            limitedTable = {
-              ...table,
-              schemaFields: limitedSchemaFields,
-            };
-          }
-        }
+        //     limitedTable = {
+        //       ...table,
+        //       schemaFields: limitedSchemaFields,
+        //     };
+        //   }
+        // }
 
         selectedTables.push({
           name: tableName,
@@ -2629,7 +2632,7 @@ async function executeIndexTableNode(
   textValue: string,
   inputData: DBTablesNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`Index Table Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`Index Table Node ${nodeId}: Processing ${inputData?.tables?.length || 0} table(s)`);
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -2651,27 +2654,32 @@ async function executeIndexTableNode(
 
   console.log(`Index Table Node ${nodeId}: Indexing by columns: ${indexColumns.join(", ")}`);
 
-  // We can only index a single table
+  // Combine rows from all tables
   if (inputData.tables.length === 0) {
     return { success: false, error: "No tables in input data" };
   }
 
-  if (inputData.tables.length > 1) {
-    console.log(`Index Table Node ${nodeId}: Multiple tables in input, using first table`);
+  const allRows: AmendedSchemaField[][] = [];
+  let sourceTable = inputData.tables[0]; // Keep first for metadata
+
+  for (const table of inputData.tables) {
+    if (!table.table.schemaFields || !table.table.tableSchema) {
+      console.warn(`Index Table Node ${nodeId}: Skipping table without schema data`);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      table.table.schemaFields,
+      table.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    allRows.push(...rows);
   }
 
-  const sourceTable = inputData.tables[0];
-
-  if (!sourceTable.table.schemaFields || !sourceTable.table.tableSchema) {
-    return { success: false, error: "Table has no schema data" };
-  }
-
-  const rows = chunkSchemaIntoRows(
-    sourceTable.table.schemaFields,
-    sourceTable.table.tableSchema
-  ) as AmendedSchemaField[][];
-
-  console.log(`Index Table Node ${nodeId}: Indexing ${rows.length} rows`);
+  const rows = allRows;
+  console.log(
+    `Index Table Node ${nodeId}: Indexing ${rows.length} rows from ${inputData.tables.length} pack file(s)`
+  );
 
   // Build the index map
   const indexMap = new Map<string, any[]>();
@@ -3339,6 +3347,7 @@ async function executeGroupByNode(
     sourceColumn: string;
     operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
     outputName: string;
+    defaultValue?: string;
   }> = [];
 
   try {
@@ -3453,7 +3462,13 @@ async function executeGroupByNode(
           }
 
           if (values.length === 0) {
-            aggregateValue = 0;
+            // Use default value if provided, otherwise use 0
+            if (agg.defaultValue !== undefined && agg.defaultValue !== "") {
+              const parsedDefault = parseFloat(agg.defaultValue);
+              aggregateValue = isNaN(parsedDefault) ? agg.defaultValue : parsedDefault;
+            } else {
+              aggregateValue = 0;
+            }
           } else {
             switch (agg.operation) {
               case "max":
@@ -3963,4 +3978,100 @@ async function executeGenerateRowsNode(
     success: true,
     data: outputs,
   };
+}
+
+async function executeDumpToTSVNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Dump to TSV Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse filename from textValue (it's stored as JSON with filename key)
+  let filename = "";
+  try {
+    const parsed = JSON.parse(textValue || "{}");
+    filename = parsed.filename || "";
+  } catch (error) {
+    // If parsing fails, use textValue directly
+    filename = textValue || "";
+  }
+
+  // Generate filename if not provided
+  if (!filename) {
+    filename = `table_dump_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.tsv`;
+  }
+
+  // Ensure .tsv extension
+  if (!filename.endsWith(".tsv")) {
+    filename += ".tsv";
+  }
+
+  const fs = require("fs");
+  const nodePath = require("path");
+
+  try {
+    // Get game path from appData
+    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
+
+    // Build TSV content
+    const tsvLines: string[] = [];
+
+    for (const tableData of inputData.tables) {
+      if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+        console.warn(`Dump to TSV Node ${nodeId}: Skipping table without schema data`);
+        continue;
+      }
+
+      // Chunk into rows
+      const rows = chunkSchemaIntoRows(
+        tableData.table.schemaFields,
+        tableData.table.tableSchema
+      ) as AmendedSchemaField[][];
+
+      console.log(`Dump to TSV Node ${nodeId}: Processing table with ${rows.length} rows`);
+
+      // Get column names from first row
+      if (rows.length > 0 && tsvLines.length === 0) {
+        const columnNames = rows[0].map((cell: AmendedSchemaField) => cell.name);
+        tsvLines.push(columnNames.join("\t"));
+      }
+
+      // Add data rows
+      for (const row of rows) {
+        const values = row.map((cell: AmendedSchemaField) => {
+          const value = cell.resolvedKeyValue;
+          // Escape tabs and newlines in values
+          return String(value || "").replace(/\t/g, " ").replace(/\n/g, " ");
+        });
+        tsvLines.push(values.join("\t"));
+      }
+    }
+
+    // Write to file in game folder (not data folder)
+    const outputPath = nodePath.join(gamePath, filename);
+    fs.writeFileSync(outputPath, tsvLines.join("\n"), "utf-8");
+
+    console.log(`Dump to TSV Node ${nodeId}: Wrote ${tsvLines.length} lines to ${outputPath}`);
+
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: inputData.tables,
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: inputData.tableCount || inputData.tables.length,
+      },
+    };
+  } catch (error) {
+    console.error(`Dump to TSV Node ${nodeId}: Error writing TSV file:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error writing TSV file",
+    };
+  }
 }

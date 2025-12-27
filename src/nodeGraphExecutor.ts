@@ -76,10 +76,10 @@ export const executeNodeGraph = async (
       try {
         console.log(`Executing node: ${node.id} (${node.type})`);
 
-        // Log node data, but exclude verbose DBNameToDBVersions for generaterows
-        if (node.type === "generaterows") {
+        // Log node data, but exclude verbose DBNameToDBVersions if present
+        if ((node.data as any)?.DBNameToDBVersions) {
           const { DBNameToDBVersions, ...dataWithoutDB } = node.data as any;
-          console.log(`Node data (DBNameToDBVersions excluded):`, dataWithoutDB);
+          console.log(`Node data (DBNameToDBVersions excluded, ${Object.keys(DBNameToDBVersions || {}).length} tables):`, dataWithoutDB);
         } else {
           console.log(`Node data:`, node.data);
         }
@@ -180,6 +180,10 @@ export const executeNodeGraph = async (
             aggregations: (node.data as any).aggregations || [],
           });
           console.log(`Group By serialization - textValueToUse:`, textValueToUse);
+        } else if (node.type === "dumptotsv") {
+          textValueToUse = JSON.stringify({
+            filename: (node.data as any).filename || "",
+          });
         } else {
           textValueToUse = node.data.textValue || "";
         }

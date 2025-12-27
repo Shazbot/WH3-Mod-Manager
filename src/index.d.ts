@@ -654,7 +654,8 @@ declare global {
     | "extracttable"
     | "aggregatenested"
     | "generaterows"
-    | "groupby";
+    | "groupby"
+    | "dumptotsv";
 
   // FlowNodeData = "string"|
 
