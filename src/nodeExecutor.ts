@@ -2740,10 +2740,14 @@ async function executeLookupNode(
   // Parse configuration
   let lookupColumn: string = "";
   let joinType: "inner" | "left" | "nested" = "inner";
+  let indexColumns: string[] = [];
+  let indexJoinColumn: string = "";
   try {
     const parsed = JSON.parse(textValue);
     lookupColumn = parsed.lookupColumn || "";
     joinType = parsed.joinType || "inner";
+    indexColumns = parsed.indexColumns || [];
+    indexJoinColumn = parsed.indexJoinColumn || "";
   } catch (error) {
     console.error(`Lookup Node ${nodeId}: Error parsing configuration:`, error);
     return { success: false, error: "Invalid lookup configuration" };
@@ -2758,16 +2762,81 @@ async function executeLookupNode(
     return { success: false, error: "Invalid input: Expected array with 2 inputs [source, index]" };
   }
 
-  const [sourceData, indexedData] = inputData;
+  const [sourceData, rightInputData] = inputData;
 
   // Validate source data
   if (!sourceData || sourceData.type !== "TableSelection") {
     return { success: false, error: "Invalid source input: Expected TableSelection data" };
   }
 
-  // Validate indexed data
-  if (!indexedData || indexedData.type !== "IndexedTable") {
-    return { success: false, error: "Invalid index input: Expected IndexedTable data" };
+  // Handle both IndexedTable and TableSelection for the second input
+  let indexedData: any;
+
+  if (rightInputData.type === "IndexedTable") {
+    // Already indexed, use as-is
+    indexedData = rightInputData;
+  } else if (rightInputData.type === "TableSelection") {
+    // Need to index it first - use indexJoinColumn if specified, otherwise indexColumns, otherwise lookupColumn
+    const columnsToIndex = indexJoinColumn
+      ? [indexJoinColumn]
+      : indexColumns.length > 0
+      ? indexColumns
+      : [lookupColumn];
+
+    console.log(`Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`);
+
+    // Build index from the TableSelection data
+    const indexMap = new Map<string, AmendedSchemaField[][]>();
+    let rightTable = rightInputData.tables[0];
+
+    // Combine rows from all tables
+    const allRightRows: AmendedSchemaField[][] = [];
+    for (const table of rightInputData.tables) {
+      if (!table.table.schemaFields || !table.table.tableSchema) {
+        console.warn(`Lookup Node ${nodeId}: Skipping table without schema data`);
+        continue;
+      }
+
+      const rows = chunkSchemaIntoRows(
+        table.table.schemaFields,
+        table.table.tableSchema
+      ) as AmendedSchemaField[][];
+
+      allRightRows.push(...rows);
+      if (!rightTable) rightTable = table;
+    }
+
+    console.log(`Lookup Node ${nodeId}: Indexing ${allRightRows.length} rows from ${rightInputData.tables.length} pack files`);
+
+    // Build index
+    for (const row of allRightRows) {
+      const keyParts: string[] = [];
+      for (const colName of columnsToIndex) {
+        const cell = row.find((c: AmendedSchemaField) => c.name === colName);
+        if (!cell) {
+          console.warn(`Lookup Node ${nodeId}: Index column "${colName}" not found in row`);
+          continue;
+        }
+        keyParts.push(String(cell.resolvedKeyValue || ""));
+      }
+
+      const key = keyParts.join("||");
+      if (!indexMap.has(key)) {
+        indexMap.set(key, []);
+      }
+      indexMap.get(key)!.push(row);
+    }
+
+    console.log(`Lookup Node ${nodeId}: Created index with ${indexMap.size} unique key(s)`);
+
+    indexedData = {
+      type: "IndexedTable",
+      indexMap,
+      sourceTable: rightTable,
+      tableName: rightTable.name,
+    };
+  } else {
+    return { success: false, error: "Invalid index input: Expected IndexedTable or TableSelection data" };
   }
 
   console.log(`Lookup Node ${nodeId}: Performing ${joinType} join on column "${lookupColumn}"`);
