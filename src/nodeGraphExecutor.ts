@@ -149,6 +149,8 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             lookupColumn: (node.data as any).lookupColumn || "",
             joinType: (node.data as any).joinType || "inner",
+            indexColumns: (node.data as any).indexColumns || [],
+            indexJoinColumn: (node.data as any).indexJoinColumn || "",
           });
         } else if (node.type === "extracttable") {
           textValueToUse = JSON.stringify({

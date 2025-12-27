@@ -2205,16 +2205,29 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
 // Lookup Node - Performs lookups/joins using indexed tables
 const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }) => {
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
+  const [indexJoinColumn, setIndexJoinColumn] = useState((data as any).indexJoinColumn || "");
   const [joinType, setJoinType] = useState<"inner" | "left" | "nested">(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [sourceColumnNames, setSourceColumnNames] = useState<string[]>([]);
   const [indexedColumnNames, setIndexedColumnNames] = useState<string[]>([]);
+  const [isIndexedTableInput, setIsIndexedTableInput] = useState(true);
 
   // Sync local state with prop changes
   React.useEffect(() => {
     if (data.lookupColumn !== undefined) setLookupColumn(data.lookupColumn);
     if (data.joinType !== undefined) setJoinType(data.joinType);
-  }, [data.lookupColumn, data.joinType]);
+    if ((data as any).indexJoinColumn !== undefined) setIndexJoinColumn((data as any).indexJoinColumn);
+  }, [data.lookupColumn, data.joinType, (data as any).indexJoinColumn]);
+
+  // Detect whether the input-index connection is from IndexedTable or TableSelection
+  React.useEffect(() => {
+    // Check if we have indexColumns set (indicates TableSelection input with auto-indexing)
+    const hasIndexColumns = (data as any).indexColumns && (data as any).indexColumns.length > 0;
+    // Or check if indexedInputType is explicitly TableSelection
+    const inputTypeIsTableSelection = (data as any).indexedInputType === "TableSelection";
+
+    setIsIndexedTableInput(!hasIndexColumns && !inputTypeIsTableSelection);
+  }, [(data as any).indexColumns, (data as any).indexedInputType]);
 
   // Ensure outputType is synced with joinType on mount
   React.useEffect(() => {
@@ -2227,21 +2240,20 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     }
   }, [joinType, data.outputType, id]);
 
-  // Ensure inputType and indexedInputType are always correct (fixes connection issues after loading)
+  // Ensure inputType is always correct, but allow indexedInputType to be either IndexedTable or TableSelection
   React.useEffect(() => {
-    const needsUpdate = data.inputType !== "TableSelection" || data.indexedInputType !== "IndexedTable";
+    const needsUpdate = data.inputType !== "TableSelection";
 
     if (needsUpdate) {
       const updateEvent = new CustomEvent("nodeDataUpdate", {
         detail: {
           nodeId: id,
           inputType: "TableSelection",
-          indexedInputType: "IndexedTable",
         },
       });
       window.dispatchEvent(updateEvent);
     }
-  }, [data.inputType, data.indexedInputType, id]);
+  }, [data.inputType, id]);
 
   // Track source table column names (from input-source connection)
   React.useEffect(() => {
@@ -2327,6 +2339,15 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     window.dispatchEvent(updateEvent);
   };
 
+  const handleIndexJoinColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setIndexJoinColumn(newValue);
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, indexJoinColumn: newValue, indexColumns: [newValue] },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
   const handleJoinTypeChange = (newType: "inner" | "left" | "nested") => {
     setJoinType(newType);
     const newOutputType = newType === "nested" ? "NestedTableSelection" : "TableSelection";
@@ -2360,24 +2381,62 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">
         <div>Source: TableSelection</div>
-        <div>Index: IndexedTable</div>
+        <div>Index: {isIndexedTableInput ? "IndexedTable" : "TableSelection"}</div>
       </div>
 
-      <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Lookup Column:</label>
-        <select
-          value={lookupColumn}
-          onChange={handleLookupColumnChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
-        >
-          <option value="">Select column...</option>
-          {sourceColumnNames.map((columnName) => (
-            <option key={columnName} value={columnName}>
-              {columnName}
-            </option>
-          ))}
-        </select>
-      </div>
+      {isIndexedTableInput ? (
+        // Single dropdown for IndexedTable input (old way)
+        <div className="mb-2">
+          <label className="text-xs text-gray-300 block mb-1">Lookup Column:</label>
+          <select
+            value={lookupColumn}
+            onChange={handleLookupColumnChange}
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+          >
+            <option value="">Select column...</option>
+            {sourceColumnNames.map((columnName) => (
+              <option key={columnName} value={columnName}>
+                {columnName}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        // Two dropdowns for TableSelection input (new way)
+        <>
+          <div className="mb-2">
+            <label className="text-xs text-gray-300 block mb-1">Source Column:</label>
+            <select
+              value={lookupColumn}
+              onChange={handleLookupColumnChange}
+              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+            >
+              <option value="">Select column...</option>
+              {sourceColumnNames.map((columnName) => (
+                <option key={columnName} value={columnName}>
+                  {columnName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mb-2">
+            <label className="text-xs text-gray-300 block mb-1">Index Column:</label>
+            <select
+              value={indexJoinColumn}
+              onChange={handleIndexJoinColumnChange}
+              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+            >
+              <option value="">Select column...</option>
+              {indexedColumnNames.map((columnName) => (
+                <option key={columnName} value={columnName}>
+                  {columnName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
 
       <div className="mb-2">
         <label className="text-xs text-gray-300 block mb-1">Join Type:</label>
@@ -4667,7 +4726,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (targetHandle === "input-source") {
           targetInputType = (targetNode.data as unknown as LookupNodeData).inputType;
         } else if (targetHandle === "input-index") {
-          targetInputType = (targetNode.data as unknown as LookupNodeData).indexedInputType;
+          // input-index accepts both IndexedTable and TableSelection
+          targetInputType = sourceOutputType; // Accept what's being connected
         }
       } else if (targetNode.type === "flattennested" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as FlattenNestedNodeData).inputType;
@@ -5014,28 +5074,65 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (targetNode.type === "lookup") {
           const targetLookupData = targetNode.data as unknown as LookupNodeData;
 
-          // Handle index input (from indextable)
-          if (params.targetHandle === "input-index" && sourceNode.type === "indextable") {
-            const sourceIndexData = sourceNode.data as unknown as IndexTableNodeData;
+          // Handle index input (from indextable OR tableselection)
+          if (params.targetHandle === "input-index") {
+            if (sourceNode.type === "indextable") {
+              const sourceIndexData = sourceNode.data as unknown as IndexTableNodeData;
 
-            if (sourceIndexData.connectedTableName && sourceIndexData.DBNameToDBVersions) {
-              setNodes((nds) =>
-                nds.map((node) => {
-                  if (node.id === params.target) {
-                    return {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        // Store indexed table columns for nested joins
-                        indexedTableColumns: sourceIndexData.columnNames || [],
-                        indexedTableName: sourceIndexData.connectedTableName,
-                        DBNameToDBVersions: sourceIndexData.DBNameToDBVersions,
-                      },
-                    };
-                  }
-                  return node;
-                })
-              );
+              if (sourceIndexData.connectedTableName && sourceIndexData.DBNameToDBVersions) {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (node.id === params.target) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          // Store indexed table columns for nested joins
+                          indexedTableColumns: sourceIndexData.columnNames || [],
+                          indexedTableName: sourceIndexData.connectedTableName,
+                          DBNameToDBVersions: sourceIndexData.DBNameToDBVersions,
+                          indexedInputType: "IndexedTable" as NodeEdgeTypes,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              }
+            } else if (
+              sourceNode.type === "tableselection" ||
+              sourceNode.type === "tableselectiondropdown" ||
+              sourceNode.type === "filter" ||
+              sourceNode.type === "referencelookup" ||
+              sourceNode.type === "reversereferencelookup" ||
+              sourceNode.type === "lookup" ||
+              sourceNode.type === "extracttable" ||
+              sourceNode.type === "flattennested" ||
+              sourceNode.type === "groupby" ||
+              sourceNode.type === "generaterows"
+            ) {
+              // Handle TableSelection input - will be auto-indexed by the executor
+              const sourceData = sourceNode.data as any;
+
+              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+                setNodes((nds) =>
+                  nds.map((node) => {
+                    if (node.id === params.target) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          indexedTableColumns: sourceData.columnNames || [],
+                          indexedTableName: sourceData.connectedTableName,
+                          DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                          indexedInputType: "TableSelection" as NodeEdgeTypes,
+                        },
+                      };
+                    }
+                    return node;
+                  })
+                );
+              }
             }
           }
 
