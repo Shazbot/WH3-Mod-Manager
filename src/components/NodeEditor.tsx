@@ -2995,18 +2995,27 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
   // Extract INPUT column names from connected node (not the calculated output columns)
   React.useEffect(() => {
-    // Only update inputColumnNames if it's currently empty (initial load/connection)
-    // Once set, don't update it based on columnNames changes (which reflects OUTPUT columns)
-    if (inputColumnNames.length === 0 && data.columnNames && data.columnNames.length > 0) {
+    // Check if we have explicit inputColumnNames from the saved data or connection
+    const dataInputColumns = (data as any).inputColumnNames;
+    if (dataInputColumns && dataInputColumns.length > 0) {
+      // Only update if they're different from current state
+      if (JSON.stringify(dataInputColumns) !== JSON.stringify(inputColumnNames)) {
+        console.log(`[GroupBy ${id}] Setting inputColumnNames from data:`, dataInputColumns);
+        setInputColumnNames(dataInputColumns);
+      }
+    }
+    // Otherwise, if inputColumnNames is empty, try to extract from columnNames
+    else if (inputColumnNames.length === 0 && data.columnNames && data.columnNames.length > 0) {
       // Filter out aggregation output columns (those starting with "agg_")
       // to get the actual input columns from the connected node
       const inputCols = data.columnNames.filter((col: string) => !col.startsWith("agg_"));
 
       if (inputCols.length > 0) {
+        console.log(`[GroupBy ${id}] Extracting inputColumnNames from columnNames:`, inputCols);
         setInputColumnNames(inputCols);
       }
     }
-  }, [data.columnNames, inputColumnNames.length]);
+  }, [data.columnNames, (data as any).inputColumnNames, inputColumnNames, id]);
 
   // Sync groupByColumns to node data
   React.useEffect(() => {
@@ -3027,6 +3036,18 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     );
   }, [aggregations, id]);
 
+  // Sync inputColumnNames to node data whenever it changes (to persist when saved)
+  React.useEffect(() => {
+    if (inputColumnNames.length > 0 && JSON.stringify(inputColumnNames) !== JSON.stringify((data as any).inputColumnNames)) {
+      console.log(`[GroupBy ${id}] Syncing inputColumnNames to node data:`, inputColumnNames);
+      window.dispatchEvent(
+        new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, inputColumnNames },
+        })
+      );
+    }
+  }, [inputColumnNames, id]);
+
   // Calculate and propagate output column names based on groupByColumns and aggregations
   React.useEffect(() => {
     // Output columns = group by columns + aggregation output names
@@ -3035,8 +3056,10 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       ...aggregations.map((agg) => agg.outputName),
     ];
 
-    // Only update if the output columns have changed
-    if (JSON.stringify(outputColumnNames) !== JSON.stringify(data.columnNames)) {
+    const outputChanged = JSON.stringify(outputColumnNames) !== JSON.stringify(data.columnNames);
+
+    // Only update if output columns changed
+    if (outputChanged) {
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
           detail: { nodeId: id, columnNames: outputColumnNames },
@@ -4697,6 +4720,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         selectedColumn1,
         selectedColumn2,
         columnNames,
+        inputColumnNames,
         groupedTextSelection,
         outputType,
         pattern,
@@ -4744,6 +4768,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 selectedColumn1: selectedColumn1 !== undefined ? selectedColumn1 : node.data.selectedColumn1,
                 selectedColumn2: selectedColumn2 !== undefined ? selectedColumn2 : node.data.selectedColumn2,
                 columnNames: columnNames !== undefined ? columnNames : node.data.columnNames,
+                inputColumnNames: inputColumnNames !== undefined ? inputColumnNames : (node.data as any).inputColumnNames,
                 groupedTextSelection:
                   groupedTextSelection !== undefined ? groupedTextSelection : node.data.groupedTextSelection,
                 outputType: outputType !== undefined ? outputType : node.data.outputType,
@@ -5267,6 +5292,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     data: {
                       ...node.data,
                       columnNames: sourceData.columnNames,
+                      // Store input columns separately so they don't get overwritten by output columns
+                      inputColumnNames: sourceData.columnNames,
                       connectedTableName: sourceData.connectedTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
@@ -6391,6 +6418,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           outputCount: (node.data as any)?.outputCount || 2,
           groupByColumns: (node.data as any)?.groupByColumns || [],
           aggregations: (node.data as any)?.aggregations || [],
+          inputColumnNames: (node.data as any)?.inputColumnNames || [],
         },
       };
 
@@ -6407,7 +6435,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         console.log(`Serializing groupby node ${node.id}:`, {
           groupByColumns: serialized.data.groupByColumns,
           aggregations: serialized.data.aggregations,
-          rawData: node.data,
+          inputColumnNames: serialized.data.inputColumnNames,
+          columnNames: serialized.data.columnNames,
         });
       }
 
