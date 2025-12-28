@@ -47,6 +47,7 @@ export function fetchModData(
   });
 
   for (let i = 0; i < ids.length; i++) {
+    continue;
     const workshopId = ids[i];
 
     setTimeout(() => {
