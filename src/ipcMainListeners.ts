@@ -1796,7 +1796,11 @@ export const registerIpcMainListeners = (
           }
         });
 
-        console.log("graphExecutionRequest:", graphExecutionRequest);
+        console.log("graphExecutionRequest summary:", {
+          nodeCount: graphExecutionRequest.nodes.length,
+          connectionCount: graphExecutionRequest.connections.length,
+          nodeTypes: graphExecutionRequest.nodes.map(n => ({ id: n.id, type: n.type })),
+        });
 
         // Import graph execution function
         const { executeNodeGraph } = await import("./nodeGraphExecutor");

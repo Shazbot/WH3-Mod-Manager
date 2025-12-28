@@ -671,7 +671,10 @@ async function executeFilterNode(
   textValue: string,
   inputData: DBTablesNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`Filter Node ${nodeId}: Processing filters with input:`, inputData);
+  console.log(`Filter Node ${nodeId}: Processing filters with input tables:`, {
+    tableCount: inputData?.tables?.length,
+    tableNames: inputData?.tables?.map(t => t.name),
+  });
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -901,7 +904,10 @@ async function executeReferenceLookupNode(
   textValue: string,
   inputData: DBTablesNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`Reference Lookup Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`Reference Lookup Node ${nodeId}: Processing with input tables:`, {
+    tableCount: inputData?.tables?.length,
+    tableNames: inputData?.tables?.map(t => t.name),
+  });
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -1144,7 +1150,10 @@ async function executeReverseReferenceLookupNode(
   textValue: string,
   inputData: DBTablesNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`Reverse Reference Lookup Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`Reverse Reference Lookup Node ${nodeId}: Processing with input tables:`, {
+    tableCount: inputData?.tables?.length,
+    tableNames: inputData?.tables?.map(t => t.name),
+  });
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -1961,8 +1970,11 @@ async function executeSaveChangesNode(
   inputData: any
 ): Promise<NodeExecutionResult> {
   console.log(
-    `SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with input:`,
-    inputData
+    `SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with tables:`,
+    {
+      tableCount: inputData?.tables?.length,
+      tableNames: inputData?.tables?.map((t: any) => t.name),
+    }
   );
 
   // Parse configuration from textValue
@@ -2737,7 +2749,10 @@ async function executeLookupNode(
   textValue: string,
   inputData: any
 ): Promise<NodeExecutionResult> {
-  console.log(`Lookup Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`Lookup Node ${nodeId}: Processing with input tables:`, {
+    sourceTableCount: inputData?.source?.tables?.length,
+    indexedTableName: inputData?.indexed?.tableName,
+  });
 
   // Parse configuration
   let lookupColumn: string = "";
@@ -3406,7 +3421,10 @@ async function executeGroupByNode(
   textValue: string,
   inputData: DBTablesNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`Group By Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`Group By Node ${nodeId}: Processing with input tables:`, {
+    tableCount: inputData?.tables?.length,
+    tableNames: inputData?.tables?.map(t => t.name),
+  });
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
