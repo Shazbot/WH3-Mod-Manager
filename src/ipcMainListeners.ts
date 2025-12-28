@@ -1785,7 +1785,7 @@ export const registerIpcMainListeners = (
         );
 
         // Debug: Check generaterows nodes in the IPC request
-        graphExecutionRequest.nodes.forEach(node => {
+        graphExecutionRequest.nodes.forEach((node) => {
           if (node.type === "generaterows") {
             console.log(`[IPC-RECEIVED] GenerateRows node ${node.id}:`);
             console.log(`  transformationsLength: ${((node.data as any).transformations || []).length}`);
@@ -1799,7 +1799,7 @@ export const registerIpcMainListeners = (
         console.log("graphExecutionRequest summary:", {
           nodeCount: graphExecutionRequest.nodes.length,
           connectionCount: graphExecutionRequest.connections.length,
-          nodeTypes: graphExecutionRequest.nodes.map(n => ({ id: n.id, type: n.type })),
+          nodeTypes: graphExecutionRequest.nodes.map((n) => ({ id: n.id, type: n.type })),
         });
 
         // Import graph execution function
@@ -3888,28 +3888,35 @@ export const registerIpcMainListeners = (
             "/whmm_overwrites/"
           );
 
-          for (const pack of enabledModsWithFlows) {
-            // Check if this pack has overwrites - if so, use the overwritten pack
-            const hasOverwrites = enabledModsWithOverwrites.some(
-              (overwritePack) => overwritePack.path === pack.path
-            );
-            const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
+          if (enabledModsWithFlows.length > 0) {
+            mainWindow?.webContents.send("addToast", {
+              type: "info",
+              messages: ["Processing flows..."],
+              startTime: Date.now(),
+            } as Toast);
 
-            console.log(
-              `Executing flows for pack: ${pack.name} (using ${
-                hasOverwrites ? "overwritten" : "original"
-              } pack)`
-            );
-            const packPaths = await executeFlowsForPack(
-              packPathToUse,
-              "", // No target path needed
-              startGameOptions.userFlowOptions,
-              pack.name
-            );
-            createdFlowPacks.push(...packPaths);
+            for (const pack of enabledModsWithFlows) {
+              // Check if this pack has overwrites - if so, use the overwritten pack
+              const hasOverwrites = enabledModsWithOverwrites.some(
+                (overwritePack) => overwritePack.path === pack.path
+              );
+              const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
+
+              console.log(
+                `Executing flows for pack: ${pack.name} (using ${
+                  hasOverwrites ? "overwritten" : "original"
+                } pack)`
+              );
+              const packPaths = await executeFlowsForPack(
+                packPathToUse,
+                "", // No target path needed
+                startGameOptions.userFlowOptions,
+                pack.name
+              );
+              createdFlowPacks.push(...packPaths);
+            }
+            console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
           }
-
-          console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
 
           // Add flow packs to the mod list
           if (createdFlowPacks.length > 0) {
