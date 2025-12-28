@@ -255,12 +255,11 @@ export const executeNodeGraph = async (
                   inputDataForTarget = allInputs.length > 0 ? allInputs : null;
                 } else if (targetNode.type === "savechanges") {
                   // Save changes node should collect all inputs
-                  // If all inputs are TableSelection: merge tables
-                  // If there's a single ChangedColumnSelection: pass it through
-                  // If multiple ChangedColumnSelection: use first one (they should be merged upstream)
+                  // Priority: Text > ChangedColumnSelection > TableSelection
                   const allTables: any[] = [];
                   const allSourceFiles: any[] = [];
                   let changedColumnSelectionData = null;
+                  let textData = null;
 
                   for (const conn of targetIncomingConnections) {
                     const sourceResult = executionResults.get(conn.sourceId);
@@ -288,8 +287,14 @@ export const executeNodeGraph = async (
                       inputData = sourceResult?.data;
                     }
 
+                    // Handle Text data
+                    if (inputData && inputData.type === "Text") {
+                      if (!textData) {
+                        textData = inputData;
+                      }
+                    }
                     // Collect tables from TableSelection data
-                    if (inputData && inputData.type === "TableSelection") {
+                    else if (inputData && inputData.type === "TableSelection") {
                       if (inputData.tables) {
                         allTables.push(...inputData.tables);
                       }
@@ -305,8 +310,11 @@ export const executeNodeGraph = async (
                     }
                   }
 
-                  // Priority: ChangedColumnSelection > TableSelection > null
-                  if (changedColumnSelectionData) {
+                  // Priority: Text > ChangedColumnSelection > TableSelection > null
+                  if (textData) {
+                    inputDataForTarget = textData;
+                    console.log(`Save Changes: Using Text input`);
+                  } else if (changedColumnSelectionData) {
                     inputDataForTarget = changedColumnSelectionData;
                     console.log(`Save Changes: Using ChangedColumnSelection input`);
                   } else if (allTables.length > 0) {
