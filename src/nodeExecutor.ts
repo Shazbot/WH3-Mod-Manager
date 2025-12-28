@@ -2029,7 +2029,9 @@ async function executeSaveChangesNode(
         }
       }
 
-      if (table.table.version) packFileSize += 8;
+      // Add version header size (8 bytes) if version is defined (including version 0)
+      // This matches the serializer's check: if (packFile.version != null)
+      if (table.table.version != null) packFileSize += 8;
       packFileSize += 5;
       console.log(`Save Changes Node ${nodeId}: Total calculated size: ${packFileSize} bytes`);
 

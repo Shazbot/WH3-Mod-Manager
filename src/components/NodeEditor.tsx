@@ -3217,6 +3217,38 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     if (data.outputCount !== undefined) setOutputCount(data.outputCount);
   }, [data.transformations, data.outputTables, data.outputCount, id]);
 
+  // Clean up orphaned columns in columnMapping (columns that don't have transformations)
+  React.useEffect(() => {
+    const transformationOutputNames = new Map<string, Set<string>>();
+
+    // Build a map of tableHandleId -> Set of output column names
+    for (const trans of transformations) {
+      if (!transformationOutputNames.has(trans.targetTableHandleId)) {
+        transformationOutputNames.set(trans.targetTableHandleId, new Set());
+      }
+      transformationOutputNames.get(trans.targetTableHandleId)!.add(trans.outputColumnName);
+    }
+
+    // Check if any output table has orphaned columns
+    let hasOrphans = false;
+    const cleanedOutputTables = outputTables.map((output) => {
+      const validColumns = transformationOutputNames.get(output.handleId) || new Set();
+      const cleanedMapping = output.columnMapping.filter((col) => validColumns.has(col));
+
+      if (cleanedMapping.length !== output.columnMapping.length) {
+        hasOrphans = true;
+        return { ...output, columnMapping: cleanedMapping };
+      }
+      return output;
+    });
+
+    // Only update if there were orphaned columns
+    if (hasOrphans) {
+      console.log(`[GenerateRows ${id}] Cleaning up orphaned columns from columnMapping`);
+      setOutputTables(cleanedOutputTables);
+    }
+  }, [transformations, outputTables, id]);
+
   // Extract column names from connected input
   React.useEffect(() => {
     // Use columnNames from data if already provided (from connection propagation)
@@ -3271,10 +3303,45 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   };
 
   const removeTransformation = (transId: string) => {
+    // Find the transformation being removed
+    const transformationToRemove = transformations.find((t) => t.id === transId);
+
+    if (transformationToRemove) {
+      // Remove this column from columnMapping
+      const updatedOutputTables = outputTables.map((output) => {
+        if (output.handleId === transformationToRemove.targetTableHandleId) {
+          const newColumnMapping = output.columnMapping.filter(
+            (col) => col !== transformationToRemove.outputColumnName
+          );
+          return { ...output, columnMapping: newColumnMapping };
+        }
+        return output;
+      });
+      setOutputTables(updatedOutputTables);
+    }
+
     setTransformations(transformations.filter((t) => t.id !== transId));
   };
 
   const updateTransformation = (transId: string, updates: Partial<ColumnTransformation>) => {
+    // If outputColumnName is being changed, update columnMappings accordingly
+    if (updates.outputColumnName !== undefined) {
+      const oldTransformation = transformations.find((t) => t.id === transId);
+      if (oldTransformation && oldTransformation.outputColumnName !== updates.outputColumnName) {
+        // Update columnMappings: replace old column name with new one
+        const updatedOutputTables = outputTables.map((output) => {
+          if (output.handleId === oldTransformation.targetTableHandleId) {
+            const newColumnMapping = output.columnMapping.map((col) =>
+              col === oldTransformation.outputColumnName ? updates.outputColumnName! : col
+            );
+            return { ...output, columnMapping: newColumnMapping };
+          }
+          return output;
+        });
+        setOutputTables(updatedOutputTables);
+      }
+    }
+
     setTransformations(transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t)));
   };
 
