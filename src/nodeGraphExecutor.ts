@@ -79,7 +79,12 @@ export const executeNodeGraph = async (
         // Log node data, but exclude verbose DBNameToDBVersions if present
         if ((node.data as any)?.DBNameToDBVersions) {
           const { DBNameToDBVersions, ...dataWithoutDB } = node.data as any;
-          console.log(`Node data (DBNameToDBVersions excluded, ${Object.keys(DBNameToDBVersions || {}).length} tables):`, dataWithoutDB);
+          console.log(
+            `Node data (DBNameToDBVersions excluded, ${
+              Object.keys(DBNameToDBVersions || {}).length
+            } tables):`,
+            dataWithoutDB
+          );
         } else {
           console.log(`Node data:`, node.data);
         }
@@ -103,13 +108,19 @@ export const executeNodeGraph = async (
             filters: (node.data as any).filters || [],
           });
         } else if (node.type === "referencelookup") {
-          console.log(`Reference lookup node ${node.id} data:`, JSON.stringify(node.data, null, 2));
+          console.log(
+            `Reference lookup node ${node.id} data:`,
+            JSON.stringify({ ...node.data, DBNameToDBVersions: "not logging this" }, null, 2)
+          );
           textValueToUse = JSON.stringify({
             selectedReferenceTable: (node.data as any).selectedReferenceTable || "",
           });
           console.log(`Reference lookup node ${node.id} textValueToUse:`, textValueToUse);
         } else if (node.type === "reversereferencelookup") {
-          console.log(`Reverse reference lookup node ${node.id} data:`, JSON.stringify(node.data, null, 2));
+          console.log(
+            `Reverse reference lookup node ${node.id} data:`,
+            JSON.stringify({ ...node.data, DBNameToDBVersions: "not logging this" }, null, 2)
+          );
           textValueToUse = JSON.stringify({
             selectedReverseTable: (node.data as any).selectedReverseTable || "",
           });
@@ -165,9 +176,18 @@ export const executeNodeGraph = async (
             filterValue: (node.data as any).filterValue || "",
           });
         } else if (node.type === "generaterows") {
-          console.log(`Generate Rows serialization - node.data.transformations:`, (node.data as any).transformations);
-          console.log(`Generate Rows serialization - node.data.outputTables:`, (node.data as any).outputTables);
-          console.log(`Generate Rows serialization - has DBNameToDBVersions:`, !!(node.data as any).DBNameToDBVersions);
+          console.log(
+            `Generate Rows serialization - node.data.transformations:`,
+            (node.data as any).transformations
+          );
+          console.log(
+            `Generate Rows serialization - node.data.outputTables:`,
+            (node.data as any).outputTables
+          );
+          console.log(
+            `Generate Rows serialization - has DBNameToDBVersions:`,
+            !!(node.data as any).DBNameToDBVersions
+          );
           textValueToUse = JSON.stringify({
             transformations: (node.data as any).transformations || [],
             outputTables: (node.data as any).outputTables || [],
@@ -175,7 +195,10 @@ export const executeNodeGraph = async (
           });
           console.log(`Generate Rows serialization - textValueToUse length:`, textValueToUse.length);
         } else if (node.type === "groupby") {
-          console.log(`Group By serialization - node.data.groupByColumns:`, (node.data as any).groupByColumns);
+          console.log(
+            `Group By serialization - node.data.groupByColumns:`,
+            (node.data as any).groupByColumns
+          );
           console.log(`Group By serialization - node.data.aggregations:`, (node.data as any).aggregations);
           textValueToUse = JSON.stringify({
             groupByColumns: (node.data as any).groupByColumns || [],
@@ -231,18 +254,22 @@ export const executeNodeGraph = async (
                     .filter((data) => data !== null && data !== undefined);
                   inputDataForTarget = allInputs.length > 0 ? allInputs : null;
                 } else if (targetNode.type === "savechanges") {
-                  // Save changes node should collect all TableSelection inputs and merge their tables
+                  // Save changes node should collect all inputs
+                  // If all inputs are TableSelection: merge tables
+                  // If there's a single ChangedColumnSelection: pass it through
+                  // If multiple ChangedColumnSelection: use first one (they should be merged upstream)
                   const allTables: any[] = [];
                   const allSourceFiles: any[] = [];
+                  let changedColumnSelectionData = null;
 
                   for (const conn of targetIncomingConnections) {
                     const sourceResult = executionResults.get(conn.sourceId);
                     const sourceNode = nodeMap.get(conn.sourceId);
-                    let tableData = null;
+                    let inputData = null;
 
                     // Check if sourceHandle is "else" and use elseData if available
                     if (conn.sourceHandle === "else" && sourceResult?.elseData) {
-                      tableData = sourceResult.elseData;
+                      inputData = sourceResult.elseData;
                     }
                     // Check if source is generaterows with multi-output
                     else if (
@@ -253,27 +280,36 @@ export const executeNodeGraph = async (
                       !Array.isArray(sourceResult.data)
                     ) {
                       // Extract specific output by handle ID
-                      tableData = (sourceResult.data as any)[conn.sourceHandle];
+                      inputData = (sourceResult.data as any)[conn.sourceHandle];
                       console.log(
                         `Save Changes: Using output "${conn.sourceHandle}" from generaterows node ${conn.sourceId}`
                       );
                     } else {
-                      tableData = sourceResult?.data;
+                      inputData = sourceResult?.data;
                     }
 
                     // Collect tables from TableSelection data
-                    if (tableData && tableData.type === "TableSelection") {
-                      if (tableData.tables) {
-                        allTables.push(...tableData.tables);
+                    if (inputData && inputData.type === "TableSelection") {
+                      if (inputData.tables) {
+                        allTables.push(...inputData.tables);
                       }
-                      if (tableData.sourceFiles) {
-                        allSourceFiles.push(...tableData.sourceFiles);
+                      if (inputData.sourceFiles) {
+                        allSourceFiles.push(...inputData.sourceFiles);
+                      }
+                    }
+                    // Handle ChangedColumnSelection data
+                    else if (inputData && inputData.type === "ChangedColumnSelection") {
+                      if (!changedColumnSelectionData) {
+                        changedColumnSelectionData = inputData;
                       }
                     }
                   }
 
-                  // Merge all tables into a single TableSelection
-                  if (allTables.length > 0) {
+                  // Priority: ChangedColumnSelection > TableSelection > null
+                  if (changedColumnSelectionData) {
+                    inputDataForTarget = changedColumnSelectionData;
+                    console.log(`Save Changes: Using ChangedColumnSelection input`);
+                  } else if (allTables.length > 0) {
                     inputDataForTarget = {
                       type: "TableSelection",
                       tables: allTables,
@@ -306,8 +342,7 @@ export const executeNodeGraph = async (
                 } else {
                   // Get input data from the most recent dependency
                   if (targetIncomingConnections.length > 0) {
-                    const lastConnection =
-                      targetIncomingConnections[targetIncomingConnections.length - 1];
+                    const lastConnection = targetIncomingConnections[targetIncomingConnections.length - 1];
                     const sourceResult = executionResults.get(lastConnection.sourceId);
                     const sourceNode = nodeMap.get(lastConnection.sourceId);
 
@@ -329,11 +364,13 @@ export const executeNodeGraph = async (
                       console.log(
                         `Using output "${lastConnection.sourceHandle}" from generaterows node ${lastConnection.sourceId}`
                       );
-                      console.log(`Available handles in generaterows output:`, Object.keys(sourceResult.data));
+                      console.log(
+                        `Available handles in generaterows output:`,
+                        Object.keys(sourceResult.data)
+                      );
                       console.log(`Extracted outputData:`, outputData);
                       console.log(`Output data type:`, outputData?.type);
-                    }
-                    else {
+                    } else {
                       inputDataForTarget = sourceResult?.data;
                     }
                   } else {
