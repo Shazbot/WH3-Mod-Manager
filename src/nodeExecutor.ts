@@ -673,7 +673,7 @@ async function executeFilterNode(
 ): Promise<NodeExecutionResult> {
   console.log(`Filter Node ${nodeId}: Processing filters with input tables:`, {
     tableCount: inputData?.tables?.length,
-    tableNames: inputData?.tables?.map(t => t.name),
+    tableNames: inputData?.tables?.map((t) => t.name),
   });
 
   if (!inputData || inputData.type !== "TableSelection") {
@@ -906,7 +906,7 @@ async function executeReferenceLookupNode(
 ): Promise<NodeExecutionResult> {
   console.log(`Reference Lookup Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
-    tableNames: inputData?.tables?.map(t => t.name),
+    tableNames: inputData?.tables?.map((t) => t.name),
   });
 
   if (!inputData || inputData.type !== "TableSelection") {
@@ -1152,7 +1152,7 @@ async function executeReverseReferenceLookupNode(
 ): Promise<NodeExecutionResult> {
   console.log(`Reverse Reference Lookup Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
-    tableNames: inputData?.tables?.map(t => t.name),
+    tableNames: inputData?.tables?.map((t) => t.name),
   });
 
   if (!inputData || inputData.type !== "TableSelection") {
@@ -1511,8 +1511,10 @@ async function executeColumnSelectionDropdownNode(
   inputData: DBTablesNodeData
 ): Promise<NodeExecutionResult> {
   console.log(
-    `ColumnSelection Dropdown Node ${nodeId}: Processing selected column "${selectedColumn}" with input:`,
-    inputData
+    `ColumnSelection Dropdown Node ${nodeId}: Processing selected column "${selectedColumn}" with num input tables:`,
+    inputData.tables.length,
+    `table names:`,
+    inputData.tables.map((t) => t.name)
   );
 
   if (!inputData || inputData.type !== "TableSelection") {
@@ -1574,7 +1576,10 @@ async function executeNumericAdjustmentNode(
   textValue: string,
   inputData: DBColumnSelectionNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`NumericAdjustment Node ${nodeId}: Processing formula "${textValue}" with input:`, inputData);
+  console.log(`NumericAdjustment Node ${nodeId}: Processing formula "${textValue}" with input:`, {
+    columnCount: inputData?.columns?.length,
+    selectedColumnCount: inputData?.selectedColumnCount,
+  });
 
   if (!inputData || inputData.type !== "ColumnSelection") {
     return { success: false, error: "Invalid input: Expected ColumnSelection data" };
@@ -1665,7 +1670,10 @@ async function executeMathMaxNode(
   textValue: string,
   inputData: DBNumericAdjustmentNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`MathMax Node ${nodeId}: Processing with value "${textValue}" and input:`, inputData);
+  console.log(`MathMax Node ${nodeId}: Processing with value "${textValue}" and input:`, {
+    "num adjustedInputData columns": inputData?.adjustedInputData.columns?.length,
+    "num originalData columns": inputData?.originalData.columns?.length,
+  });
 
   if (!inputData || inputData.type !== "ChangedColumnSelection") {
     return { success: false, error: "Invalid input: Expected ChangedColumnSelection data" };
@@ -1730,7 +1738,10 @@ async function executeMathCeilNode(
   nodeId: string,
   inputData: DBNumericAdjustmentNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`MathCeil Node ${nodeId}: Processing with input:`, inputData);
+  console.log(`MathCeil Node ${nodeId}: Processing with input:`, {
+    "num adjustedInputData columns": inputData?.adjustedInputData.columns?.length,
+    "num originalData columns": inputData?.originalData.columns?.length,
+  });
 
   if (!inputData || inputData.type !== "ChangedColumnSelection") {
     return { success: false, error: "Invalid input: Expected ChangedColumnSelection data" };
@@ -1969,13 +1980,10 @@ async function executeSaveChangesNode(
   textValue: string,
   inputData: any
 ): Promise<NodeExecutionResult> {
-  console.log(
-    `SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with tables:`,
-    {
-      tableCount: inputData?.tables?.length,
-      tableNames: inputData?.tables?.map((t: any) => t.name),
-    }
-  );
+  console.log(`SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with tables:`, {
+    tableCount: inputData?.tables?.length,
+    tableNames: inputData?.tables?.map((t: any) => t.name),
+  });
 
   // Parse configuration from textValue
   let packName = "";
@@ -2080,8 +2088,17 @@ async function executeSaveChangesNode(
     }
 
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
-    const outputDir = nodePath.join(gamePath, "data");
+    // If flowExecutionId is set, we're executing a flow at game start, so save to whmm_flows
+    // Otherwise, save to data for manual execution
+    const outputDir = flowExecutionId
+      ? nodePath.join(gamePath, "whmm_flows")
+      : nodePath.join(gamePath, "data");
     const packFilePath = nodePath.join(outputDir, `${packFileBaseName}.pack`);
+
+    console.log(
+      `Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`
+    );
+    console.log(`Save Changes Node ${nodeId}: Output path: ${packFilePath}`);
 
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -2823,7 +2840,9 @@ async function executeLookupNode(
       if (!rightTable) rightTable = table;
     }
 
-    console.log(`Lookup Node ${nodeId}: Indexing ${allRightRows.length} rows from ${rightInputData.tables.length} pack files`);
+    console.log(
+      `Lookup Node ${nodeId}: Indexing ${allRightRows.length} rows from ${rightInputData.tables.length} pack files`
+    );
 
     // Build index
     for (const row of allRightRows) {
@@ -3423,7 +3442,7 @@ async function executeGroupByNode(
 ): Promise<NodeExecutionResult> {
   console.log(`Group By Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
-    tableNames: inputData?.tables?.map(t => t.name),
+    tableNames: inputData?.tables?.map((t) => t.name),
   });
 
   if (!inputData || inputData.type !== "TableSelection") {
@@ -3809,14 +3828,14 @@ async function executeGenerateRowsNode(
 
   for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
     const row = rows[rowIdx];
-    const rowColumnNames = row.map((c: AmendedSchemaField) => c.name);
-    console.log(`Generate Rows Node ${nodeId}: Row ${rowIdx} has columns:`, rowColumnNames);
+    // const rowColumnNames = row.map((c: AmendedSchemaField) => c.name);
+    // console.log(`Generate Rows Node ${nodeId}: Row ${rowIdx} has columns:`, rowColumnNames);
 
     // Process all transformations (will filter per table later)
     for (const transformation of config.transformations) {
-      console.log(
-        `Generate Rows Node ${nodeId}: Looking for column "${transformation.sourceColumn}" in row ${rowIdx}`
-      );
+      // console.log(
+      //   `Generate Rows Node ${nodeId}: Looking for column "${transformation.sourceColumn}" in row ${rowIdx}`
+      // );
       const sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
 
       let outputValue: any;
@@ -3846,10 +3865,10 @@ async function executeGenerateRowsNode(
             break;
         }
       } else {
-        console.log(
-          `Generate Rows Node ${nodeId}: Found column "${transformation.sourceColumn}" with value:`,
-          sourceCell.resolvedKeyValue
-        );
+        // console.log(
+        //   `Generate Rows Node ${nodeId}: Found column "${transformation.sourceColumn}" with value:`,
+        //   sourceCell.resolvedKeyValue
+        // );
         outputValue = sourceCell.resolvedKeyValue;
       }
 
@@ -4153,7 +4172,9 @@ async function executeDumpToTSVNode(
         const values = row.map((cell: AmendedSchemaField) => {
           const value = cell.resolvedKeyValue;
           // Escape tabs and newlines in values
-          return String(value || "").replace(/\t/g, " ").replace(/\n/g, " ");
+          return String(value || "")
+            .replace(/\t/g, " ")
+            .replace(/\n/g, " ");
         });
         tsvLines.push(values.join("\t"));
       }
