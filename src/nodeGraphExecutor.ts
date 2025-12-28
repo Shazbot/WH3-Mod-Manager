@@ -366,9 +366,27 @@ export const executeNodeGraph = async (
     const successCount = Array.from(executionResults.values()).filter((r) => r.success).length;
     const failureCount = executionResults.size - successCount;
 
-    console.log(
-      `Backend graph execution completed: ${successCount}/${executionResults.size} nodes succeeded`
-    );
+    // Log detailed execution results
+    const summary = Array.from(executionResults.entries())
+      .map(
+        ([nodeId, nodeResult]) =>
+          `${nodeId}: ${nodeResult.success ? "✅" : "❌"}${nodeResult.error ? ` (${nodeResult.error})` : ""}`
+      )
+      .join("\n");
+
+    const statusMessage =
+      successCount === executionResults.size
+        ? `✅ Graph execution successful!`
+        : failureCount > 0
+        ? `❌ Graph execution completed with errors`
+        : `❌ Graph execution failed`;
+
+    console.log("\n" + "=".repeat(80));
+    console.log(`BACKEND: ${statusMessage}`);
+    console.log(`Execution Summary: ${successCount}/${executionResults.size} nodes succeeded`);
+    console.log("-".repeat(80));
+    console.log(summary);
+    console.log("=".repeat(80) + "\n");
 
     return {
       success: successCount > 0, // Consider successful if at least one node succeeded
