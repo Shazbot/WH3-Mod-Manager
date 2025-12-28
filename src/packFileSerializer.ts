@@ -1256,6 +1256,49 @@ export const executeFlowsForPack = async (
           }
         }
 
+        // Generate a unique flow execution ID for this flow run
+        const flowExecutionId = `${packName}_${Date.now()}`;
+
+        // Set flowExecutionId for Save Changes nodes so they know to save to whmm_flows
+        for (const node of flowData.nodes) {
+          if (node.type === "savechanges") {
+            // Set flowExecutionId directly on node data (not in textValue)
+            // nodeGraphExecutor will extract it from node.data.flowExecutionId
+            (node.data as any).flowExecutionId = flowExecutionId;
+            console.log(`Node ${node.id} (savechanges): Set flowExecutionId to ${flowExecutionId}`);
+          }
+        }
+
+        // Inject DBNameToDBVersions into nodes that need schema information
+        // (similar to what NodeEditor does when loading a graph)
+        const currentGameSchema = DBNameToDBVersions[appData.currentGame];
+        for (const node of flowData.nodes) {
+          if (
+            node.type === "columnselectiondropdown" ||
+            node.type === "tableselectiondropdown" ||
+            node.type === "groupbycolumns" ||
+            node.type === "filter" ||
+            node.type === "referencelookup" ||
+            node.type === "reversereferencelookup" ||
+            node.type === "indextable" ||
+            node.type === "lookup" ||
+            node.type === "extracttable" ||
+            node.type === "aggregatenested" ||
+            node.type === "groupby" ||
+            node.type === "generaterows"
+          ) {
+            // Only set if not already present (to allow saved DBNameToDBVersions to take precedence)
+            if (!node.data.DBNameToDBVersions || Object.keys(node.data.DBNameToDBVersions).length === 0) {
+              node.data.DBNameToDBVersions = currentGameSchema;
+              console.log(
+                `Node ${node.id} (${node.type}): Injected DBNameToDBVersions with ${
+                  Object.keys(currentGameSchema).length
+                } tables`
+              );
+            }
+          }
+        }
+
         // Execute the flow
         const result = await executeNodeGraph({
           nodes: flowData.nodes,
@@ -2218,7 +2261,7 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
     }
     case "String": {
       const stringVal = field.val as string;
-      console.log(`    serializeFieldToBuffer String: val="${stringVal}" length=${stringVal.length}`);
+      // console.log(`    serializeFieldToBuffer String: val="${stringVal}" length=${stringVal.length}`);
       return Buffer.from(stringVal, "utf8");
     }
     case "Buffer": {
