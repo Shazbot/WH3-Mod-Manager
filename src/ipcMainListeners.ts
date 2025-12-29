@@ -246,7 +246,7 @@ export const readModsByPath = async (
   packReadingOptions: PackReadingOptions,
   skipCollisionCheck = true
 ) => {
-  console.log("readModsByPath:", modPaths);
+  console.log("readModsByPath:", modPaths, "packReadingOptions:", packReadingOptions);
   // console.log("readModsByPath skipParsingTables:", skipParsingTables);
   // console.log("readModsByPath skipCollisionCheck:", skipCollisionCheck);
   // if (!skipParsingTables) {
@@ -2659,9 +2659,7 @@ export const registerIpcMainListeners = (
     }
   });
 
-  ipcMain.on("terminateGame", () => {
-    console.log(`Requesting terminate game`);
-
+  const terminateCurrentGame = () => {
     try {
       exec(`taskkill /f /t /im ${gameToProcessName[appData.currentGame]}`, (error) => {
         if (error) console.log("taskkill error:", error);
@@ -2669,6 +2667,10 @@ export const registerIpcMainListeners = (
     } catch (e) {
       console.log("taskkill error:", e);
     }
+  };
+
+  ipcMain.on("terminateGame", () => {
+    terminateCurrentGame();
   });
 
   const dbTableToString = (dbTable: DBTable) => {
@@ -3775,6 +3777,9 @@ export const registerIpcMainListeners = (
                   messages: ["Game still closing, retrying..."],
                   startTime: Date.now(),
                 } as Toast);
+              }
+              if (i == 9) {
+                terminateCurrentGame();
               }
             }
           }
