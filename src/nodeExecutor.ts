@@ -2773,7 +2773,7 @@ async function executeLookupNode(
 
   // Parse configuration
   let lookupColumn: string = "";
-  let joinType: "inner" | "left" | "nested" = "inner";
+  let joinType: "inner" | "left" | "nested" | "cross" = "inner";
   let indexColumns: string[] = [];
   let indexJoinColumn: string = "";
   try {
@@ -2787,7 +2787,8 @@ async function executeLookupNode(
     return { success: false, error: "Invalid lookup configuration" };
   }
 
-  if (!lookupColumn) {
+  // For cross join, we don't need lookup columns
+  if (joinType !== "cross" && !lookupColumn) {
     return { success: false, error: "No lookup column specified" };
   }
 
@@ -2910,7 +2911,84 @@ async function executeLookupNode(
   const lookupTableName = indexedData.tableName.replace(/^db\\/, "").replace(/\\.*$/, "");
 
   // Perform join based on join type
-  if (joinType === "nested") {
+  if (joinType === "cross") {
+    // Cross join: Cartesian product of all source rows with all right table rows
+    console.log(`Lookup Node ${nodeId}: Performing cross join (Cartesian product)`);
+
+    // Extract all rows from the indexed data
+    const allRightRows: AmendedSchemaField[][] = [];
+    for (const rows of indexedData.indexMap.values()) {
+      allRightRows.push(...rows);
+    }
+
+    console.log(`Lookup Node ${nodeId}: Cross joining ${sourceRows.length} source rows with ${allRightRows.length} right rows`);
+
+    const crossJoinedRows: AmendedSchemaField[][] = [];
+
+    // Create Cartesian product
+    for (const sourceRow of sourceRows) {
+      for (const rightRow of allRightRows) {
+        const prefixedSourceRow = sourceRow.map((cell) => ({
+          ...cell,
+          name: `${sourceTableName}_${cell.name}`,
+        }));
+        const prefixedRightRow = rightRow.map((cell: AmendedSchemaField) => ({
+          ...cell,
+          name: `${lookupTableName}_${cell.name}`,
+        }));
+        crossJoinedRows.push([...prefixedSourceRow, ...prefixedRightRow]);
+      }
+    }
+
+    console.log(`Lookup Node ${nodeId}: Created ${crossJoinedRows.length} cross-joined rows`);
+
+    // Build schema from the first joined row
+    const schemaFields: DBField[] = [];
+    if (crossJoinedRows.length > 0) {
+      for (const cell of crossJoinedRows[0]) {
+        schemaFields.push({
+          name: cell.name,
+          field_type: cell.type as SCHEMA_FIELD_TYPE,
+          is_key: cell.isKey || false,
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: `Joined column from cross join`,
+          ca_order: -1,
+          is_bitwise: 0,
+          enum_values: {},
+        });
+      }
+    }
+
+    const schemaVersion = sourceTable.table.tableSchema?.version ?? 1;
+    const tableVersion = sourceTable.table.version;
+
+    const crossJoinedTable: DBTablesNodeTable = {
+      name: `${sourceTableName}_cross_${lookupTableName}`,
+      fileName: `${sourceTableName}_cross_${lookupTableName}`,
+      sourceFile: sourceTable.sourceFile,
+      table: {
+        ...sourceTable.table,
+        name: `db\\${sourceTableName}_cross_${lookupTableName}`,
+        schemaFields: crossJoinedRows.flat(),
+        tableSchema: {
+          version: schemaVersion,
+          fields: schemaFields,
+        },
+      },
+    };
+
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [crossJoinedTable],
+        sourceFiles: sourceData.sourceFiles,
+        tableCount: 1,
+      },
+    };
+  } else if (joinType === "nested") {
     // Nested join: preserve source rows, add lookup matches as nested array
     const nestedRows: NestedRow[] = [];
 

@@ -56,7 +56,7 @@ export interface SerializedNode {
     reverseTableNames?: string[];
     indexColumns?: string[];
     lookupColumn?: string;
-    joinType?: "inner" | "left" | "nested";
+    joinType?: "inner" | "left" | "nested" | "cross";
     tablePrefix?: string;
     tablePrefixes?: string[];
     aggregateColumn?: string;
@@ -281,7 +281,7 @@ interface IndexTableNodeData extends NodeData {
 
 interface LookupNodeData extends NodeData {
   lookupColumn: string;
-  joinType: "inner" | "left" | "nested";
+  joinType: "inner" | "left" | "nested" | "cross";
   inputType: "TableSelection";
   indexedInputType: "IndexedTable";
   outputType: "TableSelection" | "NestedTableSelection";
@@ -2209,7 +2209,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
   const [indexJoinColumn, setIndexJoinColumn] = useState(
     (data as any).indexJoinColumn || ((data as any).indexColumns && (data as any).indexColumns[0]) || ""
   );
-  const [joinType, setJoinType] = useState<"inner" | "left" | "nested">(data.joinType || "inner");
+  const [joinType, setJoinType] = useState<"inner" | "left" | "nested" | "cross">(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [sourceColumnNames, setSourceColumnNames] = useState<string[]>([]);
   const [indexedColumnNames, setIndexedColumnNames] = useState<string[]>([]);
@@ -2474,7 +2474,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     window.dispatchEvent(updateEvent);
   };
 
-  const handleJoinTypeChange = (newType: "inner" | "left" | "nested") => {
+  const handleJoinTypeChange = (newType: "inner" | "left" | "nested" | "cross") => {
     setJoinType(newType);
     const newOutputType = newType === "nested" ? "NestedTableSelection" : "TableSelection";
     const updateEvent = new CustomEvent("nodeDataUpdate", {
@@ -2510,57 +2510,61 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
         <div>Index: {isIndexedTableInput ? "IndexedTable" : "TableSelection"}</div>
       </div>
 
-      {isIndexedTableInput ? (
-        // Single dropdown for IndexedTable input (old way)
-        <div className="mb-2">
-          <label className="text-xs text-gray-300 block mb-1">Lookup Column:</label>
-          <select
-            value={lookupColumn}
-            onChange={handleLookupColumnChange}
-            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
-          >
-            <option value="">Select column...</option>
-            {sourceColumnNames.map((columnName) => (
-              <option key={columnName} value={columnName}>
-                {columnName}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : (
-        // Two dropdowns for TableSelection input (new way)
+      {joinType !== "cross" && (
         <>
-          <div className="mb-2">
-            <label className="text-xs text-gray-300 block mb-1">Source Column:</label>
-            <select
-              value={lookupColumn}
-              onChange={handleLookupColumnChange}
-              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
-            >
-              <option value="">Select column...</option>
-              {sourceColumnNames.map((columnName) => (
-                <option key={columnName} value={columnName}>
-                  {columnName}
-                </option>
-              ))}
-            </select>
-          </div>
+          {isIndexedTableInput ? (
+            // Single dropdown for IndexedTable input (old way)
+            <div className="mb-2">
+              <label className="text-xs text-gray-300 block mb-1">Lookup Column:</label>
+              <select
+                value={lookupColumn}
+                onChange={handleLookupColumnChange}
+                className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+              >
+                <option value="">Select column...</option>
+                {sourceColumnNames.map((columnName) => (
+                  <option key={columnName} value={columnName}>
+                    {columnName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            // Two dropdowns for TableSelection input (new way)
+            <>
+              <div className="mb-2">
+                <label className="text-xs text-gray-300 block mb-1">Source Column:</label>
+                <select
+                  value={lookupColumn}
+                  onChange={handleLookupColumnChange}
+                  className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="">Select column...</option>
+                  {sourceColumnNames.map((columnName) => (
+                    <option key={columnName} value={columnName}>
+                      {columnName}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <div className="mb-2">
-            <label className="text-xs text-gray-300 block mb-1">Index Column:</label>
-            <select
-              value={indexJoinColumn}
-              onChange={handleIndexJoinColumnChange}
-              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
-            >
-              <option value="">Select column...</option>
-              {indexedColumnNames.map((columnName) => (
-                <option key={columnName} value={columnName}>
-                  {columnName}
-                </option>
-              ))}
-            </select>
-          </div>
+              <div className="mb-2">
+                <label className="text-xs text-gray-300 block mb-1">Index Column:</label>
+                <select
+                  value={indexJoinColumn}
+                  onChange={handleIndexJoinColumnChange}
+                  className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="">Select column...</option>
+                  {indexedColumnNames.map((columnName) => (
+                    <option key={columnName} value={columnName}>
+                      {columnName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -2599,6 +2603,15 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
               className="w-3 h-3"
             />
             <span className="text-xs text-white">Nested (1-to-many)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={joinType === "cross"}
+              onChange={() => handleJoinTypeChange("cross")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">Cross Join (Cartesian Product)</span>
           </label>
         </div>
       </div>
