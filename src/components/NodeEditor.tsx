@@ -2663,21 +2663,23 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
 
   // Auto-detect prefixes from connected table columns
   React.useEffect(() => {
-    if (data.connectedTableName && data.DBNameToDBVersions) {
-      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
-      if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
-        const prefixSet = new Set<string>();
+    // Analyze the actual column names to detect table prefixes
+    if (data.columnNames && data.columnNames.length > 0) {
+      const prefixSet = new Set<string>();
 
-        for (const field of tableFields) {
-          const underscoreIndex = field.name.indexOf("_");
-          if (underscoreIndex > 0) {
-            const prefix = field.name.substring(0, underscoreIndex + 1);
-            prefixSet.add(prefix);
-          }
+      for (const columnName of data.columnNames) {
+        // Look for pattern like "tablename_columnname"
+        // Extract everything up to and including "_tables_"
+        const match = columnName.match(/^(.+?_tables)_/);
+        if (match) {
+          prefixSet.add(match[1]);
         }
+      }
 
-        const detectedPrefixes = Array.from(prefixSet);
+      const detectedPrefixes = Array.from(prefixSet).sort();
+
+      // Only update if the prefixes have changed
+      if (JSON.stringify(detectedPrefixes) !== JSON.stringify(tablePrefixes)) {
         setTablePrefixes(detectedPrefixes);
 
         const updateEvent = new CustomEvent("nodeDataUpdate", {
@@ -2686,7 +2688,7 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.connectedTableName, id]);
+  }, [data.columnNames, id, tablePrefixes]);
 
   const handlePrefixChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
