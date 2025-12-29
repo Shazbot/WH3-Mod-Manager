@@ -34,7 +34,7 @@ import getPackTableData, {
   isSchemaFieldNumberInteger,
 } from "./utility/frontend/packDataHandling";
 import deepClone from "clone-deep";
-import { gameToIntroMovies } from "./supportedGames";
+import { gameToIntroMovies, gameToPackHeader } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
 import { collator } from "./utility/packFileSorting";
@@ -919,7 +919,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
       .map((r) => r.value)
       .filter((packData) => packData);
 
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
     const pack_file_index_size = 0;
@@ -1468,7 +1468,7 @@ export const writePackStream = async (
   const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
 
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
 
@@ -1665,7 +1665,7 @@ export const writePackAppendFast = async (
 
       // Write updated header with new counts
       const headerAccumulator = new BufferAccumulator(outFile);
-      headerAccumulator.addString("PFH5");
+      headerAccumulator.addString(gameToPackHeader[appData.currentGame]);
       headerAccumulator.addInt32(existingPackToAppend.packHeader.byteMask);
       headerAccumulator.addInt32(existingPackToAppend.packHeader.refFileCount);
       headerAccumulator.addInt32(pack_file_index_size);
@@ -1837,7 +1837,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string, depende
   let outFile: BinaryFile | undefined;
 
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
 
@@ -1965,7 +1965,7 @@ export const writePackLegacy = async (
   const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
 
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
 
@@ -2135,7 +2135,7 @@ export const writeStartGamePack = async (
 ) => {
   let outFile: BinaryFile | undefined;
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
     const pack_file_index_size = 0;

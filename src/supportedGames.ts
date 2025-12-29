@@ -53,6 +53,18 @@ export const gameToGameName: Record<SupportedGames, string> = {
   shogun2: "Shogun 2",
 };
 
+export const gameToPackHeader: Record<SupportedGames, string> = {
+  wh2: "PFH5",
+  wh3: "PFH5",
+  threeKingdoms: "PFH5",
+  attila: "PFH4",
+  troy: "PFH5",
+  pharaoh: "PFH5",
+  dynasties: "PFH5",
+  rome2: "PFH4",
+  shogun2: "PFH3",
+};
+
 export const gameToSteamId: Record<SupportedGames, string> = {
   wh2: "594570",
   wh3: "1142710",
