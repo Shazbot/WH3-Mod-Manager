@@ -4655,13 +4655,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     nodesRef.current = nodes;
   }, [nodes]);
 
-  // Fix Lookup nodes that don't have indexedTableName set (e.g., after loading from JSON)
+  // Fix Lookup nodes that don't have indexedTableName or indexedInputType set (e.g., after loading from JSON)
   React.useEffect(() => {
     const lookupNodesToFix = nodes.filter((node) => {
       if (node.type !== "lookup") return false;
       const nodeData = node.data as any;
-      // Check if indexedTableName is missing or is the fallback "indexed"
-      return !nodeData.indexedTableName || nodeData.indexedTableName === "indexed";
+      // Check if indexedTableName is missing or is the fallback "indexed", or if indexedInputType is missing
+      return !nodeData.indexedTableName || nodeData.indexedTableName === "indexed" || !nodeData.indexedInputType;
     });
 
     if (lookupNodesToFix.length === 0) return;
@@ -4677,10 +4677,30 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         const sourceNode = nodes.find((n) => n.id === incomingEdge.source);
         if (sourceNode) {
           const sourceData = sourceNode.data as any;
-          if (sourceData.connectedTableName) {
+          // Get table name from either selectedTable (for tableselectiondropdown) or connectedTableName
+          const tableName = (sourceNode.type === "tableselectiondropdown" && sourceData.selectedTable)
+            ? sourceData.selectedTable
+            : sourceData.connectedTableName;
+
+          if (tableName) {
+            // Determine the input type based on the source node type
+            const indexedInputType = sourceNode.type === "indextable" ? "IndexedTable" : "TableSelection";
+
+            // Get column names from the schema
+            let indexedTableColumnNames: string[] = [];
+            if (DBNameToDBVersions && DBNameToDBVersions[tableName]) {
+              const tableVersions = DBNameToDBVersions[tableName];
+              if (tableVersions && tableVersions.length > 0) {
+                const tableFields = tableVersions[0].fields || [];
+                indexedTableColumnNames = tableFields.map((field) => field.name);
+              }
+            }
+
             updates.push({
               nodeId: lookupNode.id,
-              indexedTableName: sourceData.connectedTableName,
+              indexedTableName: tableName,
+              indexedInputType: indexedInputType,
+              indexedTableColumnNames: indexedTableColumnNames,
             });
           }
         }
@@ -4698,6 +4718,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               data: {
                 ...node.data,
                 indexedTableName: update.indexedTableName,
+                indexedInputType: update.indexedInputType,
+                indexedTableColumnNames: update.indexedTableColumnNames,
               },
             };
           }
@@ -4705,7 +4727,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         })
       );
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, DBNameToDBVersions]);
 
   React.useEffect(() => {
     console.log("getDBNameToDBVersions");
