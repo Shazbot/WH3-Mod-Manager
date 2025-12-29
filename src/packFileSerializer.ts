@@ -2978,6 +2978,10 @@ export const readPack = async (
     packedFileHeaderPosition += 4;
     if (header === null) throw new Error("header missing");
 
+    if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
+      throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
+    }
+
     const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
     packedFileHeaderPosition += 4;
 
