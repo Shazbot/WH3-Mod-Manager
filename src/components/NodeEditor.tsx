@@ -2339,12 +2339,6 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
   // Compute output column names based on join type
   React.useEffect(() => {
-    // If columnNames are already set externally (e.g., from execution or props), use those
-    if (data.columnNames && data.columnNames.length > 0 && data.columnNames !== columnNames) {
-      setColumnNames(data.columnNames);
-      return;
-    }
-
     if (joinType === "nested") {
       // For nested joins, output columns are just source columns (lookup is nested)
       if (sourceColumnNames.length > 0) {
@@ -2355,7 +2349,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
         window.dispatchEvent(updateEvent);
       }
     } else {
-      // For inner/left joins, output is prefixed source + prefixed indexed columns
+      // For inner/left/cross joins, output is prefixed source + prefixed indexed columns
       if (sourceColumnNames.length > 0 && indexedColumnNames.length > 0) {
         const sourceTableName = data.connectedTableName || "source";
         const indexedTableName = (data as any).indexedTableName || (data as any).connectedIndexTableName || "indexed";
@@ -2378,7 +2372,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.columnNames, sourceColumnNames, indexedColumnNames, joinType, data.connectedTableName, columnNames, id]);
+  }, [sourceColumnNames, indexedColumnNames, joinType, data.connectedTableName, (data as any).indexedTableName, (data as any).connectedIndexTableName, columnNames, id]);
 
   // Validate schema relationships and show warning if no foreign key reference exists
   React.useEffect(() => {
@@ -5214,6 +5208,34 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               setNodes((nds) =>
                 nds.map((node) => {
                   if (node.id === params.target) {
+                    // For lookup nodes, check which handle is being connected
+                    if (node.type === "lookup") {
+                      if (params.targetHandle === "input-index") {
+                        // Connecting to index input - set indexedTableName
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            indexedTableName: tableName,
+                            indexedTableColumnNames: fieldNames,
+                            indexedInputType: "TableSelection",
+                          },
+                        };
+                      } else {
+                        // Connecting to source input (input-source or no specific handle)
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            columnNames: fieldNames,
+                            connectedTableName: tableName,
+                            DBNameToDBVersions: DBNameToDBVersions,
+                          },
+                        };
+                      }
+                    }
+
+                    // For all other node types, use default behavior
                     return {
                       ...node,
                       data: {
