@@ -209,6 +209,12 @@ export const executeNodeGraph = async (
           textValueToUse = JSON.stringify({
             filename: (node.data as any).filename || "",
           });
+        } else if (node.type === "getcountercolumn") {
+          textValueToUse = JSON.stringify({
+            selectedTable: (node.data as any).selectedTable || "",
+            selectedColumn: (node.data as any).selectedColumn || "",
+            newColumnName: (node.data as any).newColumnName || "",
+          });
         } else {
           textValueToUse = node.data.textValue || "";
         }
