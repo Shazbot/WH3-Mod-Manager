@@ -94,10 +94,11 @@ export interface SerializedNode {
     transformations?: Array<{
       id: string;
       sourceColumn: string;
-      transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide";
+      transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "counter";
       prefix?: string;
       suffix?: string;
       numericValue?: number;
+      startNumber?: number;
       outputColumnName: string;
     }>;
     outputTables?: Array<{
@@ -365,10 +366,11 @@ interface AggregateNestedNodeData extends NodeData {
 interface ColumnTransformation {
   id: string; // Unique ID for React key
   sourceColumn: string;
-  transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide";
+  transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "counter";
   prefix?: string;
   suffix?: string;
   numericValue?: number;
+  startNumber?: number; // For counter transformation
   outputColumnName: string;
   targetTableHandleId: string; // Which output table this transformation is for
 }
@@ -3674,7 +3676,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                       | "add"
                       | "subtract"
                       | "multiply"
-                      | "divide",
+                      | "divide"
+                      | "counter",
                   })
                 }
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -3686,6 +3689,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 <option value="subtract">Subtract Number (-)</option>
                 <option value="multiply">Multiply (*)</option>
                 <option value="divide">Divide (/)</option>
+                <option value="counter">Counter (unique sequential)</option>
               </select>
 
               {trans.transformationType === "prefix" && (
@@ -3718,6 +3722,18 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   value={trans.numericValue ?? ""}
                   onChange={(e) =>
                     updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                />
+              )}
+
+              {trans.transformationType === "counter" && (
+                <input
+                  type="number"
+                  placeholder="Start number (default: 10000)..."
+                  value={trans.startNumber ?? ""}
+                  onChange={(e) =>
+                    updateTransformation(trans.id, { startNumber: parseInt(e.target.value) || undefined })
                   }
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 />
