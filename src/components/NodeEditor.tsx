@@ -21,6 +21,36 @@ import { DBVersion } from "../packFileTypes";
 import { addToast } from "../appSlice";
 import { SupportedGames } from "../supportedGames";
 
+// Helper function to prevent wheel events from bubbling to React Flow's zoom
+// Only stops propagation if the element can actually scroll
+const stopWheelPropagation = (e: React.WheelEvent<HTMLDivElement>) => {
+  const target = e.currentTarget;
+  const { scrollTop, scrollHeight, clientHeight } = target;
+  const isScrollable = scrollHeight > clientHeight;
+
+  if (!isScrollable) {
+    // Element isn't scrollable, let the event bubble for zoom
+    return;
+  }
+
+  const isAtTop = scrollTop === 0;
+  const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1; // -1 for rounding
+
+  // Scrolling down (deltaY > 0) when at bottom - allow zoom
+  if (e.deltaY > 0 && isAtBottom) {
+    return;
+  }
+
+  // Scrolling up (deltaY < 0) when at top - allow zoom
+  if (e.deltaY < 0 && isAtTop) {
+    return;
+  }
+
+  // Otherwise, we're scrolling within the element - stop all event handling
+  e.stopPropagation();
+  e.preventDefault();
+};
+
 // Serialization types
 export interface SerializedNode {
   id: string;
@@ -1078,7 +1108,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
 
-      <div className="space-y-2 max-h-96 overflow-y-auto">
+      <div className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
         {filters.map((filter, index) => (
           <div key={index} className="bg-gray-800 p-2 rounded border border-gray-600">
             <div className="flex items-center gap-2 mb-2">
@@ -2168,7 +2198,7 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
 
       <div className="mb-2">
         <label className="text-xs text-gray-300 block mb-1">Index Columns (select multiple):</label>
-        <div className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2">
+        <div className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content" onWheel={stopWheelPropagation}>
           {columnNames.length === 0 ? (
             <div className="text-xs text-gray-500 italic">Connect a table to see columns</div>
           ) : (
@@ -3123,7 +3153,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       {/* Group By Columns Section */}
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-1">Group By Columns:</label>
-        <div className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2">
+        <div className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content" onWheel={stopWheelPropagation}>
           {inputColumnNames.length === 0 ? (
             <div className="text-xs text-gray-500">No columns available</div>
           ) : (
@@ -3155,7 +3185,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
           </button>
         </div>
 
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+        <div className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {aggregations.map((agg) => (
             <div key={agg.id} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="flex items-center justify-between mb-2">
@@ -3454,7 +3484,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
           </button>
         </div>
 
-        <div className="space-y-2 max-h-60 overflow-y-auto">
+        <div className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {transformations.map((trans) => (
             <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="flex items-center justify-between mb-1">
@@ -3590,7 +3620,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
       {/* Output Tables Configuration */}
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-2">Output Tables:</label>
-        <div className="space-y-2 max-h-48 overflow-y-auto">
+        <div className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
           {outputTables.map((output, idx) => (
             <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="text-xs text-gray-400 mb-1">Output {idx + 1}</div>
@@ -3609,7 +3639,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
               </select>
 
               <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
-              <div className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2">
+              <div className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2 scrollable-node-content" onWheel={stopWheelPropagation}>
                 {transformations
                   .filter((trans) => trans.targetTableHandleId === output.handleId)
                   .map((trans) => (
@@ -3635,7 +3665,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
               </div>
 
               <div className="text-xs text-gray-400 mb-1">Static Values (remaining columns):</div>
-              <div className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1">
+              <div className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content" onWheel={stopWheelPropagation}>
                 {getAvailableStaticColumns(idx).map((col) => (
                   <div key={col} className="flex items-center gap-1 mb-1">
                     <span className="text-xs text-white w-24 truncate" title={col}>
@@ -3863,7 +3893,7 @@ const FlowOptionsModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-white">Flow Options</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
@@ -4601,7 +4631,7 @@ const NodeSidebar: React.FC<{
   onDragStart: (event: DragEvent, nodeType: DraggableNodeData) => void;
 }> = ({ onDragStart }) => {
   return (
-    <div className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto">
+    <div className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
       <h3 className="font-bold text-lg mb-4 text-white">Node Types</h3>
       <div className="space-y-4">
         {nodeTypeSections.map((section) => (
@@ -7324,6 +7354,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             onDrop={onDrop}
             onDragOver={onDragOver}
             nodeTypes={reactFlowNodeTypes}
+            noWheelClassName="scrollable-node-content"
             fitView
           >
             <Controls />
