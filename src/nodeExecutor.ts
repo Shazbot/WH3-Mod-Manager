@@ -12,6 +12,10 @@ import { AmendedSchemaField, NewPackedFile, SCHEMA_FIELD_TYPE, DBVersion, DBFiel
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 
+// Global tracking for counter transformations to ensure uniqueness across the entire flow
+// Map structure: sourceColumnId -> Set of used numbers
+const globalCounterTracking = new Map<string, Set<number>>();
+
 export const executeNodeAction = async (request: NodeExecutionRequest): Promise<NodeExecutionResult> => {
   const { nodeId, nodeType, textValue, inputData } = request;
 
@@ -3818,10 +3822,12 @@ async function executeGenerateRowsNode(
         | "multiply"
         | "divide"
         | "concatenate"
-        | "formula";
+        | "formula"
+        | "counter";
       prefix?: string;
       suffix?: string;
       numericValue?: number;
+      startNumber?: number;
       separator?: string;
       formula?: string;
       outputColumnName: string;
@@ -3902,7 +3908,62 @@ async function executeGenerateRowsNode(
 
   console.log(`Generate Rows Node ${nodeId}: Processing ${rows.length} input rows`);
 
-  // 3. Apply transformations to each row
+  // 3. Prepare counter transformations
+  // For each counter transformation, we need to:
+  // - Get the sourceColumn to track used values
+  // - Initialize counter state for this transformation
+  const counterStates = new Map<
+    string,
+    {
+      currentNumber: number;
+      usedNumbers: Set<number>;
+      sourceColumn: string;
+    }
+  >();
+
+  for (const transformation of config.transformations) {
+    if (transformation.transformationType === "counter") {
+      const startNumber = transformation.startNumber || 10000;
+      const sourceColumn = transformation.sourceColumn;
+
+      // Collect all existing values from the input column
+      const existingValues = new Set<number>();
+      for (const row of rows) {
+        const sourceCell = row.find((c: AmendedSchemaField) => c.name === sourceColumn);
+        if (sourceCell) {
+          const numValue = parseFloat(String(sourceCell.resolvedKeyValue));
+          if (!isNaN(numValue)) {
+            existingValues.add(Math.floor(numValue));
+          }
+        }
+      }
+
+      // Get or initialize global tracking for this source column
+      if (!globalCounterTracking.has(sourceColumn)) {
+        globalCounterTracking.set(sourceColumn, new Set());
+      }
+      const globalUsedNumbers = globalCounterTracking.get(sourceColumn)!;
+
+      // Merge existing values with global tracking
+      for (const val of existingValues) {
+        globalUsedNumbers.add(val);
+      }
+
+      // Initialize counter state for this transformation
+      const key = `${transformation.targetTableHandleId}:${transformation.outputColumnName}`;
+      counterStates.set(key, {
+        currentNumber: startNumber,
+        usedNumbers: new Set([...existingValues, ...globalUsedNumbers]),
+        sourceColumn: sourceColumn,
+      });
+
+      console.log(
+        `Generate Rows Node ${nodeId}: Initialized counter for "${key}" starting at ${startNumber} with ${existingValues.size} existing values`
+      );
+    }
+  }
+
+  // 4. Apply transformations to each row
   // Note: We'll process transformations per output table to handle targetTableHandleId
   // For now, build a map of all transformations to support legacy mode (no targetTableHandleId)
   const globalTransformedData = new Map<string, any[]>(); // outputColumnName -> array of values
@@ -3935,6 +3996,10 @@ async function executeGenerateRowsNode(
             // For numeric transformations, use -1 so that "add 1" results in 0
             outputValue =
               transformation.transformationType === "add" && transformation.numericValue === 1 ? -1 : 0;
+            break;
+          case "counter":
+            // Counter doesn't need a source value, it generates its own
+            outputValue = 0; // Will be overwritten in the transformation logic
             break;
           case "prefix":
           case "suffix":
@@ -4006,6 +4071,34 @@ async function executeGenerateRowsNode(
           // TODO: Implement formula parsing when needed
           console.warn(`Generate Rows Node ${nodeId}: Formula transformation not yet implemented`);
           break;
+
+        case "counter": {
+          // Generate a unique sequential number
+          const key = `${transformation.targetTableHandleId}:${transformation.outputColumnName}`;
+          const counterState = counterStates.get(key);
+
+          if (!counterState) {
+            console.error(`Generate Rows Node ${nodeId}: Counter state not found for "${key}"`);
+            outputValue = 0;
+            break;
+          }
+
+          // Find the next available number
+          let candidateNumber = counterState.currentNumber;
+          while (counterState.usedNumbers.has(candidateNumber)) {
+            candidateNumber++;
+          }
+
+          // Mark this number as used
+          counterState.usedNumbers.add(candidateNumber);
+          globalCounterTracking.get(counterState.sourceColumn)!.add(candidateNumber);
+
+          // Update current number for next iteration
+          counterState.currentNumber = candidateNumber + 1;
+
+          outputValue = candidateNumber;
+          break;
+        }
 
         default:
           console.warn(
