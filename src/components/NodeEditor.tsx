@@ -4761,6 +4761,76 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     }
   }, [nodes, edges, DBNameToDBVersions]);
 
+  // Fix Generate Rows nodes to merge columns from all incoming connections
+  React.useEffect(() => {
+    const generateRowsNodes = nodes.filter((node) => node.type === "generaterows");
+    if (generateRowsNodes.length === 0) return;
+
+    const updates: { nodeId: string; columnNames: string[] }[] = [];
+
+    for (const grNode of generateRowsNodes) {
+      // Find all incoming edges to this generaterows node
+      const incomingEdges = edges.filter((edge) => edge.target === grNode.id);
+      if (incomingEdges.length === 0) continue;
+
+      const allSourceColumns = new Set<string>();
+
+      // Collect columns from all connected sources
+      for (const incomingEdge of incomingEdges) {
+        const sourceNode = nodes.find((n) => n.id === incomingEdge.source);
+        if (sourceNode) {
+          const sourceData = sourceNode.data as any;
+          let cols = sourceData.columnNames || [];
+
+          // For tableselectiondropdown nodes, columnNames might be empty
+          // Get columns from the schema based on selectedTable
+          if (cols.length === 0 && sourceNode.type === "tableselectiondropdown") {
+            const selectedTable = sourceData.selectedTable;
+            if (selectedTable && DBNameToDBVersions && DBNameToDBVersions[selectedTable]) {
+              const tableVersions = DBNameToDBVersions[selectedTable];
+              if (tableVersions && tableVersions.length > 0) {
+                const tableFields = tableVersions[0].fields || [];
+                cols = tableFields.map((field: any) => field.name);
+              }
+            }
+          }
+
+          cols.forEach((col: string) => allSourceColumns.add(col));
+        }
+      }
+
+      const mergedColumns = Array.from(allSourceColumns);
+      const currentColumns = (grNode.data as any).columnNames || [];
+
+      // Only update if columns have changed
+      if (JSON.stringify(mergedColumns.sort()) !== JSON.stringify(currentColumns.sort())) {
+        updates.push({
+          nodeId: grNode.id,
+          columnNames: mergedColumns,
+        });
+      }
+    }
+
+    // Apply updates
+    if (updates.length > 0) {
+      setNodes((nds) =>
+        nds.map((node) => {
+          const update = updates.find((u) => u.nodeId === node.id);
+          if (update) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                columnNames: update.columnNames,
+              },
+            };
+          }
+          return node;
+        })
+      );
+    }
+  }, [nodes, edges, setNodes, DBNameToDBVersions]);
+
   React.useEffect(() => {
     console.log("getDBNameToDBVersions");
     window.api?.getDBNameToDBVersions().then((data) => {
@@ -5149,7 +5219,19 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             style: { stroke: "#3b82f6", strokeWidth: 2 },
             animated: true,
           };
-          return [...eds, newEdge];
+
+          // For generaterows nodes, allow multiple connections to the same target handle
+          // For other nodes, remove existing connections to the target handle first
+          if (targetNode.type === "generaterows") {
+            // Allow multiple connections - just add the new edge
+            return [...eds, newEdge];
+          } else {
+            // Remove any existing edge to this target handle before adding the new one
+            const filteredEdges = eds.filter(
+              (edge) => !(edge.target === params.target && edge.targetHandle === params.targetHandle)
+            );
+            return [...filteredEdges, newEdge];
+          }
         });
 
         // Update textsurround node input/output types to match connected source
@@ -5705,11 +5787,44 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
+                  // For generaterows, merge columns from all incoming connections
+                  // Use EXISTING edges (before the new one is added) + the NEW connection
+                  const existingEdges = edges.filter((edge) => edge.target === params.target);
+                  const allSourceColumns = new Set<string>();
+
+                  // Add columns from all EXISTING connected sources
+                  for (const existingEdge of existingEdges) {
+                    const connectedSourceNode = nds.find((n) => n.id === existingEdge.source);
+                    if (connectedSourceNode) {
+                      const connectedSourceData = connectedSourceNode.data as any;
+                      let cols = connectedSourceData.columnNames || [];
+
+                      // For tableselectiondropdown nodes, columnNames might be empty
+                      // Get columns from the schema based on selectedTable
+                      if (cols.length === 0 && connectedSourceNode.type === "tableselectiondropdown") {
+                        const selectedTable = connectedSourceData.selectedTable;
+                        if (selectedTable && DBNameToDBVersions && DBNameToDBVersions[selectedTable]) {
+                          const tableVersions = DBNameToDBVersions[selectedTable];
+                          if (tableVersions && tableVersions.length > 0) {
+                            const tableFields = tableVersions[0].fields || [];
+                            cols = tableFields.map((field: any) => field.name);
+                          }
+                        }
+                      }
+
+                      cols.forEach((col: string) => allSourceColumns.add(col));
+                    }
+                  }
+
+                  // Add columns from the NEW source being connected
+                  const newSourceColumns = sourceData.columnNames || [];
+                  newSourceColumns.forEach((col: string) => allSourceColumns.add(col));
+
                   return {
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: sourceData.columnNames || [],
+                      columnNames: Array.from(allSourceColumns),
                       connectedTableName: sourceData.connectedTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
@@ -5951,9 +6066,52 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
   const onEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: Edge) => {
-      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+      // Check if we're removing an edge connected to a generaterows node
+      const targetNode = nodesRef.current.find((n) => n.id === edge.target);
+
+      if (targetNode && targetNode.type === "generaterows") {
+        // Recalculate columns for generaterows node after removing this edge
+        setEdges((eds) => {
+          const newEdges = eds.filter((e) => e.id !== edge.id);
+
+          // Find remaining incoming edges to this generaterows node
+          const remainingIncomingEdges = newEdges.filter((e) => e.target === edge.target);
+          const allSourceColumns = new Set<string>();
+
+          // Collect columns from all remaining connections
+          for (const incomingEdge of remainingIncomingEdges) {
+            const sourceNode = nodesRef.current.find((n) => n.id === incomingEdge.source);
+            if (sourceNode) {
+              const sourceData = sourceNode.data as any;
+              const cols = sourceData.columnNames || [];
+              cols.forEach((col: string) => allSourceColumns.add(col));
+            }
+          }
+
+          // Update the generaterows node with new column list
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === edge.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    columnNames: Array.from(allSourceColumns),
+                  },
+                };
+              }
+              return node;
+            })
+          );
+
+          return newEdges;
+        });
+      } else {
+        // For other nodes, just remove the edge
+        setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+      }
     },
-    [setEdges]
+    [setEdges, setNodes]
   );
 
   const onDragOver = useCallback((event: DragEvent) => {
