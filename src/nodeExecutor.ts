@@ -8,7 +8,7 @@ import {
   writePack,
 } from "./packFileSerializer";
 import appData from "./appData";
-import { AmendedSchemaField, NewPackedFile, SCHEMA_FIELD_TYPE, DBVersion, DBField } from "./packFileTypes";
+import { AmendedSchemaField, NewPackedFile, SCHEMA_FIELD_TYPE, DBVersion, DBField, Pack, PackedFile } from "./packFileTypes";
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 
@@ -100,6 +100,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "dumptotsv":
         return await executeDumpToTSVNode(nodeId, textValue, inputData);
+
+      case "getcountercolumn":
+        return await executeGetCounterColumnNode(nodeId, textValue, inputData);
 
       default:
         return {
@@ -4280,4 +4283,155 @@ async function executeDumpToTSVNode(
       error: error instanceof Error ? error.message : "Unknown error writing TSV file",
     };
   }
+}
+
+async function executeGetCounterColumnNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`GetCounterColumn Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles data" };
+  }
+
+  // Parse configuration from textValue
+  let selectedTable = "";
+  let selectedColumn = "";
+  let newColumnName = "";
+
+  try {
+    const config = JSON.parse(textValue || "{}");
+    selectedTable = config.selectedTable || "";
+    selectedColumn = config.selectedColumn || "";
+    newColumnName = config.newColumnName || "";
+  } catch (error) {
+    console.error(`GetCounterColumn Node ${nodeId}: Error parsing configuration:`, error);
+    return {
+      success: false,
+      error: "Invalid configuration: Failed to parse node settings",
+    };
+  }
+
+  if (!selectedTable) {
+    return { success: false, error: "No table selected. Please select a table from the dropdown." };
+  }
+
+  if (!selectedColumn) {
+    return { success: false, error: "No column selected. Please select a numeric column." };
+  }
+
+  if (!newColumnName) {
+    return { success: false, error: "No column name specified. Please provide a name for the new column." };
+  }
+
+  console.log(`GetCounterColumn Node ${nodeId}: Collecting values from ${selectedTable}.${selectedColumn}`);
+
+  // Convert table name to db\ format if needed
+  const tableName = selectedTable.startsWith("db\\") ? selectedTable : `db\\${selectedTable}`;
+
+  const collectedValues: AmendedSchemaField[] = [];
+  const sourcePacks: Pack[] = [];
+
+  // Process each pack file
+  for (const packFile of inputData.files) {
+    if (!packFile.loaded) {
+      console.warn(`GetCounterColumn Node ${nodeId}: Skipping unloaded file: ${packFile.name}`);
+      continue;
+    }
+
+    try {
+      // Read the pack file
+      const pack = await readPack(packFile.path, { tablesToRead: [tableName] });
+      getPacksTableData([pack], [tableName]);
+
+      // Find tables that match the criteria
+      const matchingTables = pack.packedFiles.filter((pf) => pf.name.includes(tableName));
+
+      for (const table of matchingTables) {
+        if (!table.schemaFields || !table.tableSchema) {
+          console.warn(`GetCounterColumn Node ${nodeId}: Table without schema: ${table.name}`);
+          continue;
+        }
+
+        // Chunk into rows
+        const rows = chunkSchemaIntoRows(table.schemaFields, table.tableSchema) as AmendedSchemaField[][];
+
+        console.log(`GetCounterColumn Node ${nodeId}: Found ${rows.length} rows in ${packFile.name}`);
+
+        // Extract the selected column values from each row
+        for (const row of rows) {
+          const cell = row.find((c) => c.name === selectedColumn);
+          if (cell) {
+            // Create a new cell with the new column name
+            collectedValues.push({
+              ...cell,
+              name: newColumnName,
+            });
+          }
+        }
+      }
+
+      if (matchingTables.length > 0) {
+        sourcePacks.push(pack);
+      }
+    } catch (error) {
+      console.error(`GetCounterColumn Node ${nodeId}: Error processing ${packFile.name}:`, error);
+    }
+  }
+
+  if (collectedValues.length === 0) {
+    return {
+      success: false,
+      error: `No values found for column ${selectedColumn} in table ${selectedTable}`,
+    };
+  }
+
+  console.log(`GetCounterColumn Node ${nodeId}: Collected ${collectedValues.length} values`);
+
+  // Create the output table schema
+  const firstCell = collectedValues[0];
+  const outputTableSchema: DBVersion = {
+    name: `_counter_${selectedTable}`,
+    version: 1,
+    fields: [
+      {
+        name: newColumnName,
+        field_type: (firstCell.type as SCHEMA_FIELD_TYPE) || "StringU8",
+        is_key: false,
+        is_filename: false,
+        is_reference: [],
+        description: `Counter from ${selectedTable}.${selectedColumn}`,
+      },
+    ],
+  };
+
+  // Create a synthetic PackedFile with the collected values
+  const syntheticTable: PackedFile = {
+    name: `db\\_counter_${selectedTable}`,
+    schemaFields: collectedValues,
+    tableSchema: outputTableSchema,
+    file_size: 0,
+    start_pos: 0,
+  };
+
+  const resultTables: DBTablesNodeTable[] = [
+    {
+      name: `_counter_${selectedTable}`,
+      fileName: `db\\_counter_${selectedTable}`,
+      sourceFile: sourcePacks[0],
+      table: syntheticTable,
+    },
+  ];
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: resultTables,
+      sourceFiles: inputData.files,
+      tableCount: 1,
+    } as DBTablesNodeData,
+  };
 }

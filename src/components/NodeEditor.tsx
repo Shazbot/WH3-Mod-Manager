@@ -393,6 +393,17 @@ interface GenerateRowsNodeData extends NodeData {
   DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
+interface GetCounterColumnNodeData extends NodeData {
+  selectedTable: string;
+  selectedColumn: string;
+  newColumnName: string;
+  inputType: "PackFiles";
+  outputType: "TableSelection";
+  tableNames: string[];
+  columnNames: string[];
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
 interface DraggableNodeData {
   type: string;
   label: string;
@@ -1741,6 +1752,148 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
       </div>
 
       <div className="mt-2 text-xs text-gray-400">Final save operation</div>
+    </div>
+  );
+};
+
+// Custom GetCounterColumn node component
+const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: string }> = ({ data, id }) => {
+  const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
+  const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
+  const [newColumnName, setNewColumnName] = useState(data.newColumnName || "");
+  const [tableNames, setTableNames] = useState<string[]>(data.tableNames || []);
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Sync state with data prop changes
+  React.useEffect(() => {
+    if (data.selectedTable !== undefined) setSelectedTable(data.selectedTable);
+    if (data.selectedColumn !== undefined) setSelectedColumn(data.selectedColumn);
+    if (data.newColumnName !== undefined) setNewColumnName(data.newColumnName);
+    if (data.tableNames !== undefined) setTableNames(data.tableNames);
+    if (data.columnNames !== undefined) setColumnNames(data.columnNames);
+  }, [data.selectedTable, data.selectedColumn, data.newColumnName, data.tableNames, data.columnNames]);
+
+  // Update column names when selected table changes
+  React.useEffect(() => {
+    if (selectedTable && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[selectedTable];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        // Filter to only numeric columns
+        const numericFields = tableFields.filter(
+          (field) => field.field_type === "I32" || field.field_type === "I64" || field.field_type === "F32" || field.field_type === "F64"
+        );
+        const fieldNames = numericFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+
+        const updateEvent = new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: fieldNames },
+        });
+        window.dispatchEvent(updateEvent);
+      }
+    }
+  }, [selectedTable, data.DBNameToDBVersions, id]);
+
+  const handleTableChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedTable(newValue);
+    setSelectedColumn(""); // Reset column selection when table changes
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedTable: newValue, selectedColumn: "" },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedColumn(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, selectedColumn: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  const handleNewColumnNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setNewColumnName(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, newColumnName: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-teal-600 rounded-lg p-4 min-w-[250px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-blue-500"
+        data-input-type="PackFiles"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label || "Get Counter Column"}</div>
+
+      <div className="text-xs text-gray-400 mb-2">Input: PackFiles</div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Table:</label>
+        <select
+          value={selectedTable}
+          onChange={handleTableChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+        >
+          <option value="">Select a table...</option>
+          {tableNames.map((tableName) => (
+            <option key={tableName} value={tableName}>
+              {tableName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Numeric Column:</label>
+        <select
+          value={selectedColumn}
+          onChange={handleColumnChange}
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+          disabled={!selectedTable}
+        >
+          <option value="">Select a column...</option>
+          {columnNames.map((columnName) => (
+            <option key={columnName} value={columnName}>
+              {columnName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">New Column Name:</label>
+        <input
+          type="text"
+          value={newColumnName}
+          onChange={handleNewColumnNameChange}
+          placeholder="e.g., counter_value"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+        />
+      </div>
+
+      <div className="text-xs text-gray-300 italic my-2">
+        Collects values from selected column across all tables
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
     </div>
   );
 };
@@ -4354,6 +4507,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Dump to TSV",
         description: "Exports table data to a TSV file for inspection",
       },
+      {
+        type: "getcountercolumn",
+        label: "Get Counter Column",
+        description: "Collects numeric column values across tables from pack files",
+      },
     ],
   },
 ];
@@ -4524,6 +4682,7 @@ const executeGraphInBackend = async (
           groupByColumns: (node.data as any)?.groupByColumns || [],
           aggregations: (node.data as any)?.aggregations || [],
           DBNameToDBVersions: (node.data as any)?.DBNameToDBVersions || {},
+          newColumnName: (node.data as any)?.newColumnName ? String((node.data as any).newColumnName) : "",
         },
       };
     });
@@ -4619,6 +4778,7 @@ const reactFlowNodeTypes = {
   groupby: GroupByNode,
   generaterows: GenerateRowsNode,
   dumptotsv: DumpToTSVNode,
+  getcountercolumn: GetCounterColumnNode,
 };
 
 const initialNodes: Node[] = [];
@@ -4884,6 +5044,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         indexedInputType,
         groupByColumns,
         aggregations,
+        newColumnName,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -4940,6 +5101,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   indexedInputType !== undefined ? indexedInputType : node.data.indexedInputType,
                 groupByColumns: groupByColumns !== undefined ? groupByColumns : node.data.groupByColumns,
                 aggregations: aggregations !== undefined ? aggregations : node.data.aggregations,
+                newColumnName: newColumnName !== undefined ? newColumnName : node.data.newColumnName,
               },
             };
           }
@@ -6390,6 +6552,27 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             filename: "",
             inputType: "TableSelection" as NodeEdgeTypes,
           },
+        };
+      } else if (nodeData.type === "getcountercolumn") {
+        // Create GetCounterColumn node
+        newNode = {
+          id: getNodeId(),
+          type: "getcountercolumn",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedTable: "",
+            selectedColumn: "",
+            newColumnName: "",
+            inputType: "PackFiles" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            tableNames: Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
+              return firstTableName.localeCompare(secondTableName);
+            }),
+            columnNames: [],
+            DBNameToDBVersions,
+          } as GetCounterColumnNodeData,
         };
       } else if (nodeData.type === "textsurround") {
         // Create TextSurround node with special data structure

@@ -655,7 +655,8 @@ declare global {
     | "aggregatenested"
     | "generaterows"
     | "groupby"
-    | "dumptotsv";
+    | "dumptotsv"
+    | "getcountercolumn";
 
   // FlowNodeData = "string"|
 
