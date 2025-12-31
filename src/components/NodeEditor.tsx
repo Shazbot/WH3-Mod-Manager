@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, DragEvent, useEffect } from "react";
+import React, { useCallback, useState, useRef, DragEvent, useMemo, useEffect } from "react";
 import {
   ReactFlow,
   Node,
@@ -94,7 +94,15 @@ export interface SerializedNode {
     transformations?: Array<{
       id: string;
       sourceColumn: string;
-      transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "counter";
+      transformationType:
+        | "none"
+        | "prefix"
+        | "suffix"
+        | "add"
+        | "subtract"
+        | "multiply"
+        | "divide"
+        | "counter";
       prefix?: string;
       suffix?: string;
       numericValue?: number;
@@ -473,7 +481,7 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
     // Sort rest alphabetically by display name
     const firstName = firstMod.humanName || firstMod.name;
     const secondName = secondMod.humanName || secondMod.name;
-    return firstName.localeCompare(secondName);
+    return collator.compare(firstName, secondName);
   });
 
   const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
@@ -1121,7 +1129,10 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
 
-      <div className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+      <div
+        className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content"
+        onWheel={stopWheelPropagation}
+      >
         {filters.map((filter, index) => (
           <div key={index} className="bg-gray-800 p-2 rounded border border-gray-600">
             <div className="flex items-center gap-2 mb-2">
@@ -1765,6 +1776,7 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
   const [newColumnName, setNewColumnName] = useState(data.newColumnName || "");
   const [tableNames, setTableNames] = useState<string[]>(data.tableNames || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [inputColumnNames, setInputColumnNames] = useState<string[]>([]);
 
   // Sync state with data prop changes
   React.useEffect(() => {
@@ -1783,7 +1795,11 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
         const tableFields = tableVersions[0].fields || [];
         // Filter to only numeric columns
         const numericFields = tableFields.filter(
-          (field) => field.field_type === "I32" || field.field_type === "I64" || field.field_type === "F32" || field.field_type === "F64"
+          (field) =>
+            field.field_type === "I32" ||
+            field.field_type === "I64" ||
+            field.field_type === "F32" ||
+            field.field_type === "F64"
         );
         const fieldNames = numericFields.map((field) => field.name);
         setColumnNames(fieldNames);
@@ -1820,12 +1836,28 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
   const handleNewColumnNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.value;
     setNewColumnName(newValue);
+    setInputColumnNames([newValue]);
 
     const updateEvent = new CustomEvent("nodeDataUpdate", {
       detail: { nodeId: id, newColumnName: newValue },
     });
     window.dispatchEvent(updateEvent);
   };
+
+  // Sync inputColumnNames to node data whenever it changes (to persist when saved)
+  React.useEffect(() => {
+    if (
+      inputColumnNames.length > 0 &&
+      JSON.stringify(inputColumnNames) !== JSON.stringify((data as any).inputColumnNames)
+    ) {
+      console.log(`[GetCounterColumn ${id}] Syncing inputColumnNames to node data:`, inputColumnNames);
+      window.dispatchEvent(
+        new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, inputColumnNames },
+        })
+      );
+    }
+  }, [inputColumnNames, id]);
 
   return (
     <div className="bg-gray-700 border-2 border-teal-600 rounded-lg p-4 min-w-[250px]">
@@ -2353,7 +2385,10 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
 
       <div className="mb-2">
         <label className="text-xs text-gray-300 block mb-1">Index Columns (select multiple):</label>
-        <div className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content" onWheel={stopWheelPropagation}>
+        <div
+          className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
           {columnNames.length === 0 ? (
             <div className="text-xs text-gray-500 italic">Connect a table to see columns</div>
           ) : (
@@ -2489,11 +2524,17 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
     // Fallback: extract from columnNames by removing the source table prefix
     // This handles the case where we loaded from JSON and lost the metadata
-    if (indexedColumnNames.length === 0 && data.columnNames && data.columnNames.length > 0 && data.connectedTableName) {
+    if (
+      indexedColumnNames.length === 0 &&
+      data.columnNames &&
+      data.columnNames.length > 0 &&
+      data.connectedTableName
+    ) {
       const sourcePrefix = `${data.connectedTableName}_`;
       // Get columns that don't have the source prefix (these are from the indexed table)
-      const indexedColsWithPrefix = data.columnNames
-        .filter((col: string) => !col.startsWith(sourcePrefix) && !col.startsWith("agg_"));
+      const indexedColsWithPrefix = data.columnNames.filter(
+        (col: string) => !col.startsWith(sourcePrefix) && !col.startsWith("agg_")
+      );
 
       if (indexedColsWithPrefix.length > 0) {
         // Extract the table name from the first column
@@ -2520,7 +2561,15 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
         setIndexedColumnNames(indexedCols);
       }
     }
-  }, [(data as any).connectedIndexTableName, (data as any).indexedTableColumnNames, (data as any).indexedTableColumns, (data as any).indexedTableName, data.columnNames, data.connectedTableName, indexedColumnNames.length]);
+  }, [
+    (data as any).connectedIndexTableName,
+    (data as any).indexedTableColumnNames,
+    (data as any).indexedTableColumns,
+    (data as any).indexedTableName,
+    data.columnNames,
+    data.connectedTableName,
+    indexedColumnNames.length,
+  ]);
 
   // Compute output column names based on join type
   React.useEffect(() => {
@@ -2537,10 +2586,11 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       // For inner/left/cross joins, output is prefixed source + prefixed indexed columns
       if (sourceColumnNames.length > 0 && indexedColumnNames.length > 0) {
         const sourceTableName = data.connectedTableName || "source";
-        const indexedTableName = (data as any).indexedTableName || (data as any).connectedIndexTableName || "indexed";
+        const indexedTableName =
+          (data as any).indexedTableName || (data as any).connectedIndexTableName || "indexed";
 
-        const prefixedSourceColumns = sourceColumnNames.map(col => `${sourceTableName}_${col}`);
-        const prefixedIndexedColumns = indexedColumnNames.map(col => `${indexedTableName}_${col}`);
+        const prefixedSourceColumns = sourceColumnNames.map((col) => `${sourceTableName}_${col}`);
+        const prefixedIndexedColumns = indexedColumnNames.map((col) => `${indexedTableName}_${col}`);
         const outputColumns = [...prefixedSourceColumns, ...prefixedIndexedColumns];
 
         setColumnNames(outputColumns);
@@ -2557,7 +2607,16 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [sourceColumnNames, indexedColumnNames, joinType, data.connectedTableName, (data as any).indexedTableName, (data as any).connectedIndexTableName, columnNames, id]);
+  }, [
+    sourceColumnNames,
+    indexedColumnNames,
+    joinType,
+    data.connectedTableName,
+    (data as any).indexedTableName,
+    (data as any).connectedIndexTableName,
+    columnNames,
+    id,
+  ]);
 
   // Validate schema relationships and show warning if no foreign key reference exists
   React.useEffect(() => {
@@ -2611,7 +2670,9 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       if (!hasValidReference) {
         if (hasTableReference) {
           setSchemaWarning(
-            `Warning: Column "${lookupColumn}" references table "${indexedTableName}", but not column "${indexJoinColumn}". Expected reference columns: ${referencedColumns.join(", ")}`
+            `Warning: Column "${lookupColumn}" references table "${indexedTableName}", but not column "${indexJoinColumn}". Expected reference columns: ${referencedColumns.join(
+              ", "
+            )}`
           );
         } else {
           setSchemaWarning(
@@ -3165,7 +3226,10 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
   // Sync local state with prop changes (but prevent feedback loops)
   React.useEffect(() => {
-    if (data.groupByColumns !== undefined && JSON.stringify(data.groupByColumns) !== JSON.stringify(groupByColumns)) {
+    if (
+      data.groupByColumns !== undefined &&
+      JSON.stringify(data.groupByColumns) !== JSON.stringify(groupByColumns)
+    ) {
       setGroupByColumns(data.groupByColumns);
     }
   }, [data.groupByColumns]);
@@ -3232,7 +3296,10 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
   // Sync inputColumnNames to node data whenever it changes (to persist when saved)
   React.useEffect(() => {
-    if (inputColumnNames.length > 0 && JSON.stringify(inputColumnNames) !== JSON.stringify((data as any).inputColumnNames)) {
+    if (
+      inputColumnNames.length > 0 &&
+      JSON.stringify(inputColumnNames) !== JSON.stringify((data as any).inputColumnNames)
+    ) {
       console.log(`[GroupBy ${id}] Syncing inputColumnNames to node data:`, inputColumnNames);
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
@@ -3245,10 +3312,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   // Calculate and propagate output column names based on groupByColumns and aggregations
   React.useEffect(() => {
     // Output columns = group by columns + aggregation output names
-    const outputColumnNames = [
-      ...groupByColumns,
-      ...aggregations.map((agg) => agg.outputName),
-    ];
+    const outputColumnNames = [...groupByColumns, ...aggregations.map((agg) => agg.outputName)];
 
     const outputChanged = JSON.stringify(outputColumnNames) !== JSON.stringify(data.columnNames);
 
@@ -3308,7 +3372,10 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       {/* Group By Columns Section */}
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-1">Group By Columns:</label>
-        <div className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content" onWheel={stopWheelPropagation}>
+        <div
+          className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
           {inputColumnNames.length === 0 ? (
             <div className="text-xs text-gray-500">No columns available</div>
           ) : (
@@ -3340,7 +3407,10 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
           </button>
         </div>
 
-        <div className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+        <div
+          className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
           {aggregations.map((agg) => (
             <div key={agg.id} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="flex items-center justify-between mb-2">
@@ -3639,7 +3709,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
           </button>
         </div>
 
-        <div className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+        <div
+          className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
           {transformations.map((trans) => (
             <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="flex items-center justify-between mb-1">
@@ -3789,7 +3862,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
       {/* Output Tables Configuration */}
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-2">Output Tables:</label>
-        <div className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+        <div
+          className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
           {outputTables.map((output, idx) => (
             <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="text-xs text-gray-400 mb-1">Output {idx + 1}</div>
@@ -3808,7 +3884,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
               </select>
 
               <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
-              <div className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2 scrollable-node-content" onWheel={stopWheelPropagation}>
+              <div
+                className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2 scrollable-node-content"
+                onWheel={stopWheelPropagation}
+              >
                 {transformations
                   .filter((trans) => trans.targetTableHandleId === output.handleId)
                   .map((trans) => (
@@ -3825,8 +3904,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                       <span className="text-xs text-white">{trans.outputColumnName}</span>
                     </label>
                   ))}
-                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId)
-                  .length === 0 && (
+                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length ===
+                  0 && (
                   <div className="text-xs text-gray-500 text-center py-1">
                     No transformations for this table
                   </div>
@@ -3834,7 +3913,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
               </div>
 
               <div className="text-xs text-gray-400 mb-1">Static Values (remaining columns):</div>
-              <div className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content" onWheel={stopWheelPropagation}>
+              <div
+                className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content"
+                onWheel={stopWheelPropagation}
+              >
                 {getAvailableStaticColumns(idx).map((col) => (
                   <div key={col} className="flex items-center gap-1 mb-1">
                     <span className="text-xs text-white w-24 truncate" title={col}>
@@ -4062,7 +4144,10 @@ const FlowOptionsModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+      <div
+        className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto scrollable-node-content"
+        onWheel={stopWheelPropagation}
+      >
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-white">Flow Options</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
@@ -4821,7 +4906,10 @@ const NodeSidebar: React.FC<{
     .filter((section) => section.nodes.length > 0); // Only show sections that have matching nodes
 
   return (
-    <div className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
+    <div
+      className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto scrollable-node-content"
+      onWheel={stopWheelPropagation}
+    >
       <h3 className="font-bold text-lg mb-2 text-white">Node Types</h3>
 
       {/* Filter textbox */}
@@ -4864,6 +4952,8 @@ interface NodeEditorProps {
   currentPack?: string;
 }
 
+const collator = new Intl.Collator("en");
+
 const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: NodeEditorProps) => {
   const dispatch = useAppDispatch();
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
@@ -4875,6 +4965,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
     undefined
   );
+
+  const sortedTableNames = useMemo(() => {
+    return Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
+      return collator.compare(firstTableName, secondTableName);
+    });
+  }, [DBNameToDBVersions]);
 
   // Flow options state
   const [flowOptions, setFlowOptions] = useState<FlowOption[]>([]);
@@ -4893,7 +4989,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       if (node.type !== "lookup") return false;
       const nodeData = node.data as any;
       // Check if indexedTableName is missing or is the fallback "indexed", or if indexedInputType is missing
-      return !nodeData.indexedTableName || nodeData.indexedTableName === "indexed" || !nodeData.indexedInputType;
+      return (
+        !nodeData.indexedTableName || nodeData.indexedTableName === "indexed" || !nodeData.indexedInputType
+      );
     });
 
     if (lookupNodesToFix.length === 0) return;
@@ -4910,9 +5008,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (sourceNode) {
           const sourceData = sourceNode.data as any;
           // Get table name from either selectedTable (for tableselectiondropdown) or connectedTableName
-          const tableName = (sourceNode.type === "tableselectiondropdown" && sourceData.selectedTable)
-            ? sourceData.selectedTable
-            : sourceData.connectedTableName;
+          const tableName =
+            sourceNode.type === "tableselectiondropdown" && sourceData.selectedTable
+              ? sourceData.selectedTable
+              : sourceData.connectedTableName;
 
           if (tableName) {
             // Determine the input type based on the source node type
@@ -4980,7 +5079,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         const sourceNode = nodes.find((n) => n.id === incomingEdge.source);
         if (sourceNode) {
           const sourceData = sourceNode.data as any;
-          let cols = sourceData.columnNames || [];
+          let cols = sourceData.inputColumnNames || sourceData.columnNames || [];
 
           // For tableselectiondropdown nodes, columnNames might be empty
           // Get columns from the schema based on selectedTable
@@ -5100,7 +5199,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 selectedColumn1: selectedColumn1 !== undefined ? selectedColumn1 : node.data.selectedColumn1,
                 selectedColumn2: selectedColumn2 !== undefined ? selectedColumn2 : node.data.selectedColumn2,
                 columnNames: columnNames !== undefined ? columnNames : node.data.columnNames,
-                inputColumnNames: inputColumnNames !== undefined ? inputColumnNames : (node.data as any).inputColumnNames,
+                inputColumnNames:
+                  inputColumnNames !== undefined ? inputColumnNames : (node.data as any).inputColumnNames,
                 groupedTextSelection:
                   groupedTextSelection !== undefined ? groupedTextSelection : node.data.groupedTextSelection,
                 outputType: outputType !== undefined ? outputType : node.data.outputType,
@@ -5416,8 +5516,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         setEdges((eds) => {
           // Include sourceHandle and targetHandle in edge ID to allow multiple connections
           // from different handles of the same source node to the same target node
-          const sourceHandlePart = params.sourceHandle ? `-${params.sourceHandle}` : '';
-          const targetHandlePart = params.targetHandle ? `-${params.targetHandle}` : '';
+          const sourceHandlePart = params.sourceHandle ? `-${params.sourceHandle}` : "";
+          const targetHandlePart = params.targetHandle ? `-${params.targetHandle}` : "";
           const newEdge = {
             ...params,
             id: `edge-${params.source}${sourceHandlePart}-${params.target}${targetHandlePart}`,
@@ -5428,7 +5528,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
           // For generaterows, mergechanges, and savechanges nodes, allow multiple connections to the same target handle
           // For other nodes, remove existing connections to the target handle first
-          if (targetNode.type === "generaterows" || targetNode.type === "mergechanges" || targetNode.type === "savechanges") {
+          if (
+            targetNode.type === "generaterows" ||
+            targetNode.type === "mergechanges" ||
+            targetNode.type === "savechanges"
+          ) {
             // Allow multiple connections - just add the new edge
             return [...eds, newEdge];
           } else {
@@ -5533,6 +5637,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             targetNode.type === "extracttable" ||
             targetNode.type === "aggregatenested" ||
             targetNode.type === "groupby" ||
+            targetNode.type === "getcountercolumn" ||
             targetNode.type === "generaterows") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
         ) {
@@ -6047,9 +6152,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "lookup" ||
             sourceNode.type === "extracttable" ||
             sourceNode.type === "flattennested" ||
+            sourceNode.type === "getcountercolumn" ||
             sourceNode.type === "groupby")
         ) {
           const sourceData = sourceNode.data as any;
+
+          // console.log("TO UPDATE GENERATEROWS CONNECTION", { ...sourceData, DBNameToDBVersions: {} });
 
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
@@ -6474,9 +6582,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             selectedTable: "",
             inputType: "PackFiles" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
-            tableNames: Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
-              return firstTableName.localeCompare(secondTableName);
-            }),
+            tableNames: sortedTableNames,
           } as TableSelectionDropdownNodeData,
         };
       } else if (nodeData.type === "columnselection") {
@@ -6673,9 +6779,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             newColumnName: "",
             inputType: "PackFiles" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
-            tableNames: Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
-              return firstTableName.localeCompare(secondTableName);
-            }),
+            tableNames: sortedTableNames,
             columnNames: [],
             DBNameToDBVersions,
           } as GetCounterColumnNodeData,
@@ -6955,6 +7059,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           groupByColumns: (node.data as any)?.groupByColumns || [],
           aggregations: (node.data as any)?.aggregations || [],
           inputColumnNames: (node.data as any)?.inputColumnNames || [],
+          newColumnName: String((node.data as any)?.newColumnName) || "",
         },
       };
 
@@ -7092,16 +7197,17 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "extracttable" ||
             node.data.type === "aggregatenested" ||
             node.data.type === "groupby" ||
+            node.data.type === "getcountercolumn" ||
             node.data.type === "generaterows"
           ) {
-            console.log("Setting DBNameToDBVersions with", Object.keys(DBNameToDBVersions || {}).length, "tables");
+            console.log(
+              "Setting DBNameToDBVersions with",
+              Object.keys(DBNameToDBVersions || {}).length,
+              "tables"
+            );
             node.data.DBNameToDBVersions = DBNameToDBVersions;
-            if (node.data.type === "tableselectiondropdown") {
-              node.data.tableNames = Object.keys(DBNameToDBVersions || {}).toSorted(
-                (firstTableName, secondTableName) => {
-                  return firstTableName.localeCompare(secondTableName);
-                }
-              );
+            if (node.data.type === "tableselectiondropdown" || node.data.type === "getcountercolumn") {
+              node.data.tableNames = sortedTableNames;
             }
           }
           return node;
@@ -7148,6 +7254,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   node.type === "lookup" ||
                   node.type === "extracttable" ||
                   node.type === "aggregatenested" ||
+                  node.type === "getcountercolumn" ||
                   node.type === "generaterows"
                 ) {
                   return {
@@ -7189,6 +7296,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 targetNode.type === "groupbycolumns" ||
                 targetNode.type === "filter" ||
                 targetNode.type === "referencelookup" ||
+                targetNode.type === "getcountercolumn" ||
                 targetNode.type === "reversereferencelookup") &&
               (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
             ) {

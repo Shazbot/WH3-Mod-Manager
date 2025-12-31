@@ -8,7 +8,15 @@ import {
   writePack,
 } from "./packFileSerializer";
 import appData from "./appData";
-import { AmendedSchemaField, NewPackedFile, SCHEMA_FIELD_TYPE, DBVersion, DBField, Pack, PackedFile } from "./packFileTypes";
+import {
+  AmendedSchemaField,
+  NewPackedFile,
+  SCHEMA_FIELD_TYPE,
+  DBVersion,
+  DBField,
+  Pack,
+  PackedFile,
+} from "./packFileTypes";
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 
@@ -2934,7 +2942,9 @@ async function executeLookupNode(
       allRightRows.push(...rows);
     }
 
-    console.log(`Lookup Node ${nodeId}: Cross joining ${sourceRows.length} source rows with ${allRightRows.length} right rows`);
+    console.log(
+      `Lookup Node ${nodeId}: Cross joining ${sourceRows.length} source rows with ${allRightRows.length} right rows`
+    );
 
     const crossJoinedRows: AmendedSchemaField[][] = [];
 
@@ -4007,9 +4017,11 @@ async function executeGenerateRowsNode(
       let outputValue: any;
 
       if (!sourceCell) {
-        console.warn(
-          `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row ${rowIdx}. Using default value.`
-        );
+        if (transformation.transformationType !== "counter") {
+          console.warn(
+            `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row ${rowIdx}. Using default value.`
+          );
+        }
 
         // Use default values based on transformation type
         switch (transformation.transformationType) {
