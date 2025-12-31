@@ -3918,22 +3918,15 @@ async function executeGenerateRowsNode(
       tableCount: 0,
     };
 
-    // For multi-output nodes, create a map of outputs
-    if (config.outputTables.length > 1) {
-      const emptyOutputs: Record<string, DBTablesNodeData> = {};
-      for (const outputTable of config.outputTables) {
-        emptyOutputs[outputTable.handleId] = emptyTableSelection;
-      }
-      return {
-        success: true,
-        data: emptyOutputs,
-      };
+    // Always return as a map by handle ID for proper extraction by node graph executor
+    const emptyOutputs: Record<string, DBTablesNodeData> = {};
+    for (const outputTable of config.outputTables) {
+      emptyOutputs[outputTable.handleId] = emptyTableSelection;
     }
 
-    // For single-output nodes, return the empty data directly
     return {
       success: true,
-      data: emptyTableSelection,
+      data: emptyOutputs,
     };
   }
 

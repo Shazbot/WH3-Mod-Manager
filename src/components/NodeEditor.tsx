@@ -4806,11 +4806,35 @@ const getNodeId = () => `node_${nodeId++}`;
 const NodeSidebar: React.FC<{
   onDragStart: (event: DragEvent, nodeType: DraggableNodeData) => void;
 }> = ({ onDragStart }) => {
+  const [filterText, setFilterText] = useState("");
+
+  // Filter nodes based on search text
+  const filteredSections = nodeTypeSections
+    .map((section) => ({
+      ...section,
+      nodes: section.nodes.filter(
+        (node) =>
+          node.label.toLowerCase().includes(filterText.toLowerCase()) ||
+          node.description.toLowerCase().includes(filterText.toLowerCase())
+      ),
+    }))
+    .filter((section) => section.nodes.length > 0); // Only show sections that have matching nodes
+
   return (
     <div className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto scrollable-node-content" onWheel={stopWheelPropagation}>
-      <h3 className="font-bold text-lg mb-4 text-white">Node Types</h3>
+      <h3 className="font-bold text-lg mb-2 text-white">Node Types</h3>
+
+      {/* Filter textbox */}
+      <input
+        type="text"
+        placeholder="Filter nodes..."
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
+        className="w-full p-2 mb-4 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+      />
+
       <div className="space-y-4">
-        {nodeTypeSections.map((section) => (
+        {filteredSections.map((section) => (
           <div key={section.title} className="space-y-2">
             <h4 className="font-semibold text-sm text-gray-300 uppercase tracking-wide border-b border-gray-600 pb-1">
               {section.title}
@@ -5402,9 +5426,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             animated: true,
           };
 
-          // For generaterows nodes, allow multiple connections to the same target handle
+          // For generaterows, mergechanges, and savechanges nodes, allow multiple connections to the same target handle
           // For other nodes, remove existing connections to the target handle first
-          if (targetNode.type === "generaterows") {
+          if (targetNode.type === "generaterows" || targetNode.type === "mergechanges" || targetNode.type === "savechanges") {
             // Allow multiple connections - just add the new edge
             return [...eds, newEdge];
           } else {
@@ -5569,6 +5593,68 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               );
             }
           }
+        }
+
+        // Update nodes when connected to GetCounterColumn node
+        if (
+          (targetNode.type === "columnselectiondropdown" ||
+            targetNode.type === "groupbycolumns" ||
+            targetNode.type === "filter" ||
+            targetNode.type === "referencelookup" ||
+            targetNode.type === "reversereferencelookup" ||
+            targetNode.type === "indextable" ||
+            targetNode.type === "lookup" ||
+            targetNode.type === "extracttable" ||
+            targetNode.type === "aggregatenested" ||
+            targetNode.type === "groupby" ||
+            targetNode.type === "generaterows") &&
+          sourceNode.type === "getcountercolumn"
+        ) {
+          const counterData = sourceNode.data as unknown as GetCounterColumnNodeData;
+          const newColumnName = counterData.newColumnName || `counter_${counterData.selectedColumn}`;
+          const tableName = `_counter_${counterData.selectedTable}`;
+
+          // Create a synthetic DBVersion for the output table with just the counter column
+          const syntheticTableVersion: DBVersion = {
+            version: 1,
+            fields: [
+              {
+                name: newColumnName,
+                field_type: "I32", // Counter values are integers
+                is_key: false,
+                default_value: "",
+                is_filename: false,
+                is_reference: [],
+                description: `Counter from ${counterData.selectedTable}.${counterData.selectedColumn}`,
+                ca_order: 0,
+                is_bitwise: 0,
+                enum_values: {},
+              },
+            ],
+          };
+
+          // Create DBNameToDBVersions with the synthetic table
+          const updatedDBNameToDBVersions = {
+            ...(DBNameToDBVersions || {}),
+            [tableName]: [syntheticTableVersion],
+          };
+
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === params.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    columnNames: [newColumnName],
+                    connectedTableName: tableName,
+                    DBNameToDBVersions: updatedDBNameToDBVersions,
+                  },
+                };
+              }
+              return node;
+            })
+          );
         }
 
         // Update Lookup node when Index Table connects to its input-index handle
