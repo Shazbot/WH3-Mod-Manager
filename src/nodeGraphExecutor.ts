@@ -1,4 +1,4 @@
-import { executeNodeAction } from "./nodeExecutor";
+import { executeNodeAction, resetCounterTracking } from "./nodeExecutor";
 import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
 
 interface NodeGraphExecutionRequest {
@@ -29,6 +29,9 @@ export const executeNodeGraph = async (
 
   console.log("Starting node graph execution in backend...");
   console.log(`Graph contains ${nodes.length} nodes and ${connections.length} connections`);
+
+  // Reset counter tracking at the start of each flow execution
+  resetCounterTracking();
 
   try {
     // Build execution graph
@@ -421,7 +424,9 @@ export const executeNodeGraph = async (
     const summary = Array.from(executionResults.entries())
       .map(
         ([nodeId, nodeResult]) =>
-          `${nodeId}: ${nodeResult.success ? "✅" : "❌"}${nodeResult.error ? ` (${nodeResult.error})` : ""}`
+          `${nodeId}(${nodeMap.get(nodeId)?.type}): ${nodeResult.success ? "✅" : "❌"}${
+            nodeResult.error ? ` (${nodeResult.error})` : ""
+          }`
       )
       .join("\n");
 

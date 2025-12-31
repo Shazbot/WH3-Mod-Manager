@@ -16,6 +16,12 @@ import { gameToPackWithDBTablesName } from "./supportedGames";
 // Map structure: sourceColumnId -> Set of used numbers
 const globalCounterTracking = new Map<string, Set<number>>();
 
+// Reset counter tracking at the start of each flow execution
+export const resetCounterTracking = () => {
+  globalCounterTracking.clear();
+  console.log("Counter tracking reset for new flow execution");
+};
+
 export const executeNodeAction = async (request: NodeExecutionRequest): Promise<NodeExecutionResult> => {
   const { nodeId, nodeType, textValue, inputData } = request;
 
@@ -3899,10 +3905,25 @@ async function executeGenerateRowsNode(
       ) as AmendedSchemaField[][])
     : [];
 
+  // If no rows, return empty output for each configured output table
+  // This allows the flow to continue on other branches
   if (rows.length === 0) {
+    console.log(`Generate Rows Node ${nodeId}: No input rows - returning empty output tables`);
+
+    const emptyOutputs: Record<string, DBTablesNodeData> = {};
+    for (const outputTable of config.outputTables) {
+      emptyOutputs[outputTable.handleId] = {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      };
+    }
+
+    // Return empty data for each output
     return {
-      success: false,
-      error: "No rows found in input table",
+      success: true,
+      data: config.outputTables.length > 1 ? emptyOutputs : emptyOutputs[config.outputTables[0]?.handleId],
     };
   }
 
@@ -4486,16 +4507,19 @@ async function executeGetCounterColumnNode(
   // Create the output table schema
   const firstCell = collectedValues[0];
   const outputTableSchema: DBVersion = {
-    name: `_counter_${selectedTable}`,
     version: 1,
     fields: [
       {
         name: newColumnName,
         field_type: (firstCell.type as SCHEMA_FIELD_TYPE) || "StringU8",
         is_key: false,
+        default_value: "",
         is_filename: false,
         is_reference: [],
         description: `Counter from ${selectedTable}.${selectedColumn}`,
+        ca_order: 0,
+        is_bitwise: 0,
+        enum_values: {},
       },
     ],
   };
