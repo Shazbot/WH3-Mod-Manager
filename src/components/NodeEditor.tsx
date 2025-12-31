@@ -5288,6 +5288,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as GenerateRowsNodeData).outputType;
       } else if (sourceNode.type === "groupby" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GroupByNodeData).outputType;
+      } else if (sourceNode.type === "getcountercolumn" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as GetCounterColumnNodeData).outputType;
       }
 
       // Get input type from target node
@@ -5349,6 +5351,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as GroupByNodeData).inputType;
       } else if (targetNode.type === "dumptotsv" && targetNode.data) {
         targetInputType = "TableSelection" as NodeEdgeTypes;
+      } else if (targetNode.type === "getcountercolumn" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as GetCounterColumnNodeData).inputType;
       }
 
       // Allow connection only if types are compatible
