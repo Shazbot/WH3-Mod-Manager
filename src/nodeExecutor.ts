@@ -3910,20 +3910,30 @@ async function executeGenerateRowsNode(
   if (rows.length === 0) {
     console.log(`Generate Rows Node ${nodeId}: No input rows - returning empty output tables`);
 
-    const emptyOutputs: Record<string, DBTablesNodeData> = {};
-    for (const outputTable of config.outputTables) {
-      emptyOutputs[outputTable.handleId] = {
-        type: "TableSelection",
-        tables: [],
-        sourceFiles: inputData.sourceFiles || [],
-        tableCount: 0,
+    // Create empty TableSelection data
+    const emptyTableSelection: DBTablesNodeData = {
+      type: "TableSelection",
+      tables: [],
+      sourceFiles: inputData.sourceFiles || [],
+      tableCount: 0,
+    };
+
+    // For multi-output nodes, create a map of outputs
+    if (config.outputTables.length > 1) {
+      const emptyOutputs: Record<string, DBTablesNodeData> = {};
+      for (const outputTable of config.outputTables) {
+        emptyOutputs[outputTable.handleId] = emptyTableSelection;
+      }
+      return {
+        success: true,
+        data: emptyOutputs,
       };
     }
 
-    // Return empty data for each output
+    // For single-output nodes, return the empty data directly
     return {
       success: true,
-      data: config.outputTables.length > 1 ? emptyOutputs : emptyOutputs[config.outputTables[0]?.handleId],
+      data: emptyTableSelection,
     };
   }
 
@@ -4312,6 +4322,20 @@ async function executeDumpToTSVNode(
     return { success: false, error: "Invalid input: Expected TableSelection data" };
   }
 
+  // Handle empty input - return success without writing file
+  if (!inputData.tables || inputData.tables.length === 0) {
+    console.log(`Dump to TSV Node ${nodeId}: No tables to dump - skipping file write`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      },
+    };
+  }
+
   // Parse filename from textValue (it's stored as JSON with filename key)
   let filename = "";
   try {
@@ -4375,6 +4399,20 @@ async function executeDumpToTSVNode(
       }
     }
 
+    // If no lines were generated, return success without writing empty file
+    if (tsvLines.length === 0) {
+      console.log(`Dump to TSV Node ${nodeId}: No rows to dump - skipping file write`);
+      return {
+        success: true,
+        data: {
+          type: "TableSelection",
+          tables: inputData.tables,
+          sourceFiles: inputData.sourceFiles || [],
+          tableCount: inputData.tableCount || inputData.tables.length,
+        },
+      };
+    }
+
     // Write to file in game folder (not data folder)
     const outputPath = nodePath.join(gamePath, filename);
     fs.writeFileSync(outputPath, tsvLines.join("\n"), "utf-8");
@@ -4428,16 +4466,37 @@ async function executeGetCounterColumnNode(
     };
   }
 
+  // Use defaults for missing configuration to allow flow to continue
   if (!selectedTable) {
-    return { success: false, error: "No table selected. Please select a table from the dropdown." };
+    console.log(`GetCounterColumn Node ${nodeId}: No table selected - returning empty output`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.files || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
   }
 
   if (!selectedColumn) {
-    return { success: false, error: "No column selected. Please select a numeric column." };
+    console.log(`GetCounterColumn Node ${nodeId}: No column selected - returning empty output`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.files || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
   }
 
+  // Use default column name if not specified
   if (!newColumnName) {
-    return { success: false, error: "No column name specified. Please provide a name for the new column." };
+    newColumnName = `counter_${selectedColumn}`;
+    console.log(`GetCounterColumn Node ${nodeId}: No column name specified, using default: ${newColumnName}`);
   }
 
   console.log(`GetCounterColumn Node ${nodeId}: Collecting values from ${selectedTable}.${selectedColumn}`);
@@ -4495,10 +4554,17 @@ async function executeGetCounterColumnNode(
     }
   }
 
+  // If no values collected, return empty result to allow flow to continue
   if (collectedValues.length === 0) {
+    console.log(`GetCounterColumn Node ${nodeId}: No values found - returning empty output`);
     return {
-      success: false,
-      error: `No values found for column ${selectedColumn} in table ${selectedTable}`,
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.files || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
     };
   }
 
