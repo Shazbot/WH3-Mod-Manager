@@ -34,7 +34,7 @@ import getPackTableData, {
   isSchemaFieldNumberInteger,
 } from "./utility/frontend/packDataHandling";
 import deepClone from "clone-deep";
-import { gameToIntroMovies, gameToPackHeader } from "./supportedGames";
+import { gameToIntroMovies, gameToPackHeader, supportsCompression } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
 import { collator } from "./utility/packFileSorting";
@@ -1531,7 +1531,7 @@ export const writePackStream = async (
       } else {
         streamWriter.addInt32(file_size);
       }
-      streamWriter.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) streamWriter.addInt8(0); // is_compressed
       streamWriter.addString(name + "\0");
 
       // Flush periodically with backpressure handling
@@ -1724,7 +1724,7 @@ export const writePackAppendFast = async (
         } else {
           newIndexAccumulator.addInt32(file_size);
         }
-        newIndexAccumulator.addInt8(0); // is_compressed
+        if (supportsCompression[appData.currentGame]) newIndexAccumulator.addInt8(0); // is_compressed
         newIndexAccumulator.addString(name + "\0");
         await newIndexAccumulator.flushIfNeeded();
       }
@@ -1885,7 +1885,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string, depende
       } else {
         indexAccumulator.addInt32(file_size);
       }
-      indexAccumulator.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) indexAccumulator.addInt8(0); // is_compressed
       indexAccumulator.addString(name + "\0");
       await indexAccumulator.flushIfNeeded();
     }
@@ -2037,7 +2037,7 @@ export const writePackLegacy = async (
       } else {
         indexAccumulator.addInt32(file_size);
       }
-      indexAccumulator.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) indexAccumulator.addInt8(0); // is_compressed
       indexAccumulator.addString(name + "\0");
 
       // Flush periodically to avoid excessive memory usage
@@ -2172,7 +2172,7 @@ export const writeStartGamePack = async (
       const { name, file_size } = packFile;
       // console.log("file size is " + file_size);
       startGameIndexAccumulator.addInt32(file_size);
-      startGameIndexAccumulator.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) startGameIndexAccumulator.addInt8(0); // is_compressed
       startGameIndexAccumulator.addString(name + "\0");
 
       // Flush periodically to avoid excessive memory usage
