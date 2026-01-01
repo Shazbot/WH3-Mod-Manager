@@ -1256,8 +1256,11 @@ export const executeFlowsForPack = async (
           }
         }
 
-        // Generate a unique flow execution ID for this flow run
-        const flowExecutionId = `${packName}_${Date.now()}`;
+        // Generate a deterministic flow execution ID based on pack name and flow file name
+        // Extract flow name from path like "whmmflows\flow_name.json" -> "flow_name"
+        const flowNameWithoutPath = flowFileName.replace(/^.*[\\\/]/, ""); // Remove directory path
+        const flowNameWithoutExt = flowNameWithoutPath.replace(/\.[^.]+$/, ""); // Remove file extension
+        const flowExecutionId = `${packName}_${flowNameWithoutExt}`;
 
         // Set flowExecutionId for Save Changes nodes so they know to save to whmm_flows
         for (const node of flowData.nodes) {
