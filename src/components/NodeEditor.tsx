@@ -7829,7 +7829,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph, dispatch]);
 
   return (
-    <div className="flex">
+    <div className="flex explicit-height-without-topbar-and-padding">
       <NodeSidebar onDragStart={onDragStart} />
       <div className="flex-1 relative" ref={reactFlowWrapper}>
         <ReactFlowProvider>
