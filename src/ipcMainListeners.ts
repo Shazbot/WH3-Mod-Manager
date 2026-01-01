@@ -3900,6 +3900,12 @@ export const registerIpcMainListeners = (
               startTime: Date.now(),
             } as Toast);
 
+            // Reset counter tracking once at the start of game launch
+            // This ensures counters are maintained across all flows in all packs
+            const { resetCounterTracking } = await import("./nodeExecutor");
+            resetCounterTracking();
+            console.log("Reset counter tracking for game launch - counters will be maintained across all flows");
+
             for (const pack of enabledModsWithFlows) {
               // Check if this pack has overwrites - if so, use the overwritten pack
               const hasOverwrites = enabledModsWithOverwrites.some(

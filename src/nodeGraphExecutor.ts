@@ -4,6 +4,7 @@ import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
 interface NodeGraphExecutionRequest {
   nodes: SerializedNode[];
   connections: SerializedConnection[];
+  resetCounters?: boolean; // Optional flag to control counter reset (defaults to true)
 }
 
 interface NodeGraphExecutionResult {
@@ -25,13 +26,15 @@ interface NodeExecutionResult {
 export const executeNodeGraph = async (
   request: NodeGraphExecutionRequest
 ): Promise<NodeGraphExecutionResult> => {
-  const { nodes, connections } = request;
+  const { nodes, connections, resetCounters = true } = request;
 
   console.log("Starting node graph execution in backend...");
   console.log(`Graph contains ${nodes.length} nodes and ${connections.length} connections`);
 
-  // Reset counter tracking at the start of each flow execution
-  resetCounterTracking();
+  // Reset counter tracking at the start of each flow execution (unless explicitly disabled)
+  if (resetCounters) {
+    resetCounterTracking();
+  }
 
   try {
     // Build execution graph

@@ -1159,6 +1159,9 @@ export const executeFlowsForPack = async (
   try {
     console.log("Executing flows for pack:", packName);
 
+    // Note: Counter tracking is NOT reset here - it's reset once at game launch level
+    // This ensures counters are unique across all flows in all packs
+
     // Read the pack to get flow files
     const sourceMod = await readPack(pathSource, { readFlows: true, skipParsingTables: true });
 
@@ -1302,10 +1305,11 @@ export const executeFlowsForPack = async (
           }
         }
 
-        // Execute the flow
+        // Execute the flow (don't reset counters - they're maintained across all flows)
         const result = await executeNodeGraph({
           nodes: flowData.nodes,
           connections: flowData.connections,
+          resetCounters: false, // Counters were reset once at pack level
         });
 
         if (result.success) {
