@@ -3892,28 +3892,39 @@ async function executeGenerateRowsNode(
     hasDBNameToDBVersions: !!config.DBNameToDBVersions,
   });
 
-  // 2. Extract input rows
-  const sourceTable = inputData.tables?.[0];
-  if (!sourceTable) {
+  // 2. Extract input rows from ALL input tables
+  if (!inputData.tables || inputData.tables.length === 0) {
     return {
       success: false,
-      error: "No input table found",
+      error: "No input tables found",
     };
   }
 
-  if (!sourceTable.table.tableSchema) {
-    return {
-      success: false,
-      error: "Input table has no schema information",
-    };
+  // Collect rows from all input tables (handles multiple tables with same name from different mods)
+  const rows: AmendedSchemaField[][] = [];
+  const sourceTable = inputData.tables[0]; // Keep first table for metadata (fileName, sourceFile, etc.)
+
+  for (const table of inputData.tables) {
+    if (!table.table.tableSchema) {
+      console.warn(
+        `Generate Rows Node ${nodeId}: Skipping table ${table.name} - no schema information`
+      );
+      continue;
+    }
+
+    const tableRows = table.table.schemaFields
+      ? (chunkSchemaIntoRows(
+          table.table.schemaFields,
+          table.table.tableSchema
+        ) as AmendedSchemaField[][])
+      : [];
+
+    rows.push(...tableRows);
   }
 
-  const rows = sourceTable.table.schemaFields
-    ? (chunkSchemaIntoRows(
-        sourceTable.table.schemaFields,
-        sourceTable.table.tableSchema
-      ) as AmendedSchemaField[][])
-    : [];
+  console.log(
+    `Generate Rows Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`
+  );
 
   // If no rows, return empty output for each configured output table
   // This allows the flow to continue on other branches
