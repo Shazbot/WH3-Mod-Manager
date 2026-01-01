@@ -359,6 +359,51 @@ export const executeNodeGraph = async (
                   } else {
                     inputDataForTarget = null;
                   }
+                } else if (targetNode.type === "generaterows" && targetIncomingConnections.length > 1) {
+                  // Generate Rows with multiple inputs: prioritize non-counter sources for actual rows
+                  // GetCounterColumn output is synthetic and shouldn't be used as the primary row source
+                  const mergedSourceFiles: any[] = [];
+                  let primarySource = null;
+
+                  // Find the first non-GetCounterColumn source for primary data
+                  for (const conn of targetIncomingConnections) {
+                    const sourceNode = nodeMap.get(conn.sourceId);
+                    const sourceResult = executionResults.get(conn.sourceId);
+
+                    if (sourceResult?.data?.type === "TableSelection") {
+                      // Collect source files from all inputs
+                      if (sourceResult.data.sourceFiles) {
+                        mergedSourceFiles.push(...sourceResult.data.sourceFiles);
+                      }
+
+                      // Use first non-counter source as primary, or any source if no non-counter found
+                      if (!primarySource && sourceNode?.type !== "getcountercolumn") {
+                        primarySource = sourceResult.data;
+                      }
+                    }
+                  }
+
+                  // If no non-counter source found, use the last source
+                  if (!primarySource) {
+                    const lastConnection = targetIncomingConnections[targetIncomingConnections.length - 1];
+                    const lastResult = executionResults.get(lastConnection.sourceId);
+                    primarySource = lastResult?.data;
+                  }
+
+                  if (primarySource) {
+                    inputDataForTarget = {
+                      type: "TableSelection",
+                      tables: primarySource.tables || [],
+                      sourceFiles: mergedSourceFiles,
+                      tableCount: primarySource.tables?.length || 0,
+                    };
+
+                    console.log(
+                      `Generate Rows: Using ${primarySource.tables?.length || 0} tables from primary source (non-counter), with source files from ${targetIncomingConnections.length} inputs`
+                    );
+                  } else {
+                    inputDataForTarget = null;
+                  }
                 } else {
                   // Get input data from the most recent dependency
                   if (targetIncomingConnections.length > 0) {
