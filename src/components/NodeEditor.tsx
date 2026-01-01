@@ -3504,37 +3504,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     if (data.outputCount !== undefined) setOutputCount(data.outputCount);
   }, [data.transformations, data.outputTables, data.outputCount, id]);
 
-  // Clean up orphaned columns in columnMapping (columns that don't have transformations)
-  React.useEffect(() => {
-    const transformationOutputNames = new Map<string, Set<string>>();
-
-    // Build a map of tableHandleId -> Set of output column names
-    for (const trans of transformations) {
-      if (!transformationOutputNames.has(trans.targetTableHandleId)) {
-        transformationOutputNames.set(trans.targetTableHandleId, new Set());
-      }
-      transformationOutputNames.get(trans.targetTableHandleId)!.add(trans.outputColumnName);
-    }
-
-    // Check if any output table has orphaned columns
-    let hasOrphans = false;
-    const cleanedOutputTables = outputTables.map((output) => {
-      const validColumns = transformationOutputNames.get(output.handleId) || new Set();
-      const cleanedMapping = output.columnMapping.filter((col) => validColumns.has(col));
-
-      if (cleanedMapping.length !== output.columnMapping.length) {
-        hasOrphans = true;
-        return { ...output, columnMapping: cleanedMapping };
-      }
-      return output;
-    });
-
-    // Only update if there were orphaned columns
-    if (hasOrphans) {
-      console.log(`[GenerateRows ${id}] Cleaning up orphaned columns from columnMapping`);
-      setOutputTables(cleanedOutputTables);
-    }
-  }, [transformations, outputTables, id]);
+  // Note: columnMapping is no longer used - transformations are automatically included
+  // based on their targetTableHandleId. Keeping the field for backward compatibility.
 
   // Extract column names from connected input
   React.useEffect(() => {
@@ -3590,45 +3561,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   };
 
   const removeTransformation = (transId: string) => {
-    // Find the transformation being removed
-    const transformationToRemove = transformations.find((t) => t.id === transId);
-
-    if (transformationToRemove) {
-      // Remove this column from columnMapping
-      const updatedOutputTables = outputTables.map((output) => {
-        if (output.handleId === transformationToRemove.targetTableHandleId) {
-          const newColumnMapping = output.columnMapping.filter(
-            (col) => col !== transformationToRemove.outputColumnName
-          );
-          return { ...output, columnMapping: newColumnMapping };
-        }
-        return output;
-      });
-      setOutputTables(updatedOutputTables);
-    }
-
     setTransformations(transformations.filter((t) => t.id !== transId));
   };
 
   const updateTransformation = (transId: string, updates: Partial<ColumnTransformation>) => {
-    // If outputColumnName is being changed, update columnMappings accordingly
-    if (updates.outputColumnName !== undefined) {
-      const oldTransformation = transformations.find((t) => t.id === transId);
-      if (oldTransformation && oldTransformation.outputColumnName !== updates.outputColumnName) {
-        // Update columnMappings: replace old column name with new one
-        const updatedOutputTables = outputTables.map((output) => {
-          if (output.handleId === oldTransformation.targetTableHandleId) {
-            const newColumnMapping = output.columnMapping.map((col) =>
-              col === oldTransformation.outputColumnName ? updates.outputColumnName! : col
-            );
-            return { ...output, columnMapping: newColumnMapping };
-          }
-          return output;
-        });
-        setOutputTables(updatedOutputTables);
-      }
-    }
-
     setTransformations(transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t)));
   };
 
@@ -3657,14 +3593,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     setOutputTables(newOutputTables);
   };
 
-  const toggleColumnInMapping = (outputIndex: number, columnName: string) => {
-    const currentMapping = outputTables[outputIndex]?.columnMapping || [];
-    const newMapping = currentMapping.includes(columnName)
-      ? currentMapping.filter((c) => c !== columnName)
-      : [...currentMapping, columnName];
-
-    updateOutputTable(outputIndex, { columnMapping: newMapping });
-  };
+  // Note: toggleColumnInMapping removed - columnMapping is no longer used
+  // Transformations are automatically included based on targetTableHandleId
 
   const updateStaticValue = (outputIndex: number, columnName: string, value: string) => {
     const currentStaticValues = outputTables[outputIndex]?.staticValues || {};
@@ -3682,8 +3612,15 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     const schema = versions[0];
     const allColumns = schema.fields.map((f: any) => f.name);
 
-    // Return columns that are NOT in columnMapping (transformed columns)
-    return allColumns.filter((col: string) => !output.columnMapping.includes(col));
+    // Get transformed column names for this table
+    const transformedColumns = new Set(
+      transformations
+        .filter((trans) => trans.targetTableHandleId === output.handleId)
+        .map((trans) => trans.outputColumnName)
+    );
+
+    // Return columns that are NOT transformed (remaining columns need static values)
+    return allColumns.filter((col: string) => !transformedColumns.has(col));
   };
 
   return (
@@ -3891,18 +3828,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 {transformations
                   .filter((trans) => trans.targetTableHandleId === output.handleId)
                   .map((trans) => (
-                    <label
-                      key={trans.id}
-                      className="flex items-center gap-2 cursor-pointer hover:bg-gray-600 p-1 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={output.columnMapping.includes(trans.outputColumnName)}
-                        onChange={() => toggleColumnInMapping(idx, trans.outputColumnName)}
-                        className="w-3 h-3"
-                      />
+                    <div key={trans.id} className="flex items-center gap-2 p-1">
+                      <span className="text-xs text-green-400">✓</span>
                       <span className="text-xs text-white">{trans.outputColumnName}</span>
-                    </label>
+                    </div>
                   ))}
                 {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length ===
                   0 && (
