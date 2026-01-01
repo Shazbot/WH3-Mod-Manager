@@ -556,16 +556,20 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
 const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: string }> = ({ data, id }) => {
   const [includeBaseGame, setIncludeBaseGame] = React.useState(data.includeBaseGame !== false);
 
+  // Sync state when data.includeBaseGame changes (e.g., when loading a saved graph)
+  React.useEffect(() => {
+    setIncludeBaseGame(data.includeBaseGame !== false);
+  }, [data.includeBaseGame]);
+
   const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.checked;
     setIncludeBaseGame(newValue);
 
-    // Update the node data
-    const updatedData = { ...data, includeBaseGame: newValue };
-    const event_custom = new CustomEvent("nodeDataChanged", {
-      detail: { nodeId: id, data: updatedData },
+    // Update the node data by dispatching a custom event that the parent can listen to
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, includeBaseGame: newValue },
     });
-    window.dispatchEvent(event_custom);
+    window.dispatchEvent(updateEvent);
   };
 
   return (
@@ -5089,6 +5093,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         beforeText,
         afterText,
         useCurrentPack,
+        includeBaseGame,
         onlyForMultiple,
         filters,
         selectedReferenceTable,
@@ -5140,6 +5145,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 beforeText: beforeText !== undefined ? beforeText : node.data.beforeText,
                 afterText: afterText !== undefined ? afterText : node.data.afterText,
                 useCurrentPack: useCurrentPack !== undefined ? useCurrentPack : node.data.useCurrentPack,
+                includeBaseGame: includeBaseGame !== undefined ? includeBaseGame : node.data.includeBaseGame,
                 onlyForMultiple: onlyForMultiple !== undefined ? onlyForMultiple : node.data.onlyForMultiple,
                 filters: filters !== undefined ? filters : node.data.filters,
                 selectedReferenceTable:
