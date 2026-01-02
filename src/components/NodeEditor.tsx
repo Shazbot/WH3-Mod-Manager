@@ -374,11 +374,12 @@ interface AggregateNestedNodeData extends NodeData {
 interface ColumnTransformation {
   id: string; // Unique ID for React key
   sourceColumn: string;
-  transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "counter";
+  transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "counter" | "filterequal" | "filternotequal";
   prefix?: string;
   suffix?: string;
   numericValue?: number;
   startNumber?: number; // For counter transformation
+  filterValue?: string; // For filter transformations
   outputColumnName: string;
   targetTableHandleId: string; // Which output table this transformation is for
 }
@@ -3691,7 +3692,9 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                       | "subtract"
                       | "multiply"
                       | "divide"
-                      | "counter",
+                      | "counter"
+                      | "filterequal"
+                      | "filternotequal",
                   })
                 }
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -3704,6 +3707,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 <option value="multiply">Multiply (*)</option>
                 <option value="divide">Divide (/)</option>
                 <option value="counter">Counter (unique sequential)</option>
+                <option value="filterequal">Filter: Equal (skip if equal)</option>
+                <option value="filternotequal">Filter: Not Equal (skip if not equal)</option>
               </select>
 
               {trans.transformationType === "prefix" && (
@@ -3749,6 +3754,17 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   onChange={(e) =>
                     updateTransformation(trans.id, { startNumber: parseInt(e.target.value) || undefined })
                   }
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                />
+              )}
+
+              {(trans.transformationType === "filterequal" ||
+                trans.transformationType === "filternotequal") && (
+                <input
+                  type="text"
+                  placeholder="Filter value..."
+                  value={trans.filterValue || ""}
+                  onChange={(e) => updateTransformation(trans.id, { filterValue: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 />
               )}

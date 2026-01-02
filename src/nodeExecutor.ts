@@ -4027,6 +4027,33 @@ async function executeGenerateRowsNode(
     // const rowColumnNames = row.map((c: AmendedSchemaField) => c.name);
     // console.log(`Generate Rows Node ${nodeId}: Row ${rowIdx} has columns:`, rowColumnNames);
 
+    // Check if this row should be filtered out (skip if filter conditions match)
+    let skipRow = false;
+    for (const transformation of config.transformations) {
+      if (transformation.transformationType === "filterequal" || transformation.transformationType === "filternotequal") {
+        const sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
+        if (sourceCell) {
+          const cellValue = String(sourceCell.resolvedKeyValue || "");
+          const filterValue = transformation.filterValue || "";
+
+          if (transformation.transformationType === "filterequal" && cellValue === filterValue) {
+            // Skip this row if value equals filter value
+            skipRow = true;
+            break;
+          } else if (transformation.transformationType === "filternotequal" && cellValue !== filterValue) {
+            // Skip this row if value does not equal filter value
+            skipRow = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Skip to next row if this row should be filtered out
+    if (skipRow) {
+      continue;
+    }
+
     // Process all transformations (will filter per table later)
     for (const transformation of config.transformations) {
       // console.log(
@@ -4057,6 +4084,10 @@ async function executeGenerateRowsNode(
             // Counter doesn't need a source value, it generates its own
             outputValue = 0; // Will be overwritten in the transformation logic
             break;
+          case "filterequal":
+          case "filternotequal":
+            // Filter transformations are handled separately, skip
+            continue;
           case "prefix":
           case "suffix":
           case "concatenate":
@@ -4155,6 +4186,12 @@ async function executeGenerateRowsNode(
           outputValue = candidateNumber;
           break;
         }
+
+        case "filterequal":
+        case "filternotequal":
+          // Filter transformations are handled before row processing
+          // They don't produce output values, so skip storing them
+          continue;
 
         default:
           console.warn(
