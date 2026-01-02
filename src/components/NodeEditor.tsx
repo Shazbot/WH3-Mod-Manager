@@ -17,7 +17,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useAppSelector, useAppDispatch } from "../hooks";
-import { DBVersion } from "../packFileTypes";
+import { DBVersion, SCHEMA_FIELD_TYPE } from "../packFileTypes";
 import { addToast } from "../appSlice";
 import { SupportedGames } from "../supportedGames";
 
@@ -374,7 +374,17 @@ interface AggregateNestedNodeData extends NodeData {
 interface ColumnTransformation {
   id: string; // Unique ID for React key
   sourceColumn: string;
-  transformationType: "none" | "prefix" | "suffix" | "add" | "subtract" | "multiply" | "divide" | "counter" | "filterequal" | "filternotequal";
+  transformationType:
+    | "none"
+    | "prefix"
+    | "suffix"
+    | "add"
+    | "subtract"
+    | "multiply"
+    | "divide"
+    | "counter"
+    | "filterequal"
+    | "filternotequal";
   prefix?: string;
   suffix?: string;
   numericValue?: number;
@@ -3750,117 +3760,118 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                     ))}
                 </select>
 
-              <select
-                value={trans.transformationType}
-                onChange={(e) =>
-                  updateTransformation(trans.id, {
-                    transformationType: e.target.value as
-                      | "none"
-                      | "prefix"
-                      | "suffix"
-                      | "add"
-                      | "subtract"
-                      | "multiply"
-                      | "divide"
-                      | "counter"
-                      | "filterequal"
-                      | "filternotequal",
-                  })
-                }
-                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
-              >
-                <option value="none">None (pass through)</option>
-                <option value="prefix">Add Prefix</option>
-                <option value="suffix">Add Suffix</option>
-                <option value="add">Add Number (+)</option>
-                <option value="subtract">Subtract Number (-)</option>
-                <option value="multiply">Multiply (*)</option>
-                <option value="divide">Divide (/)</option>
-                <option value="counter">Counter (unique sequential)</option>
-                <option value="filterequal">Filter: Equal (skip if equal)</option>
-                <option value="filternotequal">Filter: Not Equal (skip if not equal)</option>
-              </select>
-
-              {trans.transformationType === "prefix" && (
-                <input
-                  type="text"
-                  placeholder="Prefix..."
-                  value={trans.prefix || ""}
-                  onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
-                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
-                />
-              )}
-
-              {trans.transformationType === "suffix" && (
-                <input
-                  type="text"
-                  placeholder="Suffix..."
-                  value={trans.suffix || ""}
-                  onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
-                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
-                />
-              )}
-
-              {(trans.transformationType === "add" ||
-                trans.transformationType === "subtract" ||
-                trans.transformationType === "multiply" ||
-                trans.transformationType === "divide") && (
-                <input
-                  type="number"
-                  placeholder="Number value..."
-                  value={trans.numericValue ?? ""}
+                <select
+                  value={trans.transformationType}
                   onChange={(e) =>
-                    updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
+                    updateTransformation(trans.id, {
+                      transformationType: e.target.value as
+                        | "none"
+                        | "prefix"
+                        | "suffix"
+                        | "add"
+                        | "subtract"
+                        | "multiply"
+                        | "divide"
+                        | "counter"
+                        | "filterequal"
+                        | "filternotequal",
+                    })
                   }
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
-                />
-              )}
+                >
+                  <option value="none">None (pass through)</option>
+                  <option value="prefix">Add Prefix</option>
+                  <option value="suffix">Add Suffix</option>
+                  <option value="add">Add Number (+)</option>
+                  <option value="subtract">Subtract Number (-)</option>
+                  <option value="multiply">Multiply (*)</option>
+                  <option value="divide">Divide (/)</option>
+                  <option value="counter">Counter (unique sequential)</option>
+                  <option value="filterequal">Filter: Equal (skip if equal)</option>
+                  <option value="filternotequal">Filter: Not Equal (skip if not equal)</option>
+                </select>
 
-              {trans.transformationType === "counter" && (
-                <input
-                  type="number"
-                  placeholder="Start number (default: 10000)..."
-                  value={trans.startNumber ?? ""}
-                  onChange={(e) =>
-                    updateTransformation(trans.id, { startNumber: parseInt(e.target.value) || undefined })
-                  }
-                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
-                />
-              )}
+                {trans.transformationType === "prefix" && (
+                  <input
+                    type="text"
+                    placeholder="Prefix..."
+                    value={trans.prefix || ""}
+                    onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
 
-              {(trans.transformationType === "filterequal" ||
-                trans.transformationType === "filternotequal") && (
+                {trans.transformationType === "suffix" && (
+                  <input
+                    type="text"
+                    placeholder="Suffix..."
+                    value={trans.suffix || ""}
+                    onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {(trans.transformationType === "add" ||
+                  trans.transformationType === "subtract" ||
+                  trans.transformationType === "multiply" ||
+                  trans.transformationType === "divide") && (
+                  <input
+                    type="number"
+                    placeholder="Number value..."
+                    value={trans.numericValue ?? ""}
+                    onChange={(e) =>
+                      updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
+                    }
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {trans.transformationType === "counter" && (
+                  <input
+                    type="number"
+                    placeholder="Start number (default: 10000)..."
+                    value={trans.startNumber ?? ""}
+                    onChange={(e) =>
+                      updateTransformation(trans.id, { startNumber: parseInt(e.target.value) || undefined })
+                    }
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {(trans.transformationType === "filterequal" ||
+                  trans.transformationType === "filternotequal") && (
+                  <input
+                    type="text"
+                    placeholder="Filter value..."
+                    value={trans.filterValue || ""}
+                    onChange={(e) => updateTransformation(trans.id, { filterValue: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
                 <input
                   type="text"
-                  placeholder="Filter value..."
-                  value={trans.filterValue || ""}
-                  onChange={(e) => updateTransformation(trans.id, { filterValue: e.target.value })}
+                  placeholder="Output column name..."
+                  value={trans.outputColumnName}
+                  onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 />
-              )}
 
-              <input
-                type="text"
-                placeholder="Output column name..."
-                value={trans.outputColumnName}
-                onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
-                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
-              />
-
-              <select
-                value={trans.targetTableHandleId}
-                onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
-                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
-              >
-                <option value="">Select target table...</option>
-                {outputTables.map((table) => (
-                  <option key={table.handleId} value={table.handleId}>
-                    {table.name || table.handleId}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+                <select
+                  value={trans.targetTableHandleId}
+                  onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                >
+                  <option value="">Select target table...</option>
+                  {outputTables.map((table) => (
+                    <option key={table.handleId} value={table.handleId}>
+                      {table.name || table.handleId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
 
           {transformations.length === 0 && (
             <div className="text-xs text-gray-500 text-center py-2">No transformations yet</div>
@@ -4455,9 +4466,7 @@ const FlowOptionsModal: React.FC<{
 
 // Custom Schema node component
 const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
-  const [columns, setColumns] = useState<Array<{ id: string; name: string; type: SCHEMA_FIELD_TYPE }>>(
-    data.schemaColumns || []
-  );
+  const [columns, setColumns] = useState<Array<CustomSchemaColumnWithId>>(data.schemaColumns || []);
 
   React.useEffect(() => {
     if (data.schemaColumns) {
@@ -4470,7 +4479,7 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
       id: `col_${Date.now()}`,
       name: "",
       type: "StringU8" as SCHEMA_FIELD_TYPE,
-    };
+    } as CustomSchemaColumnWithId;
     const newColumns = [...columns, newColumn];
     setColumns(newColumns);
 
@@ -5525,6 +5534,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         groupByColumns,
         aggregations,
         newColumnName,
+        schemaColumns,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -5584,6 +5594,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 groupByColumns: groupByColumns !== undefined ? groupByColumns : node.data.groupByColumns,
                 aggregations: aggregations !== undefined ? aggregations : node.data.aggregations,
                 newColumnName: newColumnName !== undefined ? newColumnName : node.data.newColumnName,
+                schemaColumns: schemaColumns !== undefined ? schemaColumns : node.data.schemaColumns,
               },
             };
           }
