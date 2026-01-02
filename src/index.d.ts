@@ -659,7 +659,8 @@ declare global {
     | "getcountercolumn"
     | "customschema"
     | "readtsvfrompack"
-    | "customrowsinput";
+    | "customrowsinput"
+    | "multifilter";
 
   // FlowNodeData = "string"|
 
@@ -686,6 +687,7 @@ declare global {
       | MultiOutputTablesData
       | CustomSchemaData;
     elseData?: DBTablesNodeData; // For filter node's "else" output handle
+    multiOutputs?: Record<string, any>; // For multi-output nodes like generaterows and multifilter
     error?: string;
   }
 

@@ -62,6 +62,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "filter":
         return await executeFilterNode(nodeId, textValue, inputData);
 
+      case "multifilter":
+        return await executeMultiFilterNode(nodeId, textValue, inputData);
+
       case "referencelookup":
         return await executeReferenceLookupNode(nodeId, textValue, inputData);
 
@@ -926,6 +929,173 @@ async function executeFilterNode(
     success: true,
     data: filteredData,
     elseData: elseData, // Add the else output
+  };
+}
+
+async function executeMultiFilterNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Multi-Filter Node ${nodeId}: Processing with input tables:`, {
+    tableCount: inputData?.tables?.length,
+    tableNames: inputData?.tables?.map((t) => t.name),
+  });
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse configuration from textValue
+  let selectedColumn = "";
+  let splitValues: Array<{ id: string; value: string; enabled: boolean }> = [];
+  try {
+    const parsed = JSON.parse(textValue);
+    selectedColumn = parsed.selectedColumn || "";
+    splitValues = parsed.splitValues || [];
+  } catch (error) {
+    console.error(`Multi-Filter Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid multi-filter configuration" };
+  }
+
+  if (!selectedColumn) {
+    console.log(`Multi-Filter Node ${nodeId}: No column selected, returning empty outputs`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      },
+      multiOutputs: {},
+    };
+  }
+
+  // Filter to only enabled split values
+  const enabledSplitValues = splitValues.filter((s) => s.enabled && s.value.trim() !== "");
+
+  if (enabledSplitValues.length === 0) {
+    console.log(`Multi-Filter Node ${nodeId}: No enabled split values, returning empty outputs`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      },
+      multiOutputs: {},
+    };
+  }
+
+  console.log(
+    `Multi-Filter Node ${nodeId}: Splitting by column "${selectedColumn}" into ${enabledSplitValues.length} outputs:`,
+    enabledSplitValues.map((s) => s.value)
+  );
+
+  // Create output data for each split value
+  const multiOutputs: Record<string, DBTablesNodeData> = {};
+
+  for (const splitValue of enabledSplitValues) {
+    const outputKey = `output-${splitValue.value}`;
+    multiOutputs[outputKey] = {
+      type: "TableSelection",
+      tables: [],
+      sourceFiles: inputData.sourceFiles || [],
+      tableCount: 0,
+    };
+  }
+
+  // Process each table
+  for (const tableData of inputData.tables) {
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      // Skip tables without schema
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    console.log(
+      `Multi-Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`
+    );
+
+    // Group rows by the column value
+    const rowsByValue = new Map<string, AmendedSchemaField[][]>();
+
+    for (const row of rows) {
+      const cell = row.find((c) => c.name === selectedColumn);
+      if (cell) {
+        const cellValue = String(cell.resolvedKeyValue || "");
+
+        // Check if this value matches any of our split values
+        for (const splitValue of enabledSplitValues) {
+          if (cellValue === splitValue.value) {
+            if (!rowsByValue.has(splitValue.value)) {
+              rowsByValue.set(splitValue.value, []);
+            }
+            rowsByValue.get(splitValue.value)!.push(row);
+            break; // Only add to first matching split value
+          }
+        }
+      }
+    }
+
+    // Create output tables for each split value
+    for (const splitValue of enabledSplitValues) {
+      const outputKey = `output-${splitValue.value}`;
+      const matchingRows = rowsByValue.get(splitValue.value) || [];
+
+      if (matchingRows.length > 0) {
+        // Flatten rows back into schemaFields array
+        const schemaFields: AmendedSchemaField[] = [];
+        for (const row of matchingRows) {
+          schemaFields.push(...row);
+        }
+
+        // Create a new table with filtered data
+        const filteredTableData = {
+          ...tableData,
+          table: {
+            ...tableData.table,
+            schemaFields: schemaFields,
+          },
+        };
+
+        multiOutputs[outputKey].tables.push(filteredTableData);
+      }
+
+      console.log(
+        `Multi-Filter Node ${nodeId}: Output "${outputKey}" has ${matchingRows.length} rows from table "${tableData.name}"`
+      );
+    }
+  }
+
+  // Update table counts for each output
+  for (const outputKey of Object.keys(multiOutputs)) {
+    multiOutputs[outputKey].tableCount = multiOutputs[outputKey].tables.length;
+  }
+
+  console.log(
+    `Multi-Filter Node ${nodeId}: Created ${Object.keys(multiOutputs).length} outputs:`,
+    Object.keys(multiOutputs).map(
+      (key) => `${key} (${multiOutputs[key].tableCount} tables)`
+    )
+  );
+
+  // Return multi-output format
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: [],
+      sourceFiles: [],
+      tableCount: 0,
+    },
+    multiOutputs: multiOutputs,
   };
 }
 
