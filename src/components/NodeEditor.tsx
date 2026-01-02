@@ -3569,6 +3569,30 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     setTransformations(transformations.filter((t) => t.id !== transId));
   };
 
+  const moveTransformationUp = (transId: string) => {
+    const index = transformations.findIndex((t) => t.id === transId);
+    if (index <= 0) return; // Already at top or not found
+
+    const newTransformations = [...transformations];
+    [newTransformations[index - 1], newTransformations[index]] = [
+      newTransformations[index],
+      newTransformations[index - 1],
+    ];
+    setTransformations(newTransformations);
+  };
+
+  const moveTransformationDown = (transId: string) => {
+    const index = transformations.findIndex((t) => t.id === transId);
+    if (index < 0 || index >= transformations.length - 1) return; // Already at bottom or not found
+
+    const newTransformations = [...transformations];
+    [newTransformations[index], newTransformations[index + 1]] = [
+      newTransformations[index + 1],
+      newTransformations[index],
+    ];
+    setTransformations(newTransformations);
+  };
+
   const updateTransformation = (transId: string, updates: Partial<ColumnTransformation>) => {
     setTransformations(transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t)));
   };
@@ -3655,30 +3679,76 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
           className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
-          {transformations.map((trans) => (
-            <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-400">→ {trans.outputColumnName}</span>
-                <button
-                  onClick={() => removeTransformation(trans.id)}
-                  className="text-xs text-red-400 hover:text-red-300"
-                >
-                  ✕
-                </button>
-              </div>
+          {transformations.map((trans, transIndex) => {
+            // Build available source columns for this transformation
+            // Include original columns + output columns from previous transformations
+            const availableSourceColumns = [
+              ...columnNames,
+              ...transformations
+                .slice(0, transIndex)
+                .map((t) => t.outputColumnName)
+                .filter((name) => name && name.trim() !== ""),
+            ];
 
-              <select
-                value={trans.sourceColumn}
-                onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
-                className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
-              >
-                <option value="">Select source column...</option>
-                {columnNames.map((col) => (
-                  <option key={col} value={col}>
-                    {col}
-                  </option>
-                ))}
-              </select>
+            return (
+              <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-400">→ {trans.outputColumnName}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => moveTransformationUp(trans.id)}
+                      disabled={transIndex === 0}
+                      className={`text-xs ${
+                        transIndex === 0
+                          ? "text-gray-600 cursor-not-allowed"
+                          : "text-blue-400 hover:text-blue-300"
+                      }`}
+                      title="Move up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moveTransformationDown(trans.id)}
+                      disabled={transIndex === transformations.length - 1}
+                      className={`text-xs ${
+                        transIndex === transformations.length - 1
+                          ? "text-gray-600 cursor-not-allowed"
+                          : "text-blue-400 hover:text-blue-300"
+                      }`}
+                      title="Move down"
+                    >
+                      ▼
+                    </button>
+                    <button
+                      onClick={() => removeTransformation(trans.id)}
+                      className="text-xs text-red-400 hover:text-red-300"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <select
+                  value={trans.sourceColumn}
+                  onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                >
+                  <option value="">Select source column...</option>
+                  {columnNames.map((col) => (
+                    <option key={col} value={col}>
+                      {col}
+                    </option>
+                  ))}
+                  {transformations
+                    .slice(0, transIndex)
+                    .filter((t) => t.outputColumnName && t.outputColumnName.trim() !== "")
+                    .map((t) => (
+                      <option key={t.outputColumnName} value={t.outputColumnName}>
+                        {t.outputColumnName} (from transformation)
+                      </option>
+                    ))}
+                </select>
 
               <select
                 value={trans.transformationType}
