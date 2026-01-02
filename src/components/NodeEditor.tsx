@@ -4367,6 +4367,304 @@ const FlowOptionsModal: React.FC<{
   );
 };
 
+// Custom Schema node component
+const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const [columns, setColumns] = useState<Array<{ id: string; name: string; type: SCHEMA_FIELD_TYPE }>>(
+    data.schemaColumns || []
+  );
+
+  React.useEffect(() => {
+    if (data.schemaColumns) {
+      setColumns(data.schemaColumns);
+    }
+  }, [data.schemaColumns]);
+
+  const addColumn = () => {
+    const newColumn = {
+      id: `col_${Date.now()}`,
+      name: "",
+      type: "StringU8" as SCHEMA_FIELD_TYPE,
+    };
+    const newColumns = [...columns, newColumn];
+    setColumns(newColumns);
+
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, schemaColumns: newColumns },
+      })
+    );
+  };
+
+  const removeColumn = (colId: string) => {
+    const newColumns = columns.filter((col) => col.id !== colId);
+    setColumns(newColumns);
+
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, schemaColumns: newColumns },
+      })
+    );
+  };
+
+  const updateColumn = (colId: string, field: "name" | "type", value: string) => {
+    const newColumns = columns.map((col) => (col.id === colId ? { ...col, [field]: value } : col));
+    setColumns(newColumns);
+
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, schemaColumns: newColumns },
+      })
+    );
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-600 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      <div className="text-white font-medium text-sm mb-2">{data.label || "Custom Schema"}</div>
+      <div className="text-xs text-gray-400 mb-3">Define custom table schema</div>
+
+      <div className="space-y-2 mb-3 max-h-64 overflow-y-auto scrollable-node-content">
+        {columns.map((col) => (
+          <div key={col.id} className="bg-gray-800 p-2 rounded">
+            <div className="flex gap-2 mb-1">
+              <input
+                type="text"
+                placeholder="Column name"
+                value={col.name}
+                onChange={(e) => updateColumn(col.id, "name", e.target.value)}
+                className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+              />
+              <button
+                onClick={() => removeColumn(col.id)}
+                className="px-2 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
+              >
+                ×
+              </button>
+            </div>
+            <select
+              value={col.type}
+              onChange={(e) => updateColumn(col.id, "type", e.target.value as SCHEMA_FIELD_TYPE)}
+              className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+            >
+              <option value="StringU8">StringU8 (String)</option>
+              <option value="StringU16">StringU16 (Long String)</option>
+              <option value="OptionalStringU8">OptionalStringU8</option>
+              <option value="I32">I32 (Integer)</option>
+              <option value="I64">I64 (Long Integer)</option>
+              <option value="I16">I16 (Short Integer)</option>
+              <option value="F32">F32 (Float)</option>
+              <option value="F64">F64 (Double)</option>
+              <option value="Boolean">Boolean</option>
+              <option value="ColourRGB">ColourRGB</option>
+            </select>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={addColumn}
+        className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded font-medium"
+      >
+        Add Column
+      </button>
+
+      <div className="mt-2 text-xs text-gray-400">Output: Custom Schema</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-purple-500"
+        data-output-type="CustomSchema"
+      />
+    </div>
+  );
+};
+
+// Read TSV From Pack node component
+const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const [tsvFileName, setTsvFileName] = useState(data.tsvFileName || "");
+  const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
+    data.schemaColumns || []
+  );
+
+  React.useEffect(() => {
+    if (data.tsvFileName !== undefined) setTsvFileName(data.tsvFileName);
+    if (data.schemaColumns !== undefined) setSchemaColumns(data.schemaColumns);
+  }, [data.tsvFileName, data.schemaColumns]);
+
+  const handleFileNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setTsvFileName(newValue);
+
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, tsvFileName: newValue },
+      })
+    );
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-indigo-600 rounded-lg p-4 min-w-[250px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-purple-500"
+        data-input-type="CustomSchema"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label || "Read TSV From Pack"}</div>
+      <div className="text-xs text-gray-400 mb-2">Input: CustomSchema</div>
+
+      <input
+        type="text"
+        placeholder="TSV file name (e.g., data.tsv)"
+        value={tsvFileName}
+        onChange={handleFileNameChange}
+        className="w-full p-2 mb-3 text-sm bg-gray-600 text-white border border-gray-500 rounded"
+      />
+
+      {schemaColumns.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs text-gray-400 mb-1">Expected columns ({schemaColumns.length}):</div>
+          <div className="max-h-32 overflow-y-auto bg-gray-800 rounded p-2 scrollable-node-content">
+            {schemaColumns.map((col, idx) => (
+              <div key={idx} className="text-xs text-gray-300">
+                • {col.name} ({col.type})
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-teal-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+// Custom Rows Input node component
+const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const [customRows, setCustomRows] = useState<Array<Record<string, string>>>(data.customRows || []);
+  const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
+    data.schemaColumns || []
+  );
+
+  React.useEffect(() => {
+    if (data.customRows !== undefined) setCustomRows(data.customRows);
+    if (data.schemaColumns !== undefined) setSchemaColumns(data.schemaColumns);
+  }, [data.customRows, data.schemaColumns]);
+
+  const addRow = () => {
+    const newRow: Record<string, string> = {};
+    schemaColumns.forEach((col) => {
+      newRow[col.name] = "";
+    });
+    const newRows = [...customRows, newRow];
+    setCustomRows(newRows);
+
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, customRows: newRows },
+      })
+    );
+  };
+
+  const removeRow = (rowIdx: number) => {
+    const newRows = customRows.filter((_, idx) => idx !== rowIdx);
+    setCustomRows(newRows);
+
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, customRows: newRows },
+      })
+    );
+  };
+
+  const updateCell = (rowIdx: number, colName: string, value: string) => {
+    const newRows = customRows.map((row, idx) =>
+      idx === rowIdx ? { ...row, [colName]: value } : row
+    );
+    setCustomRows(newRows);
+
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, customRows: newRows },
+      })
+    );
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-indigo-600 rounded-lg p-4 min-w-[350px] max-w-[500px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-purple-500"
+        data-input-type="CustomSchema"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label || "Custom Rows Input"}</div>
+      <div className="text-xs text-gray-400 mb-3">Input: CustomSchema</div>
+
+      {schemaColumns.length === 0 ? (
+        <div className="text-xs text-gray-500 p-3 bg-gray-800 rounded mb-3">
+          Connect a Custom Schema node to define columns
+        </div>
+      ) : (
+        <>
+          <div className="mb-3 max-h-64 overflow-y-auto scrollable-node-content">
+            {customRows.map((row, rowIdx) => (
+              <div key={rowIdx} className="bg-gray-800 p-2 rounded mb-2">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs text-gray-400">Row {rowIdx + 1}</span>
+                  <button
+                    onClick={() => removeRow(rowIdx)}
+                    className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
+                  >
+                    Remove
+                  </button>
+                </div>
+                {schemaColumns.map((col) => (
+                  <div key={col.name} className="mb-1">
+                    <label className="text-xs text-gray-400">{col.name}:</label>
+                    <input
+                      type="text"
+                      placeholder={col.type}
+                      value={row[col.name] || ""}
+                      onChange={(e) => updateCell(rowIdx, col.name, e.target.value)}
+                      className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={addRow}
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded font-medium"
+          >
+            Add Row
+          </button>
+        </>
+      )}
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-teal-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
 interface NodeTypeSection {
   title: string;
   nodes: { type: FlowNodeType; label: string; description: string }[];
@@ -4545,6 +4843,26 @@ const nodeTypeSections: NodeTypeSection[] = [
         type: "getcountercolumn",
         label: "Get Counter Column",
         description: "Collects numeric column values across tables from pack files",
+      },
+    ],
+  },
+  {
+    title: "Custom Tables",
+    nodes: [
+      {
+        type: "customschema",
+        label: "Custom Schema",
+        description: "Define custom table schema with column names and types",
+      },
+      {
+        type: "readtsvfrompack",
+        label: "Read TSV From Pack",
+        description: "Reads TSV file from pack using custom schema",
+      },
+      {
+        type: "customrowsinput",
+        label: "Custom Rows Input",
+        description: "Manually input table rows with custom schema",
       },
     ],
   },
@@ -4813,6 +5131,9 @@ const reactFlowNodeTypes = {
   generaterows: GenerateRowsNode,
   dumptotsv: DumpToTSVNode,
   getcountercolumn: GetCounterColumnNode,
+  customschema: CustomSchemaNode,
+  readtsvfrompack: ReadTSVFromPackNode,
+  customrowsinput: CustomRowsInputNode,
 };
 
 const initialNodes: Node[] = [];
@@ -5349,6 +5670,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as GroupByNodeData).outputType;
       } else if (sourceNode.type === "getcountercolumn" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GetCounterColumnNodeData).outputType;
+      } else if (sourceNode.type === "customschema" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as any).outputType;
+      } else if (sourceNode.type === "readtsvfrompack" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as any).outputType;
+      } else if (sourceNode.type === "customrowsinput" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as any).outputType;
       }
 
       // Get input type from target node
@@ -5412,6 +5739,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = "TableSelection" as NodeEdgeTypes;
       } else if (targetNode.type === "getcountercolumn" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GetCounterColumnNodeData).inputType;
+      } else if (targetNode.type === "readtsvfrompack" && targetNode.data) {
+        targetInputType = (targetNode.data as any).inputType;
+      } else if (targetNode.type === "customrowsinput" && targetNode.data) {
+        targetInputType = (targetNode.data as any).inputType;
       }
 
       // Allow connection only if types are compatible
@@ -5552,6 +5883,28 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   data: {
                     ...node.data,
                     inputType: sourceOutputType,
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        }
+
+        // Update Read TSV From Pack or Custom Rows Input node when connected to Custom Schema node
+        if (
+          (targetNode.type === "readtsvfrompack" || targetNode.type === "customrowsinput") &&
+          sourceNode.type === "customschema"
+        ) {
+          const schemaColumns = (sourceNode.data as any).schemaColumns || [];
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === params.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    schemaColumns: schemaColumns,
                   },
                 };
               }
@@ -6718,6 +7071,47 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             columnNames: [],
             DBNameToDBVersions,
           } as GetCounterColumnNodeData,
+        };
+      } else if (nodeData.type === "customschema") {
+        // Create Custom Schema node
+        newNode = {
+          id: getNodeId(),
+          type: "customschema",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            schemaColumns: [],
+            outputType: "CustomSchema" as NodeEdgeTypes,
+          },
+        };
+      } else if (nodeData.type === "readtsvfrompack") {
+        // Create Read TSV From Pack node
+        newNode = {
+          id: getNodeId(),
+          type: "readtsvfrompack",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            tsvFileName: "",
+            inputType: "CustomSchema" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+          },
+        };
+      } else if (nodeData.type === "customrowsinput") {
+        // Create Custom Rows Input node
+        newNode = {
+          id: getNodeId(),
+          type: "customrowsinput",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            customRows: [],
+            inputType: "CustomSchema" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+          },
         };
       } else if (nodeData.type === "textsurround") {
         // Create TextSurround node with special data structure
