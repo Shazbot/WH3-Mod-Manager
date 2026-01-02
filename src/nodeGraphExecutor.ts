@@ -221,6 +221,18 @@ export const executeNodeGraph = async (
             selectedColumn: (node.data as any).selectedColumn || "",
             newColumnName: (node.data as any).newColumnName || "",
           });
+        } else if (node.type === "customschema") {
+          textValueToUse = JSON.stringify({
+            schemaColumns: (node.data as any).schemaColumns || [],
+          });
+        } else if (node.type === "readtsvfrompack") {
+          textValueToUse = JSON.stringify({
+            tsvFileName: (node.data as any).tsvFileName || "",
+          });
+        } else if (node.type === "customrowsinput") {
+          textValueToUse = JSON.stringify({
+            customRows: (node.data as any).customRows || [],
+          });
         } else {
           textValueToUse = node.data.textValue || "";
         }

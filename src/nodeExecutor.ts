@@ -122,6 +122,15 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "getcountercolumn":
         return await executeGetCounterColumnNode(nodeId, textValue, inputData);
 
+      case "customschema":
+        return await executeCustomSchemaNode(nodeId, textValue, inputData);
+
+      case "readtsvfrompack":
+        return await executeReadTSVFromPackNode(nodeId, textValue, inputData);
+
+      case "customrowsinput":
+        return await executeCustomRowsInputNode(nodeId, textValue, inputData);
+
       default:
         return {
           success: false,
@@ -4630,6 +4639,365 @@ async function executeGetCounterColumnNode(
       type: "TableSelection",
       tables: resultTables,
       sourceFiles: inputData.files,
+      tableCount: 1,
+    } as DBTablesNodeData,
+  };
+}
+
+async function executeCustomSchemaNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`CustomSchema Node ${nodeId}: Processing schema definition`);
+
+  // Parse configuration from textValue
+  let schemaColumns: Array<{ name: string; type: SCHEMA_FIELD_TYPE }> = [];
+
+  try {
+    const config = JSON.parse(textValue || "{}");
+    schemaColumns = config.schemaColumns || [];
+  } catch (error) {
+    console.error(`CustomSchema Node ${nodeId}: Error parsing configuration:`, error);
+    return {
+      success: false,
+      error: "Invalid configuration: Failed to parse node settings",
+    };
+  }
+
+  if (schemaColumns.length === 0) {
+    console.log(`CustomSchema Node ${nodeId}: No columns defined - returning empty schema`);
+  }
+
+  console.log(`CustomSchema Node ${nodeId}: Schema defined with ${schemaColumns.length} columns`);
+
+  return {
+    success: true,
+    data: {
+      type: "CustomSchema",
+      schemaColumns: schemaColumns,
+    },
+  };
+}
+
+async function executeReadTSVFromPackNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`ReadTSVFromPack Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "CustomSchema") {
+    return { success: false, error: "Invalid input: Expected CustomSchema data" };
+  }
+
+  // Parse configuration from textValue
+  let tsvFileName = "";
+  const schemaColumns = inputData.schemaColumns || [];
+
+  try {
+    const config = JSON.parse(textValue || "{}");
+    tsvFileName = config.tsvFileName || "";
+  } catch (error) {
+    console.error(`ReadTSVFromPack Node ${nodeId}: Error parsing configuration:`, error);
+    return {
+      success: false,
+      error: "Invalid configuration: Failed to parse node settings",
+    };
+  }
+
+  if (!tsvFileName) {
+    console.log(`ReadTSVFromPack Node ${nodeId}: No TSV file specified - returning empty output`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  if (schemaColumns.length === 0) {
+    console.log(`ReadTSVFromPack Node ${nodeId}: No schema columns - returning empty output`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  console.log(
+    `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in enabled packs`
+  );
+
+  // Get enabled mods from appData
+  const enabledPackFiles = appData.mods.filter((mod) => mod.enabled).map((mod) => mod.packFile);
+
+  // Search for TSV file in pack files
+  let tsvContent: string | null = null;
+  let sourcePack: Pack | null = null;
+
+  for (const packFile of enabledPackFiles) {
+    try {
+      // Read the pack file without parsing tables
+      const pack = await readPack(packFile, { skipParsingTables: true });
+
+      // Search for the TSV file in packed files
+      const tsvFile = pack.packedFiles.find((pf) => pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase()));
+
+      if (tsvFile) {
+        console.log(`ReadTSVFromPack Node ${nodeId}: Found TSV file in pack: ${packFile}`);
+
+        // TSV files should be stored as text
+        if (tsvFile.text) {
+          tsvContent = tsvFile.text;
+          sourcePack = pack;
+          break;
+        } else if (tsvFile.buffer) {
+          // If stored as buffer, convert to string
+          tsvContent = tsvFile.buffer.toString("utf-8");
+          sourcePack = pack;
+          break;
+        }
+      }
+    } catch (error) {
+      console.warn(`ReadTSVFromPack Node ${nodeId}: Error reading pack ${packFile}:`, error);
+      continue;
+    }
+  }
+
+  if (!tsvContent) {
+    console.log(`ReadTSVFromPack Node ${nodeId}: TSV file not found in any enabled packs`);
+    return {
+      success: false,
+      error: `TSV file "${tsvFileName}" not found in any enabled packs`,
+    };
+  }
+
+  // Parse TSV content
+  // Split by newlines and filter out empty lines (including trailing empty lines at end of file)
+  const lines = tsvContent.split("\n").filter((line) => line.trim().length > 0);
+
+  if (lines.length === 0) {
+    console.log(`ReadTSVFromPack Node ${nodeId}: TSV file is empty`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  if (lines.length === 1) {
+    console.log(`ReadTSVFromPack Node ${nodeId}: TSV file only contains header, no data rows`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  // First line is header, skip it and parse data rows
+  const dataLines = lines.slice(1);
+
+  console.log(
+    `ReadTSVFromPack Node ${nodeId}: Parsing ${dataLines.length} data rows with ${schemaColumns.length} columns`
+  );
+
+  // Create the output table schema from the schema columns
+  const outputTableSchema: DBVersion = {
+    version: 1,
+    fields: schemaColumns.map((col, index) => ({
+      name: col.name,
+      field_type: col.type,
+      is_key: index === 0, // First column is key by default
+      default_value: "",
+      is_filename: false,
+      is_reference: [],
+      description: `Column ${col.name} from TSV`,
+      ca_order: index,
+      is_bitwise: 0,
+      enum_values: {},
+    })),
+  };
+
+  // Convert TSV rows to AmendedSchemaField arrays
+  const schemaFields: AmendedSchemaField[] = [];
+
+  for (const line of dataLines) {
+    const values = line.split("\t");
+
+    // Ensure we have enough values for all columns
+    for (let i = 0; i < schemaColumns.length; i++) {
+      const col = schemaColumns[i];
+      const value = values[i] || "";
+
+      schemaFields.push({
+        name: col.name,
+        value: value,
+        type: col.type,
+        resolvedKeyValue: value,
+      });
+    }
+  }
+
+  // Create a synthetic PackedFile with the TSV data
+  const syntheticTable: PackedFile = {
+    name: `db\\_tsv_${tsvFileName.replace(/\.tsv$/i, "")}`,
+    schemaFields: schemaFields,
+    tableSchema: outputTableSchema,
+    file_size: 0,
+    start_pos: 0,
+  };
+
+  const resultTables: DBTablesNodeTable[] = [
+    {
+      name: `_tsv_${tsvFileName.replace(/\.tsv$/i, "")}`,
+      fileName: `db\\_tsv_${tsvFileName.replace(/\.tsv$/i, "")}`,
+      sourceFile: sourcePack || (undefined as any),
+      table: syntheticTable,
+    },
+  ];
+
+  console.log(
+    `ReadTSVFromPack Node ${nodeId}: Successfully parsed ${dataLines.length} rows from TSV file`
+  );
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: resultTables,
+      sourceFiles: [],
+      tableCount: 1,
+    } as DBTablesNodeData,
+  };
+}
+
+async function executeCustomRowsInputNode(
+  nodeId: string,
+  textValue: string,
+  inputData: any
+): Promise<NodeExecutionResult> {
+  console.log(`CustomRowsInput Node ${nodeId}: Processing with input:`, inputData);
+
+  if (!inputData || inputData.type !== "CustomSchema") {
+    return { success: false, error: "Invalid input: Expected CustomSchema data" };
+  }
+
+  // Parse configuration from textValue
+  let customRows: Array<Record<string, string>> = [];
+  const schemaColumns = inputData.schemaColumns || [];
+
+  try {
+    const config = JSON.parse(textValue || "{}");
+    customRows = config.customRows || [];
+  } catch (error) {
+    console.error(`CustomRowsInput Node ${nodeId}: Error parsing configuration:`, error);
+    return {
+      success: false,
+      error: "Invalid configuration: Failed to parse node settings",
+    };
+  }
+
+  if (schemaColumns.length === 0) {
+    console.log(`CustomRowsInput Node ${nodeId}: No schema columns - returning empty output`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  if (customRows.length === 0) {
+    console.log(`CustomRowsInput Node ${nodeId}: No rows defined - returning empty output`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  console.log(
+    `CustomRowsInput Node ${nodeId}: Creating table with ${customRows.length} rows and ${schemaColumns.length} columns`
+  );
+
+  // Create the output table schema from the schema columns
+  const outputTableSchema: DBVersion = {
+    version: 1,
+    fields: schemaColumns.map((col, index) => ({
+      name: col.name,
+      field_type: col.type,
+      is_key: index === 0, // First column is key by default
+      default_value: "",
+      is_filename: false,
+      is_reference: [],
+      description: `Custom column ${col.name}`,
+      ca_order: index,
+      is_bitwise: 0,
+      enum_values: {},
+    })),
+  };
+
+  // Convert custom rows to AmendedSchemaField arrays
+  const schemaFields: AmendedSchemaField[] = [];
+
+  for (const row of customRows) {
+    for (const col of schemaColumns) {
+      const value = row[col.name] || "";
+      schemaFields.push({
+        name: col.name,
+        value: value,
+        type: col.type,
+      });
+    }
+  }
+
+  // Create a synthetic PackedFile with the custom rows
+  const syntheticTable: PackedFile = {
+    name: `db\\_custom_rows`,
+    schemaFields: schemaFields,
+    tableSchema: outputTableSchema,
+    file_size: 0,
+    start_pos: 0,
+  };
+
+  const resultTables: DBTablesNodeTable[] = [
+    {
+      name: `_custom_rows`,
+      fileName: `db\\_custom_rows`,
+      sourceFile: undefined as any,
+      table: syntheticTable,
+    },
+  ];
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: resultTables,
+      sourceFiles: [],
       tableCount: 1,
     } as DBTablesNodeData,
   };
