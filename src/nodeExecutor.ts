@@ -3848,13 +3848,16 @@ async function executeGenerateRowsNode(
         | "divide"
         | "concatenate"
         | "formula"
-        | "counter";
+        | "counter"
+        | "filterequal"
+        | "filternotequal";
       prefix?: string;
       suffix?: string;
       numericValue?: number;
       startNumber?: number;
       separator?: string;
       formula?: string;
+      filterValue?: string;
       outputColumnName: string;
       targetTableHandleId: string; // Which output table this transformation is for
     }>;
@@ -3915,17 +3918,12 @@ async function executeGenerateRowsNode(
 
   for (const table of inputData.tables) {
     if (!table.table.tableSchema) {
-      console.warn(
-        `Generate Rows Node ${nodeId}: Skipping table ${table.name} - no schema information`
-      );
+      console.warn(`Generate Rows Node ${nodeId}: Skipping table ${table.name} - no schema information`);
       continue;
     }
 
     const tableRows = table.table.schemaFields
-      ? (chunkSchemaIntoRows(
-          table.table.schemaFields,
-          table.table.tableSchema
-        ) as AmendedSchemaField[][])
+      ? (chunkSchemaIntoRows(table.table.schemaFields, table.table.tableSchema) as AmendedSchemaField[][])
       : [];
 
     rows.push(...tableRows);
@@ -4030,7 +4028,10 @@ async function executeGenerateRowsNode(
     // Check if this row should be filtered out (skip if filter conditions match)
     let skipRow = false;
     for (const transformation of config.transformations) {
-      if (transformation.transformationType === "filterequal" || transformation.transformationType === "filternotequal") {
+      if (
+        transformation.transformationType === "filterequal" ||
+        transformation.transformationType === "filternotequal"
+      ) {
         const sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
         if (sourceCell) {
           const cellValue = String(sourceCell.resolvedKeyValue || "");
@@ -4073,7 +4074,7 @@ async function executeGenerateRowsNode(
         // Create a fake sourceCell for compatibility
         sourceCell = {
           name: transformation.sourceColumn,
-          value: outputValue,
+          fields: [{ type: "String", val: String(outputValue) }],
           type: "StringU8" as SCHEMA_FIELD_TYPE,
           resolvedKeyValue: String(outputValue),
         };
@@ -4714,7 +4715,7 @@ async function executeCustomSchemaNode(
   console.log(`CustomSchema Node ${nodeId}: Processing schema definition`);
 
   // Parse configuration from textValue
-  let schemaColumns: Array<{ name: string; type: SCHEMA_FIELD_TYPE }> = [];
+  let schemaColumns: Array<CustomSchemaColumn> = [];
 
   try {
     const config = JSON.parse(textValue || "{}");
@@ -4755,7 +4756,7 @@ async function executeReadTSVFromPackNode(
 
   // Parse configuration from textValue
   let tsvFileName = "";
-  const schemaColumns = inputData.schemaColumns || [];
+  const schemaColumns = (inputData.schemaColumns || []) as CustomSchemaColumn[];
 
   try {
     const config = JSON.parse(textValue || "{}");
@@ -4794,12 +4795,10 @@ async function executeReadTSVFromPackNode(
     };
   }
 
-  console.log(
-    `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in enabled packs`
-  );
+  console.log(`ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in enabled packs`);
 
   // Get enabled mods from appData
-  const enabledPackFiles = appData.mods.filter((mod) => mod.enabled).map((mod) => mod.packFile);
+  const enabledPackFiles = appData.enabledMods.map((mod) => mod.path);
 
   // Search for TSV file in pack files
   let tsvContent: string | null = null;
@@ -4811,7 +4810,9 @@ async function executeReadTSVFromPackNode(
       const pack = await readPack(packFile, { skipParsingTables: true });
 
       // Search for the TSV file in packed files
-      const tsvFile = pack.packedFiles.find((pf) => pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase()));
+      const tsvFile = pack.packedFiles.find((pf) =>
+        pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase())
+      );
 
       if (tsvFile) {
         console.log(`ReadTSVFromPack Node ${nodeId}: Found TSV file in pack: ${packFile}`);
@@ -4909,7 +4910,7 @@ async function executeReadTSVFromPackNode(
 
       schemaFields.push({
         name: col.name,
-        value: value,
+        fields: [{ type: "String", val: value }],
         type: col.type,
         resolvedKeyValue: value,
       });
@@ -4934,9 +4935,7 @@ async function executeReadTSVFromPackNode(
     },
   ];
 
-  console.log(
-    `ReadTSVFromPack Node ${nodeId}: Successfully parsed ${dataLines.length} rows from TSV file`
-  );
+  console.log(`ReadTSVFromPack Node ${nodeId}: Successfully parsed ${dataLines.length} rows from TSV file`);
 
   return {
     success: true,
@@ -4962,7 +4961,7 @@ async function executeCustomRowsInputNode(
 
   // Parse configuration from textValue
   let customRows: Array<Record<string, string>> = [];
-  const schemaColumns = inputData.schemaColumns || [];
+  const schemaColumns = (inputData.schemaColumns || []) as CustomSchemaColumn[];
 
   try {
     const config = JSON.parse(textValue || "{}");
@@ -5030,8 +5029,9 @@ async function executeCustomRowsInputNode(
       const value = row[col.name] || "";
       schemaFields.push({
         name: col.name,
-        value: value,
+        resolvedKeyValue: value,
         type: col.type,
+        fields: [{ type: "String", val: value }],
       });
     }
   }

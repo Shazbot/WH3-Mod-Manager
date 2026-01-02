@@ -656,7 +656,10 @@ declare global {
     | "generaterows"
     | "groupby"
     | "dumptotsv"
-    | "getcountercolumn";
+    | "getcountercolumn"
+    | "customschema"
+    | "readtsvfrompack"
+    | "customrowsinput";
 
   // FlowNodeData = "string"|
 
@@ -680,7 +683,8 @@ declare global {
       | TextLinesNodeData
       | IndexedTableData
       | NestedTableSelection
-      | MultiOutputTablesData;
+      | MultiOutputTablesData
+      | CustomSchemaData;
     elseData?: DBTablesNodeData; // For filter node's "else" output handle
     error?: string;
   }
@@ -770,6 +774,11 @@ declare global {
     tableName: string;
   }
 
+  interface CustomSchemaData {
+    type: "CustomSchema";
+    schemaColumns: CustomSchemaColumn[];
+  }
+
   interface NestedRow {
     sourceRow: any;
     lookupMatches: any[];
@@ -800,4 +809,13 @@ declare global {
 
   // Multi-output data for nodes like Generate Rows (map of handleId -> TableSelection)
   type MultiOutputTablesData = Record<string, DBTablesNodeData>;
+
+  type CustomSchemaColumn = {
+    name: string;
+    type: SCHEMA_FIELD_TYPE;
+  };
+
+  type CustomSchemaColumnWithId = CustomSchemaColumn & {
+    id: string;
+  };
 }
