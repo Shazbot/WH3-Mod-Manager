@@ -4054,14 +4054,33 @@ async function executeGenerateRowsNode(
       continue;
     }
 
+    // Track transformed values for this row to enable transformation chaining
+    const rowTransformedValues = new Map<string, any>();
+
     // Process all transformations (will filter per table later)
     for (const transformation of config.transformations) {
       // console.log(
       //   `Generate Rows Node ${nodeId}: Looking for column "${transformation.sourceColumn}" in row ${rowIdx}`
       // );
-      const sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
 
+      // First check if source column is a transformed value from a previous transformation
+      let sourceCell: AmendedSchemaField | undefined;
       let outputValue: any;
+
+      if (rowTransformedValues.has(transformation.sourceColumn)) {
+        // Source is from a previous transformation in this chain
+        outputValue = rowTransformedValues.get(transformation.sourceColumn);
+        // Create a fake sourceCell for compatibility
+        sourceCell = {
+          name: transformation.sourceColumn,
+          value: outputValue,
+          type: "StringU8" as SCHEMA_FIELD_TYPE,
+          resolvedKeyValue: String(outputValue),
+        };
+      } else {
+        // Source is from original row data
+        sourceCell = row.find((c: AmendedSchemaField) => c.name === transformation.sourceColumn);
+      }
 
       if (!sourceCell) {
         if (transformation.transformationType !== "counter") {
@@ -4206,6 +4225,12 @@ async function executeGenerateRowsNode(
         globalTransformedData.set(key, []);
       }
       globalTransformedData.get(key)!.push(outputValue);
+
+      // Store in row-level map for transformation chaining
+      // This allows subsequent transformations to use this output as their source
+      if (transformation.outputColumnName) {
+        rowTransformedValues.set(transformation.outputColumnName, outputValue);
+      }
     }
   }
 
