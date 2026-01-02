@@ -148,6 +148,8 @@ export interface SerializedNodeGraph {
 interface NodeExecutionResult {
   success: boolean;
   data?: any;
+  elseData?: any; // For filter node's "else" output handle
+  multiOutputs?: Record<string, any>; // For multi-output nodes like generaterows and multifilter
   error?: string;
 }
 
@@ -4681,9 +4683,7 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
   };
 
   const updateCell = (rowIdx: number, colName: string, value: string) => {
-    const newRows = customRows.map((row, idx) =>
-      idx === rowIdx ? { ...row, [colName]: value } : row
-    );
+    const newRows = customRows.map((row, idx) => (idx === rowIdx ? { ...row, [colName]: value } : row));
     setCustomRows(newRows);
 
     window.dispatchEvent(
@@ -4760,6 +4760,150 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
   );
 };
 
+const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
+  const [splitValues, setSplitValues] = useState<Array<{ id: string; value: string; enabled: boolean }>>(
+    data.splitValues || []
+  );
+  const columnNames = data.columnNames || [];
+
+  // Sync state when data changes (e.g., when loading saved graph)
+  React.useEffect(() => {
+    setSelectedColumn(data.selectedColumn || "");
+    setSplitValues(data.splitValues || []);
+  }, [data.selectedColumn, data.splitValues]);
+
+  const handleColumnChange = (column: string) => {
+    setSelectedColumn(column);
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, selectedColumn: column },
+      })
+    );
+  };
+
+  const addSplitValue = () => {
+    const newValue = {
+      id: `split_${Date.now()}`,
+      value: "",
+      enabled: true,
+    };
+    const newSplitValues = [...splitValues, newValue];
+    setSplitValues(newSplitValues);
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, splitValues: newSplitValues },
+      })
+    );
+  };
+
+  const removeSplitValue = (splitId: string) => {
+    const newSplitValues = splitValues.filter((s) => s.id !== splitId);
+    setSplitValues(newSplitValues);
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, splitValues: newSplitValues },
+      })
+    );
+  };
+
+  const updateSplitValue = (splitId: string, updates: Partial<{ value: string; enabled: boolean }>) => {
+    const newSplitValues = splitValues.map((s) => (s.id === splitId ? { ...s, ...updates } : s));
+    setSplitValues(newSplitValues);
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, splitValues: newSplitValues },
+      })
+    );
+  };
+
+  return (
+    <div className="bg-gray-800 border-2 border-purple-500 rounded-lg p-4 min-w-[280px] max-w-[350px]">
+      <Handle type="target" position={Position.Left} id="input" className="w-3 h-3" />
+
+      <div className="text-sm font-bold text-white mb-3">Multi-Filter: Split by Value</div>
+
+      {/* Column Selector */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">Split Column:</label>
+        <select
+          value={selectedColumn}
+          onChange={(e) => handleColumnChange(e.target.value)}
+          className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+        >
+          <option value="">Select column...</option>
+          {columnNames.map((col: string) => (
+            <option key={col} value={col}>
+              {col}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Split Values List */}
+      <div className="mb-2">
+        <label className="text-xs text-gray-300 block mb-1">Split Values:</label>
+        <div
+          className="space-y-1 max-h-48 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-2 scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {splitValues.map((split) => (
+            <div key={split.id} className="flex items-center gap-1 bg-gray-800 p-1 rounded">
+              <input
+                type="checkbox"
+                checked={split.enabled}
+                onChange={(e) => updateSplitValue(split.id, { enabled: e.target.checked })}
+                className="w-3 h-3"
+              />
+              <input
+                type="text"
+                value={split.value}
+                onChange={(e) => updateSplitValue(split.id, { value: e.target.value })}
+                placeholder="Value..."
+                className="flex-1 bg-gray-700 border border-gray-600 text-white text-xs rounded px-1 py-0.5"
+              />
+              <button
+                onClick={() => removeSplitValue(split.id)}
+                className="text-xs text-red-400 hover:text-red-300 px-1"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {splitValues.length === 0 && (
+            <div className="text-xs text-gray-500 text-center py-2">No split values yet</div>
+          )}
+        </div>
+      </div>
+
+      <button
+        onClick={addSplitValue}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs rounded p-1 mb-2"
+      >
+        + Add Value
+      </button>
+
+      {/* Output Handles - One per enabled split value */}
+      {splitValues
+        .filter((s) => s.enabled && s.value.trim() !== "")
+        .map((split, index) => (
+          <Handle
+            key={split.id}
+            type="source"
+            position={Position.Right}
+            id={`output-${split.value}`}
+            style={{ top: `${30 + index * 20}px` }}
+            className="w-3 h-3"
+          />
+        ))}
+
+      <div className="text-xs text-gray-400 mt-2">
+        {splitValues.filter((s) => s.enabled && s.value.trim() !== "").length} output(s)
+      </div>
+    </div>
+  );
+};
+
 interface NodeTypeSection {
   title: string;
   nodes: { type: FlowNodeType; label: string; description: string }[];
@@ -4803,6 +4947,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         type: "filter",
         label: "Filter",
         description: "Filter table rows with AND/OR conditions",
+      },
+      {
+        type: "multifilter",
+        label: "Multi-Filter",
+        description: "Split table rows by column values into multiple outputs",
       },
       {
         type: "referencelookup",
@@ -5226,6 +5375,7 @@ const reactFlowNodeTypes = {
   generaterows: GenerateRowsNode,
   dumptotsv: DumpToTSVNode,
   getcountercolumn: GetCounterColumnNode,
+  multifilter: MultiFilterNode,
   customschema: CustomSchemaNode,
   readtsvfrompack: ReadTSVFromPackNode,
   customrowsinput: CustomRowsInputNode,
@@ -5739,6 +5889,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
       } else if (sourceNode.type === "filter" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as FilterNodeData).outputType;
+      } else if (sourceNode.type === "multifilter" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as any).outputType;
       } else if (sourceNode.type === "referencelookup" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as ReferenceTableLookupNodeData).outputType;
       } else if (sourceNode.type === "reversereferencelookup" && sourceNode.data) {
@@ -5789,6 +5941,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as GroupByColumnsNodeData).inputType;
       } else if (targetNode.type === "filter" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as FilterNodeData).inputType;
+      } else if (targetNode.type === "multifilter" && targetNode.data) {
+        targetInputType = (targetNode.data as any).inputType;
       } else if (targetNode.type === "referencelookup" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as ReferenceTableLookupNodeData).inputType;
       } else if (targetNode.type === "reversereferencelookup" && targetNode.data) {
@@ -6015,6 +6169,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           (targetNode.type === "columnselectiondropdown" ||
             targetNode.type === "groupbycolumns" ||
             targetNode.type === "filter" ||
+            targetNode.type === "multifilter" ||
             targetNode.type === "referencelookup" ||
             targetNode.type === "reversereferencelookup" ||
             targetNode.type === "indextable" ||
@@ -6090,6 +6245,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           (targetNode.type === "columnselectiondropdown" ||
             targetNode.type === "groupbycolumns" ||
             targetNode.type === "filter" ||
+            targetNode.type === "multifilter" ||
             targetNode.type === "referencelookup" ||
             targetNode.type === "reversereferencelookup" ||
             targetNode.type === "indextable" ||
@@ -6176,9 +6332,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
-        // Update filter nodes when connected to another filter node (chaining filters)
-        if (targetNode.type === "filter" && sourceNode.type === "filter") {
-          const sourceFilterData = sourceNode.data as unknown as FilterNodeData;
+        // Update filter/multifilter nodes when connected to another filter/multifilter node (chaining filters)
+        if (
+          (targetNode.type === "filter" || targetNode.type === "multifilter") &&
+          (sourceNode.type === "filter" || sourceNode.type === "multifilter")
+        ) {
+          const sourceFilterData = sourceNode.data as any;
 
           // Propagate the connectedTableName and DBNameToDBVersions from source filter to target filter
           if (sourceFilterData.connectedTableName && sourceFilterData.DBNameToDBVersions) {
@@ -6205,6 +6364,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (
           targetNode.type === "groupby" &&
           (sourceNode.type === "filter" ||
+            sourceNode.type === "multifilter" ||
             sourceNode.type === "lookup" ||
             sourceNode.type === "referencelookup" ||
             sourceNode.type === "reversereferencelookup")
@@ -6238,12 +6398,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (
           targetNode.type === "referencelookup" &&
           (sourceNode.type === "filter" ||
+            sourceNode.type === "multifilter" ||
             sourceNode.type === "referencelookup" ||
             sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData =
-            sourceNode.type === "filter"
-              ? (sourceNode.data as unknown as FilterNodeData)
+            sourceNode.type === "filter" || sourceNode.type === "multifilter"
+              ? (sourceNode.data as any)
               : sourceNode.type === "referencelookup"
               ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
               : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
@@ -6273,12 +6434,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (
           targetNode.type === "reversereferencelookup" &&
           (sourceNode.type === "filter" ||
+            sourceNode.type === "multifilter" ||
             sourceNode.type === "referencelookup" ||
             sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData =
-            sourceNode.type === "filter"
-              ? (sourceNode.data as unknown as FilterNodeData)
+            sourceNode.type === "filter" || sourceNode.type === "multifilter"
+              ? (sourceNode.data as any)
               : sourceNode.type === "referencelookup"
               ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
               : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
@@ -6337,6 +6499,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "tableselection" ||
               sourceNode.type === "tableselectiondropdown" ||
               sourceNode.type === "filter" ||
+              sourceNode.type === "multifilter" ||
               sourceNode.type === "referencelookup" ||
               sourceNode.type === "reversereferencelookup" ||
               sourceNode.type === "lookup" ||
@@ -6376,6 +6539,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             (sourceNode.type === "tableselection" ||
               sourceNode.type === "tableselectiondropdown" ||
               sourceNode.type === "filter" ||
+              sourceNode.type === "multifilter" ||
               sourceNode.type === "referencelookup" ||
               sourceNode.type === "reversereferencelookup" ||
               sourceNode.type === "lookup" ||
@@ -6532,6 +6696,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           (sourceNode.type === "tableselection" ||
             sourceNode.type === "tableselectiondropdown" ||
             sourceNode.type === "filter" ||
+            sourceNode.type === "multifilter" ||
             sourceNode.type === "referencelookup" ||
             sourceNode.type === "reversereferencelookup" ||
             sourceNode.type === "lookup" ||
@@ -6597,9 +6762,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
-        // Update filter nodes when connected to new table operation nodes
+        // Update filter/multifilter nodes when connected to new table operation nodes
         if (
-          targetNode.type === "filter" &&
+          (targetNode.type === "filter" || targetNode.type === "multifilter") &&
           (sourceNode.type === "lookup" ||
             sourceNode.type === "extracttable" ||
             sourceNode.type === "flattennested" ||
@@ -7032,6 +7197,23 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             columnNames: [],
             DBNameToDBVersions,
           } as FilterNodeData,
+        };
+      } else if (nodeData.type === "multifilter") {
+        // Create Multi-Filter node with special data structure
+        newNode = {
+          id: getNodeId(),
+          type: "multifilter",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            selectedColumn: "",
+            splitValues: [],
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            columnNames: [],
+            DBNameToDBVersions,
+          },
         };
       } else if (nodeData.type === "referencelookup") {
         // Create Reference Lookup node with special data structure

@@ -20,6 +20,7 @@ interface NodeExecutionResult {
   success: boolean;
   data?: any;
   elseData?: any; // For filter node's "else" output handle
+  multiOutputs?: Record<string, any>; // For multi-output nodes like generaterows and multifilter
   error?: string;
 }
 
@@ -112,6 +113,11 @@ export const executeNodeGraph = async (
         } else if (node.type === "filter") {
           textValueToUse = JSON.stringify({
             filters: (node.data as any).filters || [],
+          });
+        } else if (node.type === "multifilter") {
+          textValueToUse = JSON.stringify({
+            selectedColumn: (node.data as any).selectedColumn || "",
+            splitValues: (node.data as any).splitValues || [],
           });
         } else if (node.type === "referencelookup") {
           console.log(
@@ -269,9 +275,26 @@ export const executeNodeGraph = async (
                   const allInputs = targetIncomingConnections
                     .map((conn) => {
                       const sourceResult = executionResults.get(conn.sourceId);
+                      const sourceNode = nodeMap.get(conn.sourceId);
                       // Check if sourceHandle is "else" and use elseData if available
                       if (conn.sourceHandle === "else" && sourceResult?.elseData) {
                         return sourceResult.elseData;
+                      }
+                      // Check if source is generaterows or multifilter with multi-output
+                      if (
+                        (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                        conn.sourceHandle &&
+                        sourceResult?.data &&
+                        typeof sourceResult.data === "object" &&
+                        !Array.isArray(sourceResult.data)
+                      ) {
+                        // For multi-output nodes, check if data is multi-output format
+                        if (sourceResult.multiOutputs && sourceResult.multiOutputs[conn.sourceHandle]) {
+                          return sourceResult.multiOutputs[conn.sourceHandle];
+                        } else {
+                          // Fallback to old format (for generaterows)
+                          return (sourceResult.data as any)[conn.sourceHandle];
+                        }
                       }
                       return sourceResult?.data;
                     })
@@ -294,19 +317,28 @@ export const executeNodeGraph = async (
                     if (conn.sourceHandle === "else" && sourceResult?.elseData) {
                       inputData = sourceResult.elseData;
                     }
-                    // Check if source is generaterows with multi-output
+                    // Check if source is generaterows or multifilter with multi-output
                     else if (
-                      sourceNode?.type === "generaterows" &&
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
                       conn.sourceHandle &&
                       sourceResult?.data &&
                       typeof sourceResult.data === "object" &&
                       !Array.isArray(sourceResult.data)
                     ) {
-                      // Extract specific output by handle ID
-                      inputData = (sourceResult.data as any)[conn.sourceHandle];
-                      console.log(
-                        `Save Changes: Using output "${conn.sourceHandle}" from generaterows node ${conn.sourceId}`
-                      );
+                      // For multi-output nodes, check if data is multi-output format
+                      if (sourceResult.multiOutputs && sourceResult.multiOutputs[conn.sourceHandle]) {
+                        // Extract specific output by handle ID from multiOutputs
+                        inputData = sourceResult.multiOutputs[conn.sourceHandle];
+                        console.log(
+                          `Save Changes: Using output "${conn.sourceHandle}" from ${sourceNode.type} node ${conn.sourceId}`
+                        );
+                      } else {
+                        // Fallback to old format (for generaterows)
+                        inputData = (sourceResult.data as any)[conn.sourceHandle];
+                        console.log(
+                          `Save Changes: Using output "${conn.sourceHandle}" from ${sourceNode.type} node ${conn.sourceId} (legacy format)`
+                        );
+                      }
                     } else {
                       inputData = sourceResult?.data;
                     }
@@ -427,23 +459,33 @@ export const executeNodeGraph = async (
                     if (lastConnection.sourceHandle === "else" && sourceResult?.elseData) {
                       inputDataForTarget = sourceResult.elseData;
                     }
-                    // Check if source is generaterows with multi-output
+                    // Check if source is generaterows or multifilter with multi-output
                     else if (
-                      sourceNode?.type === "generaterows" &&
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
                       lastConnection.sourceHandle &&
                       sourceResult?.data &&
                       typeof sourceResult.data === "object" &&
                       !Array.isArray(sourceResult.data)
                     ) {
-                      // Extract specific output by handle ID
-                      const outputData = (sourceResult.data as any)[lastConnection.sourceHandle];
+                      // For multi-output nodes, check if data is multi-output format
+                      let outputData = null;
+                      if (sourceResult.multiOutputs && sourceResult.multiOutputs[lastConnection.sourceHandle]) {
+                        // Extract specific output by handle ID from multiOutputs
+                        outputData = sourceResult.multiOutputs[lastConnection.sourceHandle];
+                        console.log(
+                          `Using output "${lastConnection.sourceHandle}" from ${sourceNode.type} node ${lastConnection.sourceId}`
+                        );
+                      } else {
+                        // Fallback to old format (for generaterows)
+                        outputData = (sourceResult.data as any)[lastConnection.sourceHandle];
+                        console.log(
+                          `Using output "${lastConnection.sourceHandle}" from ${sourceNode.type} node ${lastConnection.sourceId} (legacy format)`
+                        );
+                      }
                       inputDataForTarget = outputData || null;
                       console.log(
-                        `Using output "${lastConnection.sourceHandle}" from generaterows node ${lastConnection.sourceId}`
-                      );
-                      console.log(
-                        `Available handles in generaterows output:`,
-                        Object.keys(sourceResult.data)
+                        `Available handles in ${sourceNode.type} output:`,
+                        sourceResult.multiOutputs ? Object.keys(sourceResult.multiOutputs) : Object.keys(sourceResult.data)
                       );
                       console.log(`Extracted outputData:`, outputData);
                       console.log(`Output data type:`, outputData?.type);
