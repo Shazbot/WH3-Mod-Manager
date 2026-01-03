@@ -288,13 +288,8 @@ export const executeNodeGraph = async (
                         typeof sourceResult.data === "object" &&
                         !Array.isArray(sourceResult.data)
                       ) {
-                        // For multi-output nodes, check if data is multi-output format
-                        if (sourceResult.multiOutputs && sourceResult.multiOutputs[conn.sourceHandle]) {
-                          return sourceResult.multiOutputs[conn.sourceHandle];
-                        } else {
-                          // Fallback to old format (for generaterows)
-                          return (sourceResult.data as any)[conn.sourceHandle];
-                        }
+                        // Extract specific output by handle ID from data field
+                        return (sourceResult.data as any)[conn.sourceHandle];
                       }
                       return sourceResult?.data;
                     })
@@ -325,20 +320,11 @@ export const executeNodeGraph = async (
                       typeof sourceResult.data === "object" &&
                       !Array.isArray(sourceResult.data)
                     ) {
-                      // For multi-output nodes, check if data is multi-output format
-                      if (sourceResult.multiOutputs && sourceResult.multiOutputs[conn.sourceHandle]) {
-                        // Extract specific output by handle ID from multiOutputs
-                        inputData = sourceResult.multiOutputs[conn.sourceHandle];
-                        console.log(
-                          `Save Changes: Using output "${conn.sourceHandle}" from ${sourceNode.type} node ${conn.sourceId}`
-                        );
-                      } else {
-                        // Fallback to old format (for generaterows)
-                        inputData = (sourceResult.data as any)[conn.sourceHandle];
-                        console.log(
-                          `Save Changes: Using output "${conn.sourceHandle}" from ${sourceNode.type} node ${conn.sourceId} (legacy format)`
-                        );
-                      }
+                      // Extract specific output by handle ID from data field
+                      inputData = (sourceResult.data as any)[conn.sourceHandle];
+                      console.log(
+                        `Save Changes: Using output "${conn.sourceHandle}" from ${sourceNode.type} node ${conn.sourceId}`
+                      );
                     } else {
                       inputData = sourceResult?.data;
                     }
@@ -467,25 +453,15 @@ export const executeNodeGraph = async (
                       typeof sourceResult.data === "object" &&
                       !Array.isArray(sourceResult.data)
                     ) {
-                      // For multi-output nodes, check if data is multi-output format
-                      let outputData = null;
-                      if (sourceResult.multiOutputs && sourceResult.multiOutputs[lastConnection.sourceHandle]) {
-                        // Extract specific output by handle ID from multiOutputs
-                        outputData = sourceResult.multiOutputs[lastConnection.sourceHandle];
-                        console.log(
-                          `Using output "${lastConnection.sourceHandle}" from ${sourceNode.type} node ${lastConnection.sourceId}`
-                        );
-                      } else {
-                        // Fallback to old format (for generaterows)
-                        outputData = (sourceResult.data as any)[lastConnection.sourceHandle];
-                        console.log(
-                          `Using output "${lastConnection.sourceHandle}" from ${sourceNode.type} node ${lastConnection.sourceId} (legacy format)`
-                        );
-                      }
+                      // Extract specific output by handle ID from data field
+                      const outputData = (sourceResult.data as any)[lastConnection.sourceHandle];
                       inputDataForTarget = outputData || null;
                       console.log(
+                        `Using output "${lastConnection.sourceHandle}" from ${sourceNode.type} node ${lastConnection.sourceId}`
+                      );
+                      console.log(
                         `Available handles in ${sourceNode.type} output:`,
-                        sourceResult.multiOutputs ? Object.keys(sourceResult.multiOutputs) : Object.keys(sourceResult.data)
+                        Object.keys(sourceResult.data)
                       );
                       console.log(`Extracted outputData:`, outputData);
                       console.log(`Output data type:`, outputData?.type);

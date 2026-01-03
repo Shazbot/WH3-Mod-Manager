@@ -949,6 +949,7 @@ async function executeMultiFilterNode(
   // Parse configuration from textValue
   let selectedColumn = "";
   let splitValues: Array<{ id: string; value: string; enabled: boolean }> = [];
+
   try {
     const parsed = JSON.parse(textValue);
     selectedColumn = parsed.selectedColumn || "";
@@ -962,13 +963,7 @@ async function executeMultiFilterNode(
     console.log(`Multi-Filter Node ${nodeId}: No column selected, returning empty outputs`);
     return {
       success: true,
-      data: {
-        type: "TableSelection",
-        tables: [],
-        sourceFiles: [],
-        tableCount: 0,
-      },
-      multiOutputs: {},
+      data: {},
     };
   }
 
@@ -979,13 +974,7 @@ async function executeMultiFilterNode(
     console.log(`Multi-Filter Node ${nodeId}: No enabled split values, returning empty outputs`);
     return {
       success: true,
-      data: {
-        type: "TableSelection",
-        tables: [],
-        sourceFiles: [],
-        tableCount: 0,
-      },
-      multiOutputs: {},
+      data: {},
     };
   }
 
@@ -998,7 +987,8 @@ async function executeMultiFilterNode(
   const multiOutputs: Record<string, DBTablesNodeData> = {};
 
   for (const splitValue of enabledSplitValues) {
-    const outputKey = `output-${splitValue.value}`;
+    // Sanitize handle ID to match UI (avoid special characters)
+    const outputKey = `output-${splitValue.value.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
     multiOutputs[outputKey] = {
       type: "TableSelection",
       tables: [],
@@ -1046,7 +1036,8 @@ async function executeMultiFilterNode(
 
     // Create output tables for each split value
     for (const splitValue of enabledSplitValues) {
-      const outputKey = `output-${splitValue.value}`;
+      // Sanitize handle ID to match UI (avoid special characters)
+      const outputKey = `output-${splitValue.value.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
       const matchingRows = rowsByValue.get(splitValue.value) || [];
 
       if (matchingRows.length > 0) {
@@ -1086,16 +1077,10 @@ async function executeMultiFilterNode(
     )
   );
 
-  // Return multi-output format
+  // Return multi-output format (same as generaterows - outputs in data field)
   return {
     success: true,
-    data: {
-      type: "TableSelection",
-      tables: [],
-      sourceFiles: [],
-      tableCount: 0,
-    },
-    multiOutputs: multiOutputs,
+    data: multiOutputs,
   };
 }
 

@@ -14,6 +14,7 @@ import {
   XYPosition,
   Handle,
   Position,
+  useUpdateNodeInternals,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useAppSelector, useAppDispatch } from "../hooks";
@@ -4761,17 +4762,84 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
 };
 
 const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const updateNodeInternals = useUpdateNodeInternals();
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
   const [splitValues, setSplitValues] = useState<Array<{ id: string; value: string; enabled: boolean }>>(
     data.splitValues || []
   );
   const columnNames = data.columnNames || [];
+  const nodeRef = React.useRef<HTMLDivElement>(null);
+  const rowRefs = React.useRef<Map<string, HTMLDivElement>>(new Map());
+  const [handlePositions, setHandlePositions] = React.useState<Map<string, number>>(new Map());
 
   // Sync state when data changes (e.g., when loading saved graph)
   React.useEffect(() => {
-    setSelectedColumn(data.selectedColumn || "");
-    setSplitValues(data.splitValues || []);
-  }, [data.selectedColumn, data.splitValues]);
+    if (data.selectedColumn !== undefined && data.selectedColumn !== selectedColumn) {
+      setSelectedColumn(data.selectedColumn);
+    }
+    if (data.splitValues && Array.isArray(data.splitValues) && data.splitValues.length > 0) {
+      const currentKey = JSON.stringify(splitValues);
+      const newKey = JSON.stringify(data.splitValues);
+      if (currentKey !== newKey) {
+        setSplitValues(data.splitValues);
+      }
+    }
+  }, [data]);
+
+  // Update handle positions when rows change
+  React.useLayoutEffect(() => {
+    const updatePositions = () => {
+      if (!nodeRef.current) return;
+
+      const newPositions = new Map<string, number>();
+
+      splitValues.forEach((split, index) => {
+        const rowElement = rowRefs.current.get(split.id);
+        if (rowElement && nodeRef.current) {
+          // Calculate position using offsetTop which is relative to offsetParent
+          let top = rowElement.offsetTop;
+          let current: HTMLElement | null = rowElement.offsetParent as HTMLElement;
+
+          // Walk up the tree summing offsetTops until we hit the node container
+          while (current && current !== nodeRef.current && nodeRef.current.contains(current)) {
+            top += current.offsetTop;
+            current = current.offsetParent as HTMLElement;
+          }
+
+          // Add half the row height to get to the center
+          const rowCenter = top + rowElement.offsetHeight / 2;
+
+          // Subtract half the handle size to center the handle itself
+          const handleSize = 12; // w-3 h-3
+
+          // Additional adjustment - empirically determined offset
+          const adjustment = 6;
+          const topPosition = rowCenter - handleSize / 2 + adjustment;
+
+          newPositions.set(split.id, topPosition);
+        }
+      });
+
+      setHandlePositions(newPositions);
+      updateNodeInternals(id);
+    };
+
+    // Delay to ensure DOM is fully rendered
+    const timeoutId = setTimeout(() => {
+      requestAnimationFrame(updatePositions);
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [splitValues]);
+
+  // Update React Flow internals when split values change (handles added/removed/enabled)
+  React.useEffect(() => {
+    updateNodeInternals(id);
+  }, [splitValues, id, updateNodeInternals]);
+
+  React.useEffect(() => {
+    updateNodeInternals(id);
+  });
 
   const handleColumnChange = (column: string) => {
     setSelectedColumn(column);
@@ -4818,7 +4886,10 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   };
 
   return (
-    <div className="bg-gray-800 border-2 border-purple-500 rounded-lg p-4 min-w-[280px] max-w-[350px]">
+    <div
+      ref={nodeRef}
+      className="bg-gray-800 border-2 border-purple-500 rounded-lg p-4 min-w-[280px] max-w-[350px] relative overflow-visible"
+    >
       <Handle type="target" position={Position.Left} id="input" className="w-3 h-3" />
 
       <div className="text-sm font-bold text-white mb-3">Multi-Filter: Split by Value</div>
@@ -4847,29 +4918,41 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
           className="space-y-1 max-h-48 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-2 scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
-          {splitValues.map((split) => (
-            <div key={split.id} className="flex items-center gap-1 bg-gray-800 p-1 rounded">
-              <input
-                type="checkbox"
-                checked={split.enabled}
-                onChange={(e) => updateSplitValue(split.id, { enabled: e.target.checked })}
-                className="w-3 h-3"
-              />
-              <input
-                type="text"
-                value={split.value}
-                onChange={(e) => updateSplitValue(split.id, { value: e.target.value })}
-                placeholder="Value..."
-                className="flex-1 bg-gray-700 border border-gray-600 text-white text-xs rounded px-1 py-0.5"
-              />
-              <button
-                onClick={() => removeSplitValue(split.id)}
-                className="text-xs text-red-400 hover:text-red-300 px-1"
+          {splitValues.map((split) => {
+            return (
+              <div
+                key={split.id}
+                ref={(el) => {
+                  if (el) {
+                    rowRefs.current.set(split.id, el);
+                  } else {
+                    rowRefs.current.delete(split.id);
+                  }
+                }}
+                className="flex items-center gap-1 bg-gray-800 p-1 rounded"
               >
-                ✕
-              </button>
-            </div>
-          ))}
+                <input
+                  type="checkbox"
+                  checked={split.enabled}
+                  onChange={(e) => updateSplitValue(split.id, { enabled: e.target.checked })}
+                  className="w-3 h-3"
+                />
+                <input
+                  type="text"
+                  value={split.value}
+                  onChange={(e) => updateSplitValue(split.id, { value: e.target.value })}
+                  placeholder="Value..."
+                  className="flex-1 bg-gray-700 border border-gray-600 text-white text-xs rounded px-1 py-0.5"
+                />
+                <button
+                  onClick={() => removeSplitValue(split.id)}
+                  className="text-xs text-red-400 hover:text-red-300 px-1"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
           {splitValues.length === 0 && (
             <div className="text-xs text-gray-500 text-center py-2">No split values yet</div>
           )}
@@ -4878,28 +4961,37 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
       <button
         onClick={addSplitValue}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs rounded p-1 mb-2"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs rounded p-1"
       >
         + Add Value
       </button>
 
-      {/* Output Handles - One per enabled split value */}
-      {splitValues
-        .filter((s) => s.enabled && s.value.trim() !== "")
-        .map((split, index) => (
+      {/* Output Handles - positioned at node edge, aligned with split values */}
+      {splitValues.map((split) => {
+        const handleId = `output-${split.value.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+        const showHandle = split.enabled && split.value.trim() !== "";
+
+        if (!showHandle) return null;
+
+        const topPosition = handlePositions.get(split.id);
+        if (topPosition === undefined) return null;
+
+        return (
           <Handle
             key={split.id}
             type="source"
             position={Position.Right}
-            id={`output-${split.value}`}
-            style={{ top: `${30 + index * 20}px` }}
-            className="w-3 h-3"
+            id={handleId}
+            className="w-3 h-3 bg-purple-500"
+            data-output-type="TableSelection"
+            style={{
+              position: "absolute",
+              right: -6,
+              top: `${topPosition}px`,
+            }}
           />
-        ))}
-
-      <div className="text-xs text-gray-400 mt-2">
-        {splitValues.filter((s) => s.enabled && s.value.trim() !== "").length} output(s)
-      </div>
+        );
+      })}
     </div>
   );
 };
@@ -4978,11 +5070,6 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Column Dropdown Input",
         description: "Node with dropdown for column selection",
       },
-      {
-        type: "groupbycolumns",
-        label: "Group By Columns",
-        description: "Accepts TableSelection, two column dropdowns, outputs GroupedText",
-      },
     ],
   },
   {
@@ -5037,6 +5124,12 @@ const nodeTypeSections: NodeTypeSection[] = [
         type: "groupedcolumnstotext",
         label: "Grouped Columns to Text",
         description: "Formats GroupedText using pattern and join separator",
+      },
+
+      {
+        type: "groupbycolumns",
+        label: "Group By Columns (For Text)",
+        description: "Accepts TableSelection, two column dropdowns, outputs GroupedText",
       },
     ],
   },
@@ -5254,6 +5347,7 @@ const executeGraphInBackend = async (
             ? Boolean((node.data as any).onlyForMultiple)
             : false,
           filters: (node.data as any)?.filters || [],
+          splitValues: (node.data as any)?.splitValues || [],
           columnNames: (node.data as any)?.columnNames || [],
           connectedTableName: (node.data as any)?.connectedTableName
             ? String((node.data as any).connectedTableName)
@@ -5640,6 +5734,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   // Listen for node data updates from child components
   React.useEffect(() => {
     const handleNodeDataUpdate = (event: CustomEvent) => {
+      console.log("HANDLE UPDATE:", event.detail);
       const {
         nodeId,
         textValue,
@@ -5662,6 +5757,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         includeBaseGame,
         onlyForMultiple,
         filters,
+        splitValues,
         selectedReferenceTable,
         referenceTableNames,
         selectedReverseTable,
@@ -5685,6 +5781,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         aggregations,
         newColumnName,
         schemaColumns,
+        tsvFileName,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -5715,6 +5812,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 includeBaseGame: includeBaseGame !== undefined ? includeBaseGame : node.data.includeBaseGame,
                 onlyForMultiple: onlyForMultiple !== undefined ? onlyForMultiple : node.data.onlyForMultiple,
                 filters: filters !== undefined ? filters : node.data.filters,
+                splitValues: splitValues !== undefined ? splitValues : (node.data as any).splitValues,
                 selectedReferenceTable:
                   selectedReferenceTable !== undefined
                     ? selectedReferenceTable
@@ -5745,6 +5843,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 aggregations: aggregations !== undefined ? aggregations : node.data.aggregations,
                 newColumnName: newColumnName !== undefined ? newColumnName : node.data.newColumnName,
                 schemaColumns: schemaColumns !== undefined ? schemaColumns : node.data.schemaColumns,
+                tsvFileName: tsvFileName !== undefined ? tsvFileName : node.data.tsvFileName,
               },
             };
           }
@@ -6707,8 +6806,6 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         ) {
           const sourceData = sourceNode.data as any;
 
-          // console.log("TO UPDATE GENERATEROWS CONNECTION", { ...sourceData, DBNameToDBVersions: {} });
-
           if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
@@ -7667,7 +7764,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           groupByColumns: (node.data as any)?.groupByColumns || [],
           aggregations: (node.data as any)?.aggregations || [],
           inputColumnNames: (node.data as any)?.inputColumnNames || [],
+          schemaColumns: (node.data as any)?.schemaColumns || [],
+          customRows: (node.data as any)?.customRows || [],
+          splitValues: (node.data as any)?.splitValues || [],
           newColumnName: String((node.data as any)?.newColumnName) || "",
+          tsvFileName: String((node.data as any)?.tsvFileName) || "",
         },
       };
 
