@@ -390,46 +390,53 @@ export const executeNodeGraph = async (
                     inputDataForTarget = null;
                   }
                 } else if (targetNode.type === "generaterows" && targetIncomingConnections.length > 1) {
-                  // Generate Rows with multiple inputs: prioritize non-counter sources for actual rows
-                  // GetCounterColumn output is synthetic and shouldn't be used as the primary row source
+                  // Generate Rows with multiple inputs: merge all TableSelection inputs
                   const mergedSourceFiles: any[] = [];
-                  let primarySource = null;
+                  const allTables: any[] = [];
 
-                  // Find the first non-GetCounterColumn source for primary data
+                  // Collect data from all inputs
                   for (const conn of targetIncomingConnections) {
                     const sourceNode = nodeMap.get(conn.sourceId);
                     const sourceResult = executionResults.get(conn.sourceId);
 
-                    if (sourceResult?.data?.type === "TableSelection") {
-                      // Collect source files from all inputs
-                      if (sourceResult.data.sourceFiles) {
-                        mergedSourceFiles.push(...sourceResult.data.sourceFiles);
+                    let sourceData = null;
+
+                    // For multi-output nodes (generaterows, multifilter), extract specific output
+                    if (
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                      conn.sourceHandle &&
+                      sourceResult?.data &&
+                      typeof sourceResult.data === "object" &&
+                      !Array.isArray(sourceResult.data)
+                    ) {
+                      sourceData = (sourceResult.data as any)[conn.sourceHandle];
+                    } else {
+                      sourceData = sourceResult?.data;
+                    }
+
+                    if (sourceData?.type === "TableSelection") {
+                      // Collect tables from this input
+                      if (sourceData.tables) {
+                        allTables.push(...sourceData.tables);
                       }
 
-                      // Use first non-counter source as primary, or any source if no non-counter found
-                      if (!primarySource && sourceNode?.type !== "getcountercolumn") {
-                        primarySource = sourceResult.data;
+                      // Collect source files from this input
+                      if (sourceData.sourceFiles) {
+                        mergedSourceFiles.push(...sourceData.sourceFiles);
                       }
                     }
                   }
 
-                  // If no non-counter source found, use the last source
-                  if (!primarySource) {
-                    const lastConnection = targetIncomingConnections[targetIncomingConnections.length - 1];
-                    const lastResult = executionResults.get(lastConnection.sourceId);
-                    primarySource = lastResult?.data;
-                  }
-
-                  if (primarySource) {
+                  if (allTables.length > 0) {
                     inputDataForTarget = {
                       type: "TableSelection",
-                      tables: primarySource.tables || [],
+                      tables: allTables,
                       sourceFiles: mergedSourceFiles,
-                      tableCount: primarySource.tables?.length || 0,
+                      tableCount: allTables.length,
                     };
 
                     console.log(
-                      `Generate Rows: Using ${primarySource.tables?.length || 0} tables from primary source (non-counter), with source files from ${targetIncomingConnections.length} inputs`
+                      `Generate Rows: Merged ${allTables.length} tables from ${targetIncomingConnections.length} inputs`
                     );
                   } else {
                     inputDataForTarget = null;
