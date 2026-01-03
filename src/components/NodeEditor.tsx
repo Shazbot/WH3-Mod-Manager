@@ -5485,6 +5485,7 @@ const NodeSidebar: React.FC<{
   onDragStart: (event: DragEvent, nodeType: DraggableNodeData) => void;
 }> = ({ onDragStart }) => {
   const [filterText, setFilterText] = useState("");
+  const [useCompactView, setUseCompactView] = useState(true);
 
   // Filter nodes based on search text
   const filteredSections = nodeTypeSections
@@ -5511,8 +5512,23 @@ const NodeSidebar: React.FC<{
         placeholder="Filter nodes..."
         value={filterText}
         onChange={(e) => setFilterText(e.target.value)}
-        className="w-full p-2 mb-4 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+        className="w-full p-2 mb-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
       />
+
+      <div className="mb-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useCompactView}
+            onChange={(event) => {
+              const newValue = event.target.checked;
+              setUseCompactView(newValue);
+            }}
+            className="w-4 h-4"
+          />
+          <span className="text-xs text-gray-300">Compact View</span>
+        </label>
+      </div>
 
       <div className="space-y-4">
         {filteredSections.map((section) => (
@@ -5529,7 +5545,9 @@ const NodeSidebar: React.FC<{
                   className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm transition-colors duration-150"
                 >
                   <div className="font-medium text-sm text-white">{nodeType.label}</div>
-                  <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>
+                  {!useCompactView && (
+                    <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -5734,7 +5752,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   // Listen for node data updates from child components
   React.useEffect(() => {
     const handleNodeDataUpdate = (event: CustomEvent) => {
-      console.log("HANDLE UPDATE:", event.detail);
+      // console.log("HANDLE UPDATE:", event.detail);
       const {
         nodeId,
         textValue,
