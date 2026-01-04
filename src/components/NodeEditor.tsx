@@ -430,6 +430,8 @@ interface AddColumnTransformation {
     | "divide"
     | "rename_whole"
     | "rename_substring"
+    | "replace_substring_whole"
+    | "regex_replace"
     | "filterequal"
     | "filternotequal";
   prefix?: string;
@@ -437,8 +439,10 @@ interface AddColumnTransformation {
   numericValue?: number;
   filterValue?: string;
   matchValue?: string; // For rename_whole
-  replaceValue?: string; // For both rename types
-  findSubstring?: string; // For rename_substring
+  replaceValue?: string; // For rename types and replace_substring_whole
+  findSubstring?: string; // For rename_substring and replace_substring_whole
+  regexPattern?: string; // For regex_replace
+  regexReplacement?: string; // For regex_replace
   outputColumnName: string;
 }
 
@@ -4217,6 +4221,8 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                         | "divide"
                         | "rename_whole"
                         | "rename_substring"
+                        | "replace_substring_whole"
+                        | "regex_replace"
                         | "filterequal"
                         | "filternotequal",
                     })
@@ -4232,6 +4238,8 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   <option value="divide">Divide (/)</option>
                   <option value="rename_whole">Rename (whole text match)</option>
                   <option value="rename_substring">Rename (substring replace)</option>
+                  <option value="replace_substring_whole">Replace if contains (replace whole)</option>
+                  <option value="regex_replace">Regex Replace</option>
                   <option value="filterequal">Filter: Equal (skip if equal)</option>
                   <option value="filternotequal">Filter: Not Equal (skip if not equal)</option>
                 </select>
@@ -4309,6 +4317,44 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   </>
                 )}
 
+                {trans.transformationType === "replace_substring_whole" && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="If contains substring..."
+                      value={trans.findSubstring || ""}
+                      onChange={(e) => updateTransformation(trans.id, { findSubstring: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Replace entire value with..."
+                      value={trans.replaceValue || ""}
+                      onChange={(e) => updateTransformation(trans.id, { replaceValue: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                  </>
+                )}
+
+                {trans.transformationType === "regex_replace" && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Regex pattern (e.g., wh_(\w+)_emp)..."
+                      value={trans.regexPattern || ""}
+                      onChange={(e) => updateTransformation(trans.id, { regexPattern: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Replacement (supports $1, $2, etc.)..."
+                      value={trans.regexReplacement || ""}
+                      onChange={(e) => updateTransformation(trans.id, { regexReplacement: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                  </>
+                )}
+
                 {(trans.transformationType === "filterequal" ||
                   trans.transformationType === "filternotequal") && (
                   <input
@@ -4338,7 +4384,12 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
-        Output: All original columns + {transformations.filter((t) => !["filterequal", "filternotequal"].includes(t.transformationType)).length} new
+        Output: All original columns +{" "}
+        {
+          transformations.filter((t) => !["filterequal", "filternotequal"].includes(t.transformationType))
+            .length
+        }{" "}
+        new
       </div>
 
       <Handle
@@ -7269,17 +7320,36 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         ) {
           const sourceData = sourceNode.data as any;
 
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+          // For tableselectiondropdown, use selectedTable as the connected table
+          const tableName =
+            sourceNode.type === "tableselectiondropdown"
+              ? sourceData.selectedTable
+              : sourceData.connectedTableName;
+
+          if (tableName && DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
+                  // Get column names from source
+                  let cols = sourceData.columnNames || [];
+
+                  // For tableselectiondropdown nodes, columnNames might be empty
+                  // Get columns from the schema based on selectedTable
+                  if (cols.length === 0 && tableName && DBNameToDBVersions[tableName]) {
+                    const tableVersions = DBNameToDBVersions[tableName];
+                    if (tableVersions && tableVersions.length > 0) {
+                      const tableFields = tableVersions[0].fields || [];
+                      cols = tableFields.map((field: any) => field.name);
+                    }
+                  }
+
                   return {
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: sourceData.columnNames || [],
-                      connectedTableName: sourceData.connectedTableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                      columnNames: cols,
+                      connectedTableName: tableName,
+                      DBNameToDBVersions: DBNameToDBVersions,
                     },
                   };
                 }
