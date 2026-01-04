@@ -119,6 +119,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "generaterows":
         return await executeGenerateRowsNode(nodeId, textValue, inputData);
 
+      case "addnewcolumn":
+        return await executeAddNewColumnNode(nodeId, textValue, inputData);
+
       case "dumptotsv":
         return await executeDumpToTSVNode(nodeId, textValue, inputData);
 
@@ -1009,9 +1012,7 @@ async function executeMultiFilterNode(
       tableData.table.tableSchema
     ) as AmendedSchemaField[][];
 
-    console.log(
-      `Multi-Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`
-    );
+    console.log(`Multi-Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
 
     // Group rows by the column value
     const rowsByValue = new Map<string, AmendedSchemaField[][]>();
@@ -1072,9 +1073,7 @@ async function executeMultiFilterNode(
 
   console.log(
     `Multi-Filter Node ${nodeId}: Created ${Object.keys(multiOutputs).length} outputs:`,
-    Object.keys(multiOutputs).map(
-      (key) => `${key} (${multiOutputs[key].tableCount} tables)`
-    )
+    Object.keys(multiOutputs).map((key) => `${key} (${multiOutputs[key].tableCount} tables)`)
   );
 
   // Return multi-output format (same as generaterows - outputs in data field)
@@ -4551,6 +4550,301 @@ async function executeGenerateRowsNode(
   return {
     success: true,
     data: outputs,
+  };
+}
+
+async function executeAddNewColumnNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Add New Column Node ${nodeId}: Starting execution`);
+
+  // 1. Parse configuration from textValue
+  let config: {
+    transformations: Array<{
+      sourceColumn: string;
+      transformationType:
+        | "none"
+        | "prefix"
+        | "suffix"
+        | "add"
+        | "subtract"
+        | "multiply"
+        | "divide"
+        | "rename_whole"
+        | "rename_substring"
+        | "filterequal"
+        | "filternotequal";
+      prefix?: string;
+      suffix?: string;
+      numericValue?: number;
+      filterValue?: string;
+      matchValue?: string;
+      replaceValue?: string;
+      findSubstring?: string;
+      outputColumnName: string;
+    }>;
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
+  };
+
+  try {
+    config = JSON.parse(textValue);
+    console.log(
+      `Add New Column Node ${nodeId}: Parsed ${(config.transformations || []).length} transformations`
+    );
+  } catch (error) {
+    return {
+      success: false,
+      error: `Invalid configuration: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+
+  if (!config.transformations) {
+    return {
+      success: false,
+      error: "Missing transformations in configuration",
+    };
+  }
+
+  // 2. Extract input rows from ALL input tables
+  if (!inputData.tables || inputData.tables.length === 0) {
+    return {
+      success: false,
+      error: "No input tables found",
+    };
+  }
+
+  // Collect rows from all input tables
+  const rows: AmendedSchemaField[][] = [];
+  const sourceTable = inputData.tables[0]; // Keep first table for metadata
+
+  for (const table of inputData.tables) {
+    if (!table.table.tableSchema) {
+      console.warn(`Add New Column Node ${nodeId}: Skipping table ${table.name} - no schema information`);
+      continue;
+    }
+
+    const tableRows = table.table.schemaFields
+      ? (chunkSchemaIntoRows(table.table.schemaFields, table.table.tableSchema) as AmendedSchemaField[][])
+      : [];
+
+    rows.push(...tableRows);
+  }
+
+  console.log(
+    `Add New Column Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`
+  );
+
+  if (rows.length === 0) {
+    // Return empty output
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      },
+    };
+  }
+
+  // Helper function to escape regex special characters
+  function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // Helper to check if transformation is a filter
+  function isFilterTransformation(trans: (typeof config.transformations)[0]): boolean {
+    return trans.transformationType === "filterequal" || trans.transformationType === "filternotequal";
+  }
+
+  // 3. Process each row and apply transformations
+  const transformedData = new Map<string, any[]>(); // outputColumnName -> array of values for each row
+  const filteredRowIndices = new Set<number>(); // Track which rows to exclude
+
+  for (const trans of config.transformations) {
+    transformedData.set(trans.outputColumnName, []);
+  }
+
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const row = rows[rowIdx];
+    const rowTransformedValues = new Map<string, any>(); // Per-row transformation outputs for chaining
+
+    // Process transformations in order (to support chaining)
+    for (const transformation of config.transformations) {
+      let outputValue: any;
+
+      // Get source value - either from original row or previous transformation (chaining)
+      if (rowTransformedValues.has(transformation.sourceColumn)) {
+        outputValue = rowTransformedValues.get(transformation.sourceColumn);
+      } else {
+        const sourceCell = row.find((c) => c.name === transformation.sourceColumn);
+        outputValue = sourceCell?.resolvedKeyValue ?? "";
+      }
+
+      // Apply transformation
+      switch (transformation.transformationType) {
+        case "none":
+          // Pass through
+          break;
+
+        case "prefix":
+          outputValue = `${transformation.prefix || ""}${outputValue}`;
+          break;
+
+        case "suffix":
+          outputValue = `${outputValue}${transformation.suffix || ""}`;
+          break;
+
+        case "add":
+          outputValue = parseFloat(String(outputValue)) + (transformation.numericValue || 0);
+          break;
+
+        case "subtract":
+          outputValue = parseFloat(String(outputValue)) - (transformation.numericValue || 0);
+          break;
+
+        case "multiply":
+          outputValue = parseFloat(String(outputValue)) * (transformation.numericValue || 1);
+          break;
+
+        case "divide":
+          const divisor = transformation.numericValue || 1;
+          outputValue = divisor !== 0 ? parseFloat(String(outputValue)) / divisor : 0;
+          break;
+
+        case "rename_whole":
+          const strValue = String(outputValue);
+          const matchValue = transformation.matchValue || "";
+          if (strValue === matchValue) {
+            outputValue = transformation.replaceValue || "";
+          }
+          // Otherwise keep original value
+          break;
+
+        case "rename_substring":
+          const findStr = transformation.findSubstring || "";
+          const replaceStr = transformation.replaceValue || "";
+          if (findStr) {
+            outputValue = String(outputValue).replace(new RegExp(escapeRegex(findStr), "g"), replaceStr);
+          }
+          break;
+
+        case "filterequal":
+          if (String(outputValue) === (transformation.filterValue || "")) {
+            filteredRowIndices.add(rowIdx);
+          }
+          break;
+
+        case "filternotequal":
+          if (String(outputValue) !== (transformation.filterValue || "")) {
+            filteredRowIndices.add(rowIdx);
+          }
+          break;
+      }
+
+      // Store transformed value for this row (for chaining and output)
+      rowTransformedValues.set(transformation.outputColumnName, outputValue);
+    }
+
+    // Store all transformed values for this row
+    for (const transformation of config.transformations) {
+      const value = rowTransformedValues.get(transformation.outputColumnName);
+      transformedData.get(transformation.outputColumnName)!.push(value);
+    }
+  }
+
+  console.log(`Add New Column Node ${nodeId}: Filtered out ${filteredRowIndices.size} rows`);
+
+  // 4. Build output table with original columns + new columns
+  const outputRows: AmendedSchemaField[] = [];
+  let outputRowIdx = 0;
+
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    // Skip filtered rows
+    if (filteredRowIndices.has(rowIdx)) {
+      continue;
+    }
+
+    const row = rows[rowIdx];
+
+    // Copy all original columns
+    for (const cell of row) {
+      outputRows.push(cell);
+    }
+
+    // Append new transformed columns (excluding filter transformations)
+    for (const transformation of config.transformations) {
+      if (isFilterTransformation(transformation)) continue;
+
+      const value = transformedData.get(transformation.outputColumnName)?.[rowIdx];
+
+      // Create schema field for the new column
+      const { typeToBuffer } = await import("./packFileSerializer");
+      const fieldBuffer = await typeToBuffer("StringU8", String(value ?? ""));
+
+      const schemaField: AmendedSchemaField = {
+        name: transformation.outputColumnName,
+        resolvedKeyValue: String(value ?? ""),
+        type: "StringU8",
+        fields: [{ type: "Buffer", val: fieldBuffer }],
+        isKey: false,
+      };
+
+      outputRows.push(schemaField);
+    }
+
+    outputRowIdx++;
+  }
+
+  console.log(`Add New Column Node ${nodeId}: Created ${outputRowIdx} output rows with added columns`);
+
+  // 5. Create extended schema (original fields + new fields)
+  const inputSchema = sourceTable.table.tableSchema!;
+  const extendedSchema: DBVersion = {
+    ...inputSchema,
+    fields: [
+      ...inputSchema.fields,
+      ...config.transformations
+        .filter((t) => !isFilterTransformation(t))
+        .map((t) => ({
+          name: t.outputColumnName,
+          field_type: "StringU8" as SCHEMA_FIELD_TYPE,
+          is_key: false,
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: `Generated column from ${t.transformationType}(${t.sourceColumn})`,
+          ca_order: -1,
+          is_bitwise: 0,
+          enum_values: {},
+        })),
+    ],
+  };
+
+  // 6. Create output table
+  const outputTable: DBTablesNodeTable = {
+    name: sourceTable.name,
+    fileName: sourceTable.fileName,
+    sourceFile: sourceTable.sourceFile,
+    table: {
+      ...sourceTable.table,
+      tableSchema: extendedSchema,
+      schemaFields: outputRows,
+      version: extendedSchema.version,
+    },
+  };
+
+  // 7. Return single TableSelection output
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: [outputTable],
+      sourceFiles: inputData.sourceFiles || [],
+      tableCount: 1,
+    },
   };
 }
 

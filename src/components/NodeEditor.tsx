@@ -417,6 +417,40 @@ interface GenerateRowsNodeData extends NodeData {
   DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
+interface AddColumnTransformation {
+  id: string;
+  sourceColumn: string;
+  transformationType:
+    | "none"
+    | "prefix"
+    | "suffix"
+    | "add"
+    | "subtract"
+    | "multiply"
+    | "divide"
+    | "rename_whole"
+    | "rename_substring"
+    | "filterequal"
+    | "filternotequal";
+  prefix?: string;
+  suffix?: string;
+  numericValue?: number;
+  filterValue?: string;
+  matchValue?: string; // For rename_whole
+  replaceValue?: string; // For both rename types
+  findSubstring?: string; // For rename_substring
+  outputColumnName: string;
+}
+
+interface AddNewColumnNodeData extends NodeData {
+  transformations: AddColumnTransformation[];
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions: Record<string, DBVersion[]>;
+}
+
 interface GetCounterColumnNodeData extends NodeData {
   selectedTable: string;
   selectedColumn: string;
@@ -3995,6 +4029,333 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   );
 };
 
+const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = ({ data, id }) => {
+  const [transformations, setTransformations] = useState<AddColumnTransformation[]>(
+    data.transformations || []
+  );
+  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+
+  // Sync local state with prop changes
+  React.useEffect(() => {
+    if (data.transformations !== undefined) setTransformations(data.transformations);
+  }, [data.transformations]);
+
+  // Extract column names from connected input
+  React.useEffect(() => {
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+    } else if (data.connectedTableName && data.DBNameToDBVersions) {
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
+      if (tableVersions && tableVersions.length > 0) {
+        const tableFields = tableVersions[0].fields || [];
+        const fieldNames = tableFields.map((field) => field.name);
+        setColumnNames(fieldNames);
+      }
+    }
+  }, [data.columnNames, data.connectedTableName, data.DBNameToDBVersions]);
+
+  // Sync transformations to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, transformations },
+      })
+    );
+  }, [transformations, id]);
+
+  const addTransformation = () => {
+    const newTransformation: AddColumnTransformation = {
+      id: `trans_${Date.now()}`,
+      sourceColumn: columnNames[0] || "",
+      transformationType: "none",
+      outputColumnName: `new_column_${transformations.length + 1}`,
+    };
+    setTransformations([...transformations, newTransformation]);
+  };
+
+  const removeTransformation = (transId: string) => {
+    setTransformations(transformations.filter((t) => t.id !== transId));
+  };
+
+  const moveTransformationUp = (transId: string) => {
+    const index = transformations.findIndex((t) => t.id === transId);
+    if (index <= 0) return;
+
+    const newTransformations = [...transformations];
+    [newTransformations[index - 1], newTransformations[index]] = [
+      newTransformations[index],
+      newTransformations[index - 1],
+    ];
+    setTransformations(newTransformations);
+  };
+
+  const moveTransformationDown = (transId: string) => {
+    const index = transformations.findIndex((t) => t.id === transId);
+    if (index < 0 || index >= transformations.length - 1) return;
+
+    const newTransformations = [...transformations];
+    [newTransformations[index], newTransformations[index + 1]] = [
+      newTransformations[index + 1],
+      newTransformations[index],
+    ];
+    setTransformations(newTransformations);
+  };
+
+  const updateTransformation = (transId: string, updates: Partial<AddColumnTransformation>) => {
+    setTransformations(transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t)));
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-cyan-600 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">Add New Column</div>
+
+      {/* Transformations Section */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-300">New Columns:</label>
+          <button
+            onClick={addTransformation}
+            className="text-xs bg-cyan-600 hover:bg-cyan-700 text-white px-2 py-1 rounded"
+          >
+            + Add Column
+          </button>
+        </div>
+
+        <div
+          className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {transformations.map((trans, transIndex) => {
+            // Build available source columns for this transformation
+            // Include original columns + output columns from previous transformations
+            const availableSourceColumns = [
+              ...columnNames,
+              ...transformations
+                .slice(0, transIndex)
+                .map((t) => t.outputColumnName)
+                .filter((name) => name && name.trim() !== ""),
+            ];
+
+            return (
+              <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-400">→ {trans.outputColumnName}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => moveTransformationUp(trans.id)}
+                      disabled={transIndex === 0}
+                      className={`text-xs ${
+                        transIndex === 0
+                          ? "text-gray-600 cursor-not-allowed"
+                          : "text-blue-400 hover:text-blue-300"
+                      }`}
+                      title="Move up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moveTransformationDown(trans.id)}
+                      disabled={transIndex === transformations.length - 1}
+                      className={`text-xs ${
+                        transIndex === transformations.length - 1
+                          ? "text-gray-600 cursor-not-allowed"
+                          : "text-blue-400 hover:text-blue-300"
+                      }`}
+                      title="Move down"
+                    >
+                      ▼
+                    </button>
+                    <button
+                      onClick={() => removeTransformation(trans.id)}
+                      className="text-xs text-red-400 hover:text-red-300"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <select
+                  value={trans.sourceColumn}
+                  onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                >
+                  <option value="">Select source column...</option>
+                  {columnNames.map((col) => (
+                    <option key={col} value={col}>
+                      {col}
+                    </option>
+                  ))}
+                  {transformations
+                    .slice(0, transIndex)
+                    .filter((t) => t.outputColumnName && t.outputColumnName.trim() !== "")
+                    .map((t) => (
+                      <option key={t.outputColumnName} value={t.outputColumnName}>
+                        {t.outputColumnName} (from transformation)
+                      </option>
+                    ))}
+                </select>
+
+                <select
+                  value={trans.transformationType}
+                  onChange={(e) =>
+                    updateTransformation(trans.id, {
+                      transformationType: e.target.value as
+                        | "none"
+                        | "prefix"
+                        | "suffix"
+                        | "add"
+                        | "subtract"
+                        | "multiply"
+                        | "divide"
+                        | "rename_whole"
+                        | "rename_substring"
+                        | "filterequal"
+                        | "filternotequal",
+                    })
+                  }
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                >
+                  <option value="none">None (pass through)</option>
+                  <option value="prefix">Add Prefix</option>
+                  <option value="suffix">Add Suffix</option>
+                  <option value="add">Add Number (+)</option>
+                  <option value="subtract">Subtract Number (-)</option>
+                  <option value="multiply">Multiply (*)</option>
+                  <option value="divide">Divide (/)</option>
+                  <option value="rename_whole">Rename (whole text match)</option>
+                  <option value="rename_substring">Rename (substring replace)</option>
+                  <option value="filterequal">Filter: Equal (skip if equal)</option>
+                  <option value="filternotequal">Filter: Not Equal (skip if not equal)</option>
+                </select>
+
+                {trans.transformationType === "prefix" && (
+                  <input
+                    type="text"
+                    placeholder="Prefix..."
+                    value={trans.prefix || ""}
+                    onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {trans.transformationType === "suffix" && (
+                  <input
+                    type="text"
+                    placeholder="Suffix..."
+                    value={trans.suffix || ""}
+                    onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {(trans.transformationType === "add" ||
+                  trans.transformationType === "subtract" ||
+                  trans.transformationType === "multiply" ||
+                  trans.transformationType === "divide") && (
+                  <input
+                    type="number"
+                    placeholder="Number value..."
+                    value={trans.numericValue ?? ""}
+                    onChange={(e) =>
+                      updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
+                    }
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {trans.transformationType === "rename_whole" && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Match value (exact match)..."
+                      value={trans.matchValue || ""}
+                      onChange={(e) => updateTransformation(trans.id, { matchValue: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Replace with..."
+                      value={trans.replaceValue || ""}
+                      onChange={(e) => updateTransformation(trans.id, { replaceValue: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                  </>
+                )}
+
+                {trans.transformationType === "rename_substring" && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Find substring..."
+                      value={trans.findSubstring || ""}
+                      onChange={(e) => updateTransformation(trans.id, { findSubstring: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Replace with..."
+                      value={trans.replaceValue || ""}
+                      onChange={(e) => updateTransformation(trans.id, { replaceValue: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                    />
+                  </>
+                )}
+
+                {(trans.transformationType === "filterequal" ||
+                  trans.transformationType === "filternotequal") && (
+                  <input
+                    type="text"
+                    placeholder="Filter value..."
+                    value={trans.filterValue || ""}
+                    onChange={(e) => updateTransformation(trans.id, { filterValue: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                <input
+                  type="text"
+                  placeholder="Output column name..."
+                  value={trans.outputColumnName}
+                  onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                />
+              </div>
+            );
+          })}
+
+          {transformations.length === 0 && (
+            <div className="text-xs text-gray-500 text-center py-2">No columns yet - click Add Column</div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        Output: All original columns + {transformations.filter((t) => !["filterequal", "filternotequal"].includes(t.transformationType)).length} new
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-cyan-500"
+        data-output-type="TableSelection"
+        style={{
+          position: "absolute",
+          right: -6,
+          top: "50%",
+        }}
+      />
+    </div>
+  );
+};
+
 // Flow Options Modal Component
 const FlowOptionsModal: React.FC<{
   isOpen: boolean;
@@ -5172,6 +5533,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Creates new table rows with transformations and multiple outputs",
       },
       {
+        type: "addnewcolumn",
+        label: "Add New Column",
+        description: "Add transformed columns while preserving all original columns",
+      },
+      {
         type: "dumptotsv",
         label: "Dump to TSV",
         description: "Exports table data to a TSV file for inspection",
@@ -5467,6 +5833,7 @@ const reactFlowNodeTypes = {
   aggregatenested: AggregateNestedNode,
   groupby: GroupByNode,
   generaterows: GenerateRowsNode,
+  addnewcolumn: AddNewColumnNode,
   dumptotsv: DumpToTSVNode,
   getcountercolumn: GetCounterColumnNode,
   multifilter: MultiFilterNode,
@@ -6032,6 +6399,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as AggregateNestedNodeData).outputType;
       } else if (sourceNode.type === "generaterows" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GenerateRowsNodeData).outputType;
+      } else if (sourceNode.type === "addnewcolumn" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as AddNewColumnNodeData).outputType;
       } else if (sourceNode.type === "groupby" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GroupByNodeData).outputType;
       } else if (sourceNode.type === "getcountercolumn" && sourceNode.data) {
@@ -6101,6 +6470,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as AggregateNestedNodeData).inputType;
       } else if (targetNode.type === "generaterows" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
+      } else if (targetNode.type === "addnewcolumn" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as AddNewColumnNodeData).inputType;
       } else if (targetNode.type === "groupby" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GroupByNodeData).inputType;
       } else if (targetNode.type === "dumptotsv" && targetNode.data) {
@@ -6623,7 +6994,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "extracttable" ||
               sourceNode.type === "flattennested" ||
               sourceNode.type === "groupby" ||
-              sourceNode.type === "generaterows"
+              sourceNode.type === "generaterows" ||
+              sourceNode.type === "addnewcolumn"
             ) {
               // Handle TableSelection input - will be auto-indexed by the executor
               const sourceData = sourceNode.data as any;
@@ -6662,7 +7034,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "lookup" ||
               sourceNode.type === "extracttable" ||
               sourceNode.type === "flattennested" ||
-              sourceNode.type === "generaterows")
+              sourceNode.type === "generaterows" ||
+              sourceNode.type === "addnewcolumn")
           ) {
             const sourceData = sourceNode.data as any;
 
@@ -6877,13 +7250,53 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
+        // Update addnewcolumn nodes when connected to any table source
+        if (
+          targetNode.type === "addnewcolumn" &&
+          (sourceNode.type === "tableselection" ||
+            sourceNode.type === "tableselectiondropdown" ||
+            sourceNode.type === "filter" ||
+            sourceNode.type === "multifilter" ||
+            sourceNode.type === "referencelookup" ||
+            sourceNode.type === "reversereferencelookup" ||
+            sourceNode.type === "lookup" ||
+            sourceNode.type === "extracttable" ||
+            sourceNode.type === "flattennested" ||
+            sourceNode.type === "getcountercolumn" ||
+            sourceNode.type === "groupby" ||
+            sourceNode.type === "generaterows" ||
+            sourceNode.type === "addnewcolumn")
+        ) {
+          const sourceData = sourceNode.data as any;
+
+          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: sourceData.columnNames || [],
+                      connectedTableName: sourceData.connectedTableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          }
+        }
+
         // Update filter/multifilter nodes when connected to new table operation nodes
         if (
           (targetNode.type === "filter" || targetNode.type === "multifilter") &&
           (sourceNode.type === "lookup" ||
             sourceNode.type === "extracttable" ||
             sourceNode.type === "flattennested" ||
-            sourceNode.type === "generaterows")
+            sourceNode.type === "generaterows" ||
+            sourceNode.type === "addnewcolumn")
         ) {
           const sourceData = sourceNode.data as any;
 
@@ -7700,6 +8113,22 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             connectedTableName: "",
             DBNameToDBVersions: {},
           } as GenerateRowsNodeData,
+        };
+      } else if (nodeData.type === "addnewcolumn") {
+        newNode = {
+          id: getNodeId(),
+          type: "addnewcolumn",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            transformations: [],
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
+          } as AddNewColumnNodeData,
         };
       } else {
         // Create standard node
