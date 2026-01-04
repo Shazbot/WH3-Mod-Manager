@@ -4574,6 +4574,8 @@ async function executeAddNewColumnNode(
         | "divide"
         | "rename_whole"
         | "rename_substring"
+        | "replace_substring_whole"
+        | "regex_replace"
         | "filterequal"
         | "filternotequal";
       prefix?: string;
@@ -4583,6 +4585,8 @@ async function executeAddNewColumnNode(
       matchValue?: string;
       replaceValue?: string;
       findSubstring?: string;
+      regexPattern?: string;
+      regexReplacement?: string;
       outputColumnName: string;
     }>;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
@@ -4728,6 +4732,32 @@ async function executeAddNewColumnNode(
           const replaceStr = transformation.replaceValue || "";
           if (findStr) {
             outputValue = String(outputValue).replace(new RegExp(escapeRegex(findStr), "g"), replaceStr);
+          }
+          break;
+
+        case "replace_substring_whole":
+          const searchSubstr = transformation.findSubstring || "";
+          const wholeReplacement = transformation.replaceValue || "";
+          if (searchSubstr && String(outputValue).includes(searchSubstr)) {
+            outputValue = wholeReplacement;
+          }
+          // Otherwise keep original value
+          break;
+
+        case "regex_replace":
+          try {
+            const pattern = transformation.regexPattern || "";
+            const replacement = transformation.regexReplacement || "";
+            if (pattern) {
+              const regex = new RegExp(pattern, "g");
+              outputValue = String(outputValue).replace(regex, replacement);
+            }
+          } catch (error) {
+            console.warn(
+              `Add New Column Node ${nodeId}: Invalid regex pattern "${transformation.regexPattern}":`,
+              error
+            );
+            // Keep original value on error
           }
           break;
 
