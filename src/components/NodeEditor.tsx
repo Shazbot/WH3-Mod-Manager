@@ -5043,11 +5043,13 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
     data.schemaColumns || []
   );
+  const [tableName, setTableName] = useState<string>(data.tableName || "");
 
   React.useEffect(() => {
     if (data.tsvFileName !== undefined) setTsvFileName(data.tsvFileName);
     if (data.schemaColumns !== undefined) setSchemaColumns(data.schemaColumns);
-  }, [data.tsvFileName, data.schemaColumns]);
+    if (data.tableName !== undefined) setTableName(data.tableName);
+  }, [data.tsvFileName, data.schemaColumns, data.tableName]);
 
   const handleFileNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.value;
@@ -5090,8 +5092,27 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
         placeholder="Full TSV file path (e.g., my_data/data.tsv)"
         value={tsvFileName}
         onChange={handleFileNameChange}
-        className="w-full p-2 mb-3 text-sm bg-gray-600 text-white border border-gray-500 rounded"
+        className="w-full p-2 mb-2 text-sm bg-gray-600 text-white border border-gray-500 rounded"
       />
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-400 block mb-1">Table Name (optional):</label>
+        <input
+          type="text"
+          placeholder="Auto-generated if empty"
+          value={tableName}
+          onChange={(e) => {
+            const newName = e.target.value;
+            setTableName(newName);
+            window.dispatchEvent(
+              new CustomEvent("nodeDataUpdate", {
+                detail: { nodeId: id, tableName: newName },
+              })
+            );
+          }}
+          className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
+        />
+      </div>
 
       {schemaColumns.length > 0 && (
         <div className="mb-3">
@@ -5124,11 +5145,13 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
     data.schemaColumns || []
   );
+  const [tableName, setTableName] = useState<string>(data.tableName || "");
 
   React.useEffect(() => {
     if (data.customRows !== undefined) setCustomRows(data.customRows);
     if (data.schemaColumns !== undefined) setSchemaColumns(data.schemaColumns);
-  }, [data.customRows, data.schemaColumns]);
+    if (data.tableName !== undefined) setTableName(data.tableName);
+  }, [data.customRows, data.schemaColumns, data.tableName]);
 
   const addRow = () => {
     const newRow: Record<string, string> = {};
@@ -5178,7 +5201,26 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label || "Custom Rows Input"}</div>
-      <div className="text-xs text-gray-400 mb-3">Input: CustomSchema</div>
+      <div className="text-xs text-gray-400 mb-2">Input: CustomSchema</div>
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-400 block mb-1">Table Name (optional):</label>
+        <input
+          type="text"
+          placeholder="Auto-generated if empty"
+          value={tableName}
+          onChange={(e) => {
+            const newName = e.target.value;
+            setTableName(newName);
+            window.dispatchEvent(
+              new CustomEvent("nodeDataUpdate", {
+                detail: { nodeId: id, tableName: newName },
+              })
+            );
+          }}
+          className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
+        />
+      </div>
 
       {schemaColumns.length === 0 ? (
         <div className="text-xs text-gray-500 p-3 bg-gray-800 rounded mb-3">
@@ -5859,6 +5901,7 @@ const executeGraphInBackend = async (
           schemaColumns: (node.data as any)?.schemaColumns || [],
           tsvFileName: (node.data as any)?.tsvFileName ? String((node.data as any).tsvFileName) : "",
           customRows: (node.data as any)?.customRows || [],
+          tableName: (node.data as any)?.tableName ? String((node.data as any).tableName) : "",
         },
       };
     });
@@ -6298,6 +6341,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         schemaColumns,
         tsvFileName,
         customRows,
+        tableName,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -6361,6 +6405,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 schemaColumns: schemaColumns !== undefined ? schemaColumns : node.data.schemaColumns,
                 customRows: customRows !== undefined ? customRows : node.data.customRows,
                 tsvFileName: tsvFileName !== undefined ? tsvFileName : node.data.tsvFileName,
+                tableName: tableName !== undefined ? tableName : node.data.tableName,
               },
             };
           }
@@ -7189,7 +7234,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             const columnNames = hasSchemaColumns
               ? (sourceData.schemaColumns || []).map((col: any) => col.name)
               : sourceData.columnNames || [];
-            const tableName = hasSchemaColumns ? `_custom_${sourceNode.id}` : sourceData.connectedTableName;
+            const tableName = hasSchemaColumns
+              ? sourceData.tableName || `_custom_${sourceNode.id}`
+              : sourceData.connectedTableName;
 
             if ((sourceData.connectedTableName && sourceData.DBNameToDBVersions) || hasSchemaColumns) {
               setNodes((nds) =>
@@ -8096,6 +8143,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             label: nodeData.label,
             type: nodeData.type,
             tsvFileName: "",
+            tableName: "",
+            schemaColumns: [],
             inputType: "CustomSchema" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
           },
@@ -8111,6 +8160,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: nodeData.type,
             customRows: [],
             schemaColumns: [],
+            tableName: "",
             inputType: "CustomSchema" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
           },
@@ -8410,6 +8460,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           splitValues: (node.data as any)?.splitValues || [],
           newColumnName: String((node.data as any)?.newColumnName) || "",
           tsvFileName: String((node.data as any)?.tsvFileName) || "",
+          tableName: String((node.data as any)?.tableName) || "",
         },
       };
 
