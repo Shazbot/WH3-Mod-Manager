@@ -5996,13 +5996,13 @@ const NodeSidebar: React.FC<{
     >
       <h3 className="font-bold text-lg mb-2 text-white">Node Types</h3>
 
-      {/* Filter textbox */}
+      {/* Sticky Filter textbox */}
       <input
         type="text"
         placeholder="Filter nodes..."
         value={filterText}
         onChange={(e) => setFilterText(e.target.value)}
-        className="w-full p-2 mb-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+        className="sticky top-0 w-full p-2 mb-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400 z-10"
       />
 
       <div className="mb-4">
