@@ -2484,7 +2484,9 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     (data as any).indexJoinColumn || ((data as any).indexColumns && (data as any).indexColumns[0]) || ""
   );
   const [joinType, setJoinType] = useState<"inner" | "left" | "nested" | "cross">(data.joinType || "inner");
-  const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [columnNames, setColumnNames] = useState<string[]>(
+    data.columnNames ? Array.from(new Set(data.columnNames)) : []
+  );
   const [sourceColumnNames, setSourceColumnNames] = useState<string[]>([]);
   const [indexedColumnNames, setIndexedColumnNames] = useState<string[]>([]);
   const [isIndexedTableInput, setIsIndexedTableInput] = useState(true);
@@ -2546,9 +2548,38 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
         const tableFields = tableVersions[0].fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setSourceColumnNames(fieldNames);
+      } else if (data.columnNames && data.columnNames.length > 0) {
+        // For synthetic tables (like _custom_node_X from customrowsinput/readtsvfrompack),
+        // check if columns are already prefixed or not
+        const prefix = `${data.connectedTableName}_`;
+        const hasPrefixedColumns = data.columnNames.some((col: string) => col.startsWith(prefix));
+
+        if (hasPrefixedColumns) {
+          // Columns are already prefixed (from output) - extract only source columns
+          const unprefixedColumns = data.columnNames
+            .filter((col: string) => col.startsWith(prefix))
+            .map((col: string) => {
+              // Strip all repeated instances of the table prefix
+              let unprefixed = col;
+              while (unprefixed.startsWith(prefix)) {
+                unprefixed = unprefixed.substring(prefix.length);
+              }
+              return unprefixed;
+            });
+
+          if (unprefixedColumns.length > 0) {
+            setSourceColumnNames(unprefixedColumns);
+          }
+        } else {
+          // Columns are not prefixed yet (initial connection) - use as-is
+          setSourceColumnNames(data.columnNames);
+        }
       }
+    } else if (data.columnNames && data.columnNames.length > 0) {
+      // If no DBNameToDBVersions at all, use columnNames as-is
+      setSourceColumnNames(data.columnNames);
     }
-  }, [data.connectedTableName]);
+  }, [data.connectedTableName, data.columnNames]);
 
   // Track indexed table column names (from input-index connection)
   React.useEffect(() => {
@@ -2627,14 +2658,12 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
   // Compute output column names based on join type
   React.useEffect(() => {
+    let newColumns: string[] = [];
+
     if (joinType === "nested") {
       // For nested joins, output columns are just source columns (lookup is nested)
       if (sourceColumnNames.length > 0) {
-        setColumnNames(sourceColumnNames);
-        const updateEvent = new CustomEvent("nodeDataUpdate", {
-          detail: { nodeId: id, columnNames: sourceColumnNames },
-        });
-        window.dispatchEvent(updateEvent);
+        newColumns = sourceColumnNames;
       }
     } else {
       // For inner/left/cross joins, output is prefixed source + prefixed indexed columns
@@ -2645,18 +2674,26 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
         const prefixedSourceColumns = sourceColumnNames.map((col) => `${sourceTableName}_${col}`);
         const prefixedIndexedColumns = indexedColumnNames.map((col) => `${indexedTableName}_${col}`);
-        const outputColumns = [...prefixedSourceColumns, ...prefixedIndexedColumns];
-
-        setColumnNames(outputColumns);
-        const updateEvent = new CustomEvent("nodeDataUpdate", {
-          detail: { nodeId: id, columnNames: outputColumns },
-        });
-        window.dispatchEvent(updateEvent);
+        newColumns = [...prefixedSourceColumns, ...prefixedIndexedColumns];
       } else if (sourceColumnNames.length > 0) {
         // Fallback: just use source columns if indexed not available yet
-        setColumnNames(sourceColumnNames);
+        newColumns = sourceColumnNames;
+      }
+    }
+
+    // Only update if the columns have actually changed
+    if (newColumns.length > 0) {
+      // Deduplicate columns to prevent accumulation
+      const uniqueColumns = Array.from(new Set(newColumns));
+
+      const columnsChanged =
+        uniqueColumns.length !== columnNames.length ||
+        uniqueColumns.some((col, idx) => col !== columnNames[idx]);
+
+      if (columnsChanged) {
+        setColumnNames(uniqueColumns);
         const updateEvent = new CustomEvent("nodeDataUpdate", {
-          detail: { nodeId: id, columnNames: sourceColumnNames },
+          detail: { nodeId: id, columnNames: uniqueColumns },
         });
         window.dispatchEvent(updateEvent);
       }
@@ -5443,9 +5480,9 @@ const nodeTypeSections: NodeTypeSection[] = [
     title: "Pack Files",
     nodes: [
       {
-        type: "packedfiles",
-        label: "Pack Textbox Input",
-        description: "Node with textbox that outputs PackFiles",
+        type: "allenabledmods",
+        label: "All Enabled Mods",
+        description: "Outputs all currently enabled mods as PackFiles",
       },
       {
         type: "packfilesdropdown",
@@ -5453,35 +5490,15 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Node with dropdown for pack selection",
       },
       {
-        type: "allenabledmods",
-        label: "All Enabled Mods",
-        description: "Outputs all currently enabled mods as PackFiles",
+        type: "packedfiles",
+        label: "Pack Textbox Input",
+        description: "Node with textbox that outputs PackFiles",
       },
     ],
   },
   {
     title: "Table Selection",
     nodes: [
-      {
-        type: "tableselection",
-        label: "Table Textbox Input",
-        description: "Accepts PackFiles input, outputs TableSelection",
-      },
-      {
-        type: "tableselectiondropdown",
-        label: "Table Dropdown Input",
-        description: "Node with dropdown for table selection",
-      },
-      {
-        type: "filter",
-        label: "Filter",
-        description: "Filter table rows with AND/OR conditions",
-      },
-      {
-        type: "multifilter",
-        label: "Multi-Filter",
-        description: "Split table rows by column values into multiple outputs",
-      },
       {
         type: "referencelookup",
         label: "Reference Lookup",
@@ -5492,20 +5509,45 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Reverse Reference Lookup",
         description: "Find rows in tables that reference the input table",
       },
+      {
+        type: "tableselectiondropdown",
+        label: "Table Dropdown Input",
+        description: "Node with dropdown for table selection",
+      },
+      {
+        type: "tableselection",
+        label: "Table Textbox Input",
+        description: "Accepts PackFiles input, outputs TableSelection",
+      },
+    ],
+  },
+  {
+    title: "Table Rows Filtering",
+    nodes: [
+      {
+        type: "filter",
+        label: "Filter",
+        description: "Filter table rows with AND/OR conditions",
+      },
+      {
+        type: "multifilter",
+        label: "Multi-Filter",
+        description: "Split table rows by column values into multiple outputs",
+      },
     ],
   },
   {
     title: "Column Selection",
     nodes: [
       {
-        type: "columnselection",
-        label: "Column Textbox Input",
-        description: "Accepts TableSelection input, outputs ColumnSelection",
-      },
-      {
         type: "columnselectiondropdown",
         label: "Column Dropdown Input",
         description: "Node with dropdown for column selection",
+      },
+      {
+        type: "columnselection",
+        label: "Column Textbox Input",
+        description: "Accepts TableSelection input, outputs ColumnSelection",
       },
     ],
   },
@@ -5518,14 +5560,14 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
       },
       {
-        type: "mathmax",
-        label: "Math Max",
-        description: "Accepts ChangedColumnSelection, applies Math.max(value, input)",
-      },
-      {
         type: "mathceil",
         label: "Math Ceil",
         description: "Accepts ChangedColumnSelection, applies Math.ceil() to round up",
+      },
+      {
+        type: "mathmax",
+        label: "Math Max",
+        description: "Accepts ChangedColumnSelection, applies Math.max(value, input)",
       },
       {
         type: "mergechanges",
@@ -5543,14 +5585,19 @@ const nodeTypeSections: NodeTypeSection[] = [
     title: "Text",
     nodes: [
       {
-        type: "textsurround",
-        label: "Text Surround",
-        description: "Accepts Text or Text Lines, outputs same type with surrounding text",
-      },
-      {
         type: "appendtext",
         label: "Append Text",
         description: "Accepts Text, Text Lines, or GroupedText, adds text before and after",
+      },
+      {
+        type: "groupbycolumns",
+        label: "Group By Columns (For Text)",
+        description: "Accepts TableSelection, two column dropdowns, outputs GroupedText",
+      },
+      {
+        type: "groupedcolumnstotext",
+        label: "Grouped Columns to Text",
+        description: "Formats GroupedText using pattern and join separator",
       },
       {
         type: "textjoin",
@@ -5558,21 +5605,55 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Accepts Text Lines input, outputs joined Text",
       },
       {
-        type: "groupedcolumnstotext",
-        label: "Grouped Columns to Text",
-        description: "Formats GroupedText using pattern and join separator",
-      },
-
-      {
-        type: "groupbycolumns",
-        label: "Group By Columns (For Text)",
-        description: "Accepts TableSelection, two column dropdowns, outputs GroupedText",
+        type: "textsurround",
+        label: "Text Surround",
+        description: "Accepts Text or Text Lines, outputs same type with surrounding text",
       },
     ],
   },
   {
     title: "Table Operations",
     nodes: [
+      {
+        type: "addnewcolumn",
+        label: "Add New Column",
+        description: "Add transformed columns while preserving all original columns",
+      },
+      {
+        type: "aggregatenested",
+        label: "Aggregate Nested",
+        description: "Performs aggregations (min/max/sum/avg/count) on nested arrays",
+      },
+      {
+        type: "dumptotsv",
+        label: "Dump to TSV",
+        description: "Exports table data to a TSV file for inspection",
+      },
+      {
+        type: "extracttable",
+        label: "Extract Table",
+        description: "Filters columns by prefix and removes prefix",
+      },
+      {
+        type: "flattennested",
+        label: "Flatten Nested",
+        description: "Expands nested table selections into flat rows",
+      },
+      {
+        type: "generaterows",
+        label: "Generate Rows",
+        description: "Creates new table rows with transformations and multiple outputs",
+      },
+      {
+        type: "getcountercolumn",
+        label: "Get Counter Column",
+        description: "Collects numeric column values across tables from pack files",
+      },
+      {
+        type: "groupby",
+        label: "Group By",
+        description: "Groups rows by columns and performs aggregations (SQL-like GROUP BY)",
+      },
       {
         type: "indextable",
         label: "Index Table",
@@ -5583,51 +5664,16 @@ const nodeTypeSections: NodeTypeSection[] = [
         label: "Lookup (Join)",
         description: "Performs lookups/joins using indexed tables (inner/left/nested)",
       },
-      {
-        type: "flattennested",
-        label: "Flatten Nested",
-        description: "Expands nested table selections into flat rows",
-      },
-      {
-        type: "extracttable",
-        label: "Extract Table",
-        description: "Filters columns by prefix and removes prefix",
-      },
-      {
-        type: "aggregatenested",
-        label: "Aggregate Nested",
-        description: "Performs aggregations (min/max/sum/avg/count) on nested arrays",
-      },
-      {
-        type: "groupby",
-        label: "Group By",
-        description: "Groups rows by columns and performs aggregations (SQL-like GROUP BY)",
-      },
-      {
-        type: "generaterows",
-        label: "Generate Rows",
-        description: "Creates new table rows with transformations and multiple outputs",
-      },
-      {
-        type: "addnewcolumn",
-        label: "Add New Column",
-        description: "Add transformed columns while preserving all original columns",
-      },
-      {
-        type: "dumptotsv",
-        label: "Dump to TSV",
-        description: "Exports table data to a TSV file for inspection",
-      },
-      {
-        type: "getcountercolumn",
-        label: "Get Counter Column",
-        description: "Collects numeric column values across tables from pack files",
-      },
     ],
   },
   {
     title: "Custom Tables",
     nodes: [
+      {
+        type: "customrowsinput",
+        label: "Custom Rows Input",
+        description: "Manually input table rows with custom schema",
+      },
       {
         type: "customschema",
         label: "Custom Schema",
@@ -5637,11 +5683,6 @@ const nodeTypeSections: NodeTypeSection[] = [
         type: "readtsvfrompack",
         label: "Read TSV From Pack",
         description: "Reads TSV file from pack using custom schema",
-      },
-      {
-        type: "customrowsinput",
-        label: "Custom Rows Input",
-        description: "Manually input table rows with custom schema",
       },
     ],
   },
@@ -7136,11 +7177,21 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "extracttable" ||
               sourceNode.type === "flattennested" ||
               sourceNode.type === "generaterows" ||
-              sourceNode.type === "addnewcolumn")
+              sourceNode.type === "addnewcolumn" ||
+              sourceNode.type === "customrowsinput" ||
+              sourceNode.type === "readtsvfrompack")
           ) {
             const sourceData = sourceNode.data as any;
 
-            if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+            // For customrowsinput and readtsvfrompack, get columns from schemaColumns
+            const hasSchemaColumns =
+              sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
+            const columnNames = hasSchemaColumns
+              ? (sourceData.schemaColumns || []).map((col: any) => col.name)
+              : sourceData.columnNames || [];
+            const tableName = hasSchemaColumns ? `_custom_${sourceNode.id}` : sourceData.connectedTableName;
+
+            if ((sourceData.connectedTableName && sourceData.DBNameToDBVersions) || hasSchemaColumns) {
               setNodes((nds) =>
                 nds.map((node) => {
                   if (node.id === params.target) {
@@ -7148,9 +7199,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       ...node,
                       data: {
                         ...node.data,
-                        columnNames: sourceData.columnNames || [],
-                        connectedTableName: sourceData.connectedTableName,
-                        DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                        columnNames: columnNames,
+                        connectedTableName: tableName,
+                        DBNameToDBVersions: hasSchemaColumns
+                          ? DBNameToDBVersions
+                          : sourceData.DBNameToDBVersions,
                       },
                     };
                   }
@@ -7295,11 +7348,19 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "flattennested" ||
             sourceNode.type === "getcountercolumn" ||
             sourceNode.type === "groupby" ||
-            sourceNode.type === "addnewcolumn")
+            sourceNode.type === "addnewcolumn" ||
+            sourceNode.type === "customrowsinput" ||
+            sourceNode.type === "readtsvfrompack")
         ) {
           const sourceData = sourceNode.data as any;
 
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+          // For customrowsinput and readtsvfrompack, get columns from schemaColumns
+          const hasSchemaColumns =
+            sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
+          const isValidSource =
+            (sourceData.connectedTableName && sourceData.DBNameToDBVersions) || hasSchemaColumns;
+
+          if (isValidSource) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -7328,12 +7389,24 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         }
                       }
 
+                      // For customrowsinput and readtsvfrompack, get columns from schemaColumns
+                      if (
+                        cols.length === 0 &&
+                        (connectedSourceNode.type === "customrowsinput" ||
+                          connectedSourceNode.type === "readtsvfrompack")
+                      ) {
+                        cols = (connectedSourceData.schemaColumns || []).map((col: any) => col.name);
+                      }
+
                       cols.forEach((col: string) => allSourceColumns.add(col));
                     }
                   }
 
                   // Add columns from the NEW source being connected
-                  const newSourceColumns = sourceData.columnNames || [];
+                  let newSourceColumns = sourceData.columnNames || [];
+                  if (newSourceColumns.length === 0 && hasSchemaColumns) {
+                    newSourceColumns = (sourceData.schemaColumns || []).map((col: any) => col.name);
+                  }
                   newSourceColumns.forEach((col: string) => allSourceColumns.add(col));
 
                   return {
