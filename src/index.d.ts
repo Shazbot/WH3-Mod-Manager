@@ -660,7 +660,8 @@ declare global {
     | "customschema"
     | "readtsvfrompack"
     | "customrowsinput"
-    | "multifilter";
+    | "multifilter"
+    | "addnewcolumn";
 
   // FlowNodeData = "string"|
 

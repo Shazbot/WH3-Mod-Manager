@@ -206,6 +206,11 @@ export const executeNodeGraph = async (
             DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
           });
           console.log(`Generate Rows serialization - textValueToUse length:`, textValueToUse.length);
+        } else if (node.type === "addnewcolumn") {
+          textValueToUse = JSON.stringify({
+            transformations: (node.data as any).transformations || [],
+            DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
+          });
         } else if (node.type === "groupby") {
           console.log(
             `Group By serialization - node.data.groupByColumns:`,
