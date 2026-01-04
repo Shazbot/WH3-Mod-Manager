@@ -5030,12 +5030,25 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
       <Handle
         type="target"
         position={Position.Left}
+        id="input-schema"
         className="w-3 h-3 bg-purple-500"
         data-input-type="CustomSchema"
+        style={{ top: "30%", position: "absolute", left: -6 }}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="input-packs"
+        className="w-3 h-3 bg-blue-500"
+        data-input-type="PackFiles"
+        style={{ top: "70%", position: "absolute", left: -6 }}
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label || "Read TSV From Pack"}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: CustomSchema</div>
+      <div className="text-xs text-gray-400 mb-2">
+        <div>Schema: CustomSchema</div>
+        <div>Packs: PackFiles</div>
+      </div>
 
       <input
         type="text"
@@ -5803,6 +5816,9 @@ const executeGraphInBackend = async (
           aggregations: (node.data as any)?.aggregations || [],
           DBNameToDBVersions: (node.data as any)?.DBNameToDBVersions || {},
           newColumnName: (node.data as any)?.newColumnName ? String((node.data as any).newColumnName) : "",
+          schemaColumns: (node.data as any)?.schemaColumns || [],
+          tsvFileName: (node.data as any)?.tsvFileName ? String((node.data as any).tsvFileName) : "",
+          customRows: (node.data as any)?.customRows || [],
         },
       };
     });
@@ -6553,7 +6569,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       } else if (targetNode.type === "getcountercolumn" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GetCounterColumnNodeData).inputType;
       } else if (targetNode.type === "readtsvfrompack" && targetNode.data) {
-        targetInputType = (targetNode.data as any).inputType;
+        // ReadTSVFromPack node has two inputs - need to check the target handle ID
+        const targetHandle = params.targetHandle;
+        if (targetHandle === "input-schema") {
+          targetInputType = "CustomSchema" as NodeEdgeTypes;
+        } else if (targetHandle === "input-packs") {
+          targetInputType = "PackFiles" as NodeEdgeTypes;
+        }
       } else if (targetNode.type === "customrowsinput" && targetNode.data) {
         targetInputType = (targetNode.data as any).inputType;
       }
@@ -6707,7 +6729,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         // Update Read TSV From Pack or Custom Rows Input node when connected to Custom Schema node
         if (
           (targetNode.type === "readtsvfrompack" || targetNode.type === "customrowsinput") &&
-          sourceNode.type === "customschema"
+          sourceNode.type === "customschema" &&
+          params.targetHandle === "input-schema"
         ) {
           const schemaColumns = (sourceNode.data as any).schemaColumns || [];
           setNodes((nds) =>
@@ -6718,6 +6741,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   data: {
                     ...node.data,
                     schemaColumns: schemaColumns,
+                    // Explicitly preserve tsvFileName
+                    tsvFileName: (node.data as any).tsvFileName,
                   },
                 };
               }
