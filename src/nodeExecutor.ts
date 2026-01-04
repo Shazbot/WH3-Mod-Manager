@@ -5293,7 +5293,8 @@ async function executeReadTSVFromPackNode(
 
   if (packsData && packsData.type === "PackFiles") {
     // Use pack files from the connected input
-    packFilesToSearch = packsData.sourceFiles || [];
+    // Extract paths from the files array
+    packFilesToSearch = (packsData.files || []).map((file: any) => file.path).filter((path: string) => path);
     console.log(
       `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in ${packFilesToSearch.length} connected pack(s)`
     );
@@ -5305,6 +5306,8 @@ async function executeReadTSVFromPackNode(
     );
   }
 
+  tsvFileName = tsvFileName.replace(/\//g, "\\");
+
   // Search for TSV file in pack files
   let tsvContent: string | null = null;
   let sourcePack: Pack | null = null;
@@ -5312,7 +5315,7 @@ async function executeReadTSVFromPackNode(
   for (const packFile of packFilesToSearch) {
     try {
       // Read the pack file without parsing tables
-      const pack = await readPack(packFile, { skipParsingTables: true });
+      const pack = await readPack(packFile, { skipParsingTables: true, filesToRead: [tsvFileName] });
 
       // Search for the TSV file in packed files
       const tsvFile = pack.packedFiles.find((pf) =>

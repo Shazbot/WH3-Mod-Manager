@@ -626,8 +626,6 @@ const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: string }>
 
   return (
     <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[250px]">
-      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-green-500" />
-
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <div className="text-xs text-gray-300 mb-2 p-2 bg-gray-800 rounded border border-green-600">
@@ -5052,7 +5050,7 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
 
       <input
         type="text"
-        placeholder="TSV file name (e.g., data.tsv)"
+        placeholder="Full TSV file path (e.g., my_data/data.tsv)"
         value={tsvFileName}
         onChange={handleFileNameChange}
         className="w-full p-2 mb-3 text-sm bg-gray-600 text-white border border-gray-500 rounded"
@@ -5137,6 +5135,7 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
       <Handle
         type="target"
         position={Position.Left}
+        id="input-schema"
         className="w-3 h-3 bg-purple-500"
         data-input-type="CustomSchema"
       />
@@ -6257,6 +6256,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         newColumnName,
         schemaColumns,
         tsvFileName,
+        customRows,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -6318,6 +6318,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 aggregations: aggregations !== undefined ? aggregations : node.data.aggregations,
                 newColumnName: newColumnName !== undefined ? newColumnName : node.data.newColumnName,
                 schemaColumns: schemaColumns !== undefined ? schemaColumns : node.data.schemaColumns,
+                customRows: customRows !== undefined ? customRows : node.data.customRows,
                 tsvFileName: tsvFileName !== undefined ? tsvFileName : node.data.tsvFileName,
               },
             };
@@ -6730,7 +6731,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         if (
           (targetNode.type === "readtsvfrompack" || targetNode.type === "customrowsinput") &&
           sourceNode.type === "customschema" &&
-          params.targetHandle === "input-schema"
+          (params.targetHandle === "input-schema" || !params.targetHandle)
         ) {
           const schemaColumns = (sourceNode.data as any).schemaColumns || [];
           setNodes((nds) =>
@@ -6741,8 +6742,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   data: {
                     ...node.data,
                     schemaColumns: schemaColumns,
-                    // Explicitly preserve tsvFileName
+                    // Explicitly preserve tsvFileName and customRows
                     tsvFileName: (node.data as any).tsvFileName,
+                    customRows: (node.data as any).customRows,
                   },
                 };
               }
@@ -8035,6 +8037,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             label: nodeData.label,
             type: nodeData.type,
             customRows: [],
+            schemaColumns: [],
             inputType: "CustomSchema" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
           },
