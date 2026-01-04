@@ -5229,13 +5229,27 @@ async function executeReadTSVFromPackNode(
 ): Promise<NodeExecutionResult> {
   console.log(`ReadTSVFromPack Node ${nodeId}: Processing with input:`, inputData);
 
-  if (!inputData || inputData.type !== "CustomSchema") {
+  // Handle both array input (new format with two inputs) and single input (backward compatibility)
+  let schemaData: any;
+  let packsData: any = null;
+
+  if (Array.isArray(inputData)) {
+    // New format: [schemaData, packsData]
+    [schemaData, packsData] = inputData;
+  } else {
+    // Old format: single schemaData input
+    schemaData = inputData;
+  }
+
+  if (!schemaData || schemaData.type !== "CustomSchema") {
     return { success: false, error: "Invalid input: Expected CustomSchema data" };
   }
 
   // Parse configuration from textValue
   let tsvFileName = "";
-  const schemaColumns = (inputData.schemaColumns || []) as CustomSchemaColumn[];
+  const schemaColumns = (schemaData.schemaColumns || []) as CustomSchemaColumn[];
+
+  console.log(`ReadTSVFromPack Node ${nodeId}: textValue received:`, textValue);
 
   try {
     const config = JSON.parse(textValue || "{}");
@@ -5274,16 +5288,28 @@ async function executeReadTSVFromPackNode(
     };
   }
 
-  console.log(`ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in enabled packs`);
+  // Determine which pack files to search
+  let packFilesToSearch: string[] = [];
 
-  // Get enabled mods from appData
-  const enabledPackFiles = appData.enabledMods.map((mod) => mod.path);
+  if (packsData && packsData.type === "PackFiles") {
+    // Use pack files from the connected input
+    packFilesToSearch = packsData.sourceFiles || [];
+    console.log(
+      `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in ${packFilesToSearch.length} connected pack(s)`
+    );
+  } else {
+    // Fall back to all enabled mods (backward compatibility)
+    packFilesToSearch = appData.enabledMods.map((mod) => mod.path);
+    console.log(
+      `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in ${packFilesToSearch.length} enabled pack(s)`
+    );
+  }
 
   // Search for TSV file in pack files
   let tsvContent: string | null = null;
   let sourcePack: Pack | null = null;
 
-  for (const packFile of enabledPackFiles) {
+  for (const packFile of packFilesToSearch) {
     try {
       // Read the pack file without parsing tables
       const pack = await readPack(packFile, { skipParsingTables: true });

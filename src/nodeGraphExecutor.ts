@@ -394,6 +394,27 @@ export const executeNodeGraph = async (
                   } else {
                     inputDataForTarget = null;
                   }
+                } else if (targetNode.type === "readtsvfrompack") {
+                  // ReadTSVFromPack node has two inputs: schema and pack files
+                  // Need to collect them in specific order based on targetHandle
+                  const schemaConnection = targetIncomingConnections.find(
+                    (conn) => conn.targetHandle === "input-schema"
+                  );
+                  const packsConnection = targetIncomingConnections.find(
+                    (conn) => conn.targetHandle === "input-packs"
+                  );
+
+                  if (schemaConnection && packsConnection) {
+                    const schemaResult = executionResults.get(schemaConnection.sourceId);
+                    const packsResult = executionResults.get(packsConnection.sourceId);
+                    inputDataForTarget = [schemaResult?.data, packsResult?.data];
+                  } else if (schemaConnection) {
+                    // Schema only - use null for packs (will fall back to all enabled mods)
+                    const schemaResult = executionResults.get(schemaConnection.sourceId);
+                    inputDataForTarget = [schemaResult?.data, null];
+                  } else {
+                    inputDataForTarget = null;
+                  }
                 } else if (targetNode.type === "generaterows" && targetIncomingConnections.length > 1) {
                   // Generate Rows with multiple inputs: merge all TableSelection inputs
                   const mergedSourceFiles: any[] = [];
@@ -442,6 +463,58 @@ export const executeNodeGraph = async (
 
                     console.log(
                       `Generate Rows: Merged ${allTables.length} tables from ${targetIncomingConnections.length} inputs`
+                    );
+                  } else {
+                    inputDataForTarget = null;
+                  }
+                } else if (targetNode.type === "dumptotsv" && targetIncomingConnections.length > 1) {
+                  // Dump to TSV with multiple inputs: merge all TableSelection inputs
+                  const mergedSourceFiles: any[] = [];
+                  const allTables: any[] = [];
+
+                  // Collect data from all inputs
+                  for (const conn of targetIncomingConnections) {
+                    const sourceNode = nodeMap.get(conn.sourceId);
+                    const sourceResult = executionResults.get(conn.sourceId);
+
+                    let sourceData = null;
+
+                    // For multi-output nodes (generaterows, multifilter), extract specific output
+                    if (
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                      conn.sourceHandle &&
+                      sourceResult?.data &&
+                      typeof sourceResult.data === "object" &&
+                      !Array.isArray(sourceResult.data)
+                    ) {
+                      sourceData = (sourceResult.data as any)[conn.sourceHandle];
+                    } else {
+                      sourceData = sourceResult?.data;
+                    }
+
+                    if (sourceData?.type === "TableSelection") {
+                      // Collect tables from this input
+                      if (sourceData.tables) {
+                        allTables.push(...sourceData.tables);
+                      }
+
+                      // Collect source files from this input
+                      if (sourceData.sourceFiles) {
+                        mergedSourceFiles.push(...sourceData.sourceFiles);
+                      }
+                    }
+                  }
+
+                  if (allTables.length > 0) {
+                    inputDataForTarget = {
+                      type: "TableSelection",
+                      tables: allTables,
+                      sourceFiles: mergedSourceFiles,
+                      tableCount: allTables.length,
+                    };
+
+                    console.log(
+                      `Dump to TSV: Merged ${allTables.length} tables from ${targetIncomingConnections.length} inputs`
                     );
                   } else {
                     inputDataForTarget = null;
