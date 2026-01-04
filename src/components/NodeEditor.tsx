@@ -4058,14 +4058,27 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
     }
   }, [data.columnNames, data.connectedTableName, data.DBNameToDBVersions]);
 
-  // Sync transformations to node data
+  // Sync transformations to node data and update output column names
   React.useEffect(() => {
+    // Calculate extended column names (original + new columns from transformations)
+    const originalColumns = data.columnNames || [];
+    const newColumns = transformations
+      .filter((t) => t.transformationType !== "filterequal" && t.transformationType !== "filternotequal")
+      .map((t) => t.outputColumnName)
+      .filter((name) => name && name.trim() !== "");
+
+    const extendedColumnNames = [...originalColumns, ...newColumns];
+
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
-        detail: { nodeId: id, transformations },
+        detail: {
+          nodeId: id,
+          transformations,
+          columnNames: extendedColumnNames,
+        },
       })
     );
-  }, [transformations, id]);
+  }, [transformations, id, data.columnNames]);
 
   const addTransformation = () => {
     const newTransformation: AddColumnTransformation = {
@@ -5896,6 +5909,9 @@ const reactFlowNodeTypes = {
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
 
+let sidebarNodeLastClickedTopLeftCorner = { left: 0, top: 0 };
+let nodeDropOffset = { left: 0, top: 0 };
+
 let nodeId = 0;
 const getNodeId = () => `node_${nodeId++}`;
 
@@ -5959,6 +5975,13 @@ const NodeSidebar: React.FC<{
                 <div
                   key={nodeType.type}
                   draggable
+                  onMouseDown={(event) => {
+                    const r = event.currentTarget.getBoundingClientRect();
+                    sidebarNodeLastClickedTopLeftCorner = {
+                      left: r.left,
+                      top: r.top,
+                    };
+                  }}
                   onDragStart={(event) => onDragStart(event, nodeType)}
                   className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm transition-colors duration-150"
                 >
@@ -7244,7 +7267,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "extracttable" ||
             sourceNode.type === "flattennested" ||
             sourceNode.type === "getcountercolumn" ||
-            sourceNode.type === "groupby")
+            sourceNode.type === "groupby" ||
+            sourceNode.type === "addnewcolumn")
         ) {
           const sourceData = sourceNode.data as any;
 
@@ -7657,7 +7681,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const nodeData = JSON.parse(type) as DraggableNodeData;
 
       const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX - reactFlowBounds.left,
+        x: event.clientX - nodeDropOffset.left * reactFlowInstance.getZoom(),
         y: event.clientY - reactFlowBounds.top,
       });
 
@@ -8169,16 +8193,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 existingTableName: "",
                 columnMapping: [],
               },
-              {
-                handleId: "output-table2",
-                name: "Table 2",
-                existingTableName: "",
-                columnMapping: [],
-              },
             ],
             inputType: "TableSelection" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
-            outputCount: 2,
+            outputCount: 1,
             columnNames: [],
             connectedTableName: "",
             DBNameToDBVersions: {},
@@ -8228,6 +8246,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const onDragStart = (event: DragEvent, nodeType: DraggableNodeData) => {
     event.dataTransfer.setData("application/reactflow", JSON.stringify(nodeType));
     event.dataTransfer.effectAllowed = "move";
+
+    nodeDropOffset = {
+      left: event.clientX - sidebarNodeLastClickedTopLeftCorner.left,
+      top: event.clientY - sidebarNodeLastClickedTopLeftCorner.top,
+    };
   };
 
   const serializeNodeGraph = useCallback((): SerializedNodeGraph => {
