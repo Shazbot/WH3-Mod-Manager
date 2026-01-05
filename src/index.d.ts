@@ -720,6 +720,10 @@ declare global {
     tableCount: number;
   }
 
+  interface DumpToTSVNodeData extends DBTablesNodeData {
+    openInWindows: boolean;
+  }
+
   interface DBColumnSelectionTableValues {
     tableName: string;
     fileName: string;

@@ -19,6 +19,7 @@ import {
 } from "./packFileTypes";
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
+import { shell } from "electron";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
 // Map structure: sourceColumnId -> Set of used numbers
@@ -4881,9 +4882,14 @@ async function executeAddNewColumnNode(
 async function executeDumpToTSVNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DumpToTSVNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(`Dump to TSV Node ${nodeId}: Processing with input:`, inputData);
+  console.log(
+    `Dump to TSV Node ${nodeId}: Processing with input:`,
+    { ...inputData, tables: [] },
+    ", num tables:",
+    inputData.tables.length
+  );
 
   if (!inputData || inputData.type !== "TableSelection") {
     return { success: false, error: "Invalid input: Expected TableSelection data" };
@@ -4903,11 +4909,13 @@ async function executeDumpToTSVNode(
     };
   }
 
-  // Parse filename from textValue (it's stored as JSON with filename key)
+  // Parse filename and openInWindows from textValue (it's stored as JSON with filename key)
+  let openInWindows = false;
   let filename = "";
   try {
     const parsed = JSON.parse(textValue || "{}");
     filename = parsed.filename || "";
+    openInWindows = parsed.openInWindows ?? false;
   } catch (error) {
     // If parsing fails, use textValue directly
     filename = textValue || "";
@@ -4983,6 +4991,11 @@ async function executeDumpToTSVNode(
     // Write to file in game folder (not data folder)
     const outputPath = nodePath.join(gamePath, filename);
     fs.writeFileSync(outputPath, tsvLines.join("\n"), "utf-8");
+
+    if (openInWindows) {
+      const shellOutput = await shell.openPath(outputPath);
+      console.log("shell output:", shellOutput);
+    }
 
     console.log(`Dump to TSV Node ${nodeId}: Wrote ${tsvLines.length} lines to ${outputPath}`);
 
