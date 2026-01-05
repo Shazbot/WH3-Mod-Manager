@@ -1989,6 +1989,7 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
 // Custom DumpToTSV node component that exports table data to TSV file
 const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   const [filename, setFilename] = useState(data.filename || "");
+  const [openInWindows, setOpenInWindows] = useState(!!data.openInWindows);
 
   const handleFilenameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.value;
@@ -2022,6 +2023,26 @@ const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
           placeholder="Leave blank for auto-generated name"
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
         />
+      </div>
+
+      <div className="mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={openInWindows}
+            onChange={(event) => {
+              const newValue = event.target.checked;
+              setOpenInWindows(newValue);
+
+              const updateEvent = new CustomEvent("nodeDataUpdate", {
+                detail: { nodeId: id, openInWindows: newValue },
+              });
+              window.dispatchEvent(updateEvent);
+            }}
+            className="w-4 h-4"
+          />
+          <span className="text-xs text-gray-300">Open file in Windows</span>
+        </label>
       </div>
 
       <div className="mt-2 text-xs text-gray-400">Exports to TSV for inspection</div>
@@ -2542,44 +2563,32 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
   // Track source table column names (from input-source connection)
   React.useEffect(() => {
+    // Prefer sourceInputColumns (from connection) over everything else
+    // This ensures we get the actual output columns from the connected node,
+    // including new columns from addnewcolumn, transformations, etc.
+    if ((data as any).sourceInputColumns && (data as any).sourceInputColumns.length > 0) {
+      setSourceColumnNames((data as any).sourceInputColumns);
+      return;
+    }
+
+    // Fallback to schema-based extraction for direct table connections
+    const inputColumns = data.columnNames;
+
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
         const tableFields = tableVersions[0].fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setSourceColumnNames(fieldNames);
-      } else if (data.columnNames && data.columnNames.length > 0) {
-        // For synthetic tables (like _custom_node_X from customrowsinput/readtsvfrompack),
-        // check if columns are already prefixed or not
-        const prefix = `${data.connectedTableName}_`;
-        const hasPrefixedColumns = data.columnNames.some((col: string) => col.startsWith(prefix));
-
-        if (hasPrefixedColumns) {
-          // Columns are already prefixed (from output) - extract only source columns
-          const unprefixedColumns = data.columnNames
-            .filter((col: string) => col.startsWith(prefix))
-            .map((col: string) => {
-              // Strip all repeated instances of the table prefix
-              let unprefixed = col;
-              while (unprefixed.startsWith(prefix)) {
-                unprefixed = unprefixed.substring(prefix.length);
-              }
-              return unprefixed;
-            });
-
-          if (unprefixedColumns.length > 0) {
-            setSourceColumnNames(unprefixedColumns);
-          }
-        } else {
-          // Columns are not prefixed yet (initial connection) - use as-is
-          setSourceColumnNames(data.columnNames);
-        }
+      } else if (inputColumns && inputColumns.length > 0) {
+        // For synthetic tables, just use the input columns directly
+        setSourceColumnNames(inputColumns);
       }
-    } else if (data.columnNames && data.columnNames.length > 0) {
-      // If no DBNameToDBVersions at all, use columnNames as-is
-      setSourceColumnNames(data.columnNames);
+    } else if (inputColumns && inputColumns.length > 0) {
+      // If no DBNameToDBVersions at all, use input columns as-is
+      setSourceColumnNames(inputColumns);
     }
-  }, [data.connectedTableName, data.columnNames]);
+  }, [data.connectedTableName, (data as any).sourceInputColumns]);
 
   // Track indexed table column names (from input-index connection)
   React.useEffect(() => {
@@ -3600,11 +3609,16 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
   // Extract column names from connected input
   React.useEffect(() => {
-    // Use columnNames from data if already provided (from connection propagation)
-    // Otherwise fall back to looking up schema from DBNameToDBVersions
-    if (data.columnNames && data.columnNames.length > 0) {
+    // Prefer inputColumnNames (from connection) over everything else
+    // This ensures we get the actual columns from the connected source,
+    // including new columns from addnewcolumn, transformations, etc.
+    if ((data as any).inputColumnNames && (data as any).inputColumnNames.length > 0) {
+      setColumnNames((data as any).inputColumnNames);
+    } else if (data.columnNames && data.columnNames.length > 0) {
+      // Use columnNames from data if already provided (from connection propagation)
       setColumnNames(data.columnNames);
     } else if (data.connectedTableName && data.DBNameToDBVersions) {
+      // Otherwise fall back to looking up schema from DBNameToDBVersions
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
         const tableFields = tableVersions[0].fields || [];
@@ -3618,7 +3632,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
       const names = Object.keys(data.DBNameToDBVersions);
       setTableNames(names);
     }
-  }, [data.columnNames, data.connectedTableName, data.DBNameToDBVersions]);
+  }, [(data as any).inputColumnNames, data.columnNames, data.connectedTableName, data.DBNameToDBVersions]);
 
   // Sync transformations to node data
   React.useEffect(() => {
@@ -4096,7 +4110,8 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
   // Sync transformations to node data and update output column names
   React.useEffect(() => {
     // Calculate extended column names (original + new columns from transformations)
-    const originalColumns = data.columnNames || [];
+    // Use inputColumnNames (from source) as base, not data.columnNames (which may already include previous new columns)
+    const originalColumns = (data as any).inputColumnNames || data.columnNames || [];
     const newColumns = transformations
       .filter((t) => t.transformationType !== "filterequal" && t.transformationType !== "filternotequal")
       .map((t) => t.outputColumnName)
@@ -4113,7 +4128,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
         },
       })
     );
-  }, [transformations, id, data.columnNames]);
+  }, [transformations, id, (data as any).inputColumnNames]);
 
   const addTransformation = () => {
     const newTransformation: AddColumnTransformation = {
@@ -5902,6 +5917,9 @@ const executeGraphInBackend = async (
           tsvFileName: (node.data as any)?.tsvFileName ? String((node.data as any).tsvFileName) : "",
           customRows: (node.data as any)?.customRows || [],
           tableName: (node.data as any)?.tableName ? String((node.data as any).tableName) : "",
+          openInWindows: (node.data as any)?.openInWindows
+            ? Boolean((node.data as any).openInWindows)
+            : false,
         },
       };
     });
@@ -6037,16 +6055,18 @@ const NodeSidebar: React.FC<{
       className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto scrollable-node-content"
       onWheel={stopWheelPropagation}
     >
-      <h3 className="font-bold text-lg mb-2 text-white">Node Types</h3>
+      <h3 className="font-bold text-lg text-white">Node Types</h3>
 
       {/* Sticky Filter textbox */}
-      <input
-        type="text"
-        placeholder="Filter nodes..."
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        className="sticky top-0 w-full p-2 mb-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400 z-10"
-      />
+      <div className="py-4 px-4 -mx-4 bg-gray-800 sticky top-0">
+        <input
+          type="text"
+          placeholder="Filter nodes..."
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          className="sticky top-0 w-full p-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400 z-10"
+        />
+      </div>
 
       <div className="mb-4">
         <label className="flex items-center gap-2 cursor-pointer">
@@ -6342,6 +6362,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         tsvFileName,
         customRows,
         tableName,
+        openInWindows,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -6406,6 +6427,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 customRows: customRows !== undefined ? customRows : node.data.customRows,
                 tsvFileName: tsvFileName !== undefined ? tsvFileName : node.data.tsvFileName,
                 tableName: tableName !== undefined ? tableName : node.data.tableName,
+                openInWindows: openInWindows !== undefined ? openInWindows : node.data.openInWindows,
               },
             };
           }
@@ -7182,12 +7204,29 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "flattennested" ||
               sourceNode.type === "groupby" ||
               sourceNode.type === "generaterows" ||
-              sourceNode.type === "addnewcolumn"
+              sourceNode.type === "addnewcolumn" ||
+              sourceNode.type === "customrowsinput" ||
+              sourceNode.type === "readtsvfrompack"
             ) {
               // Handle TableSelection input - will be auto-indexed by the executor
               const sourceData = sourceNode.data as any;
 
-              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+              // For customrowsinput and readtsvfrompack, get columns from schemaColumns
+              const hasSchemaColumns =
+                sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
+              const columnNames = hasSchemaColumns
+                ? (sourceData.schemaColumns || []).map((col: any) => col.name)
+                : sourceData.columnNames || [];
+              const tableName = hasSchemaColumns
+                ? sourceData.tableName || `_custom_${sourceNode.id}`
+                : sourceData.connectedTableName;
+
+              if (
+                (sourceData.connectedTableName &&
+                  (sourceData.DBNameToDBVersions ||
+                    (sourceData.columnNames && sourceData.columnNames.length > 0))) ||
+                hasSchemaColumns
+              ) {
                 setNodes((nds) =>
                   nds.map((node) => {
                     if (node.id === params.target) {
@@ -7195,9 +7234,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         ...node,
                         data: {
                           ...node.data,
-                          indexedTableColumns: sourceData.columnNames || [],
-                          indexedTableName: sourceData.connectedTableName,
-                          DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                          indexedTableColumns: columnNames,
+                          indexedTableName: tableName,
+                          DBNameToDBVersions: hasSchemaColumns
+                            ? DBNameToDBVersions
+                            : sourceData.DBNameToDBVersions,
                           indexedInputType: "TableSelection" as NodeEdgeTypes,
                         },
                       };
@@ -7238,7 +7279,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               ? sourceData.tableName || `_custom_${sourceNode.id}`
               : sourceData.connectedTableName;
 
-            if ((sourceData.connectedTableName && sourceData.DBNameToDBVersions) || hasSchemaColumns) {
+            if (
+              (sourceData.connectedTableName &&
+                (sourceData.DBNameToDBVersions ||
+                  (sourceData.columnNames && sourceData.columnNames.length > 0))) ||
+              hasSchemaColumns
+            ) {
               setNodes((nds) =>
                 nds.map((node) => {
                   if (node.id === params.target) {
@@ -7247,6 +7293,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       data: {
                         ...node.data,
                         columnNames: columnNames,
+                        sourceInputColumns: columnNames, // Store input columns separately
                         connectedTableName: tableName,
                         DBNameToDBVersions: hasSchemaColumns
                           ? DBNameToDBVersions
@@ -7405,7 +7452,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           const hasSchemaColumns =
             sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
           const isValidSource =
-            (sourceData.connectedTableName && sourceData.DBNameToDBVersions) || hasSchemaColumns;
+            (sourceData.connectedTableName &&
+              (sourceData.DBNameToDBVersions ||
+                (sourceData.columnNames && sourceData.columnNames.length > 0))) ||
+            hasSchemaColumns;
 
           if (isValidSource) {
             setNodes((nds) =>
@@ -7461,6 +7511,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     data: {
                       ...node.data,
                       columnNames: Array.from(allSourceColumns),
+                      inputColumnNames: Array.from(allSourceColumns), // Preserve input columns
                       connectedTableName: sourceData.connectedTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
@@ -7519,6 +7570,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     data: {
                       ...node.data,
                       columnNames: cols,
+                      inputColumnNames: cols, // Store input columns separately
                       connectedTableName: tableName,
                       DBNameToDBVersions: DBNameToDBVersions,
                     },
@@ -8097,6 +8149,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           data: {
             label: nodeData.label,
             type: nodeData.type,
+            openInWindows: false,
             filename: "",
             inputType: "TableSelection" as NodeEdgeTypes,
           },
@@ -8461,6 +8514,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           newColumnName: String((node.data as any)?.newColumnName) || "",
           tsvFileName: String((node.data as any)?.tsvFileName) || "",
           tableName: String((node.data as any)?.tableName) || "",
+          sourceInputColumns: (node.data as any)?.sourceInputColumns || null,
+          indexedTableColumns: (node.data as any)?.indexedTableColumns || null,
+          openInWindows: (node.data as any)?.openInWindows,
         },
       };
 

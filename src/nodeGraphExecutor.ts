@@ -225,6 +225,7 @@ export const executeNodeGraph = async (
         } else if (node.type === "dumptotsv") {
           textValueToUse = JSON.stringify({
             filename: (node.data as any).filename || "",
+            openInWindows: (node.data as any).openInWindows ?? false,
           });
         } else if (node.type === "getcountercolumn") {
           textValueToUse = JSON.stringify({
