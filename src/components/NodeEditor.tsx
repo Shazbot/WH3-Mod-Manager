@@ -4014,8 +4014,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   <option value="multiply">Multiply (*)</option>
                   <option value="divide">Divide (/)</option>
                   <option value="counter">Counter (unique sequential)</option>
-                  <option value="filterequal">Filter: Equal (skip if equal)</option>
-                  <option value="filternotequal">Filter: Not Equal (skip if not equal)</option>
+                  <option value="filterequal">Filter Rows: Equal (skip if equal)</option>
+                  <option value="filternotequal">Filter Rows: Not Equal (skip if not equal)</option>
                 </select>
 
                 {trans.transformationType === "prefix" && (
@@ -4440,8 +4440,8 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   <option value="rename_substring">Rename (substring replace)</option>
                   <option value="replace_substring_whole">Replace if contains (replace whole)</option>
                   <option value="regex_replace">Regex Replace</option>
-                  <option value="filterequal">Filter: Equal (skip if equal)</option>
-                  <option value="filternotequal">Filter: Not Equal (skip if not equal)</option>
+                  <option value="filterequal">Filter Rows: Equal (skip if equal)</option>
+                  <option value="filternotequal">Filter Rows: Not Equal (skip if not equal)</option>
                 </select>
 
                 {trans.transformationType === "prefix" && (
@@ -7669,7 +7669,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       columnNames: Array.from(allSourceColumns),
                       inputColumnNames: Array.from(allSourceColumns), // Preserve input columns
                       connectedTableName: sourceData.connectedTableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                      DBNameToDBVersions: hasSchemaColumns
+                        ? DBNameToDBVersions
+                        : sourceData.DBNameToDBVersions,
                     },
                   };
                 }
@@ -7695,26 +7697,38 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "groupby" ||
             sourceNode.type === "deduplicate" ||
             sourceNode.type === "generaterows" ||
-            sourceNode.type === "addnewcolumn")
+            sourceNode.type === "addnewcolumn" ||
+            sourceNode.type === "customrowsinput" ||
+            sourceNode.type === "readtsvfrompack")
         ) {
           const sourceData = sourceNode.data as any;
 
-          // For tableselectiondropdown, use selectedTable as the connected table
-          const tableName =
-            sourceNode.type === "tableselectiondropdown"
-              ? sourceData.selectedTable
-              : sourceData.connectedTableName;
+          // For customrowsinput and readtsvfrompack, get columns from schemaColumns
+          const hasSchemaColumns =
+            sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
 
-          if (tableName && DBNameToDBVersions) {
+          // For tableselectiondropdown, use selectedTable as the connected table
+          const tableName = hasSchemaColumns
+            ? sourceData.tableName || `_custom_${sourceNode.id}`
+            : sourceNode.type === "tableselectiondropdown"
+            ? sourceData.selectedTable
+            : sourceData.connectedTableName;
+
+          if ((tableName && DBNameToDBVersions) || hasSchemaColumns) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
                   // Get column names from source
                   let cols = sourceData.columnNames || [];
 
+                  // For customrowsinput and readtsvfrompack, get columns from schemaColumns
+                  if (cols.length === 0 && hasSchemaColumns) {
+                    cols = (sourceData.schemaColumns || []).map((col: any) => col.name);
+                  }
+
                   // For tableselectiondropdown nodes, columnNames might be empty
                   // Get columns from the schema based on selectedTable
-                  if (cols.length === 0 && tableName && DBNameToDBVersions[tableName]) {
+                  if (cols.length === 0 && tableName && DBNameToDBVersions && DBNameToDBVersions[tableName]) {
                     const tableVersions = DBNameToDBVersions[tableName];
                     if (tableVersions && tableVersions.length > 0) {
                       const tableFields = tableVersions[0].fields || [];
@@ -7729,7 +7743,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       columnNames: cols,
                       inputColumnNames: cols, // Store input columns separately
                       connectedTableName: tableName,
-                      DBNameToDBVersions: DBNameToDBVersions,
+                      DBNameToDBVersions: hasSchemaColumns
+                        ? DBNameToDBVersions
+                        : sourceData.DBNameToDBVersions,
                     },
                   };
                 }

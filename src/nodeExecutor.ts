@@ -5561,6 +5561,8 @@ async function executeReadTSVFromPackNode(
 
   for (const line of dataLines) {
     const values = line.split("\t");
+    console.log("values:", values);
+    console.log("num values:", values.length);
 
     // Ensure we have enough values for all columns
     for (let i = 0; i < schemaColumns.length; i++) {
@@ -5697,7 +5699,7 @@ async function executeCustomRowsInputNode(
 
   // Create a synthetic PackedFile with the custom rows
   const syntheticTable: PackedFile = {
-    name: `db\\_custom_rows`,
+    name: `db\\_custom_${nodeId}`,
     schemaFields: schemaFields,
     tableSchema: outputTableSchema,
     file_size: 0,
@@ -5706,8 +5708,8 @@ async function executeCustomRowsInputNode(
 
   const resultTables: DBTablesNodeTable[] = [
     {
-      name: `_custom_rows`,
-      fileName: `db\\_custom_rows`,
+      name: `_custom_${nodeId}`,
+      fileName: `db\\_custom_${nodeId}`,
       sourceFile: undefined as any,
       table: syntheticTable,
     },
