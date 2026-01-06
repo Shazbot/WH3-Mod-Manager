@@ -222,6 +222,15 @@ export const executeNodeGraph = async (
             aggregations: (node.data as any).aggregations || [],
           });
           console.log(`Group By serialization - textValueToUse:`, textValueToUse);
+        } else if (node.type === "deduplicate") {
+          console.log(
+            `Deduplicate serialization - node.data.dedupeByColumns:`,
+            (node.data as any).dedupeByColumns
+          );
+          textValueToUse = JSON.stringify({
+            dedupeByColumns: (node.data as any).dedupeByColumns || [],
+          });
+          console.log(`Deduplicate serialization - textValueToUse:`, textValueToUse);
         } else if (node.type === "dumptotsv") {
           textValueToUse = JSON.stringify({
             filename: (node.data as any).filename || "",

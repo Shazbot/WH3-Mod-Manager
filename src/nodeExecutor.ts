@@ -117,6 +117,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "groupby":
         return await executeGroupByNode(nodeId, textValue, inputData);
 
+      case "deduplicate":
+        return await executeDeduplicateNode(nodeId, textValue, inputData);
+
       case "generaterows":
         return await executeGenerateRowsNode(nodeId, textValue, inputData);
 
@@ -3979,6 +3982,144 @@ async function executeGroupByNode(
       sourceFiles: inputData.sourceFiles,
       tableCount: groupedTables.length,
     },
+  };
+}
+
+async function executeDeduplicateNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData
+): Promise<NodeExecutionResult> {
+  console.log(`Deduplicate Node ${nodeId}: Processing with input tables:`, {
+    tableCount: inputData?.tables?.length,
+    tableNames: inputData?.tables?.map((t) => t.name),
+  });
+
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  // Parse configuration from textValue
+  let dedupeByColumns: string[] = [];
+
+  try {
+    const parsed = JSON.parse(textValue);
+    dedupeByColumns = parsed.dedupeByColumns || [];
+  } catch (error) {
+    console.error(`Group By Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid group by configuration" };
+  }
+
+  console.log(`Deduplicate Node ${nodeId}: dedupeByColumns: [${dedupeByColumns.join(", ")}]`);
+
+  if (dedupeByColumns.length === 0) {
+    return { success: false, error: "No dedupe by columns specified" };
+  }
+
+  const dedupedTables = [] as DBTablesNodeTable[];
+  const inputTableToDupes = new Map<number, Set<number>>();
+
+  // Process each table
+  for (let tableIndex = 0; tableIndex < inputData.tables.length; tableIndex++) {
+    const tableData = inputData.tables[tableIndex];
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    console.log(`Deduplicate Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
+
+    const dupes = new Set<number>();
+    for (let i = 0; i < rows.length; i++) {
+      if (dupes.has(i)) continue;
+
+      for (let j = i + 1; j < rows.length; j++) {
+        if (dupes.has(j)) continue;
+
+        const rowFirst = rows[i];
+        const rowSecond = rows[j];
+
+        let allMatch = true;
+        for (const dedupeColumn of dedupeByColumns) {
+          const cellFirst = rowFirst.find((c) => c.name === dedupeColumn);
+          const cellSecond = rowSecond.find((c) => c.name === dedupeColumn);
+
+          if (!cellFirst || !cellSecond) {
+            continue;
+          }
+
+          if (cellFirst.resolvedKeyValue != cellSecond.resolvedKeyValue) {
+            allMatch = false;
+            break;
+          }
+        }
+
+        if (allMatch) {
+          dupes.add(j);
+        }
+      }
+    }
+
+    if (dupes.size > 0) {
+      inputTableToDupes.set(tableIndex, dupes);
+
+      console.log(`${inputData.tables[tableIndex].fileName} has ${dupes.size} dupes`);
+    }
+  }
+
+  for (let tableIndex = 0; tableIndex < inputData.tables.length; tableIndex++) {
+    const tableData = inputData.tables[tableIndex];
+    if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
+      dedupedTables.push(tableData);
+      continue;
+    }
+
+    const dupes = inputTableToDupes.get(tableIndex);
+    if (!dupes) {
+      dedupedTables.push(tableData);
+      continue;
+    }
+
+    const rows = chunkSchemaIntoRows(
+      tableData.table.schemaFields,
+      tableData.table.tableSchema
+    ) as AmendedSchemaField[][];
+
+    console.log(`Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
+
+    const dedupedRows = [] as AmendedSchemaField[][];
+
+    for (let i = 0; i < rows.length; i++) {
+      if (!dupes.has(i)) dedupedRows.push(rows[i]);
+    }
+
+    dedupedTables.push({
+      name: tableData.name,
+      fileName: tableData.fileName,
+      sourceFile: tableData.sourceFile,
+      table: {
+        ...tableData.table,
+        tableSchema: tableData.table.tableSchema,
+        schemaFields: dedupedRows.flat(),
+        version: tableData.table.version,
+      },
+    });
+  }
+
+  console.log(`Deduplicate Node ${nodeId}: Match output has ${dedupedTables.length} tables`);
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: dedupedTables,
+      sourceFiles: inputData.sourceFiles,
+      tableCount: dedupedTables.length,
+    } as DBTablesNodeData,
   };
 }
 
