@@ -4338,14 +4338,13 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
         >
           {transformations.map((trans, transIndex) => {
             // Build available source columns for this transformation
-            // Include original columns + output columns from previous transformations
-            const availableSourceColumns = [
-              ...columnNames,
-              ...transformations
-                .slice(0, transIndex)
-                .map((t) => t.outputColumnName)
-                .filter((name) => name && name.trim() !== ""),
-            ];
+            // Include original INPUT columns (not including new columns from transformations)
+            // + output columns from PREVIOUS transformations only
+            const inputColumns = (data as any).inputColumnNames || columnNames || [];
+            const previousTransformationColumns = transformations
+              .slice(0, transIndex)
+              .map((t) => t.outputColumnName)
+              .filter((name) => name && name.trim() !== "");
 
             return (
               <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
@@ -4392,19 +4391,16 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
                   <option value="">Select source column...</option>
-                  {columnNames.map((col) => (
+                  {inputColumns.map((col) => (
                     <option key={col} value={col}>
                       {col}
                     </option>
                   ))}
-                  {transformations
-                    .slice(0, transIndex)
-                    .filter((t) => t.outputColumnName && t.outputColumnName.trim() !== "")
-                    .map((t) => (
-                      <option key={t.outputColumnName} value={t.outputColumnName}>
-                        {t.outputColumnName} (from transformation)
-                      </option>
-                    ))}
+                  {previousTransformationColumns.map((colName) => (
+                    <option key={colName} value={colName}>
+                      {colName} (from transformation)
+                    </option>
+                  ))}
                 </select>
 
                 <select
