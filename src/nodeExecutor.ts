@@ -20,6 +20,7 @@ import {
 import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
+import { cyrb53 } from "./utility/cyrb53";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
 // Map structure: sourceColumnId -> Set of used numbers
@@ -4018,6 +4019,7 @@ async function executeDeduplicateNode(
 
   const dedupedTables = [] as DBTablesNodeTable[];
   const inputTableToDupes = new Map<number, Set<number>>();
+  const alreadyPresentRowHashes = new Set<number>();
 
   // Process each table
   for (let tableIndex = 0; tableIndex < inputData.tables.length; tableIndex++) {
@@ -4037,37 +4039,32 @@ async function executeDeduplicateNode(
     for (let i = 0; i < rows.length; i++) {
       if (dupes.has(i)) continue;
 
-      for (let j = i + 1; j < rows.length; j++) {
-        if (dupes.has(j)) continue;
+      const row = rows[i];
 
-        const rowFirst = rows[i];
-        const rowSecond = rows[j];
+      let cellConcat = "";
+      for (const dedupeColumn of dedupeByColumns) {
+        const cell = row.find((c) => c.name === dedupeColumn);
 
-        let allMatch = true;
-        for (const dedupeColumn of dedupeByColumns) {
-          const cellFirst = rowFirst.find((c) => c.name === dedupeColumn);
-          const cellSecond = rowSecond.find((c) => c.name === dedupeColumn);
-
-          if (!cellFirst || !cellSecond) {
-            continue;
-          }
-
-          if (cellFirst.resolvedKeyValue != cellSecond.resolvedKeyValue) {
-            allMatch = false;
-            break;
-          }
+        if (!cell) {
+          continue;
         }
 
-        if (allMatch) {
-          dupes.add(j);
-        }
+        cellConcat += cell.resolvedKeyValue;
+      }
+
+      const rowHash = cyrb53(cellConcat);
+
+      if (!alreadyPresentRowHashes.has(rowHash)) {
+        alreadyPresentRowHashes.add(rowHash);
+      } else {
+        dupes.add(i);
       }
     }
 
     if (dupes.size > 0) {
       inputTableToDupes.set(tableIndex, dupes);
 
-      console.log(`${inputData.tables[tableIndex].fileName} has ${dupes.size} dupes`);
+      console.log(`${inputData.tables[tableIndex].name} has ${dupes.size} dupes`);
     }
   }
 
@@ -4089,7 +4086,7 @@ async function executeDeduplicateNode(
       tableData.table.tableSchema
     ) as AmendedSchemaField[][];
 
-    console.log(`Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
+    console.log(`Deduplicate Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
 
     const dedupedRows = [] as AmendedSchemaField[][];
 
