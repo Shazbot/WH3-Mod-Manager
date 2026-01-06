@@ -76,6 +76,7 @@ export interface SerializedNode {
     onlyForMultiple?: boolean;
     filters?: Array<{ column: string; value: string; not: boolean; operator: "AND" | "OR" }>;
     columnNames?: string[];
+    dedupeByColumns?: string[];
     connectedTableName?: string;
     outputType?: string;
     inputType?: string;
@@ -3586,6 +3587,142 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   );
 };
 
+const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const [dedupeByColumns, setDedupeByColumns] = useState<string[]>(data.dedupeByColumns || []);
+
+  // inputColumnNames: columns available from the connected node (for dropdowns)
+  const [inputColumnNames, setInputColumnNames] = useState<string[]>([]);
+
+  // Sync local state with prop changes (but prevent feedback loops)
+  React.useEffect(() => {
+    if (
+      data.dedupeByColumns !== undefined &&
+      JSON.stringify(data.dedupeByColumns) !== JSON.stringify(dedupeByColumns)
+    ) {
+      setDedupeByColumns(data.dedupeByColumns);
+    }
+  }, [data.dedupeByColumns]);
+
+  // Extract INPUT column names from connected node (not the calculated output columns)
+  React.useEffect(() => {
+    // Check if we have explicit inputColumnNames from the saved data or connection
+    const dataInputColumns = (data as any).inputColumnNames;
+    if (dataInputColumns && dataInputColumns.length > 0) {
+      // Only update if they're different from current state
+      if (JSON.stringify(dataInputColumns) !== JSON.stringify(inputColumnNames)) {
+        console.log(`[DeduplicateNode ${id}] Setting inputColumnNames from data:`, dataInputColumns);
+        setInputColumnNames(dataInputColumns);
+      }
+    }
+    // Otherwise, if inputColumnNames is empty, try to extract from columnNames
+    else if (inputColumnNames.length === 0 && data.columnNames && data.columnNames.length > 0) {
+      // Filter out aggregation output columns (those starting with "agg_")
+      // to get the actual input columns from the connected node
+      const inputCols = data.columnNames.filter((col: string) => !col.startsWith("agg_"));
+
+      if (inputCols.length > 0) {
+        console.log(`[DeduplicateNode ${id}] Extracting inputColumnNames from columnNames:`, inputCols);
+        setInputColumnNames(inputCols);
+      }
+    }
+  }, [data.columnNames, (data as any).inputColumnNames, inputColumnNames, id]);
+
+  // Sync dedupeByColumns to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, dedupeByColumns },
+      })
+    );
+  }, [dedupeByColumns, id]);
+
+  // Sync inputColumnNames to node data whenever it changes (to persist when saved)
+  React.useEffect(() => {
+    if (
+      inputColumnNames.length > 0 &&
+      JSON.stringify(inputColumnNames) !== JSON.stringify((data as any).inputColumnNames)
+    ) {
+      console.log(`[DeduplicateNode ${id}] Syncing inputColumnNames to node data:`, inputColumnNames);
+      window.dispatchEvent(
+        new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, inputColumnNames },
+        })
+      );
+    }
+  }, [inputColumnNames, id]);
+
+  // Calculate and propagate output column names based on dedupeByColumns and aggregations
+  React.useEffect(() => {
+    // Output columns = group by columns
+    const outputColumnNames = [...dedupeByColumns];
+
+    const outputChanged = JSON.stringify(outputColumnNames) !== JSON.stringify(data.columnNames);
+
+    // Only update if output columns changed
+    if (outputChanged) {
+      window.dispatchEvent(
+        new CustomEvent("nodeDataUpdate", {
+          detail: { nodeId: id, columnNames: outputColumnNames },
+        })
+      );
+    }
+  }, [dedupeByColumns, id, data.columnNames]);
+
+  const toggleDedupeByColumn = (columnName: string) => {
+    setDedupeByColumns((prev) =>
+      prev.includes(columnName) ? prev.filter((c) => c !== columnName) : [...prev, columnName]
+    );
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">Deduplicate By</div>
+
+      {/* Group By Columns Section */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">Deduplicate By Columns:</label>
+        <div
+          className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {inputColumnNames.length === 0 ? (
+            <div className="text-xs text-gray-500">No columns available</div>
+          ) : (
+            inputColumnNames.map((columnName) => (
+              <label key={columnName} className="flex items-center gap-2 cursor-pointer mb-1">
+                <input
+                  type="checkbox"
+                  checked={dedupeByColumns.includes(columnName)}
+                  onChange={() => toggleDedupeByColumn(columnName)}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-white">{columnName}</span>
+              </label>
+            ))
+          )}
+        </div>
+        <div className="text-xs text-gray-400 mt-1">Selected: {dedupeByColumns.length}</div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
 const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
   const [transformations, setTransformations] = useState<ColumnTransformation[]>(data.transformations || []);
   const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
@@ -5582,6 +5719,11 @@ const nodeTypeSections: NodeTypeSection[] = [
     title: "Table Rows Filtering",
     nodes: [
       {
+        type: "deduplicate",
+        label: "Deduplicate Rows",
+        description: "Remove duplicate rows",
+      },
+      {
         type: "filter",
         label: "Filter",
         description: "Filter table rows with AND/OR conditions",
@@ -5910,6 +6052,7 @@ const executeGraphInBackend = async (
           outputTables: (node.data as any)?.outputTables || [],
           outputCount: (node.data as any)?.outputCount,
           groupByColumns: (node.data as any)?.groupByColumns || [],
+          dedupeByColumns: (node.data as any)?.dedupeByColumns || [],
           aggregations: (node.data as any)?.aggregations || [],
           DBNameToDBVersions: (node.data as any)?.DBNameToDBVersions || {},
           newColumnName: (node.data as any)?.newColumnName ? String((node.data as any).newColumnName) : "",
@@ -5995,6 +6138,7 @@ const reactFlowNodeTypes = {
   columnselection: ColumnSelectionNode,
   columnselectiondropdown: ColumnSelectionDropdownNode,
   groupbycolumns: GroupByColumnsNode,
+  deduplicate: DeduplicateNode,
   filter: FilterNode,
   referencelookup: ReferenceTableLookupNode,
   reversereferencelookup: ReverseReferenceLookupNode,
@@ -6322,6 +6466,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         selectedColumn1,
         selectedColumn2,
         columnNames,
+        dedupeByColumns,
         inputColumnNames,
         groupedTextSelection,
         outputType,
@@ -6428,6 +6573,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 tsvFileName: tsvFileName !== undefined ? tsvFileName : node.data.tsvFileName,
                 tableName: tableName !== undefined ? tableName : node.data.tableName,
                 openInWindows: openInWindows !== undefined ? openInWindows : node.data.openInWindows,
+                dedupeByColumns: dedupeByColumns !== undefined ? dedupeByColumns : node.data.dedupeByColumns,
               },
             };
           }
@@ -6457,6 +6603,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       (node.type === "columnselectiondropdown" ||
                         node.type === "groupbycolumns" ||
                         node.type === "filter" ||
+                        node.type === "deduplicate" ||
                         node.type === "referencelookup")
                     ) {
                       console.log(
@@ -6502,6 +6649,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       (node.type === "columnselectiondropdown" ||
                         node.type === "groupbycolumns" ||
                         node.type === "filter" ||
+                        node.type === "deduplicate" ||
                         node.type === "referencelookup" ||
                         node.type === "reversereferencelookup")
                     ) {
@@ -6570,6 +6718,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as MergeChangesNodeData).outputType;
       } else if (sourceNode.type === "groupbycolumns" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
+      } else if (sourceNode.type === "deduplicate" && sourceNode.data) {
+        sourceOutputType = (sourceNode.data as unknown as DeduplicateNodeData).outputType;
       } else if (sourceNode.type === "filter" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as FilterNodeData).outputType;
       } else if (sourceNode.type === "multifilter" && sourceNode.data) {
@@ -6673,6 +6823,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         targetInputType = (targetNode.data as unknown as AddNewColumnNodeData).inputType;
       } else if (targetNode.type === "groupby" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GroupByNodeData).inputType;
+      } else if (targetNode.type === "deduplicate" && targetNode.data) {
+        targetInputType = (targetNode.data as unknown as DeduplicateNodeData).inputType;
       } else if (targetNode.type === "dumptotsv" && targetNode.data) {
         targetInputType = "TableSelection" as NodeEdgeTypes;
       } else if (targetNode.type === "getcountercolumn" && targetNode.data) {
@@ -6874,6 +7026,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             targetNode.type === "extracttable" ||
             targetNode.type === "aggregatenested" ||
             targetNode.type === "groupby" ||
+            targetNode.type === "deduplicate" ||
             targetNode.type === "getcountercolumn" ||
             targetNode.type === "generaterows") &&
           (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
@@ -6950,6 +7103,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             targetNode.type === "extracttable" ||
             targetNode.type === "aggregatenested" ||
             targetNode.type === "groupby" ||
+            targetNode.type === "deduplicate" ||
             targetNode.type === "generaterows") &&
           sourceNode.type === "getcountercolumn"
         ) {
@@ -7059,7 +7213,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
         // Update Group By node when connected to nodes with TableSelection output (Filter, Lookup, etc.)
         if (
-          targetNode.type === "groupby" &&
+          (targetNode.type === "groupby" || targetNode.type == "deduplicate") &&
           (sourceNode.type === "filter" ||
             sourceNode.type === "multifilter" ||
             sourceNode.type === "lookup" ||
@@ -7203,6 +7357,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "extracttable" ||
               sourceNode.type === "flattennested" ||
               sourceNode.type === "groupby" ||
+              sourceNode.type === "deduplicate" ||
               sourceNode.type === "generaterows" ||
               sourceNode.type === "addnewcolumn" ||
               sourceNode.type === "customrowsinput" ||
@@ -7442,6 +7597,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "flattennested" ||
             sourceNode.type === "getcountercolumn" ||
             sourceNode.type === "groupby" ||
+            sourceNode.type === "deduplicate" ||
             sourceNode.type === "addnewcolumn" ||
             sourceNode.type === "customrowsinput" ||
             sourceNode.type === "readtsvfrompack")
@@ -7537,6 +7693,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "flattennested" ||
             sourceNode.type === "getcountercolumn" ||
             sourceNode.type === "groupby" ||
+            sourceNode.type === "deduplicate" ||
             sourceNode.type === "generaterows" ||
             sourceNode.type === "addnewcolumn")
         ) {
@@ -8380,6 +8537,20 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             columnNames: [],
           },
         };
+      } else if (nodeData.type === "deduplicate") {
+        newNode = {
+          id: getNodeId(),
+          type: "deduplicate",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            dedupeByColumns: [],
+            inputType: "TableSelection" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            columnNames: [],
+          },
+        };
       } else if (nodeData.type === "generaterows") {
         newNode = {
           id: getNodeId(),
@@ -8473,6 +8644,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           selectedColumn1: String((node.data as any)?.selectedColumn1 || ""),
           selectedColumn2: String((node.data as any)?.selectedColumn2 || ""),
           columnNames: (node.data as any)?.columnNames || [],
+          dedupeByColumns: (node.data as any)?.dedupeByColumns || [],
           connectedTableName: String((node.data as any)?.connectedTableName || ""),
           outputType: (node.data as any)?.outputType,
           inputType: (node.data as any)?.inputType,
@@ -8654,6 +8826,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "extracttable" ||
             node.data.type === "aggregatenested" ||
             node.data.type === "groupby" ||
+            node.data.type === "deduplicate" ||
             node.data.type === "getcountercolumn" ||
             node.data.type === "generaterows"
           ) {

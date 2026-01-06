@@ -661,7 +661,8 @@ declare global {
     | "readtsvfrompack"
     | "customrowsinput"
     | "multifilter"
-    | "addnewcolumn";
+    | "addnewcolumn"
+    | "deduplicate";
 
   // FlowNodeData = "string"|
 
@@ -806,6 +807,17 @@ declare global {
       operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
       outputName: string;
     }>;
+    sourceTables: DBTablesNodeTable[];
+    inputType: NodeEdgeTypes;
+    outputType: NodeEdgeTypes;
+    columnNames: string[];
+    connectedTableName?: string;
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
+  }
+
+  interface DeduplicateNodeData {
+    type: "Deduplicate";
+    dedupeByColumns: string[];
     sourceTables: DBTablesNodeTable[];
     inputType: NodeEdgeTypes;
     outputType: NodeEdgeTypes;
