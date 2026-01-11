@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
+import { getDefaultTableVersions } from "./ipcMainListeners";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
 // Map structure: sourceColumnId -> Set of used numbers
@@ -4547,7 +4548,16 @@ async function executeGenerateRowsNode(
       };
     }
 
-    const schema = versions[0];
+    const defaultTableVersions = await getDefaultTableVersions();
+    const defaultTableVersionNumber =
+      defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
+
+    let schema = versions[0];
+    if (defaultTableVersionNumber) {
+      const version = versions.find((version) => version.version == defaultTableVersionNumber);
+      if (version) schema = version;
+    }
+
     console.log(`Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`, {
       fieldCount: schema.fields.length,
       fields: schema.fields.map((f: any) => f.name),

@@ -22,6 +22,14 @@ import { DBVersion, SCHEMA_FIELD_TYPE } from "../packFileTypes";
 import { addToast } from "../appSlice";
 import { SupportedGames } from "../supportedGames";
 
+// Create context for default table versions
+const DefaultTableVersionsContext = React.createContext<Record<string, number> | undefined>(undefined);
+
+// Hook to use the context
+const useDefaultTableVersions = () => {
+  return React.useContext(DefaultTableVersionsContext);
+};
+
 // Helper function to prevent wheel events from bubbling to React Flow's zoom
 // Only stops propagation if the element can actually scroll
 const stopWheelPropagation = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -50,6 +58,30 @@ const stopWheelPropagation = (e: React.WheelEvent<HTMLDivElement>) => {
   // Otherwise, we're scrolling within the element - stop all event handling
   e.stopPropagation();
   e.preventDefault();
+};
+
+// Helper function to get the appropriate table version
+// Checks defaultTableVersions first, falls back to tableVersions[0]
+const getTableVersion = (
+  tableName: string,
+  tableVersions: DBVersion[],
+  defaultTableVersions?: Record<string, number>
+): DBVersion | undefined => {
+  if (!tableVersions || tableVersions.length === 0) {
+    return undefined;
+  }
+
+  // Check if there's a default version for this table
+  if (defaultTableVersions && defaultTableVersions[tableName] !== undefined) {
+    const defaultVersion = defaultTableVersions[tableName];
+    const foundVersion = tableVersions.find((v) => v.version === defaultVersion);
+    if (foundVersion) {
+      return foundVersion;
+    }
+  }
+
+  // Fall back to first version
+  return tableVersions[0];
 };
 
 // Serialization types
@@ -886,6 +918,7 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
   data,
   id,
 }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
@@ -920,9 +953,13 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
       );
 
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
-        console.log(`ColumnSelectionDropdownNode ${id}: Setting ${fieldNames.length} column names`);
+
+        console.log(
+          `ColumnSelectionDropdownNode ${id}: Setting ${fieldNames.length} column names from table version ${selectedVersion?.version}`
+        );
         setColumnNames(fieldNames);
 
         // Update the node data with new column names
@@ -987,6 +1024,7 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
 
 // Custom GroupByColumns node component
 const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [selectedColumn1, setSelectedColumn1] = useState(data.selectedColumn1 || "");
   const [selectedColumn2, setSelectedColumn2] = useState(data.selectedColumn2 || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
@@ -997,7 +1035,8 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
@@ -1115,6 +1154,7 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
 
 // Custom Filter node component that accepts TableSelection input and outputs filtered TableSelection
 const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [filters, setFilters] = useState<FilterRow[]>(
     data.filters && data.filters.length > 0
       ? data.filters
@@ -1134,7 +1174,8 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
@@ -1298,6 +1339,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
   data,
   id,
 }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [selectedReferenceTable, setSelectedReferenceTable] = useState(data.selectedReferenceTable || "");
   const [referenceTableNames, setReferenceTableNames] = useState<string[]>(data.referenceTableNames || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
@@ -1319,7 +1361,8 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
       );
 
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
@@ -1417,6 +1460,7 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
   data,
   id,
 }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [selectedReverseTable, setSelectedReverseTable] = useState(data.selectedReverseTable || "");
   const [reverseTableNames, setReverseTableNames] = useState<string[]>(data.reverseTableNames || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
@@ -1458,7 +1502,8 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
       const reverseTables = new Set<string>();
       for (const [tableName, tableVersions] of Object.entries(data.DBNameToDBVersions)) {
         if (tableVersions && tableVersions.length > 0) {
-          const tableFields = tableVersions[0].fields || [];
+          const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
+          const tableFields = selectedVersion?.fields || [];
           for (const field of tableFields) {
             // Check if this field references the input table
             if (
@@ -1483,7 +1528,8 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
       // Set column names from the input table
       const tableVersions = data.DBNameToDBVersions[inputTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(inputTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
@@ -1826,6 +1872,7 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
 
 // Custom GetCounterColumn node component
 const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
   const [newColumnName, setNewColumnName] = useState(data.newColumnName || "");
@@ -1847,7 +1894,8 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
     if (selectedTable && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[selectedTable];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(selectedTable, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         // Filter to only numeric columns
         const numericFields = tableFields.filter(
           (field) =>
@@ -2396,6 +2444,7 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
 
 // Index Table Node - Creates indexed version of a table by key column(s)
 const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [indexColumns, setIndexColumns] = useState<string[]>(data.indexColumns || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
@@ -2411,7 +2460,8 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
@@ -2501,6 +2551,7 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
 
 // Lookup Node - Performs lookups/joins using indexed tables
 const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
   const [indexJoinColumn, setIndexJoinColumn] = useState(
     (data as any).indexJoinColumn || ((data as any).indexColumns && (data as any).indexColumns[0]) || ""
@@ -2578,7 +2629,8 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setSourceColumnNames(fieldNames);
       } else if (inputColumns && inputColumns.length > 0) {
@@ -2610,7 +2662,8 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     if (indexedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[indexedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(indexedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setIndexedColumnNames(fieldNames);
         return;
@@ -2740,8 +2793,14 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       return;
     }
 
+    const defaultVersion = getTableVersion(
+      data.connectedTableName,
+      sourceTableVersions,
+      defaultTableVersions
+    );
+    const version = defaultVersion ?? sourceTableVersions[0];
     // Find the lookup column in the source table schema
-    const lookupField = sourceTableVersions[0].fields?.find((field) => field.name === lookupColumn);
+    const lookupField = version.fields?.find((field) => field.name === lookupColumn);
     if (!lookupField) {
       setSchemaWarning("");
       return;
@@ -3090,6 +3149,7 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
 
 // Aggregate Nested Node - Performs aggregations on nested arrays
 const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [aggregateColumn, setAggregateColumn] = useState(data.aggregateColumn || "");
   const [aggregateType, setAggregateType] = useState<"min" | "max" | "sum" | "avg" | "count">(
     data.aggregateType || "min"
@@ -3112,7 +3172,8 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
@@ -3724,6 +3785,7 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 };
 
 const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [transformations, setTransformations] = useState<ColumnTransformation[]>(data.transformations || []);
   const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
   const [outputCount, setOutputCount] = useState<number>(data.outputCount || 2);
@@ -3758,7 +3820,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
       // Otherwise fall back to looking up schema from DBNameToDBVersions
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
       }
@@ -3875,7 +3938,8 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     const versions = data.DBNameToDBVersions[output.existingTableName];
     if (!versions || versions.length === 0) return [];
 
-    const schema = versions[0];
+    const defaultVersion = getTableVersion(output.existingTableName, versions, defaultTableVersions);
+    const schema = defaultVersion ?? versions[0];
     const allColumns = schema.fields.map((f: any) => f.name);
 
     // Get transformed column names for this table
@@ -4220,6 +4284,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 };
 
 const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = ({ data, id }) => {
+  const defaultTableVersions = useDefaultTableVersions();
   const [transformations, setTransformations] = useState<AddColumnTransformation[]>(
     data.transformations || []
   );
@@ -4237,7 +4302,8 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
     } else if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
-        const tableFields = tableVersions[0].fields || [];
+        const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
+        const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
       }
@@ -6280,6 +6346,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
     undefined
   );
+  const [defaultTableVersions, setDefaultTableVersions] = useState<Record<string, number> | undefined>(
+    undefined
+  );
 
   const sortedTableNames = useMemo(() => {
     return Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
@@ -6337,7 +6406,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             if (DBNameToDBVersions && DBNameToDBVersions[tableName]) {
               const tableVersions = DBNameToDBVersions[tableName];
               if (tableVersions && tableVersions.length > 0) {
-                const tableFields = tableVersions[0].fields || [];
+                const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
+                const tableFields = selectedVersion?.fields || [];
                 indexedTableColumnNames = tableFields.map((field) => field.name);
               }
             }
@@ -6403,7 +6473,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             if (selectedTable && DBNameToDBVersions && DBNameToDBVersions[selectedTable]) {
               const tableVersions = DBNameToDBVersions[selectedTable];
               if (tableVersions && tableVersions.length > 0) {
-                const tableFields = tableVersions[0].fields || [];
+                const selectedVersion = getTableVersion(selectedTable, tableVersions, defaultTableVersions);
+                const tableFields = selectedVersion?.fields || [];
                 cols = tableFields.map((field: any) => field.name);
               }
             }
@@ -6450,6 +6521,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     window.api?.getDBNameToDBVersions().then((data) => {
       // console.log("getDBNameToDBVersions:", Object.keys(data));
       setDBNameToDBVersions(data);
+    });
+    window.api?.getDefaultTableVersions().then((data) => {
+      setDefaultTableVersions(data);
     });
   }, []);
 
@@ -6592,7 +6666,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           if (selectedReferenceTable && DBNameToDBVersions) {
             const tableVersions = DBNameToDBVersions[selectedReferenceTable];
             if (tableVersions && tableVersions.length > 0) {
-              const tableFields = tableVersions[0].fields || [];
+              const selectedVersion = getTableVersion(
+                selectedReferenceTable,
+                tableVersions,
+                defaultTableVersions
+              );
+              const tableFields = selectedVersion?.fields || [];
               const fieldNames = tableFields.map((field) => field.name);
 
               connectedEdges.forEach((edge) => {
@@ -6638,7 +6717,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           if (selectedReverseTable && DBNameToDBVersions) {
             const tableVersions = DBNameToDBVersions[selectedReverseTable];
             if (tableVersions && tableVersions.length > 0) {
-              const tableFields = tableVersions[0].fields || [];
+              const selectedVersion = getTableVersion(
+                selectedReverseTable,
+                tableVersions,
+                defaultTableVersions
+              );
+              const tableFields = selectedVersion?.fields || [];
               const fieldNames = tableFields.map((field) => field.name);
 
               connectedEdges.forEach((edge) => {
@@ -7039,7 +7123,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           if (tableName && DBNameToDBVersions) {
             const tableVersions = DBNameToDBVersions[tableName];
             if (tableVersions && tableVersions.length > 0) {
-              const tableFields = tableVersions[0].fields || [];
+              const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
+              const tableFields = selectedVersion?.fields || [];
               const fieldNames = tableFields.map((field) => field.name);
 
               setNodes((nds) =>
@@ -7602,7 +7687,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         if (selectedTable && DBNameToDBVersions && DBNameToDBVersions[selectedTable]) {
                           const tableVersions = DBNameToDBVersions[selectedTable];
                           if (tableVersions && tableVersions.length > 0) {
-                            const tableFields = tableVersions[0].fields || [];
+                            const selectedVersion = getTableVersion(
+                              selectedTable,
+                              tableVersions,
+                              defaultTableVersions
+                            );
+                            const tableFields = selectedVersion?.fields || [];
                             cols = tableFields.map((field: any) => field.name);
                           }
                         }
@@ -7701,7 +7791,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   if (cols.length === 0 && tableName && DBNameToDBVersions && DBNameToDBVersions[tableName]) {
                     const tableVersions = DBNameToDBVersions[tableName];
                     if (tableVersions && tableVersions.length > 0) {
-                      const tableFields = tableVersions[0].fields || [];
+                      const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
+                      const tableFields = selectedVersion?.fields || [];
                       cols = tableFields.map((field: any) => field.name);
                     }
                   }
@@ -7799,7 +7890,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
               let columnNamesToUse: string[] = [];
               if (tableVersions && tableVersions.length > 0) {
-                const tableFields = tableVersions[0].fields || [];
+                const selectedVersion = getTableVersion(
+                  sourceData.selectedReferenceTable,
+                  tableVersions,
+                  defaultTableVersions
+                );
+                const tableFields = selectedVersion?.fields || [];
                 columnNamesToUse = tableFields.map((field) => field.name);
               }
 
@@ -7829,7 +7925,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReverseTable];
               let columnNamesToUse: string[] = [];
               if (tableVersions && tableVersions.length > 0) {
-                const tableFields = tableVersions[0].fields || [];
+                const selectedVersion = getTableVersion(
+                  sourceData.selectedReverseTable,
+                  tableVersions,
+                  defaultTableVersions
+                );
+                const tableFields = selectedVersion?.fields || [];
                 columnNamesToUse = tableFields.map((field) => field.name);
               }
 
@@ -7879,7 +7980,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               // Get column names from the selected reference table
               const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
               if (tableVersions && tableVersions.length > 0) {
-                const tableFields = tableVersions[0].fields || [];
+                const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                const tableFields = selectedVersion?.fields || [];
                 columnNamesToUse = tableFields.map((field) => field.name);
               }
             }
@@ -7891,7 +7993,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               // Get column names from the selected reverse table
               const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
               if (tableVersions && tableVersions.length > 0) {
-                const tableFields = tableVersions[0].fields || [];
+                const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                const tableFields = selectedVersion?.fields || [];
                 columnNamesToUse = tableFields.map((field) => field.name);
               }
             }
@@ -8893,7 +8996,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               if (tableName && DBNameToDBVersions) {
                 const tableVersions = DBNameToDBVersions[tableName];
                 if (tableVersions && tableVersions.length > 0) {
-                  const tableFields = tableVersions[0].fields || [];
+                  const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
+                  const tableFields = selectedVersion?.fields || [];
                   const fieldNames = tableFields.map((field) => field.name);
 
                   setNodes((nds) =>
@@ -8996,7 +9100,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
                   let columnNamesToUse: string[] = [];
                   if (tableVersions && tableVersions.length > 0) {
-                    const tableFields = tableVersions[0].fields || [];
+                    const selectedVersion = getTableVersion(
+                      sourceData.selectedReferenceTable,
+                      tableVersions,
+                      defaultTableVersions
+                    );
+                    const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
                   }
 
@@ -9025,7 +9134,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReverseTable];
                   let columnNamesToUse: string[] = [];
                   if (tableVersions && tableVersions.length > 0) {
-                    const tableFields = tableVersions[0].fields || [];
+                    const selectedVersion = getTableVersion(
+                      sourceData.selectedReverseTable,
+                      tableVersions,
+                      defaultTableVersions
+                    );
+                    const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
                   }
 
@@ -9099,7 +9213,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   // Get column names from the selected reference table
                   const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
                   if (tableVersions && tableVersions.length > 0) {
-                    const tableFields = tableVersions[0].fields || [];
+                    const selectedVersion = getTableVersion(
+                      tableNameToUse,
+                      tableVersions,
+                      defaultTableVersions
+                    );
+                    const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
                   }
                 } else if (
@@ -9137,7 +9256,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   // Get column names from the selected reverse table
                   const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
                   if (tableVersions && tableVersions.length > 0) {
-                    const tableFields = tableVersions[0].fields || [];
+                    const selectedVersion = getTableVersion(
+                      tableNameToUse,
+                      tableVersions,
+                      defaultTableVersions
+                    );
+                    const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
                   }
                 } else if (
@@ -9482,57 +9606,169 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     <div className="flex explicit-height-without-topbar-and-padding">
       <NodeSidebar onDragStart={onDragStart} />
       <div className="flex-1 relative" ref={reactFlowWrapper}>
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onEdgeClick={onEdgeClick}
-            onInit={setReactFlowInstance}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={reactFlowNodeTypes}
-            noWheelClassName="scrollable-node-content"
-            fitView
-          >
-            <Controls />
-            <Background />
-          </ReactFlow>
-
-          {/* Control buttons positioned in top-right corner */}
-          <div className="absolute top-4 right-4 z-10 flex gap-2">
-            {/* Hidden file input */}
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleFileInput}
-              className="hidden"
-              id="load-graph-input"
-            />
-
-            {/* Flow Options button */}
-            <button
-              onClick={() => setIsFlowOptionsModalOpen(true)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+        <DefaultTableVersionsContext.Provider value={defaultTableVersions}>
+          <ReactFlowProvider>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onEdgeClick={onEdgeClick}
+              onInit={setReactFlowInstance}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              nodeTypes={reactFlowNodeTypes}
+              noWheelClassName="scrollable-node-content"
+              fitView
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
-                />
-              </svg>
-              Flow Options
-            </button>
+              <Controls />
+              <Background />
+            </ReactFlow>
 
-            {/* Save button - only shown when currentFile exists */}
-            {currentFile && (
+            {/* Control buttons positioned in top-right corner */}
+            <div className="absolute top-4 right-4 z-10 flex gap-2">
+              {/* Hidden file input */}
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleFileInput}
+                className="hidden"
+                id="load-graph-input"
+              />
+
+              {/* Flow Options button */}
               <button
-                onClick={saveCurrentFile}
-                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                onClick={() => setIsFlowOptionsModalOpen(true)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
+                  />
+                </svg>
+                Flow Options
+              </button>
+
+              {/* Save button - only shown when currentFile exists */}
+              {currentFile && (
+                <button
+                  onClick={saveCurrentFile}
+                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  Save
+                </button>
+              )}
+
+              {/* Run button */}
+              <button
+                onClick={executeNodeGraph}
+                disabled={nodes.length === 0 || isExecuting}
+                className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                  nodes.length > 0 && !isExecuting
+                    ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
+                    : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                }`}
+              >
+                {isExecuting ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    Run
+                  </>
+                )}
+              </button>
+
+              {/* Delete selected nodes button */}
+              <button
+                onClick={() => {
+                  const selectedNodes = nodes.filter((node) => node.selected);
+                  if (selectedNodes.length > 0) {
+                    const selectedNodeIds = selectedNodes.map((node) => node.id);
+                    setNodes((nds) => nds.filter((node) => !selectedNodeIds.includes(node.id)));
+                    setEdges((eds) =>
+                      eds.filter(
+                        (edge) =>
+                          !selectedNodeIds.includes(edge.source || "") &&
+                          !selectedNodeIds.includes(edge.target || "")
+                      )
+                    );
+                  }
+                }}
+                disabled={!nodes.some((node) => node.selected)}
+                className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                  nodes.some((node) => node.selected)
+                    ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                    : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                Delete
+              </button>
+
+              {/* Load button */}
+              <label
+                htmlFor="load-graph-input"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                  />
+                </svg>
+                Load Graph
+              </label>
+
+              {/* Save button */}
+              <button
+                onClick={saveNodeGraph}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -9542,121 +9778,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
-                Save
+                Save Graph
               </button>
-            )}
-
-            {/* Run button */}
-            <button
-              onClick={executeNodeGraph}
-              disabled={nodes.length === 0 || isExecuting}
-              className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                nodes.length > 0 && !isExecuting
-                  ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
-                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
-              }`}
-            >
-              {isExecuting ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Running...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Run
-                </>
-              )}
-            </button>
-
-            {/* Delete selected nodes button */}
-            <button
-              onClick={() => {
-                const selectedNodes = nodes.filter((node) => node.selected);
-                if (selectedNodes.length > 0) {
-                  const selectedNodeIds = selectedNodes.map((node) => node.id);
-                  setNodes((nds) => nds.filter((node) => !selectedNodeIds.includes(node.id)));
-                  setEdges((eds) =>
-                    eds.filter(
-                      (edge) =>
-                        !selectedNodeIds.includes(edge.source || "") &&
-                        !selectedNodeIds.includes(edge.target || "")
-                    )
-                  );
-                }
-              }}
-              disabled={!nodes.some((node) => node.selected)}
-              className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                nodes.some((node) => node.selected)
-                  ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
-                  : "bg-gray-400 text-gray-600 cursor-not-allowed"
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-              Delete
-            </button>
-
-            {/* Load button */}
-            <label
-              htmlFor="load-graph-input"
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                />
-              </svg>
-              Load Graph
-            </label>
-
-            {/* Save button */}
-            <button
-              onClick={saveNodeGraph}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
-                />
-              </svg>
-              Save Graph
-            </button>
-          </div>
-        </ReactFlowProvider>
+            </div>
+          </ReactFlowProvider>
+        </DefaultTableVersionsContext.Provider>
       </div>
 
       {/* Flow Options Modal */}
