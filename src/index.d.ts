@@ -2,7 +2,6 @@ import { PackedFile, PackCollisions } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
-import { UgcItemVisibility } from "../node_modules/steamworks.js/client.d";
 import { string } from "ts-pattern/dist/patterns";
 export {};
 
@@ -48,6 +47,7 @@ declare global {
     humanName: string;
     workshopId: string;
     reqModIdToName: [string, string][];
+    reqModIds: string[];
     lastChanged: number;
     author: string;
     isDeleted: boolean;
@@ -514,12 +514,19 @@ declare global {
     numChildren: number;
     previewUrl?: string;
     statistics: WorkshopItemStatisticStringified;
+    children?: string[];
   }
 
   export interface PlayerSteamIdStringInsteadOfBigInt {
     steamId64: string;
     steamId32: string;
     accountId: number;
+  }
+
+  export interface ModsData {
+    dependencies: Record<string, string[]>;
+    authors: Record<string, string>;
+    mods: WorkshopItemStringInsteadOfBigInt[];
   }
 
   interface TreeNode<T> {

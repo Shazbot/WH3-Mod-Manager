@@ -1456,7 +1456,7 @@ export const registerIpcMainListeners = (
   };
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    if (isDev) return;
+    // if (isDev) return;
 
     fetchModData(
       ids.filter((id) => id !== ""),
@@ -3904,7 +3904,9 @@ export const registerIpcMainListeners = (
             // This ensures counters are maintained across all flows in all packs
             const { resetCounterTracking } = await import("./nodeExecutor");
             resetCounterTracking();
-            console.log("Reset counter tracking for game launch - counters will be maintained across all flows");
+            console.log(
+              "Reset counter tracking for game launch - counters will be maintained across all flows"
+            );
 
             for (const pack of enabledModsWithFlows) {
               // Check if this pack has overwrites - if so, use the overwritten pack

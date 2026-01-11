@@ -21,34 +21,66 @@ export function fetchModData(
   log: (msg: string) => void,
   retryIndex = 0
 ) {
+  const joinedIds = ids.filter((id) => !isNaN(parseFloat(id))).join(",");
+
   const child = fork(
     nodePath.join(__dirname, "sub.js"),
-    [gameToSteamId[appData.currentGame], "getItems", ids.filter((id) => !isNaN(parseFloat(id))).join(",")],
+    [gameToSteamId[appData.currentGame], "getModsData", joinedIds],
     {}
   );
-  child.on("message", (workshopData: WorkshopItemStringInsteadOfBigInt[]) => {
-    for (let i = 0; i < workshopData.length; i++) {
-      const workshopItem = workshopData[i];
+  child.on("message", (modsData: ModsData) => {
+    const workshopData = modsData.mods;
 
-      if (workshopItem) {
-        const modData = {
-          workshopId: workshopItem.publishedFileId,
-          humanName: workshopItem.title,
-          author: "",
-          reqModIdToName: [],
-          lastChanged: workshopItem.timeUpdated * 1000,
-          subscriptionTime: workshopItem.timeAddedToUserList * 1000,
-          isDeleted: false,
-          tags: workshopItem.tags,
-        } as ModData;
-        cb(modData);
+    const dedupedDependencyIds = Array.from(new Set(Object.values(modsData.dependencies).flat()));
+    const unsubbedDepIds = dedupedDependencyIds.filter(
+      (depId) => !modsData.mods.some((mod) => mod.publishedFileId == depId)
+    );
+
+    const child = fork(
+      nodePath.join(__dirname, "sub.js"),
+      [gameToSteamId[appData.currentGame], "getItems", unsubbedDepIds.join(",")],
+      {}
+    );
+    child.on("message", (depModsData: WorkshopItemStringInsteadOfBigInt[]) => {
+      const modIdToModName = new Map<string, string>();
+      for (const modData of depModsData.concat(workshopData)) {
+        modIdToModName.set(modData.publishedFileId, modData.title);
       }
-    }
+
+      for (let i = 0; i < workshopData.length; i++) {
+        const workshopItem = workshopData[i];
+
+        if (workshopItem) {
+          const reqModIdToName = [] as [string, string][];
+          const depIds = modsData.dependencies[workshopItem.publishedFileId];
+          if (depIds) {
+            for (const depId of depIds) {
+              reqModIdToName.push([depId, modIdToModName.get(depId) ?? ""]);
+            }
+          }
+
+          const modId = workshopItem.owner.steamId64.toString();
+
+          const modData = {
+            workshopId: workshopItem.publishedFileId,
+            humanName: workshopItem.title,
+            author: modsData.authors[modId] ?? "",
+            reqModIdToName: reqModIdToName,
+            reqModIds: modsData.dependencies[modId] ?? [],
+            lastChanged: workshopItem.timeUpdated * 1000,
+            subscriptionTime: workshopItem.timeAddedToUserList * 1000,
+            isDeleted: false,
+            tags: workshopItem.tags,
+          } as ModData;
+          cb(modData);
+        }
+      }
+    });
   });
 
   for (let i = 0; i < ids.length; i++) {
-    continue;
     const workshopId = ids[i];
+    continue;
 
     setTimeout(() => {
       fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
