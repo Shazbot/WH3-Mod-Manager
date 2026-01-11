@@ -12963,13 +12963,6 @@ statuses@2.0.1:
   resolved "https://registry.yarnpkg.com/statuses/-/statuses-1.5.0.tgz#161c7dac177659fd9811f43771fa99381478628c"
   integrity sha512-OpZ3zP+jT1PI7I8nemJX4AKmAX070ZkYPVWV/AaKTJl+tXCTGyVdC1a4SL8RUQYEwk/f34ZX8UTykN68FwrqAA==
 
-steamworks.js@^0.4.0:
-  version "0.4.0"
-  resolved "https://registry.yarnpkg.com/steamworks.js/-/steamworks.js-0.4.0.tgz#b906998d3b9359519d3304b4f064aac39f229b47"
-  integrity sha512-O5TTRs7ucCRql4IA/kYUIQYeghTsXqf3rAm81sC22RDId264LQYqQjuaMEUSqL60I5LdULiGu0W2/A+ZDcKBKA==
-  dependencies:
-    "@types/node" "*"
-
 storybook@8.4.5:
   version "8.4.5"
   resolved "https://registry.yarnpkg.com/storybook/-/storybook-8.4.5.tgz#ba9589e2887958d1353dbc1a2cb6142e80e36a2c"
