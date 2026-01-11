@@ -67,6 +67,7 @@ import {
 } from "./skills";
 import {
   gameToGameName,
+  gameToPackWithDBTablesName,
   gameToProcessName,
   gameToSteamId,
   gameToSupportedGameOptions,
@@ -239,6 +240,43 @@ export const getLocsTrie = (pack: Pack) => {
   }
 
   return trie;
+};
+
+const matchDBFileRegex = /^db\\(.*?)\\/;
+const gameToDefaultTableVersions = {} as Record<SupportedGames, Record<string, number>>;
+
+export const getDefaultTableVersions = async () => {
+  const cachedGameToDefaultTableVersions = gameToDefaultTableVersions[appData.currentGame];
+  if (cachedGameToDefaultTableVersions) return cachedGameToDefaultTableVersions;
+
+  const dbPackName = gameToPackWithDBTablesName[appData.currentGame];
+  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+  if (!dataFolder) return;
+
+  const dbPackPath = nodePath.join(dataFolder, dbPackName);
+
+  let pack = appData.packsData.find((packData) => packData.path == dbPackPath);
+  if (!pack || (pack && pack.packedFiles.length == 0)) {
+    pack = await readPack(dbPackPath, { skipParsingTables: true });
+  }
+
+  if (!pack) return;
+
+  const dataPackData = await readPack(dbPackPath, {
+    tablesToRead: pack.packedFiles.filter((pf) => pf.name.startsWith("db\\")).map((pf) => pf.name),
+  });
+
+  const tableNameToVersion = {} as Record<string, number>;
+  for (const packedFile of dataPackData.packedFiles.filter((pf) => pf.name.startsWith("db\\"))) {
+    const dbNameMatch = packedFile.name.match(matchDBFileRegex);
+    if (dbNameMatch != null && dbNameMatch.length > 0) {
+      if (packedFile.version != undefined) tableNameToVersion[dbNameMatch[1]] = packedFile.version;
+    }
+  }
+
+  gameToDefaultTableVersions[appData.currentGame] = tableNameToVersion;
+
+  return tableNameToVersion;
 };
 
 export const readModsByPath = async (
@@ -3672,6 +3710,10 @@ export const registerIpcMainListeners = (
 
   ipcMain.handle("getDBNameToDBVersions", async (event) => {
     return DBNameToDBVersions[appData.currentGame];
+  });
+
+  ipcMain.handle("getDefaultTableVersions", async (event) => {
+    return await getDefaultTableVersions();
   });
 
   ipcMain.on(
