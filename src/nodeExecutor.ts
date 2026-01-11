@@ -1383,7 +1383,7 @@ async function executeReverseReferenceLookupNode(
         // Get all unique db table names (base names without variants)
         const dbTableNames = new Set<string>();
         for (const packedFile of pack.packedFiles) {
-          if (packedFile.name.startsWith("db\\") && !packedFile.name.includes("_to_")) {
+          if (packedFile.name.startsWith("db\\")) {
             const baseTableName = packedFile.name.replace(/^db\\/, "").replace(/\\.*$/, "");
             dbTableNames.add(baseTableName);
           }
@@ -1552,7 +1552,6 @@ async function executeReverseReferenceLookupNode(
       for (const packedFile of pack.packedFiles) {
         if (
           packedFile.name.startsWith(tableNameToSearch) &&
-          !packedFile.name.includes("_to_") &&
           packedFile.schemaFields &&
           packedFile.tableSchema
         ) {
@@ -5561,8 +5560,8 @@ async function executeReadTSVFromPackNode(
 
   for (const line of dataLines) {
     const values = line.split("\t");
-    console.log("values:", values);
-    console.log("num values:", values.length);
+    console.log("ReadTSVFromPack values:", values);
+    console.log("ReadTSVFromPack num values:", values.length);
 
     // Ensure we have enough values for all columns
     for (let i = 0; i < schemaColumns.length; i++) {
