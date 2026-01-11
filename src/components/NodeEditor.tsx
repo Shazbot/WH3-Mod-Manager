@@ -4391,7 +4391,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
                   <option value="">Select source column...</option>
-                  {inputColumns.map((col) => (
+                  {inputColumns.map((col: string) => (
                     <option key={col} value={col}>
                       {col}
                     </option>
@@ -4432,9 +4432,13 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   <option value="subtract">Subtract Number (-)</option>
                   <option value="multiply">Multiply (*)</option>
                   <option value="divide">Divide (/)</option>
-                  <option value="rename_whole">Rename (whole text match)</option>
-                  <option value="rename_substring">Rename (substring replace)</option>
-                  <option value="replace_substring_whole">Replace if contains (replace whole)</option>
+                  <option value="rename_whole">Rename (whole text with new value)</option>
+                  <option value="rename_substring">
+                    Rename (if substring present replace with substring)
+                  </option>
+                  <option value="replace_substring_whole">
+                    Replace if contains (replace whole value if substring found)
+                  </option>
                   <option value="regex_replace">Regex Replace</option>
                   <option value="filterequal">Filter Rows: Equal (skip if equal)</option>
                   <option value="filternotequal">Filter Rows: Not Equal (skip if not equal)</option>
@@ -7207,40 +7211,6 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
-        // Update Group By node when connected to nodes with TableSelection output (Filter, Lookup, etc.)
-        if (
-          (targetNode.type === "groupby" || targetNode.type == "deduplicate") &&
-          (sourceNode.type === "filter" ||
-            sourceNode.type === "multifilter" ||
-            sourceNode.type === "lookup" ||
-            sourceNode.type === "referencelookup" ||
-            sourceNode.type === "reversereferencelookup")
-        ) {
-          const sourceData = sourceNode.data as any;
-
-          // Propagate column names from the source node
-          if (sourceData.columnNames && sourceData.columnNames.length > 0) {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === params.target) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      columnNames: sourceData.columnNames,
-                      // Store input columns separately so they don't get overwritten by output columns
-                      inputColumnNames: sourceData.columnNames,
-                      connectedTableName: sourceData.connectedTableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
-                    },
-                  };
-                }
-                return node;
-              })
-            );
-          }
-        }
-
         // Update reference lookup nodes when connected to filter or reference lookup nodes (chaining)
         if (
           targetNode.type === "referencelookup" &&
@@ -7679,7 +7649,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
         // Update addnewcolumn nodes when connected to any table source
         if (
-          targetNode.type === "addnewcolumn" &&
+          (targetNode.type === "addnewcolumn" ||
+            targetNode.type === "deduplicate" ||
+            targetNode.type === "groupby" ||
+            targetNode.type === "filter" ||
+            targetNode.type === "multifilter") &&
           (sourceNode.type === "tableselection" ||
             sourceNode.type === "tableselectiondropdown" ||
             sourceNode.type === "filter" ||
@@ -7742,37 +7716,6 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       DBNameToDBVersions: hasSchemaColumns
                         ? DBNameToDBVersions
                         : sourceData.DBNameToDBVersions,
-                    },
-                  };
-                }
-                return node;
-              })
-            );
-          }
-        }
-
-        // Update filter/multifilter nodes when connected to new table operation nodes
-        if (
-          (targetNode.type === "filter" || targetNode.type === "multifilter") &&
-          (sourceNode.type === "lookup" ||
-            sourceNode.type === "extracttable" ||
-            sourceNode.type === "flattennested" ||
-            sourceNode.type === "generaterows" ||
-            sourceNode.type === "addnewcolumn")
-        ) {
-          const sourceData = sourceNode.data as any;
-
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === params.target) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      columnNames: sourceData.columnNames || [],
-                      connectedTableName: sourceData.connectedTableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
                 }
