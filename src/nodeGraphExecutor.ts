@@ -283,9 +283,14 @@ export const executeNodeGraph = async (
               );
 
               if (allDependenciesCompleted) {
-                // For merge changes node, collect all dependency data into an array
+                // For merge changes node and numeric/math nodes, collect all dependency data into an array
                 let inputDataForTarget;
-                if (targetNode.type === "mergechanges") {
+                if (
+                  targetNode.type === "mergechanges" ||
+                  targetNode.type === "numericadjustment" ||
+                  targetNode.type === "mathmax" ||
+                  targetNode.type === "mathceil"
+                ) {
                   // Collect all inputs from all incoming connections
                   const allInputs = targetIncomingConnections
                     .map((conn) => {

@@ -6972,12 +6972,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             animated: true,
           };
 
-          // For generaterows, mergechanges, and savechanges nodes, allow multiple connections to the same target handle
+          // For generaterows, mergechanges, savechanges, and numeric/math nodes, allow multiple connections to the same target handle
           // For other nodes, remove existing connections to the target handle first
           if (
             targetNode.type === "generaterows" ||
             targetNode.type === "mergechanges" ||
-            targetNode.type === "savechanges"
+            targetNode.type === "savechanges" ||
+            targetNode.type === "numericadjustment" ||
+            targetNode.type === "mathmax" ||
+            targetNode.type === "mathceil"
           ) {
             // Allow multiple connections - just add the new edge
             return [...eds, newEdge];
