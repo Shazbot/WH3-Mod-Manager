@@ -2056,12 +2056,12 @@ const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         type="target"
         position={Position.Left}
         className="w-3 h-3 bg-orange-500"
-        data-input-type="TableSelection"
+        data-input-type="TableSelection,ChangedColumnSelection"
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label || "Dump to TSV"}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">Input: TableSelection / ChangedColumnSelection</div>
 
       <div>
         <label className="text-xs text-gray-300 block mb-1">Filename (optional):</label>
@@ -6912,7 +6912,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       } else if (targetNode.type === "deduplicate" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as DeduplicateNodeData).inputType;
       } else if (targetNode.type === "dumptotsv" && targetNode.data) {
-        targetInputType = "TableSelection" as NodeEdgeTypes;
+        // DumpToTSV accepts both TableSelection and ChangedColumnSelection
+        targetInputType = sourceOutputType === "ChangedColumnSelection" ? sourceOutputType : ("TableSelection" as NodeEdgeTypes);
       } else if (targetNode.type === "getcountercolumn" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as GetCounterColumnNodeData).inputType;
       } else if (targetNode.type === "readtsvfrompack" && targetNode.data) {
