@@ -7309,15 +7309,38 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "referencelookup" ||
             sourceNode.type === "reversereferencelookup")
         ) {
-          const sourceData =
-            sourceNode.type === "filter" || sourceNode.type === "multifilter"
-              ? (sourceNode.data as any)
-              : sourceNode.type === "referencelookup"
-              ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
-              : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
+          const sourceData = sourceNode.data as any;
 
-          // Propagate the connectedTableName and DBNameToDBVersions from source to target
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+          // For referencelookup/reversereferencelookup, use the selected table as the output table name
+          // For filter/multifilter, use connectedTableName
+          let outputTableName: string | undefined;
+          let outputColumnNames: string[] = [];
+
+          if (sourceNode.type === "referencelookup") {
+            outputTableName = sourceData.selectedReferenceTable;
+            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
+              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
+              if (tableVersions && tableVersions.length > 0) {
+                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
+                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
+              }
+            }
+          } else if (sourceNode.type === "reversereferencelookup") {
+            outputTableName = sourceData.selectedReverseTable;
+            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
+              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
+              if (tableVersions && tableVersions.length > 0) {
+                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
+                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
+              }
+            }
+          } else {
+            outputTableName = sourceData.connectedTableName;
+            outputColumnNames = sourceData.columnNames || [];
+          }
+
+          // Propagate the output table name and DBNameToDBVersions from source to target
+          if (outputTableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -7325,8 +7348,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: sourceData.columnNames || [],
-                      connectedTableName: sourceData.connectedTableName,
+                      columnNames: outputColumnNames,
+                      connectedTableName: outputTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
@@ -7345,15 +7368,41 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "referencelookup" ||
             sourceNode.type === "reversereferencelookup")
         ) {
-          const sourceData =
-            sourceNode.type === "filter" || sourceNode.type === "multifilter"
-              ? (sourceNode.data as any)
-              : sourceNode.type === "referencelookup"
-              ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
-              : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
+          const sourceData = sourceNode.data as any;
 
-          // Propagate the connectedTableName and DBNameToDBVersions from source to target
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+          // For referencelookup/reversereferencelookup, use the selected table as the output table name
+          // For filter/multifilter, use connectedTableName
+          let outputTableName: string | undefined;
+          let outputColumnNames: string[] = [];
+
+          if (sourceNode.type === "referencelookup") {
+            outputTableName = sourceData.selectedReferenceTable;
+            // Get column names for the selected reference table
+            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
+              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
+              if (tableVersions && tableVersions.length > 0) {
+                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
+                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
+              }
+            }
+          } else if (sourceNode.type === "reversereferencelookup") {
+            outputTableName = sourceData.selectedReverseTable;
+            // Get column names for the selected reverse table
+            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
+              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
+              if (tableVersions && tableVersions.length > 0) {
+                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
+                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
+              }
+            }
+          } else {
+            // filter/multifilter - use connectedTableName
+            outputTableName = sourceData.connectedTableName;
+            outputColumnNames = sourceData.columnNames || [];
+          }
+
+          // Propagate the output table name and DBNameToDBVersions from source to target
+          if (outputTableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -7361,8 +7410,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: sourceData.columnNames || [],
-                      connectedTableName: sourceData.connectedTableName,
+                      columnNames: outputColumnNames,
+                      connectedTableName: outputTableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
