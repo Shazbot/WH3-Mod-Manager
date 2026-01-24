@@ -5353,28 +5353,120 @@ async function executeAddNewColumnNode(
 async function executeDumpToTSVNode(
   nodeId: string,
   textValue: string,
-  inputData: DumpToTSVNodeData
+  inputData: DumpToTSVNodeData | DBNumericAdjustmentNodeData
 ): Promise<NodeExecutionResult> {
-  console.log(
-    `Dump to TSV Node ${nodeId}: Processing with input:`,
-    { ...inputData, tables: [] },
-    ", num tables:",
-    inputData.tables.length
-  );
+  console.log(`Dump to TSV Node ${nodeId}: Processing with input type: ${inputData?.type}`);
 
-  if (!inputData || inputData.type !== "TableSelection") {
-    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  if (!inputData || (inputData.type !== "TableSelection" && inputData.type !== "ChangedColumnSelection")) {
+    return { success: false, error: "Invalid input: Expected TableSelection or ChangedColumnSelection data" };
   }
 
+  // Handle ChangedColumnSelection input - convert to a format we can dump
+  if (inputData.type === "ChangedColumnSelection") {
+    const changedData = inputData as DBNumericAdjustmentNodeData;
+    const adjustedInputData = changedData.adjustedInputData;
+
+    // adjustedInputData has structure: { type, columns: [{tableName, fileName, sourcePack, sourceTable, selectedColumns, data}] }
+    // where data is array of {col, data} - each entry is one value for one row
+    if (!adjustedInputData?.columns || adjustedInputData.columns.length === 0) {
+      console.log(`Dump to TSV Node ${nodeId}: No columns to dump - skipping file write`);
+      return {
+        success: true,
+        data: changedData, // Pass through the input
+      };
+    }
+
+    console.log(`Dump to TSV Node ${nodeId}: Processing ChangedColumnSelection with ${adjustedInputData.columns.length} table entries`);
+
+    // Build TSV from ChangedColumnSelection
+    const tsvLines: string[] = [];
+
+    // Process each table entry in the columns array
+    for (const tableEntry of adjustedInputData.columns) {
+      const tableName = tableEntry.tableName || "unknown";
+      const fileName = tableEntry.fileName || "";
+      const columnNames = tableEntry.selectedColumns || [];
+      const data = tableEntry.data || [];
+
+      console.log(`Dump to TSV Node ${nodeId}: Table "${tableName}" has ${columnNames.length} columns and ${data.length} data entries`);
+
+      // Header: table name, file name, then column names
+      if (tsvLines.length === 0 && columnNames.length > 0) {
+        const headerCols = ["_table", "_file", ...columnNames];
+        tsvLines.push(headerCols.join("\t"));
+      }
+
+      // data is an array where each entry is {col: columnName, data: value}
+      // For single column selection, each entry is one row
+      // For multiple columns, entries are interleaved: row1col1, row1col2, row2col1, row2col2, etc.
+      const numCols = columnNames.length || 1;
+      const numRows = Math.floor(data.length / numCols);
+
+      for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
+        const rowValues = [tableName, fileName];
+        for (let colIdx = 0; colIdx < numCols; colIdx++) {
+          const dataIdx = rowIdx * numCols + colIdx;
+          const value = data[dataIdx]?.data ?? "";
+          rowValues.push(
+            String(value)
+              .replace(/\t/g, " ")
+              .replace(/\n/g, " ")
+          );
+        }
+        tsvLines.push(rowValues.join("\t"));
+      }
+    }
+
+    // Parse filename settings
+    let openInWindows = false;
+    let filename = "";
+    try {
+      const parsed = JSON.parse(textValue || "{}");
+      filename = parsed.filename || "";
+      openInWindows = parsed.openInWindows ?? false;
+    } catch (error) {
+      filename = textValue || "";
+    }
+
+    if (!filename) {
+      filename = `changed_columns_dump_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.tsv`;
+    }
+    if (!filename.endsWith(".tsv")) {
+      filename += ".tsv";
+    }
+
+    const fs = require("fs");
+    const nodePath = require("path");
+    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
+    const outputPath = nodePath.join(gamePath, filename);
+
+    fs.writeFileSync(outputPath, tsvLines.join("\n"), "utf-8");
+
+    if (openInWindows) {
+      const shellOutput = await shell.openPath(outputPath);
+      console.log("shell output:", shellOutput);
+    }
+
+    console.log(`Dump to TSV Node ${nodeId}: Wrote ${tsvLines.length} lines to ${outputPath}`);
+
+    return {
+      success: true,
+      data: changedData, // Pass through the ChangedColumnSelection
+    };
+  }
+
+  // Handle TableSelection input (original logic)
+  const tableSelectionData = inputData as DumpToTSVNodeData;
+
   // Handle empty input - return success without writing file
-  if (!inputData.tables || inputData.tables.length === 0) {
+  if (!tableSelectionData.tables || tableSelectionData.tables.length === 0) {
     console.log(`Dump to TSV Node ${nodeId}: No tables to dump - skipping file write`);
     return {
       success: true,
       data: {
         type: "TableSelection",
         tables: [],
-        sourceFiles: inputData.sourceFiles || [],
+        sourceFiles: tableSelectionData.sourceFiles || [],
         tableCount: 0,
       },
     };
@@ -5412,7 +5504,7 @@ async function executeDumpToTSVNode(
     // Build TSV content
     const tsvLines: string[] = [];
 
-    for (const tableData of inputData.tables) {
+    for (const tableData of tableSelectionData.tables) {
       if (!tableData.table.schemaFields || !tableData.table.tableSchema) {
         console.warn(`Dump to TSV Node ${nodeId}: Skipping table without schema data`);
         continue;
@@ -5452,9 +5544,9 @@ async function executeDumpToTSVNode(
         success: true,
         data: {
           type: "TableSelection",
-          tables: inputData.tables,
-          sourceFiles: inputData.sourceFiles || [],
-          tableCount: inputData.tableCount || inputData.tables.length,
+          tables: tableSelectionData.tables,
+          sourceFiles: tableSelectionData.sourceFiles || [],
+          tableCount: tableSelectionData.tableCount || tableSelectionData.tables.length,
         },
       };
     }
@@ -5474,9 +5566,9 @@ async function executeDumpToTSVNode(
       success: true,
       data: {
         type: "TableSelection",
-        tables: inputData.tables,
-        sourceFiles: inputData.sourceFiles || [],
-        tableCount: inputData.tableCount || inputData.tables.length,
+        tables: tableSelectionData.tables,
+        sourceFiles: tableSelectionData.sourceFiles || [],
+        tableCount: tableSelectionData.tableCount || tableSelectionData.tables.length,
       },
     };
   } catch (error) {
