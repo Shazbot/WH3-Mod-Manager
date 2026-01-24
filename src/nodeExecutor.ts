@@ -996,8 +996,8 @@ async function executeMultiFilterNode(
   const multiOutputs: Record<string, DBTablesNodeData> = {};
 
   for (const splitValue of enabledSplitValues) {
-    // Sanitize handle ID to match UI (avoid special characters)
-    const outputKey = `output-${splitValue.value.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    // Use split.id as the output key to match the stable handleId in the UI
+    const outputKey = splitValue.id;
     multiOutputs[outputKey] = {
       type: "TableSelection",
       tables: [],
@@ -1043,8 +1043,8 @@ async function executeMultiFilterNode(
 
     // Create output tables for each split value
     for (const splitValue of enabledSplitValues) {
-      // Sanitize handle ID to match UI (avoid special characters)
-      const outputKey = `output-${splitValue.value.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      // Use split.id as the output key to match the stable handleId in the UI
+      const outputKey = splitValue.id;
       const matchingRows = rowsByValue.get(splitValue.value) || [];
 
       if (matchingRows.length > 0) {
