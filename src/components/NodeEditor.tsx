@@ -5702,7 +5702,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
       {/* Output Handles - positioned at node edge, aligned with split values */}
       {splitValues.map((split) => {
-        const handleId = `output-${split.value.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+        const handleId = split.id; // Use stable split.id instead of split.value
         const showHandle = split.enabled && split.value.trim() !== "";
 
         if (!showHandle) return null;
