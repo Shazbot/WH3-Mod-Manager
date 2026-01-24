@@ -3712,14 +3712,16 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     }
   }, [inputColumnNames, id]);
 
-  // Calculate and propagate output column names based on dedupeByColumns and aggregations
+  // Propagate output column names - Deduplicate keeps ALL columns, just removes duplicate rows
+  // Unlike GroupBy which reduces columns, Deduplicate passes through all input columns
   React.useEffect(() => {
-    // Output columns = group by columns
-    const outputColumnNames = [...dedupeByColumns];
+    // Output columns = all input columns (deduplicate doesn't reduce columns)
+    const outputColumnNames = [...inputColumnNames];
 
-    const outputChanged = JSON.stringify(outputColumnNames) !== JSON.stringify(data.columnNames);
+    const outputChanged =
+      outputColumnNames.length > 0 && JSON.stringify(outputColumnNames) !== JSON.stringify(data.columnNames);
 
-    // Only update if output columns changed
+    // Only update if output columns changed and we have input columns
     if (outputChanged) {
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
@@ -3727,7 +3729,7 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         })
       );
     }
-  }, [dedupeByColumns, id, data.columnNames]);
+  }, [inputColumnNames, id, data.columnNames]);
 
   const toggleDedupeByColumn = (columnName: string) => {
     setDedupeByColumns((prev) =>
