@@ -1798,43 +1798,41 @@ async function executeNumericAdjustmentNode(
   } else {
     console.log(`NumericAdjustment Node ${nodeId}: Merging ${columnSelectionInputs.length} inputs`);
 
-    // First, collect all unique tables across all inputs to avoid duplicates
-    // Use a Map keyed by tableName+fileName to deduplicate
-    const tableMap = new Map<string, any>();
+    // Collect unique tables and merge selectedColumns/data WITHOUT cloning yet
+    // We'll clone once at the end when we apply the formula
+    const tableMap = new Map<string, { column: any; selectedColumns: Set<string>; dataMap: Map<string, any> }>();
     const allSourceTables: any[] = [];
+    const seenSourceTables = new Set<string>();
 
     for (const input of columnSelectionInputs) {
       for (const column of input.columns) {
         const key = `${column.tableName}|${column.fileName}`;
         if (!tableMap.has(key)) {
-          // First time seeing this table - clone and store it
-          tableMap.set(key, structuredClone(column));
+          // First time seeing this table - store reference (no clone yet)
+          tableMap.set(key, {
+            column: column,
+            selectedColumns: new Set(column.selectedColumns),
+            dataMap: new Map(column.data.map((d: any) => [d.col, d])),
+          });
         } else {
-          // Already have this table - merge selectedColumns and data
-          const existing = tableMap.get(key);
-
-          // Merge selectedColumns
+          // Already have this table - merge selectedColumns and data into Sets/Maps (fast)
+          const existing = tableMap.get(key)!;
           for (const col of column.selectedColumns) {
-            if (!existing.selectedColumns.includes(col)) {
-              existing.selectedColumns.push(col);
-            }
+            existing.selectedColumns.add(col);
           }
-
-          // Merge data array (each entry is {col, data} for a single value)
-          // For columns we haven't seen, add them
           for (const newData of column.data) {
-            const existingData = existing.data.find((d: any) => d.col === newData.col);
-            if (!existingData) {
-              existing.data.push(newData);
+            if (!existing.dataMap.has(newData.col)) {
+              existing.dataMap.set(newData.col, newData);
             }
-            // If column already exists, keep existing data (avoid duplicates)
           }
         }
       }
 
-      // Collect source tables
+      // Collect source tables (use Set for fast lookup)
       for (const sourceTable of input.sourceTables) {
-        if (!allSourceTables.some(t => t.name === sourceTable.name && t.fileName === sourceTable.fileName)) {
+        const stKey = `${sourceTable.name}|${sourceTable.fileName}`;
+        if (!seenSourceTables.has(stKey)) {
+          seenSourceTables.add(stKey);
           allSourceTables.push(sourceTable);
         }
       }
@@ -1842,12 +1840,18 @@ async function executeNumericAdjustmentNode(
 
     console.log(`NumericAdjustment Node ${nodeId}: After dedup, have ${tableMap.size} unique tables`);
 
-    // Build merged input from the deduplicated tables
+    // Build merged columns - convert Sets/Maps back to arrays
+    const mergedColumns = Array.from(tableMap.values()).map(({ column, selectedColumns, dataMap }) => ({
+      ...column,
+      selectedColumns: Array.from(selectedColumns),
+      data: Array.from(dataMap.values()),
+    }));
+
     mergedInput = {
       type: "ColumnSelection",
-      columns: Array.from(tableMap.values()),
+      columns: mergedColumns,
       sourceTables: allSourceTables,
-      selectedColumnCount: Array.from(tableMap.values()).reduce((sum, col) => sum + col.selectedColumns.length, 0),
+      selectedColumnCount: mergedColumns.reduce((sum, col) => sum + col.selectedColumns.length, 0),
     } as DBColumnSelectionNodeData;
   }
 
