@@ -333,6 +333,7 @@ interface ReferenceTableLookupNodeData extends NodeData {
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
+  includeBaseGame?: boolean;
 }
 
 interface ReverseReferenceLookupNodeData extends NodeData {
@@ -343,6 +344,7 @@ interface ReverseReferenceLookupNodeData extends NodeData {
   columnNames: string[];
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
+  includeBaseGame?: boolean;
 }
 
 interface IndexTableNodeData extends NodeData {
@@ -1343,6 +1345,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
   const [selectedReferenceTable, setSelectedReferenceTable] = useState(data.selectedReferenceTable || "");
   const [referenceTableNames, setReferenceTableNames] = useState<string[]>(data.referenceTableNames || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [includeBaseGame, setIncludeBaseGame] = useState(data.includeBaseGame !== false);
 
   // Update reference table names when connected table changes
   React.useEffect(() => {
@@ -1409,6 +1412,16 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
     window.dispatchEvent(updateEvent);
   };
 
+  const handleIncludeBaseGameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setIncludeBaseGame(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, includeBaseGame: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
   return (
     <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[250px]">
       <Handle
@@ -1435,6 +1448,18 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="mb-2">
+        <label className="flex items-center text-xs text-gray-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeBaseGame}
+            onChange={handleIncludeBaseGameChange}
+            className="mr-2 w-4 h-4 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-400"
+          />
+          Include base game data
+        </label>
       </div>
 
       {referenceTableNames.length === 0 && data.connectedTableName && (
@@ -1464,6 +1489,7 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
   const [selectedReverseTable, setSelectedReverseTable] = useState(data.selectedReverseTable || "");
   const [reverseTableNames, setReverseTableNames] = useState<string[]>(data.reverseTableNames || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
+  const [includeBaseGame, setIncludeBaseGame] = useState(data.includeBaseGame !== false);
 
   // Sync selectedReverseTable state with data prop when it changes (e.g., when loading from file)
   React.useEffect(() => {
@@ -1570,6 +1596,16 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
     window.dispatchEvent(updateEvent);
   };
 
+  const handleIncludeBaseGameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setIncludeBaseGame(newValue);
+
+    const updateEvent = new CustomEvent("nodeDataUpdate", {
+      detail: { nodeId: id, includeBaseGame: newValue },
+    });
+    window.dispatchEvent(updateEvent);
+  };
+
   return (
     <div className="bg-gray-700 border-2 border-indigo-500 rounded-lg p-4 min-w-[250px]">
       <Handle
@@ -1596,6 +1632,18 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="mb-2">
+        <label className="flex items-center text-xs text-gray-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeBaseGame}
+            onChange={handleIncludeBaseGameChange}
+            className="mr-2 w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-400"
+          />
+          Include base game data
+        </label>
       </div>
 
       {reverseTableNames.length === 0 && data.connectedTableName && (
@@ -8321,6 +8369,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             referenceTableNames: [],
             columnNames: [],
             DBNameToDBVersions,
+            includeBaseGame: true,
           } as ReferenceTableLookupNodeData,
         };
       } else if (nodeData.type === "reversereferencelookup") {
@@ -8338,6 +8387,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             reverseTableNames: [],
             columnNames: [],
             DBNameToDBVersions,
+            includeBaseGame: true,
           } as ReverseReferenceLookupNodeData,
         };
       } else if (nodeData.type === "numericadjustment") {

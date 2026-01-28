@@ -127,6 +127,7 @@ export const executeNodeGraph = async (
           );
           textValueToUse = JSON.stringify({
             selectedReferenceTable: (node.data as any).selectedReferenceTable || "",
+            includeBaseGame: (node.data as any).includeBaseGame !== false,
           });
           console.log(`Reference lookup node ${node.id} textValueToUse:`, textValueToUse);
         } else if (node.type === "reversereferencelookup") {
@@ -136,6 +137,7 @@ export const executeNodeGraph = async (
           );
           textValueToUse = JSON.stringify({
             selectedReverseTable: (node.data as any).selectedReverseTable || "",
+            includeBaseGame: (node.data as any).includeBaseGame !== false,
           });
           console.log(`Reverse reference lookup node ${node.id} textValueToUse:`, textValueToUse);
         } else if (node.type === "groupedcolumnstotext") {
