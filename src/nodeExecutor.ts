@@ -1104,14 +1104,40 @@ async function executeReferenceLookupNode(
     return { success: false, error: "Invalid input: Expected TableSelection data" };
   }
 
-  // Parse selected reference table from textValue
+  // Parse selected reference table and includeBaseGame from textValue
   let selectedReferenceTable = "";
+  let includeBaseGame = true;
   try {
     const parsed = JSON.parse(textValue);
     selectedReferenceTable = parsed.selectedReferenceTable || "";
+    includeBaseGame = parsed.includeBaseGame !== false;
   } catch (error) {
     console.error(`Reference Lookup Node ${nodeId}: Error parsing textValue:`, error);
     return { success: false, error: "Invalid node configuration" };
+  }
+
+  // Build source files list, potentially including base game
+  let sourceFiles = [...(inputData.sourceFiles || [])];
+
+  if (includeBaseGame) {
+    const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+    if (baseGamePackName) {
+      const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      if (baseGameFolder) {
+        const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+        // Check if base game pack is not already in sourceFiles
+        if (!sourceFiles.some(sf => sf.path === baseGamePackPath)) {
+          if (fs.existsSync(baseGamePackPath)) {
+            sourceFiles.push({
+              name: baseGamePackName,
+              path: baseGamePackPath,
+              loaded: true,
+            });
+            console.log(`Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
+          }
+        }
+      }
+    }
   }
 
   if (!selectedReferenceTable || selectedReferenceTable.trim() === "") {
@@ -1121,7 +1147,7 @@ async function executeReferenceLookupNode(
       data: {
         type: "TableSelection",
         tables: [],
-        sourceFiles: inputData.sourceFiles || [],
+        sourceFiles: sourceFiles,
         tableCount: 0,
       } as DBTablesNodeData,
     };
@@ -1183,7 +1209,7 @@ async function executeReferenceLookupNode(
       data: {
         type: "TableSelection",
         tables: [],
-        sourceFiles: inputData.sourceFiles || [],
+        sourceFiles: sourceFiles,
         tableCount: 0,
       } as DBTablesNodeData,
     };
@@ -1197,7 +1223,7 @@ async function executeReferenceLookupNode(
     ? selectedReferenceTable
     : `db\\${selectedReferenceTable}`;
 
-  for (const sourceFile of inputData.sourceFiles || []) {
+  for (const sourceFile of sourceFiles) {
     if (!sourceFile.loaded) {
       console.warn(`Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
       continue;
@@ -1258,7 +1284,7 @@ async function executeReferenceLookupNode(
   const filteredReferencedTables: DBTablesNodeData = {
     type: "TableSelection",
     tables: [],
-    sourceFiles: inputData.sourceFiles || [],
+    sourceFiles: sourceFiles,
     tableCount: 0,
   };
 
@@ -1350,14 +1376,40 @@ async function executeReverseReferenceLookupNode(
     return { success: false, error: "Invalid input: Expected TableSelection data" };
   }
 
-  // Parse selected reverse table from textValue
+  // Parse selected reverse table and includeBaseGame from textValue
   let selectedReverseTable = "";
+  let includeBaseGame = true;
   try {
     const parsed = JSON.parse(textValue);
     selectedReverseTable = parsed.selectedReverseTable || "";
+    includeBaseGame = parsed.includeBaseGame !== false;
   } catch (error) {
     console.error(`Reverse Reference Lookup Node ${nodeId}: Error parsing textValue:`, error);
     return { success: false, error: "Invalid node configuration" };
+  }
+
+  // Build source files list, potentially including base game
+  let sourceFiles = [...(inputData.sourceFiles || [])];
+
+  if (includeBaseGame) {
+    const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+    if (baseGamePackName) {
+      const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      if (baseGameFolder) {
+        const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+        // Check if base game pack is not already in sourceFiles
+        if (!sourceFiles.some(sf => sf.path === baseGamePackPath)) {
+          if (fs.existsSync(baseGamePackPath)) {
+            sourceFiles.push({
+              name: baseGamePackName,
+              path: baseGamePackPath,
+              loaded: true,
+            });
+            console.log(`Reverse Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
+          }
+        }
+      }
+    }
   }
 
   // Get the input table name to find reverse references
@@ -1375,7 +1427,7 @@ async function executeReverseReferenceLookupNode(
     // Find all tables that have fields referencing the input table
     const reverseTableOptions = new Set<string>();
 
-    for (const sourceFile of inputData.sourceFiles || []) {
+    for (const sourceFile of sourceFiles) {
       if (!sourceFile.loaded) continue;
 
       try {
@@ -1453,7 +1505,7 @@ async function executeReverseReferenceLookupNode(
         data: {
           type: "TableSelection",
           tables: [],
-          sourceFiles: inputData.sourceFiles || [],
+          sourceFiles: sourceFiles,
           tableCount: 0,
         } as DBTablesNodeData,
       };
@@ -1467,7 +1519,7 @@ async function executeReverseReferenceLookupNode(
       data: {
         type: "TableSelection",
         tables: [],
-        sourceFiles: inputData.sourceFiles || [],
+        sourceFiles: sourceFiles,
         tableCount: 0,
       } as DBTablesNodeData,
     };
@@ -1528,7 +1580,7 @@ async function executeReverseReferenceLookupNode(
       data: {
         type: "TableSelection",
         tables: [],
-        sourceFiles: inputData.sourceFiles || [],
+        sourceFiles: sourceFiles,
         tableCount: 0,
       } as DBTablesNodeData,
     };
@@ -1541,7 +1593,7 @@ async function executeReverseReferenceLookupNode(
     ? selectedReverseTable
     : `db\\${selectedReverseTable}`;
 
-  for (const sourceFile of inputData.sourceFiles || []) {
+  for (const sourceFile of sourceFiles) {
     if (!sourceFile.loaded) {
       console.warn(`Reverse Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
       continue;
@@ -1577,7 +1629,7 @@ async function executeReverseReferenceLookupNode(
   const filteredReverseTables: DBTablesNodeData = {
     type: "TableSelection",
     tables: [],
-    sourceFiles: inputData.sourceFiles || [],
+    sourceFiles: sourceFiles,
     tableCount: 0,
   };
 
