@@ -1796,92 +1796,65 @@ async function executeNumericAdjustmentNode(
   if (columnSelectionInputs.length === 1) {
     mergedInput = columnSelectionInputs[0];
   } else {
-    // Start with a deep clone of the first input as the base
-    mergedInput = structuredClone(columnSelectionInputs[0]);
+    console.log(`NumericAdjustment Node ${nodeId}: Merging ${columnSelectionInputs.length} inputs`);
 
-    // Merge all subsequent inputs
-    for (let i = 1; i < columnSelectionInputs.length; i++) {
-      const currentInput = columnSelectionInputs[i];
+    // First, collect all unique tables across all inputs to avoid duplicates
+    // Use a Map keyed by tableName+fileName to deduplicate
+    const tableMap = new Map<string, any>();
+    const allSourceTables: any[] = [];
 
-      // For each table in the current input, merge with the corresponding table in mergedInput
-      for (const currentColumn of currentInput.columns) {
-        // Find if this table already exists in mergedInput
-        const existingColumn = mergedInput.columns.find(
-          (col) =>
-            col.tableName === currentColumn.tableName &&
-            col.fileName === currentColumn.fileName &&
-            col.sourcePack?.path === currentColumn.sourcePack?.path
-        );
-
-        if (existingColumn) {
-          // Merge the changes from currentColumn into existingColumn
-          if (
-            currentColumn.sourceTable.schemaFields &&
-            existingColumn.sourceTable.schemaFields &&
-            currentColumn.sourceTable.tableSchema &&
-            existingColumn.sourceTable.tableSchema
-          ) {
-            // Merge schemaFields row by row
-            const currentRows = chunkSchemaIntoRows(
-              currentColumn.sourceTable.schemaFields,
-              currentColumn.sourceTable.tableSchema
-            ) as AmendedSchemaField[][];
-
-            const existingRows = chunkSchemaIntoRows(
-              existingColumn.sourceTable.schemaFields,
-              existingColumn.sourceTable.tableSchema
-            ) as AmendedSchemaField[][];
-
-            // Update cells in existingRows with values from currentRows if they were changed
-            for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
-              for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
-                const currentCell = currentRows[rowIdx][cellIdx];
-                const existingCell = existingRows[rowIdx][cellIdx];
-
-                // If this column was selected in the current input, update the existing data
-                if (currentColumn.selectedColumns.includes(currentCell.name)) {
-                  existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
-                  existingCell.fields[0].val = currentCell.fields[0].val;
-                }
-              }
-            }
-
-            // Flatten back to schemaFields
-            existingColumn.sourceTable.schemaFields = existingRows.flat();
-          }
+    for (const input of columnSelectionInputs) {
+      for (const column of input.columns) {
+        const key = `${column.tableName}|${column.fileName}`;
+        if (!tableMap.has(key)) {
+          // First time seeing this table - clone and store it
+          tableMap.set(key, structuredClone(column));
+        } else {
+          // Already have this table - merge selectedColumns and data
+          const existing = tableMap.get(key);
 
           // Merge selectedColumns
-          for (const col of currentColumn.selectedColumns) {
-            if (!existingColumn.selectedColumns.includes(col)) {
-              existingColumn.selectedColumns.push(col);
+          for (const col of column.selectedColumns) {
+            if (!existing.selectedColumns.includes(col)) {
+              existing.selectedColumns.push(col);
             }
           }
 
-          // Merge data array
-          for (const newData of currentColumn.data) {
-            const existingData = existingColumn.data.find((d) => d.col === newData.col);
-            if (existingData) {
-              existingData.data = newData.data;
-            } else {
-              existingColumn.data.push(newData);
+          // Merge data array (each entry is {col, data} for a single value)
+          // For columns we haven't seen, add them
+          for (const newData of column.data) {
+            const existingData = existing.data.find((d: any) => d.col === newData.col);
+            if (!existingData) {
+              existing.data.push(newData);
             }
+            // If column already exists, keep existing data (avoid duplicates)
           }
-        } else {
-          // This table doesn't exist in mergedInput yet, add it
-          mergedInput.columns.push(structuredClone(currentColumn));
         }
       }
 
-      // Merge sourceTables
-      for (const sourceTable of currentInput.sourceTables) {
-        if (!mergedInput.sourceTables.some(t => t.name === sourceTable.name && t.fileName === sourceTable.fileName)) {
-          mergedInput.sourceTables.push(sourceTable);
+      // Collect source tables
+      for (const sourceTable of input.sourceTables) {
+        if (!allSourceTables.some(t => t.name === sourceTable.name && t.fileName === sourceTable.fileName)) {
+          allSourceTables.push(sourceTable);
         }
       }
-
-      // Update column count
-      mergedInput.selectedColumnCount += currentInput.selectedColumnCount;
     }
+
+    console.log(`NumericAdjustment Node ${nodeId}: After dedup, have ${tableMap.size} unique tables`);
+
+    // Build merged input from the deduplicated tables
+    mergedInput = {
+      type: "ColumnSelection",
+      columns: Array.from(tableMap.values()),
+      sourceTables: allSourceTables,
+      selectedColumnCount: Array.from(tableMap.values()).reduce((sum, col) => sum + col.selectedColumns.length, 0),
+    } as DBColumnSelectionNodeData;
+  }
+
+  // Log the tables we're processing
+  console.log(`NumericAdjustment Node ${nodeId}: Processing ${mergedInput.columns.length} table(s):`);
+  for (const col of mergedInput.columns) {
+    console.log(`  - ${col.tableName} (${col.selectedColumns.length} columns, ${col.data.length} data entries)`);
   }
 
   const formula = textValue.trim();
@@ -2010,8 +1983,7 @@ async function executeMathMaxNode(
         const existingColumn = mergedInputData.columns.find(
           (col) =>
             col.tableName === currentColumn.tableName &&
-            col.fileName === currentColumn.fileName &&
-            col.sourcePack?.path === currentColumn.sourcePack?.path
+            col.fileName === currentColumn.fileName
         );
 
         if (existingColumn) {
@@ -2185,8 +2157,7 @@ async function executeMathCeilNode(
         const existingColumn = mergedInputData.columns.find(
           (col) =>
             col.tableName === currentColumn.tableName &&
-            col.fileName === currentColumn.fileName &&
-            col.sourcePack?.path === currentColumn.sourcePack?.path
+            col.fileName === currentColumn.fileName
         );
 
         if (existingColumn) {
@@ -2345,8 +2316,7 @@ async function executeMergeChangesNode(
       const existingColumn = mergedData.columns.find(
         (col) =>
           col.tableName === currentColumn.tableName &&
-          col.fileName === currentColumn.fileName &&
-          col.sourcePack.path === currentColumn.sourcePack.path
+          col.fileName === currentColumn.fileName
       );
 
       if (existingColumn) {
