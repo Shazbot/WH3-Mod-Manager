@@ -551,6 +551,7 @@ async function executeColumnSelectionNode(
     .split("\n")
     .filter((line) => line.trim())
     .map((col) => col.trim());
+  const selectedColumnsSet = new Set(selectedColumns);
   const columnData = [] as DBColumnSelectionTableValues[];
 
   for (const tableData of inputData.tables) {
@@ -566,7 +567,7 @@ async function executeColumnSelectionNode(
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
         for (const cell of row) {
-          if (selectedColumns.includes(cell.name)) {
+          if (selectedColumnsSet.has(cell.name)) {
             cellData.push({ col: cell.name, data: cell.resolvedKeyValue });
           }
         }
@@ -1718,6 +1719,7 @@ async function executeColumnSelectionDropdownNode(
   }
 
   const selectedColumns = [selectedColumn.trim()];
+  const selectedColumnsSet = new Set(selectedColumns);
   const columnData = [] as DBColumnSelectionTableValues[];
 
   for (const tableData of inputData.tables) {
@@ -1733,7 +1735,7 @@ async function executeColumnSelectionDropdownNode(
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
         for (const cell of row) {
-          if (selectedColumns.includes(cell.name)) {
+          if (selectedColumnsSet.has(cell.name)) {
             cellData.push({ col: cell.name, data: cell.resolvedKeyValue });
           }
         }
@@ -1898,6 +1900,9 @@ async function executeNumericAdjustmentNode(
     }
     console.log("selected columns:", column.selectedColumns);
 
+    // Use Set for O(1) lookup instead of O(n) includes()
+    const selectedColumnsSet = new Set(column.selectedColumns);
+
     const rows = chunkSchemaIntoRows(
       column.sourceTable.schemaFields,
       column.sourceTable.tableSchema
@@ -1907,8 +1912,7 @@ async function executeNumericAdjustmentNode(
       const row = rows[i];
       for (let j = 0; j < row.length; j++) {
         const cell = row[j];
-        // newTable[i][j] = cell;
-        if (column.selectedColumns.includes(cell.name)) {
+        if (selectedColumnsSet.has(cell.name)) {
           const numVal = parseFloat(cell.resolvedKeyValue.replace(/[^\d.-]/g, ""));
           if (isNaN(numVal)) {
             console.log("Not a number!");
@@ -1919,7 +1923,6 @@ async function executeNumericAdjustmentNode(
             const result = evaluateFormula(formula, numVal);
             rows[i][j].resolvedKeyValue = result.toString();
             rows[i][j].fields[0].val = result;
-            // console.log("New numeric value of", numVal, "is", result.toString());
           } catch (error) {
             console.warn(`Failed to apply formula to value ${numVal}:`, error);
           }
@@ -2009,6 +2012,9 @@ async function executeMathMaxNode(
               existingColumn.sourceTable.tableSchema
             ) as AmendedSchemaField[][];
 
+            // Use Set for O(1) lookup
+            const currentSelectedSet = new Set(currentColumn.selectedColumns);
+
             // Update cells in existingRows with values from currentRows if they were changed
             for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
               for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
@@ -2016,7 +2022,7 @@ async function executeMathMaxNode(
                 const existingCell = existingRows[rowIdx][cellIdx];
 
                 // If this column was selected in the current input, update the existing data
-                if (currentColumn.selectedColumns.includes(currentCell.name)) {
+                if (currentSelectedSet.has(currentCell.name)) {
                   existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
                   existingCell.fields[0].val = currentCell.fields[0].val;
                 }
@@ -2027,16 +2033,19 @@ async function executeMathMaxNode(
             existingColumn.sourceTable.schemaFields = existingRows.flat();
           }
 
-          // Merge selectedColumns
+          // Merge selectedColumns using Set for efficiency
+          const existingColsSet = new Set(existingColumn.selectedColumns);
           for (const col of currentColumn.selectedColumns) {
-            if (!existingColumn.selectedColumns.includes(col)) {
+            if (!existingColsSet.has(col)) {
               existingColumn.selectedColumns.push(col);
+              existingColsSet.add(col);
             }
           }
 
-          // Merge data array
+          // Merge data array using Map for efficiency
+          const existingDataMap = new Map(existingColumn.data.map((d: any) => [d.col, d]));
           for (const newData of currentColumn.data) {
-            const existingData = existingColumn.data.find((d) => d.col === newData.col);
+            const existingData = existingDataMap.get(newData.col);
             if (existingData) {
               existingData.data = newData.data;
             } else {
@@ -2079,6 +2088,9 @@ async function executeMathMaxNode(
       continue;
     }
 
+    // Use Set for O(1) lookup instead of O(n) includes()
+    const selectedColumnsSet = new Set(column.selectedColumns);
+
     const rows = chunkSchemaIntoRows(
       column.sourceTable.schemaFields,
       column.sourceTable.tableSchema
@@ -2088,7 +2100,7 @@ async function executeMathMaxNode(
       const row = rows[i];
       for (let j = 0; j < row.length; j++) {
         const cell = row[j];
-        if (column.selectedColumns.includes(cell.name)) {
+        if (selectedColumnsSet.has(cell.name)) {
           const numVal = parseFloat(cell.resolvedKeyValue.replace(/[^\d.-]/g, ""));
           if (isNaN(numVal)) {
             console.log("Not a number!");
@@ -2183,6 +2195,9 @@ async function executeMathCeilNode(
               existingColumn.sourceTable.tableSchema
             ) as AmendedSchemaField[][];
 
+            // Use Set for O(1) lookup
+            const currentSelectedSet = new Set(currentColumn.selectedColumns);
+
             // Update cells in existingRows with values from currentRows if they were changed
             for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
               for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
@@ -2190,7 +2205,7 @@ async function executeMathCeilNode(
                 const existingCell = existingRows[rowIdx][cellIdx];
 
                 // If this column was selected in the current input, update the existing data
-                if (currentColumn.selectedColumns.includes(currentCell.name)) {
+                if (currentSelectedSet.has(currentCell.name)) {
                   existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
                   existingCell.fields[0].val = currentCell.fields[0].val;
                 }
@@ -2201,16 +2216,19 @@ async function executeMathCeilNode(
             existingColumn.sourceTable.schemaFields = existingRows.flat();
           }
 
-          // Merge selectedColumns
+          // Merge selectedColumns using Set for efficiency
+          const existingColsSet = new Set(existingColumn.selectedColumns);
           for (const col of currentColumn.selectedColumns) {
-            if (!existingColumn.selectedColumns.includes(col)) {
+            if (!existingColsSet.has(col)) {
               existingColumn.selectedColumns.push(col);
+              existingColsSet.add(col);
             }
           }
 
-          // Merge data array
+          // Merge data array using Map for efficiency
+          const existingDataMap = new Map(existingColumn.data.map((d: any) => [d.col, d]));
           for (const newData of currentColumn.data) {
-            const existingData = existingColumn.data.find((d) => d.col === newData.col);
+            const existingData = existingDataMap.get(newData.col);
             if (existingData) {
               existingData.data = newData.data;
             } else {
@@ -2244,6 +2262,9 @@ async function executeMathCeilNode(
       continue;
     }
 
+    // Use Set for O(1) lookup instead of O(n) includes()
+    const selectedColumnsSet = new Set(column.selectedColumns);
+
     const rows = chunkSchemaIntoRows(
       column.sourceTable.schemaFields,
       column.sourceTable.tableSchema
@@ -2253,7 +2274,7 @@ async function executeMathCeilNode(
       const row = rows[i];
       for (let j = 0; j < row.length; j++) {
         const cell = row[j];
-        if (column.selectedColumns.includes(cell.name)) {
+        if (selectedColumnsSet.has(cell.name)) {
           const numVal = parseFloat(cell.resolvedKeyValue.replace(/[^\d.-]/g, ""));
           if (isNaN(numVal)) {
             console.log("Not a number!");
@@ -2343,6 +2364,9 @@ async function executeMergeChangesNode(
             existingColumn.sourceTable.tableSchema
           ) as AmendedSchemaField[][];
 
+          // Use Set for O(1) lookup
+          const currentSelectedSet = new Set(currentColumn.selectedColumns);
+
           // Update cells in existingRows with values from currentRows if they were changed
           for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
             for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
@@ -2350,7 +2374,7 @@ async function executeMergeChangesNode(
               const existingCell = existingRows[rowIdx][cellIdx];
 
               // If this column was selected in the current input, update the existing data
-              if (currentColumn.selectedColumns.includes(currentCell.name)) {
+              if (currentSelectedSet.has(currentCell.name)) {
                 existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
                 existingCell.fields[0].val = currentCell.fields[0].val;
               }
@@ -2361,16 +2385,19 @@ async function executeMergeChangesNode(
           existingColumn.sourceTable.schemaFields = existingRows.flat();
         }
 
-        // Merge selectedColumns
+        // Merge selectedColumns using Set for efficiency
+        const existingColsSet = new Set(existingColumn.selectedColumns);
         for (const col of currentColumn.selectedColumns) {
-          if (!existingColumn.selectedColumns.includes(col)) {
+          if (!existingColsSet.has(col)) {
             existingColumn.selectedColumns.push(col);
+            existingColsSet.add(col);
           }
         }
 
-        // Merge data array
+        // Merge data array using Map for efficiency
+        const existingDataMap = new Map(existingColumn.data.map((d: any) => [d.col, d]));
         for (const newData of currentColumn.data) {
-          const existingData = existingColumn.data.find((d) => d.col === newData.col);
+          const existingData = existingDataMap.get(newData.col);
           if (existingData) {
             existingData.data = newData.data;
           } else {
