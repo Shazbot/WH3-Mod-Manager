@@ -29,6 +29,7 @@ export const executeNodeGraph = async (
 ): Promise<NodeGraphExecutionResult> => {
   const { nodes, connections, resetCounters = true } = request;
 
+  const startTime = performance.now();
   console.log("Starting node graph execution in backend...");
   console.log(`Graph contains ${nodes.length} nodes and ${connections.length} connections`);
 
@@ -615,9 +616,11 @@ export const executeNodeGraph = async (
         ? `❌ Graph execution completed with errors`
         : `❌ Graph execution failed`;
 
+    const elapsedTime = performance.now() - startTime;
     console.log("\n" + "=".repeat(80));
     console.log(`BACKEND: ${statusMessage}`);
     console.log(`Execution Summary: ${successCount}/${executionResults.size} nodes succeeded`);
+    console.log(`Total execution time: ${elapsedTime.toFixed(2)}ms`);
     console.log("-".repeat(80));
     console.log(summary);
     console.log("=".repeat(80) + "\n");
@@ -630,7 +633,8 @@ export const executeNodeGraph = async (
       failureCount,
     };
   } catch (error) {
-    console.error("Graph execution failed:", error);
+    const elapsedTime = performance.now() - startTime;
+    console.error(`Graph execution failed after ${elapsedTime.toFixed(2)}ms:`, error);
     return {
       success: false,
       executionResults: new Map(),
