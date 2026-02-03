@@ -661,6 +661,7 @@ declare global {
     | "extracttable"
     | "aggregatenested"
     | "generaterows"
+    | "generaterowsschema"
     | "groupby"
     | "dumptotsv"
     | "getcountercolumn"

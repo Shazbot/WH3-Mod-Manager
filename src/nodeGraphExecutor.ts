@@ -190,7 +190,7 @@ export const executeNodeGraph = async (
             filterOperator: (node.data as any).filterOperator || "equals",
             filterValue: (node.data as any).filterValue || "",
           });
-        } else if (node.type === "generaterows") {
+        } else if (node.type === "generaterows" || node.type === "generaterowsschema") {
           console.log(
             `Generate Rows serialization - node.data.transformations:`,
             (node.data as any).transformations
@@ -311,7 +311,7 @@ export const executeNodeGraph = async (
                       }
                       // Check if source is generaterows or multifilter with multi-output
                       if (
-                        (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                        (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
                         conn.sourceHandle &&
                         sourceResult?.data &&
                         typeof sourceResult.data === "object" &&
@@ -343,7 +343,7 @@ export const executeNodeGraph = async (
                     }
                     // Check if source is generaterows or multifilter with multi-output
                     else if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
                       conn.sourceHandle &&
                       sourceResult?.data &&
                       typeof sourceResult.data === "object" &&
@@ -439,7 +439,7 @@ export const executeNodeGraph = async (
                   } else {
                     inputDataForTarget = null;
                   }
-                } else if (targetNode.type === "generaterows" && targetIncomingConnections.length > 1) {
+                } else if ((targetNode.type === "generaterows" || targetNode.type === "generaterowsschema") && targetIncomingConnections.length > 1) {
                   // Generate Rows with multiple inputs: merge all TableSelection inputs
                   const mergedSourceFiles: any[] = [];
                   const allTables: any[] = [];
@@ -453,7 +453,7 @@ export const executeNodeGraph = async (
 
                     // For multi-output nodes (generaterows, multifilter), extract specific output
                     if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
                       conn.sourceHandle &&
                       sourceResult?.data &&
                       typeof sourceResult.data === "object" &&
@@ -505,7 +505,7 @@ export const executeNodeGraph = async (
 
                     // For multi-output nodes (generaterows, multifilter), extract specific output
                     if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
                       conn.sourceHandle &&
                       sourceResult?.data &&
                       typeof sourceResult.data === "object" &&
@@ -556,7 +556,7 @@ export const executeNodeGraph = async (
                     }
                     // Check if source is generaterows or multifilter with multi-output
                     else if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "multifilter") &&
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
                       lastConnection.sourceHandle &&
                       sourceResult?.data &&
                       typeof sourceResult.data === "object" &&
