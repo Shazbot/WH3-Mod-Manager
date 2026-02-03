@@ -4379,16 +4379,18 @@ async function executeDeduplicateNode(
 
   // Parse configuration from textValue
   let dedupeByColumns: string[] = [];
+  let dedupeAgainstVanilla = false;
 
   try {
     const parsed = JSON.parse(textValue);
     dedupeByColumns = parsed.dedupeByColumns || [];
+    dedupeAgainstVanilla = parsed.dedupeAgainstVanilla || false;
   } catch (error) {
-    console.error(`Group By Node ${nodeId}: Error parsing configuration:`, error);
-    return { success: false, error: "Invalid group by configuration" };
+    console.error(`Deduplicate Node ${nodeId}: Error parsing configuration:`, error);
+    return { success: false, error: "Invalid deduplicate configuration" };
   }
 
-  console.log(`Deduplicate Node ${nodeId}: dedupeByColumns: [${dedupeByColumns.join(", ")}]`);
+  console.log(`Deduplicate Node ${nodeId}: dedupeByColumns: [${dedupeByColumns.join(", ")}], dedupeAgainstVanilla: ${dedupeAgainstVanilla}`);
 
   if (dedupeByColumns.length === 0) {
     return { success: false, error: "No dedupe by columns specified" };
@@ -4397,6 +4399,74 @@ async function executeDeduplicateNode(
   const dedupedTables = [] as DBTablesNodeTable[];
   const inputTableToDupes = new Map<number, Set<number>>();
   const alreadyPresentRowHashes = new Set<number>();
+
+  // If dedupeAgainstVanilla is enabled, build a set of vanilla row hashes
+  const vanillaRowHashes = new Set<number>();
+  if (dedupeAgainstVanilla) {
+    console.log(`Deduplicate Node ${nodeId}: Building vanilla row hashes...`);
+
+    // Get the base game pack path
+    const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+    if (baseGamePackName) {
+      const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      if (baseGameFolder) {
+        const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+        if (fs.existsSync(baseGamePackPath)) {
+          // Get unique table names from input data
+          const tableNamesToRead = new Set<string>();
+          for (const tableData of inputData.tables) {
+            tableNamesToRead.add(tableData.name);
+          }
+
+          console.log(`Deduplicate Node ${nodeId}: Reading vanilla tables: [${Array.from(tableNamesToRead).join(", ")}]`);
+
+          try {
+            // Read the vanilla pack for the same tables
+            const vanillaPack = await readPack(baseGamePackPath, { tablesToRead: Array.from(tableNamesToRead) });
+            getPacksTableData([vanillaPack], Array.from(tableNamesToRead));
+
+            // Process each vanilla table and build hashes
+            for (const tableName of tableNamesToRead) {
+              const matchingTables = vanillaPack.packedFiles.filter((pf) => {
+                const tablePath = pf.name.toLowerCase();
+                const searchPath = tableName.toLowerCase();
+                return tablePath === searchPath || tablePath.startsWith(searchPath + "\\");
+              });
+
+              for (const vanillaTable of matchingTables) {
+                if (!vanillaTable.schemaFields || !vanillaTable.tableSchema) {
+                  continue;
+                }
+
+                const vanillaRows = chunkSchemaIntoRows(
+                  vanillaTable.schemaFields,
+                  vanillaTable.tableSchema
+                ) as AmendedSchemaField[][];
+
+                console.log(`Deduplicate Node ${nodeId}: Vanilla table "${vanillaTable.name}" has ${vanillaRows.length} rows`);
+
+                for (const row of vanillaRows) {
+                  let cellConcat = "";
+                  for (const dedupeColumn of dedupeByColumns) {
+                    const cell = row.find((c) => c.name === dedupeColumn);
+                    if (cell) {
+                      cellConcat += cell.resolvedKeyValue;
+                    }
+                  }
+                  const rowHash = cyrb53(cellConcat);
+                  vanillaRowHashes.add(rowHash);
+                }
+              }
+            }
+
+            console.log(`Deduplicate Node ${nodeId}: Built ${vanillaRowHashes.size} vanilla row hashes`);
+          } catch (error) {
+            console.error(`Deduplicate Node ${nodeId}: Error reading vanilla pack:`, error);
+          }
+        }
+      }
+    }
+  }
 
   // Process each table
   for (let tableIndex = 0; tableIndex < inputData.tables.length; tableIndex++) {
@@ -4431,6 +4501,13 @@ async function executeDeduplicateNode(
 
       const rowHash = cyrb53(cellConcat);
 
+      // If dedupeAgainstVanilla is enabled, mark rows that exist in vanilla as duplicates
+      if (dedupeAgainstVanilla && vanillaRowHashes.has(rowHash)) {
+        dupes.add(i);
+        continue;
+      }
+
+      // Normal deduplication: mark subsequent duplicate rows
       if (!alreadyPresentRowHashes.has(rowHash)) {
         alreadyPresentRowHashes.add(rowHash);
       } else {
@@ -4519,12 +4596,16 @@ async function executeGenerateRowsNode(
         | "concatenate"
         | "formula"
         | "counter"
+        | "counter_range"
         | "filterequal"
         | "filternotequal";
       prefix?: string;
       suffix?: string;
       numericValue?: number;
       startNumber?: number;
+      rangeStart?: string; // For counter_range (supports flow options)
+      endNumber?: string; // For counter_range (supports flow options)
+      rangeIncrement?: string; // For counter_range (supports flow options)
       separator?: string;
       formula?: string;
       filterValue?: string;
@@ -4539,6 +4620,7 @@ async function executeGenerateRowsNode(
       staticValues?: Record<string, string>;
     }>;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
+    customSchemaData?: Array<{ id: string; name: string; type: string }> | null;
   };
 
   try {
@@ -4572,10 +4654,21 @@ async function executeGenerateRowsNode(
     transformations: config.transformations,
     outputTables: config.outputTables,
     hasDBNameToDBVersions: !!config.DBNameToDBVersions,
+    hasCustomSchemaData: !!config.customSchemaData,
+    customSchemaData: config.customSchemaData,
   });
 
+  // Check if we have a counter_range transformation that can generate rows without input
+  const counterRangeTransformation = config.transformations.find(
+    (t) => t.transformationType === "counter_range"
+  );
+  const hasCustomSchema = !!config.customSchemaData;
+
   // 2. Extract input rows from ALL input tables
-  if (!inputData.tables || inputData.tables.length === 0) {
+  // Allow empty input tables if we have counter_range (which generates its own rows)
+  const hasInputTables = inputData?.tables && inputData.tables.length > 0;
+
+  if (!hasInputTables && !counterRangeTransformation) {
     return {
       success: false,
       error: "No input tables found",
@@ -4584,26 +4677,59 @@ async function executeGenerateRowsNode(
 
   // Collect rows from all input tables (handles multiple tables with same name from different mods)
   const rows: AmendedSchemaField[][] = [];
-  const sourceTable = inputData.tables[0]; // Keep first table for metadata (fileName, sourceFile, etc.)
+  const sourceTable = hasInputTables ? inputData.tables[0] : null; // Keep first table for metadata (fileName, sourceFile, etc.)
 
-  for (const table of inputData.tables) {
-    if (!table.table.tableSchema) {
-      console.warn(`Generate Rows Node ${nodeId}: Skipping table ${table.name} - no schema information`);
-      continue;
+  if (hasInputTables) {
+    for (const table of inputData.tables) {
+      if (!table.table.tableSchema) {
+        console.warn(`Generate Rows Node ${nodeId}: Skipping table ${table.name} - no schema information`);
+        continue;
+      }
+
+      const tableRows = table.table.schemaFields
+        ? (chunkSchemaIntoRows(table.table.schemaFields, table.table.tableSchema) as AmendedSchemaField[][])
+        : [];
+
+      rows.push(...tableRows);
     }
 
-    const tableRows = table.table.schemaFields
-      ? (chunkSchemaIntoRows(table.table.schemaFields, table.table.tableSchema) as AmendedSchemaField[][])
-      : [];
-
-    rows.push(...tableRows);
+    console.log(
+      `Generate Rows Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`
+    );
+  } else {
+    console.log(`Generate Rows Node ${nodeId}: No input tables, will generate rows from counter_range`);
   }
 
-  console.log(
-    `Generate Rows Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`
-  );
+  // If no rows but we have counter_range, generate rows from the range
+  if (rows.length === 0 && counterRangeTransformation) {
+    console.log(`Generate Rows Node ${nodeId}: No input rows but has counter_range - generating from range`);
 
-  // If no rows, return empty output for each configured output table
+    const rangeStart = parseInt(counterRangeTransformation.rangeStart || "1", 10) || 1;
+    const rangeEnd = parseInt(counterRangeTransformation.endNumber || "10", 10) || 10;
+    const rangeIncrement = parseInt(counterRangeTransformation.rangeIncrement || "1", 10) || 1;
+
+    console.log(
+      `Generate Rows Node ${nodeId}: Generating rows from ${rangeStart} to ${rangeEnd} with increment ${rangeIncrement}`
+    );
+
+    // Generate placeholder rows based on the range
+    for (let i = rangeStart; rangeIncrement > 0 ? i <= rangeEnd : i >= rangeEnd; i += rangeIncrement) {
+      // Create a minimal row with the counter value
+      const row: AmendedSchemaField[] = [
+        {
+          name: "__counter_range_value__",
+          resolvedKeyValue: String(i),
+          type: "I32" as SCHEMA_FIELD_TYPE,
+          fields: [{ type: "I32", val: i }],
+        },
+      ];
+      rows.push(row);
+    }
+
+    console.log(`Generate Rows Node ${nodeId}: Generated ${rows.length} rows from counter_range`);
+  }
+
+  // If no rows (and no counter_range to generate them), return empty output for each configured output table
   // This allows the flow to continue on other branches
   if (rows.length === 0) {
     console.log(`Generate Rows Node ${nodeId}: No input rows - returning empty output tables`);
@@ -4877,6 +5003,21 @@ async function executeGenerateRowsNode(
           break;
         }
 
+        case "counter_range": {
+          // For counter_range, use the value from the __counter_range_value__ field
+          // that was generated when creating rows from the range
+          const counterRangeCell = row.find((c: AmendedSchemaField) => c.name === "__counter_range_value__");
+          if (counterRangeCell) {
+            outputValue = parseInt(String(counterRangeCell.resolvedKeyValue), 10) || 0;
+          } else {
+            // Fallback: use row index + start value
+            const rangeStart = parseInt(transformation.rangeStart || "1", 10) || 1;
+            const rangeIncrement = parseInt(transformation.rangeIncrement || "1", 10) || 1;
+            outputValue = rangeStart + rowIdx * rangeIncrement;
+          }
+          break;
+        }
+
         case "filterequal":
         case "filternotequal":
           // Filter transformations are handled before row processing
@@ -4916,29 +5057,63 @@ async function executeGenerateRowsNode(
   for (const outputConfig of config.outputTables) {
     console.log(`Generate Rows Node ${nodeId}: Creating output table "${outputConfig.name}"`);
 
-    // Look up existing table schema from DBNameToDBVersions
-    const versions = config.DBNameToDBVersions?.[outputConfig.existingTableName];
-    if (!versions || versions.length === 0) {
-      return {
-        success: false,
-        error: `Table schema "${outputConfig.existingTableName}" not found`,
+    // Handle custom schema case
+    let schema: DBVersion;
+    let isCustomSchema = false;
+
+    if (outputConfig.existingTableName === "__custom_schema__") {
+      if (!config.customSchemaData || config.customSchemaData.length === 0) {
+        console.error(`Generate Rows Node ${nodeId}: Custom schema selected but no customSchemaData provided`);
+        console.error(`Generate Rows Node ${nodeId}: config.customSchemaData:`, config.customSchemaData);
+        return {
+          success: false,
+          error: "Custom schema selected but no schema data connected. Please connect a Custom Schema node.",
+        };
+      }
+      // Build schema from custom schema data
+      isCustomSchema = true;
+      schema = {
+        version: 1,
+        fields: config.customSchemaData.map((col, index) => ({
+          name: col.name,
+          field_type: col.type as SCHEMA_FIELD_TYPE,
+          is_key: index === 0, // First column is key by default
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: "",
+          ca_order: index,
+          is_bitwise: 0,
+          enum_values: {},
+        })),
       };
+      console.log(`Generate Rows Node ${nodeId}: Using custom schema with ${schema.fields.length} fields:`,
+        schema.fields.map((f: any) => f.name));
+    } else {
+      // Look up existing table schema from DBNameToDBVersions
+      const versions = config.DBNameToDBVersions?.[outputConfig.existingTableName];
+      if (!versions || versions.length === 0) {
+        return {
+          success: false,
+          error: `Table schema "${outputConfig.existingTableName}" not found`,
+        };
+      }
+
+      const defaultTableVersions = await getDefaultTableVersions();
+      const defaultTableVersionNumber =
+        defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
+
+      schema = versions[0];
+      if (defaultTableVersionNumber) {
+        const version = versions.find((version) => version.version == defaultTableVersionNumber);
+        if (version) schema = version;
+      }
+
+      console.log(`Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`, {
+        fieldCount: schema.fields.length,
+        fields: schema.fields.map((f: any) => f.name),
+      });
     }
-
-    const defaultTableVersions = await getDefaultTableVersions();
-    const defaultTableVersionNumber =
-      defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
-
-    let schema = versions[0];
-    if (defaultTableVersionNumber) {
-      const version = versions.find((version) => version.version == defaultTableVersionNumber);
-      if (version) schema = version;
-    }
-
-    console.log(`Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`, {
-      fieldCount: schema.fields.length,
-      fields: schema.fields.map((f: any) => f.name),
-    });
 
     // Build rows for this output
     const outputRows: AmendedSchemaField[] = [];
@@ -5046,17 +5221,35 @@ async function executeGenerateRowsNode(
 
     console.log(`Generate Rows Node ${nodeId}: Created ${numRows} rows for output "${outputConfig.name}"`);
 
+    // Determine the table name - use a proper name for custom schema
+    const outputTableName = isCustomSchema
+      ? `custom_${outputConfig.handleId}`
+      : outputConfig.existingTableName;
+
+    // Create a default table structure when there's no sourceTable (e.g., counter_range with custom schema only)
+    const defaultTable: PackedFile = {
+      name: `db\\${outputTableName}\\generated`,
+      file_size: 0,
+      start_pos: 0,
+      tableSchema: schema,
+      schemaFields: outputRows,
+      version: schema.version,
+    };
+
     // Create TableSelection for this output
+    // Handle case where there's no sourceTable (e.g., counter_range with custom schema only)
     const outputTable: DBTablesNodeTable = {
-      name: outputConfig.existingTableName,
-      fileName: sourceTable.fileName,
-      sourceFile: sourceTable.sourceFile,
-      table: {
-        ...sourceTable.table,
-        tableSchema: schema,
-        schemaFields: outputRows,
-        version: schema.version,
-      },
+      name: outputTableName,
+      fileName: sourceTable?.fileName || `db\\${outputTableName}\\generated`,
+      sourceFile: sourceTable?.sourceFile || { name: "generated", path: "", loaded: true },
+      table: sourceTable?.table
+        ? {
+            ...sourceTable.table,
+            tableSchema: schema,
+            schemaFields: outputRows,
+            version: schema.version,
+          }
+        : defaultTable,
     };
 
     console.log(`Generate Rows Node ${nodeId}: Output table version set to ${schema.version}`);

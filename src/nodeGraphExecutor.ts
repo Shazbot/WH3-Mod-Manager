@@ -203,10 +203,15 @@ export const executeNodeGraph = async (
             `Generate Rows serialization - has DBNameToDBVersions:`,
             !!(node.data as any).DBNameToDBVersions
           );
+          console.log(
+            `Generate Rows serialization - customSchemaData:`,
+            (node.data as any).customSchemaData
+          );
           textValueToUse = JSON.stringify({
             transformations: (node.data as any).transformations || [],
             outputTables: (node.data as any).outputTables || [],
             DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
+            customSchemaData: (node.data as any).customSchemaData || null,
           });
           console.log(`Generate Rows serialization - textValueToUse length:`, textValueToUse.length);
         } else if (node.type === "addnewcolumn") {
@@ -232,6 +237,7 @@ export const executeNodeGraph = async (
           );
           textValueToUse = JSON.stringify({
             dedupeByColumns: (node.data as any).dedupeByColumns || [],
+            dedupeAgainstVanilla: (node.data as any).dedupeAgainstVanilla || false,
           });
           console.log(`Deduplicate serialization - textValueToUse:`, textValueToUse);
         } else if (node.type === "dumptotsv") {
