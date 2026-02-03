@@ -123,6 +123,7 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
         return await executeDeduplicateNode(nodeId, textValue, inputData);
 
       case "generaterows":
+      case "generaterowsschema":
         return await executeGenerateRowsNode(nodeId, textValue, inputData);
 
       case "addnewcolumn":

@@ -4076,24 +4076,11 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
         position={Position.Left}
         id="input-table"
         className="w-3 h-3 bg-orange-500"
-        style={{ top: "30%" }}
+        style={{ top: "50%" }}
         data-input-type="TableSelection"
-      />
-      {/* Custom Schema input */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="input-schema"
-        className="w-3 h-3 bg-purple-500"
-        style={{ top: "70%" }}
-        data-input-type="CustomSchema"
       />
 
       <div className="text-sm font-bold text-white mb-3">Generate Rows</div>
-      <div className="text-xs text-gray-400 mb-2">
-        <span className="text-orange-400">●</span> Table &nbsp;
-        <span className="text-purple-400">●</span> Schema (optional)
-      </div>
 
       {/* Transformations Section */}
       <div className="mb-3">
@@ -4376,6 +4363,399 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   </option>
                 ))}
               </select>
+
+              <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
+              <div
+                className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2 scrollable-node-content"
+                onWheel={stopWheelPropagation}
+              >
+                {transformations
+                  .filter((trans) => trans.targetTableHandleId === output.handleId)
+                  .map((trans) => (
+                    <div key={trans.id} className="flex items-center gap-2 p-1">
+                      <span className="text-xs text-green-400">✓</span>
+                      <span className="text-xs text-white">{trans.outputColumnName}</span>
+                    </div>
+                  ))}
+                {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length ===
+                  0 && (
+                  <div className="text-xs text-gray-500 text-center py-1">
+                    No transformations for this table
+                  </div>
+                )}
+              </div>
+
+              <div className="text-xs text-gray-400 mb-1">Static Values (remaining columns):</div>
+              <div
+                className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content"
+                onWheel={stopWheelPropagation}
+              >
+                {getAvailableStaticColumns(idx).map((col) => (
+                  <div key={col} className="flex items-center gap-1 mb-1">
+                    <span className="text-xs text-white w-24 truncate" title={col}>
+                      {col}:
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="value"
+                      value={output.staticValues?.[col] || ""}
+                      onChange={(e) => updateStaticValue(idx, col, e.target.value)}
+                      className="flex-1 bg-gray-600 border border-gray-500 text-white text-xs rounded px-1 py-0.5"
+                    />
+                  </div>
+                ))}
+                {getAvailableStaticColumns(idx).length === 0 && (
+                  <div className="text-xs text-gray-500 text-center py-1">All columns mapped</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">Outputs: {outputCount} TableSelections</div>
+
+      {/* Output Handles */}
+      {outputTables.map((output, idx) => (
+        <Handle
+          key={output.handleId}
+          type="source"
+          position={Position.Right}
+          id={output.handleId}
+          className="w-3 h-3 bg-green-500"
+          data-output-type="TableSelection"
+          style={{
+            top: `${30 + (idx * 60) / (outputCount - 1 || 1)}%`,
+            position: "absolute",
+            right: -6,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
+// Schema-only variant of GenerateRows - accepts only CustomSchema input
+const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
+  const [transformations, setTransformations] = useState<ColumnTransformation[]>(data.transformations || []);
+  const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
+  const [outputCount, setOutputCount] = useState<number>(data.outputCount || 1);
+  const [customSchemaColumns, setCustomSchemaColumns] = useState<string[]>(
+    (data as any).customSchemaColumns || []
+  );
+
+  // Sync local state with prop changes
+  React.useEffect(() => {
+    if (data.transformations !== undefined) setTransformations(data.transformations);
+    if (data.outputTables !== undefined) setOutputTables(data.outputTables);
+    if (data.outputCount !== undefined) setOutputCount(data.outputCount);
+  }, [data.transformations, data.outputTables, data.outputCount]);
+
+  // Sync custom schema columns from connected CustomSchema node
+  React.useEffect(() => {
+    if ((data as any).customSchemaColumns) {
+      setCustomSchemaColumns((data as any).customSchemaColumns);
+    }
+  }, [(data as any).customSchemaColumns]);
+
+  // Sync transformations to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, transformations },
+      })
+    );
+  }, [transformations, id]);
+
+  // Sync outputTables to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, outputTables, outputCount },
+      })
+    );
+  }, [outputTables, outputCount, id]);
+
+  const addTransformation = () => {
+    const newTransformation: ColumnTransformation = {
+      id: `trans_${Date.now()}`,
+      sourceColumn: "",
+      transformationType: "counter_range",
+      outputColumnName: customSchemaColumns[0] || `output_${transformations.length + 1}`,
+      targetTableHandleId: outputTables[0]?.handleId || "",
+      rangeStart: "0",
+      endNumber: "10",
+      rangeIncrement: "1",
+    };
+    setTransformations([...transformations, newTransformation]);
+  };
+
+  const removeTransformation = (transId: string) => {
+    setTransformations(transformations.filter((t) => t.id !== transId));
+  };
+
+  const updateTransformation = (transId: string, updates: Partial<ColumnTransformation>) => {
+    setTransformations(transformations.map((t) => (t.id === transId ? { ...t, ...updates } : t)));
+  };
+
+  const updateOutputCount = (count: number) => {
+    setOutputCount(count);
+
+    const newOutputTables = [...outputTables];
+    while (newOutputTables.length < count) {
+      newOutputTables.push({
+        handleId: `output-table${newOutputTables.length + 1}`,
+        name: `Table ${newOutputTables.length + 1}`,
+        existingTableName: "__custom_schema__",
+        columnMapping: [],
+      });
+    }
+    while (newOutputTables.length > count) {
+      newOutputTables.pop();
+    }
+    setOutputTables(newOutputTables);
+  };
+
+  const updateOutputTable = (index: number, updates: Partial<OutputTableConfig>) => {
+    const newOutputTables = [...outputTables];
+    newOutputTables[index] = { ...newOutputTables[index], ...updates };
+    setOutputTables(newOutputTables);
+  };
+
+  const updateStaticValue = (outputIndex: number, columnName: string, value: string) => {
+    const currentStaticValues = outputTables[outputIndex]?.staticValues || {};
+    const newStaticValues = { ...currentStaticValues, [columnName]: value };
+    updateOutputTable(outputIndex, { staticValues: newStaticValues });
+  };
+
+  const getAvailableStaticColumns = (outputIndex: number): string[] => {
+    const output = outputTables[outputIndex];
+    if (!output) return [];
+
+    // Get transformed column names for this table
+    const transformedColumns = new Set(
+      transformations
+        .filter((trans) => trans.targetTableHandleId === output.handleId)
+        .map((trans) => trans.outputColumnName)
+    );
+
+    // Return custom schema columns that are NOT transformed
+    return customSchemaColumns.filter((col: string) => !transformedColumns.has(col));
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-600 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      {/* Custom Schema input only */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="input-schema"
+        className="w-3 h-3 bg-purple-500"
+        style={{ top: "50%" }}
+        data-input-type="CustomSchema"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">Generate Rows (Schema)</div>
+      <div className="text-xs text-gray-400 mb-2">
+        <span className="text-purple-400">●</span> Requires Custom Schema input
+      </div>
+
+      {customSchemaColumns.length === 0 && (
+        <div className="text-xs text-yellow-400 mb-2 p-2 bg-yellow-900/30 rounded">
+          Connect a Custom Schema node to define columns
+        </div>
+      )}
+
+      {/* Transformations Section */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-300">Transformations:</label>
+          <button
+            onClick={addTransformation}
+            className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded"
+          >
+            + Add
+          </button>
+        </div>
+
+        <div
+          className="space-y-2 max-h-60 overflow-y-auto scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {transformations.map((trans, transIndex) => {
+            // Build available source columns (from previous transformations)
+            const availableSourceColumns = transformations
+              .slice(0, transIndex)
+              .map((t) => t.outputColumnName)
+              .filter((name) => name && name.trim() !== "");
+
+            return (
+              <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-400">→ {trans.outputColumnName}</span>
+                  <button
+                    onClick={() => removeTransformation(trans.id)}
+                    className="text-xs text-red-400 hover:text-red-300"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <select
+                  value={trans.transformationType}
+                  onChange={(e) =>
+                    updateTransformation(trans.id, {
+                      transformationType: e.target.value as ColumnTransformation["transformationType"],
+                    })
+                  }
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                >
+                  <option value="counter_range">Counter (custom range)</option>
+                  <option value="none">None (use source)</option>
+                  <option value="prefix">Add Prefix</option>
+                  <option value="suffix">Add Suffix</option>
+                  <option value="add">Add Number (+)</option>
+                  <option value="subtract">Subtract Number (-)</option>
+                  <option value="multiply">Multiply (*)</option>
+                  <option value="divide">Divide (/)</option>
+                </select>
+
+                {trans.transformationType !== "counter_range" && (
+                  <select
+                    value={trans.sourceColumn}
+                    onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  >
+                    <option value="">Select source...</option>
+                    {availableSourceColumns.map((col) => (
+                      <option key={col} value={col}>
+                        {col} (from transformation)
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {trans.transformationType === "prefix" && (
+                  <input
+                    type="text"
+                    placeholder="Prefix..."
+                    value={trans.prefix || ""}
+                    onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {trans.transformationType === "suffix" && (
+                  <input
+                    type="text"
+                    placeholder="Suffix..."
+                    value={trans.suffix || ""}
+                    onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {(trans.transformationType === "add" ||
+                  trans.transformationType === "subtract" ||
+                  trans.transformationType === "multiply" ||
+                  trans.transformationType === "divide") && (
+                  <input
+                    type="number"
+                    placeholder="Number value..."
+                    value={trans.numericValue ?? ""}
+                    onChange={(e) =>
+                      updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
+                    }
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                  />
+                )}
+
+                {trans.transformationType === "counter_range" && (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      placeholder="Start (e.g., 1 or {{startOption}})"
+                      value={trans.rangeStart ?? ""}
+                      onChange={(e) => updateTransformation(trans.id, { rangeStart: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="End (e.g., 10 or {{endOption}})"
+                      value={trans.endNumber ?? ""}
+                      onChange={(e) => updateTransformation(trans.id, { endNumber: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Increment (e.g., 1 or {{incOption}})"
+                      value={trans.rangeIncrement ?? "1"}
+                      onChange={(e) => updateTransformation(trans.id, { rangeIncrement: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    />
+                    <div className="text-xs text-gray-500">Generates rows from start to end</div>
+                  </div>
+                )}
+
+                <input
+                  type="text"
+                  placeholder="Output column name..."
+                  value={trans.outputColumnName}
+                  onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
+                />
+
+                <select
+                  value={trans.targetTableHandleId}
+                  onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                >
+                  <option value="">Select target table...</option>
+                  {outputTables.map((table) => (
+                    <option key={table.handleId} value={table.handleId}>
+                      {table.name || table.handleId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+
+          {transformations.length === 0 && (
+            <div className="text-xs text-gray-500 text-center py-2">No transformations yet</div>
+          )}
+        </div>
+      </div>
+
+      {/* Output Count */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">Number of Outputs:</label>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((num) => (
+            <label key={num} className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                checked={outputCount === num}
+                onChange={() => updateOutputCount(num)}
+                className="w-3 h-3"
+              />
+              <span className="text-xs text-white">{num}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Output Tables Configuration */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-2">Output Tables:</label>
+        <div
+          className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {outputTables.map((output, idx) => (
+            <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="text-xs text-purple-400 mb-1">Output {idx + 1} (Custom Schema)</div>
 
               <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
               <div
@@ -6110,6 +6490,11 @@ const nodeTypeSections: NodeTypeSection[] = [
         description: "Define custom table schema with column names and types",
       },
       {
+        type: "generaterowsschema",
+        label: "Generate Rows (Schema)",
+        description: "Generate rows using custom schema with counter range",
+      },
+      {
         type: "readtsvfrompack",
         label: "Read TSV From Pack",
         description: "Reads TSV file from pack using custom schema",
@@ -6201,6 +6586,46 @@ const executeGraphInBackend = async (
             }
           }
         }
+
+        // Handle flow option replacements in transformations array (for counter_range fields)
+        if ((nodeData as any).transformations && Array.isArray((nodeData as any).transformations)) {
+          const transformationFields = ["rangeStart", "endNumber", "rangeIncrement", "prefix", "suffix", "filterValue"];
+
+          (nodeData as any).transformations = (nodeData as any).transformations.map((trans: any) => {
+            let transModified = false;
+            const newTrans = { ...trans };
+
+            for (const fieldName of transformationFields) {
+              const fieldValue = trans[fieldName];
+              if (typeof fieldValue === "string" && fieldValue) {
+                let modifiedValue = fieldValue;
+
+                for (const option of flowOptions) {
+                  const placeholder = `{{${option.id}}}`;
+                  if (modifiedValue.includes(placeholder)) {
+                    modifiedValue = modifiedValue.replace(
+                      new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+                      String(option.value)
+                    );
+                    console.log(
+                      `Node ${node.id}: Replaced ${placeholder} with "${option.value}" in transformation.${fieldName}`
+                    );
+                    transModified = true;
+                  }
+                }
+
+                if (modifiedValue !== fieldValue) {
+                  newTrans[fieldName] = modifiedValue;
+                }
+              }
+            }
+
+            if (transModified) {
+              modified = true;
+            }
+            return transModified ? newTrans : trans;
+          });
+        }
       }
 
       return modified ? { ...node, data: nodeData } : node;
@@ -6208,8 +6633,8 @@ const executeGraphInBackend = async (
 
     // Convert nodes and edges to serialized format for backend
     const serializedNodes = processedNodes.map((node) => {
-      // Debug: Check generaterows node before serialization
-      if (node.type === "generaterows") {
+      // Debug: Check generaterows/generaterowsschema node before serialization
+      if (node.type === "generaterows" || node.type === "generaterowsschema") {
         console.log(`[SERIALIZE] GenerateRows node ${node.id} BEFORE serialization:`);
         console.log(`  transformationsLength: ${((node.data as any)?.transformations || []).length}`);
         console.log(`  transformations:`, JSON.stringify((node.data as any)?.transformations));
@@ -6300,9 +6725,9 @@ const executeGraphInBackend = async (
       };
     });
 
-    // Debug: Check what was serialized for generaterows nodes
+    // Debug: Check what was serialized for generaterows/generaterowsschema nodes
     serializedNodes.forEach((sNode) => {
-      if (sNode.type === "generaterows") {
+      if (sNode.type === "generaterows" || sNode.type === "generaterowsschema") {
         console.log(`[SERIALIZE] GenerateRows node ${sNode.id} AFTER serialization:`);
         console.log(`  transformationsLength: ${(sNode.data.transformations || []).length}`);
         console.log(`  transformations:`, JSON.stringify(sNode.data.transformations));
@@ -6392,6 +6817,7 @@ const reactFlowNodeTypes = {
   aggregatenested: AggregateNestedNode,
   groupby: GroupByNode,
   generaterows: GenerateRowsNode,
+  generaterowsschema: GenerateRowsSchemaNode,
   addnewcolumn: AddNewColumnNode,
   dumptotsv: DumpToTSVNode,
   getcountercolumn: GetCounterColumnNode,
@@ -6615,7 +7041,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
   // Fix Generate Rows nodes to merge columns from all incoming connections
   React.useEffect(() => {
-    const generateRowsNodes = nodes.filter((node) => node.type === "generaterows");
+    const generateRowsNodes = nodes.filter((node) => node.type === "generaterows" || node.type === "generaterowsschema");
     if (generateRowsNodes.length === 0) return;
 
     const updates: { nodeId: string; columnNames: string[] }[] = [];
@@ -6934,6 +7360,41 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
       }
+
+      // If a customschema node's schemaColumns changed, update connected generaterows/generaterowsschema nodes
+      if (schemaColumns !== undefined) {
+        const sourceNode = nodes.find((n) => n.id === nodeId);
+        if (sourceNode && sourceNode.type === "customschema") {
+          // Find all edges where this node is the source
+          const connectedEdges = edges.filter((e) => e.source === nodeId);
+          const columnNames = (schemaColumns || []).map((col: any) => col.name);
+
+          connectedEdges.forEach((edge) => {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (
+                  node.id === edge.target &&
+                  (node.type === "generaterows" || node.type === "generaterowsschema")
+                ) {
+                  console.log(
+                    `Updating ${node.type} node ${node.id} with custom schema columns:`,
+                    columnNames
+                  );
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      customSchemaColumns: columnNames,
+                      customSchemaData: schemaColumns,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+          });
+        }
+      }
     };
 
     window.addEventListener("nodeDataUpdate", handleNodeDataUpdate as EventListener);
@@ -7007,7 +7468,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         sourceOutputType = (sourceNode.data as unknown as ExtractTableNodeData).outputType;
       } else if (sourceNode.type === "aggregatenested" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as AggregateNestedNodeData).outputType;
-      } else if (sourceNode.type === "generaterows" && sourceNode.data) {
+      } else if ((sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as GenerateRowsNodeData).outputType;
       } else if (sourceNode.type === "addnewcolumn" && sourceNode.data) {
         sourceOutputType = (sourceNode.data as unknown as AddNewColumnNodeData).outputType;
@@ -7079,13 +7540,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       } else if (targetNode.type === "aggregatenested" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as AggregateNestedNodeData).inputType;
       } else if (targetNode.type === "generaterows" && targetNode.data) {
-        // GenerateRows has two inputs: input-table (TableSelection) and input-schema (CustomSchema)
-        const targetHandle = params.targetHandle;
-        if (targetHandle === "input-schema") {
-          targetInputType = "CustomSchema" as NodeEdgeTypes;
-        } else {
-          targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
-        }
+        // GenerateRows has one input: input-table (TableSelection)
+        targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
+      } else if (targetNode.type === "generaterowsschema" && targetNode.data) {
+        // GenerateRowsSchema only accepts CustomSchema input
+        targetInputType = "CustomSchema" as NodeEdgeTypes;
       } else if (targetNode.type === "addnewcolumn" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as AddNewColumnNodeData).inputType;
       } else if (targetNode.type === "groupby" && targetNode.data) {
@@ -7646,6 +8105,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "groupby" ||
               sourceNode.type === "deduplicate" ||
               sourceNode.type === "generaterows" ||
+              sourceNode.type === "generaterowsschema" ||
               sourceNode.type === "addnewcolumn" ||
               sourceNode.type === "customrowsinput" ||
               sourceNode.type === "readtsvfrompack"
@@ -7705,6 +8165,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode.type === "extracttable" ||
               sourceNode.type === "flattennested" ||
               sourceNode.type === "generaterows" ||
+              sourceNode.type === "generaterowsschema" ||
               sourceNode.type === "addnewcolumn" ||
               sourceNode.type === "customrowsinput" ||
               sourceNode.type === "readtsvfrompack")
@@ -7973,9 +8434,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
-        // Handle CustomSchema connecting to generaterows via input-schema handle
+        // Handle CustomSchema connecting to generaterows/generaterowsschema via input-schema handle
         if (
-          targetNode.type === "generaterows" &&
+          (targetNode.type === "generaterows" || targetNode.type === "generaterowsschema") &&
           sourceNode.type === "customschema" &&
           params.targetHandle === "input-schema"
         ) {
@@ -8019,6 +8480,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "groupby" ||
             sourceNode.type === "deduplicate" ||
             sourceNode.type === "generaterows" ||
+            sourceNode.type === "generaterowsschema" ||
             sourceNode.type === "addnewcolumn" ||
             sourceNode.type === "customrowsinput" ||
             sourceNode.type === "readtsvfrompack")
@@ -8084,7 +8546,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           (sourceNode.type === "lookup" ||
             sourceNode.type === "extracttable" ||
             sourceNode.type === "flattennested" ||
-            sourceNode.type === "generaterows")
+            sourceNode.type === "generaterows" ||
+            sourceNode.type === "generaterowsschema")
         ) {
           const sourceData = sourceNode.data as any;
 
@@ -8114,7 +8577,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           (sourceNode.type === "lookup" ||
             sourceNode.type === "extracttable" ||
             sourceNode.type === "flattennested" ||
-            sourceNode.type === "generaterows")
+            sourceNode.type === "generaterows" ||
+            sourceNode.type === "generaterowsschema")
         ) {
           const sourceData = sourceNode.data as any;
 
@@ -8290,10 +8754,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
   const onEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: Edge) => {
-      // Check if we're removing an edge connected to a generaterows node
+      // Check if we're removing an edge connected to a generaterows/generaterowsschema node
       const targetNode = nodesRef.current.find((n) => n.id === edge.target);
 
-      if (targetNode && targetNode.type === "generaterows") {
+      if (targetNode && (targetNode.type === "generaterows" || targetNode.type === "generaterowsschema")) {
         // Recalculate columns for generaterows node after removing this edge
         setEdges((eds) => {
           const newEdges = eds.filter((e) => e.id !== edge.id);
@@ -8900,6 +9364,34 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             DBNameToDBVersions: {},
           } as GenerateRowsNodeData,
         };
+      } else if (nodeData.type === "generaterowsschema") {
+        newNode = {
+          id: getNodeId(),
+          type: "generaterowsschema",
+          position,
+          data: {
+            label: nodeData.label,
+            type: nodeData.type,
+            sourceColumns: [],
+            transformations: [],
+            outputTables: [
+              {
+                handleId: "output-table1",
+                name: "Table 1",
+                existingTableName: "__custom_schema__",
+                columnMapping: [],
+              },
+            ],
+            inputType: "CustomSchema" as NodeEdgeTypes,
+            outputType: "TableSelection" as NodeEdgeTypes,
+            outputCount: 1,
+            columnNames: [],
+            connectedTableName: "",
+            DBNameToDBVersions: {},
+            customSchemaColumns: [],
+            customSchemaData: null,
+          } as GenerateRowsNodeData,
+        };
       } else if (nodeData.type === "addnewcolumn") {
         newNode = {
           id: getNodeId(),
@@ -9117,8 +9609,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
           console.log("ser type:", node.data.type);
 
-          // Debug: Check if generaterows node has transformations when loaded
-          if (node.type === "generaterows") {
+          // Debug: Check if generaterows/generaterowsschema node has transformations when loaded
+          if (node.type === "generaterows" || node.type === "generaterowsschema") {
             console.log(`[LOAD] GenerateRows node ${node.id} loaded with:`, {
               hasTransformations: !!(serializedNode.data as any)?.transformations,
               transformationsLength: ((serializedNode.data as any)?.transformations || []).length,
@@ -9156,7 +9648,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             node.data.type === "groupby" ||
             node.data.type === "deduplicate" ||
             node.data.type === "getcountercolumn" ||
-            node.data.type === "generaterows"
+            node.data.type === "generaterows" ||
+            node.data.type === "generaterowsschema"
           ) {
             console.log(
               "Setting DBNameToDBVersions with",
@@ -9213,7 +9706,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   node.type === "extracttable" ||
                   node.type === "aggregatenested" ||
                   node.type === "getcountercolumn" ||
-                  node.type === "generaterows"
+                  node.type === "generaterows" ||
+                  node.type === "generaterowsschema"
                 ) {
                   return {
                     ...node,
@@ -9770,8 +10264,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         return;
       }
 
-      // Debug: Check generaterows node data before execution
-      const generateRowsNodes = nodes.filter((n) => n.type === "generaterows");
+      // Debug: Check generaterows/generaterowsschema node data before execution
+      const generateRowsNodes = nodes.filter((n) => n.type === "generaterows" || n.type === "generaterowsschema");
       generateRowsNodes.forEach((grNode) => {
         console.log(`[PRE-EXECUTION] GenerateRows node ${grNode.id} data:`);
         console.log(`  transformationsLength: ${((grNode.data as any)?.transformations || []).length}`);
