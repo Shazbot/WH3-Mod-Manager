@@ -421,12 +421,16 @@ interface ColumnTransformation {
     | "multiply"
     | "divide"
     | "counter"
+    | "counter_range"
     | "filterequal"
     | "filternotequal";
   prefix?: string;
   suffix?: string;
   numericValue?: number;
   startNumber?: number; // For counter transformation
+  endNumber?: string; // For counter_range (string to support flow options)
+  rangeStart?: string; // For counter_range (string to support flow options)
+  rangeIncrement?: string; // For counter_range (string to support flow options)
   filterValue?: string; // For filter transformations
   outputColumnName: string;
   targetTableHandleId: string; // Which output table this transformation is for
@@ -3698,6 +3702,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
 const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   const [dedupeByColumns, setDedupeByColumns] = useState<string[]>(data.dedupeByColumns || []);
+  const [dedupeAgainstVanilla, setDedupeAgainstVanilla] = useState<boolean>(data.dedupeAgainstVanilla || false);
 
   // inputColumnNames: columns available from the connected node (for dropdowns)
   const [inputColumnNames, setInputColumnNames] = useState<string[]>([]);
@@ -3711,6 +3716,12 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       setDedupeByColumns(data.dedupeByColumns);
     }
   }, [data.dedupeByColumns]);
+
+  React.useEffect(() => {
+    if (data.dedupeAgainstVanilla !== undefined && data.dedupeAgainstVanilla !== dedupeAgainstVanilla) {
+      setDedupeAgainstVanilla(data.dedupeAgainstVanilla);
+    }
+  }, [data.dedupeAgainstVanilla]);
 
   // Extract INPUT column names from connected node (not the calculated output columns)
   React.useEffect(() => {
@@ -3744,6 +3755,15 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       })
     );
   }, [dedupeByColumns, id]);
+
+  // Sync dedupeAgainstVanilla to node data
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("nodeDataUpdate", {
+        detail: { nodeId: id, dedupeAgainstVanilla },
+      })
+    );
+  }, [dedupeAgainstVanilla, id]);
 
   // Sync inputColumnNames to node data whenever it changes (to persist when saved)
   React.useEffect(() => {
@@ -3785,6 +3805,10 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     );
   };
 
+  const handleDedupeAgainstVanillaChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setDedupeAgainstVanilla(event.target.checked);
+  };
+
   return (
     <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[300px] max-w-[400px]">
       <Handle
@@ -3822,6 +3846,22 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         <div className="text-xs text-gray-400 mt-1">Selected: {dedupeByColumns.length}</div>
       </div>
 
+      {/* Against Vanilla Data Checkbox */}
+      <div className="mb-3">
+        <label className="flex items-center text-xs text-gray-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={dedupeAgainstVanilla}
+            onChange={handleDedupeAgainstVanillaChange}
+            className="mr-2 w-4 h-4 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-400"
+          />
+          Against vanilla data
+        </label>
+        <div className="text-xs text-gray-500 mt-1 ml-6">
+          Remove rows that exist in vanilla, keep modded rows
+        </div>
+      </div>
+
       <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
 
       <Handle
@@ -3841,6 +3881,9 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   const [outputCount, setOutputCount] = useState<number>(data.outputCount || 2);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [tableNames, setTableNames] = useState<string[]>([]);
+  const [customSchemaColumns, setCustomSchemaColumns] = useState<string[]>(
+    (data as any).customSchemaColumns || []
+  );
 
   // Sync local state with prop changes
   React.useEffect(() => {
@@ -3852,6 +3895,13 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     if (data.outputTables !== undefined) setOutputTables(data.outputTables);
     if (data.outputCount !== undefined) setOutputCount(data.outputCount);
   }, [data.transformations, data.outputTables, data.outputCount, id]);
+
+  // Sync custom schema columns from connected CustomSchema node
+  React.useEffect(() => {
+    if ((data as any).customSchemaColumns) {
+      setCustomSchemaColumns((data as any).customSchemaColumns);
+    }
+  }, [(data as any).customSchemaColumns]);
 
   // Note: columnMapping is no longer used - transformations are automatically included
   // based on their targetTableHandleId. Keeping the field for backward compatibility.
@@ -3983,7 +4033,22 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
   const getAvailableStaticColumns = (outputIndex: number): string[] => {
     const output = outputTables[outputIndex];
-    if (!output?.existingTableName || !data.DBNameToDBVersions) return [];
+    if (!output?.existingTableName) return [];
+
+    // Handle custom schema case
+    if (output.existingTableName === "__custom_schema__") {
+      // Get transformed column names for this table
+      const transformedColumns = new Set(
+        transformations
+          .filter((trans) => trans.targetTableHandleId === output.handleId)
+          .map((trans) => trans.outputColumnName)
+      );
+
+      // Return custom schema columns that are NOT transformed
+      return customSchemaColumns.filter((col: string) => !transformedColumns.has(col));
+    }
+
+    if (!data.DBNameToDBVersions) return [];
 
     const versions = data.DBNameToDBVersions[output.existingTableName];
     if (!versions || versions.length === 0) return [];
@@ -4005,14 +4070,30 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
   return (
     <div className="bg-gray-700 border-2 border-green-600 rounded-lg p-4 min-w-[300px] max-w-[400px]">
+      {/* Main TableSelection input */}
       <Handle
         type="target"
         position={Position.Left}
+        id="input-table"
         className="w-3 h-3 bg-orange-500"
+        style={{ top: "30%" }}
         data-input-type="TableSelection"
+      />
+      {/* Custom Schema input */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="input-schema"
+        className="w-3 h-3 bg-purple-500"
+        style={{ top: "70%" }}
+        data-input-type="CustomSchema"
       />
 
       <div className="text-sm font-bold text-white mb-3">Generate Rows</div>
+      <div className="text-xs text-gray-400 mb-2">
+        <span className="text-orange-400">●</span> Table &nbsp;
+        <span className="text-purple-400">●</span> Schema (optional)
+      </div>
 
       {/* Transformations Section */}
       <div className="mb-3">
@@ -4114,6 +4195,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                         | "multiply"
                         | "divide"
                         | "counter"
+                        | "counter_range"
                         | "filterequal"
                         | "filternotequal",
                     })
@@ -4128,6 +4210,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   <option value="multiply">Multiply (*)</option>
                   <option value="divide">Divide (/)</option>
                   <option value="counter">Counter (unique sequential)</option>
+                  <option value="counter_range">Counter (custom range)</option>
                   <option value="filterequal">Filter Rows: Equal (skip if equal)</option>
                   <option value="filternotequal">Filter Rows: Not Equal (skip if not equal)</option>
                 </select>
@@ -4177,6 +4260,33 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                     }
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                   />
+                )}
+
+                {trans.transformationType === "counter_range" && (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      placeholder="Start (e.g., 1 or {{startOption}})"
+                      value={trans.rangeStart ?? ""}
+                      onChange={(e) => updateTransformation(trans.id, { rangeStart: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="End (e.g., 10 or {{endOption}})"
+                      value={trans.endNumber ?? ""}
+                      onChange={(e) => updateTransformation(trans.id, { endNumber: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Increment (e.g., 1 or {{incOption}})"
+                      value={trans.rangeIncrement ?? "1"}
+                      onChange={(e) => updateTransformation(trans.id, { rangeIncrement: e.target.value })}
+                      className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    />
+                    <div className="text-xs text-gray-500">Generates rows from start to end</div>
+                  </div>
                 )}
 
                 {(trans.transformationType === "filterequal" ||
@@ -4255,6 +4365,11 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               >
                 <option value="">Select table schema...</option>
+                {customSchemaColumns.length > 0 && (
+                  <option value="__custom_schema__" className="text-purple-400">
+                    Custom Schema (connected)
+                  </option>
+                )}
                 {tableNames.map((tableName) => (
                   <option key={tableName} value={tableName}>
                     {tableName}
@@ -6179,6 +6294,8 @@ const executeGraphInBackend = async (
           openInWindows: (node.data as any)?.openInWindows
             ? Boolean((node.data as any).openInWindows)
             : false,
+          customSchemaData: (node.data as any)?.customSchemaData || null,
+          customSchemaColumns: (node.data as any)?.customSchemaColumns || [],
         },
       };
     });
@@ -6191,6 +6308,7 @@ const executeGraphInBackend = async (
         console.log(`  transformations:`, JSON.stringify(sNode.data.transformations));
         console.log(`  outputTablesLength: ${(sNode.data.outputTables || []).length}`);
         console.log(`  outputTables:`, JSON.stringify(sNode.data.outputTables));
+        console.log(`  customSchemaData:`, JSON.stringify(sNode.data.customSchemaData));
       }
     });
 
@@ -6591,6 +6709,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         selectedColumn2,
         columnNames,
         dedupeByColumns,
+        dedupeAgainstVanilla,
         inputColumnNames,
         groupedTextSelection,
         outputType,
@@ -6632,6 +6751,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         customRows,
         tableName,
         openInWindows,
+        customSchemaColumns,
+        customSchemaData,
       } = event.detail;
       setNodes((nds) =>
         nds.map((node) => {
@@ -6698,6 +6819,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 tableName: tableName !== undefined ? tableName : node.data.tableName,
                 openInWindows: openInWindows !== undefined ? openInWindows : node.data.openInWindows,
                 dedupeByColumns: dedupeByColumns !== undefined ? dedupeByColumns : node.data.dedupeByColumns,
+                dedupeAgainstVanilla:
+                  dedupeAgainstVanilla !== undefined ? dedupeAgainstVanilla : node.data.dedupeAgainstVanilla,
+                customSchemaColumns:
+                  customSchemaColumns !== undefined ? customSchemaColumns : node.data.customSchemaColumns,
+                customSchemaData:
+                  customSchemaData !== undefined ? customSchemaData : node.data.customSchemaData,
               },
             };
           }
@@ -6952,7 +7079,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       } else if (targetNode.type === "aggregatenested" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as AggregateNestedNodeData).inputType;
       } else if (targetNode.type === "generaterows" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
+        // GenerateRows has two inputs: input-table (TableSelection) and input-schema (CustomSchema)
+        const targetHandle = params.targetHandle;
+        if (targetHandle === "input-schema") {
+          targetInputType = "CustomSchema" as NodeEdgeTypes;
+        } else {
+          targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
+        }
       } else if (targetNode.type === "addnewcolumn" && targetNode.data) {
         targetInputType = (targetNode.data as unknown as AddNewColumnNodeData).inputType;
       } else if (targetNode.type === "groupby" && targetNode.data) {
@@ -7840,6 +7973,32 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
+        // Handle CustomSchema connecting to generaterows via input-schema handle
+        if (
+          targetNode.type === "generaterows" &&
+          sourceNode.type === "customschema" &&
+          params.targetHandle === "input-schema"
+        ) {
+          const sourceData = sourceNode.data as any;
+          const schemaColumns = (sourceData.schemaColumns || []).map((col: any) => col.name);
+
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === params.target) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    customSchemaColumns: schemaColumns,
+                    customSchemaData: sourceData.schemaColumns, // Store full schema data for execution
+                  },
+                };
+              }
+              return node;
+            })
+          );
+        }
+
         // Update addnewcolumn nodes when connected to any table source
         if (
           (targetNode.type === "addnewcolumn" ||
@@ -8709,6 +8868,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             label: nodeData.label,
             type: nodeData.type,
             dedupeByColumns: [],
+            dedupeAgainstVanilla: false,
             inputType: "TableSelection" as NodeEdgeTypes,
             outputType: "TableSelection" as NodeEdgeTypes,
             columnNames: [],
@@ -8808,6 +8968,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           selectedColumn2: String((node.data as any)?.selectedColumn2 || ""),
           columnNames: (node.data as any)?.columnNames || [],
           dedupeByColumns: (node.data as any)?.dedupeByColumns || [],
+          dedupeAgainstVanilla: (node.data as any)?.dedupeAgainstVanilla || false,
           connectedTableName: String((node.data as any)?.connectedTableName || ""),
           outputType: (node.data as any)?.outputType,
           inputType: (node.data as any)?.inputType,
@@ -8852,6 +9013,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           sourceInputColumns: (node.data as any)?.sourceInputColumns || null,
           indexedTableColumns: (node.data as any)?.indexedTableColumns || null,
           openInWindows: (node.data as any)?.openInWindows,
+          customSchemaColumns: (node.data as any)?.customSchemaColumns || [],
+          customSchemaData: (node.data as any)?.customSchemaData || null,
         },
       };
 
@@ -8963,6 +9126,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               outputTablesLength: ((serializedNode.data as any)?.outputTables || []).length,
               transformations: (serializedNode.data as any)?.transformations,
               outputTables: (serializedNode.data as any)?.outputTables,
+              hasCustomSchemaData: !!(serializedNode.data as any)?.customSchemaData,
+              customSchemaData: (serializedNode.data as any)?.customSchemaData,
             });
           }
 
