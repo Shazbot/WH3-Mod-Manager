@@ -7287,7 +7287,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         node.type === "groupbycolumns" ||
                         node.type === "filter" ||
                         node.type === "deduplicate" ||
-                        node.type === "referencelookup")
+                        node.type === "referencelookup" ||
+                        node.type === "generaterows" ||
+                        node.type === "generaterowsschema")
                     ) {
                       console.log(
                         `Updating ${node.type} node ${node.id} with reference table: ${selectedReferenceTable}`
@@ -7298,6 +7300,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                           ...node.data,
                           connectedTableName: selectedReferenceTable,
                           columnNames: fieldNames,
+                          inputColumnNames: fieldNames, // Also update inputColumnNames for generaterows
                         },
                       };
                     }
@@ -7339,7 +7342,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         node.type === "filter" ||
                         node.type === "deduplicate" ||
                         node.type === "referencelookup" ||
-                        node.type === "reversereferencelookup")
+                        node.type === "reversereferencelookup" ||
+                        node.type === "generaterows" ||
+                        node.type === "generaterowsschema")
                     ) {
                       console.log(
                         `Updating ${node.type} node ${node.id} with reverse table: ${selectedReverseTable}`
@@ -7350,6 +7355,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                           ...node.data,
                           connectedTableName: selectedReverseTable,
                           columnNames: fieldNames,
+                          inputColumnNames: fieldNames, // Also update inputColumnNames for generaterows
                         },
                       };
                     }
@@ -8410,10 +8416,36 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   }
 
                   // Add columns from the NEW source being connected
+                  // For reference/reverse lookup nodes, get columns from the selected table, not the input table
                   let newSourceColumns = sourceData.columnNames || [];
-                  if (newSourceColumns.length === 0 && hasSchemaColumns) {
+                  let tableNameToUse = sourceData.connectedTableName;
+
+                  if (sourceNode.type === "reversereferencelookup" && sourceData.selectedReverseTable) {
+                    tableNameToUse = sourceData.selectedReverseTable;
+                    // Get columns from the selected reverse table
+                    if (DBNameToDBVersions && DBNameToDBVersions[tableNameToUse]) {
+                      const tableVersions = DBNameToDBVersions[tableNameToUse];
+                      if (tableVersions && tableVersions.length > 0) {
+                        const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                        const tableFields = selectedVersion?.fields || [];
+                        newSourceColumns = tableFields.map((field: any) => field.name);
+                      }
+                    }
+                  } else if (sourceNode.type === "referencelookup" && sourceData.selectedReferenceTable) {
+                    tableNameToUse = sourceData.selectedReferenceTable;
+                    // Get columns from the selected reference table
+                    if (DBNameToDBVersions && DBNameToDBVersions[tableNameToUse]) {
+                      const tableVersions = DBNameToDBVersions[tableNameToUse];
+                      if (tableVersions && tableVersions.length > 0) {
+                        const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                        const tableFields = selectedVersion?.fields || [];
+                        newSourceColumns = tableFields.map((field: any) => field.name);
+                      }
+                    }
+                  } else if (newSourceColumns.length === 0 && hasSchemaColumns) {
                     newSourceColumns = (sourceData.schemaColumns || []).map((col: any) => col.name);
                   }
+
                   newSourceColumns.forEach((col: string) => allSourceColumns.add(col));
 
                   return {
@@ -8422,7 +8454,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       ...node.data,
                       columnNames: Array.from(allSourceColumns),
                       inputColumnNames: Array.from(allSourceColumns), // Preserve input columns
-                      connectedTableName: sourceData.connectedTableName,
+                      connectedTableName: tableNameToUse,
                       DBNameToDBVersions: hasSchemaColumns
                         ? DBNameToDBVersions
                         : sourceData.DBNameToDBVersions,
