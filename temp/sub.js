@@ -47,7 +47,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-var steamworks = require("steamworks.js");
+var steamworks = require("./../steamworks");
 var fs = require("fs");
 if (process.argv[3] == "justRun") {
     console.log("justRun");
@@ -117,21 +117,92 @@ if (process.argv[3] == "unsubscribe") {
         process.exit();
     }, 200);
 }
-if (process.argv[3] == "getItems") {
-    console.log("getItems");
+var getAuthors = function (client, ids, cb) {
+    if (!process.send) {
+        process.exit();
+    }
+    var authorsMap = new Map();
+    var unknownAuthors = [];
+    for (var _i = 0, ids_1 = ids; _i < ids_1.length; _i++) {
+        var authorId = ids_1[_i];
+        // Method 1: Use the convenience function (requests info and returns current name)
+        var authorName = client.friends.getUserName(authorId);
+        // If the name is "[unknown]", wait a bit for the download and try again
+        if (authorName === "[unknown]") {
+            unknownAuthors.push(authorId);
+        }
+        else {
+            authorsMap.set(authorId.toString(), authorName);
+        }
+    }
+    setTimeout(function () {
+        for (var _i = 0, unknownAuthors_1 = unknownAuthors; _i < unknownAuthors_1.length; _i++) {
+            var authorId = unknownAuthors_1[_i];
+            var authorName = client.friends.getFriendPersonaName(authorId);
+            authorsMap.set(authorId.toString(), authorName);
+        }
+        cb(authorsMap);
+    }, 1500);
+};
+if (process.argv[3] == "getAuthors") {
+    console.log("getAuthors");
     var ids = process.argv[4].split(",").map(function (id) { return BigInt(id); });
     var client = steamworks.init(Number(process.argv[2]));
+    getAuthors(client, ids, function (authorsMap) {
+        if (process.send)
+            process.send(authorsMap);
+        setTimeout(function () {
+            process.exit();
+        }, 200);
+    });
+}
+var getDependencies = function (client, ids, cb) {
+    if (!process.send) {
+        process.exit();
+    }
+    var dependenciesMap = new Map();
+    var promises = ids.map(function (id) {
+        return new Promise(function (resolve, reject) {
+            client.workshop
+                .getItemDependencies(id)
+                .then(function (dependencyIds) {
+                dependenciesMap.set(id.toString(), dependencyIds.map(function (depId) { return depId.toString(); }));
+                resolve();
+            })
+                .catch(function (e) {
+                fs.appendFileSync("sublog.txt", "ERROR:");
+                fs.appendFileSync("sublog.txt", e.toString());
+            });
+        });
+    });
+    Promise.allSettled(promises).then(function () {
+        cb(dependenciesMap);
+    });
+};
+if (process.argv[3] == "getDependencies") {
+    console.log("getDependencies");
+    var ids = process.argv[4].split(",").map(function (id) { return BigInt(id); });
+    var client = steamworks.init(Number(process.argv[2]));
+    getDependencies(client, ids, function (dependenciesMap) {
+        if (process.send)
+            process.send(dependenciesMap);
+        setTimeout(function () {
+            process.exit();
+        }, 200);
+    });
+}
+var getItems = function (client, ids, cb) {
     if (!process.send) {
         process.exit();
     }
     client.workshop
         .getItems(ids)
         .then(function (data) {
-        if (process.send)
-            process.send(data.items
-                .filter(function (data) { return data; })
-                .map(function (data) {
-                return data && __assign(__assign({}, data), { owner: __assign(__assign({}, data.owner), { steamId64: data === null || data === void 0 ? void 0 : data.owner.steamId64.toString() }), publishedFileId: data.publishedFileId.toString(), statistics: {
+        var newData = data.items
+            .filter(function (data) { return data; })
+            .map(function (data) {
+            return data &&
+                __assign(__assign({}, data), { owner: __assign(__assign({}, data.owner), { steamId64: data === null || data === void 0 ? void 0 : data.owner.steamId64.toString() }), publishedFileId: data.publishedFileId.toString(), statistics: {
                         numSubscriptions: data.statistics.numSubscriptions
                             ? data.statistics.numSubscriptions.toString()
                             : "",
@@ -164,30 +235,52 @@ if (process.argv[3] == "getItems") {
                             ? data.statistics.numPlaytimeSessionsDuringTimePeriod.toString()
                             : "",
                     } });
-            }));
-        setTimeout(function () {
-            process.exit();
-        }, 200);
+        });
+        cb(newData);
     })
         .catch(function (e) {
         fs.appendFileSync("sublog.txt", "ERROR:");
         fs.appendFileSync("sublog.txt", e.toString());
         process.exit();
     });
+};
+if (process.argv[3] == "getModsData") {
+    console.log("getModsData");
+    var ids_2 = process.argv[4].split(",").map(function (id) { return BigInt(id); });
+    var client_3 = steamworks.init(Number(process.argv[2]));
+    getItems(client_3, ids_2, function (data) {
+        getDependencies(client_3, ids_2, function (dependenciesMap) {
+            var dedupedAuthorIds = Array.from(new Set(data.map(function (data) { return data.owner.steamId64; }))).map(function (id) {
+                return BigInt(id);
+            });
+            getAuthors(client_3, dedupedAuthorIds, function (authorsMap) {
+                var modsData = {
+                    mods: data,
+                    dependencies: Object.fromEntries(dependenciesMap),
+                    authors: Object.fromEntries(authorsMap),
+                };
+                if (process.send)
+                    process.send(modsData);
+                setTimeout(function () {
+                    process.exit();
+                }, 200);
+            });
+        });
+    });
 }
 if (process.argv[3] == "checkState") {
     console.log("checkState");
     var ids = process.argv[4].split(";"); //"2856936614";
-    var client_3 = steamworks.init(Number(process.argv[2]));
+    var client_4 = steamworks.init(Number(process.argv[2]));
     var idsThatNeedUpdates = ids
-        .map(function (id) { return [id, client_3.workshop.state(BigInt(id))]; })
+        .map(function (id) { return [id, client_4.workshop.state(BigInt(id))]; })
         .filter(function (num) { return num[1] & 8; })
         .map(function (num) { return num[0]; });
     idsThatNeedUpdates.forEach(function (id) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    client_3.workshop.download(BigInt(id), false);
+                    client_4.workshop.download(BigInt(id), false);
                     return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, 100); })];
                 case 1:
                     _a.sent();
@@ -199,6 +292,18 @@ if (process.argv[3] == "checkState") {
     setTimeout(function () {
         process.exit();
     }, timeoutValue);
+}
+if (process.argv[3] == "getItems") {
+    console.log("getItems");
+    var ids = process.argv[4].split(",").map(function (id) { return BigInt(id); });
+    var client = steamworks.init(Number(process.argv[2]));
+    getItems(client, ids, function (data) {
+        if (process.send)
+            process.send(data);
+        setTimeout(function () {
+            process.exit();
+        }, 200);
+    });
 }
 if (process.argv[3] == "upload") {
     console.log("upload");
@@ -232,7 +337,7 @@ if (process.argv[3] == "update") {
     var previewPath = process.argv[6];
     var modTags = process.argv[7];
     var modTitle = process.argv.length > 8 && process.argv[8];
-    var client_4 = steamworks.init(Number(process.argv[2]));
+    var client_5 = steamworks.init(Number(process.argv[2]));
     fs.appendFileSync("sublog.txt", modTags.toString());
     console.log(id_1);
     console.log(path);
@@ -240,14 +345,14 @@ if (process.argv[3] == "update") {
     if (modTitle) {
         updateData.title = modTitle;
     }
-    client_4.workshop.updateItemWithCallback(BigInt(id_1), updateData, Number(process.argv[2]), function (data) {
+    client_5.workshop.updateItemWithCallback(BigInt(id_1), updateData, Number(process.argv[2]), function (data) {
         if (process.send)
             process.send({
                 type: "success",
                 itemId: Number(data.itemId),
                 needsToAcceptAgreement: data.needsToAcceptAgreement,
             });
-        client_4.workshop.download(BigInt(id_1), false);
+        client_5.workshop.download(BigInt(id_1), false);
         setTimeout(function () {
             process.exit();
         }, 300);
@@ -272,8 +377,8 @@ if (process.argv[3] == "update") {
 if (process.argv[3] == "sub") {
     console.log("SUB");
     var ids = process.argv[4].split(";"); //"2856936614";
-    var client_5 = steamworks.init(Number(process.argv[2]));
-    var promises = ids.map(function (id) { return client_5.workshop.subscribe(BigInt(id)); });
+    var client_6 = steamworks.init(Number(process.argv[2]));
+    var promises = ids.map(function (id) { return client_6.workshop.subscribe(BigInt(id)); });
     Promise.allSettled(promises).then(function () {
         setTimeout(function () {
             if (process.send)

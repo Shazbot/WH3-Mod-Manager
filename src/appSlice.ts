@@ -111,6 +111,7 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
           existingMod.categories = mod.categories;
           if (mod.humanName !== "") existingMod.humanName = mod.humanName;
           if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
+          if (mod.author != "") existingMod.author = mod.author;
         }
       });
   }
@@ -1225,9 +1226,14 @@ const appSlice = createSlice({
       console.log("APPSLICE selectDBTable:", action.payload);
       state.currentDBTableSelection = action.payload;
     },
-    selectFlowFile: (state: AppState, action: PayloadAction<string | undefined>) => {
-      console.log("APPSLICE flow file:", action.payload);
-      state.currentFlowFileSelection = action.payload;
+    selectFlowFile: (
+      state: AppState,
+      action: PayloadAction<{ flowFile: string | undefined; packPath?: string } | undefined>
+    ) => {
+      const payload = action.payload;
+      console.log("APPSLICE flow file:", payload?.flowFile, "pack:", payload?.packPath);
+      state.currentFlowFileSelection = payload?.flowFile;
+      state.currentFlowFilePackPath = payload?.packPath;
     },
     setCurrentTab: (state: AppState, action: PayloadAction<MainWindowTab>) => {
       const tabType = action.payload;

@@ -14,6 +14,7 @@ import * as nodePath from "path";
 import { version } from "react";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
 import appData, { GameFolderPaths } from "./appData";
+import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
 import { packDataStore } from "./components/viewer/packDataStore";
 import i18n from "./configs/i18next.config";
 import { buildDBReferenceTree } from "./DBClone";
@@ -66,6 +67,7 @@ import {
 } from "./skills";
 import {
   gameToGameName,
+  gameToPackWithDBTablesName,
   gameToProcessName,
   gameToSteamId,
   gameToSupportedGameOptions,
@@ -82,6 +84,7 @@ import { collator } from "./utility/packFileSorting";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie from "./utility/trie";
 import hash from "object-hash";
+import { Md10K } from "react-icons/md";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -239,14 +242,49 @@ export const getLocsTrie = (pack: Pack) => {
   return trie;
 };
 
+const matchDBFileRegex = /^db\\(.*?)\\/;
+const gameToDefaultTableVersions = {} as Record<SupportedGames, Record<string, number>>;
+
+export const getDefaultTableVersions = async () => {
+  const cachedGameToDefaultTableVersions = gameToDefaultTableVersions[appData.currentGame];
+  if (cachedGameToDefaultTableVersions) return cachedGameToDefaultTableVersions;
+
+  const dbPackName = gameToPackWithDBTablesName[appData.currentGame];
+  const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+  if (!dataFolder) return;
+
+  const dbPackPath = nodePath.join(dataFolder, dbPackName);
+
+  let pack = appData.packsData.find((packData) => packData.path == dbPackPath);
+  if (!pack || (pack && pack.packedFiles.length == 0)) {
+    pack = await readPack(dbPackPath, { skipParsingTables: true });
+  }
+
+  if (!pack) return;
+
+  const dataPackData = await readPack(dbPackPath, {
+    tablesToRead: pack.packedFiles.filter((pf) => pf.name.startsWith("db\\")).map((pf) => pf.name),
+  });
+
+  const tableNameToVersion = {} as Record<string, number>;
+  for (const packedFile of dataPackData.packedFiles.filter((pf) => pf.name.startsWith("db\\"))) {
+    const dbNameMatch = packedFile.name.match(matchDBFileRegex);
+    if (dbNameMatch != null && dbNameMatch.length > 0) {
+      if (packedFile.version != undefined) tableNameToVersion[dbNameMatch[1]] = packedFile.version;
+    }
+  }
+
+  gameToDefaultTableVersions[appData.currentGame] = tableNameToVersion;
+
+  return tableNameToVersion;
+};
+
 export const readModsByPath = async (
   modPaths: string[],
   packReadingOptions: PackReadingOptions,
   skipCollisionCheck = true
 ) => {
-  const { skipParsingTables, tablesToRead, readLocs, readScripts, filesToRead } = packReadingOptions;
-
-  console.log("readModsByPath:", modPaths);
+  console.log("readModsByPath:", modPaths, "packReadingOptions:", packReadingOptions);
   // console.log("readModsByPath skipParsingTables:", skipParsingTables);
   // console.log("readModsByPath skipCollisionCheck:", skipCollisionCheck);
   // if (!skipParsingTables) {
@@ -268,13 +306,7 @@ export const readModsByPath = async (
     // console.log("READING ", modPath, readLocs);
     appData.currentlyReadingModPaths.push(modPath);
     windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
-    const newPack = await readPack(modPath, {
-      skipParsingTables,
-      readScripts,
-      tablesToRead,
-      filesToRead,
-      readLocs,
-    });
+    const newPack = await readPack(modPath, packReadingOptions);
     windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
     appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
     // if (appData.packsData.every((pack) => pack.path != modPath)) {
@@ -1144,14 +1176,14 @@ export const registerIpcMainListeners = (
       while (Date.now() - timeStartedFetchingSubbedIds < 5000 && appData.subscribedModIds.length == 0) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      console.log("before subcription filter:", mods.length);
+      console.log("before subscription filter:", mods.length);
       // for (const mod of mods) {
       //   if (!mod.isInData && !appData.subscribedModIds.includes(mod.workshopId)) console.log(mod.workshopId);
       // }
       if (appData.subscribedModIds.length != 0) {
         mods = mods.filter((mod) => mod.isInData || appData.subscribedModIds.includes(mod.workshopId));
       }
-      console.log("after subcription filter:", mods.length);
+      console.log("after subscription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
 
       mods.forEach(async (mod) => {
@@ -1462,7 +1494,7 @@ export const registerIpcMainListeners = (
   };
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
-    if (isDev) return;
+    // if (isDev) return;
 
     fetchModData(
       ids.filter((id) => id !== ""),
@@ -1580,6 +1612,8 @@ export const registerIpcMainListeners = (
           appData.lastGetCustomizableMods = modPaths;
           return;
         }
+      } else {
+        newPaths.push(...modPaths);
       }
 
       const pathToPack = {} as Record<string, Pack>;
@@ -1772,24 +1806,8 @@ export const registerIpcMainListeners = (
     async (
       event,
       graphExecutionRequest: {
-        nodes: Array<{
-          id: string;
-          type: FlowNodeType;
-          data: {
-            label: string;
-            type: FlowNodeType;
-            textValue?: string;
-            outputType?: string;
-            inputType?: string;
-          };
-        }>;
-        connections: Array<{
-          id: string;
-          sourceId: string;
-          targetId: string;
-          sourceType?: string;
-          targetType?: string;
-        }>;
+        nodes: SerializedNode[];
+        connections: SerializedConnection[];
       }
     ): Promise<{
       success: boolean;
@@ -1804,7 +1822,23 @@ export const registerIpcMainListeners = (
           `Executing node graph with ${graphExecutionRequest.nodes.length} nodes and ${graphExecutionRequest.connections.length} connections`
         );
 
-        console.log("graphExecutionRequest:", graphExecutionRequest);
+        // Debug: Check generaterows nodes in the IPC request
+        graphExecutionRequest.nodes.forEach((node) => {
+          if (node.type === "generaterows") {
+            console.log(`[IPC-RECEIVED] GenerateRows node ${node.id}:`);
+            console.log(`  transformationsLength: ${((node.data as any).transformations || []).length}`);
+            console.log(`  transformations:`, JSON.stringify((node.data as any).transformations));
+            console.log(`  outputTablesLength: ${((node.data as any).outputTables || []).length}`);
+            console.log(`  outputTables:`, JSON.stringify((node.data as any).outputTables));
+            console.log(`  has DBNameToDBVersions: ${!!(node.data as any).DBNameToDBVersions}`);
+          }
+        });
+
+        console.log("graphExecutionRequest summary:", {
+          nodeCount: graphExecutionRequest.nodes.length,
+          connectionCount: graphExecutionRequest.connections.length,
+          nodeTypes: graphExecutionRequest.nodes.map((n) => ({ id: n.id, type: n.type })),
+        });
 
         // Import graph execution function
         const { executeNodeGraph } = await import("./nodeGraphExecutor");
@@ -1910,21 +1944,41 @@ export const registerIpcMainListeners = (
         return firstPf.name.localeCompare(secondPf.name);
       });
 
-      // Generate new pack path
-      const packDir = nodePath.dirname(packPath);
-      const packName = nodePath.basename(packPath, ".pack");
-      const savePath = nodePath.join(packDir, `${packName}_modified.pack`);
+      // Try to replace the existing pack
+      let savePath = packPath;
+      let replacedOriginal = true;
 
-      // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
-      await writePack(sortedFilesToSave, savePath, pack, true);
+      try {
+        // Write the pack with unsaved files appended/overwritten
+        await writePack(sortedFilesToSave, savePath, pack, true);
+        console.log(`Pack saved to: ${savePath}`);
+      } catch (error) {
+        // If we can't overwrite (file in use/locked), save as _modified instead
+        if (error instanceof Error && error.message.includes("EPERM")) {
+          console.log("Cannot overwrite pack (file in use), saving as _modified instead");
+          const packDir = nodePath.dirname(packPath);
+          const packName = nodePath.basename(packPath, ".pack");
+          savePath = nodePath.join(packDir, `${packName}_modified.pack`);
+          replacedOriginal = false;
 
-      console.log(`Pack saved to: ${savePath}`);
+          await writePack(sortedFilesToSave, savePath, pack, true);
+          console.log(`Pack saved to: ${savePath}`);
+        } else {
+          throw error;
+        }
+      }
 
       // Clear unsaved files for this pack
       delete appData.unsavedPacksData[packPath];
       windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
 
-      return { success: true, savedPath: savePath };
+      return {
+        success: true,
+        savedPath: savePath,
+        warning: !replacedOriginal
+          ? "Could not replace original pack (file in use). Saved as _modified.pack instead."
+          : undefined,
+      };
     } catch (error) {
       console.error("Error saving pack with unsaved files:", error);
       return {
@@ -2643,9 +2697,7 @@ export const registerIpcMainListeners = (
     }
   });
 
-  ipcMain.on("terminateGame", () => {
-    console.log(`Requesting terminate game`);
-
+  const terminateCurrentGame = () => {
     try {
       exec(`taskkill /f /t /im ${gameToProcessName[appData.currentGame]}`, (error) => {
         if (error) console.log("taskkill error:", error);
@@ -2653,6 +2705,10 @@ export const registerIpcMainListeners = (
     } catch (e) {
       console.log("taskkill error:", e);
     }
+  };
+
+  ipcMain.on("terminateGame", () => {
+    terminateCurrentGame();
   });
 
   const dbTableToString = (dbTable: DBTable) => {
@@ -3656,6 +3712,10 @@ export const registerIpcMainListeners = (
     return DBNameToDBVersions[appData.currentGame];
   });
 
+  ipcMain.handle("getDefaultTableVersions", async (event) => {
+    return await getDefaultTableVersions();
+  });
+
   ipcMain.on(
     "startGame",
     async (
@@ -3760,6 +3820,9 @@ export const registerIpcMainListeners = (
                   startTime: Date.now(),
                 } as Toast);
               }
+              if (i == 9) {
+                terminateCurrentGame();
+              }
             }
           }
 
@@ -3818,6 +3881,25 @@ export const registerIpcMainListeners = (
 
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
 
+        for (const packPath of sortedMods.map((mod) => mod.path)) {
+          const pack = appData.packsData.find((packData) => packData.path == packPath);
+          if (!pack || (pack && pack.packedFiles.length == 0)) {
+            await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
+          }
+        }
+
+        for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
+          const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
+          if (mod) {
+            console.log("FOUND MOD TO READ FOR FLOWS:", mod.name);
+            const pack = appData.packsData.find((packData) => packData.path == mod.path);
+            if (!pack || (pack && pack.packedFiles.length == 0)) {
+              console.log("need to read pack for flows:", mod.name);
+              await readModsByPath([mod.path], { readFlows: true, skipParsingTables: true });
+            }
+          }
+        }
+
         // Execute flows for enabled mods
         const enabledModsWithFlows = sortedMods.filter((iterMod) => {
           const pack = appData.packsData.find((packData) => packData.path == iterMod.path);
@@ -3828,8 +3910,21 @@ export const registerIpcMainListeners = (
         if (enabledModsWithFlows.length > 0) {
           console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
 
-          // Create whmm_flows directory if needed
-          const whmmFlowsPath = nodePath.join(dataFolder as string, "whmm_flows");
+          const whmmFlowsPath = nodePath.join(gamePath as string, "whmm_flows");
+          // Clear whmm_flows directory
+          try {
+            if (fsExtra.existsSync(whmmFlowsPath)) {
+              console.log(`DELETING whmm_flows directory: ${whmmFlowsPath}`);
+              fsExtra.removeSync(whmmFlowsPath);
+              console.log("Successfully cleared whmm_flows");
+            }
+          } catch (error) {
+            console.log(
+              `Error clearing whmm_flows: ${error instanceof Error ? error.message : "Unknown error"}`
+            );
+          }
+
+          // Create whmm_flows directory
           if (!fsExtra.existsSync(whmmFlowsPath)) {
             fsExtra.mkdirSync(whmmFlowsPath, { recursive: true });
           }
@@ -3840,28 +3935,43 @@ export const registerIpcMainListeners = (
             "/whmm_overwrites/"
           );
 
-          for (const pack of enabledModsWithFlows) {
-            // Check if this pack has overwrites - if so, use the overwritten pack
-            const hasOverwrites = enabledModsWithOverwrites.some(
-              (overwritePack) => overwritePack.path === pack.path
-            );
-            const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
+          if (enabledModsWithFlows.length > 0) {
+            mainWindow?.webContents.send("addToast", {
+              type: "info",
+              messages: ["Processing flows..."],
+              startTime: Date.now(),
+            } as Toast);
 
+            // Reset counter tracking once at the start of game launch
+            // This ensures counters are maintained across all flows in all packs
+            const { resetCounterTracking } = await import("./nodeExecutor");
+            resetCounterTracking();
             console.log(
-              `Executing flows for pack: ${pack.name} (using ${
-                hasOverwrites ? "overwritten" : "original"
-              } pack)`
+              "Reset counter tracking for game launch - counters will be maintained across all flows"
             );
-            const packPaths = await executeFlowsForPack(
-              packPathToUse,
-              "", // No target path needed
-              startGameOptions.userFlowOptions,
-              pack.name
-            );
-            createdFlowPacks.push(...packPaths);
-          }
 
-          console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
+            for (const pack of enabledModsWithFlows) {
+              // Check if this pack has overwrites - if so, use the overwritten pack
+              const hasOverwrites = enabledModsWithOverwrites.some(
+                (overwritePack) => overwritePack.path === pack.path
+              );
+              const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
+
+              console.log(
+                `Executing flows for pack: ${pack.name} (using ${
+                  hasOverwrites ? "overwritten" : "original"
+                } pack)`
+              );
+              const packPaths = await executeFlowsForPack(
+                packPathToUse,
+                "", // No target path needed
+                startGameOptions.userFlowOptions,
+                pack.name
+              );
+              createdFlowPacks.push(...packPaths);
+            }
+            console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
+          }
 
           // Add flow packs to the mod list
           if (createdFlowPacks.length > 0) {

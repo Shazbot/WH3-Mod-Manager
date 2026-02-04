@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from "react";
+import React, { memo, useEffect, useRef, useState, useLayoutEffect } from "react";
 import ModDropdownOptions from "./ModDropdownOptions";
 
 type ModDropdownProps = {
@@ -11,29 +11,71 @@ type ModDropdownProps = {
   visibleMods: Mod[];
 };
 
+const VIEWPORT_PADDING = 8; // Padding from viewport edges
+
 const ModDropdown = memo((props: ModDropdownProps) => {
-  let deltaX = 0;
-  let deltaY = 0;
-  if (props.referenceElement) {
-    deltaX = props.referenceElement.getBoundingClientRect().left - props.positionX;
-    deltaY = props.referenceElement.getBoundingClientRect().top - props.positionY;
-  }
-
   const modDropdownRef = useRef<HTMLDivElement>(null);
+  const [adjustedPosition, setAdjustedPosition] = useState({ x: props.positionX, y: props.positionY });
+  const [delta, setDelta] = useState({ x: 0, y: 0 });
 
+  // Calculate adjusted position based on actual menu dimensions
+  useLayoutEffect(() => {
+    if (!props.isOpen || !modDropdownRef.current) return;
+
+    const menu = modDropdownRef.current;
+    const menuRect = menu.getBoundingClientRect();
+    const menuHeight = menuRect.height;
+    const menuWidth = menuRect.width;
+
+    let newX = props.positionX;
+    let newY = props.positionY;
+
+    // Adjust Y position if menu would overflow bottom of viewport
+    if (newY + menuHeight > window.innerHeight - VIEWPORT_PADDING) {
+      // Try positioning above the click point
+      const positionAbove = props.positionY - menuHeight;
+      if (positionAbove >= VIEWPORT_PADDING) {
+        newY = positionAbove;
+      } else {
+        // If it doesn't fit above either, position at the bottom of viewport
+        newY = window.innerHeight - menuHeight - VIEWPORT_PADDING;
+      }
+    }
+
+    // Adjust X position if menu would overflow right edge of viewport
+    if (newX + menuWidth > window.innerWidth - VIEWPORT_PADDING) {
+      newX = window.innerWidth - menuWidth - VIEWPORT_PADDING;
+    }
+
+    // Ensure minimum position
+    newX = Math.max(VIEWPORT_PADDING, newX);
+    newY = Math.max(VIEWPORT_PADDING, newY);
+
+    setAdjustedPosition({ x: newX, y: newY });
+
+    // Calculate delta from reference element for scroll tracking
+    if (props.referenceElement) {
+      const refRect = props.referenceElement.getBoundingClientRect();
+      setDelta({
+        x: refRect.left - newX,
+        y: refRect.top - newY,
+      });
+    }
+  }, [props.isOpen, props.positionX, props.positionY, props.mod, props.referenceElement]);
+
+  // Track reference element position during scroll
   useEffect(() => {
+    if (!props.isOpen || !props.referenceElement) return;
+
     const interval = setInterval(() => {
       if (modDropdownRef.current && props.referenceElement) {
-        modDropdownRef.current.style.top = `${(
-          props.referenceElement.getBoundingClientRect().top - deltaY
-        ).toString()}px`;
-        modDropdownRef.current.style.left = `${(
-          props.referenceElement.getBoundingClientRect().left - deltaX
-        ).toString()}px`;
+        const refRect = props.referenceElement.getBoundingClientRect();
+        modDropdownRef.current.style.top = `${refRect.top - delta.y}px`;
+        modDropdownRef.current.style.left = `${refRect.left - delta.x}px`;
       }
     }, 10);
     return () => clearInterval(interval);
-  }, [props.positionX, props.positionY, props.referenceElement, modDropdownRef.current]);
+  }, [props.isOpen, props.referenceElement, delta]);
 
   return (
     (props.mod == null && <></>) || (
@@ -45,8 +87,8 @@ const ModDropdown = memo((props: ModDropdownProps) => {
             ` fixed w-52 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700`
           }
           style={{
-            left: props.positionX,
-            top: props.positionY,
+            left: adjustedPosition.x,
+            top: adjustedPosition.y,
           }}
           ref={modDropdownRef}
         >

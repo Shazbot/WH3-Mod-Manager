@@ -2,7 +2,6 @@ import { PackedFile, PackCollisions } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
-import { UgcItemVisibility } from "../node_modules/steamworks.js/client.d";
 import { string } from "ts-pattern/dist/patterns";
 export {};
 
@@ -48,6 +47,7 @@ declare global {
     humanName: string;
     workshopId: string;
     reqModIdToName: [string, string][];
+    reqModIds: string[];
     lastChanged: number;
     author: string;
     isDeleted: boolean;
@@ -143,6 +143,7 @@ declare global {
     dataModLastChangedLocal?: number;
     currentDBTableSelection?: DBTableSelection;
     currentFlowFileSelection?: string;
+    currentFlowFilePackPath?: string;
     currentTab: MainWindowTab;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;
@@ -513,12 +514,19 @@ declare global {
     numChildren: number;
     previewUrl?: string;
     statistics: WorkshopItemStatisticStringified;
+    children?: string[];
   }
 
   export interface PlayerSteamIdStringInsteadOfBigInt {
     steamId64: string;
     steamId32: string;
     accountId: number;
+  }
+
+  export interface ModsData {
+    dependencies: Record<string, string[]>;
+    authors: Record<string, string>;
+    mods: WorkshopItemStringInsteadOfBigInt[];
   }
 
   interface TreeNode<T> {
@@ -620,6 +628,8 @@ declare global {
     | "TableSelection"
     | "ColumnSelection"
     | "ChangedColumnSelection"
+    | "IndexedTable"
+    | "NestedTableSelection"
     | "Text"
     | "Text Lines"
     | "GroupedText";
@@ -634,12 +644,33 @@ declare global {
     | "columnselectiondropdown"
     | "groupbycolumns"
     | "filter"
+    | "referencelookup"
     | "numericadjustment"
+    | "mergechanges"
     | "savechanges"
     | "textsurround"
     | "appendtext"
     | "textjoin"
-    | "groupedcolumnstotext";
+    | "groupedcolumnstotext"
+    | "mathmax"
+    | "mathceil"
+    | "reversereferencelookup"
+    | "indextable"
+    | "lookup"
+    | "flattennested"
+    | "extracttable"
+    | "aggregatenested"
+    | "generaterows"
+    | "generaterowsschema"
+    | "groupby"
+    | "dumptotsv"
+    | "getcountercolumn"
+    | "customschema"
+    | "readtsvfrompack"
+    | "customrowsinput"
+    | "multifilter"
+    | "addnewcolumn"
+    | "deduplicate";
 
   // FlowNodeData = "string"|
 
@@ -660,7 +691,13 @@ declare global {
       | DBSaveChangesNodeData
       | GroupedTextNodeData
       | TextNodeData
-      | TextLinesNodeData;
+      | TextLinesNodeData
+      | IndexedTableData
+      | NestedTableSelection
+      | MultiOutputTablesData
+      | CustomSchemaData;
+    elseData?: DBTablesNodeData; // For filter node's "else" output handle
+    multiOutputs?: Record<string, any>; // For multi-output nodes like generaterows and multifilter
     error?: string;
   }
 
@@ -690,6 +727,10 @@ declare global {
     tables: DBTablesNodeTable[];
     sourceFiles: PackFilesNodeFile[];
     tableCount: number;
+  }
+
+  interface DumpToTSVNodeData extends DBTablesNodeData {
+    openInWindows: boolean;
   }
 
   interface DBColumnSelectionTableValues {
@@ -740,4 +781,68 @@ declare global {
     type: "Text";
     text: string;
   }
+
+  interface IndexedTableData {
+    type: "IndexedTable";
+    indexColumns: string[];
+    indexMap: Map<string, any[]>;
+    sourceTable: DBTablesNodeTable;
+    tableName: string;
+  }
+
+  interface CustomSchemaData {
+    type: "CustomSchema";
+    schemaColumns: CustomSchemaColumn[];
+  }
+
+  interface NestedRow {
+    sourceRow: any;
+    lookupMatches: any[];
+  }
+
+  interface NestedTableSelection {
+    type: "NestedTableSelection";
+    rows: NestedRow[];
+    sourceTable: DBTablesNodeTable;
+    lookupTable: DBTablesNodeTable;
+  }
+
+  interface GroupByNodeData {
+    type: "GroupBy";
+    groupByColumns: string[];
+    aggregations: Array<{
+      sourceColumn: string;
+      operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
+      outputName: string;
+    }>;
+    sourceTables: DBTablesNodeTable[];
+    inputType: NodeEdgeTypes;
+    outputType: NodeEdgeTypes;
+    columnNames: string[];
+    connectedTableName?: string;
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
+  }
+
+  interface DeduplicateNodeData {
+    type: "Deduplicate";
+    dedupeByColumns: string[];
+    sourceTables: DBTablesNodeTable[];
+    inputType: NodeEdgeTypes;
+    outputType: NodeEdgeTypes;
+    columnNames: string[];
+    connectedTableName?: string;
+    DBNameToDBVersions?: Record<string, DBVersion[]>;
+  }
+
+  // Multi-output data for nodes like Generate Rows (map of handleId -> TableSelection)
+  type MultiOutputTablesData = Record<string, DBTablesNodeData>;
+
+  type CustomSchemaColumn = {
+    name: string;
+    type: SCHEMA_FIELD_TYPE;
+  };
+
+  type CustomSchemaColumnWithId = CustomSchemaColumn & {
+    id: string;
+  };
 }
