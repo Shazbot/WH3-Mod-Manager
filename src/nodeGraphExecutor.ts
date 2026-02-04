@@ -414,7 +414,34 @@ export const executeNodeGraph = async (
                   if (sourceConnection && indexConnection) {
                     const sourceResult = executionResults.get(sourceConnection.sourceId);
                     const indexResult = executionResults.get(indexConnection.sourceId);
-                    inputDataForTarget = [sourceResult?.data, indexResult?.data];
+
+                    // Extract source data, handling multi-output nodes
+                    let sourceData = sourceResult?.data;
+                    const sourceNode = nodeMap.get(sourceConnection.sourceId);
+                    if (
+                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
+                      sourceConnection.sourceHandle &&
+                      sourceResult?.data &&
+                      typeof sourceResult.data === "object" &&
+                      !Array.isArray(sourceResult.data)
+                    ) {
+                      sourceData = (sourceResult.data as any)[sourceConnection.sourceHandle];
+                    }
+
+                    // Extract index data, handling multi-output nodes
+                    let indexData = indexResult?.data;
+                    const indexSourceNode = nodeMap.get(indexConnection.sourceId);
+                    if (
+                      (indexSourceNode?.type === "generaterows" || indexSourceNode?.type === "generaterowsschema" || indexSourceNode?.type === "multifilter") &&
+                      indexConnection.sourceHandle &&
+                      indexResult?.data &&
+                      typeof indexResult.data === "object" &&
+                      !Array.isArray(indexResult.data)
+                    ) {
+                      indexData = (indexResult.data as any)[indexConnection.sourceHandle];
+                    }
+
+                    inputDataForTarget = [sourceData, indexData];
                   } else {
                     inputDataForTarget = null;
                   }
