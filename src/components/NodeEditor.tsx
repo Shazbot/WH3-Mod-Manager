@@ -6709,6 +6709,7 @@ const executeGraphInBackend = async (
           outputCount: (node.data as any)?.outputCount,
           groupByColumns: (node.data as any)?.groupByColumns || [],
           dedupeByColumns: (node.data as any)?.dedupeByColumns || [],
+          dedupeAgainstVanilla: (node.data as any)?.dedupeAgainstVanilla || false,
           aggregations: (node.data as any)?.aggregations || [],
           DBNameToDBVersions: (node.data as any)?.DBNameToDBVersions || {},
           newColumnName: (node.data as any)?.newColumnName ? String((node.data as any).newColumnName) : "",
@@ -8491,14 +8492,19 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           const hasSchemaColumns =
             sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
 
+          // For generaterowsschema, get columns from customSchemaColumns
+          const hasCustomSchemaColumns = sourceNode.type === "generaterowsschema";
+
           // For tableselectiondropdown, use selectedTable as the connected table
           const tableName = hasSchemaColumns
             ? sourceData.tableName || `_custom_${sourceNode.id}`
+            : hasCustomSchemaColumns
+            ? `_custom_schema_${sourceNode.id}`
             : sourceNode.type === "tableselectiondropdown"
             ? sourceData.selectedTable
             : sourceData.connectedTableName;
 
-          if ((tableName && DBNameToDBVersions) || hasSchemaColumns) {
+          if ((tableName && DBNameToDBVersions) || hasSchemaColumns || hasCustomSchemaColumns) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -8508,6 +8514,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   // For customrowsinput and readtsvfrompack, get columns from schemaColumns
                   if (cols.length === 0 && hasSchemaColumns) {
                     cols = (sourceData.schemaColumns || []).map((col: any) => col.name);
+                  }
+
+                  // For generaterowsschema, get columns from customSchemaColumns
+                  if (cols.length === 0 && hasCustomSchemaColumns) {
+                    cols = sourceData.customSchemaColumns || [];
                   }
 
                   // For tableselectiondropdown nodes, columnNames might be empty
