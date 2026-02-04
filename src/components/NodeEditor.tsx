@@ -7460,157 +7460,37 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
       if (!sourceNode || !targetNode) return;
 
-      // Get output type from source node
-      let sourceOutputType: NodeEdgeTypes | undefined;
-      if (sourceNode.type === "packedfiles" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as PackFilesNodeData).outputType;
-      } else if (sourceNode.type === "packfilesdropdown" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as PackFilesDropdownNodeData).outputType;
-      } else if (sourceNode.type === "allenabledmods" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as AllEnabledModsNodeData).outputType;
-      } else if (sourceNode.type === "tableselection" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as TableSelectionNodeData).outputType;
-      } else if (sourceNode.type === "tableselectiondropdown" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as TableSelectionDropdownNodeData).outputType;
-      } else if (sourceNode.type === "columnselection" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as ColumnSelectionNodeData).outputType;
-      } else if (sourceNode.type === "columnselectiondropdown" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as ColumnSelectionDropdownNodeData).outputType;
-      } else if (sourceNode.type === "numericadjustment" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as NumericAdjustmentNodeData).outputType;
-      } else if (sourceNode.type === "mathmax" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as MathMaxNodeData).outputType;
-      } else if (sourceNode.type === "mathceil" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as MathCeilNodeData).outputType;
-      } else if (sourceNode.type === "mergechanges" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as MergeChangesNodeData).outputType;
-      } else if (sourceNode.type === "groupbycolumns" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as GroupByColumnsNodeData).outputType;
-      } else if (sourceNode.type === "deduplicate" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as DeduplicateNodeData).outputType;
-      } else if (sourceNode.type === "filter" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as FilterNodeData).outputType;
-      } else if (sourceNode.type === "multifilter" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as any).outputType;
-      } else if (sourceNode.type === "referencelookup" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as ReferenceTableLookupNodeData).outputType;
-      } else if (sourceNode.type === "reversereferencelookup" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as ReverseReferenceLookupNodeData).outputType;
-      } else if (sourceNode.type === "textsurround" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as TextSurroundNodeData).outputType;
-      } else if (sourceNode.type === "appendtext" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as AppendTextNodeData).outputType;
-      } else if (sourceNode.type === "textjoin" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as TextJoinNodeData).outputType;
-      } else if (sourceNode.type === "groupedcolumnstotext" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as GroupedColumnsToTextNodeData).outputType;
-      } else if (sourceNode.type === "indextable" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as IndexTableNodeData).outputType;
-      } else if (sourceNode.type === "lookup" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as LookupNodeData).outputType;
-      } else if (sourceNode.type === "flattennested" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as FlattenNestedNodeData).outputType;
-      } else if (sourceNode.type === "extracttable" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as ExtractTableNodeData).outputType;
-      } else if (sourceNode.type === "aggregatenested" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as AggregateNestedNodeData).outputType;
-      } else if ((sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as GenerateRowsNodeData).outputType;
-      } else if (sourceNode.type === "addnewcolumn" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as AddNewColumnNodeData).outputType;
-      } else if (sourceNode.type === "groupby" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as GroupByNodeData).outputType;
-      } else if (sourceNode.type === "getcountercolumn" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as unknown as GetCounterColumnNodeData).outputType;
-      } else if (sourceNode.type === "customschema" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as any).outputType;
-      } else if (sourceNode.type === "readtsvfrompack" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as any).outputType;
-      } else if (sourceNode.type === "customrowsinput" && sourceNode.data) {
-        sourceOutputType = (sourceNode.data as any).outputType;
-      }
+      // Get output type from source node - all nodes store outputType in data
+      const sourceOutputType: NodeEdgeTypes | undefined = sourceNode.data
+        ? (sourceNode.data as any).outputType
+        : undefined;
 
-      // Get input type from target node
+      // Get input type from target node - handle special cases first, then default to data.inputType
       let targetInputType: NodeEdgeTypes | undefined;
-      if (targetNode.type === "tableselection" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as TableSelectionNodeData).inputType;
-      } else if (targetNode.type === "tableselectiondropdown" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as TableSelectionDropdownNodeData).inputType;
-      } else if (targetNode.type === "columnselection" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as ColumnSelectionNodeData).inputType;
-      } else if (targetNode.type === "columnselectiondropdown" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as ColumnSelectionDropdownNodeData).inputType;
-      } else if (targetNode.type === "groupbycolumns" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as GroupByColumnsNodeData).inputType;
-      } else if (targetNode.type === "filter" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as FilterNodeData).inputType;
-      } else if (targetNode.type === "multifilter" && targetNode.data) {
-        targetInputType = (targetNode.data as any).inputType;
-      } else if (targetNode.type === "referencelookup" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as ReferenceTableLookupNodeData).inputType;
-      } else if (targetNode.type === "reversereferencelookup" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as ReverseReferenceLookupNodeData).inputType;
-      } else if (targetNode.type === "numericadjustment" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as NumericAdjustmentNodeData).inputType;
-      } else if (targetNode.type === "mathmax" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as MathMaxNodeData).inputType;
-      } else if (targetNode.type === "mathceil" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as MathCeilNodeData).inputType;
-      } else if (targetNode.type === "mergechanges" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as MergeChangesNodeData).inputType;
-      } else if (targetNode.type === "savechanges" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as SaveChangesNodeData).inputType;
-      } else if (targetNode.type === "textsurround" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as TextSurroundNodeData).inputType;
-      } else if (targetNode.type === "appendtext" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as AppendTextNodeData).inputType;
-      } else if (targetNode.type === "textjoin" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as TextJoinNodeData).inputType;
-      } else if (targetNode.type === "groupedcolumnstotext" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as GroupedColumnsToTextNodeData).inputType;
-      } else if (targetNode.type === "indextable" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as IndexTableNodeData).inputType;
-      } else if (targetNode.type === "lookup" && targetNode.data) {
+      if (targetNode.type === "lookup" && targetNode.data) {
         // Lookup node has two inputs - need to check the target handle ID
-        const targetHandle = params.targetHandle;
-        if (targetHandle === "input-source") {
-          targetInputType = (targetNode.data as unknown as LookupNodeData).inputType;
-        } else if (targetHandle === "input-index") {
+        if (params.targetHandle === "input-source") {
+          targetInputType = (targetNode.data as any).inputType;
+        } else if (params.targetHandle === "input-index") {
           // input-index accepts both IndexedTable and TableSelection
           targetInputType = sourceOutputType; // Accept what's being connected
         }
-      } else if (targetNode.type === "flattennested" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as FlattenNestedNodeData).inputType;
-      } else if (targetNode.type === "extracttable" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as ExtractTableNodeData).inputType;
-      } else if (targetNode.type === "aggregatenested" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as AggregateNestedNodeData).inputType;
-      } else if (targetNode.type === "generaterows" && targetNode.data) {
-        // GenerateRows has one input: input-table (TableSelection)
-        targetInputType = (targetNode.data as unknown as GenerateRowsNodeData).inputType;
       } else if (targetNode.type === "generaterowsschema" && targetNode.data) {
         // GenerateRowsSchema only accepts CustomSchema input
         targetInputType = "CustomSchema" as NodeEdgeTypes;
-      } else if (targetNode.type === "addnewcolumn" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as AddNewColumnNodeData).inputType;
-      } else if (targetNode.type === "groupby" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as GroupByNodeData).inputType;
-      } else if (targetNode.type === "deduplicate" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as DeduplicateNodeData).inputType;
       } else if (targetNode.type === "dumptotsv" && targetNode.data) {
         // DumpToTSV accepts both TableSelection and ChangedColumnSelection
-        targetInputType = sourceOutputType === "ChangedColumnSelection" ? sourceOutputType : ("TableSelection" as NodeEdgeTypes);
-      } else if (targetNode.type === "getcountercolumn" && targetNode.data) {
-        targetInputType = (targetNode.data as unknown as GetCounterColumnNodeData).inputType;
+        targetInputType =
+          sourceOutputType === "ChangedColumnSelection" ? sourceOutputType : ("TableSelection" as NodeEdgeTypes);
       } else if (targetNode.type === "readtsvfrompack" && targetNode.data) {
         // ReadTSVFromPack node has two inputs - need to check the target handle ID
-        const targetHandle = params.targetHandle;
-        if (targetHandle === "input-schema") {
+        if (params.targetHandle === "input-schema") {
           targetInputType = "CustomSchema" as NodeEdgeTypes;
-        } else if (targetHandle === "input-packs") {
+        } else if (params.targetHandle === "input-packs") {
           targetInputType = "PackFiles" as NodeEdgeTypes;
         }
-      } else if (targetNode.type === "customrowsinput" && targetNode.data) {
+      } else if (targetNode.data) {
+        // Default: all other nodes store inputType in data
         targetInputType = (targetNode.data as any).inputType;
       }
 
@@ -7997,37 +7877,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData = sourceNode.data as any;
-
-          // For referencelookup/reversereferencelookup, use the selected table as the output table name
-          // For filter/multifilter, use connectedTableName
-          let outputTableName: string | undefined;
-          let outputColumnNames: string[] = [];
-
-          if (sourceNode.type === "referencelookup") {
-            outputTableName = sourceData.selectedReferenceTable;
-            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
-              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
-                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
-              }
-            }
-          } else if (sourceNode.type === "reversereferencelookup") {
-            outputTableName = sourceData.selectedReverseTable;
-            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
-              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
-                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
-              }
-            }
-          } else {
-            outputTableName = sourceData.connectedTableName;
-            outputColumnNames = sourceData.columnNames || [];
-          }
+          const outputInfo = getSourceNodeOutputInfo(
+            sourceNode,
+            sourceData,
+            sourceData.DBNameToDBVersions,
+            defaultTableVersions
+          );
 
           // Propagate the output table name and DBNameToDBVersions from source to target
-          if (outputTableName && sourceData.DBNameToDBVersions) {
+          if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -8035,8 +7893,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: outputColumnNames,
-                      connectedTableName: outputTableName,
+                      columnNames: outputInfo.columnNames,
+                      connectedTableName: outputInfo.tableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
@@ -8056,40 +7914,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "reversereferencelookup")
         ) {
           const sourceData = sourceNode.data as any;
-
-          // For referencelookup/reversereferencelookup, use the selected table as the output table name
-          // For filter/multifilter, use connectedTableName
-          let outputTableName: string | undefined;
-          let outputColumnNames: string[] = [];
-
-          if (sourceNode.type === "referencelookup") {
-            outputTableName = sourceData.selectedReferenceTable;
-            // Get column names for the selected reference table
-            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
-              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
-                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
-              }
-            }
-          } else if (sourceNode.type === "reversereferencelookup") {
-            outputTableName = sourceData.selectedReverseTable;
-            // Get column names for the selected reverse table
-            if (outputTableName && sourceData.DBNameToDBVersions?.[outputTableName]) {
-              const tableVersions = sourceData.DBNameToDBVersions[outputTableName];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(outputTableName, tableVersions, defaultTableVersions);
-                outputColumnNames = (selectedVersion?.fields || []).map((f: any) => f.name);
-              }
-            }
-          } else {
-            // filter/multifilter - use connectedTableName
-            outputTableName = sourceData.connectedTableName;
-            outputColumnNames = sourceData.columnNames || [];
-          }
+          const outputInfo = getSourceNodeOutputInfo(
+            sourceNode,
+            sourceData,
+            sourceData.DBNameToDBVersions,
+            defaultTableVersions
+          );
 
           // Propagate the output table name and DBNameToDBVersions from source to target
-          if (outputTableName && sourceData.DBNameToDBVersions) {
+          if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -8097,8 +7930,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: outputColumnNames,
-                      connectedTableName: outputTableName,
+                      columnNames: outputInfo.columnNames,
+                      connectedTableName: outputInfo.tableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
@@ -8706,76 +8539,31 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           targetNode.type === "filter" &&
           (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
         ) {
-          if (sourceNode.type === "referencelookup") {
-            const sourceData = sourceNode.data as unknown as ReferenceTableLookupNodeData;
+          const sourceData = sourceNode.data as any;
+          const outputInfo = getSourceNodeOutputInfo(
+            sourceNode,
+            sourceData,
+            sourceData.DBNameToDBVersions,
+            defaultTableVersions
+          );
 
-            // Propagate the reference table info to the filter node
-            if (sourceData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
-              // Get column names from the selected reference table (OUTPUT table), not the input table
-              const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReferenceTable];
-              let columnNamesToUse: string[] = [];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(
-                  sourceData.selectedReferenceTable,
-                  tableVersions,
-                  defaultTableVersions
-                );
-                const tableFields = selectedVersion?.fields || [];
-                columnNamesToUse = tableFields.map((field) => field.name);
-              }
-
-              setNodes((nds) =>
-                nds.map((node) => {
-                  if (node.id === params.target) {
-                    return {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        columnNames: columnNamesToUse,
-                        connectedTableName: sourceData.selectedReferenceTable,
-                        DBNameToDBVersions: sourceData.DBNameToDBVersions,
-                      },
-                    };
-                  }
-                  return node;
-                })
-              );
-            }
-          } else if (sourceNode.type === "reversereferencelookup") {
-            const sourceData = sourceNode.data as unknown as ReverseReferenceLookupNodeData;
-
-            // Propagate the reverse reference table info to the filter node
-            if (sourceData.selectedReverseTable && sourceData.DBNameToDBVersions) {
-              // Get column names from the selected reverse table (OUTPUT table)
-              const tableVersions = sourceData.DBNameToDBVersions[sourceData.selectedReverseTable];
-              let columnNamesToUse: string[] = [];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(
-                  sourceData.selectedReverseTable,
-                  tableVersions,
-                  defaultTableVersions
-                );
-                const tableFields = selectedVersion?.fields || [];
-                columnNamesToUse = tableFields.map((field) => field.name);
-              }
-
-              setNodes((nds) =>
-                nds.map((node) => {
-                  if (node.id === params.target) {
-                    return {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        columnNames: columnNamesToUse,
-                        connectedTableName: sourceData.selectedReverseTable,
-                        DBNameToDBVersions: sourceData.DBNameToDBVersions,
-                      },
-                    };
-                  }
-                  return node;
-                })
-              );
-            }
+          if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: outputInfo.columnNames,
+                      connectedTableName: outputInfo.tableName,
+                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
           }
         }
 
@@ -8786,47 +8574,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode.type === "referencelookup" ||
             sourceNode.type === "reversereferencelookup")
         ) {
-          const sourceData =
-            sourceNode.type === "filter"
-              ? (sourceNode.data as unknown as FilterNodeData)
-              : sourceNode.type === "referencelookup"
-              ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
-              : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
-
-          // For reference lookup nodes, use the selected reference table instead of the input table
-          let tableNameToUse = sourceData.connectedTableName;
-          let columnNamesToUse = sourceData.columnNames || [];
-
-          if (sourceNode.type === "referencelookup") {
-            const refLookupData = sourceData as ReferenceTableLookupNodeData;
-            if (refLookupData.selectedReferenceTable && sourceData.DBNameToDBVersions) {
-              tableNameToUse = refLookupData.selectedReferenceTable;
-
-              // Get column names from the selected reference table
-              const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
-                const tableFields = selectedVersion?.fields || [];
-                columnNamesToUse = tableFields.map((field) => field.name);
-              }
-            }
-          } else if (sourceNode.type === "reversereferencelookup") {
-            const revLookupData = sourceData as ReverseReferenceLookupNodeData;
-            if (revLookupData.selectedReverseTable && sourceData.DBNameToDBVersions) {
-              tableNameToUse = revLookupData.selectedReverseTable;
-
-              // Get column names from the selected reverse table
-              const tableVersions = sourceData.DBNameToDBVersions[tableNameToUse];
-              if (tableVersions && tableVersions.length > 0) {
-                const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
-                const tableFields = selectedVersion?.fields || [];
-                columnNamesToUse = tableFields.map((field) => field.name);
-              }
-            }
-          }
+          const sourceData = sourceNode.data as any;
+          const outputInfo = getSourceNodeOutputInfo(
+            sourceNode,
+            sourceData,
+            sourceData.DBNameToDBVersions,
+            defaultTableVersions
+          );
 
           // Propagate the table info to the target node
-          if (tableNameToUse && sourceData.DBNameToDBVersions) {
+          if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
@@ -8834,8 +8591,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     ...node,
                     data: {
                       ...node.data,
-                      columnNames: columnNamesToUse,
-                      connectedTableName: tableNameToUse,
+                      columnNames: outputInfo.columnNames,
+                      connectedTableName: outputInfo.tableName,
                       DBNameToDBVersions: sourceData.DBNameToDBVersions,
                     },
                   };
