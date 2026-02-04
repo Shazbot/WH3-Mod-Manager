@@ -84,6 +84,39 @@ const getTableVersion = (
   return tableVersions[0];
 };
 
+// Helper to get output table name and columns from a source node
+// Handles reference/reverse reference lookup nodes specially (they output a different table than their input)
+const getSourceNodeOutputInfo = (
+  sourceNode: Node,
+  sourceData: any,
+  DBNameToDBVersions: Record<string, DBVersion[]> | undefined,
+  defaultTableVersions?: Record<string, number>
+): { tableName: string | undefined; columnNames: string[] } => {
+  let tableName: string | undefined;
+  let columnNames: string[] = [];
+
+  if (sourceNode.type === "referencelookup" && sourceData.selectedReferenceTable) {
+    tableName = sourceData.selectedReferenceTable;
+  } else if (sourceNode.type === "reversereferencelookup" && sourceData.selectedReverseTable) {
+    tableName = sourceData.selectedReverseTable;
+  } else {
+    tableName = sourceData.connectedTableName || sourceData.selectedTable;
+    columnNames = sourceData.columnNames || [];
+  }
+
+  // If we have a table name and need to fetch columns from schema
+  if (tableName && DBNameToDBVersions && DBNameToDBVersions[tableName]) {
+    const tableVersions = DBNameToDBVersions[tableName];
+    if (tableVersions && tableVersions.length > 0) {
+      const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
+      const tableFields = selectedVersion?.fields || [];
+      columnNames = tableFields.map((field: any) => field.name);
+    }
+  }
+
+  return { tableName, columnNames };
+};
+
 // Serialization types
 export interface SerializedNode {
   id: string;
@@ -6986,11 +7019,17 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         const sourceNode = nodes.find((n) => n.id === incomingEdge.source);
         if (sourceNode) {
           const sourceData = sourceNode.data as any;
-          // Get table name from either selectedTable (for tableselectiondropdown) or connectedTableName
-          const tableName =
-            sourceNode.type === "tableselectiondropdown" && sourceData.selectedTable
-              ? sourceData.selectedTable
-              : sourceData.connectedTableName;
+          // Get table name from the correct source (handle reference/reverse lookup specially)
+          let tableName: string | undefined;
+          if (sourceNode.type === "tableselectiondropdown" && sourceData.selectedTable) {
+            tableName = sourceData.selectedTable;
+          } else if (sourceNode.type === "referencelookup" && sourceData.selectedReferenceTable) {
+            tableName = sourceData.selectedReferenceTable;
+          } else if (sourceNode.type === "reversereferencelookup" && sourceData.selectedReverseTable) {
+            tableName = sourceData.selectedReverseTable;
+          } else {
+            tableName = sourceData.connectedTableName;
+          }
 
           if (tableName) {
             // Determine the input type based on the source node type
@@ -8123,19 +8162,27 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               // For customrowsinput and readtsvfrompack, get columns from schemaColumns
               const hasSchemaColumns =
                 sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
-              const columnNames = hasSchemaColumns
-                ? (sourceData.schemaColumns || []).map((col: any) => col.name)
-                : sourceData.columnNames || [];
-              const tableName = hasSchemaColumns
-                ? sourceData.tableName || `_custom_${sourceNode.id}`
-                : sourceData.connectedTableName;
 
-              if (
-                (sourceData.connectedTableName &&
-                  (sourceData.DBNameToDBVersions ||
-                    (sourceData.columnNames && sourceData.columnNames.length > 0))) ||
-                hasSchemaColumns
-              ) {
+              // Get the correct output table and columns from source node
+              let columnNames: string[];
+              let tableName: string | undefined;
+
+              if (hasSchemaColumns) {
+                columnNames = (sourceData.schemaColumns || []).map((col: any) => col.name);
+                tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
+              } else {
+                // Use helper for reference/reverse lookup nodes
+                const outputInfo = getSourceNodeOutputInfo(
+                  sourceNode,
+                  sourceData,
+                  sourceData.DBNameToDBVersions || DBNameToDBVersions,
+                  defaultTableVersions
+                );
+                columnNames = outputInfo.columnNames;
+                tableName = outputInfo.tableName;
+              }
+
+              if (tableName && (columnNames.length > 0 || sourceData.DBNameToDBVersions)) {
                 setNodes((nds) =>
                   nds.map((node) => {
                     if (node.id === params.target) {
@@ -8182,19 +8229,27 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             // For customrowsinput and readtsvfrompack, get columns from schemaColumns
             const hasSchemaColumns =
               sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
-            const columnNames = hasSchemaColumns
-              ? (sourceData.schemaColumns || []).map((col: any) => col.name)
-              : sourceData.columnNames || [];
-            const tableName = hasSchemaColumns
-              ? sourceData.tableName || `_custom_${sourceNode.id}`
-              : sourceData.connectedTableName;
 
-            if (
-              (sourceData.connectedTableName &&
-                (sourceData.DBNameToDBVersions ||
-                  (sourceData.columnNames && sourceData.columnNames.length > 0))) ||
-              hasSchemaColumns
-            ) {
+            // Get the correct output table and columns from source node
+            let columnNames: string[];
+            let tableName: string | undefined;
+
+            if (hasSchemaColumns) {
+              columnNames = (sourceData.schemaColumns || []).map((col: any) => col.name);
+              tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
+            } else {
+              // Use helper for reference/reverse lookup nodes
+              const outputInfo = getSourceNodeOutputInfo(
+                sourceNode,
+                sourceData,
+                sourceData.DBNameToDBVersions || DBNameToDBVersions,
+                defaultTableVersions
+              );
+              columnNames = outputInfo.columnNames;
+              tableName = outputInfo.tableName;
+            }
+
+            if (tableName && (columnNames.length > 0 || sourceData.DBNameToDBVersions)) {
               setNodes((nds) =>
                 nds.map((node) => {
                   if (node.id === params.target) {
@@ -8527,43 +8582,44 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           // For generaterowsschema, get columns from customSchemaColumns
           const hasCustomSchemaColumns = sourceNode.type === "generaterowsschema";
 
-          // For tableselectiondropdown, use selectedTable as the connected table
-          const tableName = hasSchemaColumns
-            ? sourceData.tableName || `_custom_${sourceNode.id}`
-            : hasCustomSchemaColumns
-            ? `_custom_schema_${sourceNode.id}`
-            : sourceNode.type === "tableselectiondropdown"
-            ? sourceData.selectedTable
-            : sourceData.connectedTableName;
+          // Get the correct output table and columns from source node
+          let tableName: string | undefined;
+          let cols: string[] = [];
 
-          if ((tableName && DBNameToDBVersions) || hasSchemaColumns || hasCustomSchemaColumns) {
+          if (hasSchemaColumns) {
+            tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
+            cols = (sourceData.schemaColumns || []).map((col: any) => col.name);
+          } else if (hasCustomSchemaColumns) {
+            tableName = `_custom_schema_${sourceNode.id}`;
+            cols = sourceData.customSchemaColumns || [];
+          } else if (sourceNode.type === "tableselectiondropdown") {
+            tableName = sourceData.selectedTable;
+          } else {
+            // Use helper for reference/reverse lookup nodes and others
+            const outputInfo = getSourceNodeOutputInfo(
+              sourceNode,
+              sourceData,
+              sourceData.DBNameToDBVersions || DBNameToDBVersions,
+              defaultTableVersions
+            );
+            tableName = outputInfo.tableName;
+            cols = outputInfo.columnNames;
+          }
+
+          // If we still don't have columns, try to get them from the schema
+          if (cols.length === 0 && tableName && DBNameToDBVersions && DBNameToDBVersions[tableName]) {
+            const tableVersions = DBNameToDBVersions[tableName];
+            if (tableVersions && tableVersions.length > 0) {
+              const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
+              const tableFields = selectedVersion?.fields || [];
+              cols = tableFields.map((field: any) => field.name);
+            }
+          }
+
+          if ((tableName && (cols.length > 0 || DBNameToDBVersions)) || hasSchemaColumns || hasCustomSchemaColumns) {
             setNodes((nds) =>
               nds.map((node) => {
                 if (node.id === params.target) {
-                  // Get column names from source
-                  let cols = sourceData.columnNames || [];
-
-                  // For customrowsinput and readtsvfrompack, get columns from schemaColumns
-                  if (cols.length === 0 && hasSchemaColumns) {
-                    cols = (sourceData.schemaColumns || []).map((col: any) => col.name);
-                  }
-
-                  // For generaterowsschema, get columns from customSchemaColumns
-                  if (cols.length === 0 && hasCustomSchemaColumns) {
-                    cols = sourceData.customSchemaColumns || [];
-                  }
-
-                  // For tableselectiondropdown nodes, columnNames might be empty
-                  // Get columns from the schema based on selectedTable
-                  if (cols.length === 0 && tableName && DBNameToDBVersions && DBNameToDBVersions[tableName]) {
-                    const tableVersions = DBNameToDBVersions[tableName];
-                    if (tableVersions && tableVersions.length > 0) {
-                      const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
-                      const tableFields = selectedVersion?.fields || [];
-                      cols = tableFields.map((field: any) => field.name);
-                    }
-                  }
-
                   return {
                     ...node,
                     data: {
@@ -9840,7 +9896,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
                   : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
-              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+              // Use helper for correct output table and columns
+              const outputInfo = getSourceNodeOutputInfo(
+                sourceNode,
+                sourceData,
+                sourceData.DBNameToDBVersions,
+                defaultTableVersions
+              );
+
+              if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
                 setNodes((nds) =>
                   nds.map((node) => {
                     if (node.id === targetNode.id) {
@@ -9848,8 +9912,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         ...node,
                         data: {
                           ...node.data,
-                          columnNames: sourceData.columnNames || [],
-                          connectedTableName: sourceData.connectedTableName,
+                          columnNames: outputInfo.columnNames,
+                          connectedTableName: outputInfo.tableName,
                           DBNameToDBVersions: sourceData.DBNameToDBVersions,
                         },
                       };
@@ -9874,7 +9938,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
                   : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
-              if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
+              // Use helper for correct output table and columns
+              const outputInfo = getSourceNodeOutputInfo(
+                sourceNode,
+                sourceData,
+                sourceData.DBNameToDBVersions,
+                defaultTableVersions
+              );
+
+              if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
                 setNodes((nds) =>
                   nds.map((node) => {
                     if (node.id === targetNode.id) {
@@ -9882,8 +9954,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         ...node,
                         data: {
                           ...node.data,
-                          columnNames: sourceData.columnNames || [],
-                          connectedTableName: sourceData.connectedTableName,
+                          columnNames: outputInfo.columnNames,
+                          connectedTableName: outputInfo.tableName,
                           DBNameToDBVersions: sourceData.DBNameToDBVersions,
                         },
                       };
