@@ -2,22 +2,29 @@ import * as chokidar from "chokidar";
 import { app } from "electron";
 import * as path from "path";
 import * as fs from "fs";
-import { gameToAppDataFolderName } from "./supportedGames";
+import { gameToAppDataFolderName, gameToSteamId } from "./supportedGames";
 import appData from "./appData";
 
 let savesWatcher: chokidar.FSWatcher | undefined;
 
 let saves: GameSave[] = [];
 
-export const getSavesFolderPath = () => { 
-  const appDataPath = app.getPath("appData");
+export const getSavesFolderPath = () => {
+  let appDataPath = app.getPath("appData");
+
+  if (process.platform === "linux") {
+    const homeDir = app.getPath("home");
+    appDataPath = `${homeDir}/.local/share/Steam/steamapps/compatdata/${gameToSteamId[appData.currentGame]}/pfx/drive_c/users/steamuser/AppData/Roaming/`;
+  }
+
   return path.join(
     appDataPath,
     "The Creative Assembly",
     gameToAppDataFolderName[appData.currentGame],
     "save_games"
   );
-};
+}
+
 export const getSaveFiles = async () => {
   saves = [];
   let files: fs.Dirent[] = [];
