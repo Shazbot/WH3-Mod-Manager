@@ -1,7 +1,7 @@
 {
   "name": "wh3mm",
   "productName": "wh3mm",
-  "version": "2.16.0",
+  "version": "2.16.15",
   "description": "WH3 Mod Manager",
   "main": ".webpack/main",
   "sideEffects": [
@@ -234,7 +234,6 @@
     "react-virtualized": "^9.22.5",
     "reactflow": "^11.11.4",
     "semver": "^7.6.3",
-    "steamworks.js": "^0.4.0",
     "stream-http": "^3.2.0",
     "tailwind-merge": "^2.2.2",
     "tailwindcss-animate": "^1.0.7",

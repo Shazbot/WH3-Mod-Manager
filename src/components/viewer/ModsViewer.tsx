@@ -17,12 +17,16 @@ const ModsViewer = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const currentFlowFileSelection = useAppSelector((state) => state.app.currentFlowFileSelection);
+  const currentFlowFilePackPath = useAppSelector((state) => state.app.currentFlowFilePackPath);
   const packsData = useAppSelector((state) => state.app.packsData);
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  // Use currentFlowFilePackPath if a flow file is selected, otherwise use DB table pack path
   const packPath =
-    currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
+    currentFlowFilePackPath ??
+    currentDBTableSelection?.packPath ??
+    (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
   const startArgs = useAppSelector((state) => state.app.startArgs);
 
@@ -91,7 +95,10 @@ const ModsViewer = memo(() => {
       const result = await window.api?.savePackWithUnsavedFiles(packPath);
       if (result?.success) {
         console.log("Pack saved successfully:", result.savedPath);
-        alert(`Pack saved successfully to: ${result.savedPath}`);
+        const message = result.warning
+          ? `${result.warning}\n\nSaved to: ${result.savedPath}`
+          : `Pack saved successfully to: ${result.savedPath}`;
+        alert(message);
       } else {
         console.error("Failed to save pack:", result?.error);
         alert(`Failed to save pack: ${result?.error || "Unknown error"}`);

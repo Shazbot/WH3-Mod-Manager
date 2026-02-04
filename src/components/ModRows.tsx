@@ -520,11 +520,6 @@ const ModRows = memo((props: ModRowsProps) => {
       setPositionX(e.clientX);
       setPositionY(e.clientY);
 
-      const yCutoff = 425; // if too close to bottom window edge move the context menu up a bit
-      if (innerHeight - yCutoff < e.clientY) {
-        setPositionY(e.clientY - yCutoff);
-      }
-
       setIsDropdownOpen(true);
       setDropdownReferenceElement(e.currentTarget);
 

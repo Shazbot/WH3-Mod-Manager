@@ -269,6 +269,9 @@ const api = {
   getDBNameToDBVersions: (): Promise<Record<string, DBVersion[]>> =>
     ipcRenderer.invoke("getDBNameToDBVersions"),
 
+  getDefaultTableVersions: (): Promise<Record<string, number>> =>
+    ipcRenderer.invoke("getDefaultTableVersions"),
+
   getListOfPacksInSave: (saveName: string): Promise<string[]> =>
     ipcRenderer.invoke("getListOfPacksInSave", saveName),
 
@@ -334,6 +337,7 @@ const api = {
   ): Promise<{
     success: boolean;
     savedPath?: string;
+    warning?: string;
     error?: string;
   }> => ipcRenderer.invoke("savePackWithUnsavedFiles", packPath),
 

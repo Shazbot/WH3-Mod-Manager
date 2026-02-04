@@ -34,7 +34,7 @@ import getPackTableData, {
   isSchemaFieldNumberInteger,
 } from "./utility/frontend/packDataHandling";
 import deepClone from "clone-deep";
-import { gameToIntroMovies } from "./supportedGames";
+import { gameToIntroMovies, gameToPackHeader, supportsCompression } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
 import { collator } from "./utility/packFileSorting";
@@ -919,7 +919,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
       .map((r) => r.value)
       .filter((packData) => packData);
 
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
     const pack_file_index_size = 0;
@@ -1159,6 +1159,9 @@ export const executeFlowsForPack = async (
   try {
     console.log("Executing flows for pack:", packName);
 
+    // Note: Counter tracking is NOT reset here - it's reset once at game launch level
+    // This ensures counters are unique across all flows in all packs
+
     // Read the pack to get flow files
     const sourceMod = await readPack(pathSource, { readFlows: true, skipParsingTables: true });
 
@@ -1197,8 +1200,9 @@ export const executeFlowsForPack = async (
 
         console.log(`Executing flow: ${flowFileName}`);
 
-        // Inject user option values into nodes
-        if (flowData.options && flowOptions?.optionValues) {
+        // Inject option values into nodes (user values or defaults)
+        if (flowData.options) {
+          console.log(`options`, flowData.options, flowOptions?.optionValues);
           for (const node of flowData.nodes) {
             // Fields that might contain option placeholders
             const textFields = [
@@ -1217,16 +1221,17 @@ export const executeFlowsForPack = async (
                 let modifiedValue = fieldValue;
 
                 for (const option of flowData.options) {
-                  const userValue = flowOptions.optionValues[option.id];
-                  if (userValue !== undefined) {
-                    // Replace option placeholders like {{optionId}} with user values
-                    const placeholder = `{{${option.id}}}`;
-                    if (modifiedValue.includes(placeholder)) {
-                      modifiedValue = modifiedValue.replace(
-                        new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-                        String(userValue)
-                      );
-                    }
+                  // Use user value if provided, otherwise use default value from option
+                  const userValue = flowOptions?.optionValues?.[option.id];
+                  const valueToUse = userValue !== undefined ? userValue : option.value;
+
+                  // Replace option placeholders like {{optionId}} with values
+                  const placeholder = `{{${option.id}}}`;
+                  if (modifiedValue.includes(placeholder)) {
+                    modifiedValue = modifiedValue.replace(
+                      new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+                      String(valueToUse)
+                    );
                   }
                 }
 
@@ -1254,10 +1259,57 @@ export const executeFlowsForPack = async (
           }
         }
 
-        // Execute the flow
+        // Generate a deterministic flow execution ID based on pack name and flow file name
+        // Extract flow name from path like "whmmflows\flow_name.json" -> "flow_name"
+        const flowNameWithoutPath = flowFileName.replace(/^.*[\\\/]/, ""); // Remove directory path
+        const flowNameWithoutExt = flowNameWithoutPath.replace(/\.[^.]+$/, ""); // Remove file extension
+        const flowExecutionId = `${packName}_${flowNameWithoutExt}`;
+
+        // Set flowExecutionId for Save Changes nodes so they know to save to whmm_flows
+        for (const node of flowData.nodes) {
+          if (node.type === "savechanges") {
+            // Set flowExecutionId directly on node data (not in textValue)
+            // nodeGraphExecutor will extract it from node.data.flowExecutionId
+            (node.data as any).flowExecutionId = flowExecutionId;
+            console.log(`Node ${node.id} (savechanges): Set flowExecutionId to ${flowExecutionId}`);
+          }
+        }
+
+        // Inject DBNameToDBVersions into nodes that need schema information
+        // (similar to what NodeEditor does when loading a graph)
+        const currentGameSchema = DBNameToDBVersions[appData.currentGame];
+        for (const node of flowData.nodes) {
+          if (
+            node.type === "columnselectiondropdown" ||
+            node.type === "tableselectiondropdown" ||
+            node.type === "groupbycolumns" ||
+            node.type === "filter" ||
+            node.type === "referencelookup" ||
+            node.type === "reversereferencelookup" ||
+            node.type === "indextable" ||
+            node.type === "lookup" ||
+            node.type === "extracttable" ||
+            node.type === "aggregatenested" ||
+            node.type === "groupby" ||
+            node.type === "generaterows"
+          ) {
+            // Only set if not already present (to allow saved DBNameToDBVersions to take precedence)
+            if (!node.data.DBNameToDBVersions || Object.keys(node.data.DBNameToDBVersions).length === 0) {
+              node.data.DBNameToDBVersions = currentGameSchema;
+              console.log(
+                `Node ${node.id} (${node.type}): Injected DBNameToDBVersions with ${
+                  Object.keys(currentGameSchema).length
+                } tables`
+              );
+            }
+          }
+        }
+
+        // Execute the flow (don't reset counters - they're maintained across all flows)
         const result = await executeNodeGraph({
           nodes: flowData.nodes,
           connections: flowData.connections,
+          resetCounters: false, // Counters were reset once at pack level
         });
 
         if (result.success) {
@@ -1423,7 +1475,7 @@ export const writePackStream = async (
   const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
 
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
 
@@ -1486,7 +1538,7 @@ export const writePackStream = async (
       } else {
         streamWriter.addInt32(file_size);
       }
-      streamWriter.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) streamWriter.addInt8(0); // is_compressed
       streamWriter.addString(name + "\0");
 
       // Flush periodically with backpressure handling
@@ -1580,7 +1632,9 @@ export const writePackAppendFast = async (
 
       // Open source file for reading
       sourceFile = new BinaryFile(existingPackToAppend.path, "r", true);
+      console.log("trying to open source file:", existingPackToAppend.path);
       await sourceFile.open();
+      console.log("source file opened");
 
       // Open output file for writing
       outFile = new BinaryFile(outPath, "w", true);
@@ -1618,7 +1672,7 @@ export const writePackAppendFast = async (
 
       // Write updated header with new counts
       const headerAccumulator = new BufferAccumulator(outFile);
-      headerAccumulator.addString("PFH5");
+      headerAccumulator.addString(gameToPackHeader[appData.currentGame]);
       headerAccumulator.addInt32(existingPackToAppend.packHeader.byteMask);
       headerAccumulator.addInt32(existingPackToAppend.packHeader.refFileCount);
       headerAccumulator.addInt32(pack_file_index_size);
@@ -1677,7 +1731,7 @@ export const writePackAppendFast = async (
         } else {
           newIndexAccumulator.addInt32(file_size);
         }
-        newIndexAccumulator.addInt8(0); // is_compressed
+        if (supportsCompression[appData.currentGame]) newIndexAccumulator.addInt8(0); // is_compressed
         newIndexAccumulator.addString(name + "\0");
         await newIndexAccumulator.flushIfNeeded();
       }
@@ -1768,6 +1822,15 @@ export const writePackAppendFast = async (
 
     // Move temp file to final location
     if (existingPackToAppend) {
+      if (outFile) {
+        await outFile.close();
+        outFile = undefined;
+      }
+      if (sourceFile) {
+        await sourceFile.close();
+        sourceFile = undefined;
+      }
+
       await fsExtra.move(outPath, path, { overwrite: true });
     }
   } finally {
@@ -1781,7 +1844,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string, depende
   let outFile: BinaryFile | undefined;
 
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
 
@@ -1829,7 +1892,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string, depende
       } else {
         indexAccumulator.addInt32(file_size);
       }
-      indexAccumulator.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) indexAccumulator.addInt8(0); // is_compressed
       indexAccumulator.addString(name + "\0");
       await indexAccumulator.flushIfNeeded();
     }
@@ -1909,7 +1972,7 @@ export const writePackLegacy = async (
   const outPath = existingPackToAppend ? `${path}_${timestamp}` : path;
 
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
 
@@ -1981,7 +2044,7 @@ export const writePackLegacy = async (
       } else {
         indexAccumulator.addInt32(file_size);
       }
-      indexAccumulator.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) indexAccumulator.addInt8(0); // is_compressed
       indexAccumulator.addString(name + "\0");
 
       // Flush periodically to avoid excessive memory usage
@@ -2079,7 +2142,7 @@ export const writeStartGamePack = async (
 ) => {
   let outFile: BinaryFile | undefined;
   try {
-    const header = "PFH5";
+    const header = gameToPackHeader[appData.currentGame];
     const byteMask = 3;
     const refFileCount = 0;
     const pack_file_index_size = 0;
@@ -2116,7 +2179,7 @@ export const writeStartGamePack = async (
       const { name, file_size } = packFile;
       // console.log("file size is " + file_size);
       startGameIndexAccumulator.addInt32(file_size);
-      startGameIndexAccumulator.addInt8(0); // is_compressed
+      if (supportsCompression[appData.currentGame]) startGameIndexAccumulator.addInt8(0); // is_compressed
       startGameIndexAccumulator.addString(name + "\0");
 
       // Flush periodically to avoid excessive memory usage
@@ -2204,7 +2267,9 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
       return Buffer.from(reusableBuffers.f64);
     }
     case "String": {
-      return Buffer.from(field.val as string, "utf8");
+      const stringVal = field.val as string;
+      // console.log(`    serializeFieldToBuffer String: val="${stringVal}" length=${stringVal.length}`);
+      return Buffer.from(stringVal, "utf8");
     }
     case "Buffer": {
       return field.val as Buffer;
@@ -2218,9 +2283,11 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
 const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
   const fieldBuffers: Buffer[] = [];
   for (const field of schemaField.fields) {
-    fieldBuffers.push(serializeFieldToBuffer(field));
+    const buffer = serializeFieldToBuffer(field);
+    fieldBuffers.push(buffer);
   }
-  return Buffer.concat(fieldBuffers);
+  const result = Buffer.concat(fieldBuffers);
+  return result;
 };
 
 // Stream-based writing system with write queuing for better performance
@@ -2917,6 +2984,10 @@ export const readPack = async (
     const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
     packedFileHeaderPosition += 4;
     if (header === null) throw new Error("header missing");
+
+    if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
+      throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
+    }
 
     const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
     packedFileHeaderPosition += 4;
