@@ -84,6 +84,7 @@ const SkillsView = memo(() => {
   const [isShowingHiddentSkills, setIsShowingHiddenSkills] = useState(true);
   const [isShowingHiddenModifiersInsideSkills, setIsShowingHiddenModifiersInsideSkills] = useState(true);
   const [isCheckingSkillRequirements, setIsCheckingSkillRequirements] = useState(true);
+  const [factionFilter, setFactionFilter] = useState<string>("all");
 
   const currentRank = useAppSelector((state) => state.app.currentRank);
 
@@ -101,6 +102,56 @@ const SkillsView = memo(() => {
     return <></>;
   }
 
+  // Compute unique faction/subculture filter options
+  const factionFilterOptions: { label: string; value: string }[] = [];
+  const seenCombos = new Set<string>();
+  for (const skill of skills) {
+    const hasFaction = skill.faction && skill.faction !== "";
+    const hasSubculture = skill.subculture && skill.subculture !== "";
+    if (!hasFaction && !hasSubculture) continue;
+
+    const comboKey = `${skill.faction || ""}|||${skill.subculture || ""}`;
+    if (seenCombos.has(comboKey)) continue;
+    seenCombos.add(comboKey);
+
+    const parts: string[] = [];
+    if (hasFaction) parts.push(skill.faction!);
+    if (hasSubculture) parts.push(skill.subculture!);
+    factionFilterOptions.push({ label: parts.join(" / "), value: comboKey });
+  }
+  factionFilterOptions.sort((a, b) => collator.compare(a.label, b.label));
+  const hasFactionVariants = factionFilterOptions.length > 0;
+
+  // Apply faction/subculture filter
+  if (factionFilter !== "all" && hasFactionVariants) {
+    skills = skills.filter((skill) => {
+      const hasFaction = skill.faction && skill.faction !== "";
+      const hasSubculture = skill.subculture && skill.subculture !== "";
+      if (!hasFaction && !hasSubculture) return true; // base skills always shown
+      const comboKey = `${skill.faction || ""}|||${skill.subculture || ""}`;
+      return comboKey === factionFilter;
+    });
+  }
+
+  if (!isShowingHiddentSkills) {
+    skills = skills.filter((skill) => !skill.isHiddentInUI);
+  }
+
+  // Clean up group assignments: skills that end up alone in their group after filtering
+  // should not be displayed as grouped
+  const groupCounts: Record<string, number> = {};
+  for (const skill of skills) {
+    if (skill.group) {
+      groupCounts[skill.group] = (groupCounts[skill.group] || 0) + 1;
+    }
+  }
+  skills = skills.map((skill) => {
+    if (skill.group && (groupCounts[skill.group] || 0) < 2) {
+      return { ...skill, group: undefined };
+    }
+    return skill;
+  });
+
   let nodeSizeDelta = 0;
   let usingBiggerNodeHeight = false;
   // if we need to overlay nodes make the y gap between them bigger
@@ -110,8 +161,8 @@ const SkillsView = memo(() => {
         (skillSecond) =>
           skillFirst != skillSecond &&
           skillFirst.origIndent == skillSecond.origIndent &&
-          skillFirst.origTier == skillSecond.origTier
-      )
+          skillFirst.origTier == skillSecond.origTier,
+      ),
     )
   ) {
     nodeHeight = biggerNodeHeight;
@@ -120,17 +171,13 @@ const SkillsView = memo(() => {
   }
   console.log("usingBiggerNodeHeight:", usingBiggerNodeHeight);
 
-  if (!isShowingHiddentSkills) {
-    skills = skills.filter((skill) => !skill.isHiddentInUI);
-  }
-
   // console.log("with group:", skills.filter((skill) => skill.group).length);
   const groupedSkills = groupBy(
     skills.filter((skill) => skill.group),
     (skill) => {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return skill.group!;
-    }
+    },
   );
 
   for (const skillsInGroup of Object.values(groupedSkills)) {
@@ -152,7 +199,7 @@ const SkillsView = memo(() => {
       "size",
       skills.length,
       "skills:",
-      skills.map((skill) => skill.id)
+      skills.map((skill) => skill.id),
     );
     skillNodes.push({
       id: `${group}_group`,
@@ -215,7 +262,7 @@ const SkillsView = memo(() => {
     // console.log("skill:", skill);
 
     const sameCoordinatesSkills = skills.filter(
-      (iterSkill) => iterSkill.origIndent == skill.origIndent && iterSkill.origTier == skill.origTier
+      (iterSkill) => iterSkill.origIndent == skill.origIndent && iterSkill.origTier == skill.origTier,
     );
     sameCoordinatesSkills.sort(sortSameCoordinateSkills);
 
@@ -299,7 +346,7 @@ const SkillsView = memo(() => {
 
   const skillNodesByRow = groupBy(
     skillNodes.filter((node) => !node.parentId), // without sub-nodes, only groups or stand-alone nodes
-    (node) => node.data.row.toString()
+    (node) => node.data.row.toString(),
   );
   for (const row of Object.keys(skillNodesByRow)) {
     const skillNodesRow = skillNodesByRow[row];
@@ -351,7 +398,7 @@ const SkillsView = memo(() => {
       if (linkedNode) {
         const linkedSkillNode = skillNodes.find((skillNode) => skillNode.data.nodeId == `${linkedNode}`);
         const sourceSkillNode = skillNodes.find(
-          (skillNode) => skillNode.data.nodeId == `${skillWithLink.nodeId}`
+          (skillNode) => skillNode.data.nodeId == `${skillWithLink.nodeId}`,
         );
         // console.log("linkedSkillNode:", !!linkedSkillNode);
         // console.log("sourceSkillNode:", !!sourceSkillNode);
@@ -406,11 +453,22 @@ const SkillsView = memo(() => {
   //   []
   // );
 
+  // Reset faction filter when subtype changes
+  useEffect(() => {
+    setFactionFilter("all");
+  }, [skillsData?.currentSubtype]);
+
   // ReactFlow won't refresh when things like isShowingHiddenModifiersInsideSkills change, so force it
   useEffect(() => {
     setNodes(deepClone(skillNodes));
     setEdges(deepClone(initialEdges));
-  }, [skillsData, isShowingHiddenModifiersInsideSkills, isShowingHiddentSkills, isCheckingSkillRequirements]);
+  }, [
+    skillsData,
+    isShowingHiddenModifiersInsideSkills,
+    isShowingHiddentSkills,
+    isCheckingSkillRequirements,
+    factionFilter,
+  ]);
 
   return (
     <div className="w-full h-full hideReactFlowHandles">
@@ -431,7 +489,7 @@ const SkillsView = memo(() => {
           <div className="text-slate-200 text-xl opacity-80">{`${localized.rank} ${currentRank}`}</div>
         </Panel>
         <Panel position="top-left">
-          <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg">
+          <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg w-fit">
             <Dropdown dismissOnClick={false} label={localized.options}>
               <Dropdown.Item>
                 <div className="flex items-center min-w-[18em]">
@@ -496,6 +554,27 @@ const SkillsView = memo(() => {
               </Dropdown.Item> */}
             </Dropdown>
           </div>
+          {hasFactionVariants && (
+            <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg mt-2 w-fit">
+              <Dropdown
+                dismissOnClick={true}
+                label={
+                  factionFilter === "all"
+                    ? localized.all || "All"
+                    : factionFilterOptions.find((o) => o.value === factionFilter)?.label || factionFilter
+                }
+              >
+                <Dropdown.Item onClick={() => setFactionFilter("all")}>
+                  <span>{localized.all || "All"}</span>
+                </Dropdown.Item>
+                {factionFilterOptions.map((option) => (
+                  <Dropdown.Item key={option.value} onClick={() => setFactionFilter(option.value)}>
+                    <span>{option.label}</span>
+                  </Dropdown.Item>
+                ))}
+              </Dropdown>
+            </div>
+          )}
         </Panel>
         <ViewportPortal>
           <div className="fixed w-full h-full top-0 left-0">
