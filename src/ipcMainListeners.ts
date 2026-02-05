@@ -85,6 +85,7 @@ import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie from "./utility/trie";
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
+import { join } from "path";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -1581,7 +1582,7 @@ export const registerIpcMainListeners = (
 
       const newPaths = [] as string[];
       if (appData.lastGetCustomizableMods) {
-        for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length; ) {
+        for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length;) {
           if (i == modPaths.length) {
             break;
           }
@@ -2396,8 +2397,7 @@ export const registerIpcMainListeners = (
     const copyPromises = withoutDataMods.map((mod) => {
       mainWindow?.webContents.send(
         "handleLog",
-        `COPYING ${mod.path} to ${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}\\data\\${
-          mod.name
+        `COPYING ${mod.path} to ${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}\\data\\${mod.name
         }`
       );
 
@@ -2522,8 +2522,8 @@ export const registerIpcMainListeners = (
     );
     mainWindow?.setTitle(
       `WH3 Mod Manager v${version}: ${enabledMods.length} mods enabled` +
-        (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "") +
-        ` for ${gameToGameName[appData.currentGame]}`
+      (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "") +
+      ` for ${gameToGameName[appData.currentGame]}`
     );
     // console.log(
     //   "BEFORE saveconfig",
@@ -2698,12 +2698,25 @@ export const registerIpcMainListeners = (
   });
 
   const terminateCurrentGame = () => {
+    const name = gameToProcessName[appData.currentGame];
     try {
-      exec(`taskkill /f /t /im ${gameToProcessName[appData.currentGame]}`, (error) => {
-        if (error) console.log("taskkill error:", error);
-      });
+      switch (process.platform)
+      {
+        case "win32": {
+          exec(`taskkill /f /t /im ${name}`, (error) => {
+            if (error) console.error("taskkill error:", error);
+          });
+          break
+        }
+        case "linux": {  
+          exec(`pkill -f ${name}`, (error) => {
+            if (error) console.error("pkill error:", error);
+          });
+          break
+        }
+      }
     } catch (e) {
-      console.log("taskkill error:", e);
+      console.error("killWrapper error:", e);
     }
   };
 
@@ -3179,16 +3192,16 @@ export const registerIpcMainListeners = (
       const backupFilePath = nodePath.join(
         backupFolderPath,
         nodePath.parse(mod.name).name +
-          "-" +
-          format(new Date(), "dd-MM-yyyy-HH-mm") +
-          nodePath.parse(mod.name).ext
+        "-" +
+        format(new Date(), "dd-MM-yyyy-HH-mm") +
+        nodePath.parse(mod.name).ext
       );
       const uploadFilePath = nodePath.join(
         backupFolderPath,
         nodePath.parse(mod.name).name +
-          "-NEW-" +
-          format(new Date(), "dd-MM-yyyy-HH-mm") +
-          nodePath.parse(mod.name).ext
+        "-NEW-" +
+        format(new Date(), "dd-MM-yyyy-HH-mm") +
+        nodePath.parse(mod.name).ext
       );
 
       await fs.mkdirSync(backupFolderPath, { recursive: true });
@@ -3212,9 +3225,9 @@ export const registerIpcMainListeners = (
       const backupFilePath = nodePath.join(
         uploadFolderPath,
         nodePath.parse(mod.name).name +
-          "-" +
-          format(new Date(), "dd-MM-yyyy-HH-mm") +
-          nodePath.parse(mod.name).ext
+        "-" +
+        format(new Date(), "dd-MM-yyyy-HH-mm") +
+        nodePath.parse(mod.name).ext
       );
       await fs.mkdirSync(uploadFolderPath, { recursive: true });
       await fs.copyFileSync(mod.path, backupFilePath);
@@ -3958,8 +3971,7 @@ export const registerIpcMainListeners = (
               const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
 
               console.log(
-                `Executing flows for pack: ${pack.name} (using ${
-                  hasOverwrites ? "overwritten" : "original"
+                `Executing flows for pack: ${pack.name} (using ${hasOverwrites ? "overwritten" : "original"
                 } pack)`
               );
               const packPaths = await executeFlowsForPack(
@@ -4037,9 +4049,23 @@ export const registerIpcMainListeners = (
           fileNameWithModList = "my_mods.txt";
           await fs.writeFileSync(myModsPath, text);
         }
-        let batData = `start /d "${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}" ${
-          gameToProcessName[appData.currentGame]
-        }`;
+
+        let batData = `start /d "${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}" ${gameToProcessName[appData.currentGame]
+          }`
+
+        if (process.platform === "linux") {
+          if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) {
+            // should throw an error here?
+            console.error("Game path is undefined for current game");
+            return
+          }
+          const gamePath = join(appData.gamesToGameFolderPaths[appData.currentGame].gamePath!, gameToProcessName[appData.currentGame]);
+          batData = `protontricks-launch --cwd-app --appid ${gameToSteamId[appData.currentGame]} "${gamePath}"`
+        }
+        
+          console.log("batData so far:", batData);
+
+
         if (saveName) {
           batData += ` game_startup_mode campaign_load "${saveName}" ;`;
         }
