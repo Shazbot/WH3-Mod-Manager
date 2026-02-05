@@ -117,6 +117,47 @@ const getSourceNodeOutputInfo = (
   return { tableName, columnNames };
 };
 
+// All node types that output TableSelection data (used for connection propagation)
+const TABLE_SELECTION_SOURCES = new Set([
+  "tableselection",
+  "tableselectiondropdown",
+  "filter",
+  "multifilter",
+  "referencelookup",
+  "reversereferencelookup",
+  "lookup",
+  "extracttable",
+  "flattennested",
+  "groupby",
+  "deduplicate",
+  "generaterows",
+  "generaterowsschema",
+  "addnewcolumn",
+  "getcountercolumn",
+  "customrowsinput",
+  "readtsvfrompack",
+]);
+
+// All node types that accept TableSelection and need generic table metadata propagation
+// (columnNames, connectedTableName, DBNameToDBVersions)
+// Excludes: generaterows (has multi-input merge logic), lookup (has dual-input handles)
+const TABLE_METADATA_TARGETS = new Set([
+  "columnselectiondropdown",
+  "groupbycolumns",
+  "filter",
+  "multifilter",
+  "referencelookup",
+  "reversereferencelookup",
+  "indextable",
+  "extracttable",
+  "aggregatenested",
+  "groupby",
+  "deduplicate",
+  "addnewcolumn",
+  "generaterowsschema",
+  "getcountercolumn",
+]);
+
 // Serialization types
 export interface SerializedNode {
   id: string;
@@ -7669,99 +7710,80 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           );
         }
 
-        // Update column selection dropdown nodes when connected to table selection nodes
+        // Unified table metadata propagation: any TableSelection source → any table metadata target
+        // Excludes: getcountercolumn (synthetic schema, handled separately),
+        //           generaterows (multi-input merge logic, handled separately),
+        //           lookup (dual-input handles, handled separately)
         if (
-          (targetNode.type === "columnselectiondropdown" ||
-            targetNode.type === "groupbycolumns" ||
-            targetNode.type === "filter" ||
-            targetNode.type === "multifilter" ||
-            targetNode.type === "referencelookup" ||
-            targetNode.type === "reversereferencelookup" ||
-            targetNode.type === "indextable" ||
-            targetNode.type === "lookup" ||
-            targetNode.type === "extracttable" ||
-            targetNode.type === "aggregatenested" ||
-            targetNode.type === "groupby" ||
-            targetNode.type === "deduplicate" ||
-            targetNode.type === "getcountercolumn" ||
-            targetNode.type === "generaterows") &&
-          (sourceNode.type === "tableselection" || sourceNode.type === "tableselectiondropdown")
+          TABLE_METADATA_TARGETS.has(targetNode.type as string) &&
+          TABLE_SELECTION_SOURCES.has(sourceNode.type as string) &&
+          sourceNode.type !== "getcountercolumn" // handled separately below
         ) {
-          const tableName =
-            sourceNode.type === "tableselectiondropdown"
-              ? (sourceNode.data as unknown as TableSelectionDropdownNodeData).selectedTable
-              : undefined; // For tableselection, we'd need to parse the textValue
+          const sourceData = sourceNode.data as any;
 
-          if (tableName && DBNameToDBVersions) {
+          // Get the correct output table and columns from source node
+          const hasSchemaColumns =
+            sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
+          const hasCustomSchemaColumns = sourceNode.type === "generaterowsschema";
+
+          let tableName: string | undefined;
+          let cols: string[] = [];
+
+          if (hasSchemaColumns) {
+            tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
+            cols = (sourceData.schemaColumns || []).map((col: any) => col.name);
+          } else if (hasCustomSchemaColumns) {
+            tableName = `_custom_schema_${sourceNode.id}`;
+            cols = sourceData.customSchemaColumns || [];
+          } else {
+            const outputInfo = getSourceNodeOutputInfo(
+              sourceNode,
+              sourceData,
+              sourceData.DBNameToDBVersions || DBNameToDBVersions,
+              defaultTableVersions
+            );
+            tableName = outputInfo.tableName;
+            cols = outputInfo.columnNames;
+          }
+
+          // If we still don't have columns, try to get them from the schema
+          if (cols.length === 0 && tableName && DBNameToDBVersions && DBNameToDBVersions[tableName]) {
             const tableVersions = DBNameToDBVersions[tableName];
             if (tableVersions && tableVersions.length > 0) {
               const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
               const tableFields = selectedVersion?.fields || [];
-              const fieldNames = tableFields.map((field) => field.name);
-
-              setNodes((nds) =>
-                nds.map((node) => {
-                  if (node.id === params.target) {
-                    // For lookup nodes, check which handle is being connected
-                    if (node.type === "lookup") {
-                      if (params.targetHandle === "input-index") {
-                        // Connecting to index input - set indexedTableName
-                        return {
-                          ...node,
-                          data: {
-                            ...node.data,
-                            indexedTableName: tableName,
-                            indexedTableColumnNames: fieldNames,
-                            indexedInputType: "TableSelection",
-                          },
-                        };
-                      } else {
-                        // Connecting to source input (input-source or no specific handle)
-                        return {
-                          ...node,
-                          data: {
-                            ...node.data,
-                            columnNames: fieldNames,
-                            connectedTableName: tableName,
-                            DBNameToDBVersions: DBNameToDBVersions,
-                          },
-                        };
-                      }
-                    }
-
-                    // For all other node types, use default behavior
-                    return {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        columnNames: fieldNames,
-                        connectedTableName: tableName,
-                        DBNameToDBVersions: DBNameToDBVersions,
-                      },
-                    };
-                  }
-                  return node;
-                })
-              );
+              cols = tableFields.map((field: any) => field.name);
             }
+          }
+
+          if (tableName && (cols.length > 0 || DBNameToDBVersions)) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === params.target) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      columnNames: cols,
+                      inputColumnNames: cols,
+                      connectedTableName: tableName,
+                      DBNameToDBVersions: hasSchemaColumns
+                        ? DBNameToDBVersions
+                        : sourceData.DBNameToDBVersions || DBNameToDBVersions,
+                    },
+                  };
+                }
+                return node;
+              })
+            );
           }
         }
 
-        // Update nodes when connected to GetCounterColumn node
+        // Update nodes when connected to GetCounterColumn node (synthetic schema, kept separate)
         if (
-          (targetNode.type === "columnselectiondropdown" ||
-            targetNode.type === "groupbycolumns" ||
-            targetNode.type === "filter" ||
-            targetNode.type === "multifilter" ||
-            targetNode.type === "referencelookup" ||
-            targetNode.type === "reversereferencelookup" ||
-            targetNode.type === "indextable" ||
-            targetNode.type === "lookup" ||
-            targetNode.type === "extracttable" ||
-            targetNode.type === "aggregatenested" ||
-            targetNode.type === "groupby" ||
-            targetNode.type === "deduplicate" ||
-            targetNode.type === "generaterows") &&
+          (TABLE_METADATA_TARGETS.has(targetNode.type as string) ||
+            targetNode.type === "generaterows" ||
+            targetNode.type === "lookup") &&
           sourceNode.type === "getcountercolumn"
         ) {
           const counterData = sourceNode.data as unknown as GetCounterColumnNodeData;
@@ -8226,9 +8248,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           }
         }
 
-        // Update generaterows nodes when connected to any table source
+        // Update generaterows/generaterowsschema nodes when connected to any table source
+        // (kept separate from unified handler because generaterows has multi-input column merging)
         if (
-          targetNode.type === "generaterows" &&
+          (targetNode.type === "generaterows" || targetNode.type === "generaterowsschema") &&
           (sourceNode.type === "tableselection" ||
             sourceNode.type === "tableselectiondropdown" ||
             sourceNode.type === "filter" ||
@@ -8381,227 +8404,6 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           );
         }
 
-        // Update addnewcolumn nodes when connected to any table source
-        if (
-          (targetNode.type === "addnewcolumn" ||
-            targetNode.type === "deduplicate" ||
-            targetNode.type === "groupby" ||
-            targetNode.type === "filter" ||
-            targetNode.type === "multifilter") &&
-          (sourceNode.type === "tableselection" ||
-            sourceNode.type === "tableselectiondropdown" ||
-            sourceNode.type === "filter" ||
-            sourceNode.type === "multifilter" ||
-            sourceNode.type === "referencelookup" ||
-            sourceNode.type === "reversereferencelookup" ||
-            sourceNode.type === "lookup" ||
-            sourceNode.type === "extracttable" ||
-            sourceNode.type === "flattennested" ||
-            sourceNode.type === "getcountercolumn" ||
-            sourceNode.type === "groupby" ||
-            sourceNode.type === "deduplicate" ||
-            sourceNode.type === "generaterows" ||
-            sourceNode.type === "generaterowsschema" ||
-            sourceNode.type === "addnewcolumn" ||
-            sourceNode.type === "customrowsinput" ||
-            sourceNode.type === "readtsvfrompack")
-        ) {
-          const sourceData = sourceNode.data as any;
-
-          // For customrowsinput and readtsvfrompack, get columns from schemaColumns
-          const hasSchemaColumns =
-            sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
-
-          // For generaterowsschema, get columns from customSchemaColumns
-          const hasCustomSchemaColumns = sourceNode.type === "generaterowsschema";
-
-          // Get the correct output table and columns from source node
-          let tableName: string | undefined;
-          let cols: string[] = [];
-
-          if (hasSchemaColumns) {
-            tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
-            cols = (sourceData.schemaColumns || []).map((col: any) => col.name);
-          } else if (hasCustomSchemaColumns) {
-            tableName = `_custom_schema_${sourceNode.id}`;
-            cols = sourceData.customSchemaColumns || [];
-          } else if (sourceNode.type === "tableselectiondropdown") {
-            tableName = sourceData.selectedTable;
-          } else {
-            // Use helper for reference/reverse lookup nodes and others
-            const outputInfo = getSourceNodeOutputInfo(
-              sourceNode,
-              sourceData,
-              sourceData.DBNameToDBVersions || DBNameToDBVersions,
-              defaultTableVersions
-            );
-            tableName = outputInfo.tableName;
-            cols = outputInfo.columnNames;
-          }
-
-          // If we still don't have columns, try to get them from the schema
-          if (cols.length === 0 && tableName && DBNameToDBVersions && DBNameToDBVersions[tableName]) {
-            const tableVersions = DBNameToDBVersions[tableName];
-            if (tableVersions && tableVersions.length > 0) {
-              const selectedVersion = getTableVersion(tableName, tableVersions, defaultTableVersions);
-              const tableFields = selectedVersion?.fields || [];
-              cols = tableFields.map((field: any) => field.name);
-            }
-          }
-
-          if ((tableName && (cols.length > 0 || DBNameToDBVersions)) || hasSchemaColumns || hasCustomSchemaColumns) {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === params.target) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      columnNames: cols,
-                      inputColumnNames: cols, // Store input columns separately
-                      connectedTableName: tableName,
-                      DBNameToDBVersions: hasSchemaColumns
-                        ? DBNameToDBVersions
-                        : sourceData.DBNameToDBVersions,
-                    },
-                  };
-                }
-                return node;
-              })
-            );
-          }
-        }
-
-        // Update reference lookup nodes when connected to new table operation nodes
-        if (
-          targetNode.type === "referencelookup" &&
-          (sourceNode.type === "lookup" ||
-            sourceNode.type === "extracttable" ||
-            sourceNode.type === "flattennested" ||
-            sourceNode.type === "generaterows" ||
-            sourceNode.type === "generaterowsschema")
-        ) {
-          const sourceData = sourceNode.data as any;
-
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === params.target) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      columnNames: sourceData.columnNames || [],
-                      connectedTableName: sourceData.connectedTableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
-                    },
-                  };
-                }
-                return node;
-              })
-            );
-          }
-        }
-
-        // Update reverse reference lookup nodes when connected to new table operation nodes
-        if (
-          targetNode.type === "reversereferencelookup" &&
-          (sourceNode.type === "lookup" ||
-            sourceNode.type === "extracttable" ||
-            sourceNode.type === "flattennested" ||
-            sourceNode.type === "generaterows" ||
-            sourceNode.type === "generaterowsschema")
-        ) {
-          const sourceData = sourceNode.data as any;
-
-          if (sourceData.connectedTableName && sourceData.DBNameToDBVersions) {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === params.target) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      columnNames: sourceData.columnNames || [],
-                      connectedTableName: sourceData.connectedTableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
-                    },
-                  };
-                }
-                return node;
-              })
-            );
-          }
-        }
-
-        // Update filter nodes when connected to reference lookup or reverse reference lookup nodes
-        if (
-          targetNode.type === "filter" &&
-          (sourceNode.type === "referencelookup" || sourceNode.type === "reversereferencelookup")
-        ) {
-          const sourceData = sourceNode.data as any;
-          const outputInfo = getSourceNodeOutputInfo(
-            sourceNode,
-            sourceData,
-            sourceData.DBNameToDBVersions,
-            defaultTableVersions
-          );
-
-          if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === params.target) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      columnNames: outputInfo.columnNames,
-                      connectedTableName: outputInfo.tableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
-                    },
-                  };
-                }
-                return node;
-              })
-            );
-          }
-        }
-
-        // Update column selection dropdown and groupbycolumns when connected to filter or reference lookup nodes
-        if (
-          (targetNode.type === "columnselectiondropdown" || targetNode.type === "groupbycolumns") &&
-          (sourceNode.type === "filter" ||
-            sourceNode.type === "referencelookup" ||
-            sourceNode.type === "reversereferencelookup")
-        ) {
-          const sourceData = sourceNode.data as any;
-          const outputInfo = getSourceNodeOutputInfo(
-            sourceNode,
-            sourceData,
-            sourceData.DBNameToDBVersions,
-            defaultTableVersions
-          );
-
-          // Propagate the table info to the target node
-          if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === params.target) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      columnNames: outputInfo.columnNames,
-                      connectedTableName: outputInfo.tableName,
-                      DBNameToDBVersions: sourceData.DBNameToDBVersions,
-                    },
-                  };
-                }
-                return node;
-              })
-            );
-          }
-        }
       }
       // If types don't match or are undefined, the connection is rejected silently
     },
