@@ -256,6 +256,18 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
   }
 }
 
+export function getRawEffectLocalization(
+  effectKey: string,
+  getLoc: (locId: string) => string | undefined
+): string {
+  const locId = `effects_description_${effectKey}`;
+  let localized = getLoc(locId);
+  if (!localized) return effectKey;
+  localized = resolveTextReplacements(localized, getLoc) || localized;
+  localized = localized.replaceAll(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "");
+  return localized;
+}
+
 export function getNodeRequirements(nodeLinks: NodeLinks, nodeToSkill: Record<string, NodeSkill>) {
   const nodeRequirements = {} as Record<
     string,

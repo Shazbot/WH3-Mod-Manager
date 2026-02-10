@@ -28,8 +28,11 @@ export type SkillData = {
   subculture?: string;
   isCheckingSkillRequirements: boolean;
   unlockRank: number;
+  isEditMode?: boolean;
+  editGroupColor?: string;
+  existingSkillKey?: string;
 };
-const Skill = memo(({ data }: { data: SkillData }) => {
+const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean }) => {
   const dispatch = useAppDispatch();
   const { skillBackground, skillIconBackground, skillIcon, label } = data;
   const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
@@ -63,7 +66,7 @@ const Skill = memo(({ data }: { data: SkillData }) => {
         console.log(effect);
       }
     },
-    [setCurrentLevel]
+    [setCurrentLevel],
   );
 
   const onRightClick = useCallback(
@@ -73,7 +76,7 @@ const Skill = memo(({ data }: { data: SkillData }) => {
         dispatch(setSkillNodeLevel({ skillNodeId: data.nodeId, level: currentLevel - 1 }));
       }
     },
-    [setCurrentLevel]
+    [setCurrentLevel],
   );
 
   if (!skillsData) return <></>;
@@ -110,14 +113,14 @@ const Skill = memo(({ data }: { data: SkillData }) => {
       }
       if (!areRequirementsValid) {
         const reqParentNodeSkill = skillsData.currentSkills.find(
-          (skill) => skill.nodeId == nodeRequirements.single[0]
+          (skill) => skill.nodeId == nodeRequirements.single[0],
         );
         if (reqParentNodeSkill) {
           reqsMessage =
             localized.skillUnlockRequirementParent &&
             localized.skillUnlockRequirementParent.replace(
               "REQUIRED_SKILL",
-              reqParentNodeSkill.localizedTitle || reqParentNodeSkill.id
+              reqParentNodeSkill.localizedTitle || reqParentNodeSkill.id,
             );
         }
       }
@@ -134,7 +137,7 @@ const Skill = memo(({ data }: { data: SkillData }) => {
           localized.skillUnlockRequirementMultipleParents &&
           localized.skillUnlockRequirementMultipleParents.replace(
             "NUM_SKILL_POINTS",
-            nodeRequirements.numMultiple.toString()
+            nodeRequirements.numMultiple.toString(),
           );
       }
     }
@@ -212,19 +215,29 @@ const Skill = memo(({ data }: { data: SkillData }) => {
         onMouseEnter={() => onMouseEnter()}
         onMouseLeave={() => onMouseLeave()}
         onClick={() => {
+          if (data.isEditMode) return;
           if (isCheckingSkillRequirements && data.unlockRank > currentRank) return;
           if (!isCheckingSkillRequirements || areRequirementsValid) onClick(currentLevel, data.numLevels);
         }}
-        onContextMenu={() => {
+        onContextMenu={(e) => {
+          if (data.isEditMode) {
+            e.preventDefault();
+            return;
+          }
           onRightClick(currentLevel);
         }}
-        className={`h-20 relative w-[260px] ${
+        className={`h-20 relative w-[260px] ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${
           areRequirementsValid && (!isCheckingSkillRequirements || data.unlockRank <= currentRank)
             ? ""
             : "grayscale"
-        }`}
+        } ${data.isEditMode && selected ? "outline-dashed outline-2 outline-offset-2 outline-cyan-400 rounded-sm" : ""}`}
+        style={data.editGroupColor ? { boxShadow: `inset 4px 0 0 ${data.editGroupColor}` } : undefined}
       >
-        <Handle type="target" position={Position.Left} className="ml-[10px] z-[2] opacity-0" />
+        <Handle
+          type="target"
+          position={Position.Left}
+          className={`ml-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
+        />
         <img className="absolute h-20 w-full" src={skillBackground} alt={skillBackground} />
         <div className="absolute h-20 left-[-30px]">
           <img className="h-full object-cover" src={skillIconBackground} alt={skillIconBackground} />
@@ -252,7 +265,11 @@ const Skill = memo(({ data }: { data: SkillData }) => {
             </div>
           ))}
         </div>
-        <Handle type="source" position={Position.Right} className="mr-[10px] z-[2] opacity-0" />
+        <Handle
+          type="source"
+          position={Position.Right}
+          className={`mr-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
+        />
       </div>
     </>
   );

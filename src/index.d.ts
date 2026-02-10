@@ -466,9 +466,47 @@ declare global {
     subtypes: string[];
     subtypesToLocalizedNames: Record<string, string>;
     nodeToSkillLocks: NodeToSkillLocks;
+    allEffects: { effectKey: string; localizedKey: string; icon?: string; priority: string }[];
+    allSkills: {
+      key: string;
+      localizedName: string;
+      localizedDescription: string;
+      iconPath: string;
+      maxLevel: number;
+      unlockRank: number;
+      effects: { effectKey: string; effectScope: string; level: number; value: string; icon?: string; priority: string }[];
+    }[];
+    allSkillIcons: { path: string; name: string }[];
   }
 
   Record<string, [string, string][]>;
+
+  interface SaveSkillsPackPayload {
+    subtype: string;
+    subtypeIndex: number;
+    nodes: {
+      nodeId: string;
+      skillId: string;
+      label: string;
+      description: string;
+      row: number;
+      column: number;
+      maxLevel: number;
+      unlockRank: number;
+      imgPath: string;
+      faction: string;
+      subculture: string;
+      effects: Effect[];
+      group?: string;
+      requiredNumParents: number;
+      existingSkillKey?: string;
+    }[];
+    edges: {
+      source: string;
+      target: string;
+      linkType: "REQUIRED" | "SUBSET_REQUIRED";
+    }[];
+  }
 
   type SkillAndLevel = [string, number];
   type NodeToSkillLocks = Record<string, SkillAndLevel[]>;
