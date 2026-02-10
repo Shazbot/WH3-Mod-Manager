@@ -460,3 +460,12 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   width: 0.75rem !important;
   height: 0.75rem !important;
 }
+
+.first-child-div-flex-col > div:nth-child(1) {
+  display: flex;
+  flex-direction: column;
+}
+
+.first-child-div-second-child-div-flex-grow > div:nth-child(1) > div:nth-child(2) {
+  flex-grow: 1;
+}

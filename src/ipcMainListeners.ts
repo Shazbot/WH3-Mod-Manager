@@ -45,10 +45,11 @@ import {
   mergeMods,
   readFromExistingPack,
   readPack,
+  typeToBuffer,
   writeStartGamePack,
   writePack,
 } from "./packFileSerializer";
-import { AmendedSchemaField, Pack, PackCollisions, PackedFile } from "./packFileTypes";
+import { AmendedSchemaField, DBField, NewPackedFile, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { resolveTable } from "./resolveTable";
 import {
   DBNameToDBVersions,
@@ -60,6 +61,7 @@ import {
   appendLocalizationsToSkills,
   getNodeRequirements,
   getNodesToParents,
+  getRawEffectLocalization,
   getSkills,
   NodeLinks,
   NodeSkill,
@@ -870,6 +872,49 @@ export const registerIpcMainListeners = (
 
     const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
 
+    const characterEffectKeys = new Set<string>();
+    for (const effect of skillsAndEffects) {
+      if (effect.effectScope.startsWith("character_")) {
+        characterEffectKeys.add(effect.effectKey);
+      }
+    }
+    const allEffects = Object.values(effectsToEffectData)
+      .filter((ed) => characterEffectKeys.has(ed.key))
+      .map((ed) => ({
+        effectKey: ed.key,
+        localizedKey: getRawEffectLocalization(ed.key, getLoc),
+        icon: ed.icon,
+        priority: ed.priority,
+      }));
+
+    const allSkillIcons = Object.keys(icons)
+      .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
+      .sort()
+      .map((iconPath) => ({
+        path: iconPath,
+        name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
+      }));
+
+    const allSkills = skills.map((skill) => {
+      const effects = (skillsToEffects[skill.key] || []).map((e) => ({
+        effectKey: e.effectKey,
+        effectScope: e.effectScope,
+        level: e.level,
+        value: e.value,
+        icon: e.icon,
+        priority: e.priority,
+      }));
+      return {
+        key: skill.key,
+        localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
+        localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
+        iconPath: skill.iconPath,
+        maxLevel: skill.maxLevel,
+        unlockRank: skill.unlockRank,
+        effects,
+      };
+    });
+
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
@@ -881,6 +926,9 @@ export const registerIpcMainListeners = (
       icons,
       subtypes,
       nodeToSkillLocks,
+      allEffects,
+      allSkills,
+      allSkillIcons,
       subtypesToLocalizedNames: subtypes.reduce(
         (acc, curr) => {
           const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
@@ -932,6 +980,51 @@ export const registerIpcMainListeners = (
 
     const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
 
+    const characterEffectKeys = new Set<string>();
+    for (const effects of Object.values(cachedSkillsData.skillsToEffects)) {
+      for (const effect of effects) {
+        if (effect.effectScope.startsWith("character_")) {
+          characterEffectKeys.add(effect.effectKey);
+        }
+      }
+    }
+    const allEffects = Object.values(cachedSkillsData.effectsToEffectData)
+      .filter((ed) => characterEffectKeys.has(ed.key))
+      .map((ed) => ({
+        effectKey: ed.key,
+        localizedKey: getRawEffectLocalization(ed.key, getLoc),
+        icon: ed.icon,
+        priority: ed.priority,
+      }));
+
+    const allSkills = cachedSkillsData.skills.map((skill) => {
+      const effects = (cachedSkillsData.skillsToEffects[skill.key] || []).map((e) => ({
+        effectKey: e.effectKey,
+        effectScope: e.effectScope,
+        level: e.level,
+        value: e.value,
+        icon: e.icon,
+        priority: e.priority,
+      }));
+      return {
+        key: skill.key,
+        localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
+        localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
+        iconPath: skill.iconPath,
+        maxLevel: skill.maxLevel,
+        unlockRank: skill.unlockRank,
+        effects,
+      };
+    });
+
+    const allSkillIcons = Object.keys(cachedSkillsData.icons)
+      .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
+      .sort()
+      .map((iconPath) => ({
+        path: iconPath,
+        name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
+      }));
+
     appData.queuedSkillsData = {
       // subtypeToSkills: { [subtype]: kfSkills },
       currentSubtype: subtype,
@@ -943,6 +1036,9 @@ export const registerIpcMainListeners = (
       nodeToSkillLocks,
       icons,
       subtypes,
+      allEffects,
+      allSkills,
+      allSkillIcons,
       subtypesToLocalizedNames: subtypes.reduce(
         (acc, curr) => {
           const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
@@ -2554,6 +2650,201 @@ export const registerIpcMainListeners = (
     getSkillsForSubtype(subtype, subtypeIndex);
   });
 
+  ipcMain.handle("saveSkillsPack", async (event, data: SaveSkillsPackPayload) => {
+    try {
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+      if (!dataFolder) return { success: false, error: "Data folder not found" };
+
+      const ts = Date.now().toString();
+      const { subtype, nodes, edges } = data;
+
+      // Build key mappings: old nodeId → new node key, index-based new skill key
+      const nodeIdToNewNodeKey: Record<string, string> = {};
+      const nodeIdToNewSkillKey: Record<string, string> = {};
+      for (let i = 0; i < nodes.length; i++) {
+        nodeIdToNewNodeKey[nodes[i].nodeId] = `custom_node_${ts}_${i}`;
+        if (nodes[i].existingSkillKey) {
+          nodeIdToNewSkillKey[nodes[i].nodeId] = nodes[i].existingSkillKey!;
+        } else {
+          nodeIdToNewSkillKey[nodes[i].nodeId] = `custom_skill_${ts}_${i}`;
+        }
+      }
+      const customNodes = nodes.filter((n) => !n.existingSkillKey);
+      const newSetKey = `custom_skill_set_${subtype}_${ts}`;
+
+      const buildRowFromSchema = (
+        dbFields: DBField[],
+        values: Record<string, string | boolean>,
+      ): (string | boolean)[] => {
+        return dbFields.map((field) => {
+          if (values[field.name] !== undefined) return values[field.name];
+          return field.default_value ?? "";
+        });
+      };
+
+      const buildDBFileBuffer = async (
+        version: number,
+        rows: (string | boolean)[][],
+        dbFields: DBField[],
+      ): Promise<Buffer> => {
+        const parts: Buffer[] = [];
+        // Version marker
+        parts.push(Buffer.from([0xfc, 0xfd, 0xfe, 0xff]));
+        // Version number (int32 LE)
+        const vBuf = Buffer.alloc(4);
+        vBuf.writeInt32LE(version, 0);
+        parts.push(vBuf);
+        // Marker byte
+        parts.push(Buffer.from([0x01]));
+        // Entry count (int32 LE)
+        const cBuf = Buffer.alloc(4);
+        cBuf.writeInt32LE(rows.length, 0);
+        parts.push(cBuf);
+        // Row data
+        for (const row of rows) {
+          for (let i = 0; i < dbFields.length; i++) {
+            parts.push(await typeToBuffer(dbFields[i].field_type, row[i]));
+          }
+        }
+        return Buffer.concat(parts);
+      };
+
+      const getLatestSchema = (tableName: string) => {
+        const versions = DBNameToDBVersions[appData.currentGame][tableName];
+        if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableName}`);
+        return versions[0]; // sorted by version desc
+      };
+
+      const packFiles: NewPackedFile[] = [];
+
+      // 1. character_skill_node_sets_tables — one row
+      {
+        const tableName = "character_skill_node_sets_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = [
+          buildRowFromSchema(schema.fields, {
+            key: newSetKey,
+            agent_subtype_key: subtype,
+          }),
+        ];
+        const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+        packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+      }
+
+      // 2. character_skills_tables — one row per custom node (existing skills already exist)
+      {
+        const tableName = "character_skills_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = customNodes.map((node, i) =>
+          buildRowFromSchema(schema.fields, {
+            key: nodeIdToNewSkillKey[node.nodeId],
+            image_path: node.imgPath || "",
+            unlocked_at_rank: node.unlockRank.toString(),
+          }),
+        );
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 3. character_skill_nodes_tables — one row per node
+      {
+        const tableName = "character_skill_nodes_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = nodes.map((node, i) =>
+          buildRowFromSchema(schema.fields, {
+            key: nodeIdToNewNodeKey[node.nodeId],
+            character_skill_key: nodeIdToNewSkillKey[node.nodeId],
+            tier: node.column.toString(),
+            indent: node.row.toString(),
+            visible_in_ui: "true",
+            faction_key: node.faction || "",
+            subculture: node.subculture || "",
+            required_num_parents: (node.requiredNumParents || 0).toString(),
+          }),
+        );
+        const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+        packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+      }
+
+      // 4. character_skill_node_set_items_tables — one row per node
+      {
+        const tableName = "character_skill_node_set_items_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = nodes.map((node) =>
+          buildRowFromSchema(schema.fields, {
+            set: newSetKey,
+            item: nodeIdToNewNodeKey[node.nodeId],
+            mod_disabled: "false",
+          }),
+        );
+        const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+        packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+      }
+
+      // 5. character_skill_node_links_tables — one row per edge
+      if (edges.length > 0) {
+        const tableName = "character_skill_node_links_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = edges
+          .filter((e) => nodeIdToNewNodeKey[e.source] && nodeIdToNewNodeKey[e.target])
+          .map((edge) =>
+            buildRowFromSchema(schema.fields, {
+              parent_key: nodeIdToNewNodeKey[edge.target],
+              child_key: nodeIdToNewNodeKey[edge.source],
+              link_type: edge.linkType || "REQUIRED",
+              parent_link_position: "",
+              child_link_position: "",
+            }),
+          );
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 6. character_skill_level_to_effects_junctions_tables — one row per effect per custom skill (existing skills already have effects)
+      {
+        const tableName = "character_skill_level_to_effects_junctions_tables";
+        const schema = getLatestSchema(tableName);
+        const rows: (string | boolean)[][] = [];
+        for (const node of customNodes) {
+          const skillKey = nodeIdToNewSkillKey[node.nodeId];
+          for (const effect of node.effects) {
+            rows.push(
+              buildRowFromSchema(schema.fields, {
+                character_skill_key: skillKey,
+                effect_key: effect.effectKey,
+                effect_scope: effect.effectScope || "character_to_character_own",
+                level: (effect.level || 1).toString(),
+                value: effect.value || "0",
+              }),
+            );
+          }
+        }
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      const packName = `custom_skills_${subtype}_${ts}.pack`;
+      const packPath = nodePath.join(dataFolder, packName);
+      console.log(`Writing skills pack to ${packPath} with ${packFiles.length} tables`);
+      for (const pf of packFiles) {
+        console.log(`  ${pf.name}: ${pf.file_size} bytes`);
+      }
+
+      await writePack(packFiles, packPath);
+      console.log("Skills pack written successfully");
+      return { success: true, packPath, packName };
+    } catch (err: any) {
+      console.error("Failed to save skills pack:", err);
+      return { success: false, error: err.message || String(err) };
+    }
+  });
+
   ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table);
   });
@@ -2999,6 +3290,10 @@ export const registerIpcMainListeners = (
     console.log("SENDING QUEUED DATA TO SKILLS");
     // windows.skillsWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
     windows.skillsWindow?.webContents.send("setSkillsData", appData.queuedSkillsData);
+    windows.skillsWindow?.webContents.send(
+      "setIsFeaturesForModdersEnabled",
+      appData.isFeaturesForModdersEnabled,
+    );
     windows.skillsWindow?.focus();
     appData.queuedSkillsData = undefined;
   };
@@ -3015,6 +3310,10 @@ export const registerIpcMainListeners = (
 
     windows.skillsWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.skillsWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
+    windows.skillsWindow?.webContents.send(
+      "setIsFeaturesForModdersEnabled",
+      appData.isFeaturesForModdersEnabled,
+    );
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {
@@ -4189,5 +4488,6 @@ export const registerIpcMainListeners = (
     console.log("syncIsFeaturesForModdersEnabled:", isFeaturesForModdersEnabled);
     // Send to viewer window
     windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
+    windows.skillsWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
   });
 };
