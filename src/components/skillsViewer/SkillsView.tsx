@@ -151,7 +151,7 @@ const SkillsView = memo(() => {
   const [isCheckingSkillRequirements, setIsCheckingSkillRequirements] = useState(true);
   const [factionFilter, setFactionFilter] = useState<string>("all");
   const [isEditMode, setIsEditMode] = useState(false);
-  const effectiveNodeHeight = useMemo(() => (isEditMode ? editModeNodeHeight : nodeHeight), [isEditMode]);
+  let effectiveNodeHeight = isEditMode ? editModeNodeHeight : nodeHeight;
   const [isAddNodeModalOpen, setIsAddNodeModalOpen] = useState(false);
   const [placeholderRow, setPlaceholderRow] = useState<number | undefined>(undefined);
   const [placeholderCol, setPlaceholderCol] = useState<number | undefined>(undefined);
@@ -165,6 +165,7 @@ const SkillsView = memo(() => {
   const [isSkillLocksMode, setIsSkillLocksMode] = useState(false);
   const savedLocksEdges = useRef<Edge[]>([]);
   const [lockEdgeLevels, setLockEdgeLevels] = useState<Record<string, number>>({});
+  const localNodeToSkillLocks = useRef<Record<string, [string, number][]> | null>(null);
 
   const groupIdToColor = useMemo(() => {
     const uniqueGroups = [...new Set(Object.values(editGroups))];
@@ -598,8 +599,8 @@ const SkillsView = memo(() => {
         if (linkedSkillNode && sourceSkillNode) {
           initialEdges.push({
             id: `e${skillWithLink.nodeId}2${linkedNode}`,
-            source: sourceSkillNode.parentId || `${skillWithLink.nodeId}`,
-            target: linkedSkillNode.parentId || `${linkedNode}`,
+            source: isEditMode ? `${skillWithLink.nodeId}` : (sourceSkillNode.parentId || `${skillWithLink.nodeId}`),
+            target: isEditMode ? `${linkedNode}` : (linkedSkillNode.parentId || `${linkedNode}`),
             type: edgeType,
             animated: false,
             ...(isEditMode
@@ -673,12 +674,8 @@ const SkillsView = memo(() => {
         );
         return;
       }
-      let source = connection.source;
-      let target = connection.target;
-      const sourceNode = nodes.find((n) => n.id === source);
-      const targetNode = nodes.find((n) => n.id === target);
-      if (sourceNode?.parentId) source = sourceNode.parentId;
-      if (targetNode?.parentId) target = targetNode.parentId;
+      const source = connection.source;
+      const target = connection.target;
       setEdges((eds) =>
         addEdge(
           {
@@ -1459,18 +1456,12 @@ const SkillsView = memo(() => {
   const onSavePack = useCallback(async () => {
     const skillNodes = nodes.filter((n) => n.type === "skill");
 
-    // Expand group edges to individual edges with linkType
+    // Build edges with linkType based on editGroups membership
     const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] = [];
     for (const e of edges) {
-      const sourceNode = nodes.find((n) => n.id === e.source);
-      if (sourceNode?.type === "default" && sourceNode.className?.includes("reactFlowGroup")) {
-        const groupId = e.source.replace("_group", "");
-        const members = Object.entries(editGroups)
-          .filter(([, gid]) => gid === groupId)
-          .map(([nid]) => nid);
-        for (const member of members) {
-          expandedEdges.push({ source: member, target: e.target, linkType: "SUBSET_REQUIRED" });
-        }
+      const sourceGroupId = editGroups[e.source];
+      if (sourceGroupId) {
+        expandedEdges.push({ source: e.source, target: e.target, linkType: "SUBSET_REQUIRED" });
       } else {
         expandedEdges.push({ source: e.source, target: e.target, linkType: "REQUIRED" });
       }
@@ -1514,7 +1505,7 @@ const SkillsView = memo(() => {
 
     // Add skill locks data
     const skillLocksArray: { lockedNodeId: string; lockingSkillKey: string; requiredLevel: number }[] = [];
-    const nodeToSkillLocks = skillsData.nodeToSkillLocks || {};
+    const nodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
 
     for (const [lockedNodeId, skillAndLevelArray] of Object.entries(nodeToSkillLocks)) {
       for (const [lockingSkillKey, requiredLevel] of skillAndLevelArray) {
@@ -1572,13 +1563,6 @@ const SkillsView = memo(() => {
         : undefined;
       const srcGroupId = sourceGroupId || srcContainerGroupId;
 
-      // Resolve target: grouped node or group container ID
-      const targetGroupId = editGroups[edge.target];
-      const tgtContainerGroupId = edge.target.endsWith("_group")
-        ? Object.keys(groupToMembers).find((gid) => `${gid}_group` === edge.target)
-        : undefined;
-      const tgtGroupId = targetGroupId || tgtContainerGroupId;
-
       if (srcGroupId && groupToMembers[srcGroupId]) {
         // Source in a group → expand source side (SUBSET_REQUIRED curves above)
         const key = `${srcGroupId}->${edge.target}`;
@@ -1589,13 +1573,16 @@ const SkillsView = memo(() => {
         for (const memberId of groupToMembers[srcGroupId]) {
           addReqEdge(memberId, edge.target, groupColor || "#f59e0b", false);
         }
-      } else if (tgtGroupId && groupToMembers[tgtGroupId]) {
-        // Target in a group, source is not → expand target side (REQUIRED curves below)
-        for (const memberId of groupToMembers[tgtGroupId]) {
-          addReqEdge(edge.source, memberId, "#f59e0b", true);
+      } else if (edge.target.endsWith("_group")) {
+        // Target is a group container → expand to individual member edges
+        const tgtContainerGroupId = Object.keys(groupToMembers).find((gid) => `${gid}_group` === edge.target);
+        if (tgtContainerGroupId && groupToMembers[tgtContainerGroupId]) {
+          for (const memberId of groupToMembers[tgtContainerGroupId]) {
+            addReqEdge(edge.source, memberId, "#f59e0b", true);
+          }
         }
       } else {
-        // Neither in a group → individual REQUIRED edge (curves below)
+        // Individual REQUIRED edge (curves below)
         addReqEdge(edge.source, edge.target, "#f59e0b", true);
       }
     }
@@ -1633,16 +1620,16 @@ const SkillsView = memo(() => {
         const groupId = `editGroup_${groupCounter++}`;
         for (const src of sources) {
           newEditGroups[src] = groupId;
+          newEdges.push({
+            id: `e${src}-${target}`,
+            source: src,
+            target,
+            type: edgeType,
+            animated: false,
+            interactionWidth: 20,
+            style: { stroke: "#ef4444", strokeWidth: 2 },
+          });
         }
-        newEdges.push({
-          id: `e${groupId}_group-${target}`,
-          source: `${groupId}_group`,
-          target,
-          type: edgeType,
-          animated: false,
-          interactionWidth: 20,
-          style: { stroke: "#ef4444", strokeWidth: 2 },
-        });
       }
     }
 
@@ -1664,7 +1651,7 @@ const SkillsView = memo(() => {
   // Skill Locks mode: enter
   const enterSkillLocksMode = useCallback(() => {
     savedLocksEdges.current = [...edges];
-    const nodeToSkillLocks = skillsData.nodeToSkillLocks || {};
+    const nodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
     const lockEdges: Edge[] = [];
     const edgeLevels: Record<string, number> = {};
 
@@ -1716,7 +1703,7 @@ const SkillsView = memo(() => {
       if (!existing) newNodeToSkillLocks[lockedNodeId].push([lockingSkillKey, level]);
     }
 
-    if (skillsData) skillsData.nodeToSkillLocks = newNodeToSkillLocks;
+    localNodeToSkillLocks.current = newNodeToSkillLocks;
     setEdges(savedLocksEdges.current);
     setIsSkillLocksMode(false);
     setLockEdgeLevels({});
