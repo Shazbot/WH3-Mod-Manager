@@ -164,8 +164,6 @@ const subscribeToStoreChanges = () => {
       if (!isSubscribedToStoreChanges) {
         isSubscribedToStoreChanges = true;
 
-        saveConfig(store.getState().app);
-
         store.subscribe(() => {
           saveConfigDebounced(store.getState().app);
         });
