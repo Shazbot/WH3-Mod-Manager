@@ -2829,9 +2829,35 @@ export const registerIpcMainListeners = (
         }
       }
 
+      // 7. character_skill_nodes_skill_locks_tables — one row per skill lock
+      if (data.skillLocks && data.skillLocks.length > 0) {
+        const tableName = "character_skill_nodes_skill_locks_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = data.skillLocks
+          .filter((lock) => {
+            const lockedNode = nodes.find((n) => n.nodeId === lock.lockedNodeId);
+            const lockingSkill = nodes.find((n) => n.skillId === lock.lockingSkillKey);
+            return lockedNode && (lockingSkill || !lock.lockingSkillKey.startsWith("custom_skill_"));
+          })
+          .map((lock) =>
+            buildRowFromSchema(schema.fields, {
+              character_skill: lock.lockingSkillKey,
+              character_skill_node: nodeIdToNewNodeKey[lock.lockedNodeId] || lock.lockedNodeId,
+              level: lock.requiredLevel.toString(),
+            }),
+          );
+
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+        }
+      }
+
       const packName = `custom_skills_${subtype}_${ts}.pack`;
       const packPath = nodePath.join(dataFolder, packName);
-      console.log(`Writing skills pack to ${packPath} with ${packFiles.length} tables`);
+      console.log(
+        `Writing skills pack to ${packPath} with ${packFiles.length} tables (including ${data.skillLocks?.length || 0} skill locks)`,
+      );
       for (const pf of packFiles) {
         console.log(`  ${pf.name}: ${pf.file_size} bytes`);
       }
