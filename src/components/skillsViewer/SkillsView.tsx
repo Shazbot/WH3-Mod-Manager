@@ -40,19 +40,52 @@ const nodeTypes = { skill: Skill, addPlaceholder: AddPlaceholderNode };
 
 const RequirementEdge = ({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data }: any) => {
   const midX = (sourceX + targetX) / 2;
-  const arc = Math.min(Math.abs(targetX - sourceX) * 0.3, 80);
+  const arc = Math.min(Math.abs(targetX - sourceX) * 0.3, 135);
   const dy = data?.curveBelow ? arc : -arc;
   const baseY = data?.curveBelow ? Math.max(sourceY, targetY) : Math.min(sourceY, targetY);
   const path = `M ${sourceX},${sourceY} Q ${midX},${baseY + dy} ${targetX},${targetY}`;
   return (
     <g>
-      <path d={path} fill="none" stroke={style?.stroke || "#f59e0b"} strokeWidth={style?.strokeWidth || 2} markerEnd={markerEnd} />
+      <path
+        d={path}
+        fill="none"
+        stroke={style?.stroke || "#f59e0b"}
+        strokeWidth={style?.strokeWidth || 2}
+        markerEnd={markerEnd}
+      />
       <path d={path} fill="none" stroke="transparent" strokeWidth={20} />
     </g>
   );
 };
 
-const edgeTypes = { requirement: RequirementEdge };
+const SkillLockEdge = ({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data }: any) => {
+  const midX = (sourceX + targetX) / 2;
+  const arc = Math.min(Math.abs(targetX - sourceX) * 0.3, 135);
+  const dy = data?.curveBelow ? -arc : arc; // Opposite curve from requirements
+  const baseY = data?.curveBelow ? Math.min(sourceY, targetY) : Math.max(sourceY, targetY);
+  const path = `M ${sourceX},${sourceY} Q ${midX},${baseY + dy} ${targetX},${targetY}`;
+  const level = data?.level || 1;
+
+  return (
+    <g>
+      <path
+        d={path}
+        fill="none"
+        stroke={style?.stroke || "#dc2626"}
+        strokeWidth={2}
+        markerEnd={markerEnd}
+        strokeDasharray="5,5"
+      />
+      <path d={path} fill="none" stroke="transparent" strokeWidth={20} />
+      <circle cx={midX} cy={baseY + dy} r="12" fill="#dc2626" stroke="#fff" strokeWidth="1" />
+      <text x={midX} y={baseY + dy + 4} textAnchor="middle" fill="#fff" fontSize="12" fontWeight="bold">
+        {level}
+      </text>
+    </g>
+  );
+};
+
+const edgeTypes = { requirement: RequirementEdge, skillLock: SkillLockEdge };
 
 const collator = new Intl.Collator("en");
 
@@ -75,6 +108,7 @@ skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 const nodeWidth = 300;
 let nodeHeight = 100;
 const biggerNodeHeight = 120;
+const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
 const sortSameCoordinateSkills = (first: Skill, second: Skill) => {
   if (first.faction == second.faction && first.subculture == second.subculture) return 0;
@@ -117,6 +151,7 @@ const SkillsView = memo(() => {
   const [isCheckingSkillRequirements, setIsCheckingSkillRequirements] = useState(true);
   const [factionFilter, setFactionFilter] = useState<string>("all");
   const [isEditMode, setIsEditMode] = useState(false);
+  const effectiveNodeHeight = useMemo(() => (isEditMode ? editModeNodeHeight : nodeHeight), [isEditMode]);
   const [isAddNodeModalOpen, setIsAddNodeModalOpen] = useState(false);
   const [placeholderRow, setPlaceholderRow] = useState<number | undefined>(undefined);
   const [placeholderCol, setPlaceholderCol] = useState<number | undefined>(undefined);
@@ -127,6 +162,9 @@ const SkillsView = memo(() => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [isRequirementsMode, setIsRequirementsMode] = useState(false);
   const savedEditEdges = useRef<Edge[]>([]);
+  const [isSkillLocksMode, setIsSkillLocksMode] = useState(false);
+  const savedLocksEdges = useRef<Edge[]>([]);
+  const [lockEdgeLevels, setLockEdgeLevels] = useState<Record<string, number>>({});
 
   const groupIdToColor = useMemo(() => {
     const uniqueGroups = [...new Set(Object.values(editGroups))];
@@ -217,7 +255,7 @@ const SkillsView = memo(() => {
       ),
     )
   ) {
-    nodeHeight = biggerNodeHeight;
+    effectiveNodeHeight = biggerNodeHeight;
     nodeSizeDelta = 20;
     usingBiggerNodeHeight = true;
   }
@@ -280,7 +318,7 @@ const SkillsView = memo(() => {
           unlockRank: 0,
         },
         position: {
-          y: lowest.x * nodeHeight - (usingBiggerNodeHeight ? 15 + nodeSizeDelta / 2 : 15),
+          y: lowest.x * effectiveNodeHeight - (usingBiggerNodeHeight ? 15 + nodeSizeDelta / 2 : 15),
           x: lowest.y * nodeWidth - 10,
         },
         sourcePosition: Position.Right,
@@ -295,7 +333,7 @@ const SkillsView = memo(() => {
         },
         className: "reactFlowGroup",
         width: skills.length * nodeWidth - 15,
-        height: nodeHeight - 10,
+        height: effectiveNodeHeight - 10,
       });
     }
   }
@@ -341,7 +379,7 @@ const SkillsView = memo(() => {
           unlockRank: 0,
         },
         position: {
-          y: lowest.x * nodeHeight - 15,
+          y: lowest.x * effectiveNodeHeight - 15,
           x: lowest.y * nodeWidth - 10,
         },
         sourcePosition: Position.Right,
@@ -356,7 +394,7 @@ const SkillsView = memo(() => {
         },
         className: "reactFlowGroup",
         width: members.length * nodeWidth - 15,
-        height: nodeHeight - 10,
+        height: effectiveNodeHeight - 10,
       });
     }
   }
@@ -392,11 +430,11 @@ const SkillsView = memo(() => {
         const indexInGroup = members.findIndex((s) => s.nodeId === skill.nodeId);
         position = { x: indexInGroup * nodeWidth + 10, y: 15 };
       } else {
-        position = { x: skill.y * nodeWidth, y: skill.x * nodeHeight };
+        position = { x: skill.y * nodeWidth, y: skill.x * effectiveNodeHeight };
       }
     } else {
       position = {
-        y: skill.x * nodeHeight + indexInSameCoords * 40,
+        y: skill.x * effectiveNodeHeight + indexInSameCoords * 40,
         x: skill.y * nodeWidth + indexInSameCoords * 25,
       };
       if (skill.group) {
@@ -486,7 +524,7 @@ const SkillsView = memo(() => {
       skillNodes.push({
         id: `add_placeholder_r${r}`,
         data: { row: r, column: maxColInRow } as any,
-        position: { x: maxColInRow * nodeWidth, y: r * nodeHeight },
+        position: { x: maxColInRow * nodeWidth, y: r * effectiveNodeHeight },
         type: "addPlaceholder",
         selectable: false,
         draggable: false,
@@ -565,7 +603,7 @@ const SkillsView = memo(() => {
             type: edgeType,
             animated: false,
             ...(isEditMode
-              ? { interactionWidth: 20, style: { stroke: '#ef4444', strokeWidth: 2 } }
+              ? { interactionWidth: 20, style: { stroke: "#ef4444", strokeWidth: 2 } }
               : { style: { opacity: 0 } }),
           });
         }
@@ -586,11 +624,9 @@ const SkillsView = memo(() => {
   const arrows = edges
     .map((edge) => {
       const sourceNode =
-        nodes.find((n) => n.id === edge.source) ||
-        nodes.find((n) => (n.data as any)?.id === edge.source);
+        nodes.find((n) => n.id === edge.source) || nodes.find((n) => (n.data as any)?.id === edge.source);
       const targetNode =
-        nodes.find((n) => n.id === edge.target) ||
-        nodes.find((n) => (n.data as any)?.id === edge.target);
+        nodes.find((n) => n.id === edge.target) || nodes.find((n) => (n.data as any)?.id === edge.target);
       if (!sourceNode || !targetNode) return;
       let x = Math.max(sourceNode.position.x, targetNode.position.x) - 70;
       if ((targetNode.data as any)?.isGrouping) x -= 20;
@@ -603,6 +639,24 @@ const SkillsView = memo(() => {
   // Edit mode: connect nodes (translate to group container if applicable)
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (isSkillLocksMode) {
+        const edgeId = `lock-${connection.source}-${connection.target}`;
+        setEdges((eds) =>
+          addEdge(
+            {
+              ...connection,
+              id: edgeId,
+              type: "skillLock",
+              animated: false,
+              style: { stroke: "#dc2626", strokeWidth: 2 },
+              data: { curveBelow: false, level: 1 },
+            },
+            eds,
+          ),
+        );
+        setLockEdgeLevels((prev) => ({ ...prev, [edgeId]: 1 }));
+        return;
+      }
       if (isRequirementsMode) {
         setEdges((eds) =>
           addEdge(
@@ -639,7 +693,7 @@ const SkillsView = memo(() => {
         ),
       );
     },
-    [setEdges, nodes, isRequirementsMode],
+    [setEdges, nodes, isRequirementsMode, isSkillLocksMode, setLockEdgeLevels],
   );
 
   // Edit mode: handle node deletion (also clean up connected edges)
@@ -652,19 +706,45 @@ const SkillsView = memo(() => {
 
   // Edit mode: click an edge to remove it
   const onEdgeClick = useCallback(
-    (_: React.MouseEvent, edge: { id: string }) => {
+    (event: React.MouseEvent, edge: Edge) => {
+      if (isSkillLocksMode) {
+        if (event.button === 2) {
+          // Right-click: delete
+          setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+          setLockEdgeLevels((prev) => {
+            const next = { ...prev };
+            delete next[edge.id];
+            return next;
+          });
+        } else {
+          // Left-click: edit level
+          const currentLevel = lockEdgeLevels[edge.id] || 1;
+          const newLevelStr = prompt(
+            `Enter required level (current: ${currentLevel}):`,
+            currentLevel.toString(),
+          );
+          if (newLevelStr === null) return;
+          const newLevel = parseInt(newLevelStr, 10);
+          if (isNaN(newLevel) || newLevel < 1) {
+            alert("Level must be positive integer");
+            return;
+          }
+          setLockEdgeLevels((prev) => ({ ...prev, [edge.id]: newLevel }));
+          setEdges((eds) =>
+            eds.map((e) => (e.id === edge.id ? { ...e, data: { ...e.data, level: newLevel } } : e)),
+          );
+        }
+        return;
+      }
       setEdges((eds) => eds.filter((e) => e.id !== edge.id));
     },
-    [setEdges],
+    [setEdges, isSkillLocksMode, lockEdgeLevels, setLockEdgeLevels],
   );
 
   // Edit mode: capture position before drag starts (for swap)
-  const onNodeDragStart: OnNodeDrag = useCallback(
-    (event, node) => {
-      dragStartPos.current = { x: node.position.x, y: node.position.y };
-    },
-    [],
-  );
+  const onNodeDragStart: OnNodeDrag = useCallback((event, node) => {
+    dragStartPos.current = { x: node.position.x, y: node.position.y };
+  }, []);
 
   // Edit mode: snap node to grid after drag
   // - If dropped on another node: insert before it (or after if Shift held)
@@ -686,7 +766,7 @@ const SkillsView = memo(() => {
         absY = node.position.y;
       }
       const snappedX = Math.round(absX / nodeWidth) * nodeWidth;
-      const snappedY = Math.round(absY / nodeHeight) * nodeHeight;
+      const snappedY = Math.round(absY / effectiveNodeHeight) * effectiveNodeHeight;
       const origPos = dragStartPos.current;
       dragStartPos.current = null;
 
@@ -704,7 +784,7 @@ const SkillsView = memo(() => {
         }
         return (
           Math.round(nAbsX / nodeWidth) * nodeWidth === snappedX &&
-          Math.round(nAbsY / nodeHeight) * nodeHeight === snappedY
+          Math.round(nAbsY / effectiveNodeHeight) * effectiveNodeHeight === snappedY
         );
       });
 
@@ -739,9 +819,7 @@ const SkillsView = memo(() => {
         // Also update its position to absolute coords since it's leaving the group
         setNodes((nds) =>
           nds.map((n) =>
-            n.id === node.id
-              ? { ...n, parentId: undefined, position: { x: snappedX, y: snappedY } }
-              : n,
+            n.id === node.id ? { ...n, parentId: undefined, position: { x: snappedX, y: snappedY } } : n,
           ),
         );
         return;
@@ -751,10 +829,16 @@ const SkillsView = memo(() => {
         let result: typeof nds;
         if (targetNode && origPos) {
           const targetCol = Math.round(snappedX / nodeWidth);
-          const targetRow = Math.round(snappedY / nodeHeight);
+          const targetRow = Math.round(snappedY / effectiveNodeHeight);
           // Collect all skill nodes in this row (non-grouped), sorted by column
           const rowSkills = nds
-            .filter((n) => n.type === "skill" && !n.parentId && Math.round(n.position.y / nodeHeight) === targetRow && n.id !== node.id)
+            .filter(
+              (n) =>
+                n.type === "skill" &&
+                !n.parentId &&
+                Math.round(n.position.y / effectiveNodeHeight) === targetRow &&
+                n.id !== node.id,
+            )
             .sort((a, b) => a.position.x - b.position.x);
 
           const targetIdx = rowSkills.findIndex((n) => n.id === targetNode.id);
@@ -771,7 +855,7 @@ const SkillsView = memo(() => {
           result = nds.map((n) => {
             if (posMap.has(n.id)) {
               const col = posMap.get(n.id)!;
-              return { ...n, position: { x: col * nodeWidth, y: targetRow * nodeHeight } };
+              return { ...n, position: { x: col * nodeWidth, y: targetRow * effectiveNodeHeight } };
             }
             return n;
           });
@@ -782,17 +866,24 @@ const SkillsView = memo(() => {
 
         // Reposition placeholder for affected rows so it stays past the rightmost skill
         const affectedRows = new Set<number>();
-        affectedRows.add(Math.round(snappedY / nodeHeight));
-        if (origPos) affectedRows.add(Math.round(origPos.y / nodeHeight));
+        affectedRows.add(Math.round(snappedY / effectiveNodeHeight));
+        if (origPos) affectedRows.add(Math.round(origPos.y / effectiveNodeHeight));
         for (const row of affectedRows) {
           const placeholderId = `add_placeholder_r${row}`;
           const maxCol = result
-            .filter((n) => n.type === "skill" && !n.parentId && Math.round(n.position.y / nodeHeight) === row)
+            .filter(
+              (n) =>
+                n.type === "skill" && !n.parentId && Math.round(n.position.y / effectiveNodeHeight) === row,
+            )
             .reduce((max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)), -1);
           const newCol = maxCol + 1;
           result = result.map((n) =>
             n.id === placeholderId
-              ? { ...n, data: { ...n.data, column: newCol }, position: { x: newCol * nodeWidth, y: row * nodeHeight } }
+              ? {
+                  ...n,
+                  data: { ...n.data, column: newCol },
+                  position: { x: newCol * nodeWidth, y: row * effectiveNodeHeight },
+                }
               : n,
           );
         }
@@ -830,11 +921,11 @@ const SkillsView = memo(() => {
   // Edit mode: right-click context menu on a skill node
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      if (!isEditMode || node.type !== "skill") return;
+      if ((!isEditMode && !isRequirementsMode) || node.type !== "skill") return;
       event.preventDefault();
       setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
     },
-    [isEditMode],
+    [isEditMode, isRequirementsMode],
   );
 
   // Close context menu on pane click
@@ -847,7 +938,9 @@ const SkillsView = memo(() => {
     (position: "before" | "after", addToGroup: boolean) => {
       if (!contextMenu) return;
       const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
-      const selectedNodes = nodes.filter((n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId);
+      const selectedNodes = nodes.filter(
+        (n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId,
+      );
       if (selectedNodes.length === 0 || !targetNode) {
         setContextMenu(null);
         return;
@@ -855,8 +948,12 @@ const SkillsView = memo(() => {
 
       // Sort selected by their current absolute x position for consistent ordering
       const sortedSelected = [...selectedNodes].sort((a, b) => {
-        const aAbsX = a.parentId ? (nodes.find((p) => p.id === a.parentId)?.position.x ?? 0) + a.position.x : a.position.x;
-        const bAbsX = b.parentId ? (nodes.find((p) => p.id === b.parentId)?.position.x ?? 0) + b.position.x : b.position.x;
+        const aAbsX = a.parentId
+          ? (nodes.find((p) => p.id === a.parentId)?.position.x ?? 0) + a.position.x
+          : a.position.x;
+        const bAbsX = b.parentId
+          ? (nodes.find((p) => p.id === b.parentId)?.position.x ?? 0) + b.position.x
+          : b.position.x;
         return aAbsX - bAbsX;
       });
       const N = sortedSelected.length;
@@ -872,7 +969,7 @@ const SkillsView = memo(() => {
         targetAbsX = targetNode.position.x;
         targetAbsY = targetNode.position.y;
       }
-      const targetRow = Math.round(targetAbsY / nodeHeight);
+      const targetRow = Math.round(targetAbsY / effectiveNodeHeight);
       const targetGroupId = editGroups[targetNode.data.nodeId];
 
       if (addToGroup && targetGroupId) {
@@ -881,10 +978,12 @@ const SkillsView = memo(() => {
           nds.map((n) => {
             const idx = sortedSelected.findIndex((s) => s.id === n.id);
             if (idx === -1) return n;
-            const offsetX = position === "before"
-              ? targetAbsX - N + idx
-              : targetAbsX + 1 + idx;
-            return { ...n, parentId: undefined, position: { x: offsetX, y: targetRow * nodeHeight } };
+            const offsetX = position === "before" ? targetAbsX - N + idx : targetAbsX + 1 + idx;
+            return {
+              ...n,
+              parentId: undefined,
+              position: { x: offsetX, y: targetRow * effectiveNodeHeight },
+            };
           }),
         );
         setEditGroups((prev) => {
@@ -920,7 +1019,7 @@ const SkillsView = memo(() => {
             } else {
               selAbsY = snCurrent.position.y;
             }
-            sourceRows.add(Math.round(selAbsY / nodeHeight));
+            sourceRows.add(Math.round(selAbsY / effectiveNodeHeight));
           }
 
           const targetCol = Math.round(targetAbsX / nodeWidth);
@@ -929,7 +1028,7 @@ const SkillsView = memo(() => {
           const rowNodes = nds.filter((n) => {
             if (n.type !== "skill" || selectedIds.has(n.id) || (n.data as any)?.isGrouping) return false;
             if (n.parentId) return false;
-            return Math.round(n.position.y / nodeHeight) === targetRow;
+            return Math.round(n.position.y / effectiveNodeHeight) === targetRow;
           });
           const occupiedCols = new Set(rowNodes.map((n) => Math.round(n.position.x / nodeWidth)));
 
@@ -972,7 +1071,11 @@ const SkillsView = memo(() => {
           let result = nds.map((n) => {
             if (selectedColMap.has(n.id)) {
               const col = selectedColMap.get(n.id)!;
-              return { ...n, parentId: undefined, position: { x: col * nodeWidth, y: targetRow * nodeHeight } };
+              return {
+                ...n,
+                parentId: undefined,
+                position: { x: col * nodeWidth, y: targetRow * effectiveNodeHeight },
+              };
             }
             if (shiftIds.has(n.id)) {
               const currentCol = Math.round(n.position.x / nodeWidth);
@@ -987,12 +1090,19 @@ const SkillsView = memo(() => {
           for (const row of affectedRows) {
             const placeholderId = `add_placeholder_r${row}`;
             const maxCol = result
-              .filter((n) => n.type === "skill" && !n.parentId && Math.round(n.position.y / nodeHeight) === row)
+              .filter(
+                (n) =>
+                  n.type === "skill" && !n.parentId && Math.round(n.position.y / effectiveNodeHeight) === row,
+              )
               .reduce((max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)), -1);
             const newCol = maxCol + 1;
             result = result.map((n) =>
               n.id === placeholderId
-                ? { ...n, data: { ...n.data, column: newCol }, position: { x: newCol * nodeWidth, y: row * nodeHeight } }
+                ? {
+                    ...n,
+                    data: { ...n.data, column: newCol },
+                    position: { x: newCol * nodeWidth, y: row * effectiveNodeHeight },
+                  }
                 : n,
             );
           }
@@ -1012,10 +1122,16 @@ const SkillsView = memo(() => {
     const selectedNodes = nodes.filter((n) => n.selected && n.type === "skill");
     const rightClicked = nodes.find((n) => n.id === contextMenu.nodeId);
     // If right-clicked node is among selection, delete all selected; otherwise just delete right-clicked
-    const toDelete = selectedNodes.length > 0 && selectedNodes.some((n) => n.id === contextMenu.nodeId)
-      ? selectedNodes
-      : rightClicked ? [rightClicked] : [];
-    if (toDelete.length === 0) { setContextMenu(null); return; }
+    const toDelete =
+      selectedNodes.length > 0 && selectedNodes.some((n) => n.id === contextMenu.nodeId)
+        ? selectedNodes
+        : rightClicked
+          ? [rightClicked]
+          : [];
+    if (toDelete.length === 0) {
+      setContextMenu(null);
+      return;
+    }
 
     const deleteIds = new Set(toDelete.map((n) => n.id));
 
@@ -1044,7 +1160,10 @@ const SkillsView = memo(() => {
     for (const n of selected) toGroupMap.set(n.id, n);
     const toGroup = Array.from(toGroupMap.values());
 
-    if (toGroup.length < 2) { setContextMenu(null); return; }
+    if (toGroup.length < 2) {
+      setContextMenu(null);
+      return;
+    }
 
     const groupId = `editGroup_${nextGroupId}`;
     setNextGroupId((id) => id + 1);
@@ -1057,6 +1176,22 @@ const SkillsView = memo(() => {
     });
     setContextMenu(null);
   }, [contextMenu, nodes, nextGroupId, setEditGroups]);
+
+  // Context menu: remove all input connections (edges targeting this node)
+  const contextMenuRemoveInputs = useCallback(() => {
+    if (!contextMenu) return;
+    const targetNodeId = contextMenu.nodeId;
+    setEdges((eds) => eds.filter((e) => e.target !== targetNodeId));
+    setContextMenu(null);
+  }, [contextMenu, setEdges]);
+
+  // Context menu: remove all output connections (edges from this node)
+  const contextMenuRemoveOutputs = useCallback(() => {
+    if (!contextMenu) return;
+    const targetNodeId = contextMenu.nodeId;
+    setEdges((eds) => eds.filter((e) => e.source !== targetNodeId));
+    setContextMenu(null);
+  }, [contextMenu, setEdges]);
 
   // Edit mode: group selected nodes
   const onGroupSelected = useCallback(() => {
@@ -1139,7 +1274,7 @@ const SkillsView = memo(() => {
               },
               position: {
                 x: nodeData.column * nodeWidth,
-                y: nodeData.row * nodeHeight,
+                y: nodeData.row * effectiveNodeHeight,
               },
               parentId: undefined,
             };
@@ -1182,7 +1317,7 @@ const SkillsView = memo(() => {
           },
           position: {
             x: nodeData.column * nodeWidth,
-            y: nodeData.row * nodeHeight,
+            y: nodeData.row * effectiveNodeHeight,
           },
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
@@ -1204,7 +1339,9 @@ const SkillsView = memo(() => {
             absX = n.position.x;
             absY = n.position.y;
           }
-          return Math.round(absX / nodeWidth) === targetCol && Math.round(absY / nodeHeight) === targetRow;
+          return (
+            Math.round(absX / nodeWidth) === targetCol && Math.round(absY / effectiveNodeHeight) === targetRow
+          );
         });
 
         // If existing node is grouped, add new node to that group
@@ -1227,7 +1364,7 @@ const SkillsView = memo(() => {
             for (const n of nds) {
               if (n.type !== "skill" || (n.data as any)?.isGrouping || n.parentId) continue;
               const col = Math.round(n.position.x / nodeWidth);
-              if (Math.round(n.position.y / nodeHeight) === targetRow && col >= targetCol) {
+              if (Math.round(n.position.y / effectiveNodeHeight) === targetRow && col >= targetCol) {
                 shiftIds.add(n.id);
               }
             }
@@ -1243,7 +1380,12 @@ const SkillsView = memo(() => {
           // Reposition placeholder
           const placeholderId = `add_placeholder_r${targetRow}`;
           const maxCol = updated
-            .filter((n) => n.type === "skill" && !n.parentId && Math.round(n.position.y / nodeHeight) === targetRow)
+            .filter(
+              (n) =>
+                n.type === "skill" &&
+                !n.parentId &&
+                Math.round(n.position.y / effectiveNodeHeight) === targetRow,
+            )
             .reduce((max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)), -1);
           const newPlaceholderCol = maxCol + 1;
           return updated.map((n) => {
@@ -1251,7 +1393,7 @@ const SkillsView = memo(() => {
               return {
                 ...n,
                 data: { ...n.data, column: newPlaceholderCol },
-                position: { x: newPlaceholderCol * nodeWidth, y: targetRow * nodeHeight },
+                position: { x: newPlaceholderCol * nodeWidth, y: targetRow * effectiveNodeHeight },
               };
             }
             return n;
@@ -1272,7 +1414,7 @@ const SkillsView = memo(() => {
         .map((n) => ({
           nodeId: n.id,
           skillId: n.data.id,
-          tier: Math.round(n.position.y / nodeHeight),
+          tier: Math.round(n.position.y / effectiveNodeHeight),
           indent: Math.round(n.position.x / nodeWidth),
           faction: n.data.faction || "",
           subculture: n.data.subculture || "",
@@ -1353,7 +1495,7 @@ const SkillsView = memo(() => {
           skillId: n.data.id,
           label: n.data.label,
           description: n.data.description,
-          row: Math.round(absY / nodeHeight),
+          row: Math.round(absY / effectiveNodeHeight),
           column: Math.round(absX / nodeWidth),
           maxLevel: n.data.numLevels,
           unlockRank: n.data.unlockRank,
@@ -1367,7 +1509,20 @@ const SkillsView = memo(() => {
         };
       }),
       edges: expandedEdges,
+      skillLocks: [],
     };
+
+    // Add skill locks data
+    const skillLocksArray: { lockedNodeId: string; lockingSkillKey: string; requiredLevel: number }[] = [];
+    const nodeToSkillLocks = skillsData.nodeToSkillLocks || {};
+
+    for (const [lockedNodeId, skillAndLevelArray] of Object.entries(nodeToSkillLocks)) {
+      for (const [lockingSkillKey, requiredLevel] of skillAndLevelArray) {
+        skillLocksArray.push({ lockedNodeId, lockingSkillKey, requiredLevel });
+      }
+    }
+
+    payload.skillLocks = skillLocksArray;
 
     const result = await window.api?.saveSkillsPack(payload);
     if (result?.success) {
@@ -1377,7 +1532,7 @@ const SkillsView = memo(() => {
       console.error("Failed to save pack:", result?.error);
       alert(`Failed to save pack: ${result?.error || "Unknown error"}`);
     }
-  }, [nodes, edges, subtype, skillsData.currentSubtypeIndex, editGroups]);
+  }, [nodes, edges, subtype, skillsData, editGroups, effectiveNodeHeight]);
 
   // Requirements mode: expand group edges to individual node-to-node curved edges
   const enterRequirementsMode = useCallback(() => {
@@ -1506,10 +1661,74 @@ const SkillsView = memo(() => {
     );
   }, [edges, nextGroupId, setEdges, setNodes, setEditGroups]);
 
+  // Skill Locks mode: enter
+  const enterSkillLocksMode = useCallback(() => {
+    savedLocksEdges.current = [...edges];
+    const nodeToSkillLocks = skillsData.nodeToSkillLocks || {};
+    const lockEdges: Edge[] = [];
+    const edgeLevels: Record<string, number> = {};
+
+    // Convert nodeToSkillLocks[nodeId] = [[skillKey, level]] to edges
+    for (const [lockedNodeId, skillAndLevelArray] of Object.entries(nodeToSkillLocks)) {
+      const lockedNode = nodes.find((n) => n.data.nodeId === lockedNodeId);
+      if (!lockedNode) continue;
+
+      for (const [lockingSkillKey, requiredLevel] of skillAndLevelArray) {
+        const lockingNode = nodes.find((n) => n.data.id === lockingSkillKey);
+        if (!lockingNode) continue;
+
+        const edgeId = `lock-${lockingNode.id}-${lockedNode.id}`;
+        lockEdges.push({
+          id: edgeId,
+          source: lockingNode.id,
+          target: lockedNode.id,
+          type: "skillLock",
+          animated: false,
+          style: { stroke: "#dc2626", strokeWidth: 2 },
+          data: { curveBelow: false, level: requiredLevel },
+        });
+        edgeLevels[edgeId] = requiredLevel;
+      }
+    }
+
+    setLockEdgeLevels(edgeLevels);
+    setEdges(lockEdges);
+    setIsSkillLocksMode(true);
+  }, [edges, nodes, skillsData, setEdges]);
+
+  // Skill Locks mode: exit
+  const exitSkillLocksMode = useCallback(() => {
+    const newNodeToSkillLocks: Record<string, [string, number][]> = {};
+
+    for (const edge of edges) {
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      const targetNode = nodes.find((n) => n.id === edge.target);
+      if (!sourceNode || !targetNode || sourceNode.type !== "skill" || targetNode.type !== "skill") continue;
+
+      const lockingSkillKey = sourceNode.data.id;
+      const lockedNodeId = targetNode.data.nodeId;
+      const level = lockEdgeLevels[edge.id] || 1;
+
+      if (!newNodeToSkillLocks[lockedNodeId]) newNodeToSkillLocks[lockedNodeId] = [];
+      const existing = newNodeToSkillLocks[lockedNodeId].find(
+        ([sk, lv]) => sk === lockingSkillKey && lv === level,
+      );
+      if (!existing) newNodeToSkillLocks[lockedNodeId].push([lockingSkillKey, level]);
+    }
+
+    if (skillsData) skillsData.nodeToSkillLocks = newNodeToSkillLocks;
+    setEdges(savedLocksEdges.current);
+    setIsSkillLocksMode(false);
+    setLockEdgeLevels({});
+  }, [edges, nodes, lockEdgeLevels, setEdges, skillsData]);
+
   // Requirements mode: recolor edges so SUBSET_REQUIRED groups share the same color
   const reqEdgeKey = useMemo(() => {
     if (!isRequirementsMode) return "";
-    return edges.map((e) => `${e.source}-${e.target}`).sort().join("|");
+    return edges
+      .map((e) => `${e.source}-${e.target}`)
+      .sort()
+      .join("|");
   }, [isRequirementsMode, edges]);
 
   useEffect(() => {
@@ -1633,7 +1852,11 @@ const SkillsView = memo(() => {
           .map(([gid]) => gid),
       );
       result = result.map((n) => {
-        if (n.parentId && n.parentId.startsWith("editGroup_") && !validGroupIds.has(n.parentId.replace("_group", ""))) {
+        if (
+          n.parentId &&
+          n.parentId.startsWith("editGroup_") &&
+          !validGroupIds.has(n.parentId.replace("_group", ""))
+        ) {
           return { ...n, parentId: undefined };
         }
         return n;
@@ -1645,27 +1868,46 @@ const SkillsView = memo(() => {
 
         const firstMember = members[0];
         const firstAbsX = firstMember.parentId
-          ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.x ?? 0) + firstMember.position.x
+          ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.x ?? 0) +
+            firstMember.position.x
           : firstMember.position.x;
         const firstAbsY = firstMember.parentId
-          ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.y ?? 0) + firstMember.position.y
+          ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.y ?? 0) +
+            firstMember.position.y
           : firstMember.position.y;
-        const row = Math.round(firstAbsY / nodeHeight);
+        const row = Math.round(firstAbsY / effectiveNodeHeight);
 
         const groupColor = groupIdToColor[groupId];
         const containerNode = {
           id: `${groupId}_group`,
           data: {
-            label: groupId, id: groupId, isAbilityIcon: false, imgPath: "",
-            nodeId: `${groupId}_group`, skillBackground, skillIconBackground,
-            skillLevelImg, tooltipFrame, skillLevelLitIcon, skillIcon,
-            row, isGrouping: true, numLevels: 1, description: "", effects: [],
-            origIndent: "", origTier: "", isHiddentInUI: false,
-            isCheckingSkillRequirements, unlockRank: 0,
+            label: groupId,
+            id: groupId,
+            isAbilityIcon: false,
+            imgPath: "",
+            nodeId: `${groupId}_group`,
+            skillBackground,
+            skillIconBackground,
+            skillLevelImg,
+            tooltipFrame,
+            skillLevelLitIcon,
+            skillIcon,
+            row,
+            isGrouping: true,
+            numLevels: 1,
+            description: "",
+            effects: [],
+            origIndent: "",
+            origTier: "",
+            isHiddentInUI: false,
+            isCheckingSkillRequirements,
+            unlockRank: 0,
           },
-          position: { x: firstAbsX - 10, y: row * nodeHeight - 15 },
-          sourcePosition: Position.Right, targetPosition: Position.Left,
-          parentId: undefined, type: "default" as const,
+          position: { x: firstAbsX - 10, y: row * effectiveNodeHeight - 15 },
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
+          parentId: undefined,
+          type: "default" as const,
           style: {
             backgroundColor: "transparent",
             border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
@@ -1674,7 +1916,7 @@ const SkillsView = memo(() => {
           },
           className: "reactFlowGroup",
           width: members.length * nodeWidth - 15,
-          height: nodeHeight - 10,
+          height: effectiveNodeHeight - 10,
         };
 
         // Add container before members (ReactFlow requires parent before children)
@@ -1701,7 +1943,7 @@ const SkillsView = memo(() => {
         if (members.length < 2) continue;
         const container = result.find((n) => n.id === `${groupId}_group`);
         if (!container) continue;
-        const row = Math.round((container.position.y + 15) / nodeHeight);
+        const row = Math.round((container.position.y + 15) / effectiveNodeHeight);
         const startCol = Math.round((container.position.x + 10) / nodeWidth);
         const endCol = startCol + members.length - 1;
         groupOccupied.push({ row, startCol, endCol });
@@ -1720,7 +1962,7 @@ const SkillsView = memo(() => {
               n.type === "skill" &&
               !n.parentId &&
               !(n.data as any)?.isGrouping &&
-              Math.round(n.position.y / nodeHeight) === row,
+              Math.round(n.position.y / effectiveNodeHeight) === row,
           )
           .sort((a, b) => a.position.x - b.position.x);
 
@@ -1728,14 +1970,25 @@ const SkillsView = memo(() => {
 
         // Build a sorted list of "items" in the row: groups (by startCol) and standalone nodes (by col)
         // Each item is either a group (occupies N columns) or a standalone node (1 column)
-        type RowItem = { kind: "group"; groupId: string; memberCount: number; origCol: number }
-                     | { kind: "node"; nodeId: string; origCol: number };
+        type RowItem =
+          | { kind: "group"; groupId: string; memberCount: number; origCol: number }
+          | { kind: "node"; nodeId: string; origCol: number };
         const items: RowItem[] = [];
         for (const g of rowGroups) {
-          const container = result.find((n) => n.id.endsWith("_group") && Math.round((n.position.x + 10) / nodeWidth) === g.startCol && Math.round((n.position.y + 15) / nodeHeight) === row);
+          const container = result.find(
+            (n) =>
+              n.id.endsWith("_group") &&
+              Math.round((n.position.x + 10) / nodeWidth) === g.startCol &&
+              Math.round((n.position.y + 15) / effectiveNodeHeight) === row,
+          );
           if (container) {
             const groupId = container.id.replace("_group", "");
-            items.push({ kind: "group", groupId, memberCount: g.endCol - g.startCol + 1, origCol: g.startCol });
+            items.push({
+              kind: "group",
+              groupId,
+              memberCount: g.endCol - g.startCol + 1,
+              origCol: g.startCol,
+            });
           }
         }
         for (const n of standalone) {
@@ -1767,7 +2020,7 @@ const SkillsView = memo(() => {
           if (!standaloneIds.has(n.id)) return n;
           const newCol = nodeNewPositions.get(n.id);
           if (newCol === undefined) return n;
-          return { ...n, position: { x: newCol * nodeWidth, y: row * nodeHeight } };
+          return { ...n, position: { x: newCol * nodeWidth, y: row * effectiveNodeHeight } };
         });
 
         // Apply new positions to group containers
@@ -1782,15 +2035,25 @@ const SkillsView = memo(() => {
         // Also reposition placeholder for this row
         const placeholderId = `add_placeholder_r${row}`;
         const maxCol = result
-          .filter((n) => (n.type === "skill" || n.className === "reactFlowGroup") && !n.parentId && Math.round(n.position.y / nodeHeight) === row)
+          .filter(
+            (n) =>
+              (n.type === "skill" || n.className === "reactFlowGroup") &&
+              !n.parentId &&
+              Math.round(n.position.y / effectiveNodeHeight) === row,
+          )
           .reduce((max, n) => {
-            const w = n.className === "reactFlowGroup" ? Math.ceil(((n as any).width ?? nodeWidth) / nodeWidth) : 1;
+            const w =
+              n.className === "reactFlowGroup" ? Math.ceil(((n as any).width ?? nodeWidth) / nodeWidth) : 1;
             return Math.max(max, Math.round(n.position.x / nodeWidth) + w - 1);
           }, -1);
         const placeholderCol = maxCol + 1;
         result = result.map((n) =>
           n.id === placeholderId
-            ? { ...n, data: { ...n.data, column: placeholderCol }, position: { x: placeholderCol * nodeWidth, y: row * nodeHeight } }
+            ? {
+                ...n,
+                data: { ...n.data, column: placeholderCol },
+                position: { x: placeholderCol * nodeWidth, y: row * effectiveNodeHeight },
+              }
             : n,
         );
       }
@@ -1819,26 +2082,34 @@ const SkillsView = memo(() => {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}
-        snapToGrid={isEditMode && !isRequirementsMode}
-        snapGrid={[nodeWidth, nodeHeight]}
-        nodesDraggable={isEditMode && !isRequirementsMode}
+        snapToGrid={isEditMode && !isRequirementsMode && !isSkillLocksMode}
+        snapGrid={[nodeWidth, effectiveNodeHeight]}
+        nodesDraggable={isEditMode && !isRequirementsMode && !isSkillLocksMode}
         nodesConnectable={isEditMode}
         elementsSelectable={isEditMode}
         onConnect={isEditMode ? onConnect : undefined}
-        deleteKeyCode={isEditMode && !isRequirementsMode ? "Delete" : null}
-        onNodesDelete={isEditMode && !isRequirementsMode ? onNodesDelete : undefined}
+        deleteKeyCode={isEditMode && !isRequirementsMode && !isSkillLocksMode ? "Delete" : null}
+        onNodesDelete={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodesDelete : undefined}
         onEdgeClick={isEditMode ? onEdgeClick : undefined}
-        onNodeDragStart={isEditMode && !isRequirementsMode ? onNodeDragStart : undefined}
-        onNodeDragStop={isEditMode && !isRequirementsMode ? onNodeDragStop : undefined}
-        onNodeClick={isEditMode && !isRequirementsMode ? onNodeClick : undefined}
-        onNodeDoubleClick={isEditMode && !isRequirementsMode ? onNodeDoubleClick : undefined}
-        onNodeContextMenu={isEditMode && !isRequirementsMode ? onNodeContextMenu : undefined}
+        onNodeDragStart={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDragStart : undefined}
+        onNodeDragStop={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDragStop : undefined}
+        onNodeClick={isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeClick : undefined}
+        onNodeDoubleClick={
+          isEditMode && !isRequirementsMode && !isSkillLocksMode ? onNodeDoubleClick : undefined
+        }
+        onNodeContextMenu={
+          isEditMode || isRequirementsMode || isSkillLocksMode ? onNodeContextMenu : undefined
+        }
         onPaneClick={isEditMode ? onPaneClick : undefined}
-        defaultEdgeOptions={isEditMode
-          ? isRequirementsMode
-            ? { interactionWidth: 20, style: { stroke: "#f59e0b", strokeWidth: 2 } }
-            : { interactionWidth: 20, style: { stroke: "#ef4444", strokeWidth: 2 } }
-          : undefined}
+        defaultEdgeOptions={
+          isEditMode
+            ? isSkillLocksMode
+              ? { interactionWidth: 20, style: { stroke: "#dc2626", strokeWidth: 2 } }
+              : isRequirementsMode
+                ? { interactionWidth: 20, style: { stroke: "#f59e0b", strokeWidth: 2 } }
+                : { interactionWidth: 20, style: { stroke: "#ef4444", strokeWidth: 2 } }
+            : undefined
+        }
         multiSelectionKeyCode="Shift"
       >
         <Panel position="top-center">
@@ -1991,11 +2262,27 @@ const SkillsView = memo(() => {
                 className={`px-4 py-2 rounded-lg border-2 dark:border-gray-600 ${
                   isRequirementsMode ? "bg-amber-600 text-white" : "hover:bg-gray-700"
                 }`}
-                onClick={() => (isRequirementsMode ? exitRequirementsMode() : enterRequirementsMode())}
+                onClick={() => {
+                  if (isSkillLocksMode) exitSkillLocksMode();
+                  isRequirementsMode ? exitRequirementsMode() : enterRequirementsMode();
+                }}
               >
                 {isRequirementsMode
                   ? localized.requirementsModeOn || "Requirements: ON"
                   : localized.requirements || "Requirements"}
+              </button>
+              <button
+                className={`px-4 py-2 rounded-lg border-2 dark:border-gray-600 ${
+                  isSkillLocksMode ? "bg-red-600 text-white" : "hover:bg-gray-700"
+                }`}
+                onClick={() => {
+                  if (isRequirementsMode) exitRequirementsMode();
+                  isSkillLocksMode ? exitSkillLocksMode() : enterSkillLocksMode();
+                }}
+              >
+                {isSkillLocksMode
+                  ? localized.skillLocksModeOn || "Skill Locks: ON"
+                  : localized.skillLocks || "Skill Locks"}
               </button>
             </div>
           )}
@@ -2020,12 +2307,15 @@ const SkillsView = memo(() => {
         )}
         {isEditMode && (
           <ViewportPortal>
-            <div className="fixed w-full h-full top-0 left-0 pointer-events-none" style={{ userSelect: "none" }}>
+            <div
+              className="fixed w-full h-full top-0 left-0 pointer-events-none"
+              style={{ userSelect: "none" }}
+            >
               {Array.from({ length: 7 }, (_, r) => (
                 <div
                   key={`row-label-${r}`}
                   style={{
-                    transform: `translate(-50px, ${r * nodeHeight + 25}px)`,
+                    transform: `translate(-50px, ${r * effectiveNodeHeight + 25}px)`,
                     position: "absolute",
                     color: "#94a3b8",
                     fontFamily: "monospace",
@@ -2036,149 +2326,196 @@ const SkillsView = memo(() => {
                   R{r}
                 </div>
               ))}
-              {Array.from(
-                { length: Math.max(1, ...skills.map((s) => s.y + 1)) + 2 },
-                (_, c) => (
-                  <div
-                    key={`col-label-${c}`}
-                    style={{
-                      transform: `translate(${c * nodeWidth + 100}px, -30px)`,
-                      position: "absolute",
-                      color: "#94a3b8",
-                      fontFamily: "monospace",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    C{c}
-                  </div>
-                ),
-              )}
+              {Array.from({ length: Math.max(1, ...skills.map((s) => s.y + 1)) + 2 }, (_, c) => (
+                <div
+                  key={`col-label-${c}`}
+                  style={{
+                    transform: `translate(${c * nodeWidth + 100}px, -30px)`,
+                    position: "absolute",
+                    color: "#94a3b8",
+                    fontFamily: "monospace",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  C{c}
+                </div>
+              ))}
             </div>
           </ViewportPortal>
         )}
       </ReactFlow>
-      {isAddNodeModalOpen && (() => {
-        const editingNode = editingNodeId ? nodes.find((n) => n.id === editingNodeId) : undefined;
-        const editingRow = editingNode
-          ? editingNode.parentId
-            ? (() => { const p = nodes.find((n) => n.id === editingNode.parentId); return Math.round(((p?.position.y ?? 0) + editingNode.position.y) / nodeHeight); })()
-            : Math.round(editingNode.position.y / nodeHeight)
-          : undefined;
-        const editingCol = editingNode
-          ? editingNode.parentId
-            ? (() => { const p = nodes.find((n) => n.id === editingNode.parentId); return Math.round(((p?.position.x ?? 0) + editingNode.position.x) / nodeWidth); })()
-            : Math.round(editingNode.position.x / nodeWidth)
-          : undefined;
-        return (
-          <AddNodeModal
-            isOpen={isAddNodeModalOpen}
-            onClose={() => { setIsAddNodeModalOpen(false); setEditingNodeId(undefined); }}
-            onAdd={onAddOrEditNode}
-            initialRow={editingNode ? editingRow : placeholderRow}
-            initialColumn={editingNode ? editingCol : placeholderCol}
-            editingData={editingNode ? {
-              name: editingNode.data.label,
-              description: editingNode.data.description,
-              maxLevel: editingNode.data.numLevels,
-              unlockRank: editingNode.data.unlockRank,
-              effects: editingNode.data.effects,
-              existingSkillKey: editingNode.data.existingSkillKey,
-              imgPath: editingNode.data.imgPath,
-            } : undefined}
-          />
-        );
-      })()}
-      {contextMenu && (() => {
-        const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
-        const selectedNodes = nodes.filter((n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId);
-        const targetGroupId = targetNode ? editGroups[(targetNode.data as SkillData).nodeId] : undefined;
-        const isTargetSelected = nodes.some((n) => n.id === contextMenu.nodeId && n.selected);
-        const allSelected = nodes.filter((n) => n.selected && n.type === "skill");
-        const deleteCount = isTargetSelected && allSelected.length > 1 ? allSelected.length : 1;
-
-        // Nodes that would be grouped: right-clicked + all selected, deduplicated
-        const groupCandidateMap = new Map<string, (typeof nodes)[0]>();
-        if (targetNode) groupCandidateMap.set(targetNode.id, targetNode);
-        for (const n of selectedNodes) groupCandidateMap.set(n.id, n);
-        const groupCandidates = Array.from(groupCandidateMap.values());
-        const canGroup = groupCandidates.length >= 2
-          && groupCandidates.every((n) => !editGroups[(n.data as SkillData).nodeId]);
-
-        const menuItemClass = "w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 cursor-pointer";
-
-        return (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setContextMenu(null)}
-              onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+      {isAddNodeModalOpen &&
+        (() => {
+          const editingNode = editingNodeId ? nodes.find((n) => n.id === editingNodeId) : undefined;
+          const editingRow = editingNode
+            ? editingNode.parentId
+              ? (() => {
+                  const p = nodes.find((n) => n.id === editingNode.parentId);
+                  return Math.round(((p?.position.y ?? 0) + editingNode.position.y) / effectiveNodeHeight);
+                })()
+              : Math.round(editingNode.position.y / effectiveNodeHeight)
+            : undefined;
+          const editingCol = editingNode
+            ? editingNode.parentId
+              ? (() => {
+                  const p = nodes.find((n) => n.id === editingNode.parentId);
+                  return Math.round(((p?.position.x ?? 0) + editingNode.position.x) / nodeWidth);
+                })()
+              : Math.round(editingNode.position.x / nodeWidth)
+            : undefined;
+          return (
+            <AddNodeModal
+              isOpen={isAddNodeModalOpen}
+              onClose={() => {
+                setIsAddNodeModalOpen(false);
+                setEditingNodeId(undefined);
+              }}
+              onAdd={onAddOrEditNode}
+              initialRow={editingNode ? editingRow : placeholderRow}
+              initialColumn={editingNode ? editingCol : placeholderCol}
+              editingData={
+                editingNode
+                  ? {
+                      name: editingNode.data.label,
+                      description: editingNode.data.description,
+                      maxLevel: editingNode.data.numLevels,
+                      unlockRank: editingNode.data.unlockRank,
+                      effects: editingNode.data.effects,
+                      existingSkillKey: editingNode.data.existingSkillKey,
+                      imgPath: editingNode.data.imgPath,
+                    }
+                  : undefined
+              }
             />
-            <div
-              className="fixed z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[200px]"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
-            >
-              <button
-                className={menuItemClass}
-                onClick={() => {
-                  if (targetNode) console.log("Node info:", JSON.stringify(targetNode, null, 2));
+          );
+        })()}
+      {contextMenu &&
+        (() => {
+          const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
+          const selectedNodes = nodes.filter(
+            (n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId,
+          );
+          const targetGroupId = targetNode ? editGroups[(targetNode.data as SkillData).nodeId] : undefined;
+          const isTargetSelected = nodes.some((n) => n.id === contextMenu.nodeId && n.selected);
+          const allSelected = nodes.filter((n) => n.selected && n.type === "skill");
+          const deleteCount = isTargetSelected && allSelected.length > 1 ? allSelected.length : 1;
+
+          // Nodes that would be grouped: right-clicked + all selected, deduplicated
+          const groupCandidateMap = new Map<string, (typeof nodes)[0]>();
+          if (targetNode) groupCandidateMap.set(targetNode.id, targetNode);
+          for (const n of selectedNodes) groupCandidateMap.set(n.id, n);
+          const groupCandidates = Array.from(groupCandidateMap.values());
+          const canGroup =
+            groupCandidates.length >= 2 &&
+            groupCandidates.every((n) => !editGroups[(n.data as SkillData).nodeId]);
+
+          // Count input and output connections
+          const inputCount = edges.filter((e) => e.target === contextMenu.nodeId).length;
+          const outputCount = edges.filter((e) => e.source === contextMenu.nodeId).length;
+
+          const menuItemClass =
+            "w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 cursor-pointer";
+
+          return (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setContextMenu(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
                   setContextMenu(null);
                 }}
+              />
+              <div
+                className="fixed z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[200px]"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
               >
-                Info
-              </button>
-              <button
-                className={menuItemClass}
-                onClick={() => {
-                  setEditingNodeId(contextMenu.nodeId);
-                  setPlaceholderRow(undefined);
-                  setPlaceholderCol(undefined);
-                  setIsAddNodeModalOpen(true);
-                  setContextMenu(null);
-                }}
-              >
-                Edit Node
-              </button>
-              <div className="border-t border-gray-600 my-1" />
-              <button
-                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 cursor-pointer"
-                onClick={contextMenuDelete}
-              >
-                {deleteCount > 1 ? `Delete ${deleteCount} Nodes` : "Delete Node"}
-              </button>
-              {canGroup && (
-                <button className={menuItemClass} onClick={contextMenuGroup}>
-                  Group {groupCandidates.length} Nodes
-                </button>
-              )}
-              {selectedNodes.length > 0 && (
-                <>
-                  <div className="border-t border-gray-600 my-1" />
-                  <div className="px-4 py-1 text-xs text-gray-400">
-                    {selectedNodes.length} selected node{selectedNodes.length > 1 ? "s" : ""}
-                  </div>
-                  <button className={menuItemClass} onClick={() => contextMenuInsert("before", false)}>
-                    Insert Before
+                {!isRequirementsMode && (
+                  <>
+                    <button
+                      className={menuItemClass}
+                      onClick={() => {
+                        if (targetNode) console.log("Node info:", JSON.stringify(targetNode, null, 2));
+                        setContextMenu(null);
+                      }}
+                    >
+                      Info
+                    </button>
+                    <button
+                      className={menuItemClass}
+                      onClick={() => {
+                        setEditingNodeId(contextMenu.nodeId);
+                        setPlaceholderRow(undefined);
+                        setPlaceholderCol(undefined);
+                        setIsAddNodeModalOpen(true);
+                        setContextMenu(null);
+                      }}
+                    >
+                      Edit Node
+                    </button>
+                  </>
+                )}
+                {inputCount > 0 && (
+                  <button className={menuItemClass} onClick={contextMenuRemoveInputs}>
+                    Remove {inputCount} Input Connection{inputCount !== 1 ? "s" : ""}
                   </button>
-                  <button className={menuItemClass} onClick={() => contextMenuInsert("after", false)}>
-                    Insert After
+                )}
+                {outputCount > 0 && (
+                  <button className={menuItemClass} onClick={contextMenuRemoveOutputs}>
+                    Remove {outputCount} Output Connection{outputCount !== 1 ? "s" : ""}
                   </button>
-                  {targetGroupId && (
-                    <>
-                      <button className={menuItemClass} onClick={() => contextMenuInsert("before", true)}>
-                        Insert Before and Group
+                )}
+                {!isRequirementsMode && (
+                  <>
+                    <div className="border-t border-gray-600 my-1" />
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 cursor-pointer"
+                      onClick={contextMenuDelete}
+                    >
+                      {deleteCount > 1 ? `Delete ${deleteCount} Nodes` : "Delete Node"}
+                    </button>
+                    {canGroup && (
+                      <button className={menuItemClass} onClick={contextMenuGroup}>
+                        Group {groupCandidates.length} Nodes
                       </button>
-                      <button className={menuItemClass} onClick={() => contextMenuInsert("after", true)}>
-                        Insert After and Group
-                      </button>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          </>
-        );
-      })()}
+                    )}
+                    {selectedNodes.length > 0 && (
+                      <>
+                        <div className="border-t border-gray-600 my-1" />
+                        <div className="px-4 py-1 text-xs text-gray-400">
+                          {selectedNodes.length} selected node{selectedNodes.length > 1 ? "s" : ""}
+                        </div>
+                        <button className={menuItemClass} onClick={() => contextMenuInsert("before", false)}>
+                          Insert Before
+                        </button>
+                        <button className={menuItemClass} onClick={() => contextMenuInsert("after", false)}>
+                          Insert After
+                        </button>
+                        {targetGroupId && (
+                          <>
+                            <button
+                              className={menuItemClass}
+                              onClick={() => contextMenuInsert("before", true)}
+                            >
+                              Insert Before and Group
+                            </button>
+                            <button
+                              className={menuItemClass}
+                              onClick={() => contextMenuInsert("after", true)}
+                            >
+                              Insert After and Group
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          );
+        })()}
     </div>
   );
 });

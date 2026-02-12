@@ -506,6 +506,11 @@ declare global {
       target: string;
       linkType: "REQUIRED" | "SUBSET_REQUIRED";
     }[];
+    skillLocks: {
+      lockedNodeId: string;
+      lockingSkillKey: string;
+      requiredLevel: number;
+    }[];
   }
 
   type SkillAndLevel = [string, number];
