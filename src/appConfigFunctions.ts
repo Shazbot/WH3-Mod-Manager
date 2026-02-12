@@ -82,18 +82,26 @@ export function writeAppConfig(data: AppState) {
   removeModDataWeDontSave(toWrite.gameToCurrentPreset[toWrite.currentGame]?.mods);
 
   const onLastGameLaunchPreset = toWrite.gameToPresets[toWrite.currentGame]?.find(
-    (preset) => preset.name == "On Last Game Launch"
+    (preset) => preset.name == "On Last Game Launch",
   );
   removeModDataWeDontSave(onLastGameLaunchPreset?.mods);
 
   const onAppStartPreset = toWrite.gameToPresets[toWrite.currentGame]?.find(
-    (preset) => preset.name == "On App Start"
+    (preset) => preset.name == "On App Start",
   );
   removeModDataWeDontSave(onAppStartPreset?.mods);
 
   if (!data.hasConfigBeenRead) {
     dataToWrite = deepClone(toWrite, true);
     console.log("config yet to be read, skip writing new config");
+    return;
+  }
+
+  // don't overwrite config that had mods with one that has none — mods likely haven't populated yet
+  const currentGameMods = toWrite.gameToCurrentPreset[toWrite.currentGame]?.mods;
+  const previousMods = dataToWrite?.gameToCurrentPreset[toWrite.currentGame]?.mods;
+  if ((!currentGameMods || currentGameMods.length === 0) && previousMods && previousMods.length > 0) {
+    console.log("skipping config write: current preset has no mods but previous config did");
     return;
   }
   if (!hasConfigBeenRead && data.hasConfigBeenRead) {

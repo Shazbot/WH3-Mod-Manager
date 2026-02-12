@@ -49,7 +49,14 @@ import {
   writeStartGamePack,
   writePack,
 } from "./packFileSerializer";
-import { AmendedSchemaField, DBField, NewPackedFile, Pack, PackCollisions, PackedFile } from "./packFileTypes";
+import {
+  AmendedSchemaField,
+  DBField,
+  NewPackedFile,
+  Pack,
+  PackCollisions,
+  PackedFile,
+} from "./packFileTypes";
 import { resolveTable } from "./resolveTable";
 import {
   DBNameToDBVersions,
