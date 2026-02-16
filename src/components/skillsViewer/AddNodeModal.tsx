@@ -51,7 +51,7 @@ interface IconOption {
 }
 
 const inputClass =
-  "w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500";
+  "sticky top-[-1.5rem] w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500";
 
 const AddNodeModal = memo(
   ({ isOpen, onClose, onAdd, initialRow, initialColumn, editingData }: AddNodeModalProps) => {
@@ -101,6 +101,8 @@ const AddNodeModal = memo(
       }
       return null;
     });
+    const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+    const [iconSearch, setIconSearch] = useState("");
 
     // All available effects from vanilla game + enabled mods with raw localization
     const effectOptions = useMemo(() => {
@@ -144,6 +146,13 @@ const AddNodeModal = memo(
         label: icon.name,
       }));
     }, [skillsData?.allSkillIcons]);
+
+    // Filtered icons for grid picker
+    const filteredIcons = useMemo(() => {
+      if (!iconSearch.trim()) return iconOptions;
+      const searchLower = iconSearch.toLowerCase();
+      return iconOptions.filter((opt) => opt.label.toLowerCase().includes(searchLower));
+    }, [iconOptions, iconSearch]);
 
     const handleSkillSelect = (option: SkillOption | null) => {
       setSelectedSkill(option);
@@ -204,302 +213,385 @@ const AddNodeModal = memo(
     const isSubmitDisabled = mode === "custom" ? !name.trim() : !selectedSkill;
 
     return (
-      <Modal
-        show={isOpen}
-        onClose={onClose}
-        size="3xl"
-        explicitClasses={[
-          "first-child-div-second-child-div-flex-grow",
-          "!h-[94vh]",
-          "first-child-div-flex-col",
-        ]}
-      >
-        <Modal.Header>
-          {editingData ? localized.editNode || "Edit Node" : localized.addNode || "Add Node"}
-        </Modal.Header>
-        <Modal.Body>
-          <div className="space-y-4">
-            {/* Mode toggle */}
-            <div className="flex gap-0 rounded-lg overflow-hidden border-2 dark:border-gray-600">
-              <button
-                className={`flex-1 px-4 py-2 text-sm font-medium ${
-                  mode === "custom"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                }`}
-                onClick={() => setMode("custom")}
-              >
-                {localized.customSkill || "Custom Skill"}
-              </button>
-              <button
-                className={`flex-1 px-4 py-2 text-sm font-medium ${
-                  mode === "existing"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                }`}
-                onClick={() => setMode("existing")}
-              >
-                {localized.existingSkill || "Existing Skill"}
-              </button>
-            </div>
+      <>
+        <Modal
+          show={isOpen}
+          onClose={onClose}
+          size="3xl"
+          explicitClasses={[
+            "first-child-div-second-child-div-flex-grow",
+            "!h-[94vh]",
+            "first-child-div-flex-col",
+          ]}
+        >
+          <Modal.Header>
+            {editingData ? localized.editNode || "Edit Node" : localized.addNode || "Add Node"}
+          </Modal.Header>
+          <Modal.Body>
+            <div className="space-y-4">
+              {/* Mode toggle */}
+              <div className="flex gap-0 rounded-lg overflow-hidden border-2 dark:border-gray-600">
+                <button
+                  className={`flex-1 px-4 py-2 text-sm font-medium ${
+                    mode === "custom"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                  }`}
+                  onClick={() => setMode("custom")}
+                >
+                  {localized.customSkill || "Custom Skill"}
+                </button>
+                <button
+                  className={`flex-1 px-4 py-2 text-sm font-medium ${
+                    mode === "existing"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                  }`}
+                  onClick={() => setMode("existing")}
+                >
+                  {localized.existingSkill || "Existing Skill"}
+                </button>
+              </div>
 
-            {mode === "existing" ? (
-              <>
-                {/* Existing skill picker */}
-                <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                    {localized.selectSkill || "Select Skill"}
-                  </label>
-                  <WindowedSelect
-                    filterOption={createFilter({ ignoreAccents: false, matchFrom: "start" })}
-                    options={skillOptions}
-                    value={selectedSkill}
-                    // @ts-expect-error
-                    onChange={(newValue: SkillOption | null) => handleSkillSelect(newValue)}
-                    styles={selectStyle}
-                    placeholder={localized.searchSkills || "Search skills..."}
-                    isClearable
-                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                    // @ts-ignore
-                    formatOptionLabel={(option: SkillOption) => (
-                      <>
-                        <div className="font-medium">{option.label}</div>
-                        <div className="text-gray-300 mt-1">
-                          {option.value} — {option.effectsCount} effect
-                          {option.effectsCount !== 1 ? "s" : ""}
+              {mode === "existing" ? (
+                <>
+                  {/* Existing skill picker */}
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                      {localized.selectSkill || "Select Skill"}
+                    </label>
+                    <WindowedSelect
+                      filterOption={createFilter({ ignoreAccents: false, matchFrom: "start" })}
+                      options={skillOptions}
+                      value={selectedSkill}
+                      // @ts-expect-error
+                      onChange={(newValue: SkillOption | null) => handleSkillSelect(newValue)}
+                      styles={selectStyle}
+                      placeholder={localized.searchSkills || "Search skills..."}
+                      isClearable
+                      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                      // @ts-ignore
+                      formatOptionLabel={(option: SkillOption) => (
+                        <>
+                          <div className="font-medium">{option.label}</div>
+                          <div className="text-gray-300 mt-1">
+                            {option.value} — {option.effectsCount} effect
+                            {option.effectsCount !== 1 ? "s" : ""}
+                          </div>
+                        </>
+                      )}
+                    />
+                  </div>
+
+                  {/* Show selected skill's effects as read-only */}
+                  {selectedSkill &&
+                    (() => {
+                      const skill = skillsData?.allSkills?.find((s) => s.key === selectedSkill.value);
+                      if (!skill || skill.effects.length === 0) return null;
+                      return (
+                        <div>
+                          <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                            {localized.effects || "Effects"}
+                          </label>
+                          <div className="max-h-32 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded-lg p-2 space-y-1">
+                            {skill.effects.map((e, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+                              >
+                                {e.icon &&
+                                  skillsData?.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] && (
+                                    <img
+                                      className="h-4 w-4"
+                                      src={`data:image/png;base64,${skillsData.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}`}
+                                      alt=""
+                                    />
+                                  )}
+                                <span>{e.effectKey}</span>
+                                <span className="text-gray-400">({e.value})</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </>
-                    )}
-                  />
-                </div>
+                      );
+                    })()}
+                </>
+              ) : (
+                <>
+                  {/* Custom skill form */}
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                      {localized.name || "Name"}
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder={localized.enterSkillName || "Enter skill name"}
+                      className={inputClass}
+                      autoFocus
+                    />
+                  </div>
 
-                {/* Show selected skill's effects as read-only */}
-                {selectedSkill &&
-                  (() => {
-                    const skill = skillsData?.allSkills?.find((s) => s.key === selectedSkill.value);
-                    if (!skill || skill.effects.length === 0) return null;
-                    return (
-                      <div>
-                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                          {localized.effects || "Effects"}
-                        </label>
-                        <div className="max-h-32 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded-lg p-2 space-y-1">
-                          {skill.effects.map((e, i) => (
-                            <div
-                              key={i}
-                              className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
-                            >
-                              {e.icon && skillsData?.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] && (
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                      {localized.description || "Description"}
+                    </label>
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder={localized.enterDescription || "Enter description"}
+                      className={inputClass}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                      {localized.icon || "Icon"}
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <WindowedSelect
+                          options={iconOptions}
+                          value={selectedIcon}
+                          // @ts-expect-error
+                          onChange={(newValue: IconOption | null) => setSelectedIcon(newValue)}
+                          styles={selectStyle}
+                          placeholder={localized.selectIcon || "Select icon..."}
+                          isClearable
+                          filterOption={createFilter({ ignoreAccents: false })}
+                          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                          // @ts-ignore
+                          formatOptionLabel={(option: IconOption) => (
+                            <div className="flex items-center gap-2">
+                              {skillsData?.icons[option.value] && (
                                 <img
-                                  className="h-4 w-4"
-                                  src={`data:image/png;base64,${skillsData.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}`}
+                                  className="h-12 w-12 object-contain"
+                                  src={`data:image/png;base64,${skillsData.icons[option.value]}`}
                                   alt=""
                                 />
                               )}
-                              <span>{e.effectKey}</span>
-                              <span className="text-gray-400">({e.value})</span>
+                              <span>{option.label}</span>
                             </div>
-                          ))}
-                        </div>
+                          )}
+                        />
                       </div>
-                    );
-                  })()}
-              </>
-            ) : (
-              <>
-                {/* Custom skill form */}
+                      <button
+                        onClick={() => setIsIconPickerOpen(true)}
+                        type="button"
+                        className="px-4 py-2 text-white bg-gray-700 hover:bg-gray-600 rounded-lg text-sm whitespace-nowrap"
+                      >
+                        Browse Icons...
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                    {localized.name || "Name"}
+                    {localized.row || "Row"}
                   </label>
                   <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={localized.enterSkillName || "Enter skill name"}
+                    type="number"
+                    value={row}
+                    onChange={(e) => setRow(Number(e.target.value))}
+                    min={0}
                     className={inputClass}
-                    autoFocus
                   />
                 </div>
-
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                    {localized.description || "Description"}
+                    {localized.column || "Column"}
                   </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder={localized.enterDescription || "Enter description"}
+                  <input
+                    type="number"
+                    value={column}
+                    onChange={(e) => setColumn(Number(e.target.value))}
+                    min={0}
                     className={inputClass}
-                    rows={3}
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                    {localized.icon || "Icon"}
+                    {localized.maxLevel || "Max Level"}
+                  </label>
+                  <input
+                    type="number"
+                    value={maxLevel}
+                    onChange={(e) => setMaxLevel(Number(e.target.value))}
+                    min={1}
+                    max={10}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                    {localized.unlockRank || "Unlock Rank"}
+                  </label>
+                  <input
+                    type="number"
+                    value={unlockRank}
+                    onChange={(e) => setUnlockRank(Number(e.target.value))}
+                    min={0}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              {mode === "custom" && (
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                    {localized.effects || "Effects"}
                   </label>
                   <WindowedSelect
-                    options={iconOptions}
-                    value={selectedIcon}
-                    // @ts-expect-error
-                    onChange={(newValue: IconOption | null) => setSelectedIcon(newValue)}
-                    styles={selectStyle}
-                    placeholder={localized.selectIcon || "Select icon..."}
-                    isClearable
+                    isMulti
+                    options={effectOptions}
+                    value={selectedEffects}
                     filterOption={createFilter({ ignoreAccents: false })}
+                    // @ts-expect-error
+                    onChange={(newValue) => setSelectedEffects([...newValue])}
+                    styles={selectStyle}
+                    placeholder={localized.searchEffects || "Search effects..."}
                     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                     // @ts-ignore
-                    formatOptionLabel={(option: IconOption) => (
-                      <div className="flex items-center gap-2">
-                        {skillsData?.icons[option.value] && (
-                          <img
-                            className="h-12 w-12 object-contain"
-                            src={`data:image/png;base64,${skillsData.icons[option.value]}`}
-                            alt=""
-                          />
-                        )}
-                        <span>{option.label}</span>
+                    formatOptionLabel={(option: EffectOption) => (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          {option.effect.iconData && (
+                            <img
+                              className="h-5 w-5"
+                              src={`data:image/png;base64,${option.effect.iconData}`}
+                              alt=""
+                            />
+                          )}
+                          <span>{option.label}</span>
+                        </div>
+                        <span>{option.value}</span>
                       </div>
                     )}
                   />
-                </div>
-              </>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                  {localized.row || "Row"}
-                </label>
-                <input
-                  type="number"
-                  value={row}
-                  onChange={(e) => setRow(Number(e.target.value))}
-                  min={0}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                  {localized.column || "Column"}
-                </label>
-                <input
-                  type="number"
-                  value={column}
-                  onChange={(e) => setColumn(Number(e.target.value))}
-                  min={0}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                  {localized.maxLevel || "Max Level"}
-                </label>
-                <input
-                  type="number"
-                  value={maxLevel}
-                  onChange={(e) => setMaxLevel(Number(e.target.value))}
-                  min={1}
-                  max={10}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                  {localized.unlockRank || "Unlock Rank"}
-                </label>
-                <input
-                  type="number"
-                  value={unlockRank}
-                  onChange={(e) => setUnlockRank(Number(e.target.value))}
-                  min={0}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            {mode === "custom" && (
-              <div>
-                <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                  {localized.effects || "Effects"}
-                </label>
-                <WindowedSelect
-                  isMulti
-                  options={effectOptions}
-                  value={selectedEffects}
-                  filterOption={createFilter({ ignoreAccents: false })}
-                  // @ts-expect-error
-                  onChange={(newValue) => setSelectedEffects([...newValue])}
-                  styles={selectStyle}
-                  placeholder={localized.searchEffects || "Search effects..."}
-                  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                  // @ts-ignore
-                  formatOptionLabel={(option: EffectOption) => (
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        {option.effect.iconData && (
-                          <img
-                            className="h-5 w-5"
-                            src={`data:image/png;base64,${option.effect.iconData}`}
-                            alt=""
+                  {selectedEffects.length > 0 && (
+                    <div className="space-y-2 mt-2">
+                      {selectedEffects.map((opt) => (
+                        <div key={opt.value} className="flex items-center gap-2">
+                          {opt.effect.iconData && (
+                            <img
+                              className="h-5 w-5"
+                              src={`data:image/png;base64,${opt.effect.iconData}`}
+                              alt=""
+                            />
+                          )}
+                          <span className="text-sm text-gray-300 flex-1 truncate">{opt.label}</span>
+                          <input
+                            type="number"
+                            value={effectValues[opt.value] ?? "0"}
+                            onChange={(e) =>
+                              setEffectValues((prev) => ({ ...prev, [opt.value]: e.target.value }))
+                            }
+                            className={inputClass + " !w-24"}
                           />
-                        )}
-                        <span>{option.label}</span>
-                      </div>
-                      <span>{option.value}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
-                />
-                {selectedEffects.length > 0 && (
-                  <div className="space-y-2 mt-2">
-                    {selectedEffects.map((opt) => (
-                      <div key={opt.value} className="flex items-center gap-2">
-                        {opt.effect.iconData && (
-                          <img
-                            className="h-5 w-5"
-                            src={`data:image/png;base64,${opt.effect.iconData}`}
-                            alt=""
-                          />
-                        )}
-                        <span className="text-sm text-gray-300 flex-1 truncate">{opt.label}</span>
-                        <input
-                          type="number"
-                          value={effectValues[opt.value] ?? "0"}
-                          onChange={(e) =>
-                            setEffectValues((prev) => ({ ...prev, [opt.value]: e.target.value }))
-                          }
-                          className={inputClass + " !w-24"}
-                        />
-                      </div>
-                    ))}
+                </div>
+              )}
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <div className="flex gap-2 justify-end w-full">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm"
+              >
+                {localized.cancel || "Cancel"}
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitDisabled}
+                className="px-4 py-2 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+              >
+                {editingData ? localized.save || "Save" : localized.add || "Add"}
+              </button>
+            </div>
+          </Modal.Footer>
+        </Modal>
+
+        <Modal
+          show={isIconPickerOpen}
+          onClose={() => setIsIconPickerOpen(false)}
+          size="5xl"
+          explicitClasses={[
+            "max-w-[90vw]",
+            "first-child-div-second-child-div-flex-grow",
+            "first-child-div-flex-col",
+            "!h-[90vh]",
+          ]}
+        >
+          <Modal.Header>Select Icon</Modal.Header>
+          <Modal.Body>
+            <div className="space-y-4">
+              {/* Search input */}
+              <input
+                type="text"
+                value={iconSearch}
+                onChange={(e) => setIconSearch(e.target.value)}
+                placeholder="Search icons..."
+                className={inputClass}
+              />
+
+              {/* Icon grid */}
+              <div className="grid grid-cols-6 gap-3 overflow-y-auto p-2">
+                {filteredIcons.map((option) => (
+                  <div
+                    key={option.value}
+                    onClick={() => {
+                      setSelectedIcon(option);
+                      setIsIconPickerOpen(false);
+                    }}
+                    className={`cursor-pointer p-3 rounded border-2 transition-colors ${
+                      selectedIcon?.value === option.value
+                        ? "border-blue-500 bg-gray-700"
+                        : "border-gray-600 hover:bg-gray-700 hover:border-gray-500"
+                    }`}
+                  >
+                    {skillsData?.icons[option.value] && (
+                      <img
+                        src={`data:image/png;base64,${skillsData.icons[option.value]}`}
+                        className="w-20 h-20 object-contain mx-auto"
+                        alt={option.label}
+                      />
+                    )}
+                    <div className="text-xs text-center mt-2 text-gray-300 truncate" title={option.label}>
+                      {option.label}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
-            )}
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <div className="flex gap-2 justify-end w-full">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm"
-            >
-              {localized.cancel || "Cancel"}
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitDisabled}
-              className="px-4 py-2 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
-            >
-              {editingData ? localized.save || "Save" : localized.add || "Add"}
-            </button>
-          </div>
-        </Modal.Footer>
-      </Modal>
+
+              {filteredIcons.length === 0 && (
+                <div className="text-center text-gray-400 py-8">No icons found</div>
+              )}
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <div className="flex gap-2 justify-end w-full">
+              <button
+                onClick={() => setIsIconPickerOpen(false)}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </Modal.Footer>
+        </Modal>
+      </>
     );
   },
 );
