@@ -130,7 +130,12 @@ window.api?.setStartArgs((event, startArgs) => {
 });
 
 window.api?.packsInSave((event, packNames: string[]) => {
-  console.log("packs in save: ", packNames);
+  console.log("packs in save:", packNames);
+  store.dispatch(enableModsByName(packNames));
+});
+
+window.api?.enableModsByName((event, packNames: string[]) => {
+  console.log("enableModsByName:", packNames);
   store.dispatch(enableModsByName(packNames));
 });
 
@@ -140,7 +145,7 @@ window.api?.openModInViewer((event, modPath: string) => {
       packPath: modPath,
       dbName: "main_units_tables",
       dbSubname: "",
-    })
+    }),
   );
 });
 
@@ -270,7 +275,7 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
     return;
   }
   console.log(
-    `INVOKED: MOD PACK DATA RECIEVED FOR ${packsData.map((packData) => packData.packName).join(",")}`
+    `INVOKED: MOD PACK DATA RECIEVED FOR ${packsData.map((packData) => packData.packName).join(",")}`,
   );
 
   // if (packsData[0].currentTable) console.log(packsData[0].currentTable!.schemaFields[0]);
@@ -310,7 +315,7 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
   const alwaysEnabledMods = appState.alwaysEnabledMods;
   const customizableMods = appState.customizableMods;
   const enabledMods = presetMods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
   );
   const customizableTables = [
     "units_to_groupings_military_permissions_tables",
@@ -323,7 +328,7 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
   window.api?.getCustomizableMods(
     enabledMods.map((mod) => mod.path),
     customizableTables,
-    hash(customizableMods)
+    hash(customizableMods),
   );
 });
 
@@ -392,8 +397,8 @@ window.api?.setPackDataStore(
         (tableReferenceRequest) =>
           !doneRequests[packPath].some(
             (doneReq) =>
-              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq)
-          )
+              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
+          ),
       )
       .forEach((tableReferenceRequest) => {
         doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
@@ -401,14 +406,14 @@ window.api?.setPackDataStore(
 
     // store.dispatch(setPackDataStore({ packPath, pack } as SetPackDataStorePayload));
     store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
-  }
+  },
 );
 window.api?.appendPackDataStore(
   (
     event,
     packPath: string,
     packFilesToAppend: PackedFile[],
-    tableReferenceRequests: TableReferenceRequest[]
+    tableReferenceRequests: TableReferenceRequest[],
   ) => {
     console.log("INVOKED: appendPackDataStore");
 
@@ -425,15 +430,15 @@ window.api?.appendPackDataStore(
         (tableReferenceRequest) =>
           !doneRequests[packPath].some(
             (doneReq) =>
-              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq)
-          )
+              tableNameWithDBPrefix(tableReferenceRequest.tableName) == tableNameWithDBPrefix(doneReq),
+          ),
       )
       .forEach((tableReferenceRequest) => {
         doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
       });
 
     store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
-  }
+  },
 );
 
 window.api?.setDBNameToDBVersions(
@@ -441,7 +446,7 @@ window.api?.setDBNameToDBVersions(
     event,
     DBNameToDBVersions: Record<string, DBVersion[]>,
     DBFieldsThatReference: Record<DBFileName, Record<DBFieldName, string[]>>,
-    referencedColums: Record<string, string[]>
+    referencedColums: Record<string, string[]>,
   ) => {
     dataFromBackend.DBNameToDBVersions = DBNameToDBVersions;
     dataFromBackend.DBFieldsThatReference = DBFieldsThatReference;
@@ -459,7 +464,7 @@ window.api?.setDBNameToDBVersions(
 
         if (
           !dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].some(
-            (reference) => reference[0] == tableName && reference[1] == dbFieldName
+            (reference) => reference[0] == tableName && reference[1] == dbFieldName,
           )
         ) {
           dataFromBackend.DBFieldsReferencedBy[referencedTableName][referencedFieldName].push([
@@ -472,7 +477,7 @@ window.api?.setDBNameToDBVersions(
 
     // console.log("dataFromBackend.DBFieldsThatReference:", dataFromBackend.DBFieldsThatReference);
     // console.log("dataFromBackend.DBFieldsReferencedBy:", dataFromBackend.DBFieldsReferencedBy);
-  }
+  },
 );
 
 if (isMain) {
