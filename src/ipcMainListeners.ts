@@ -52,6 +52,7 @@ import {
 import {
   AmendedSchemaField,
   DBField,
+  LocFields,
   NewPackedFile,
   Pack,
   PackCollisions,
@@ -486,14 +487,35 @@ export const registerIpcMainListeners = (
       effectToEffectBonusValueIdsUnitSetsData[effectBonusValueIdsUnitSet.effect] = effectBonusValueIdsUnitSet;
     }
 
-    const subtypeAndSets: { key: string; agentSubtype: string }[] = [];
+    const subtypeAndSets: {
+      key: string;
+      agentSubtype: string;
+      agentKey: string;
+      campaignKey: string;
+      factionKey: string;
+      subculture: string;
+      forArmy: string;
+      forNavy: string;
+    }[] = [];
     getTableRowData(packsTableData, "character_skill_node_sets_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const agentSubtype = schemaFieldRow.find((sF) => sF.name == "agent_subtype_key")?.resolvedKeyValue;
+      const agentKey = schemaFieldRow.find((sF) => sF.name == "agent_key")?.resolvedKeyValue || "";
+      const campaignKey = schemaFieldRow.find((sF) => sF.name == "campaign_key")?.resolvedKeyValue || "";
+      const factionKey = schemaFieldRow.find((sF) => sF.name == "faction_key")?.resolvedKeyValue || "";
+      const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue || "";
+      const forArmy = schemaFieldRow.find((sF) => sF.name == "for_army")?.resolvedKeyValue || "false";
+      const forNavy = schemaFieldRow.find((sF) => sF.name == "for_navy")?.resolvedKeyValue || "false";
       if (key && agentSubtype) {
         const newSubtypeAndSets = {
           key,
           agentSubtype,
+          agentKey,
+          campaignKey,
+          factionKey,
+          subculture,
+          forArmy,
+          forNavy,
         };
         const existingIndex = subtypeAndSets.findIndex((sas) => sas.key == key);
         if (existingIndex > -1) {
@@ -829,6 +851,7 @@ export const registerIpcMainListeners = (
     const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
     appData.skillsData = {
       subtypesToSet,
+      subtypeAndSets,
       setToNodes,
       nodeLinks,
       nodeToSkill,
@@ -2657,27 +2680,64 @@ export const registerIpcMainListeners = (
     getSkillsForSubtype(subtype, subtypeIndex);
   });
 
+  ipcMain.on("createNewSkillTree", async (event, subtype: string) => {
+    const cachedSkillsData = appData.skillsData;
+    if (!cachedSkillsData) return;
+
+    const newSetKey = `new_skill_set_${subtype}_${Date.now()}`;
+
+    // Copy agent type/subtype data from the existing set
+    const originalSet = cachedSkillsData.subtypeAndSets.find((s) => s.agentSubtype === subtype);
+    cachedSkillsData.subtypeAndSets.push({
+      key: newSetKey,
+      agentSubtype: subtype,
+      agentKey: originalSet?.agentKey || "",
+      campaignKey: originalSet?.campaignKey || "",
+      factionKey: originalSet?.factionKey || "",
+      subculture: originalSet?.subculture || "",
+      forArmy: originalSet?.forArmy || "false",
+      forNavy: originalSet?.forNavy || "false",
+    });
+
+    if (!cachedSkillsData.subtypesToSet[subtype]) {
+      cachedSkillsData.subtypesToSet[subtype] = [];
+    }
+    cachedSkillsData.subtypesToSet[subtype].push(newSetKey);
+    cachedSkillsData.setToNodes[newSetKey] = [];
+
+    const newSubtypeIndex = cachedSkillsData.subtypesToSet[subtype].length - 1;
+    getSkillsForSubtype(subtype, newSubtypeIndex);
+  });
+
   ipcMain.handle("saveSkillsPack", async (event, data: SaveSkillsPackPayload) => {
     try {
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       if (!dataFolder) return { success: false, error: "Data folder not found" };
 
       const ts = Date.now().toString();
-      const { subtype, nodes, edges } = data;
+      const { subtype, nodes, edges, packName, packDirectory, cloneAllSkills, tableNameOverride, keyPrefix } = data;
+      const kp = keyPrefix || "custom";
+      const tn = tableNameOverride || `custom_${ts}`;
 
       // Build key mappings: old nodeId → new node key, index-based new skill key
       const nodeIdToNewNodeKey: Record<string, string> = {};
       const nodeIdToNewSkillKey: Record<string, string> = {};
       for (let i = 0; i < nodes.length; i++) {
-        nodeIdToNewNodeKey[nodes[i].nodeId] = `custom_node_${ts}_${i}`;
-        if (nodes[i].existingSkillKey) {
+        nodeIdToNewNodeKey[nodes[i].nodeId] = keyPrefix
+          ? `${kp}_node_${nodes[i].row}_${nodes[i].column}`
+          : `custom_node_${ts}_${nodes[i].row}_${nodes[i].column}`;
+        if (!cloneAllSkills && nodes[i].existingSkillKey) {
           nodeIdToNewSkillKey[nodes[i].nodeId] = nodes[i].existingSkillKey!;
         } else {
-          nodeIdToNewSkillKey[nodes[i].nodeId] = `custom_skill_${ts}_${i}`;
+          nodeIdToNewSkillKey[nodes[i].nodeId] = keyPrefix
+            ? `${kp}_skill_${nodes[i].row}_${nodes[i].column}`
+            : `custom_skill_${ts}_${nodes[i].row}_${nodes[i].column}`;
         }
       }
-      const customNodes = nodes.filter((n) => !n.existingSkillKey);
-      const newSetKey = `custom_skill_set_${subtype}_${ts}`;
+      const customNodes = cloneAllSkills ? nodes : nodes.filter((n) => !n.existingSkillKey);
+      const newSetKey = keyPrefix
+        ? `${kp}_skill_set_${subtype}`
+        : `custom_skill_set_${subtype}_${ts}`;
 
       const buildRowFromSchema = (
         dbFields: DBField[],
@@ -2716,6 +2776,24 @@ export const registerIpcMainListeners = (
         return Buffer.concat(parts);
       };
 
+      const buildLocFileBuffer = async (rows: (string | boolean)[][]): Promise<Buffer> => {
+        const parts: Buffer[] = [];
+        parts.push(Buffer.from([0xff, 0xfe])); // BOM
+        parts.push(Buffer.from([0x4c, 0x4f, 0x43])); // "LOC"
+        parts.push(Buffer.from([0x00])); // marker
+        const cBuf = Buffer.alloc(4);
+        cBuf.writeInt32LE(1, 0);
+        parts.push(cBuf);
+        cBuf.writeInt32LE(rows.length, 0);
+        parts.push(cBuf);
+        for (const row of rows) {
+          for (let i = 0; i < LocFields.length; i++) {
+            parts.push(await typeToBuffer(LocFields[i].field_type, row[i]));
+          }
+        }
+        return Buffer.concat(parts);
+      };
+
       const getLatestSchema = (tableName: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableName];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableName}`);
@@ -2728,14 +2806,21 @@ export const registerIpcMainListeners = (
       {
         const tableName = "character_skill_node_sets_tables";
         const schema = getLatestSchema(tableName);
+        const originalSet = appData.skillsData?.subtypeAndSets?.find((s) => s.agentSubtype === subtype);
         const rows = [
           buildRowFromSchema(schema.fields, {
             key: newSetKey,
             agent_subtype_key: subtype,
+            agent_key: originalSet?.agentKey || "",
+            campaign_key: originalSet?.campaignKey || "",
+            faction_key: originalSet?.factionKey || "",
+            subculture: originalSet?.subculture || "",
+            for_army: originalSet?.forArmy || "false",
+            for_navy: originalSet?.forNavy || "false",
           }),
         ];
         const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-        packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+        packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
       }
 
       // 2. character_skills_tables — one row per custom node (existing skills already exist)
@@ -2751,7 +2836,7 @@ export const registerIpcMainListeners = (
         );
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
 
@@ -2765,14 +2850,14 @@ export const registerIpcMainListeners = (
             character_skill_key: nodeIdToNewSkillKey[node.nodeId],
             tier: node.column.toString(),
             indent: node.row.toString(),
-            visible_in_ui: "true",
+            visible_in_ui: "1",
             faction_key: node.faction || "",
             subculture: node.subculture || "",
             required_num_parents: (node.requiredNumParents || 0).toString(),
           }),
         );
         const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-        packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+        packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
       }
 
       // 4. character_skill_node_set_items_tables — one row per node
@@ -2787,7 +2872,7 @@ export const registerIpcMainListeners = (
           }),
         );
         const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-        packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+        packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
       }
 
       // 5. character_skill_node_links_tables — one row per edge
@@ -2798,16 +2883,16 @@ export const registerIpcMainListeners = (
           .filter((e) => nodeIdToNewNodeKey[e.source] && nodeIdToNewNodeKey[e.target])
           .map((edge) =>
             buildRowFromSchema(schema.fields, {
-              parent_key: nodeIdToNewNodeKey[edge.target],
-              child_key: nodeIdToNewNodeKey[edge.source],
+              parent_key: nodeIdToNewNodeKey[edge.source],
+              child_key: nodeIdToNewNodeKey[edge.target],
               link_type: edge.linkType || "REQUIRED",
-              parent_link_position: "",
-              child_link_position: "",
+              parent_link_position: "1",
+              child_link_position: "1",
             }),
           );
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
 
@@ -2832,7 +2917,7 @@ export const registerIpcMainListeners = (
         }
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
 
@@ -2844,7 +2929,7 @@ export const registerIpcMainListeners = (
           .filter((lock) => {
             const lockedNode = nodes.find((n) => n.nodeId === lock.lockedNodeId);
             const lockingSkill = nodes.find((n) => n.skillId === lock.lockingSkillKey);
-            return lockedNode && (lockingSkill || !lock.lockingSkillKey.startsWith("custom_skill_"));
+            return lockedNode && (lockingSkill || !lock.lockingSkillKey.startsWith(`${kp}_skill_`));
           })
           .map((lock) =>
             buildRowFromSchema(schema.fields, {
@@ -2856,12 +2941,26 @@ export const registerIpcMainListeners = (
 
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-          packFiles.push({ name: `db\\${tableName}\\custom_${ts}`, file_size: buffer.length, buffer });
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
 
-      const packName = `custom_skills_${subtype}_${ts}.pack`;
-      const packPath = nodePath.join(dataFolder, packName);
+      // 8. Loc file — name and description for each custom skill
+      {
+        const rows: (string | boolean)[][] = [];
+        for (const node of customNodes) {
+          const skillKey = nodeIdToNewSkillKey[node.nodeId];
+          rows.push([`character_skills_localised_name_${skillKey}`, node.label, false]);
+          rows.push([`character_skills_localised_description_${skillKey}`, node.description, false]);
+        }
+        if (rows.length > 0) {
+          const buffer = await buildLocFileBuffer(rows);
+          packFiles.push({ name: `text\\db\\${tn}.loc`, file_size: buffer.length, buffer });
+        }
+      }
+
+      const finalPackName = packName.endsWith(".pack") ? packName : `${packName}.pack`;
+      const packPath = nodePath.join(packDirectory || dataFolder, finalPackName);
       console.log(
         `Writing skills pack to ${packPath} with ${packFiles.length} tables (including ${data.skillLocks?.length || 0} skill locks)`,
       );
@@ -2871,9 +2970,310 @@ export const registerIpcMainListeners = (
 
       await writePack(packFiles, packPath);
       console.log("Skills pack written successfully");
-      return { success: true, packPath, packName };
+      return { success: true, packPath, packName: finalPackName };
     } catch (err: any) {
       console.error("Failed to save skills pack:", err);
+      return { success: false, error: err.message || String(err) };
+    }
+  });
+
+  ipcMain.handle("saveSkillsChanges", async (event, data: SaveSkillsChangesPayload) => {
+    try {
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+      if (!dataFolder) return { success: false, error: "Data folder not found" };
+
+      const ts = Date.now().toString();
+      const { subtype, subtypeIndex, overrideNodes, replacedNodes, newNodes, deletedNodeKeys, edges, packName, packDirectory, tableNameOverride, keyPrefix } = data;
+      const tn = tableNameOverride || `changes_${ts}`;
+      const kp = keyPrefix || "custom";
+
+      // Get original set key
+      const subtypeSets = appData.skillsData?.subtypesToSet?.[subtype];
+      if (!subtypeSets || !subtypeSets[subtypeIndex]) {
+        return { success: false, error: `No skill set found for ${subtype} index ${subtypeIndex}` };
+      }
+      const originalSetKey = subtypeSets[subtypeIndex];
+
+      const buildRowFromSchema = (
+        dbFields: DBField[],
+        values: Record<string, string | boolean>,
+      ): (string | boolean)[] => {
+        return dbFields.map((field) => {
+          if (values[field.name] !== undefined) return values[field.name];
+          return field.default_value ?? "";
+        });
+      };
+
+      const buildDBFileBuffer = async (
+        version: number,
+        rows: (string | boolean)[][],
+        dbFields: DBField[],
+      ): Promise<Buffer> => {
+        const parts: Buffer[] = [];
+        parts.push(Buffer.from([0xfc, 0xfd, 0xfe, 0xff]));
+        const vBuf = Buffer.alloc(4);
+        vBuf.writeInt32LE(version, 0);
+        parts.push(vBuf);
+        parts.push(Buffer.from([0x01]));
+        const cBuf = Buffer.alloc(4);
+        cBuf.writeInt32LE(rows.length, 0);
+        parts.push(cBuf);
+        for (const row of rows) {
+          for (let i = 0; i < dbFields.length; i++) {
+            parts.push(await typeToBuffer(dbFields[i].field_type, row[i]));
+          }
+        }
+        return Buffer.concat(parts);
+      };
+
+      const buildLocFileBuffer = async (rows: (string | boolean)[][]): Promise<Buffer> => {
+        const parts: Buffer[] = [];
+        parts.push(Buffer.from([0xff, 0xfe]));
+        parts.push(Buffer.from([0x4c, 0x4f, 0x43]));
+        parts.push(Buffer.from([0x00]));
+        const cBuf = Buffer.alloc(4);
+        cBuf.writeInt32LE(1, 0);
+        parts.push(cBuf);
+        cBuf.writeInt32LE(rows.length, 0);
+        parts.push(cBuf);
+        for (const row of rows) {
+          for (let i = 0; i < LocFields.length; i++) {
+            parts.push(await typeToBuffer(LocFields[i].field_type, row[i]));
+          }
+        }
+        return Buffer.concat(parts);
+      };
+
+      const getLatestSchema = (tableName: string) => {
+        const versions = DBNameToDBVersions[appData.currentGame][tableName];
+        if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableName}`);
+        return versions[0];
+      };
+
+      const packFiles: NewPackedFile[] = [];
+
+      // 1. character_skill_nodes_tables — override nodes (same key) + replacement/new nodes (new keys)
+      {
+        const tableName = "character_skill_nodes_tables";
+        const schema = getLatestSchema(tableName);
+        const rows: (string | boolean)[][] = [];
+
+        for (const node of overrideNodes) {
+          rows.push(
+            buildRowFromSchema(schema.fields, {
+              key: node.originalNodeKey,
+              character_skill_key: node.characterSkillKey,
+              tier: node.tier.toString(),
+              indent: node.indent.toString(),
+              visible_in_ui: "1",
+              faction_key: node.faction || "",
+              subculture: node.subculture || "",
+              required_num_parents: (node.requiredNumParents || 0).toString(),
+            }),
+          );
+        }
+
+        for (const node of replacedNodes) {
+          rows.push(
+            buildRowFromSchema(schema.fields, {
+              key: node.newNodeKey,
+              character_skill_key: node.characterSkillKey,
+              tier: node.tier.toString(),
+              indent: node.indent.toString(),
+              visible_in_ui: "1",
+              faction_key: node.faction || "",
+              subculture: node.subculture || "",
+              required_num_parents: (node.requiredNumParents || 0).toString(),
+            }),
+          );
+        }
+
+        for (const node of newNodes) {
+          rows.push(
+            buildRowFromSchema(schema.fields, {
+              key: node.newNodeKey,
+              character_skill_key: node.newSkillKey,
+              tier: node.tier.toString(),
+              indent: node.indent.toString(),
+              visible_in_ui: "1",
+              faction_key: node.faction || "",
+              subculture: node.subculture || "",
+              required_num_parents: (node.requiredNumParents || 0).toString(),
+            }),
+          );
+        }
+
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 2. character_skill_node_set_items_tables — disable replaced/deleted originals, add replacement/new nodes
+      {
+        const tableName = "character_skill_node_set_items_tables";
+        const schema = getLatestSchema(tableName);
+        const rows: (string | boolean)[][] = [];
+
+        // Disable original nodes that are being replaced
+        for (const node of replacedNodes) {
+          rows.push(
+            buildRowFromSchema(schema.fields, {
+              set: originalSetKey,
+              item: node.originalNodeKey,
+              mod_disabled: "true",
+            }),
+          );
+        }
+
+        // Disable deleted nodes
+        for (const nodeKey of deletedNodeKeys) {
+          rows.push(
+            buildRowFromSchema(schema.fields, {
+              set: originalSetKey,
+              item: nodeKey,
+              mod_disabled: "true",
+            }),
+          );
+        }
+
+        // Add replacement nodes to set
+        for (const node of replacedNodes) {
+          rows.push(
+            buildRowFromSchema(schema.fields, {
+              set: originalSetKey,
+              item: node.newNodeKey,
+              mod_disabled: "false",
+            }),
+          );
+        }
+
+        // Add new nodes to set
+        for (const node of newNodes) {
+          rows.push(
+            buildRowFromSchema(schema.fields, {
+              set: originalSetKey,
+              item: node.newNodeKey,
+              mod_disabled: "false",
+            }),
+          );
+        }
+
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 3. character_skill_node_links_tables — edges for replaced/new nodes
+      if (edges.length > 0) {
+        const tableName = "character_skill_node_links_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = edges.map((edge) =>
+          buildRowFromSchema(schema.fields, {
+            parent_key: edge.parentKey,
+            child_key: edge.childKey,
+            link_type: edge.linkType || "REQUIRED",
+            parent_link_position: "1",
+            child_link_position: "1",
+          }),
+        );
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 4. character_skills_tables — only for new nodes with custom skills (not reusing existing skills)
+      const customSkillNodes = newNodes.filter((n) => n.newSkillKey.startsWith(`${kp}_skill_`));
+      if (customSkillNodes.length > 0) {
+        const tableName = "character_skills_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = customSkillNodes.map((node) =>
+          buildRowFromSchema(schema.fields, {
+            key: node.newSkillKey,
+            image_path: node.imgPath || "",
+            unlocked_at_rank: node.unlockRank.toString(),
+          }),
+        );
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 5. character_skill_level_to_effects_junctions_tables — effects for new custom skills
+      {
+        const tableName = "character_skill_level_to_effects_junctions_tables";
+        const schema = getLatestSchema(tableName);
+        const rows: (string | boolean)[][] = [];
+        for (const node of customSkillNodes) {
+          for (const effect of node.effects) {
+            rows.push(
+              buildRowFromSchema(schema.fields, {
+                character_skill_key: node.newSkillKey,
+                effect_key: effect.effectKey,
+                effect_scope: effect.effectScope || "character_to_character_own",
+                level: (effect.level || 1).toString(),
+                value: effect.value || "0",
+              }),
+            );
+          }
+        }
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 6. character_skill_nodes_skill_locks_tables
+      if (data.skillLocks && data.skillLocks.length > 0) {
+        const tableName = "character_skill_nodes_skill_locks_tables";
+        const schema = getLatestSchema(tableName);
+        const rows = data.skillLocks.map((lock) =>
+          buildRowFromSchema(schema.fields, {
+            character_skill: lock.lockingSkillKey,
+            character_skill_node: lock.lockedNodeKey,
+            level: lock.requiredLevel.toString(),
+          }),
+        );
+        if (rows.length > 0) {
+          const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
+          packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
+        }
+      }
+
+      // 7. Loc file — name and description for new custom skills
+      {
+        const rows: (string | boolean)[][] = [];
+        for (const node of customSkillNodes) {
+          rows.push([`character_skills_localised_name_${node.newSkillKey}`, node.label, false]);
+          rows.push([`character_skills_localised_description_${node.newSkillKey}`, node.description, false]);
+        }
+        if (rows.length > 0) {
+          const buffer = await buildLocFileBuffer(rows);
+          packFiles.push({ name: `text\\db\\${tn}.loc`, file_size: buffer.length, buffer });
+        }
+      }
+
+      if (packFiles.length === 0) {
+        return { success: false, error: "No changes detected" };
+      }
+
+      const finalPackName = packName.endsWith(".pack") ? packName : `${packName}.pack`;
+      const packPath = nodePath.join(packDirectory || dataFolder, finalPackName);
+      console.log(
+        `Writing changes pack to ${packPath} with ${packFiles.length} tables`,
+      );
+      for (const pf of packFiles) {
+        console.log(`  ${pf.name}: ${pf.file_size} bytes`);
+      }
+
+      await writePack(packFiles, packPath);
+      console.log("Changes pack written successfully");
+      return { success: true, packPath, packName: finalPackName };
+    } catch (err: any) {
+      console.error("Failed to save changes pack:", err);
       return { success: false, error: err.message || String(err) };
     }
   });

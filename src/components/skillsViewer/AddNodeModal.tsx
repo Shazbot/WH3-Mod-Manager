@@ -42,22 +42,7 @@ interface EffectOption {
 interface SkillOption {
   value: string;
   label: string;
-  skill: {
-    key: string;
-    localizedName: string;
-    localizedDescription: string;
-    iconPath: string;
-    maxLevel: number;
-    unlockRank: number;
-    effects: {
-      effectKey: string;
-      effectScope: string;
-      level: number;
-      value: string;
-      icon?: string;
-      priority: string;
-    }[];
-  };
+  effectsCount: number;
 }
 
 interface IconOption {
@@ -89,10 +74,19 @@ const AddNodeModal = memo(
         effect: e,
       })) ?? [],
     );
+    const [effectValues, setEffectValues] = useState<Record<string, string>>(() => {
+      if (!editingData?.effects) return {};
+      const vals: Record<string, string> = {};
+      for (const e of editingData.effects) {
+        vals[e.effectKey] = e.value || "0";
+      }
+      return vals;
+    });
     const [selectedSkill, setSelectedSkill] = useState<SkillOption | null>(() => {
       if (editingData?.existingSkillKey && skillsData?.allSkills) {
         const skill = skillsData.allSkills.find((s) => s.key === editingData.existingSkillKey);
-        if (skill) return { value: skill.key, label: skill.localizedName, skill };
+        if (skill)
+          return { value: skill.key, label: skill.localizedName, effectsCount: skill.effects.length };
       }
       return null;
     });
@@ -137,7 +131,7 @@ const AddNodeModal = memo(
         .map((s) => ({
           value: s.key,
           label: s.localizedName,
-          skill: s,
+          effectsCount: s.effects.length,
         }))
         .sort((a, b) => a.label.localeCompare(b.label));
     }, [skillsData?.allSkills]);
@@ -154,20 +148,24 @@ const AddNodeModal = memo(
     const handleSkillSelect = (option: SkillOption | null) => {
       setSelectedSkill(option);
       if (option) {
-        setName(option.skill.localizedName);
-        setDescription(option.skill.localizedDescription);
-        setMaxLevel(option.skill.maxLevel);
-        setUnlockRank(option.skill.unlockRank);
-        // Set icon from skill.iconPath
-        const iconPath = `ui\\campaign ui\\skills\\${option.skill.iconPath}`;
-        setSelectedIcon({ value: iconPath, label: option.skill.iconPath });
+        const skill = skillsData?.allSkills?.find((s) => s.key === option.value);
+        if (skill) {
+          setName(skill.localizedName);
+          setDescription(skill.localizedDescription);
+          setMaxLevel(skill.maxLevel);
+          setUnlockRank(skill.unlockRank);
+          const iconPath = `ui\\campaign ui\\skills\\${skill.iconPath}`;
+          setSelectedIcon({ value: iconPath, label: skill.iconPath });
+        }
       }
     };
 
     const handleSubmit = () => {
       if (mode === "existing") {
         if (!selectedSkill) return;
-        const skillEffects: Effect[] = selectedSkill.skill.effects.map((e) => ({
+        const skill = skillsData?.allSkills?.find((s) => s.key === selectedSkill.value);
+        if (!skill) return;
+        const skillEffects: Effect[] = skill.effects.map((e) => ({
           key: "",
           effectKey: e.effectKey,
           effectScope: e.effectScope,
@@ -178,7 +176,7 @@ const AddNodeModal = memo(
           priority: e.priority,
         }));
         onAdd({
-          name: name.trim() || selectedSkill.skill.localizedName,
+          name: name.trim() || skill.localizedName,
           description: description.trim(),
           row,
           column,
@@ -195,7 +193,7 @@ const AddNodeModal = memo(
           description: description.trim(),
           row,
           column,
-          effects: selectedEffects.map((opt) => ({ ...opt.effect })),
+          effects: selectedEffects.map((opt) => ({ ...opt.effect, value: effectValues[opt.value] ?? "0" })),
           maxLevel,
           unlockRank,
           imgPath: selectedIcon?.value,
@@ -253,9 +251,10 @@ const AddNodeModal = memo(
                     {localized.selectSkill || "Select Skill"}
                   </label>
                   <WindowedSelect
-                    filterOption={createFilter({ ignoreAccents: false })}
+                    filterOption={createFilter({ ignoreAccents: false, matchFrom: "start" })}
                     options={skillOptions}
                     value={selectedSkill}
+                    // @ts-expect-error
                     onChange={(newValue: SkillOption | null) => handleSkillSelect(newValue)}
                     styles={selectStyle}
                     placeholder={localized.searchSkills || "Search skills..."}
@@ -263,18 +262,11 @@ const AddNodeModal = memo(
                     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                     // @ts-ignore
                     formatOptionLabel={(option: SkillOption) => (
-                      // <div className="flex flex-col gap-1">
-                      //   <span className="font-medium">{option.label}</span>
-                      //   <span className="text-gray-300">
-                      //     {option.value} — {option.skill.effects.length} effect
-                      //     {option.skill.effects.length !== 1 ? "s" : ""}
-                      //   </span>
-                      // </div>
                       <>
                         <div className="font-medium">{option.label}</div>
                         <div className="text-gray-300 mt-1">
-                          {option.value} — {option.skill.effects.length} effect
-                          {option.skill.effects.length !== 1 ? "s" : ""}
+                          {option.value} — {option.effectsCount} effect
+                          {option.effectsCount !== 1 ? "s" : ""}
                         </div>
                       </>
                     )}
@@ -282,31 +274,36 @@ const AddNodeModal = memo(
                 </div>
 
                 {/* Show selected skill's effects as read-only */}
-                {selectedSkill && selectedSkill.skill.effects.length > 0 && (
-                  <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                      {localized.effects || "Effects"}
-                    </label>
-                    <div className="max-h-32 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded-lg p-2 space-y-1">
-                      {selectedSkill.skill.effects.map((e, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
-                        >
-                          {e.icon && skillsData?.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] && (
-                            <img
-                              className="h-4 w-4"
-                              src={`data:image/png;base64,${skillsData.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}`}
-                              alt=""
-                            />
-                          )}
-                          <span>{e.effectKey}</span>
-                          <span className="text-gray-400">({e.value})</span>
+                {selectedSkill &&
+                  (() => {
+                    const skill = skillsData?.allSkills?.find((s) => s.key === selectedSkill.value);
+                    if (!skill || skill.effects.length === 0) return null;
+                    return (
+                      <div>
+                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                          {localized.effects || "Effects"}
+                        </label>
+                        <div className="max-h-32 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded-lg p-2 space-y-1">
+                          {skill.effects.map((e, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+                            >
+                              {e.icon && skillsData?.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] && (
+                                <img
+                                  className="h-4 w-4"
+                                  src={`data:image/png;base64,${skillsData.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}`}
+                                  alt=""
+                                />
+                              )}
+                              <span>{e.effectKey}</span>
+                              <span className="text-gray-400">({e.value})</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      </div>
+                    );
+                  })()}
               </>
             ) : (
               <>
@@ -345,6 +342,7 @@ const AddNodeModal = memo(
                   <WindowedSelect
                     options={iconOptions}
                     value={selectedIcon}
+                    // @ts-expect-error
                     onChange={(newValue: IconOption | null) => setSelectedIcon(newValue)}
                     styles={selectStyle}
                     placeholder={localized.selectIcon || "Select icon..."}
@@ -434,6 +432,7 @@ const AddNodeModal = memo(
                   options={effectOptions}
                   value={selectedEffects}
                   filterOption={createFilter({ ignoreAccents: false })}
+                  // @ts-expect-error
                   onChange={(newValue) => setSelectedEffects([...newValue])}
                   styles={selectStyle}
                   placeholder={localized.searchEffects || "Search effects..."}
@@ -455,6 +454,30 @@ const AddNodeModal = memo(
                     </div>
                   )}
                 />
+                {selectedEffects.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {selectedEffects.map((opt) => (
+                      <div key={opt.value} className="flex items-center gap-2">
+                        {opt.effect.iconData && (
+                          <img
+                            className="h-5 w-5"
+                            src={`data:image/png;base64,${opt.effect.iconData}`}
+                            alt=""
+                          />
+                        )}
+                        <span className="text-sm text-gray-300 flex-1 truncate">{opt.label}</span>
+                        <input
+                          type="number"
+                          value={effectValues[opt.value] ?? "0"}
+                          onChange={(e) =>
+                            setEffectValues((prev) => ({ ...prev, [opt.value]: e.target.value }))
+                          }
+                          className={inputClass + " !w-24"}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -76,7 +76,7 @@ const ModsViewer = memo(() => {
       debounce((value: string) => {
         setDBTableFilter(value);
       }, 250),
-    [setDBTableFilter]
+    [setDBTableFilter],
   );
 
   const clearFilter = () => {
@@ -128,7 +128,7 @@ const ModsViewer = memo(() => {
       const result = await window.api?.savePackAsWithUnsavedFiles(
         packPath,
         saveAsPackName.trim(),
-        saveAsDirectory
+        saveAsDirectory,
       );
       if (result?.success) {
         console.log("Pack saved as successfully:", result.savedPath);
@@ -196,7 +196,7 @@ const ModsViewer = memo(() => {
           packPath: packPath,
           dbName: "",
           dbSubname: "",
-        })
+        }),
       );
 
       console.log("Pack created in memory:", packName);
@@ -249,7 +249,7 @@ const ModsViewer = memo(() => {
           packPath: `K:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data\\db.pack`,
           dbName: "main_units_tables",
           dbSubname: "data__",
-        })
+        }),
       );
     }
   }, []);
@@ -465,7 +465,7 @@ const ModsViewer = memo(() => {
                 minWidth="1"
               >
                 <div className="h-full flex flex-col">
-                  <div className="overflow-auto flex-1">
+                  <div className="overflow-auto flex-1 scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
                     <PackTablesTreeView ref={treeViewRef} tableFilter={dbTableFilter} />
                   </div>
 

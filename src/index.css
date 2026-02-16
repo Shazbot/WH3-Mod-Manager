@@ -410,6 +410,11 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 
 .hideReactFlowHandles .react-flow__handle {
   opacity: 0;
+  pointer-events: none;
+}
+
+.hideReactFlowHandles .react-flow__node {
+  cursor: default;
 }
 
 .reactFlowGroup .react-flow__handle {
@@ -468,4 +473,8 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 
 .first-child-div-second-child-div-flex-grow > div:nth-child(1) > div:nth-child(2) {
   flex-grow: 1;
+}
+
+.hide-placeholders .react-flow__node-addPlaceholder {
+  display: none !important;
 }

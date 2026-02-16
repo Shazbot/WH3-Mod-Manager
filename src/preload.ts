@@ -191,7 +191,9 @@ const api = {
 
   getSkillsForSubtype: (subtype: string, subtypeIndex: number) =>
     ipcRenderer.send("getSkillsForSubtype", subtype, subtypeIndex),
+  createNewSkillTree: (subtype: string) => ipcRenderer.send("createNewSkillTree", subtype),
   saveSkillsPack: (data: any) => ipcRenderer.invoke("saveSkillsPack", data),
+  saveSkillsChanges: (data: any) => ipcRenderer.invoke("saveSkillsChanges", data),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) =>
     ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>

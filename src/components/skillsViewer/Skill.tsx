@@ -197,7 +197,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                 .filter((effect) => effect.level == Math.min(currentLevel + 1, data.numLevels))
                 .map((effect, i) => {
                   return (
-                    <div id={effect.key + i} className="flex gap-2 text-sm">
+                    <div key={effect.key + i} id={effect.key + i} className="flex gap-2 text-sm">
                       <img
                         className="h-6"
                         src={`data:image/png;base64,${effect.iconData}`}
@@ -220,10 +220,9 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           if (!isCheckingSkillRequirements || areRequirementsValid) onClick(currentLevel, data.numLevels);
         }}
         onContextMenu={(e) => {
-          if (data.isEditMode) {
-            e.preventDefault();
-            return;
-          }
+          e.preventDefault();
+          if (data.isEditMode) return;
+          if (isCheckingSkillRequirements && data.unlockRank > currentRank) return;
           onRightClick(currentLevel);
         }}
         className={`h-20 relative w-[260px] ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${
@@ -257,8 +256,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         </div>
         <div className="absolute right-[2%] h-[70%] justify-center flex flex-col mt-[8px]">
           {Array.from(Array(Math.min(data.numLevels, 3)).keys()).map((i) => (
-            <div className="relative">
-              <img key={`${data.label}-skillLevel-${i}`} src={data.skillLevelImg} alt="skillLevelImg"></img>
+            <div className="relative" key={`${data.label}-skillLevel-${i}`}>
+              <img src={data.skillLevelImg} alt="skillLevelImg"></img>
               {i < currentLevel && (
                 <img className="absolute top-0" src={data.skillLevelLitIcon} alt="skillLevelLitIcon" />
               )}

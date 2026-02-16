@@ -511,6 +511,65 @@ declare global {
       lockingSkillKey: string;
       requiredLevel: number;
     }[];
+    packName: string;
+    packDirectory: string;
+    cloneAllSkills: boolean;
+    tableNameOverride?: string;
+    keyPrefix?: string;
+  }
+
+  interface SaveSkillsChangesPayload {
+    subtype: string;
+    subtypeIndex: number;
+    overrideNodes: {
+      originalNodeKey: string;
+      characterSkillKey: string;
+      tier: number;
+      indent: number;
+      faction: string;
+      subculture: string;
+      requiredNumParents: number;
+    }[];
+    replacedNodes: {
+      originalNodeKey: string;
+      newNodeKey: string;
+      characterSkillKey: string;
+      tier: number;
+      indent: number;
+      faction: string;
+      subculture: string;
+      requiredNumParents: number;
+    }[];
+    newNodes: {
+      newNodeKey: string;
+      newSkillKey: string;
+      tier: number;
+      indent: number;
+      faction: string;
+      subculture: string;
+      requiredNumParents: number;
+      label: string;
+      description: string;
+      imgPath: string;
+      unlockRank: number;
+      effects: Effect[];
+      maxLevel: number;
+    }[];
+    deletedNodeKeys: string[];
+    edges: {
+      parentKey: string;
+      childKey: string;
+      linkType: "REQUIRED" | "SUBSET_REQUIRED";
+    }[];
+    skillLocks: {
+      lockedNodeKey: string;
+      lockingSkillKey: string;
+      requiredLevel: number;
+    }[];
+    packName: string;
+    packDirectory: string;
+    tableNameOverride?: string;
+    keyPrefix?: string;
   }
 
   type SkillAndLevel = [string, number];
