@@ -2,7 +2,7 @@ import * as chokidar from "chokidar";
 import { app } from "electron";
 import * as path from "path";
 import * as fs from "fs";
-import { gameToAppDataFolderName } from "./supportedGames";
+import { gameToAppDataFolderName, gameToSteamId } from "./supportedGames";
 import appData from "./appData";
 
 let savesWatcher: chokidar.FSWatcher | undefined;
@@ -10,18 +10,33 @@ let savesWatcher: chokidar.FSWatcher | undefined;
 let saves: GameSave[] = [];
 
 export const getSavesFolderPath = () => {
-  const appDataPath = app.getPath("appData");
+  let appDataPath = app.getPath("appData");
+
+  if (process.platform === "linux") {
+    const homeDir = app.getPath("home");
+    appDataPath = `${homeDir}/.local/share/Steam/steamapps/compatdata/${gameToSteamId[appData.currentGame]}/pfx/drive_c/users/steamuser/AppData/Roaming/`;
+  }
+
   return path.join(
     appDataPath,
     "The Creative Assembly",
     gameToAppDataFolderName[appData.currentGame],
     "save_games"
   );
-};
+}
+
 export const getSaveFiles = async () => {
   saves = [];
+  let files: fs.Dirent[] = [];
   const folderPath = getSavesFolderPath();
-  const files = await fs.readdirSync(folderPath, { withFileTypes: true });
+
+  try {
+    files = fs.readdirSync(folderPath, { withFileTypes: true });
+  } catch (e) {
+    console.error(e)
+
+    return []
+  }
 
   for (const saveFile of files) {
     if (!saves.find((iterSave) => iterSave.name === saveFile.name)) {
