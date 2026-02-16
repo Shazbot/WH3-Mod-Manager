@@ -15,31 +15,33 @@ import { decodeHTML } from "entities";
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
 
+const wh3mmWorkshopId = "2845454582";
+
 export function fetchModData(
   ids: string[],
   cb: (modData: ModData) => void,
   log: (msg: string) => void,
-  retryIndex = 0
+  retryIndex = 0,
 ) {
   const joinedIds = ids.filter((id) => !isNaN(parseFloat(id))).join(",");
 
   const child = fork(
     nodePath.join(__dirname, "sub.js"),
     [gameToSteamId[appData.currentGame], "getModsData", joinedIds],
-    {}
+    {},
   );
   child.on("message", (modsData: ModsData) => {
     const workshopData = modsData.mods;
 
     const dedupedDependencyIds = Array.from(new Set(Object.values(modsData.dependencies).flat()));
     const unsubbedDepIds = dedupedDependencyIds.filter(
-      (depId) => !modsData.mods.some((mod) => mod.publishedFileId == depId)
+      (depId) => !modsData.mods.some((mod) => mod.publishedFileId == depId),
     );
 
     const child = fork(
       nodePath.join(__dirname, "sub.js"),
       [gameToSteamId[appData.currentGame], "getItems", unsubbedDepIds.join(",")],
-      {}
+      {},
     );
     child.on("message", (depModsData: WorkshopItemStringInsteadOfBigInt[]) => {
       const modIdToModName = new Map<string, string>();
@@ -54,7 +56,7 @@ export function fetchModData(
           const reqModIdToName = [] as [string, string][];
           const depIds = modsData.dependencies[workshopItem.publishedFileId];
           if (depIds) {
-            for (const depId of depIds) {
+            for (const depId of depIds.filter((id) => id != wh3mmWorkshopId)) {
               reqModIdToName.push([depId, modIdToModName.get(depId) ?? ""]);
             }
           }
@@ -138,7 +140,7 @@ export function fetchModData(
 
                 const requiredItemHumanNameIdsRegex = /class="requiredItem">[\n\r\t]+(.*?)[\n\r\t]+/gs;
                 const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(
-                  requiredItemHumanNameIdsRegex
+                  requiredItemHumanNameIdsRegex,
                 );
                 const reqHumanNames = [...requiredItemHumanNameIds]
                   .filter((matchAllResult) => matchAllResult && matchAllResult[1])
@@ -293,7 +295,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
 const getDataMods = async (
   gameDir: string,
   log: (msg: string) => void,
-  subFolder?: string
+  subFolder?: string,
 ): Promise<Mod[]> => {
   let dataPath = await getDataPath(log);
   if (!dataPath) throw new Error("Data folder not found");
@@ -335,7 +337,7 @@ const getDataMods = async (
       (file) =>
         !file.isDirectory() &&
         file.name.endsWith(".pack") &&
-        !vanillaPacks.find((vanillaPack) => file.name === vanillaPack)
+        !vanillaPacks.find((vanillaPack) => file.name === vanillaPack),
     )
     .map(async (file) => {
       return getDataMod(nodePath.join(dataPath, file.name), log);
@@ -425,7 +427,7 @@ export const getLastUpdated = async () => {
 
     const appmanifestFilePath = nodePath.join(
       steamAppsFolderPath,
-      `appmanifest_${gameToSteamId[appData.currentGame]}.acf`
+      `appmanifest_${gameToSteamId[appData.currentGame]}.acf`,
     );
 
     const appmanifest = await dumbfs.promises.readFile(appmanifestFilePath, "utf8");
@@ -459,7 +461,7 @@ export const getFolderPaths = async (log: (msg: string) => void, newGame?: Suppo
 
 export async function getContentModInFolder(
   contentSubFolderName: string,
-  log: (msg: string) => void
+  log: (msg: string) => void,
 ): Promise<Mod> {
   if (!appData.gamesToGameFolderPaths[appData.currentGame].contentFolder) {
     await getFolderPaths(log);
@@ -539,7 +541,7 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const moddingDataMods = await getDataMods(
     appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
     log,
-    "modding"
+    "modding",
   );
   moddingDataMods.forEach((mod) => {
     mod.isInModding = true;
@@ -548,13 +550,13 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
 
   const dataMods = await getDataMods(
     appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
-    log
+    log,
   );
   mods.push(...dataMods);
 
   console.log(
     "DATA MODS THAT ARE SIMLINKS:",
-    dataMods.filter((mod) => mod.isSymbolicLink)
+    dataMods.filter((mod) => mod.isSymbolicLink),
   );
 
   if (appData.currentGame != "shogun2") {
