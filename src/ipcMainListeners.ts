@@ -4672,9 +4672,12 @@ export const registerIpcMainListeners = (
           // Clear whmm_flows directory
           try {
             if (fsExtra.existsSync(whmmFlowsPath)) {
-              console.log(`DELETING whmm_flows directory: ${whmmFlowsPath}`);
-              fsExtra.removeSync(whmmFlowsPath);
-              console.log("Successfully cleared whmm_flows");
+              console.log(`Clearing files in whmm_flows directory: ${whmmFlowsPath}`);
+              const entries = fsExtra.readdirSync(whmmFlowsPath);
+              for (const entry of entries) {
+                fsExtra.removeSync(nodePath.join(whmmFlowsPath, entry));
+              }
+              console.log("Successfully cleared whmm_flows contents");
             }
           } catch (error) {
             console.log(
