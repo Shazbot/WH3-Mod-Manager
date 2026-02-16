@@ -3658,7 +3658,7 @@ const SkillsView = memo(
                         setIsSavePackModalOpen(true);
                       }}
                     >
-                      {localized.savePack || "Save Pack"}
+                      {localized.savePack || "Save Whole Tree"}
                     </button>
                     <button
                       className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-green-700 bg-green-600 text-white"
@@ -3673,7 +3673,7 @@ const SkillsView = memo(
                         setSaveChangesMode(true);
                       }}
                     >
-                      Save Changes
+                      {localized.saveOnlyChanges || "Save Only Changes"}
                     </button>
                     {/* <button
                       className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
