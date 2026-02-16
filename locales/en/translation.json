@@ -521,5 +521,6 @@
   "maxLevel": "Max Level",
   "unlockRank": "Unlock Rank",
   "searchEffects": "Search effects...",
-  "editNode": "Edit Node"
+  "editNode": "Edit Node",
+  "saveOnlyChanges": "Save Only Changes"
 }
