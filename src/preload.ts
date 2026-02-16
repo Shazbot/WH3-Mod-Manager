@@ -20,7 +20,7 @@ const api = {
     isLoadOrdered: boolean,
     doCreatePreset: boolean,
     presetName: string,
-    isPresetLoadOrdered: boolean
+    isPresetLoadOrdered: boolean,
   ) =>
     ipcRenderer.send(
       "importSteamCollection",
@@ -30,7 +30,7 @@ const api = {
       isLoadOrdered,
       doCreatePreset,
       presetName,
-      isPresetLoadOrdered
+      isPresetLoadOrdered,
     ),
   subscribeToMods: (ids: string[]) => ipcRenderer.send("subscribeToMods", ids),
   openFolderInExplorer: (path: string) => ipcRenderer.send("openFolderInExplorer", path),
@@ -57,7 +57,7 @@ const api = {
   createdMergedPack: (callback: (event: Electron.IpcRendererEvent, filePath: string) => void) =>
     ipcRenderer.on("createdMergedPack", callback),
   importSteamCollectionResponse: (
-    callback: (event: Electron.IpcRendererEvent, importSteamCollection: ImportSteamCollection) => void
+    callback: (event: Electron.IpcRendererEvent, importSteamCollection: ImportSteamCollection) => void,
   ) => ipcRenderer.on("importSteamCollectionResponse", callback),
   setIsDev: (callback: (event: Electron.IpcRendererEvent, isDev: boolean) => void) =>
     ipcRenderer.on("setIsDev", callback),
@@ -69,6 +69,8 @@ const api = {
     ipcRenderer.on("setStartArgs", callback),
   packsInSave: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("packsInSave", callback),
+  enableModsByName: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
+    ipcRenderer.on("enableModsByName", callback),
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
   viewerIsReady: () => ipcRenderer.send("viewerIsReady"),
   skillsAreReady: () => ipcRenderer.send("skillsAreReady"),
@@ -89,7 +91,7 @@ const api = {
   readMods: debounce(
     (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>
       ipcRenderer.send("readMods", mods, skipCollisionCheck, canUseCustomizableCache, customizableModsHash),
-    100
+    100,
   ),
   getUpdateData: () => ipcRenderer.invoke("getUpdateData"),
   downloadAndInstallUpdate: (downloadURL: string) =>
@@ -117,12 +119,12 @@ const api = {
   setPacksData: (callback: (event: Electron.IpcRendererEvent, packsData: PackViewData[]) => void) =>
     ipcRenderer.on("setPacksData", callback),
   setUnsavedPacksData: (
-    callback: (event: Electron.IpcRendererEvent, packPath: string, unsavedFileData: PackedFile[]) => void
+    callback: (event: Electron.IpcRendererEvent, packPath: string, unsavedFileData: PackedFile[]) => void,
   ) => ipcRenderer.on("setUnsavedPacksData", callback),
   setSkillsData: (callback: (event: Electron.IpcRendererEvent, skillsData: SkillsData) => void) =>
     ipcRenderer.on("setSkillsData", callback),
   setPackCollisionsCheckProgress: (
-    callback: (event: Electron.IpcRendererEvent, progressData: PackCollisionsCheckProgressData) => void
+    callback: (event: Electron.IpcRendererEvent, progressData: PackCollisionsCheckProgressData) => void,
   ) => ipcRenderer.on("setPackCollisionsCheckProgress", callback),
   setPacksDataRead: (callback: (event: Electron.IpcRendererEvent, packPaths: string[]) => void) =>
     ipcRenderer.on("setPacksDataRead", callback),
@@ -131,7 +133,7 @@ const api = {
   addToast: (callback: (event: Electron.IpcRendererEvent, toast: Toast) => void) =>
     ipcRenderer.on("addToast", callback),
   setAppFolderPaths: (
-    callback: (event: Electron.IpcRendererEvent, appFolderPaths: GameFolderPaths) => void
+    callback: (event: Electron.IpcRendererEvent, appFolderPaths: GameFolderPaths) => void,
   ) => ipcRenderer.on("setAppFolderPaths", callback),
   requestGameFolderPaths: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
     ipcRenderer.on("requestGameFolderPaths", callback),
@@ -139,10 +141,10 @@ const api = {
   getCustomizableMods: debounce(
     (modPaths: string[], tables: string[], customizableModsHash: string) =>
       ipcRenderer.send("getCustomizableMods", modPaths, tables, customizableModsHash),
-    100
+    100,
   ),
   setCustomizableMods: (
-    callback: (event: Electron.IpcRendererEvent, customizableMods: Record<string, string[]>) => void
+    callback: (event: Electron.IpcRendererEvent, customizableMods: Record<string, string[]>) => void,
   ) => ipcRenderer.on("setCustomizableMods", callback),
   getCompatData: (mods: Mod[]) => ipcRenderer.send("getCompatData", mods),
   selectContentFolder: (requestedGame: SupportedGames | undefined) =>
@@ -156,13 +158,16 @@ const api = {
   setWarhammer3Folder: (callback: (event: Electron.IpcRendererEvent, path: string) => void) =>
     ipcRenderer.on("setWarhammer3Folder", callback),
   setOverwrittenDataPackedFiles: (
-    callback: (event: Electron.IpcRendererEvent, overwrittenDataPackedFiles: Record<string, string[]>) => void
+    callback: (
+      event: Electron.IpcRendererEvent,
+      overwrittenDataPackedFiles: Record<string, string[]>,
+    ) => void,
   ) => ipcRenderer.on("setOverwrittenDataPackedFiles", callback),
   setOutdatedPackFiles: (
-    callback: (event: Electron.IpcRendererEvent, outdatedPackFiles: Record<string, string[]>) => void
+    callback: (event: Electron.IpcRendererEvent, outdatedPackFiles: Record<string, string[]>) => void,
   ) => ipcRenderer.on("setOutdatedPackFiles", callback),
   setDataModLastChangedLocal: (
-    callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void
+    callback: (event: Electron.IpcRendererEvent, dataModLastChangedLocal: number) => void,
   ) => ipcRenderer.on("setDataModLastChangedLocal", callback),
 
   setCurrentlyReadingMod: (callback: (event: Electron.IpcRendererEvent, modName: string) => void) =>
@@ -183,8 +188,8 @@ const api = {
       event: Electron.IpcRendererEvent,
       game: SupportedGames,
       currentPreset: Preset,
-      presets: Preset[]
-    ) => void
+      presets: Preset[],
+    ) => void,
   ) => ipcRenderer.on("setCurrentGame", callback),
   setCurrentGameNaive: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>
     ipcRenderer.on("setCurrentGameNaive", callback),
@@ -201,36 +206,36 @@ const api = {
   terminateGame: () => ipcRenderer.send("terminateGame"),
 
   setSchemaData: (
-    callback: (event: Electron.IpcRendererEvent, DBNameToDBVersions: Record<string, DBVersion[]>) => void
+    callback: (event: Electron.IpcRendererEvent, DBNameToDBVersions: Record<string, DBVersion[]>) => void,
   ) => ipcRenderer.on("setSchemaData", callback),
   setPackDataStore: (
     callback: (
       event: Electron.IpcRendererEvent,
       packPath: string,
       pack: Pack,
-      tableReferenceRequests: TableReferenceRequest[]
-    ) => void
+      tableReferenceRequests: TableReferenceRequest[],
+    ) => void,
   ) => ipcRenderer.on("setPackDataStore", callback),
   appendPackDataStore: (
     callback: (
       event: Electron.IpcRendererEvent,
       packPath: string,
       packFilesToAppend: PackedFile[],
-      tableReferenceRequests: TableReferenceRequest[]
-    ) => void
+      tableReferenceRequests: TableReferenceRequest[],
+    ) => void,
   ) => ipcRenderer.on("appendPackDataStore", callback),
   getTableReferences: (
     packPath: string,
     tableReferenceRequests: TableReferenceRequest[],
-    withPack: boolean
+    withPack: boolean,
   ) => ipcRenderer.send("getTableReferences", packPath, tableReferenceRequests, withPack),
   setDBNameToDBVersions: (
     callback: (
       event: Electron.IpcRendererEvent,
       DBNameToDBVersions: Record<string, DBVersion[]>,
       DBFieldsThatReference: Record<DBFileName, Record<DBFieldName, string[]>>,
-      referencedColums: Record<string, string[]>
-    ) => void
+      referencedColums: Record<string, string[]>,
+    ) => void,
   ) => ipcRenderer.on("setDBNameToDBVersions", callback),
   executeDBDuplication: (
     packPath: string,
@@ -239,7 +244,7 @@ const api = {
     nodeNameToRenameValue: Record<string, string>,
     defaultNodeNameToRenameValue: Record<string, string>,
     treeData: IViewerTreeNodeWithData,
-    DBCloneSaveOptions: DBCloneSaveOptions
+    DBCloneSaveOptions: DBCloneSaveOptions,
   ) =>
     ipcRenderer.invoke(
       "executeDBDuplication",
@@ -249,7 +254,7 @@ const api = {
       nodeNameToRenameValue,
       defaultNodeNameToRenameValue,
       treeData,
-      DBCloneSaveOptions
+      DBCloneSaveOptions,
     ),
   buildDBReferenceTree: (
     packPath: string,
@@ -257,7 +262,7 @@ const api = {
     deepCloneTarget: { row: number; col: number },
     existingRefs: DBCell[],
     selectedNodesByName: IViewerTreeNodeWithData[],
-    existingTree?: IViewerTreeNodeWithData
+    existingTree?: IViewerTreeNodeWithData,
   ): Promise<IViewerTreeNodeWithData> =>
     ipcRenderer.invoke(
       "buildDBReferenceTree",
@@ -266,7 +271,7 @@ const api = {
       deepCloneTarget,
       existingRefs,
       selectedNodesByName,
-      existingTree
+      existingTree,
     ),
 
   getDBNameToDBVersions: (): Promise<Record<string, DBVersion[]>> =>
@@ -285,7 +290,7 @@ const api = {
     replaceText: string,
     useRegex: boolean,
     isDev?: boolean,
-    pathFilter?: string
+    pathFilter?: string,
   ): Promise<void> =>
     ipcRenderer.invoke("renamePackedFiles", packPath, searchRegex, replaceText, useRegex, isDev, pathFilter),
 
@@ -328,7 +333,7 @@ const api = {
   saveNodeFlow: (
     flowName: string,
     flowData: string,
-    packPath: string
+    packPath: string,
   ): Promise<{
     success: boolean;
     filePath?: string;
@@ -336,7 +341,7 @@ const api = {
   }> => ipcRenderer.invoke("saveNodeFlow", flowName, flowData, packPath),
 
   savePackWithUnsavedFiles: (
-    packPath: string
+    packPath: string,
   ): Promise<{
     success: boolean;
     savedPath?: string;
@@ -347,7 +352,7 @@ const api = {
   savePackAsWithUnsavedFiles: (
     packPath: string,
     newPackName: string,
-    newPackDirectory: string
+    newPackDirectory: string,
   ): Promise<{
     success: boolean;
     savedPath?: string;
@@ -356,7 +361,7 @@ const api = {
 
   readFileFromPack: (
     packPath: string,
-    fileName: string
+    fileName: string,
   ): Promise<{
     success: boolean;
     text?: string;
@@ -364,19 +369,18 @@ const api = {
   }> => ipcRenderer.invoke("readFileFromPack", packPath, fileName),
 
   getFlowFilesFromPack: (
-    packPath: string
+    packPath: string,
   ): Promise<{
     success: boolean;
     flowFiles?: { name: string; content: string }[];
     error?: string;
   }> => ipcRenderer.invoke("getFlowFilesFromPack", packPath),
 
-  selectDirectory: (): Promise<string | undefined> =>
-    ipcRenderer.invoke("selectDirectory"),
+  selectDirectory: (): Promise<string | undefined> => ipcRenderer.invoke("selectDirectory"),
 
   createNewPack: (
     packName: string,
-    packDirectory: string
+    packDirectory: string,
   ): Promise<{
     success: boolean;
     packPath?: string;
@@ -386,9 +390,8 @@ const api = {
   syncIsFeaturesForModdersEnabled: (isFeaturesForModdersEnabled: boolean) =>
     ipcRenderer.send("syncIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled),
 
-  setIsFeaturesForModdersEnabled: (
-    callback: (event: any, isFeaturesForModdersEnabled: boolean) => void
-  ) => ipcRenderer.on("setIsFeaturesForModdersEnabled", callback),
+  setIsFeaturesForModdersEnabled: (callback: (event: any, isFeaturesForModdersEnabled: boolean) => void) =>
+    ipcRenderer.on("setIsFeaturesForModdersEnabled", callback),
 };
 
 export type api = typeof api;

@@ -2341,7 +2341,28 @@ export const registerIpcMainListeners = (
         }
       }
 
-      getAllMods();
+      getAllMods().then(async () => {
+        try {
+          if (doesConfigExist) return;
+
+          const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+          if (!gamePath) return;
+
+          const usedModsFilePath = nodePath.join(gamePath, "used_mods.txt");
+          const usedModsData = await fs.promises.readFile(usedModsFilePath, "utf8");
+
+          const modsToEnable: string[] = [];
+          for (const line of usedModsData.split("\n")) {
+            const match = line.match(/mod\s+"([^"]+)";/);
+            if (match) {
+              modsToEnable.push(match[1]);
+            }
+          }
+
+          console.log("config doesn't exist, enabling mods from used_mods.txt:", modsToEnable);
+          mainWindow?.webContents.send("enableModsByName", modsToEnable);
+        } catch (e) {}
+      });
     } finally {
       const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
       const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
@@ -2715,7 +2736,8 @@ export const registerIpcMainListeners = (
       if (!dataFolder) return { success: false, error: "Data folder not found" };
 
       const ts = Date.now().toString();
-      const { subtype, nodes, edges, packName, packDirectory, cloneAllSkills, tableNameOverride, keyPrefix } = data;
+      const { subtype, nodes, edges, packName, packDirectory, cloneAllSkills, tableNameOverride, keyPrefix } =
+        data;
       const kp = keyPrefix || "custom";
       const tn = tableNameOverride || `custom_${ts}`;
 
@@ -2735,9 +2757,7 @@ export const registerIpcMainListeners = (
         }
       }
       const customNodes = cloneAllSkills ? nodes : nodes.filter((n) => !n.existingSkillKey);
-      const newSetKey = keyPrefix
-        ? `${kp}_skill_set_${subtype}`
-        : `custom_skill_set_${subtype}_${ts}`;
+      const newSetKey = keyPrefix ? `${kp}_skill_set_${subtype}` : `custom_skill_set_${subtype}_${ts}`;
 
       const buildRowFromSchema = (
         dbFields: DBField[],
@@ -2983,7 +3003,19 @@ export const registerIpcMainListeners = (
       if (!dataFolder) return { success: false, error: "Data folder not found" };
 
       const ts = Date.now().toString();
-      const { subtype, subtypeIndex, overrideNodes, replacedNodes, newNodes, deletedNodeKeys, edges, packName, packDirectory, tableNameOverride, keyPrefix } = data;
+      const {
+        subtype,
+        subtypeIndex,
+        overrideNodes,
+        replacedNodes,
+        newNodes,
+        deletedNodeKeys,
+        edges,
+        packName,
+        packDirectory,
+        tableNameOverride,
+        keyPrefix,
+      } = data;
       const tn = tableNameOverride || `changes_${ts}`;
       const kp = keyPrefix || "custom";
 
@@ -3262,9 +3294,7 @@ export const registerIpcMainListeners = (
 
       const finalPackName = packName.endsWith(".pack") ? packName : `${packName}.pack`;
       const packPath = nodePath.join(packDirectory || dataFolder, finalPackName);
-      console.log(
-        `Writing changes pack to ${packPath} with ${packFiles.length} tables`,
-      );
+      console.log(`Writing changes pack to ${packPath} with ${packFiles.length} tables`);
       for (const pf of packFiles) {
         console.log(`  ${pf.name}: ${pf.file_size} bytes`);
       }
