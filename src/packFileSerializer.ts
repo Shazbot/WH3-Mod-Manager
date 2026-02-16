@@ -128,7 +128,8 @@ export async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackData
   switch (type) {
     case "Boolean":
       {
-        // console.log('boolean');
+        if (value == "true") value = "1";
+        if (value == "false") value = "0";
         const view = new DataView(new ArrayBuffer(1));
         view.setUint8(0, Number(value));
         return Buffer.from(view.buffer);
@@ -224,7 +225,7 @@ export async function typeToBuffer(type: SCHEMA_FIELD_TYPE, value: PlainPackData
 async function parseType(
   file: BinaryFile,
   type: SCHEMA_FIELD_TYPE,
-  existingFields?: Field[]
+  existingFields?: Field[],
 ): Promise<Field[]> {
   const fields: Field[] = existingFields || [];
   switch (type) {
@@ -331,7 +332,7 @@ function parseTypeBuffer(
   buffer: Buffer,
   pos: number,
   type: SCHEMA_FIELD_TYPE,
-  existingFields?: Field[]
+  existingFields?: Field[],
 ): [Field[], number] {
   const fields: Field[] = existingFields || [];
   switch (type) {
@@ -522,7 +523,7 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
   const dataDBPack = packsData.find((packData) => packData.name === "db.pack");
   if (!dataDBPack) return;
   const vanillaBattlePersmission = dataDBPack.packedFiles.find((pf) =>
-    pf.name.startsWith("db\\units_custom_battle_permissions_tables\\")
+    pf.name.startsWith("db\\units_custom_battle_permissions_tables\\"),
   );
   if (!vanillaBattlePersmission) return;
 
@@ -536,10 +537,10 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
         packedFiles.filter(
           (packedFile) =>
             packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\") &&
-            packedFile.version == vanillaBattlePersmissionVersion
-        )
+            packedFile.version == vanillaBattlePersmissionVersion,
+        ),
       )
-      .reduce((previous, packedFile) => previous.concat(packedFile), [])
+      .reduce((previous, packedFile) => previous.concat(packedFile), []),
   );
 
   for (const packFile of battlePermissions) {
@@ -719,7 +720,7 @@ export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], g
     "getPacksTableData:",
     packs.map((pack) => pack.name),
     "num tables:",
-    tables.length
+    tables.length,
   );
   // console.log(
   //   "getPacksTableData:",
@@ -752,7 +753,7 @@ export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], g
         packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(table));
       } else {
         packedFiles = pack.packedFiles.filter((packedFile) =>
-          packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`)
+          packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`),
         );
       }
 
@@ -823,7 +824,7 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
       packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name == table);
     } else {
       packedFiles = pack.packedFiles.filter((packedFile) =>
-        packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`)
+        packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`),
       );
     }
   }
@@ -911,7 +912,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
     await fsExtra.ensureDirSync(nodePath.dirname(targetPath));
 
     const packFieldsSettled = await Promise.allSettled(
-      mods.map((mod) => readPack(mod.path, { skipParsingTables: true }))
+      mods.map((mod) => readPack(mod.path, { skipParsingTables: true })),
     );
     const sources = (
       packFieldsSettled.filter((pfs) => pfs.status === "fulfilled") as PromiseFulfilledResult<Pack>[]
@@ -948,7 +949,7 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
 
     const index_size = Object.keys(packedFileNameToPackFileLookup).reduce(
       (acc, name) => acc + new Blob([name]).size + 1 + 5,
-      0
+      0,
     );
     await outFile.writeInt32(index_size);
     await outFile.writeInt32(0x7fffffff); // header_buffer
@@ -983,12 +984,12 @@ export const mergeMods = async (mods: Mod[], existingPath?: string) => {
           lastChanged: mod.lastChanged || mod.lastChangedLocal,
           humanName: mod.humanName,
           name: mod.name,
-        } as MergedModsData)
+        }) as MergedModsData,
     );
     const parsedTargetPath = nodePath.parse(targetPath);
     await fsExtra.writeJSONSync(
       nodePath.join(parsedTargetPath.dir, parsedTargetPath.name + ".json"),
-      mergedMetaData
+      mergedMetaData,
     );
 
     for (const packedFileName of sortedPackFileNamesDBFirst) {
@@ -1028,7 +1029,7 @@ export const addFakeUpdate = async (pathSource: string, pathTarget: string) => {
 export const createOverwritePack = async (
   pathSource: string,
   pathTarget: string,
-  overwrites: PackDataOverwrite[]
+  overwrites: PackDataOverwrite[],
 ) => {
   if (overwrites.length == 0) return;
   const tablesToRead = overwrites.map((overwrite) => overwrite.packFilePath);
@@ -1047,7 +1048,7 @@ export const createOverwritePack = async (
         console.log("PARSED packTableData for", packedFile.name, packTableData);
 
         const currentTableOverwrites = overwrites.filter(
-          (iterOverwrite) => iterOverwrite.packFilePath == packedFile.name
+          (iterOverwrite) => iterOverwrite.packFilePath == packedFile.name,
         );
         if (currentTableOverwrites.length == 0) continue;
 
@@ -1152,7 +1153,7 @@ export const executeFlowsForPack = async (
   pathSource: string,
   pathTarget: string,
   userFlowOptions: UserFlowOptions,
-  packName: string
+  packName: string,
 ): Promise<string[]> => {
   const createdPackPaths: string[] = [];
 
@@ -1230,7 +1231,7 @@ export const executeFlowsForPack = async (
                   if (modifiedValue.includes(placeholder)) {
                     modifiedValue = modifiedValue.replace(
                       new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-                      String(valueToUse)
+                      String(valueToUse),
                     );
                   }
                 }
@@ -1299,7 +1300,7 @@ export const executeFlowsForPack = async (
               console.log(
                 `Node ${node.id} (${node.type}): Injected DBNameToDBVersions with ${
                   Object.keys(currentGameSchema).length
-                } tables`
+                } tables`,
               );
             }
           }
@@ -1347,7 +1348,7 @@ export const writeCopyPack = async (
   pathSource: string,
   pathTarget: string,
   packFilesToAdd: PackedFile[],
-  sourceMod?: Pack
+  sourceMod?: Pack,
 ) => {
   let outFile: BinaryFile | undefined;
   let sourceFile: BinaryFile | undefined;
@@ -1361,12 +1362,12 @@ export const writeCopyPack = async (
     const packFiles = sourceMod.packedFiles;
     const packFilesWithAdded = sourceMod.packedFiles.concat(
       packFilesToAdd.filter((packFiletoAdd) =>
-        sourceMod?.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
-      )
+        sourceMod?.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name),
+      ),
     );
 
     const packFilesToAddWithoutReplaced = packFilesToAdd.filter((packFiletoAdd) =>
-      sourceMod?.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name)
+      sourceMod?.packedFiles.every((existingPackFile) => existingPackFile.name != packFiletoAdd.name),
     );
 
     if (packFiles.length < 1) return;
@@ -1467,7 +1468,7 @@ export const writePackStream = async (
   packFiles: NewPackedFile[],
   path: string,
   existingPackToAppend?: Pack,
-  dependencyPacks: string[] = []
+  dependencyPacks: string[] = [],
 ) => {
   let streamWriter: StreamWriter | undefined;
 
@@ -1492,7 +1493,7 @@ export const writePackStream = async (
                 name: pf.name,
                 file_size: pf.file_size,
                 readBuffer: true,
-              } as NewPackedFile)
+              }) as NewPackedFile,
           ),
         ]
       : packFiles;
@@ -1508,7 +1509,7 @@ export const writePackStream = async (
     // Calculate pack_file_index_size based on dependency packs
     const pack_file_index_size = finalDependencyPacks.reduce(
       (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0
+      0,
     );
 
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
@@ -1615,7 +1616,7 @@ export const writePackAppendFast = async (
   path: string,
   existingPackToAppend?: Pack,
   replaceDuplicates?: boolean,
-  dependencyPacks: string[] = []
+  dependencyPacks: string[] = [],
 ) => {
   let outFile: BinaryFile | undefined;
   let sourceFile: BinaryFile | undefined;
@@ -1659,7 +1660,7 @@ export const writePackAppendFast = async (
       // Calculate pack_file_index_size based on dependency packs
       const pack_file_index_size = finalDependencyPacks.reduce(
         (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-        0
+        0,
       );
 
       // Calculate additional index size needed for new files
@@ -1688,7 +1689,7 @@ export const writePackAppendFast = async (
       }
 
       console.log(
-        `Original files: ${originalFileCount}, Kept files: ${keptFileCount}, Replaced files: ${replacedFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`
+        `Original files: ${originalFileCount}, Kept files: ${keptFileCount}, Replaced files: ${replacedFileCount}, New files: ${packFiles.length}, Total: ${newFileCount}`,
       );
 
       // Copy file index entries (selectively if replacing duplicates)
@@ -1708,12 +1709,12 @@ export const writePackAppendFast = async (
         // Calculate the original pack's dependency pack size
         const originalDependencyPackSize = (existingPackToAppend.dependencyPacks || []).reduce(
           (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-          0
+          0,
         );
         const existingIndexStartPos = 4 + 4 + 4 + 4 + 4 + 4 + 4 + originalDependencyPackSize; // After header (7 * 4 bytes) + dependency packs
         const existingIndexSize = existingPackToAppend.packedFiles.reduce(
           (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
-          0
+          0,
         );
 
         await sourceFile.seek(existingIndexStartPos);
@@ -1750,12 +1751,12 @@ export const writePackAppendFast = async (
         console.log("Copying existing file data...");
         const originalDependencyPackSize = (existingPackToAppend.dependencyPacks || []).reduce(
           (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-          0
+          0,
         );
         const headerSize = 4 + 4 + 4 + 4 + 4 + 4 + 4; // After header (7 * 4 bytes)
         const indexSize = existingPackToAppend.packedFiles.reduce(
           (acc, pf) => acc + new Blob([pf.name]).size + 1 + 5,
-          0
+          0,
         );
         const dataStartPos = headerSize + originalDependencyPackSize + indexSize;
         const sourceFileSize = await sourceFile.size();
@@ -1861,7 +1862,7 @@ const writePackSorted = async (packFiles: NewPackedFile[], path: string, depende
     // Calculate pack_file_index_size based on dependency packs
     const pack_file_index_size = dependencyPacks.reduce(
       (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0
+      0,
     );
 
     const index_size = packFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
@@ -1942,7 +1943,7 @@ export const writePack = async (
   path: string,
   existingPackToAppend?: Pack,
   replaceDuplicates?: boolean,
-  dependencyPacks: string[] = []
+  dependencyPacks: string[] = [],
 ) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
@@ -1951,7 +1952,7 @@ export const writePack = async (
       path,
       existingPackToAppend,
       replaceDuplicates,
-      dependencyPacks
+      dependencyPacks,
     );
   }
 
@@ -1964,7 +1965,7 @@ export const writePackLegacy = async (
   packFiles: NewPackedFile[],
   path: string,
   existingPackToAppend?: Pack,
-  dependencyPacks: string[] = []
+  dependencyPacks: string[] = [],
 ) => {
   let outFile: BinaryFile | undefined;
 
@@ -1990,7 +1991,7 @@ export const writePackLegacy = async (
                 name: pf.name,
                 file_size: pf.file_size,
                 readBuffer: true,
-              } as NewPackedFile)
+              }) as NewPackedFile,
           ),
         ]
       : packFiles;
@@ -2006,7 +2007,7 @@ export const writePackLegacy = async (
     // Calculate pack_file_index_size based on dependency packs
     const pack_file_index_size = finalDependencyPacks.reduce(
       (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-      0
+      0,
     );
 
     const index_size = allPackFiles.reduce((acc, pack) => acc + new Blob([pack.name]).size + 1 + 5, 0);
@@ -2138,7 +2139,7 @@ export const writeStartGamePack = async (
   packsData: Pack[],
   path: string,
   enabledMods: Mod[],
-  startGameOptions: StartGameOptions
+  startGameOptions: StartGameOptions,
 ) => {
   let outFile: BinaryFile | undefined;
   try {
@@ -2548,7 +2549,7 @@ export const getPacksInSave = async (saveName: string): Promise<string[]> => {
 
     console.log(
       "mods in save:",
-      ascii.match(matchPackNamesInsideSaveFile)?.map((match) => match.replace("\0", ""))
+      ascii.match(matchPackNamesInsideSaveFile)?.map((match) => match.replace("\0", "")),
     );
 
     const packsInSave = ascii.match(matchPackNamesInsideSaveFile);
@@ -2564,7 +2565,7 @@ let toRead: Mod[];
 
 export const readFromExistingPack = async (
   pack: Pack,
-  packReadingOptions: PackReadingOptions = { skipParsingTables: false }
+  packReadingOptions: PackReadingOptions = { skipParsingTables: false },
 ): Promise<Pack> => {
   const pack_files = pack.packedFiles;
   let packHeader: PackHeader | undefined;
@@ -2598,7 +2599,7 @@ export const readFromExistingPack = async (
       for (const fileToRead of packReadingOptions.filesToRead) {
         // console.log("FIND", fileToRead);
         const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
-          collator.compare(a.name, b)
+          collator.compare(a.name, b),
         );
         if (indexOfFileToRead >= 0) {
           // console.log("FOUND", fileToRead);
@@ -2634,12 +2635,12 @@ export const readFromExistingPack = async (
 
     const startPos = dbPackFiles.reduce(
       (previous, current) => (previous < current.start_pos ? previous : current.start_pos),
-      Number.MAX_SAFE_INTEGER
+      Number.MAX_SAFE_INTEGER,
     );
 
     const startOfLastPack = dbPackFiles.reduce(
       (previous, current) => (previous > current.start_pos ? previous : current.start_pos),
-      -1
+      -1,
     );
     const endPos =
       (dbPackFiles.find((packFile) => packFile.start_pos === startOfLastPack)?.file_size ?? 0) +
@@ -2682,7 +2683,7 @@ const readDBPackedFiles = async (
   dbPackFiles: PackedFile[],
   buffer: Buffer,
   startPos: number,
-  modPath: string
+  modPath: string,
 ) => {
   let currentPos = 0;
   for (const pack_file of dbPackFiles) {
@@ -2855,7 +2856,7 @@ const readLoc = async (
   packReadingOptions: PackReadingOptions,
   locPackFile: PackedFile,
   buffer: Buffer,
-  modPath: string
+  modPath: string,
 ) => {
   let currentPos = 0;
 
@@ -2942,7 +2943,7 @@ const readLoc = async (
 export const matchDBFileRegex = /^db\\(.*?)\\/;
 export const readPack = async (
   modPath: string,
-  packReadingOptions: PackReadingOptions = { skipParsingTables: false }
+  packReadingOptions: PackReadingOptions = { skipParsingTables: false },
 ): Promise<Pack> => {
   const pack_files: PackedFile[] = [];
   let packHeader: PackHeader | undefined;
@@ -3007,7 +3008,7 @@ export const readPack = async (
     const header_buffer_len = 4;
     const header_buffer = await packedFileHeader.subarray(
       packedFileHeaderPosition,
-      packedFileHeaderPosition + header_buffer_len
+      packedFileHeaderPosition + header_buffer_len,
     );
     packedFileHeaderPosition += header_buffer_len;
 
@@ -3214,7 +3215,7 @@ export const readPack = async (
       for (const fileToRead of packReadingOptions.filesToRead) {
         // console.log("FIND", fileToRead);
         const indexOfFileToRead = bs(pack_files, fileToRead, (a: PackedFile, b: string) =>
-          collator.compare(a.name, b)
+          collator.compare(a.name, b),
         );
         if (indexOfFileToRead >= 0) {
           // console.log("FOUND", fileToRead);
@@ -3438,7 +3439,7 @@ export const renamePackedFilesWithOptions = async (
   replaceTarget: string,
   useRegex: boolean,
   isDev?: boolean,
-  pathFilter?: string
+  pathFilter?: string,
 ): Promise<void> => {
   const backupPath = packPath + ".backup." + Date.now();
 
@@ -3556,7 +3557,7 @@ const createPackWithRenamedFilesWithOptions = async (
   originalPack: Pack,
   tempPath: string,
 
-  renameMap: Map<string, PackedFile>
+  renameMap: Map<string, PackedFile>,
 ): Promise<void> => {
   let outFile: BinaryFile | undefined;
   let sourceFileId = -1;
@@ -3585,7 +3586,7 @@ const createPackWithRenamedFilesWithOptions = async (
       outFile,
       originalPack.packHeader,
       finalPackedFiles,
-      originalPack.dependencyPacks || []
+      originalPack.dependencyPacks || [],
     );
 
     // Pre-build file lookup map for O(1) instead of O(N) lookups
@@ -3699,7 +3700,7 @@ const writePackHeader = async (
   outFile: BinaryFile,
   originalHeader: PackHeader,
   packedFiles: PackedFile[],
-  dependencyPacks: string[]
+  dependencyPacks: string[],
 ): Promise<void> => {
   // Write base header
   await outFile.write(originalHeader.header);
@@ -3709,7 +3710,7 @@ const writePackHeader = async (
   // Calculate pack index size
   const pack_file_index_size = dependencyPacks.reduce(
     (acc, dep) => acc + Buffer.byteLength(dep, "utf8") + 1,
-    0
+    0,
   );
   await outFile.writeInt32(pack_file_index_size);
 
@@ -3718,7 +3719,7 @@ const writePackHeader = async (
   // Calculate packed file index size
   const packed_file_index_size = packedFiles.reduce(
     (acc, file) => acc + 4 + 1 + Buffer.byteLength(file.name, "utf8") + 1,
-    0
+    0,
   );
   await outFile.writeInt32(packed_file_index_size);
 

@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useRef } from "react";
 import { useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
@@ -7,11 +7,13 @@ import "@silevis/reactgrid/styles.css";
 
 type SkillsTreeViewProps = {
   tableFilter: string;
+  onDoubleClick?: (subtype: string, subtypeIndex: number) => void;
 };
 
 const collator = new Intl.Collator("en");
 
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
   const skillsData = useAppSelector((state) => state.app.skillsData);
   if (!skillsData || !skillsData.subtypes) {
@@ -37,14 +39,14 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
 
       return treeData;
     },
-    { name: "", children: [], metadata: { subtype: "", subtypeIndex: 0 } } as TreeData
+    { name: "", children: [], metadata: { subtype: "", subtypeIndex: 0 } } as TreeData,
   );
 
   // console.log(result);
   const data = flattenTree(result);
 
   const onTreeSelect = (props: ITreeViewOnSelectProps) => {
-    // console.log("ON TREE SELECT");
+    console.log("SkillsTreeView onTreeSelect");
     // console.log(props);
     if (props.isSelected) {
       const parentLeaf = data.find((leaf) => leaf.id == props.element.parent);
@@ -72,7 +74,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
       { [`rotate-90`]: isOpen },
       className,
       "w-4",
-      "h-4"
+      "h-4",
     );
     return (
       <span className="w-4 h-4">
@@ -152,13 +154,35 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
               }
             >
               {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
-              <span onClick={(e) => handleSelect(e)} className="relative">
+              <span
+                onClick={(e) => {
+                  if (props.onDoubleClick) {
+                    const evt = { ...e } as React.MouseEvent;
+                    if (clickTimer.current) clearTimeout(clickTimer.current);
+                    clickTimer.current = setTimeout(() => {
+                      clickTimer.current = null;
+                      handleSelect(evt);
+                    }, 250);
+                  } else {
+                    handleSelect(e);
+                  }
+                }}
+                onDoubleClick={() => {
+                  if (clickTimer.current) {
+                    clearTimeout(clickTimer.current);
+                    clickTimer.current = null;
+                  }
+                  const metadata = element.metadata as TreeMetadata;
+                  props.onDoubleClick?.(metadata.subtype, metadata.subtypeIndex);
+                }}
+                className="relative hover:underline cursor-pointer"
+              >
                 {/* <span onClick={(e) => handleSelect(e)} className="absolute">
                   {element.name}
                 </span> */}
                 {`${
                   isLocalizingSubtypes
-                    ? skillsData.subtypesToLocalizedNames[element.name] ?? element.name
+                    ? (skillsData.subtypesToLocalizedNames[element.name] ?? element.name)
                     : element.name
                 }${
                   skillsData.subtypeToNumSets[(element.metadata as TreeMetadata).subtype] > 1

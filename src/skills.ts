@@ -31,7 +31,7 @@ export function getNodesToParents(
   nodes: string[],
   nodeLinks: NodeLinks,
   nodeToSkill: NodeToSkill,
-  skillsToEffects: SkillsToEffects
+  skillsToEffects: SkillsToEffects,
 ) {
   const nodesToParents: Record<string, Skill[]> = {};
   nodes.forEach((node) => {
@@ -47,7 +47,7 @@ export function getNodesToParents(
         }
       }
       skills.sort(
-        (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier)
+        (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier),
       );
       if (skills.length > 0) {
         linkedToNode = skills[0].node;
@@ -84,7 +84,7 @@ export function getSkills(
   nodeToSkill: NodeToSkill,
   nodesToParents: NodesToParents,
   skillsToEffects: SkillsToEffects,
-  skillAndIcons: SkillAndIcons
+  skillAndIcons: SkillAndIcons,
 ) {
   const skills = nodes.map((node) => {
     const skill = nodeToSkill[node];
@@ -99,7 +99,7 @@ export function getSkills(
         }
       }
       skills.sort(
-        (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier)
+        (firstSkill, secondSkill) => Number.parseInt(firstSkill.tier) - Number.parseInt(secondSkill.tier),
       );
       if (skills.length > 0) {
         linkedToNode = skills[0].node;
@@ -159,7 +159,7 @@ export function getSkills(
             skill != currentSkill &&
             skill.origIndent == currentSkill.origIndent &&
             skill.origTier == currentSkill.origTier &&
-            skillsInRow.indexOf(skill) < i
+            skillsInRow.indexOf(skill) < i,
         )
       ) {
         j--;
@@ -180,7 +180,7 @@ export function getSkills(
     if (parents.length > 1) {
       console.log(
         "to group:",
-        parents.map((parent) => parent.id)
+        parents.map((parent) => parent.id),
       );
     }
   }
@@ -203,15 +203,15 @@ export function getSkillToEffects(skills: Skill[], skillsToEffects: SkillsToEffe
 // {{tr:xxx}} inside a loc should be replaced with a ui_text_replacements_localised_text_xxx loc keys
 function resolveTextReplacements(
   localizedText: string | undefined,
-  getLoc: (locId: string) => string | undefined
+  getLoc: (locId: string) => string | undefined,
 ) {
   if (!localizedText) return;
 
   return localizedText.replaceAll(/{{tr:(.*?)}}/gi, (_, captureGroup) => {
-    console.log("capture group is", captureGroup);
+    // console.log("capture group is", captureGroup);
     const replacementText =
       getLoc(`ui_text_replacements_localised_text_${captureGroup}`) || getLoc(captureGroup);
-    console.log("FOUND:", replacementText);
+    // console.log("FOUND:", replacementText);
     return replacementText || captureGroup;
   });
 }
@@ -245,7 +245,7 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
         effect.localizedKey = effect.localizedKey.replace("%n", `${value.toString()}`);
         effect.localizedKey = effect.localizedKey.replace(
           "%+n",
-          `${(value > 0 && "+") || ""}${value.toString()}`
+          `${(value > 0 && "+") || ""}${value.toString()}`,
         );
       }
       // const effectData = effectsToEffectData[effect.effectKey];
@@ -258,7 +258,7 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
 
 export function getRawEffectLocalization(
   effectKey: string,
-  getLoc: (locId: string) => string | undefined
+  getLoc: (locId: string) => string | undefined,
 ): string {
   const locId = `effects_description_${effectKey}`;
   let localized = getLoc(locId);
