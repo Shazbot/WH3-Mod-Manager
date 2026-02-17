@@ -523,5 +523,6 @@
   "searchEffects": "Search effects...",
   "editNode": "Edit Node",
   "saveOnlyChanges": "Save Only Changes",
-  "JSON": "JSON"
+  "JSON": "JSON",
+  "level": "Level"
 }
