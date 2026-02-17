@@ -329,6 +329,23 @@ const SkillsView = memo(
     const currentRank = useAppSelector((state) => state.app.currentRank);
     const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
 
+    const resolveSkillIcon = (imgPath?: string): string => {
+      if (!imgPath) return skillIcon;
+
+      let iconBuffer = skillsData.icons[imgPath];
+      if (iconBuffer) return iconBuffer;
+
+      if (!imgPath.startsWith("ui\\")) {
+        imgPath = `ui\\campaign ui\\skills\\${imgPath}`;
+        iconBuffer = skillsData.icons[imgPath];
+        if (iconBuffer) return iconBuffer;
+      }
+
+      // Try battle ui fallback
+      const battlePath = imgPath.replace("ui\\campaign ui\\skills\\", "ui\\battle ui\\ability_icons\\");
+      return skillsData.icons[battlePath] || skillIcon;
+    };
+
     let skills = skillsData.currentSkills;
     const subtype = skillsData.currentSubtype;
 
@@ -1924,16 +1941,6 @@ const SkillsView = memo(
           });
 
         // Resolve skillIcon from imgPath
-        const resolveSkillIcon = (imgPath?: string): string => {
-          if (!imgPath) return skillIcon;
-
-          console.log("skillsData:", Object.keys(skillsData.icons));
-          const iconBuffer = skillsData.icons[imgPath];
-          if (iconBuffer) return iconBuffer;
-          // Try battle ui fallback
-          const battlePath = imgPath.replace("ui\\campaign ui\\skills\\", "ui\\battle ui\\ability_icons\\");
-          return skillsData.icons[battlePath] || skillIcon;
-        };
 
         if (editingNodeId) {
           // Update existing node
@@ -2080,7 +2087,8 @@ const SkillsView = memo(
         containerToMembers[containerId].push(nodeId);
       }
 
-      const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] = [];
+      const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] =
+        [];
       for (const e of edges) {
         const sourceMembers = containerToMembers[e.source];
         const targetMembers = containerToMembers[e.target];
@@ -2239,9 +2247,10 @@ const SkillsView = memo(
                 skillLevelImg,
                 tooltipFrame,
                 skillLevelLitIcon,
-                skillIcon: n.imgPath && skillsData?.icons[n.imgPath]
-                  ? skillsData.icons[n.imgPath]
-                  : skillIcon,
+                skillIcon:
+                  n.imgPath && skillsData?.icons[n.imgPath]
+                    ? skillsData.icons[n.imgPath]
+                    : resolveSkillIcon(n.imgPath),
               },
             }));
 
@@ -4322,23 +4331,6 @@ const SkillsView = memo(
                   }
                   return { ...effect, iconData };
                 });
-              const resolveSkillIcon = (imgPath?: string): string => {
-                if (!imgPath) return skillIcon;
-                let iconBuffer = skillsData.icons[imgPath];
-                if (iconBuffer) return iconBuffer;
-
-                if (!imgPath.startsWith("ui\\")) {
-                  imgPath = `ui\\campaign ui\\skills\\${imgPath}`;
-                  iconBuffer = skillsData.icons[imgPath];
-                  if (iconBuffer) return iconBuffer;
-                }
-
-                const battlePath = imgPath.replace(
-                  "ui\\campaign ui\\skills\\",
-                  "ui\\battle ui\\ability_icons\\",
-                );
-                return skillsData.icons[battlePath] || skillIcon;
-              };
 
               const newNodes: Node<SkillData, "skill">[] = [];
               const affectedRows = new Set<number>();
