@@ -67,21 +67,29 @@ const AddNodeModal = memo(
     const [column, setColumn] = useState(initialColumn ?? 0);
     const [maxLevel, setMaxLevel] = useState(editingData?.maxLevel ?? 3);
     const [unlockRank, setUnlockRank] = useState(editingData?.unlockRank ?? 0);
-    const [selectedEffects, setSelectedEffects] = useState<EffectOption[]>(
-      editingData?.effects.map((e) => ({
-        value: e.effectKey,
-        label: e.localizedKey || e.effectKey,
-        effect: e,
-      })) ?? [],
-    );
+    const [levelEffects, setLevelEffects] = useState<Record<number, EffectOption[]>>(() => {
+      if (!editingData?.effects || editingData.effects.length === 0) return { 1: [] };
+      const byLevel: Record<number, EffectOption[]> = {};
+      for (const e of editingData.effects) {
+        const lvl = e.level || 1;
+        if (!byLevel[lvl]) byLevel[lvl] = [];
+        byLevel[lvl].push({
+          value: e.effectKey,
+          label: e.localizedKey || e.effectKey,
+          effect: e,
+        });
+      }
+      return byLevel;
+    });
     const [effectValues, setEffectValues] = useState<Record<string, string>>(() => {
       if (!editingData?.effects) return {};
       const vals: Record<string, string> = {};
       for (const e of editingData.effects) {
-        vals[e.effectKey] = e.value || "0";
+        vals[`${e.level || 1}_${e.effectKey}`] = e.value || "0";
       }
       return vals;
     });
+    const [activeLevel, setActiveLevel] = useState(1);
     const [selectedSkill, setSelectedSkill] = useState<SkillOption | null>(() => {
       if (editingData?.existingSkillKey && skillsData?.allSkills) {
         const skill = skillsData.allSkills.find((s) => s.key === editingData.existingSkillKey);
@@ -202,7 +210,13 @@ const AddNodeModal = memo(
           description: description.trim(),
           row,
           column,
-          effects: selectedEffects.map((opt) => ({ ...opt.effect, value: effectValues[opt.value] ?? "0" })),
+          effects: Object.entries(levelEffects).flatMap(([lvl, effs]) =>
+            effs.map((opt) => ({
+              ...opt.effect,
+              level: Number(lvl),
+              value: effectValues[`${lvl}_${opt.value}`] ?? "0",
+            })),
+          ),
           maxLevel,
           unlockRank,
           imgPath: selectedIcon?.value,
@@ -424,7 +438,11 @@ const AddNodeModal = memo(
                   <input
                     type="number"
                     value={maxLevel}
-                    onChange={(e) => setMaxLevel(Number(e.target.value))}
+                    onChange={(e) => {
+                      const newMax = Number(e.target.value);
+                      setMaxLevel(newMax);
+                      if (activeLevel > newMax) setActiveLevel(newMax);
+                    }}
                     min={1}
                     max={10}
                     className={inputClass}
@@ -446,16 +464,63 @@ const AddNodeModal = memo(
 
               {mode === "custom" && (
                 <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                    {localized.effects || "Effects"}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-900 dark:text-white">
+                      {localized.effects || "Effects"}
+                    </label>
+                    {maxLevel > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentEffects = levelEffects[activeLevel] || [];
+                          const newLevelEffects: Record<number, EffectOption[]> = {};
+                          const newValues = { ...effectValues };
+                          for (let lvl = 1; lvl <= maxLevel; lvl++) {
+                            newLevelEffects[lvl] = [...currentEffects];
+                            for (const opt of currentEffects) {
+                              newValues[`${lvl}_${opt.value}`] =
+                                effectValues[`${activeLevel}_${opt.value}`] ?? "0";
+                            }
+                          }
+                          setLevelEffects(newLevelEffects);
+                          setEffectValues(newValues);
+                        }}
+                        className="px-2 py-0.5 text-xs bg-gray-600 hover:bg-gray-500 text-gray-300 rounded"
+                      >
+                        Copy Effects to All Levels
+                      </button>
+                    )}
+                  </div>
+                  {/* Level tabs */}
+                  <div className="flex gap-1 mb-2 flex-wrap">
+                    {Array.from({ length: maxLevel }, (_, i) => i + 1).map((lvl) => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => setActiveLevel(lvl)}
+                        className={`px-3 py-1 text-sm rounded ${
+                          activeLevel === lvl
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-600 text-gray-300 hover:bg-gray-500"
+                        }`}
+                      >
+                        {`${localized.level || "Level"} ${lvl}`}
+                        {(levelEffects[lvl]?.length || 0) > 0 && (
+                          <span className="ml-1 text-xs opacity-75">({levelEffects[lvl].length})</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Effect selector for active level */}
                   <WindowedSelect
                     isMulti
                     options={effectOptions}
-                    value={selectedEffects}
+                    value={levelEffects[activeLevel] || []}
                     filterOption={createFilter({ ignoreAccents: false })}
-                    // @ts-expect-error
-                    onChange={(newValue) => setSelectedEffects([...newValue])}
+                    onChange={(newValue) => {
+                      const newEffects = [...(newValue as EffectOption[])];
+                      setLevelEffects((prev) => ({ ...prev, [activeLevel]: newEffects }));
+                    }}
                     styles={selectStyle}
                     placeholder={localized.searchEffects || "Search effects..."}
                     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -476,9 +541,9 @@ const AddNodeModal = memo(
                       </div>
                     )}
                   />
-                  {selectedEffects.length > 0 && (
+                  {(levelEffects[activeLevel]?.length || 0) > 0 && (
                     <div className="space-y-2 mt-2">
-                      {selectedEffects.map((opt) => (
+                      {(levelEffects[activeLevel] || []).map((opt) => (
                         <div key={opt.value} className="flex items-center gap-2">
                           {opt.effect.iconData && (
                             <img
@@ -490,9 +555,12 @@ const AddNodeModal = memo(
                           <span className="text-sm text-gray-300 flex-1 truncate">{opt.label}</span>
                           <input
                             type="number"
-                            value={effectValues[opt.value] ?? "0"}
+                            value={effectValues[`${activeLevel}_${opt.value}`] ?? "0"}
                             onChange={(e) =>
-                              setEffectValues((prev) => ({ ...prev, [opt.value]: e.target.value }))
+                              setEffectValues((prev) => ({
+                                ...prev,
+                                [`${activeLevel}_${opt.value}`]: e.target.value,
+                              }))
                             }
                             className={inputClass + " !w-24"}
                           />
