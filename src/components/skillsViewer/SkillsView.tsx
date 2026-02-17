@@ -297,7 +297,9 @@ const SkillsView = memo(
     const [, setClipboardVersion] = useState(0);
     const [resetCounter, setResetCounter] = useState(0);
     const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
-    const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
+    const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(
+      null,
+    );
     const [customTableName, setCustomTableName] = useState("");
     const [customKeyPrefix, setCustomKeyPrefix] = useState("");
     const isRestoringSnapshot = useRef(!!initialSnapshot);
@@ -2070,42 +2072,100 @@ const SkillsView = memo(
 
     // Edit mode: export skill tree to JSON
     const onExport = useCallback(() => {
+      // Build edge expansion to resolve group containers back to individual nodes with proper linkType
+      const containerToMembers: Record<string, string[]> = {};
+      for (const [nodeId, groupId] of Object.entries(editGroups)) {
+        const containerId = `${groupId}_group`;
+        if (!containerToMembers[containerId]) containerToMembers[containerId] = [];
+        containerToMembers[containerId].push(nodeId);
+      }
+
+      const expandedEdges: { source: string; target: string; linkType: "REQUIRED" | "SUBSET_REQUIRED" }[] = [];
+      for (const e of edges) {
+        const sourceMembers = containerToMembers[e.source];
+        const targetMembers = containerToMembers[e.target];
+        if (sourceMembers && targetMembers) {
+          for (const s of sourceMembers) {
+            for (const t of targetMembers) {
+              expandedEdges.push({ source: s, target: t, linkType: "REQUIRED" });
+            }
+          }
+        } else if (sourceMembers) {
+          for (const s of sourceMembers) {
+            expandedEdges.push({ source: s, target: e.target, linkType: "SUBSET_REQUIRED" });
+          }
+        } else if (targetMembers) {
+          for (const t of targetMembers) {
+            expandedEdges.push({ source: e.source, target: t, linkType: "REQUIRED" });
+          }
+        } else {
+          const sourceGroupId = editGroups[e.source];
+          expandedEdges.push({
+            source: e.source,
+            target: e.target,
+            linkType: sourceGroupId ? "REQUIRED" : "SUBSET_REQUIRED",
+          });
+        }
+      }
+      const seen = new Set<string>();
+      const dedupedEdges = expandedEdges.filter((e) => {
+        const key = `${e.source}|${e.target}|${e.linkType}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
       const exportData = {
         nodes: nodes
           .filter((n) => n.type === "skill")
-          .map((n) => ({
-            nodeId: n.id,
-            skillId: n.data.id,
-            tier: Math.round(n.position.y / effectiveNodeHeight),
-            indent: Math.round(n.position.x / nodeWidth),
-            faction: n.data.faction || "",
-            subculture: n.data.subculture || "",
-            label: n.data.label,
-            description: n.data.description,
-            maxLevel: n.data.numLevels,
-            unlockRank: n.data.unlockRank,
-          })),
-        links: edges.map((e) => ({
+          .map((n) => {
+            let absX: number, absY: number;
+            if (n.parentId) {
+              const parent = nodes.find((p) => p.id === n.parentId);
+              absX = (parent?.position.x ?? 0) + n.position.x;
+              absY = (parent?.position.y ?? 0) + n.position.y;
+            } else {
+              absX = n.position.x;
+              absY = n.position.y;
+            }
+            return {
+              nodeId: n.id,
+              skillId: n.data.id,
+              tier: Math.round(absY / effectiveNodeHeight),
+              indent: Math.round(absX / nodeWidth),
+              faction: n.data.faction || "",
+              subculture: n.data.subculture || "",
+              label: n.data.label,
+              description: n.data.description,
+              imgPath: n.data.imgPath || "",
+              maxLevel: n.data.numLevels,
+              unlockRank: n.data.unlockRank,
+              existingSkillKey: n.data.existingSkillKey,
+              requiredNumParents: (n.data as any).requiredNumParents || 0,
+              effects: n.data.effects,
+            };
+          }),
+        links: dedupedEdges.map((e) => ({
           parent: e.target,
           child: e.source,
-          linkType: "REQUIRED" as const,
+          linkType: e.linkType,
         })),
-        effects: nodes
-          .filter((n) => n.type === "skill")
-          .flatMap((n) =>
-            n.data.effects.map((effect) => ({
-              skillId: n.data.id,
-              effectKey: effect.effectKey,
-              level: effect.level,
-              value: effect.value,
-            })),
-          ),
         groups: [...new Set(Object.values(editGroups))].map((gid) => ({
           groupId: gid,
           nodeIds: Object.entries(editGroups)
             .filter(([, g]) => g === gid)
             .map(([nid]) => nid),
         })),
+        skillLocks: (() => {
+          const nodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
+          const locks: { lockedNodeId: string; lockingSkillKey: string; requiredLevel: number }[] = [];
+          for (const [lockedNodeId, skillAndLevelArray] of Object.entries(nodeToSkillLocks)) {
+            for (const [lockingSkillKey, requiredLevel] of skillAndLevelArray) {
+              locks.push({ lockedNodeId, lockingSkillKey, requiredLevel });
+            }
+          }
+          return locks;
+        })(),
       };
 
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
@@ -2115,7 +2175,121 @@ const SkillsView = memo(
       a.download = `skill_tree_${subtype}_${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-    }, [nodes, edges, subtype]);
+    }, [nodes, edges, subtype, editGroups, effectiveNodeHeight, skillsData]);
+
+    const onImport = useCallback(
+      (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        event.target.value = "";
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = JSON.parse(e.target?.result as string);
+            if (!data.nodes || !Array.isArray(data.nodes)) {
+              setNotification({ message: "Invalid JSON: missing nodes array", type: "error" });
+              return;
+            }
+
+            // Rebuild editGroups from groups array
+            const newEditGroups: Record<string, string> = {};
+            let maxGroupNum = 0;
+            if (data.groups && Array.isArray(data.groups)) {
+              for (const group of data.groups) {
+                for (const nodeId of group.nodeIds) {
+                  newEditGroups[nodeId] = group.groupId;
+                }
+                const match = group.groupId.match(/editGroup_(\d+)/);
+                if (match) maxGroupNum = Math.max(maxGroupNum, parseInt(match[1]));
+              }
+            }
+
+            // Build skill nodes
+            const importedNodes: typeof nodes = data.nodes.map((n: any) => ({
+              id: n.nodeId,
+              type: "skill" as const,
+              position: {
+                x: n.indent * nodeWidth,
+                y: n.tier * effectiveNodeHeight,
+              },
+              sourcePosition: Position.Right,
+              targetPosition: Position.Left,
+              data: {
+                id: n.skillId,
+                nodeId: n.nodeId,
+                label: n.label,
+                description: n.description,
+                numLevels: n.maxLevel,
+                unlockRank: n.unlockRank,
+                imgPath: n.imgPath || "",
+                faction: n.faction || "",
+                subculture: n.subculture || "",
+                effects: n.effects || [],
+                existingSkillKey: n.existingSkillKey,
+                requiredNumParents: n.requiredNumParents || 0,
+                isAbilityIcon: false,
+                isHiddentInUI: false,
+                isCheckingSkillRequirements: false,
+                origIndent: String(n.indent),
+                origTier: String(n.tier),
+                row: n.tier,
+                skillBackground,
+                skillIconBackground,
+                skillLevelImg,
+                tooltipFrame,
+                skillLevelLitIcon,
+                skillIcon: n.imgPath && skillsData?.icons[n.imgPath]
+                  ? skillsData.icons[n.imgPath]
+                  : skillIcon,
+              },
+            }));
+
+            // Build edges from links
+            const importedEdges: SkillEdge[] = [];
+            if (data.links && Array.isArray(data.links)) {
+              for (const link of data.links) {
+                const id = `e${link.child}-${link.parent}`;
+                importedEdges.push({
+                  id,
+                  source: link.child,
+                  target: link.parent,
+                  type: edgeType,
+                  animated: false,
+                  interactionWidth: 20,
+                  style: { stroke: "#ef4444", strokeWidth: 2 },
+                });
+              }
+            }
+
+            // Restore skill locks
+            if (data.skillLocks && Array.isArray(data.skillLocks)) {
+              const newLocks: Record<string, [string, number][]> = {};
+              for (const lock of data.skillLocks) {
+                if (!newLocks[lock.lockedNodeId]) newLocks[lock.lockedNodeId] = [];
+                newLocks[lock.lockedNodeId].push([lock.lockingSkillKey, lock.requiredLevel]);
+              }
+              localNodeToSkillLocks.current = newLocks;
+            } else {
+              localNodeToSkillLocks.current = null;
+            }
+
+            setEditGroups(newEditGroups);
+            setNextGroupId(maxGroupNum + 1);
+            setNodes(importedNodes);
+            setEdges(importedEdges);
+            setNotification({ message: "Skill tree imported successfully", type: "success" });
+          } catch (err: any) {
+            console.error("Failed to import skill tree:", err);
+            setNotification({ message: `Failed to import: ${err.message}`, type: "error" });
+          }
+        };
+        reader.readAsText(file);
+      },
+      [effectiveNodeHeight, setNodes, setEdges, skillsData],
+    );
+
+    const importInputRef = useRef<HTMLInputElement>(null);
 
     // Edit mode: save skill tree as a .pack file
     const handleSavePackConfirm = useCallback(async () => {
@@ -2232,7 +2406,10 @@ const SkillsView = memo(
           setIsSavePackModalOpen(false);
         } else {
           console.error("Failed to save pack:", result?.error);
-          setNotification({ message: `Failed to save pack: ${result?.error || "Unknown error"}`, type: "error" });
+          setNotification({
+            message: `Failed to save pack: ${result?.error || "Unknown error"}`,
+            type: "error",
+          });
         }
       } finally {
         setIsSavePackProcessing(false);
@@ -2529,12 +2706,26 @@ const SkillsView = memo(
           setIsSavePackModalOpen(false);
         } else {
           console.error("Failed to save changes pack:", result?.error);
-          setNotification({ message: `Failed to save changes pack: ${result?.error || "Unknown error"}`, type: "error" });
+          setNotification({
+            message: `Failed to save changes pack: ${result?.error || "Unknown error"}`,
+            type: "error",
+          });
         }
       } finally {
         setIsSavePackProcessing(false);
       }
-    }, [savePackName, savePackDirectory, nodes, edges, subtype, skillsData, editGroups, effectiveNodeHeight, customTableName, customKeyPrefix]);
+    }, [
+      savePackName,
+      savePackDirectory,
+      nodes,
+      edges,
+      subtype,
+      skillsData,
+      editGroups,
+      effectiveNodeHeight,
+      customTableName,
+      customKeyPrefix,
+    ]);
 
     const handleResetConfirm = useCallback(() => {
       setIsResetConfirmOpen(false);
@@ -2926,6 +3117,10 @@ const SkillsView = memo(
       setIsSkillLocksMode(false);
       setEditGroups({});
       setNextGroupId(1);
+      setLockEdgeLevels({});
+      savedEditEdges.current = [];
+      savedLocksEdges.current = [];
+      allLockEdges.current = [];
       setIsEditMode(false);
       localNodeToSkillLocks.current = null;
     }, [skillsData?.currentSubtype]);
@@ -3546,14 +3741,16 @@ const SkillsView = memo(
               </Dropdown.Item> */}
                 </Dropdown>
               </div>
-              <button
-                className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                onClick={() => {
-                  window.api?.createNewSkillTree(skillsData.currentSubtype);
-                }}
-              >
-                New Skill Tree
-              </button>
+              {isFeaturesForModdersEnabled && (
+                <button
+                  className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
+                  onClick={() => {
+                    window.api?.createNewSkillTree(skillsData.currentSubtype);
+                  }}
+                >
+                  New Skill Tree
+                </button>
+              )}
             </div>
             {hasFactionVariants && (
               <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg mt-2 w-fit">
@@ -3639,42 +3836,74 @@ const SkillsView = memo(
                     >
                       Reset
                     </button>
-                    {/* <button
-                      className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                      onClick={onExport}
-                    >
-                      {localized.export || "Export"}
-                    </button> */}
-                    <button
-                      className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-blue-700 bg-blue-600 text-white"
-                      onClick={() => {
-                        const ts = Date.now().toString();
-                        setSavePackName(`custom_skills_${subtype}_${ts}`);
-                        setSavePackDirectory(undefined);
-                        setSavePackCloneAll(false);
-                        setSaveChangesMode(false);
-                        setCustomTableName("");
-                        setCustomKeyPrefix("");
-                        setIsSavePackModalOpen(true);
-                      }}
-                    >
-                      {localized.savePack || "Save Whole Tree"}
-                    </button>
-                    <button
-                      className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-green-700 bg-green-600 text-white"
-                      onClick={() => {
-                        const ts = Date.now().toString();
-                        setSavePackName(`skill_changes_${subtype}_${ts}`);
-                        setSavePackDirectory(undefined);
-                        setSavePackCloneAll(false);
-                        setCustomTableName("");
-                        setCustomKeyPrefix("");
-                        setIsSavePackModalOpen(true);
-                        setSaveChangesMode(true);
-                      }}
-                    >
-                      {localized.saveOnlyChanges || "Save Only Changes"}
-                    </button>
+
+                    <div className="hover:bg-green-700 bg-green-600 dark:border-gray-600 border-2 rounded-lg w-fit">
+                      <Dropdown dismissOnClick={false} label={localized.json || "JSON"} color={"info"}>
+                        <Dropdown.Item>
+                          <button
+                            className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
+                            onClick={() => importInputRef.current?.click()}
+                          >
+                            {localized.import || "Import"}
+                          </button>
+                          <input
+                            ref={importInputRef}
+                            type="file"
+                            accept=".json"
+                            onChange={onImport}
+                            className="hidden"
+                          />
+                        </Dropdown.Item>
+                        <Dropdown.Item>
+                          <button
+                            className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
+                            onClick={onExport}
+                          >
+                            {localized.export || "Export"}
+                          </button>
+                        </Dropdown.Item>
+                      </Dropdown>
+                    </div>
+
+                    <div className="hover:bg-green-700 bg-green-600 dark:border-gray-600 border-2 rounded-lg w-fit">
+                      <Dropdown dismissOnClick={false} label={localized.save} color={"success"}>
+                        <Dropdown.Item>
+                          <button
+                            className="w-36 px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-blue-700 bg-blue-600 text-white"
+                            onClick={() => {
+                              const ts = Date.now().toString();
+                              setSavePackName(`custom_skills_${subtype}_${ts}`);
+                              setSavePackDirectory(undefined);
+                              setSavePackCloneAll(false);
+                              setSaveChangesMode(false);
+                              setCustomTableName("");
+                              setCustomKeyPrefix("");
+                              setIsSavePackModalOpen(true);
+                            }}
+                          >
+                            {localized.savePack || "Save Whole Tree"}
+                          </button>
+                        </Dropdown.Item>
+                        <Dropdown.Item>
+                          <button
+                            className="w-36 px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-green-700 bg-green-600 text-white"
+                            onClick={() => {
+                              const ts = Date.now().toString();
+                              setSavePackName(`skill_changes_${subtype}_${ts}`);
+                              setSavePackDirectory(undefined);
+                              setSavePackCloneAll(false);
+                              setCustomTableName("");
+                              setCustomKeyPrefix("");
+                              setIsSavePackModalOpen(true);
+                              setSaveChangesMode(true);
+                            }}
+                          >
+                            {localized.saveOnlyChanges || "Save Only Changes"}
+                          </button>
+                        </Dropdown.Item>
+                      </Dropdown>
+                    </div>
+
                     {/* <button
                       className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
                       onClick={onGroupSelected}
@@ -3796,9 +4025,7 @@ const SkillsView = memo(
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Table Name (optional)
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Table Name (optional)</label>
                 <input
                   type="text"
                   value={customTableName}
@@ -3810,9 +4037,7 @@ const SkillsView = memo(
                 <p className="text-xs text-gray-400 mt-1">Overrides table file names in the pack</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Key Prefix (optional)
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Key Prefix (optional)</label>
                 <input
                   type="text"
                   value={customKeyPrefix}
