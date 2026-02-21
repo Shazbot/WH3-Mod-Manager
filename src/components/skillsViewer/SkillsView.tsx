@@ -2501,34 +2501,32 @@ const SkillsView = memo(
           origNodeMap.set(skill.nodeId, skill);
         }
 
-        // Build original edge set: "parentNodeKey|childNodeKey|linkType"
-        const origEdgeSet = new Set<string>();
-        for (const [parentKey, children] of Object.entries(skillsData.nodeLinks)) {
-          for (const link of children) {
-            origEdgeSet.add(`${parentKey}|${link.child}|${link.linkType || "REQUIRED"}`);
-          }
-        }
-
-        // Build current edges per node (as parent or child)
+        // Build current edges per node (topology only — no link type to avoid expansion inference mismatch)
         const currentEdgesForNode = new Map<string, Set<string>>();
         for (const e of dedupedEdges) {
           if (!currentEdgesForNode.has(e.source)) currentEdgesForNode.set(e.source, new Set());
           if (!currentEdgesForNode.has(e.target)) currentEdgesForNode.set(e.target, new Set());
-          const edgeKey = `${e.source}|${e.target}|${e.linkType}`;
+          const edgeKey = `${e.source}|${e.target}`;
           currentEdgesForNode.get(e.source)!.add(edgeKey);
           currentEdgesForNode.get(e.target)!.add(edgeKey);
         }
 
-        // Build original edges per node
+        // Build original edges per node from the initial editor edge set (one edge per skill.linkedToNode).
+        // This matches what initialEdges creates so nodes with no user changes compare as equal.
+        // Using nodeLinks directly would cause false positives because:
+        //   1. initialEdges only shows the first child per parent (linked-to node), not all nodeLinks children
+        //   2. Link type inference in the expansion doesn't match original nodeLinks types
+        const skillNodeIds = new Set(skillNodes.map((n) => n.id));
         const origEdgesForNode = new Map<string, Set<string>>();
-        for (const [parentKey, children] of Object.entries(skillsData.nodeLinks)) {
-          if (!origEdgesForNode.has(parentKey)) origEdgesForNode.set(parentKey, new Set());
-          for (const link of children) {
-            if (!origEdgesForNode.has(link.child)) origEdgesForNode.set(link.child, new Set());
-            const edgeKey = `${parentKey}|${link.child}|${link.linkType || "REQUIRED"}`;
-            origEdgesForNode.get(parentKey)!.add(edgeKey);
-            origEdgesForNode.get(link.child)!.add(edgeKey);
-          }
+        for (const origSkill of skillsData.currentSkills) {
+          if (!origSkill.linkedToNode) continue;
+          // Only include if both endpoints are in the current editor view (matching initialEdges behaviour)
+          if (!skillNodeIds.has(origSkill.nodeId) || !skillNodeIds.has(origSkill.linkedToNode)) continue;
+          const edgeKey = `${origSkill.nodeId}|${origSkill.linkedToNode}`;
+          if (!origEdgesForNode.has(origSkill.nodeId)) origEdgesForNode.set(origSkill.nodeId, new Set());
+          origEdgesForNode.get(origSkill.nodeId)!.add(edgeKey);
+          if (!origEdgesForNode.has(origSkill.linkedToNode)) origEdgesForNode.set(origSkill.linkedToNode, new Set());
+          origEdgesForNode.get(origSkill.linkedToNode)!.add(edgeKey);
         }
 
         // Compute absolute positions for current nodes
