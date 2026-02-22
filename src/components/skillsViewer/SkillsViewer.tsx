@@ -75,7 +75,6 @@ const SkillsViewer = memo(() => {
       pendingNewTab.current = null;
       snapshotCurrentTab();
       const id = `tab_${nextTabId++}`;
-      const label = skillsData.subtypesToLocalizedNames?.[pending.subtype] || pending.subtype;
       const indexSuffix =
         skillsData.subtypeToNumSets[pending.subtype] > 1 ? ` ${pending.subtypeIndex + 1}` : "";
       const newTab: SkillTab = {
@@ -83,15 +82,13 @@ const SkillsViewer = memo(() => {
         subtype: pending.subtype,
         subtypeIndex: pending.subtypeIndex,
         skillsData,
-        label: label + indexSuffix,
+        label: pending.subtype + indexSuffix,
       };
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(id);
     } else if (tabs.length === 0) {
       // First load: create the initial tab
       const id = `tab_${nextTabId++}`;
-      const label =
-        skillsData.subtypesToLocalizedNames?.[skillsData.currentSubtype] || skillsData.currentSubtype;
       const indexSuffix =
         skillsData.subtypeToNumSets[skillsData.currentSubtype] > 1
           ? ` ${skillsData.currentSubtypeIndex + 1}`
@@ -101,7 +98,7 @@ const SkillsViewer = memo(() => {
         subtype: skillsData.currentSubtype,
         subtypeIndex: skillsData.currentSubtypeIndex,
         skillsData,
-        label: label + indexSuffix,
+        label: skillsData.currentSubtype + indexSuffix,
       };
       setTabs([newTab]);
       setActiveTabId(id);
@@ -110,8 +107,6 @@ const SkillsViewer = memo(() => {
       setTabs((prev) =>
         prev.map((tab) => {
           if (tab.id !== activeTabId) return tab;
-          const label =
-            skillsData.subtypesToLocalizedNames?.[skillsData.currentSubtype] || skillsData.currentSubtype;
           const indexSuffix =
             skillsData.subtypeToNumSets[skillsData.currentSubtype] > 1
               ? ` ${skillsData.currentSubtypeIndex + 1}`
@@ -121,7 +116,7 @@ const SkillsViewer = memo(() => {
             subtype: skillsData.currentSubtype,
             subtypeIndex: skillsData.currentSubtypeIndex,
             skillsData,
-            label: label + indexSuffix,
+            label: skillsData.currentSubtype + indexSuffix,
             snapshot: undefined,
           };
         }),
@@ -180,7 +175,7 @@ const SkillsViewer = memo(() => {
                       }`}
                       onClick={() => switchTab(tab.id)}
                     >
-                      <span className="mr-2 max-w-[200px] overflow-hidden text-ellipsis">{tab.subtype}</span>
+                      <span className="mr-2 max-w-[200px] overflow-hidden text-ellipsis">{tab.label}</span>
                       {tabs.length > 1 && (
                         <button
                           className="text-gray-500 hover:text-white ml-1"
