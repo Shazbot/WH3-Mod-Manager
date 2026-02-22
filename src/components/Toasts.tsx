@@ -2,7 +2,6 @@ import { Toast } from "flowbite-react";
 import React, { memo, useCallback, useContext, useEffect, useState } from "react";
 import { HiCheck, HiOutlineInformationCircle, HiX } from "react-icons/hi";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import hash from "object-hash";
 import { setToastDismissed } from "../appSlice";
 import localizationContext from "../localizationContext";
 
@@ -63,6 +62,11 @@ export const Toasts = memo(() => {
     dispatch(setToastDismissed(toast));
   }, []);
 
+  const getToastKey = useCallback((toast: Toast, index: number) => {
+    if (toast.staticToastId) return toast.staticToastId;
+    return `${toast.startTime}:${toast.type}:${toast.messages.join("|")}:${index}`;
+  }, []);
+
   // const toasts = getTestToasts();
   const toasts = useAppSelector((state) => state.app.toasts);
 
@@ -81,8 +85,8 @@ export const Toasts = memo(() => {
   return (
     (isShown && (
       <div className={"dark fixed w-96 mx-auto left-[1%] bottom-[1%] z-[100]"}>
-        {unexpiredToasts(toasts).map((toast) => (
-          <Toast key={hash(toast)}>
+        {unexpiredToasts(toasts).map((toast, index) => (
+          <Toast key={getToastKey(toast, index)}>
             <div
               className={
                 "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-green-500 dark:text-gray-300 " +

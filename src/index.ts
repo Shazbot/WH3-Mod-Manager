@@ -180,6 +180,9 @@ if (!gotTheLock) {
       if (windows.skillsWindow) windows.skillsWindow.close();
     });
 
+    const waitForModIdToLastDownloadAttempt = new Map<string, number>();
+    const downloadRetryCooldownMs = 60 * 1000;
+
     const waitForModDownloads = async () => {
       if (appData.waitForModIds.length == 0) return;
 
@@ -197,23 +200,37 @@ if (!gotTheLock) {
 
       const toRemoveFromWaitForModIds: string[] = [];
       const idsToDownload: string[] = [];
+      const now = Date.now();
       for (const modId of appData.waitForModIds) {
         console.log("checking", nodePath.join(contentFolder, modId));
-        if (globSync("*.pack", { cwd: nodePath.join(contentFolder, modId) }).length == 0)
-          idsToDownload.push(modId);
-        else toRemoveFromWaitForModIds.push(modId);
+        if (globSync("*.pack", { cwd: nodePath.join(contentFolder, modId) }).length == 0) {
+          const lastAttemptAt = waitForModIdToLastDownloadAttempt.get(modId) ?? 0;
+          if (now - lastAttemptAt >= downloadRetryCooldownMs) {
+            idsToDownload.push(modId);
+          }
+        } else {
+          toRemoveFromWaitForModIds.push(modId);
+        }
       }
 
       console.log("ids to download:", idsToDownload);
-      fork(
-        nodePath.join(__dirname, "sub.js"),
-        [gameToSteamId[appData.currentGame], "download", idsToDownload.join(";")],
-        {}
-      );
+      if (idsToDownload.length > 0) {
+        for (const modId of idsToDownload) {
+          waitForModIdToLastDownloadAttempt.set(modId, now);
+        }
+        fork(
+          nodePath.join(__dirname, "sub.js"),
+          [gameToSteamId[appData.currentGame], "download", idsToDownload.join(";")],
+          {}
+        );
+      }
 
       appData.waitForModIds = appData.waitForModIds.filter(
         (modId) => !toRemoveFromWaitForModIds.includes(modId)
       );
+      for (const modId of toRemoveFromWaitForModIds) {
+        waitForModIdToLastDownloadAttempt.delete(modId);
+      }
     };
     setInterval(waitForModDownloads, 3500);
 

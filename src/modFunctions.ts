@@ -1,224 +1,140 @@
 import { fork } from "child_process";
-import { parse, getTime } from "date-fns";
 import Registry from "winreg";
 import * as VDF from "@node-steam/vdf";
 import * as dumbfs from "fs";
 import appData from "./appData";
-import fetch from "electron-fetch";
-import { zonedTimeToUtc } from "date-fns-tz";
 import * as nodePath from "path";
 import * as fsExtra from "fs-extra";
 import * as os from "os";
 import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from "./supportedGames";
-import { decodeHTML } from "entities";
-
-const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
-const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
 
 const wh3mmWorkshopId = "2845454582";
+const steamWorkerResponseTimeoutMs = 30_000;
 
-export function fetchModData(
-  ids: string[],
-  cb: (modData: ModData) => void,
+const runSteamSubProcess = <T>(
+  command: "getModsData" | "getItems",
+  payload: string,
   log: (msg: string) => void,
-  retryIndex = 0,
-) {
-  const joinedIds = ids.filter((id) => !isNaN(parseFloat(id))).join(",");
+): Promise<T> => {
+  const args = [gameToSteamId[appData.currentGame], command, payload];
+  const child = fork(nodePath.join(__dirname, "sub.js"), args, {});
 
-  const child = fork(
-    nodePath.join(__dirname, "sub.js"),
-    [gameToSteamId[appData.currentGame], "getModsData", joinedIds],
-    {},
-  );
-  child.on("message", (modsData: ModsData) => {
-    const workshopData = modsData.mods;
-
-    const dedupedDependencyIds = Array.from(new Set(Object.values(modsData.dependencies).flat()));
-    const unsubbedDepIds = dedupedDependencyIds.filter(
-      (depId) => !modsData.mods.some((mod) => mod.publishedFileId == depId),
-    );
-
-    const child = fork(
-      nodePath.join(__dirname, "sub.js"),
-      [gameToSteamId[appData.currentGame], "getItems", unsubbedDepIds.join(",")],
-      {},
-    );
-    child.on("message", (depModsData: WorkshopItemStringInsteadOfBigInt[]) => {
-      const modIdToModName = new Map<string, string>();
-      for (const modData of depModsData.concat(workshopData)) {
-        modIdToModName.set(modData.publishedFileId, modData.title);
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        child.kill();
+      } catch {
+        // no-op
       }
+      reject(new Error(`Steam helper timed out for command ${command}`));
+    }, steamWorkerResponseTimeoutMs);
 
-      for (let i = 0; i < workshopData.length; i++) {
-        const workshopItem = workshopData[i];
+    const cleanup = () => {
+      clearTimeout(timeout);
+    };
 
-        if (workshopItem) {
-          const reqModIdToName = [] as [string, string][];
-          const depIds = modsData.dependencies[workshopItem.publishedFileId];
-          if (depIds) {
-            for (const depId of depIds.filter((id) => id != wh3mmWorkshopId)) {
-              reqModIdToName.push([depId, modIdToModName.get(depId) ?? ""]);
-            }
-          }
-
-          const modId = workshopItem.owner.steamId64.toString();
-
-          const modData = {
-            workshopId: workshopItem.publishedFileId,
-            humanName: workshopItem.title,
-            author: modsData.authors[modId] ?? "",
-            reqModIdToName: reqModIdToName,
-            reqModIds: modsData.dependencies[modId] ?? [],
-            lastChanged: workshopItem.timeUpdated * 1000,
-            subscriptionTime: workshopItem.timeAddedToUserList * 1000,
-            isDeleted: false,
-            tags: workshopItem.tags,
-          } as ModData;
-          cb(modData);
-        }
-      }
+    child.once("message", (message: T) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(message);
     });
+
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    });
+
+    child.once("exit", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(
+        new Error(
+          `Steam helper exited before responding for ${command} (code=${code ?? "null"}, signal=${
+            signal ?? "none"
+          })`,
+        ),
+      );
+    });
+  }).catch((error) => {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log(`[Steam] ${command} failed: ${errorMessage}`);
+    throw error;
   });
+};
 
-  for (let i = 0; i < ids.length; i++) {
-    const workshopId = ids[i];
-    continue;
+export const normalizeWorkshopIds = (ids: string[]) => {
+  return Array.from(new Set(ids.filter((id) => /^\d+$/.test(id))));
+};
 
-    setTimeout(() => {
-      fetch(`https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`)
-        .then((res) => res.text())
-        .then((body) => {
-          let isDeleted = false;
-          let humanName = "";
-          try {
-            const regexpSize = /<div class="workshopItemTitle">(.+)<\/div>/;
-            const match = body.match(regexpSize);
-            if (match && match[1] != null) {
-              humanName = decodeHTML(match[1]);
-            } else {
-              log(`failed fetching humanName for ${workshopId}`);
-
-              const regexpDeleted = /<h3>There was a problem accessing the item.\s+?Please try again.<\/h3>/;
-              const match = body.match(regexpDeleted);
-              if (match && match[0]) isDeleted = true;
-            }
-          } catch (err) {
-            log(`failed fetching mod page for ${workshopId}`);
-            if (err instanceof Error) log(err.message);
-          }
-
-          let author = "";
-          try {
-            const regexBreadcrumbsMatch = body.match(matchBreadcrumbsInSteamPageHtml);
-            if (regexBreadcrumbsMatch && regexBreadcrumbsMatch[1]) {
-              const breadcrumbs = regexBreadcrumbsMatch[1];
-              const match = breadcrumbs && breadcrumbs.match(matchAuthorNameInSteamHtmlTag);
-              if (match && match[1] != null) {
-                author = decodeHTML(decodeHTML(match[1])); // the author is already encoded in the steam page here for some reason
-              } else {
-                log(`failed fetching author for ${workshopId}`);
-              }
-            } else {
-              log(`failed fetching author for ${workshopId}`);
-            }
-          } catch (err) {
-            log(`failed fetching mod page for ${workshopId}`);
-            if (err instanceof Error) log(err.message);
-          }
-
-          const reqModIdToName: [string, string][] = [];
-          try {
-            const requiredItemsContainerInnerRegex = /id="RequiredItems"(.+?)<\/div>/s;
-            const requiredItemsContainerInner = body.match(requiredItemsContainerInnerRegex);
-            if (requiredItemsContainerInner && requiredItemsContainerInner[1]) {
-              const requiredModsIdsRegex = /filedetails\/\?id=(\w+)/gs;
-              if (requiredItemsContainerInner && requiredItemsContainerInner[1]) {
-                const requiredModsIds = requiredItemsContainerInner[1].matchAll(requiredModsIdsRegex);
-                const reqIds = [...requiredModsIds]
-                  .filter((matchAllResult) => matchAllResult && matchAllResult[1])
-                  .map((matchAllResult) => matchAllResult[1]);
-
-                const requiredItemHumanNameIdsRegex = /class="requiredItem">[\n\r\t]+(.*?)[\n\r\t]+/gs;
-                const requiredItemHumanNameIds = requiredItemsContainerInner[1].matchAll(
-                  requiredItemHumanNameIdsRegex,
-                );
-                const reqHumanNames = [...requiredItemHumanNameIds]
-                  .filter((matchAllResult) => matchAllResult && matchAllResult[1])
-                  .map((matchAllResult) => matchAllResult[1]);
-
-                if (reqIds && reqIds[0] && reqHumanNames && reqHumanNames[0]) {
-                  reqModIdToName.push([reqIds[0], reqHumanNames[0]]);
-                }
-              }
-            }
-          } catch (err) {
-            log(`failed fetching mod page for ${workshopId}`);
-            if (err instanceof Error) log(err.message);
-          }
-
-          let lastChanged = undefined;
-          try {
-            const detailsStatRightInnerRegex = /class="detailsStatRight">(.+?)<\/div>/gs;
-            const detailsStatRightInner = body.matchAll(detailsStatRightInnerRegex);
-            const timeMatches = [...detailsStatRightInner]
-              .filter((matchAllResult) => matchAllResult[1])
-              .map((matchAllResult) => matchAllResult[1]);
-
-            if (timeMatches.length > 0) {
-              // log(humanName);
-              // log(timeMatches);
-              const steamDate = timeMatches[2] ?? timeMatches[1]; // if mod was never updated, just uploaded
-              //steamDate = "2 Oct, 2021 @ 11:25am";
-
-              if (steamDate) {
-                const dateFragments = steamDate
-                  .replace(",", "")
-                  .replace("@", "")
-                  .split(" ")
-                  .filter((str) => str !== "");
-                const hasYear = dateFragments.length > 3;
-
-                const day = dateFragments[0];
-                const date = dateFragments.join(" ");
-                const hours = dateFragments[hasYear ? 3 : 2].split(":")[0];
-                const hourFormat = hours.length > 1 ? "hh" : "h";
-                const dayFormat = day.length > 1 ? "dd" : "d";
-
-                // log(`DATE: ${date}`);
-                const format = dayFormat + " MMM " + (hasYear ? "yyyy " : "") + hourFormat + ":mma";
-                // log(`date: ` + date);
-                // log(`FORMAT: ` + format);
-                const result = zonedTimeToUtc(parse(date, format, new Date()), "America/Phoenix");
-                // log(result);
-                lastChanged = getTime(result);
-              }
-            }
-          } catch (err) {
-            if (err instanceof Error) log(err.message);
-          }
-
-          if (humanName || isDeleted) {
-            const modData = {
-              workshopId,
-              humanName,
-              author,
-              reqModIdToName,
-              lastChanged,
-              isDeleted,
-              subscriptionTime: 0,
-            } as ModData;
-            cb(modData);
-          }
-        })
-        .catch(async () => {
-          if (retryIndex < 3) {
-            log(`Retrying fetching mod data for mod with id ${workshopId}, retry number ${retryIndex}`);
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            fetchModData([workshopId], cb, log, retryIndex + 1);
-          }
-        });
-    }, i * 50);
+export async function fetchModData(ids: string[], log: (msg: string) => void): Promise<ModData[]> {
+  const dedupedIds = normalizeWorkshopIds(ids);
+  if (dedupedIds.length === 0) {
+    return [];
   }
+
+  const joinedIds = dedupedIds.join(",");
+  const modsData = await runSteamSubProcess<ModsData>("getModsData", joinedIds, log);
+  const workshopData = modsData.mods || [];
+  const modsDataDependencies = modsData.dependencies || {};
+  const modsDataAuthors = modsData.authors || {};
+
+  const dedupedDependencyIds = Array.from(new Set(Object.values(modsDataDependencies).flat())).filter(
+    (depId) => depId && depId !== wh3mmWorkshopId,
+  );
+  const unsubbedDepIds = dedupedDependencyIds.filter(
+    (depId) => !workshopData.some((mod) => mod.publishedFileId == depId),
+  );
+
+  let depModsData: WorkshopItemStringInsteadOfBigInt[] = [];
+  if (unsubbedDepIds.length > 0) {
+    try {
+      depModsData = await runSteamSubProcess<WorkshopItemStringInsteadOfBigInt[]>(
+        "getItems",
+        unsubbedDepIds.join(","),
+        log,
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`[Steam] Failed resolving dependency titles, continuing with partial data: ${errorMessage}`);
+    }
+  }
+
+  const modIdToModName = new Map<string, string>();
+  for (const modData of depModsData.concat(workshopData)) {
+    modIdToModName.set(modData.publishedFileId, modData.title);
+  }
+
+  const resolvedModData: ModData[] = [];
+  for (const workshopItem of workshopData) {
+    if (!workshopItem) continue;
+
+    const depIds = (modsDataDependencies[workshopItem.publishedFileId] || []).filter(
+      (depId) => depId !== wh3mmWorkshopId,
+    );
+    const reqModIdToName = depIds.map((depId) => [depId, modIdToModName.get(depId) ?? ""] as [string, string]);
+    const authorId = workshopItem.owner.steamId64.toString();
+
+    resolvedModData.push({
+      workshopId: workshopItem.publishedFileId,
+      humanName: workshopItem.title,
+      author: modsDataAuthors[authorId] ?? "",
+      reqModIdToName,
+      reqModIds: depIds,
+      lastChanged: workshopItem.timeUpdated * 1000,
+      subscriptionTime: workshopItem.timeAddedToUserList * 1000,
+      isDeleted: false,
+      tags: workshopItem.tags,
+    } as ModData);
+  }
+
+  return resolvedModData;
 }
 
 async function getDataPath(log: (msg: string) => void): Promise<string> {

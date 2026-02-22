@@ -30,9 +30,17 @@ export function sortAsInPreset(mods: Mod[], modsInPreset: Mod[]) {
 }
 
 export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
-  return [...mods].sort(
-    (firstMod, secondMod) => orderedMods.indexOf(firstMod) - orderedMods.indexOf(secondMod)
-  );
+  const orderedModToIndex = new Map<Mod, number>();
+  orderedMods.forEach((mod, index) => {
+    orderedModToIndex.set(mod, index);
+  });
+
+  const fallbackIndex = orderedMods.length;
+  return [...mods].sort((firstMod, secondMod) => {
+    const firstIndex = orderedModToIndex.get(firstMod) ?? fallbackIndex;
+    const secondIndex = orderedModToIndex.get(secondMod) ?? fallbackIndex;
+    return firstIndex - secondIndex;
+  });
 }
 
 export function compareModNames(firstName: string, secondName: string): number {

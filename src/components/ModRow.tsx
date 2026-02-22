@@ -30,7 +30,6 @@ type ModRowProps = {
   onCustomizeModRightClick: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
   onFlowOptionsClicked: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
   onRemoveModOrder: (mod: Mod) => void;
-  loadOrder: number;
   isEnabledInMergedMod: boolean;
   isAlwaysEnabled: boolean;
   sortingType: SortingType;
@@ -74,7 +73,6 @@ const ModRow = memo(
     onRemoveModOrder,
     isAlwaysEnabled,
     isEnabledInMergedMod,
-    loadOrder,
     isLast,
     sortingType,
     currentTab,
@@ -122,6 +120,9 @@ const ModRow = memo(
         "",
       [sortingType, mod.lastChanged, mod.lastChangedLocal, mod.subbedTime]
     );
+
+    const decodedHumanName = useMemo(() => decodeHTML(decodeHTML(mod.humanName) ?? ""), [mod.humanName]);
+    const decodedAuthorName = useMemo(() => decodeHTML(decodeHTML(mod.author) ?? ""), [mod.author]);
 
     return (
       <div
@@ -293,7 +294,7 @@ const ModRow = memo(
         </div>
         <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
-            {decodeHTML(decodeHTML(mod.humanName) ?? "")}
+            {decodedHumanName}
           </label>
         </div>
         <div
@@ -301,7 +302,7 @@ const ModRow = memo(
           className={"flex place-items-center grid-area-autohide " + (isAuthorEnabled ? "" : "hidden")}
         >
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
-            <span className="break-all">{decodeHTML(decodeHTML(mod.author) ?? "")}</span>
+            <span className="break-all">{decodedAuthorName}</span>
           </label>
         </div>
         <div

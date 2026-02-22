@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/src/hooks";
 import { FaSquare, FaCheckSquare, FaMinusSquare, FaArrowRight } from "react-icons/fa";
 import { IoMdArrowDropright } from "react-icons/io";
@@ -6,7 +6,6 @@ import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-acce
 import cx from "classnames";
 import "./DBDuplicationStyles.css";
 import { IconBaseProps } from "react-icons";
-import hash from "object-hash";
 import { chunkTableIntoRows, findNodeInTree } from "./viewerHelpers";
 import { packDataStore } from "./packDataStore";
 import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
@@ -14,6 +13,7 @@ import { Spinner } from "flowbite-react";
 import { FloatingOverlay } from "@floating-ui/react";
 import { useLocalizations } from "@/src/localizationContext";
 import { Modal } from "../../flowbite";
+import { buildStringArraySignature } from "@/src/utility/signatureHelpers";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -228,11 +228,6 @@ const DBDuplication = memo(() => {
   const schema = currentSchema;
 
   const field = schema.fields[deepCloneTarget.col];
-  const folder: ITreeNode = {
-    name: field.name,
-    children: [] as ITreeNode[],
-  };
-
   const allTreeChildren: string[] = [];
 
   console.log(
@@ -246,7 +241,6 @@ const DBDuplication = memo(() => {
     name: `${currentDBTableSelection.dbName} ${field.name} : ${toClone.resolvedKeyValue}`,
     children: [],
   } as ITreeNode;
-  folder.children.push(rootNode);
   allTreeChildren.push(rootNode.name);
 
   if (!treeData) return <></>;
@@ -391,6 +385,15 @@ const DBDuplication = memo(() => {
     .filter((id): id is number => !!id);
 
   console.log("expandedIds:", expandedIds);
+
+  const treeViewKey = useMemo(() => {
+    return [
+      rootNode.name,
+      buildStringArraySignature(data.map((node) => node.name)),
+      buildStringArraySignature(selectedNodesByName),
+      buildStringArraySignature(expandedNodesByName),
+    ].join("::");
+  }, [rootNode.name, data, selectedNodesByName, expandedNodesByName]);
 
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>, nodeName: string) => {
     console.log("textbox change:", e.target.value, nodeName);
@@ -604,13 +607,7 @@ const DBDuplication = memo(() => {
       <div>Cloning {toClone.resolvedKeyValue}</div>
       <div className="checkbox dark:text-gray-300">
         <TreeView
-          key={
-            hash(folder) +
-            hash(selectedNodesByName) +
-            hash(expandedNodesByName) +
-            hash(expandedIds) +
-            hash(selectedIds)
-          }
+          key={treeViewKey}
           data={data}
           aria-label="Checkbox tree"
           onSelect={(props) => onTreeSelect(props)}

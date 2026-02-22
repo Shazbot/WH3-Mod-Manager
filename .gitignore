@@ -93,3 +93,14 @@ out/
 dumps
 
 sublog.txt
+
+# Local workspace artifacts
+AGENTS.md
+skills/
+.nvmrc
+.yarn/
+.yarnrc.yml
+
+# Markdown docs/notes (keep project readme)
+*.md
+!README.md

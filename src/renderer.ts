@@ -52,11 +52,14 @@ import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
 import { dataFromBackend, doneRequests, packDataStore } from "@/src/components/viewer/packDataStore";
 import { tableNameWithDBPrefix } from "@/src/utility/packFileHelpers";
-import hash from "object-hash";
+import { buildConfigSaveSignature, buildReadModsSignature, getReadModsSelection } from "./rendererConfigSync";
+import { buildCustomizableModsSignature, buildStringArraySignature } from "./utility/signatureHelpers";
 
 console.log("IN RENDERER");
 
 let isSubscribedToStoreChanges = false;
+let previousConfigSaveSignature: string | undefined;
+let previousReadModsSignature: string | undefined;
 
 interface WindowWithApi extends Window {
   api: api;
@@ -150,11 +153,26 @@ window.api?.openModInViewer((event, modPath: string) => {
 });
 
 const saveConfig = (appState: AppState) => {
-  window.api?.saveConfig(appState);
-  const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
-  // don't do it if all are enabled, i.e. when user is resetting the enabled column
-  if (enabledMods.length != appState.currentPreset.mods.length)
-    window.api?.readMods(enabledMods, true, true, hash(appState.customizableMods));
+  const nextConfigSaveSignature = buildConfigSaveSignature(appState);
+  if (nextConfigSaveSignature !== previousConfigSaveSignature) {
+    window.api?.saveConfig(appState);
+    previousConfigSaveSignature = nextConfigSaveSignature;
+  }
+
+  const customizableModsSignature = buildCustomizableModsSignature(appState.customizableMods);
+  const nextReadModsSignature = buildReadModsSignature(appState, customizableModsSignature);
+
+  if (nextReadModsSignature === "") {
+    previousReadModsSignature = undefined;
+    return;
+  }
+
+  if (nextReadModsSignature === previousReadModsSignature) {
+    return;
+  }
+
+  previousReadModsSignature = nextReadModsSignature;
+  window.api?.readMods(getReadModsSelection(appState), true, true, customizableModsSignature);
 };
 
 const saveConfigDebounced = debounce((appState: AppState) => {
@@ -328,7 +346,7 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
   window.api?.getCustomizableMods(
     enabledMods.map((mod) => mod.path),
     customizableTables,
-    hash(customizableMods),
+    buildCustomizableModsSignature(customizableMods),
   );
 });
 
@@ -405,7 +423,9 @@ window.api?.setPackDataStore(
       });
 
     // store.dispatch(setPackDataStore({ packPath, pack } as SetPackDataStorePayload));
-    store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
+    store.dispatch(
+      setReferencesHash(buildStringArraySignature(packDataStore[packPath].packedFiles.map((packedFile) => packedFile.name))),
+    );
   },
 );
 window.api?.appendPackDataStore(
@@ -437,7 +457,9 @@ window.api?.appendPackDataStore(
         doneRequests[packPath].push(tableNameWithDBPrefix(tableReferenceRequest.tableName));
       });
 
-    store.dispatch(setReferencesHash(hash(packDataStore[packPath].packedFiles.map((pf) => pf.name))));
+    store.dispatch(
+      setReferencesHash(buildStringArraySignature(packDataStore[packPath].packedFiles.map((packedFile) => packedFile.name))),
+    );
   },
 );
 

@@ -1,7 +1,6 @@
 import { GameFolderPaths } from "./appData";
 import { PackCollisions } from "./packFileTypes";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import hash from "object-hash";
 import {
   adjustDuplicates,
   findAlwaysEnabledMods,
@@ -16,6 +15,7 @@ import { format } from "date-fns";
 import { SupportedGames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
+import { areCustomizableModsEqual } from "./utility/signatureHelpers";
 
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
@@ -1267,7 +1267,7 @@ const appSlice = createSlice({
       state.modBeingCustomized = action.payload;
     },
     setCustomizableMods: (state: AppState, action: PayloadAction<Record<string, string[]>>) => {
-      if (hash(state.customizableMods) == hash(action.payload)) {
+      if (areCustomizableModsEqual(state.customizableMods, action.payload)) {
         console.log("setCustomizableMods for same mods, not updating app state");
         console.log("customizable:", Object.keys(state.customizableMods));
         return;

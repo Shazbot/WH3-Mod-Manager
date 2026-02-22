@@ -29,6 +29,7 @@ import {
   getFolderPaths,
   getLastUpdated,
   getMods,
+  normalizeWorkshopIds,
 } from "./modFunctions";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { readPackHeader } from "./packFileHandler";
@@ -91,9 +92,9 @@ import {
 import { tryOpenFile } from "./utility/fileHelpers";
 import getPackTableData from "./utility/frontend/packDataHandling";
 import { collator } from "./utility/packFileSorting";
+import { buildCustomizableModsSignature } from "./utility/signatureHelpers";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie from "./utility/trie";
-import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
 
@@ -350,9 +351,189 @@ export const registerIpcMainListeners = (
 
   const tempModDatas: ModData[] = [];
   const sendModData = debounce(() => {
-    mainWindow?.webContents.send("setModData", [...tempModDatas]);
+    const dedupedModDatas = Array.from(
+      new Map(tempModDatas.map((modData) => [modData.workshopId, modData])).values(),
+    );
+    mainWindow?.webContents.send("setModData", dedupedModDatas);
     tempModDatas.splice(0, tempModDatas.length);
   }, 200);
+
+  const steamModDataBatchSize = 40;
+  const steamModDataBatchDelayMs = 1000;
+  const steamModDataCacheTtlMs = 10 * 60 * 1000;
+  const steamModDataFailureCooldownMs = 2 * 60 * 1000;
+  const steamModDataGlobalCooldownMs = 60 * 1000;
+  const steamModDataRetryBaseDelayMs = 1200;
+  const steamModDataRetryJitterMaxMs = 800;
+  const steamModDataMaxRetries = 3;
+  const steamModDataFailureThresholdForGlobalCooldown = 3;
+
+  const steamModDataCache = new Map<string, { data: ModData; fetchedAt: number }>();
+  const steamModDataFailureCooldownUntil = new Map<string, number>();
+  const queuedSteamModDataIds = new Set<string>();
+  const inFlightSteamModDataIds = new Set<string>();
+
+  let isProcessingSteamModDataQueue = false;
+  let consecutiveSteamModDataFailures = 0;
+  let steamModDataGlobalCooldownUntil = 0;
+
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  const pushModDataToRenderer = (modDatas: ModData[]) => {
+    if (modDatas.length === 0) return;
+    tempModDatas.push(...modDatas);
+    sendModData();
+  };
+
+  const pruneSteamModDataState = () => {
+    const now = Date.now();
+    for (const [workshopId, cached] of steamModDataCache) {
+      if (now - cached.fetchedAt > steamModDataCacheTtlMs) {
+        steamModDataCache.delete(workshopId);
+      }
+    }
+    for (const [workshopId, cooldownUntil] of steamModDataFailureCooldownUntil) {
+      if (cooldownUntil <= now) {
+        steamModDataFailureCooldownUntil.delete(workshopId);
+      }
+    }
+  };
+
+  const fetchModDataWithRetry = async (workshopIds: string[]) => {
+    for (let attempt = 1; attempt <= steamModDataMaxRetries; attempt++) {
+      try {
+        return await fetchModData(workshopIds, log);
+      } catch (error) {
+        if (attempt >= steamModDataMaxRetries) {
+          throw error;
+        }
+
+        const baseDelay = steamModDataRetryBaseDelayMs * 2 ** (attempt - 1);
+        const jitter = Math.floor(Math.random() * steamModDataRetryJitterMaxMs);
+        const retryDelayMs = baseDelay + jitter;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        log(
+          `[Steam] fetchModData retry ${attempt}/${steamModDataMaxRetries - 1} in ${retryDelayMs}ms for ${
+            workshopIds.length
+          } ids: ${errorMessage}`,
+        );
+
+        await sleep(retryDelayMs);
+      }
+    }
+
+    return [];
+  };
+
+  const processSteamModDataQueue = async () => {
+    if (isProcessingSteamModDataQueue) return;
+    isProcessingSteamModDataQueue = true;
+
+    try {
+      while (queuedSteamModDataIds.size > 0) {
+        const now = Date.now();
+        if (steamModDataGlobalCooldownUntil > now) {
+          await sleep(steamModDataGlobalCooldownUntil - now);
+          continue;
+        }
+
+        const batchIds = Array.from(queuedSteamModDataIds).slice(0, steamModDataBatchSize);
+        for (const workshopId of batchIds) {
+          queuedSteamModDataIds.delete(workshopId);
+          inFlightSteamModDataIds.add(workshopId);
+        }
+
+        try {
+          const modDatas = await fetchModDataWithRetry(batchIds);
+          consecutiveSteamModDataFailures = 0;
+
+          const fetchedAt = Date.now();
+          const receivedIds = new Set<string>();
+          for (const modData of modDatas) {
+            steamModDataCache.set(modData.workshopId, { data: modData, fetchedAt });
+            steamModDataFailureCooldownUntil.delete(modData.workshopId);
+            receivedIds.add(modData.workshopId);
+          }
+
+          const missingIds = batchIds.filter((workshopId) => !receivedIds.has(workshopId));
+          for (const workshopId of missingIds) {
+            steamModDataFailureCooldownUntil.set(
+              workshopId,
+              fetchedAt + steamModDataFailureCooldownMs,
+            );
+          }
+
+          pushModDataToRenderer(modDatas);
+        } catch (error) {
+          const nowMs = Date.now();
+          consecutiveSteamModDataFailures += 1;
+          for (const workshopId of batchIds) {
+            steamModDataFailureCooldownUntil.set(
+              workshopId,
+              nowMs + steamModDataFailureCooldownMs,
+            );
+          }
+
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          log(`[Steam] Failed mod data batch (${batchIds.length} ids): ${errorMessage}`);
+
+          if (consecutiveSteamModDataFailures >= steamModDataFailureThresholdForGlobalCooldown) {
+            steamModDataGlobalCooldownUntil = nowMs + steamModDataGlobalCooldownMs;
+            log(
+              `[Steam] Cooling down mod-data fetches for ${Math.round(
+                steamModDataGlobalCooldownMs / 1000,
+              )}s after repeated failures.`,
+            );
+          }
+        } finally {
+          for (const workshopId of batchIds) {
+            inFlightSteamModDataIds.delete(workshopId);
+          }
+        }
+
+        if (queuedSteamModDataIds.size > 0) {
+          await sleep(steamModDataBatchDelayMs);
+        }
+      }
+    } finally {
+      isProcessingSteamModDataQueue = false;
+      if (queuedSteamModDataIds.size > 0) {
+        void processSteamModDataQueue();
+      }
+    }
+  };
+
+  const queueSteamModDataFetch = (ids: string[]) => {
+    pruneSteamModDataState();
+    const normalizedIds = normalizeWorkshopIds(ids);
+    if (normalizedIds.length === 0) return;
+
+    const now = Date.now();
+    const cachedModDatas: ModData[] = [];
+    for (const workshopId of normalizedIds) {
+      const cached = steamModDataCache.get(workshopId);
+      if (cached && now - cached.fetchedAt <= steamModDataCacheTtlMs) {
+        cachedModDatas.push(cached.data);
+        continue;
+      }
+
+      const failureCooldownUntil = steamModDataFailureCooldownUntil.get(workshopId) ?? 0;
+      if (failureCooldownUntil > now) {
+        continue;
+      }
+
+      if (queuedSteamModDataIds.has(workshopId) || inFlightSteamModDataIds.has(workshopId)) {
+        continue;
+      }
+      queuedSteamModDataIds.add(workshopId);
+    }
+
+    pushModDataToRenderer(cachedModDatas);
+    if (queuedSteamModDataIds.size > 0) {
+      void processSteamModDataQueue();
+    }
+  };
 
   const getSkillsData = async (mods: Mod[]) => {
     console.log(
@@ -1635,18 +1816,7 @@ export const registerIpcMainListeners = (
 
   ipcMain.on("getAllModData", (event, ids: string[]) => {
     // if (isDev) return;
-
-    fetchModData(
-      ids.filter((id) => id !== ""),
-      (modData) => {
-        tempModDatas.push(modData);
-        sendModData();
-      },
-      (msg) => {
-        mainWindow?.webContents.send("handleLog", msg);
-        console.log(msg);
-      },
-    );
+    queueSteamModDataFetch(ids.filter((id) => id !== ""));
   });
 
   // Cache management for getCustomizableMods
@@ -1863,7 +2033,7 @@ export const registerIpcMainListeners = (
         appData.customizableMods[packPath] = tables;
       }
 
-      if (hash(appData.customizableMods) == customizableModsHash) {
+      if (buildCustomizableModsSignature(appData.customizableMods) === customizableModsHash) {
         console.log("customizableModsHash is the same as customizableMods, don't send it");
       } else {
         mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
@@ -3665,7 +3835,7 @@ export const registerIpcMainListeners = (
         );
         if (modsNotInCustomizableCache.length == 0) {
           console.log("Skipping readMods, all are already in the customizable mods cache!");
-          if (customizableModsHash != hash(appData.customizableMods)) {
+          if (customizableModsHash !== buildCustomizableModsSignature(appData.customizableMods)) {
             console.log("Skipping setCustomizableMods in readMods, hash is the same!");
             mainWindow?.webContents.send("setCustomizableMods", appData.customizableMods);
           }
@@ -4051,9 +4221,18 @@ export const registerIpcMainListeners = (
   );
   ipcMain.on("forceModDownload", async (event, mod: Mod) => {
     try {
+      const uniqueModIds = normalizeWorkshopIds([mod.workshopId]);
+      if (uniqueModIds.length === 0) return;
+
+      for (const id of uniqueModIds) {
+        if (!appData.waitForModIds.includes(id)) {
+          appData.waitForModIds.push(id);
+        }
+      }
+
       fork(
         nodePath.join(__dirname, "sub.js"),
-        [gameToSteamId[appData.currentGame], "download", mod.workshopId],
+        [gameToSteamId[appData.currentGame], "download", uniqueModIds.join(";")],
         {},
       );
     } catch (e) {
@@ -4076,7 +4255,10 @@ export const registerIpcMainListeners = (
   });
   ipcMain.on("forceDownloadMods", async (event, modIds: string[]) => {
     try {
-      for (const id of modIds) {
+      const uniqueModIds = normalizeWorkshopIds(modIds);
+      if (uniqueModIds.length === 0) return;
+
+      for (const id of uniqueModIds) {
         if (!appData.waitForModIds.includes(id)) {
           appData.waitForModIds.push(id);
         }
@@ -4084,17 +4266,21 @@ export const registerIpcMainListeners = (
 
       fork(
         nodePath.join(__dirname, "sub.js"),
-        [gameToSteamId[appData.currentGame], "download", modIds.join(";")],
+        [gameToSteamId[appData.currentGame], "download", uniqueModIds.join(";")],
         {},
       );
     } catch (e) {
       console.log(e);
     }
   });
-  const resubscribeToMods = async (modIds: string[]) => {
-    await subscribeToMods(modIds);
+  const maxResubscribeAttempts = 5;
+  const resubscribeToMods = async (modIds: string[], attempt = 1) => {
+    const uniqueModIds = normalizeWorkshopIds(modIds);
+    if (uniqueModIds.length === 0) return;
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await subscribeToMods(uniqueModIds);
+    await sleep(3000 + Math.min(2000 * (attempt - 1), 10_000));
+
     try {
       const child = fork(
         nodePath.join(__dirname, "sub.js"),
@@ -4103,10 +4289,28 @@ export const registerIpcMainListeners = (
       );
       child.on("message", (workshopIds: string[]) => {
         console.log("getSubscribedIds returned:", workshopIds);
-        const failedToSubTo = modIds.filter((modId) => !workshopIds.includes(modId));
+        const subbedIds = new Set(workshopIds);
+        const failedToSubTo = uniqueModIds.filter((modId) => !subbedIds.has(modId));
         console.log("failedToSubTo:", failedToSubTo);
         if (failedToSubTo.length > 0) {
-          resubscribeToMods(failedToSubTo);
+          if (attempt >= maxResubscribeAttempts) {
+            log(
+              `[Steam] Giving up re-subscribe after ${maxResubscribeAttempts} attempts for ids: ${failedToSubTo.join(
+                ",",
+              )}`,
+            );
+            return;
+          }
+
+          const retryDelayMs = Math.min(5000 * attempt, 30_000);
+          log(
+            `[Steam] Re-subscribe retry ${attempt + 1}/${maxResubscribeAttempts} in ${retryDelayMs}ms for ${
+              failedToSubTo.length
+            } ids`,
+          );
+          setTimeout(() => {
+            void resubscribeToMods(failedToSubTo, attempt + 1);
+          }, retryDelayMs);
         }
       });
     } catch (e) {
@@ -4189,23 +4393,32 @@ export const registerIpcMainListeners = (
   });
 
   const subscribeToMods = async (ids: string[]) => {
-    fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "sub", ids.join(";")], {});
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const uniqueIds = normalizeWorkshopIds(ids);
+    if (uniqueIds.length === 0) return;
 
-    for (const id of ids) {
+    fork(
+      nodePath.join(__dirname, "sub.js"),
+      [gameToSteamId[appData.currentGame], "sub", uniqueIds.join(";")],
+      {},
+    );
+    await sleep(1000);
+
+    for (const id of uniqueIds) {
       if (!appData.waitForModIds.includes(id)) {
         appData.waitForModIds.push(id);
       }
     }
 
-    for (const modId of ids) {
-      fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "download", modId], {});
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Keep downloads batched to avoid flooding Steam with one-process-per-id requests.
+    fork(
+      nodePath.join(__dirname, "sub.js"),
+      [gameToSteamId[appData.currentGame], "download", uniqueIds.join(";")],
+      {},
+    );
+    await sleep(1000);
     // fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
     // await new Promise((resolve) => setTimeout(resolve, 500));
-    mainWindow?.webContents.send("subscribedToMods", ids);
+    mainWindow?.webContents.send("subscribedToMods", uniqueIds);
   };
 
   ipcMain.on("subscribeToMods", async (event, ids: string[]) => {

@@ -22,7 +22,8 @@
     "lint": "eslint --ext .ts,.tsx .",
     "storybook": "echo 'storybook currently broken, storybook dev -p 6006'",
     "build-storybook": "storybook build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test --experimental-strip-types --loader ./test/tsExtensionResolver.loader.mjs test/*.test.ts"
   },
   "keywords": [],
   "author": {
@@ -164,6 +165,7 @@
     "tailwindcss": "3.2.2",
     "ts-loader": "^9.4.1",
     "typescript": "^5.7.2",
+    "webpack": "^5.102.1",
     "webpack-bundle-analyzer": "^4.10.2",
     "webpack-sources": "^3.2.3"
   },
@@ -196,7 +198,6 @@
     "electron-fetch": "^1.9.1",
     "electron-is-dev": "^2.0.0",
     "electron-log": "^5.3.4",
-    "electron-prebuilt-compile": "^8.2.0",
     "electron-squirrel-startup": "^1.0.0",
     "electron-window-state": "^5.0.3",
     "entities": "^4.5.0",
@@ -219,6 +220,7 @@
     "object.groupby": "^1.0.3",
     "os-browserify": "^0.3.0",
     "path-browserify": "^1.0.1",
+    "prop-types": "^15.8.1",
     "re-resizable": "^6.9.9",
     "react": "^18.2.0",
     "react-accessible-treeview": "^2.3.4",
@@ -242,8 +244,8 @@
     "unzipper": "^0.12.3",
     "winreg": "^1.2.4"
   },
-  "packageManager": "yarn@1.22.22",
+  "packageManager": "yarn@4.12.0",
   "engines": {
-    "node": "20.18.1"
+    "node": ">=24.13.0 <26"
   }
 }
