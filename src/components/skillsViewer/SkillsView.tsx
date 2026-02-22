@@ -320,6 +320,7 @@ const SkillsView = memo(
     const skipEditGroupsEffect = useRef(!!initialSnapshot);
     const skipSubtypeReset = useRef(!!initialSnapshot);
     const skipTransitionEffect = useRef(false);
+    const enterEditModeAfterLoad = useRef(false);
     const historyPast = useRef<EditSnapshot[]>([]);
     const historyFuture = useRef<EditSnapshot[]>([]);
     const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
@@ -3584,6 +3585,14 @@ const SkillsView = memo(
       setEdges(deepClone(initialEdges));
     }, [factionFilter]);
 
+    // Enter edit mode automatically after a "New Skill Tree" load
+    useEffect(() => {
+      if (enterEditModeAfterLoad.current) {
+        enterEditModeAfterLoad.current = false;
+        setIsEditMode(true);
+      }
+    }, [skillsData]);
+
     // Clear snapshot restoration flag after all mount effects have fired
     useEffect(() => {
       if (isRestoringSnapshot.current) {
@@ -4193,6 +4202,7 @@ const SkillsView = memo(
                   className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
                   onClick={() => {
                     if (isEditMode) handleResetConfirm();
+                    enterEditModeAfterLoad.current = true;
                     window.api?.createNewSkillTree(skillsData.currentSubtype);
                   }}
                 >
