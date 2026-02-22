@@ -703,12 +703,13 @@ const SkillsView = memo(
     // Generate "+" placeholder nodes in empty grid positions (gaps + end of row) in edit mode
     if (isEditMode) {
       const globalMaxCol = skills.length > 0 ? Math.max(...skills.map((s) => s.y)) : 0;
-      for (let r = 0; r < 7; r++) {
+      for (let r = 0; r < 9; r++) {
         const skillsInRow = skills.filter((s) => s.x === r);
         const occupiedCols = new Set(skillsInRow.map((s) => s.y));
         const maxColBound = Math.max(
           skillsInRow.length > 0 ? Math.max(...occupiedCols) + 1 : 0,
           globalMaxCol + 1,
+          3,
         );
         for (let c = 0; c <= maxColBound; c++) {
           if (!occupiedCols.has(c)) {
@@ -1042,7 +1043,7 @@ const SkillsView = memo(
             (max, n) => Math.max(max, Math.round(n.position.x / nodeWidth)),
             -1,
           );
-          const maxColBound = Math.max(maxCol + 1, globalMaxCol + 1);
+          const maxColBound = Math.max(maxCol + 1, globalMaxCol + 1, row < 9 ? 3 : 0);
           for (let c = 0; c <= maxColBound; c++) {
             if (!occupiedCols.has(c)) {
               result.push({
@@ -3741,7 +3742,7 @@ const SkillsView = memo(
               allRows.add(Math.round(n.position.y / newHeight));
             }
           }
-          for (let r = 0; r < 7; r++) allRows.add(r);
+          for (let r = 0; r < 9; r++) allRows.add(r);
           result = repositionPlaceholders(result, allRows);
 
           return result;
