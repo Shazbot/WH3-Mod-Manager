@@ -1737,6 +1737,123 @@ const SkillsView = memo(
       [contextMenu, nodes, effectiveNodeHeight, repositionPlaceholders],
     );
 
+    // Context menu: move entire row up or down
+    const contextMenuMoveRowVertical = useCallback(
+      (direction: "up" | "down") => {
+        if (!contextMenu) return;
+        const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
+        if (!targetNode) return;
+
+        let targetAbsY: number;
+        if (targetNode.parentId) {
+          const parent = nodes.find((p) => p.id === targetNode.parentId);
+          targetAbsY = (parent?.position.y ?? 0) + targetNode.position.y;
+        } else {
+          targetAbsY = targetNode.position.y;
+        }
+        const targetRow = Math.round(targetAbsY / effectiveNodeHeight);
+        if (direction === "up" && targetRow === 0) return;
+
+        const destRow = direction === "down" ? targetRow + 1 : targetRow - 1;
+
+        // Scan nodes to find destination row occupancy and source row min column
+        let maxDestCol = -1;
+        let minSourceCol = Infinity;
+        let destIsEmpty = true;
+        for (const n of nodes) {
+          if (n.parentId) continue;
+          let col: number;
+          let row: number;
+          if (n.className === "reactFlowGroup") {
+            row = Math.round((n.position.y + 15) / effectiveNodeHeight);
+            col = Math.round((n.position.x + 10) / nodeWidth);
+          } else if (n.type === "skill" && !(n.data as any)?.isGrouping) {
+            row = Math.round(n.position.y / effectiveNodeHeight);
+            col = Math.round(n.position.x / nodeWidth);
+          } else {
+            continue;
+          }
+          if (row === destRow) {
+            destIsEmpty = false;
+            maxDestCol = Math.max(maxDestCol, col);
+          }
+          if (row === targetRow) {
+            minSourceCol = Math.min(minSourceCol, col);
+          }
+        }
+
+        // When appending to an occupied row, shift source nodes right so they start after maxDestCol
+        const xOffset = destIsEmpty ? 0 : (maxDestCol + 1 - minSourceCol) * nodeWidth;
+
+        setNodes((nds) => {
+          const result = nds.map((n) => {
+            if (n.parentId) return n;
+            const isGroup = n.className === "reactFlowGroup";
+            const isSkill = n.type === "skill";
+            if (!isGroup && !isSkill) return n;
+            const row = isGroup
+              ? Math.round((n.position.y + 15) / effectiveNodeHeight)
+              : Math.round(n.position.y / effectiveNodeHeight);
+            if (row !== targetRow) return n;
+            return {
+              ...n,
+              position: {
+                x: n.position.x + xOffset,
+                y: n.position.y + (destRow - targetRow) * effectiveNodeHeight,
+              },
+            };
+          });
+          return repositionPlaceholders(result, new Set([targetRow, destRow]));
+        });
+        setContextMenu(null);
+      },
+      [contextMenu, nodes, effectiveNodeHeight, repositionPlaceholders],
+    );
+
+    // Context menu: delete all nodes in the same row
+    const contextMenuDeleteRow = useCallback(() => {
+      if (!contextMenu) return;
+      const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
+      if (!targetNode) return;
+
+      let targetAbsY: number;
+      if (targetNode.parentId) {
+        const parent = nodes.find((p) => p.id === targetNode.parentId);
+        targetAbsY = (parent?.position.y ?? 0) + targetNode.position.y;
+      } else {
+        targetAbsY = targetNode.position.y;
+      }
+      const targetRow = Math.round(targetAbsY / effectiveNodeHeight);
+
+      const deleteIds = new Set<string>();
+      for (const n of nodes) {
+        if (n.type === "skill" && !(n.data as any)?.isGrouping) {
+          let absY: number;
+          if (n.parentId) {
+            const parent = nodes.find((p) => p.id === n.parentId);
+            absY = (parent?.position.y ?? 0) + n.position.y;
+          } else {
+            absY = n.position.y;
+          }
+          if (Math.round(absY / effectiveNodeHeight) === targetRow) deleteIds.add(n.id);
+        }
+        if (n.className === "reactFlowGroup") {
+          if (Math.round((n.position.y + 15) / effectiveNodeHeight) === targetRow) deleteIds.add(n.id);
+        }
+      }
+
+      setEditGroups((prev) => {
+        const next = { ...prev };
+        for (const id of deleteIds) delete next[id];
+        return next;
+      });
+      setEdges((eds) => eds.filter((e) => !deleteIds.has(e.source) && !deleteIds.has(e.target)));
+      setNodes((nds) =>
+        repositionPlaceholders(nds.filter((n) => !deleteIds.has(n.id)), new Set([targetRow])),
+      );
+      setContextMenu(null);
+    }, [contextMenu, nodes, effectiveNodeHeight, setNodes, setEdges, setEditGroups, repositionPlaceholders]);
+
     // Context menu: move entire group left or right
     const contextMenuMoveGroup = useCallback(
       (direction: "left" | "right") => {
@@ -4946,6 +5063,38 @@ const SkillsView = memo(
                                 Move Row Left
                               </button>
                             )}
+                          </>
+                        );
+                      })()}
+                      {(() => {
+                        if (!targetNode) return null;
+                        let absY: number;
+                        if (targetNode.parentId) {
+                          const parent = nodes.find((p) => p.id === targetNode.parentId);
+                          absY = (parent?.position.y ?? 0) + targetNode.position.y;
+                        } else {
+                          absY = targetNode.position.y;
+                        }
+                        const row = Math.round(absY / effectiveNodeHeight);
+                        return (
+                          <>
+                            {row > 0 && (
+                              <button
+                                className={menuItemClass}
+                                onClick={() => contextMenuMoveRowVertical("up")}
+                              >
+                                Move Row Up
+                              </button>
+                            )}
+                            <button
+                              className={menuItemClass}
+                              onClick={() => contextMenuMoveRowVertical("down")}
+                            >
+                              Move Row Down
+                            </button>
+                            <button className={menuItemClass} onClick={contextMenuDeleteRow}>
+                              Delete Whole Row
+                            </button>
                           </>
                         );
                       })()}
