@@ -4191,6 +4191,7 @@ const SkillsView = memo(
                 <button
                   className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
                   onClick={() => {
+                    if (isEditMode) handleResetConfirm();
                     window.api?.createNewSkillTree(skillsData.currentSubtype);
                   }}
                 >
