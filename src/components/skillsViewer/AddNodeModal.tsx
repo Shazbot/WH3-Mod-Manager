@@ -19,6 +19,8 @@ interface AddNodeModalProps {
     unlockRank: number;
     existingSkillKey?: string;
     imgPath?: string;
+    faction?: string;
+    subculture?: string;
   }) => void;
   initialRow?: number;
   initialColumn?: number;
@@ -30,6 +32,8 @@ interface AddNodeModalProps {
     effects: Effect[];
     existingSkillKey?: string;
     imgPath?: string;
+    faction?: string;
+    subculture?: string;
   };
 }
 
@@ -67,6 +71,8 @@ const AddNodeModal = memo(
     const [column, setColumn] = useState(initialColumn ?? 0);
     const [maxLevel, setMaxLevel] = useState(editingData?.maxLevel ?? 3);
     const [unlockRank, setUnlockRank] = useState(editingData?.unlockRank ?? 0);
+    const [faction, setFaction] = useState(editingData?.faction ?? "");
+    const [subculture, setSubculture] = useState(editingData?.subculture ?? "");
     const [levelEffects, setLevelEffects] = useState<Record<number, EffectOption[]>>(() => {
       if (!editingData?.effects || editingData.effects.length === 0) return { 1: [] };
       const byLevel: Record<number, EffectOption[]> = {};
@@ -202,6 +208,8 @@ const AddNodeModal = memo(
           unlockRank,
           existingSkillKey: selectedSkill.value,
           imgPath: selectedIcon?.value,
+          faction,
+          subculture,
         });
       } else {
         if (!name.trim()) return;
@@ -220,6 +228,8 @@ const AddNodeModal = memo(
           maxLevel,
           unlockRank,
           imgPath: selectedIcon?.value,
+          faction,
+          subculture,
         });
       }
     };
@@ -458,6 +468,31 @@ const AddNodeModal = memo(
                     onChange={(e) => setUnlockRank(Number(e.target.value))}
                     min={0}
                     className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                    Faction Key
+                  </label>
+                  <input
+                    className={inputClass}
+                    value={faction}
+                    onChange={(e) => setFaction(e.target.value)}
+                    placeholder="e.g. wh_main_sc_emp"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                    Subculture
+                  </label>
+                  <input
+                    className={inputClass}
+                    value={subculture}
+                    onChange={(e) => setSubculture(e.target.value)}
+                    placeholder="e.g. wh_main_sc_empire"
                   />
                 </div>
               </div>
