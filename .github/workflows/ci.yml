@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Ensure Yarn node-modules linker
+        shell: bash
+        run: |
+          if [ ! -f .yarnrc.yml ]; then
+            printf "nodeLinker: node-modules\n" > .yarnrc.yml
+          fi
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Unit tests
+        run: yarn test:unit
