@@ -407,8 +407,11 @@ const SkillsView = memo(
 
     let nodeSizeDelta = 0;
     let usingBiggerNodeHeight = false;
-    // if we need to overlay nodes make the y gap between them bigger
+    // if we need to overlay nodes make the y gap between them bigger (normal mode only —
+    // in edit mode effectiveNodeHeight must stay at editModeNodeHeight so snap grid,
+    // repositionPlaceholders, and the leaving-edit-mode transition all stay consistent)
     if (
+      !isEditMode &&
       skills.some((skillFirst) =>
         skills.some(
           (skillSecond) =>
@@ -802,6 +805,27 @@ const SkillsView = memo(
         ? (deepClone(initialSnapshot.edges) as typeof initialEdges)
         : deepClone(initialEdges),
     );
+
+    const displayFactionOptions = (() => {
+      const seen = new Set(factionFilterOptions.map((o) => o.value));
+      const extra: typeof factionFilterOptions = [];
+      for (const n of nodes) {
+        if (n.type !== "skill" || (n.data as any)?.isGrouping) continue;
+        const d = n.data as SkillData;
+        const hasFaction = d.faction && d.faction !== "";
+        const hasSubculture = d.subculture && d.subculture !== "";
+        if (!hasFaction && !hasSubculture) continue;
+        const key = `${d.faction || ""}|||${d.subculture || ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const parts: string[] = [];
+        if (hasFaction) parts.push(d.faction!);
+        if (hasSubculture) parts.push(d.subculture!);
+        extra.push({ label: parts.join(" / "), value: key });
+      }
+      if (extra.length === 0) return factionFilterOptions;
+      return [...factionFilterOptions, ...extra].sort((a, b) => collator.compare(a.label, b.label));
+    })();
 
     useImperativeHandle(ref, () => ({
       getSnapshot: (): SkillsViewSnapshot => ({
@@ -1597,6 +1621,89 @@ const SkillsView = memo(
       setContextMenu(null);
     }, [contextMenu, setEdges]);
 
+    const contextMenuMoveToSamePlace = useCallback(() => {
+      if (!contextMenu) return;
+      const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
+      const selectedNode = nodes.find(
+        (n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId,
+      );
+      if (!targetNode || !selectedNode) {
+        setContextMenu(null);
+        return;
+      }
+
+      // Compute target's absolute row/col
+      let targetAbsX: number, targetAbsY: number;
+      if (targetNode.parentId) {
+        const parent = nodes.find((p) => p.id === targetNode.parentId);
+        targetAbsX = (parent?.position.x ?? 0) + targetNode.position.x;
+        targetAbsY = (parent?.position.y ?? 0) + targetNode.position.y;
+      } else {
+        targetAbsX = targetNode.position.x;
+        targetAbsY = targetNode.position.y;
+      }
+      const targetRow = Math.round(targetAbsY / effectiveNodeHeight);
+      const targetCol = Math.round(targetAbsX / nodeWidth);
+
+      // Compute selected node's current row for placeholder refresh
+      let selectedAbsY: number;
+      if (selectedNode.parentId) {
+        const parent = nodes.find((p) => p.id === selectedNode.parentId);
+        selectedAbsY = (parent?.position.y ?? 0) + selectedNode.position.y;
+      } else {
+        selectedAbsY = selectedNode.position.y;
+      }
+      const selectedRow = Math.round(selectedAbsY / effectiveNodeHeight);
+
+      const selectedNodeData = selectedNode.data as SkillData;
+      const wasInGroup = !!selectedNode.parentId || !!editGroups[selectedNodeData.nodeId];
+
+      setNodes((nds) => {
+        // Count skill nodes already at the target grid cell (excluding the node being moved)
+        const stackIndex = nds.filter((n) => {
+          if (n.id === selectedNode.id) return false;
+          if (n.type !== "skill" || (n.data as any)?.isGrouping) return false;
+          let absX: number, absY: number;
+          if (n.parentId) {
+            const parent = nds.find((p) => p.id === n.parentId);
+            absX = (parent?.position.x ?? 0) + n.position.x;
+            absY = (parent?.position.y ?? 0) + n.position.y;
+          } else {
+            absX = n.position.x;
+            absY = n.position.y;
+          }
+          return (
+            Math.round(absY / effectiveNodeHeight) === targetRow &&
+            Math.round(absX / nodeWidth) === targetCol
+          );
+        }).length;
+
+        let result = nds.map((n) => {
+          if (n.id !== selectedNode.id) return n;
+          return {
+            ...n,
+            parentId: undefined,
+            position: {
+              x: targetCol * nodeWidth + stackIndex * 25,
+              y: targetRow * effectiveNodeHeight + stackIndex * 40,
+            },
+          };
+        });
+        result = repositionPlaceholders(result, new Set([targetRow, selectedRow]));
+        return result;
+      });
+
+      if (wasInGroup) {
+        setEditGroups((prev) => {
+          const next = { ...prev };
+          delete next[selectedNodeData.nodeId];
+          return next;
+        });
+      }
+
+      setContextMenu(null);
+    }, [contextMenu, nodes, effectiveNodeHeight, editGroups]);
+
     const contextMenuMoveRow = useCallback(
       (direction: "left" | "right") => {
         if (!contextMenu) return;
@@ -1930,6 +2037,8 @@ const SkillsView = memo(
         unlockRank: number;
         existingSkillKey?: string;
         imgPath?: string;
+        faction?: string;
+        subculture?: string;
       }) => {
         const mapEffects = (effects: Effect[]) =>
           effects.map((effect) => {
@@ -1960,6 +2069,8 @@ const SkillsView = memo(
                   existingSkillKey: nodeData.existingSkillKey,
                   imgPath: nodeData.imgPath || n.data.imgPath,
                   skillIcon: resolveSkillIcon(nodeData.imgPath || n.data.imgPath),
+                  faction: nodeData.faction ?? (n.data as SkillData).faction,
+                  subculture: nodeData.subculture ?? (n.data as SkillData).subculture,
                 },
                 position: {
                   x: nodeData.column * nodeWidth,
@@ -2003,6 +2114,8 @@ const SkillsView = memo(
               unlockRank: nodeData.unlockRank,
               isEditMode: true,
               existingSkillKey: nodeData.existingSkillKey,
+              faction: nodeData.faction || "",
+              subculture: nodeData.subculture || "",
             },
             position: {
               x: nodeData.column * nodeWidth,
@@ -2511,22 +2624,45 @@ const SkillsView = memo(
           currentEdgesForNode.get(e.target)!.add(edgeKey);
         }
 
-        // Build original edges per node from the initial editor edge set (one edge per skill.linkedToNode).
-        // This matches what initialEdges creates so nodes with no user changes compare as equal.
-        // Using nodeLinks directly would cause false positives because:
-        //   1. initialEdges only shows the first child per parent (linked-to node), not all nodeLinks children
-        //   2. Link type inference in the expansion doesn't match original nodeLinks types
+        // Build original edges per node using the same logic as initialEdges + group-container expansion:
+        // iterate skill.linkedToNode (one edge per parent), resolve group containers the same way
+        // dedupedEdges does, so origEdgesForNode exactly matches an unedited currentEdgesForNode.
+        // nodeLinks (ALL children per parent) was wrong: REQUIRED leaf children beyond the linkedToNode
+        // one don't produce editor edges, causing false positive change detection.
         const skillNodeIds = new Set(skillNodes.map((n) => n.id));
+        const skillGroupForOrig = new Map<string, string>();
+        for (const skill of skillsData.currentSkills) {
+          if (skill.group) skillGroupForOrig.set(skill.nodeId, skill.group);
+        }
+        const seenOrigKey = new Set<string>();
         const origEdgesForNode = new Map<string, Set<string>>();
-        for (const origSkill of skillsData.currentSkills) {
-          if (!origSkill.linkedToNode) continue;
-          // Only include if both endpoints are in the current editor view (matching initialEdges behaviour)
-          if (!skillNodeIds.has(origSkill.nodeId) || !skillNodeIds.has(origSkill.linkedToNode)) continue;
-          const edgeKey = `${origSkill.nodeId}|${origSkill.linkedToNode}`;
-          if (!origEdgesForNode.has(origSkill.nodeId)) origEdgesForNode.set(origSkill.nodeId, new Set());
-          origEdgesForNode.get(origSkill.nodeId)!.add(edgeKey);
-          if (!origEdgesForNode.has(origSkill.linkedToNode)) origEdgesForNode.set(origSkill.linkedToNode, new Set());
-          origEdgesForNode.get(origSkill.linkedToNode)!.add(edgeKey);
+        const addOrigEdge = (src: string, tgt: string) => {
+          const key = `${src}|${tgt}`;
+          if (seenOrigKey.has(key)) return;
+          seenOrigKey.add(key);
+          if (!origEdgesForNode.has(src)) origEdgesForNode.set(src, new Set());
+          origEdgesForNode.get(src)!.add(key);
+          if (!origEdgesForNode.has(tgt)) origEdgesForNode.set(tgt, new Set());
+          origEdgesForNode.get(tgt)!.add(key);
+        };
+        for (const skill of skillsData.currentSkills) {
+          if (!skill.linkedToNode) continue;
+          if (!skillNodeIds.has(skill.nodeId) || !skillNodeIds.has(skill.linkedToNode)) continue;
+          const srcGroup = skillGroupForOrig.get(skill.nodeId);
+          const tgtGroup = skillGroupForOrig.get(skill.linkedToNode);
+          const src = srcGroup ? `${srcGroup}_group` : skill.nodeId;
+          const tgt = tgtGroup ? `${tgtGroup}_group` : skill.linkedToNode;
+          const srcMembers = containerToMembers[src];
+          const tgtMembers = containerToMembers[tgt];
+          if (srcMembers && tgtMembers) {
+            for (const s of srcMembers) for (const t of tgtMembers) addOrigEdge(s, t);
+          } else if (srcMembers) {
+            for (const s of srcMembers) addOrigEdge(s, tgt);
+          } else if (tgtMembers) {
+            for (const t of tgtMembers) addOrigEdge(src, t);
+          } else {
+            addOrigEdge(src, tgt);
+          }
         }
 
         // Compute absolute positions for current nodes
@@ -2612,8 +2748,11 @@ const SkillsView = memo(
               // Compare against visual grid positions (skill.x = row, skill.y = adjusted col)
               const posChanged = currentRow !== origSkill.x || currentCol !== origSkill.y;
               const skillChanged = data.existingSkillKey !== origSkill.id;
+              const factionChanged = (data.faction || "") !== (origSkill.faction || "");
+              const subcultureChanged = (data.subculture || "") !== (origSkill.subculture || "");
 
-              if (posChanged || skillChanged) {
+              if (posChanged || skillChanged || factionChanged || subcultureChanged) {
+                console.log(`[SaveChanges] POS/SKILL CHANGED for ${origNodeId}: currentRow=${currentRow} origRow=${origSkill.x} currentCol=${currentCol} origCol=${origSkill.y} skillChanged=${skillChanged}`);
                 nodeKeyMap.set(origNodeId, origNodeId); // same key
                 overrideNodes.push({
                   originalNodeKey: origNodeId,
@@ -3157,7 +3296,8 @@ const SkillsView = memo(
       return () => clearTimeout(timer);
     }, [notification]);
 
-    // ReactFlow won't refresh when things like isShowingHiddenModifiersInsideSkills change, so force it
+    // ReactFlow won't refresh when things like isShowingHiddenModifiersInsideSkills change, so force it.
+    // In edit mode this is guarded to avoid wiping edit state on data changes (e.g. pack load).
     useEffect(() => {
       if (isRestoringSnapshot.current) return;
       if (isEditMode && !skipTransitionEffect.current) return; // edit mode manages its own nodes
@@ -3168,9 +3308,15 @@ const SkillsView = memo(
       isShowingHiddenModifiersInsideSkills,
       isShowingHiddentSkills,
       isCheckingSkillRequirements,
-      factionFilter,
       resetCounter,
     ]);
+
+    // Faction filter is an explicit user action — reset nodes/edges even in edit mode.
+    useEffect(() => {
+      if (isRestoringSnapshot.current) return;
+      setNodes(deepClone(skillNodes));
+      setEdges(deepClone(initialEdges));
+    }, [factionFilter]);
 
     // Clear snapshot restoration flag after all mount effects have fired
     useEffect(() => {
@@ -3258,14 +3404,16 @@ const SkillsView = memo(
       } else {
         // Entering edit mode: transform current nodes to edit-mode layout
         const newHeight = editModeNodeHeight;
-        const oldHeight = nodeHeight;
 
         setNodes((currentNodes) => {
           let result = currentNodes.map((n) => {
             if (n.type === "skill" && !(n.data as any)?.isGrouping) {
               const groupColor = groupIdToColor[editGroups[(n.data as SkillData).nodeId]];
               if (!n.parentId) {
-                const row = Math.round(n.position.y / oldHeight);
+                // Use data.row directly: nodes are not draggable in normal mode so it's always the
+                // correct logical row. Avoids Math.round(y / nodeHeight) going wrong when stacked
+                // nodes caused biggerNodeHeight (120) to be used instead of nodeHeight (100).
+                const row = (n.data as any).row as number;
                 return {
                   ...n,
                   data: { ...n.data, isEditMode: true, editGroupColor: groupColor },
@@ -3279,7 +3427,7 @@ const SkillsView = memo(
             }
             // Group containers: rescale Y and update height
             if (n.className === "reactFlowGroup" && (n.data as any)?.isGrouping) {
-              const row = Math.round((n.position.y + 15) / oldHeight);
+              const row = (n.data as any).row as number;
               const groupId = n.id.replace(/_group$/, "");
               const groupColor = groupIdToColor[groupId];
               return {
@@ -3759,20 +3907,20 @@ const SkillsView = memo(
                 </button>
               )}
             </div>
-            {hasFactionVariants && (
+            {displayFactionOptions.length > 0 && (
               <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg mt-2 w-fit">
                 <Dropdown
                   dismissOnClick={true}
                   label={
                     factionFilter === "all"
                       ? localized.all || "All"
-                      : factionFilterOptions.find((o) => o.value === factionFilter)?.label || factionFilter
+                      : displayFactionOptions.find((o) => o.value === factionFilter)?.label || factionFilter
                   }
                 >
                   <Dropdown.Item onClick={() => setFactionFilter("all")}>
                     <span>{localized.all || "All"}</span>
                   </Dropdown.Item>
-                  {factionFilterOptions.map((option) => (
+                  {displayFactionOptions.map((option) => (
                     <Dropdown.Item key={option.value} onClick={() => setFactionFilter(option.value)}>
                       <span>{option.label}</span>
                     </Dropdown.Item>
@@ -4180,6 +4328,8 @@ const SkillsView = memo(
                         effects: editingNode.data.effects,
                         existingSkillKey: editingNode.data.existingSkillKey,
                         imgPath: editingNode.data.imgPath,
+                        faction: editingNode.data.faction,
+                        subculture: editingNode.data.subculture,
                       }
                     : undefined
                 }
@@ -4893,6 +5043,11 @@ const SkillsView = memo(
                                 Insert After Node, Inside Group
                               </button>
                             </>
+                          )}
+                          {selectedNodes.length === 1 && (
+                            <button className={menuItemClass} onClick={contextMenuMoveToSamePlace}>
+                              Move to same place
+                            </button>
                           )}
                         </>
                       )}
