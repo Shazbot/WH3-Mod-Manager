@@ -1224,9 +1224,10 @@ const SkillsView = memo(
 
     // Edit mode: capture position before drag starts (for swap)
     const onNodeDragStart: OnNodeDrag = useCallback((event, node) => {
+      captureHistory();
       dragStartPos.current = { x: node.position.x, y: node.position.y };
       setIsDragging(true);
-    }, []);
+    }, [captureHistory]);
 
     // Edit mode: snap node to grid after drag
     // - If dropped on another node: insert before it (or after if Shift held)
@@ -1234,7 +1235,6 @@ const SkillsView = memo(
     // - Placeholder repositions to stay past the rightmost skill
     const onNodeDragStop: OnNodeDrag = useCallback(
       (event, node) => {
-        captureHistory();
         setIsDragging(false);
         const shiftHeld = event.shiftKey;
         const draggedGroupId = editGroups[(node.data as SkillData).nodeId];
@@ -1334,7 +1334,7 @@ const SkillsView = memo(
           return result;
         });
       },
-      [setNodes, nodes, editGroups, setEditGroups, repositionPlaceholders, captureHistory],
+      [setNodes, nodes, editGroups, setEditGroups, repositionPlaceholders],
     );
 
     const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
@@ -1708,6 +1708,42 @@ const SkillsView = memo(
       },
       [contextMenu, nodes, nextGroupId, editGroups, effectiveNodeHeight, setEditGroups, setEdges],
     );
+
+    // Context menu: delete group (ungroup + remove group edges)
+    const contextMenuDeleteGroup = useCallback(() => {
+      if (!contextMenu) return;
+      const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
+      if (!targetNode) return;
+      const targetGroupId = editGroups[(targetNode.data as SkillData).nodeId];
+      if (!targetGroupId) return;
+      captureHistory();
+      const memberNodeIds = new Set(
+        Object.entries(editGroups)
+          .filter(([, gid]) => gid === targetGroupId)
+          .map(([nodeId]) => nodeId),
+      );
+      const memberIds = new Set(
+        nodes
+          .filter((n) => n.type === "skill" && memberNodeIds.has((n.data as SkillData).nodeId))
+          .map((n) => n.id),
+      );
+      const containerId = `${targetGroupId}_group`;
+      setEdges((eds) =>
+        eds.filter(
+          (e) =>
+            !memberIds.has(e.source) &&
+            !memberIds.has(e.target) &&
+            e.source !== containerId &&
+            e.target !== containerId,
+        ),
+      );
+      setEditGroups((prev) => {
+        const next = { ...prev };
+        for (const nodeId of memberNodeIds) delete next[nodeId];
+        return next;
+      });
+      setContextMenu(null);
+    }, [contextMenu, nodes, editGroups, setEdges, setEditGroups, captureHistory]);
 
     // Context menu: remove all input connections (edges targeting this node)
     const contextMenuRemoveInputs = useCallback(() => {
@@ -3134,7 +3170,6 @@ const SkillsView = memo(
 
     // Requirements mode: expand group edges to individual node-to-node curved edges
     const enterRequirementsMode = useCallback(() => {
-      captureHistory();
       // If transitioning from skill locks mode, use the saved edit edges (not the current skill lock edges)
       const editEdges = isSkillLocksMode ? savedLocksEdges.current : edges;
       savedEditEdges.current = [...editEdges];
@@ -3215,11 +3250,10 @@ const SkillsView = memo(
       setEdges(reqEdges);
       setIsRequirementsMode(true);
       if (isSkillLocksMode) setIsSkillLocksMode(false);
-    }, [edges, editGroups, groupIdToColor, setEdges, isSkillLocksMode, captureHistory]);
+    }, [edges, editGroups, groupIdToColor, setEdges, isSkillLocksMode]);
 
     // Requirements mode: convert individual edges back to groups + edit edges
     const exitRequirementsMode = useCallback(() => {
-      captureHistory();
       const targetToSources: Record<string, string[]> = {};
       for (const edge of edges) {
         if (!targetToSources[edge.target]) targetToSources[edge.target] = [];
@@ -3303,11 +3337,10 @@ const SkillsView = memo(
           return { ...n, data: { ...n.data, requiredNumParents } };
         }),
       );
-    }, [edges, nextGroupId, editGroups, setEdges, setNodes, setEditGroups, captureHistory]);
+    }, [edges, nextGroupId, editGroups, setEdges, setNodes, setEditGroups]);
 
     // Skill Locks mode: enter
     const enterSkillLocksMode = useCallback(() => {
-      captureHistory();
       // If transitioning from requirements mode, use the saved edit edges (not the current requirement edges)
       const editEdges = isRequirementsMode ? savedEditEdges.current : edges;
       savedLocksEdges.current = [...editEdges];
@@ -3344,7 +3377,7 @@ const SkillsView = memo(
       setEdges(lockEdges);
       setIsSkillLocksMode(true);
       if (isRequirementsMode) setIsRequirementsMode(false);
-    }, [edges, nodes, skillsData, setEdges, isRequirementsMode, captureHistory]);
+    }, [edges, nodes, skillsData, setEdges, isRequirementsMode]);
 
     // Skill Locks mode: filter edges by selected nodes
     const lockSelectionKey = useMemo(() => {
@@ -3390,7 +3423,6 @@ const SkillsView = memo(
 
     // Skill Locks mode: exit
     const exitSkillLocksMode = useCallback(() => {
-      captureHistory();
       const newNodeToSkillLocks: Record<string, [string, number][]> = {};
 
       for (const edge of allLockEdges.current) {
@@ -3415,7 +3447,7 @@ const SkillsView = memo(
       setNodes((nds) => nds.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })));
       setIsSkillLocksMode(false);
       setLockEdgeLevels({});
-    }, [nodes, lockEdgeLevels, setEdges, setNodes, skillsData, captureHistory]);
+    }, [nodes, lockEdgeLevels, setEdges, setNodes, skillsData]);
 
     // Requirements mode: recolor edges so SUBSET_REQUIRED groups share the same color
     const reqEdgeKey = useMemo(() => {
@@ -4746,6 +4778,7 @@ const SkillsView = memo(
 
             const pasteAtPosition = (targetRow: number, targetCol: number) => {
               if (clipboard.length === 0) return;
+              captureHistory();
               const mapEffects = (effects: Effect[]) =>
                 effects.map((effect) => {
                   let iconData = "";
@@ -5279,41 +5312,7 @@ const SkillsView = memo(
                             )}
                             <button
                               className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 cursor-pointer"
-                              onClick={() => {
-                                // Remove all edges connected to group members
-                                const memberNodeIds = new Set(
-                                  Object.entries(editGroups)
-                                    .filter(([, gid]) => gid === targetGroupId)
-                                    .map(([nodeId]) => nodeId),
-                                );
-                                const memberIds = new Set(
-                                  nodes
-                                    .filter(
-                                      (n) =>
-                                        n.type === "skill" && memberNodeIds.has((n.data as SkillData).nodeId),
-                                    )
-                                    .map((n) => n.id),
-                                );
-                                const containerId = `${targetGroupId}_group`;
-                                setEdges((eds) =>
-                                  eds.filter(
-                                    (e) =>
-                                      !memberIds.has(e.source) &&
-                                      !memberIds.has(e.target) &&
-                                      e.source !== containerId &&
-                                      e.target !== containerId,
-                                  ),
-                                );
-                                // Remove group assignments
-                                setEditGroups((prev) => {
-                                  const next = { ...prev };
-                                  for (const nodeId of memberNodeIds) {
-                                    delete next[nodeId];
-                                  }
-                                  return next;
-                                });
-                                setContextMenu(null);
-                              }}
+                              onClick={contextMenuDeleteGroup}
                             >
                               Delete Group
                             </button>
