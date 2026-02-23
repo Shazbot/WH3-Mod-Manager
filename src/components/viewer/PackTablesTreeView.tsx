@@ -1,16 +1,20 @@
 import React, { useEffect, useImperativeHandle, useMemo } from "react";
-import { useAppDispatch, useAppSelector } from "../../hooks";
+import { useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
 import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
-import { selectDBTable, selectFlowFile } from "../../appSlice";
 import { gameToPackWithDBTablesName } from "../../supportedGames";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 
 type PackTablesTreeViewProps = {
   tableFilter: string;
+  onOpenDBTable: (selection: DBTableSelection, options?: { forceNewTab?: boolean }) => void;
+  onOpenFlowFile: (
+    selection: { flowFile: string; packPath: string },
+    options?: { forceNewTab?: boolean },
+  ) => void;
 };
 
 type TreeData = { name: string; children?: TreeData[] };
@@ -21,7 +25,6 @@ export type PackTablesTreeViewHandle = {
 
 const PackTablesTreeView = React.memo(
   React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
-    const dispatch = useAppDispatch();
     const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
     const currentGame = useAppSelector((state) => state.app.currentGame);
 
@@ -143,7 +146,7 @@ const PackTablesTreeView = React.memo(
       if (!packData) return;
 
       if (selectionProps.element.name.startsWith("whmmflows\\")) {
-        dispatch(selectFlowFile({ flowFile: selectionProps.element.name, packPath: packData.packPath }));
+        props.onOpenFlowFile({ flowFile: selectionProps.element.name, packPath: packData.packPath });
         return;
       }
 
@@ -182,8 +185,7 @@ const PackTablesTreeView = React.memo(
       if (!hasLoadedTable) {
         window.api?.getPackData(nextSelection.packPath, { dbName, dbSubname });
       }
-      dispatch(selectFlowFile(undefined));
-      dispatch(selectDBTable(nextSelection));
+      props.onOpenDBTable(nextSelection);
     };
 
     const ArrowIcon = ({ isOpen, className }: { isOpen: boolean; className: string }) => {

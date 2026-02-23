@@ -1,4 +1,4 @@
-import React, { memo, useContext, useEffect, useMemo, useState, useRef } from "react";
+import React, { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
@@ -10,9 +10,28 @@ import localizationContext from "../../localizationContext";
 import { gameToPackWithDBTablesName } from "../../supportedGames";
 import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
-import { selectDBTable, setDeepCloneTarget, setPacksData } from "@/src/appSlice";
+import { selectDBTable, selectFlowFile, setDeepCloneTarget, setPacksData } from "@/src/appSlice";
 import NodeEditor from "../NodeEditor";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
+import { getPackNameFromPath } from "@/src/utility/packFileHelpers";
+
+type ViewerTabKind = "db" | "flow";
+
+type ViewerTab = {
+  id: string;
+  fileKey: string;
+  title: string;
+  kind: ViewerTabKind;
+  packPath: string;
+  dbName?: string;
+  dbSubname?: string;
+  flowFile?: string;
+};
+
+type ViewerTabCandidate = Omit<ViewerTab, "id">;
+
+const hasDBSelectionTarget = (selection?: DBTableSelection): selection is DBTableSelection =>
+  Boolean(selection?.packPath && selection.dbName && selection.dbSubname);
 
 const ModsViewer = memo(() => {
   const dispatch = useAppDispatch();
@@ -41,10 +60,18 @@ const ModsViewer = memo(() => {
   const [isNewPackModalOpen, setIsNewPackModalOpen] = React.useState(false);
   const [newPackName, setNewPackName] = React.useState("");
   const [isNewPackProcessing, setIsNewPackProcessing] = React.useState(false);
+  const [openTabs, setOpenTabs] = useState<ViewerTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
   const treeViewRef = useRef<PackTablesTreeViewHandle>(null);
   const saveAsPackNameInputRef = useRef<HTMLInputElement>(null);
   const newPackNameInputRef = useRef<HTMLInputElement>(null);
+  const tabIdCounterRef = useRef(0);
+  const lastActionRef = useRef<{ fileKey: string; at: number; openedNew: boolean; tabId?: string } | null>(
+    null,
+  );
+  const lastSelectionKeyRef = useRef<string | null>(null);
+  const suppressSelectionToTabSyncRef = useRef(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -86,7 +113,217 @@ const ModsViewer = memo(() => {
     setDBTableFilter("");
   };
 
+  const createTabId = useCallback(() => `tab-${Date.now()}-${++tabIdCounterRef.current}`, []);
+
+  const buildDbTabCandidate = useCallback((selection: DBTableSelection): ViewerTabCandidate => {
+    const packLabel = getPackNameFromPath(selection.packPath) ?? selection.packPath;
+    return {
+      fileKey: `db|${selection.packPath}|${selection.dbName}|${selection.dbSubname}`,
+      title: `${selection.dbName}/${selection.dbSubname}${packLabel ? ` | ${packLabel}` : ""}`,
+      kind: "db",
+      packPath: selection.packPath,
+      dbName: selection.dbName,
+      dbSubname: selection.dbSubname,
+    };
+  }, []);
+
+  const buildFlowTabCandidate = useCallback((flowFile: string, packPath: string): ViewerTabCandidate => {
+    const packLabel = getPackNameFromPath(packPath) ?? packPath;
+    const shortFlowName = flowFile.replace(/^whmmflows[\\/]/, "");
+    const flowLabel = shortFlowName ? `Flow:${shortFlowName}` : flowFile;
+    return {
+      fileKey: `flow|${packPath}|${flowFile}`,
+      title: `${flowLabel}${packLabel ? ` | ${packLabel}` : ""}`,
+      kind: "flow",
+      packPath,
+      flowFile,
+    };
+  }, []);
+
+  const openOrActivateTab = useCallback(
+    (candidate: ViewerTabCandidate, options: { forceNewTab?: boolean } = {}) => {
+      const now = Date.now();
+      const lastAction = lastActionRef.current;
+      const isJustOpenedSame =
+        lastAction && lastAction.fileKey === candidate.fileKey && lastAction.openedNew && now - lastAction.at < 350;
+
+      if (options.forceNewTab && isJustOpenedSame && lastAction?.tabId) {
+        setActiveTabId(lastAction.tabId);
+        return;
+      }
+
+      let openedNew = false;
+      let tabToActivate: ViewerTab;
+
+      if (options.forceNewTab || !activeTabId) {
+        const newTab: ViewerTab = { id: createTabId(), ...candidate };
+        openedNew = true;
+        tabToActivate = newTab;
+        setOpenTabs([...openTabs, newTab]);
+      } else {
+        const activeTabIndex = openTabs.findIndex((tab) => tab.id === activeTabId);
+        if (activeTabIndex < 0) {
+          const newTab: ViewerTab = { id: createTabId(), ...candidate };
+          openedNew = true;
+          tabToActivate = newTab;
+          setOpenTabs([...openTabs, newTab]);
+        } else {
+          tabToActivate = { ...openTabs[activeTabIndex], ...candidate };
+          const nextTabs = [...openTabs];
+          nextTabs[activeTabIndex] = tabToActivate;
+          setOpenTabs(nextTabs);
+        }
+      }
+
+      setActiveTabId(tabToActivate.id);
+      lastActionRef.current = { fileKey: candidate.fileKey, at: now, openedNew, tabId: tabToActivate.id };
+      if (tabToActivate.kind === "db" && tabToActivate.dbName && tabToActivate.dbSubname) {
+        window.api?.getPackData(tabToActivate.packPath, {
+          dbName: tabToActivate.dbName,
+          dbSubname: tabToActivate.dbSubname,
+        });
+      }
+    },
+    [activeTabId, createTabId, openTabs],
+  );
+
+  const handleOpenDBTable = useCallback(
+    (selection: DBTableSelection, options?: { forceNewTab?: boolean }) => {
+      if (!hasDBSelectionTarget(selection)) return;
+      openOrActivateTab(buildDbTabCandidate(selection), options);
+    },
+    [buildDbTabCandidate, openOrActivateTab],
+  );
+
+  const handleOpenFlowFile = useCallback(
+    (selection: { flowFile: string; packPath: string }, options?: { forceNewTab?: boolean }) => {
+      openOrActivateTab(buildFlowTabCandidate(selection.flowFile, selection.packPath), options);
+    },
+    [buildFlowTabCandidate, openOrActivateTab],
+  );
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      setOpenTabs((prevTabs) => {
+        const tabIndex = prevTabs.findIndex((tab) => tab.id === tabId);
+        if (tabIndex < 0) return prevTabs;
+        const nextTabs = prevTabs.filter((tab) => tab.id !== tabId);
+
+        if (tabId === activeTabId) {
+          const nextActive = nextTabs[tabIndex - 1] ?? nextTabs[tabIndex] ?? null;
+          setActiveTabId(nextActive?.id ?? null);
+        }
+
+        return nextTabs;
+      });
+    },
+    [activeTabId],
+  );
+
   const hasUnsavedFiles = unsavedFiles.length > 0;
+  const activeTab = useMemo(() => openTabs.find((tab) => tab.id === activeTabId) ?? null, [openTabs, activeTabId]);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    const activeTab = openTabs.find((tab) => tab.id === activeTabId);
+    if (!activeTab) return;
+
+    if (activeTab.kind === "flow" && activeTab.flowFile) {
+      const isAlreadySelected =
+        currentFlowFileSelection === activeTab.flowFile && currentFlowFilePackPath === activeTab.packPath;
+      if (isAlreadySelected) {
+        lastSelectionKeyRef.current = activeTab.fileKey;
+        return;
+      }
+      suppressSelectionToTabSyncRef.current = true;
+      dispatch(selectFlowFile({ flowFile: activeTab.flowFile, packPath: activeTab.packPath }));
+      lastSelectionKeyRef.current = activeTab.fileKey;
+      return;
+    }
+
+    if (activeTab.dbName && activeTab.dbSubname) {
+      const isAlreadySelected =
+        !currentFlowFileSelection &&
+        currentDBTableSelection?.packPath === activeTab.packPath &&
+        currentDBTableSelection?.dbName === activeTab.dbName &&
+        currentDBTableSelection?.dbSubname === activeTab.dbSubname;
+      if (isAlreadySelected) {
+        lastSelectionKeyRef.current = activeTab.fileKey;
+        return;
+      }
+      suppressSelectionToTabSyncRef.current = true;
+      dispatch(selectFlowFile(undefined));
+      dispatch(
+        selectDBTable({
+          packPath: activeTab.packPath,
+          dbName: activeTab.dbName,
+          dbSubname: activeTab.dbSubname,
+        }),
+      );
+      lastSelectionKeyRef.current = activeTab.fileKey;
+    }
+  }, [
+    activeTabId,
+    openTabs,
+    dispatch,
+    currentFlowFileSelection,
+    currentFlowFilePackPath,
+    currentDBTableSelection,
+  ]);
+
+  useEffect(() => {
+    if (suppressSelectionToTabSyncRef.current) {
+      suppressSelectionToTabSyncRef.current = false;
+      return;
+    }
+
+    if (currentFlowFileSelection) {
+      const flowPackPath = currentFlowFilePackPath ?? currentDBTableSelection?.packPath ?? packPath;
+      if (!flowPackPath) return;
+      const candidate = buildFlowTabCandidate(currentFlowFileSelection, flowPackPath);
+      if (lastSelectionKeyRef.current === candidate.fileKey) return;
+      openOrActivateTab(candidate);
+      return;
+    }
+
+    if (hasDBSelectionTarget(currentDBTableSelection)) {
+      const candidate = buildDbTabCandidate(currentDBTableSelection);
+      if (lastSelectionKeyRef.current === candidate.fileKey) return;
+      openOrActivateTab(candidate);
+    }
+  }, [
+    currentFlowFileSelection,
+    currentFlowFilePackPath,
+    currentDBTableSelection,
+    packPath,
+    buildFlowTabCandidate,
+    buildDbTabCandidate,
+    openOrActivateTab,
+  ]);
+
+  useEffect(() => {
+    if (activeTabId) return;
+    if (currentFlowFileSelection) return;
+    if (hasDBSelectionTarget(currentDBTableSelection)) return;
+
+    if (!currentPackData) return;
+
+    const hasDefaultTable = currentPackData.tables.includes("db\\main_units_tables\\data__");
+    if (!hasDefaultTable) return;
+
+    handleOpenDBTable({
+      packPath,
+      dbName: "main_units_tables",
+      dbSubname: "data__",
+    });
+  }, [
+    activeTabId,
+    currentFlowFileSelection,
+    currentDBTableSelection,
+    currentPackData,
+    packPath,
+    handleOpenDBTable,
+  ]);
 
   const handleSavePack = async () => {
     if (!hasUnsavedFiles) return;
@@ -466,7 +703,12 @@ const ModsViewer = memo(() => {
               >
                 <div className="h-full flex flex-col">
                   <div className="overflow-auto flex-1 scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
-                    <PackTablesTreeView ref={treeViewRef} tableFilter={dbTableFilter} />
+                  <PackTablesTreeView
+                    ref={treeViewRef}
+                    tableFilter={dbTableFilter}
+                    onOpenDBTable={handleOpenDBTable}
+                    onOpenFlowFile={handleOpenFlowFile}
+                  />
                   </div>
 
                   <div className="flex items-center mt-3">
@@ -489,10 +731,58 @@ const ModsViewer = memo(() => {
                   </div>
                 </div>
               </Resizable>
-              <div style={{ width: "100%", minWidth: "1px", height: "100%" }}>
-                {(currentFlowFileSelection && (
-                  <NodeEditor currentFile={currentFlowFileSelection} currentPack={packPath} />
-                )) || <PackTablesTableView />}
+              <div style={{ width: "100%", minWidth: "1px", height: "100%" }} className="flex flex-col">
+                <div className="flex items-center gap-1 border-b border-gray-700 bg-gray-900/60 px-2 py-1 overflow-x-auto">
+                  {openTabs.length === 0 ? (
+                    <span className="text-xs text-gray-400">No files open</span>
+                  ) : (
+                    openTabs.map((tab) => {
+                      const isActive = tab.id === activeTabId;
+                      return (
+                        <div
+                          key={tab.id}
+                          className={
+                            "flex items-center gap-1 rounded-md border text-xs " +
+                            (isActive
+                              ? "bg-gray-700 text-white border-gray-500"
+                              : "bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700/60")
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setActiveTabId(tab.id)}
+                            className="px-2 py-1 max-w-[220px] truncate"
+                            title={tab.title}
+                          >
+                            {tab.title}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCloseTab(tab.id);
+                            }}
+                            className="px-1 pr-2 text-gray-400 hover:text-white"
+                            aria-label={`Close ${tab.title}`}
+                          >
+                            <FontAwesomeIcon icon={faXmark} />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="flex-1 min-h-0">
+                  {activeTab ? (
+                    (currentFlowFileSelection && (
+                      <NodeEditor currentFile={currentFlowFileSelection} currentPack={packPath} />
+                    )) || <PackTablesTableView />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                      Select a file to view
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
