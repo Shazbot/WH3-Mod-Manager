@@ -7,6 +7,7 @@ import "@silevis/reactgrid/styles.css";
 import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
 import { gameToPackWithDBTablesName } from "../../supportedGames";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
+import type { PackedFile } from "../../packFileTypes";
 
 type PackTablesTreeViewProps = {
   tableFilter: string;
@@ -36,6 +37,7 @@ const PackTablesTreeView = React.memo(
     const pendingOpenTimeoutRef = React.useRef<number | null>(null);
     const [selectedNodeIds, setSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
+    const [isExportingSelection, setIsExportingSelection] = React.useState(false);
 
     useImperativeHandle(ref, () => ({
       openNewFlowDialog: () => {
@@ -160,15 +162,108 @@ const PackTablesTreeView = React.memo(
     }, [data, nodeById, normalizedFilter]);
 
     const getDBSelectionForElement = (element: INode) => {
-      if (!element.parent || (element.children && element.children.length > 0)) return;
+      if (element.children && element.children.length > 0) return;
+
+      // Root-level DB entries (e.g. unsaved files) may contain the full path in the node name.
+      const rootLevelDBName = getDBNameFromString(element.name);
+      const rootLevelDBSubname = getDBSubnameFromString(element.name);
+      if (rootLevelDBName && rootLevelDBSubname) {
+        return {
+          packPath: packData!.packPath,
+          dbName: rootLevelDBName,
+          dbSubname: rootLevelDBSubname,
+        } as DBTableSelection;
+      }
+
+      if (!element.parent) return;
       const parentLeaf = nodeById.get(element.parent);
-      if (!parentLeaf) return;
+      if (!parentLeaf || !parentLeaf.name) return;
       return {
         packPath: packData!.packPath,
         dbName: parentLeaf.name,
         dbSubname: element.name,
       } as DBTableSelection;
     };
+
+    const getPackedFileForDBSelection = (selection: DBTableSelection): PackedFile | undefined => {
+      if (!packData?.packedFiles) return undefined;
+      const packedFilePath = `db\\${selection.dbName}\\${selection.dbSubname}`;
+      if (packData.packedFiles[packedFilePath]) {
+        return packData.packedFiles[packedFilePath];
+      }
+
+      for (const [iterPackedFilePath, iterPackedFile] of Object.entries(packData.packedFiles)) {
+        if (iterPackedFilePath.startsWith(packedFilePath)) {
+          return iterPackedFile;
+        }
+      }
+
+      return undefined;
+    };
+
+    const sanitizeTsvCell = (value: unknown) =>
+      String(value ?? "")
+        .replace(/\t/g, " ")
+        .replace(/\r?\n/g, " ");
+
+    const buildTsvContentForDBSelection = (selection: DBTableSelection) => {
+      const packedFile = getPackedFileForDBSelection(selection);
+      if (!packedFile?.schemaFields || !packedFile.tableSchema) return;
+
+      const schema = packedFile.tableSchema;
+      if (!schema.fields?.length) return;
+
+      const rows =
+        packedFile.schemaFields.reduce<any[][]>((resultArray, item, index) => {
+          const chunkIndex = Math.floor(index / schema.fields.length);
+          if (!resultArray[chunkIndex]) resultArray[chunkIndex] = [];
+          resultArray[chunkIndex].push(item);
+          return resultArray;
+        }, []) || [];
+
+      const columnNames = schema.fields.map((field) => field.name);
+      const packedFilePathForward = `db/${selection.dbName}/${selection.dbSubname}`;
+      const version = packedFile.version ?? schema.version ?? 0;
+
+      const tsvLines: string[] = [];
+      tsvLines.push(columnNames.join("\t"));
+      tsvLines.push(`#${selection.dbName};${version};${packedFilePathForward}`);
+
+      for (const row of rows) {
+        const rowValues = row.map((cell: any) => {
+          if (cell?.type === "Boolean") return sanitizeTsvCell(cell?.resolvedKeyValue != "0");
+          if (cell?.type === "OptionalStringU8" && cell?.resolvedKeyValue === "0") return "";
+          return sanitizeTsvCell(cell?.resolvedKeyValue);
+        });
+        tsvLines.push(rowValues.join("\t"));
+      }
+
+      return tsvLines.join("\n");
+    };
+
+    const selectedDBTableSelections = useMemo(() => {
+      if (!packData) return [];
+      const selectedIds = new Set(selectedNodeIds);
+      const selectedSelections = data
+        .filter((element) => selectedIds.has(element.id))
+        .map((element) => getDBSelectionForElement(element))
+        .filter((selection): selection is DBTableSelection => Boolean(selection));
+
+      const dedupedSelections = Array.from(
+        new Map(
+          selectedSelections.map((selection) => [
+            `${selection.packPath}|${selection.dbName}|${selection.dbSubname}`,
+            selection,
+          ]),
+        ).values(),
+      );
+
+      return dedupedSelections.filter((selection) => {
+        const packedFile = getPackedFileForDBSelection(selection);
+        return Boolean(packedFile?.schemaFields && packedFile?.tableSchema);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedNodeIds, data, packData]);
 
     const getDescendantLeafIds = (element: INode): Array<string | number> => {
       if (!element.children || element.children.length === 0) {
@@ -313,6 +408,47 @@ const PackTablesTreeView = React.memo(
       setIsNewFlowDialogOpen(true);
     };
 
+    const handleExportSelectedAsTSV = async () => {
+      if (selectedDBTableSelections.length === 0 || isExportingSelection) return;
+
+      setContextMenu(null);
+      setIsExportingSelection(true);
+      try {
+        const outputDirectory = await window.api?.selectDirectory();
+        if (!outputDirectory) return;
+
+        const exportFiles = selectedDBTableSelections
+          .map((selection) => {
+            const content = buildTsvContentForDBSelection(selection);
+            if (!content) return undefined;
+            return {
+              relativePath: `db/${selection.dbName}/${selection.dbSubname}.tsv`,
+              content,
+            };
+          })
+          .filter((file): file is { relativePath: string; content: string } => Boolean(file));
+
+        if (exportFiles.length === 0) {
+          alert("No exportable DB tables selected");
+          return;
+        }
+
+        const result = await window.api?.writeTextFilesToDirectory(outputDirectory, exportFiles);
+
+        if (!result?.success) {
+          alert(`Failed to export TSV files: ${result?.error || "Unknown error"}`);
+          return;
+        }
+
+        alert(`Exported ${exportFiles.length} TSV file(s) to: ${outputDirectory}`);
+      } catch (error) {
+        console.error("Error exporting selected tables as TSV:", error);
+        alert(`Error exporting TSV files: ${error instanceof Error ? error.message : "Unknown error"}`);
+      } finally {
+        setIsExportingSelection(false);
+      }
+    };
+
     const handleCreateNewFlow = async () => {
       if (!newFlowName.trim()) {
         alert("Please enter a valid flow name");
@@ -452,6 +588,19 @@ const PackTablesTreeView = React.memo(
             >
               Add New Flow
             </button>
+            {selectedDBTableSelections.length > 0 && (
+              <button
+                onClick={handleExportSelectedAsTSV}
+                disabled={isExportingSelection}
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm disabled:opacity-50"
+              >
+                {isExportingSelection
+                  ? "Exporting TSV..."
+                  : `Export ${selectedDBTableSelections.length} file${
+                      selectedDBTableSelections.length === 1 ? "" : "s"
+                    } as TSV`}
+              </button>
+            )}
           </div>
         )}
 
