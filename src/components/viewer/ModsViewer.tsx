@@ -78,9 +78,7 @@ const ModsViewer = memo(() => {
   // Focus on the Save As pack name input when modal opens
   useEffect(() => {
     if (isSaveAsModalOpen && saveAsPackNameInputRef.current) {
-      // First, focus the window itself to ensure the viewer window has focus
       window.focus();
-      // Then focus the input after the modal is fully rendered
       setTimeout(() => {
         saveAsPackNameInputRef.current?.focus();
       }, 0);
@@ -90,9 +88,7 @@ const ModsViewer = memo(() => {
   // Focus on the New Pack name input when modal opens
   useEffect(() => {
     if (isNewPackModalOpen && newPackNameInputRef.current) {
-      // First, focus the window itself to ensure the viewer window has focus
       window.focus();
-      // Then focus the input after the modal is fully rendered
       setTimeout(() => {
         newPackNameInputRef.current?.focus();
       }, 0);
@@ -150,6 +146,18 @@ const ModsViewer = memo(() => {
       if (options.forceNewTab && isJustOpenedSame && lastAction?.tabId) {
         setActiveTabId(lastAction.tabId);
         return;
+      }
+
+      // Reuse existing tab with same fileKey instead of always creating a new one
+      if (options.forceNewTab) {
+        const existingTab =
+          openTabs.find((tab) => tab.fileKey === candidate.fileKey && tab.id !== activeTabId) ??
+          openTabs.find((tab) => tab.fileKey === candidate.fileKey);
+        if (existingTab) {
+          setActiveTabId(existingTab.id);
+          lastActionRef.current = { fileKey: candidate.fileKey, at: now, openedNew: false, tabId: existingTab.id };
+          return;
+        }
       }
 
       let openedNew = false;
@@ -252,7 +260,9 @@ const ModsViewer = memo(() => {
         return;
       }
       suppressSelectionToTabSyncRef.current = true;
-      dispatch(selectFlowFile(undefined));
+      if (currentFlowFileSelection) {
+        dispatch(selectFlowFile(undefined));
+      }
       dispatch(
         selectDBTable({
           packPath: activeTab.packPath,
@@ -412,11 +422,9 @@ const ModsViewer = memo(() => {
     setIsNewPackProcessing(true);
 
     try {
-      // Create an empty pack in memory with the given name
       const packName = newPackName.trim();
       const packPath = `memory://${packName}`;
 
-      // Create empty PackViewData for the new pack
       const newPackData: PackViewData = {
         packName: packName,
         packPath: packPath,
@@ -424,10 +432,8 @@ const ModsViewer = memo(() => {
         packedFiles: {},
       };
 
-      // Add the new pack to Redux state
       dispatch(setPacksData([newPackData]));
 
-      // Open the new pack in the viewer
       dispatch(
         selectDBTable({
           packPath: packPath,
@@ -451,7 +457,6 @@ const ModsViewer = memo(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "f") {
         document.getElementById("dbTableFilter")?.focus();
-        // e.stopPropagation();
         e.stopImmediatePropagation();
       }
     };
