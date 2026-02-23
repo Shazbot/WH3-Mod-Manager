@@ -27,10 +27,15 @@ const PackTablesTreeView = React.memo(
   React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
     const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
     const currentGame = useAppSelector((state) => state.app.currentGame);
+    const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
+    const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
 
     const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
     const [isNewFlowDialogOpen, setIsNewFlowDialogOpen] = React.useState(false);
     const [newFlowName, setNewFlowName] = React.useState("");
+    const pendingOpenTimeoutRef = React.useRef<number | null>(null);
+    const [selectedNodeIds, setSelectedNodeIds] = React.useState<Array<string | number>>([]);
+    const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
 
     useImperativeHandle(ref, () => ({
       openNewFlowDialog: () => {
@@ -41,8 +46,6 @@ const PackTablesTreeView = React.memo(
 
     const packPath =
       currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
-    const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
-    const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
     const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
     const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
 
@@ -91,6 +94,20 @@ const PackTablesTreeView = React.memo(
         idToNode.set(node.id, node);
       }
       return idToNode;
+    }, [data]);
+
+    // Clean up stale selectedNodeIds when tree data changes
+    useEffect(() => {
+      const validIds = new Set(data.map((node) => node.id));
+      setSelectedNodeIds((prevSelectedIds) =>
+        (() => {
+          const nextSelectedIds = prevSelectedIds.filter((selectedId) => validIds.has(selectedId));
+          const isSameSelection =
+            nextSelectedIds.length === prevSelectedIds.length &&
+            nextSelectedIds.every((selectedId, index) => selectedId === prevSelectedIds[index]);
+          return isSameSelection ? prevSelectedIds : nextSelectedIds;
+        })(),
+      );
     }, [data]);
 
     const normalizedFilter = props.tableFilter.toLowerCase().trim();
@@ -142,51 +159,117 @@ const PackTablesTreeView = React.memo(
       return hiddenNodes;
     }, [data, nodeById, normalizedFilter]);
 
+    const getDBSelectionForElement = (element: INode) => {
+      if (!element.parent || (element.children && element.children.length > 0)) return;
+      const parentLeaf = nodeById.get(element.parent);
+      if (!parentLeaf) return;
+      return {
+        packPath: packData!.packPath,
+        dbName: parentLeaf.name,
+        dbSubname: element.name,
+      } as DBTableSelection;
+    };
+
+    const getDescendantLeafIds = (element: INode): Array<string | number> => {
+      if (!element.children || element.children.length === 0) {
+        return element.id === 0 ? [] : [element.id as string | number];
+      }
+
+      return element.children.reduce<Array<string | number>>((acc, childId) => {
+        const childNode = nodeById.get(childId);
+        if (!childNode) return acc;
+        return [...acc, ...getDescendantLeafIds(childNode)];
+      }, []);
+    };
+
+    const addIdsToSelection = (idsToAdd: Array<string | number>) => {
+      if (idsToAdd.length === 0) return;
+      setSelectedNodeIds((prevSelectedIds) => {
+        const nextSelectedIds = new Set(prevSelectedIds);
+        idsToAdd.forEach((id) => nextSelectedIds.add(id));
+        return [...nextSelectedIds];
+      });
+    };
+
+    const toggleIdsInSelection = (idsToToggle: Array<string | number>) => {
+      if (idsToToggle.length === 0) return;
+      setSelectedNodeIds((prevSelectedIds) => {
+        const nextSelectedIds = new Set(prevSelectedIds);
+        const allAlreadySelected = idsToToggle.every((id) => nextSelectedIds.has(id));
+        if (allAlreadySelected) {
+          idsToToggle.forEach((id) => nextSelectedIds.delete(id));
+        } else {
+          idsToToggle.forEach((id) => nextSelectedIds.add(id));
+        }
+        return [...nextSelectedIds];
+      });
+    };
+
     const onTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
+      if (lastLabelSelectionModeRef.current === "single") {
+        setSelectedNodeIds([selectionProps.element.id as string | number]);
+      } else if (lastLabelSelectionModeRef.current == null) {
+        setSelectedNodeIds([...selectionProps.treeState.selectedIds]);
+      }
+      lastLabelSelectionModeRef.current = null;
+
       if (!packData) return;
 
       if (selectionProps.element.name.startsWith("whmmflows\\")) {
-        props.onOpenFlowFile({ flowFile: selectionProps.element.name, packPath: packData.packPath });
+        if (pendingOpenTimeoutRef.current != null) {
+          window.clearTimeout(pendingOpenTimeoutRef.current);
+        }
+        pendingOpenTimeoutRef.current = window.setTimeout(() => {
+          pendingOpenTimeoutRef.current = null;
+          props.onOpenFlowFile({ flowFile: selectionProps.element.name, packPath: packData.packPath });
+        }, 180);
         return;
       }
 
       if (
-        !selectionProps.isSelected ||
-        selectionProps.element.parent == null ||
-        !selectionProps.element.children ||
-        selectionProps.element.children.length > 0
+        selectionProps.isSelected &&
+        selectionProps.element.parent &&
+        selectionProps.element.children &&
+        selectionProps.element.children.length < 1
       ) {
+        const dbSelection = getDBSelectionForElement(selectionProps.element);
+        if (dbSelection) {
+          if (pendingOpenTimeoutRef.current != null) {
+            window.clearTimeout(pendingOpenTimeoutRef.current);
+          }
+          pendingOpenTimeoutRef.current = window.setTimeout(() => {
+            pendingOpenTimeoutRef.current = null;
+            props.onOpenDBTable(dbSelection);
+          }, 180);
+        }
+      }
+    };
+
+    const handleOpenInNewTab = (element: INode) => {
+      if (!packData) return;
+      if (pendingOpenTimeoutRef.current != null) {
+        window.clearTimeout(pendingOpenTimeoutRef.current);
+        pendingOpenTimeoutRef.current = null;
+      }
+      if (element.name.startsWith("whmmflows\\")) {
+        props.onOpenFlowFile({ flowFile: element.name, packPath: packData.packPath }, { forceNewTab: true });
         return;
       }
 
-      const parentLeaf = nodeById.get(selectionProps.element.parent);
-      if (!parentLeaf) return;
-
-      const dbName = parentLeaf.name;
-      const dbSubname = selectionProps.element.name;
-      const nextSelection: DBTableSelection = {
-        packPath: packData.packPath,
-        dbName,
-        dbSubname,
-      };
-
-      const isSameSelection =
-        currentDBTableSelection?.packPath === nextSelection.packPath &&
-        currentDBTableSelection?.dbName === nextSelection.dbName &&
-        currentDBTableSelection?.dbSubname === nextSelection.dbSubname;
-
-      if (isSameSelection) return;
-
-      const tablePathPrefix = `db\\${dbName}\\${dbSubname}`;
-      const hasLoadedTable =
-        !!packData.packedFiles &&
-        Object.keys(packData.packedFiles).some((packedFilePath) => packedFilePath.startsWith(tablePathPrefix));
-
-      if (!hasLoadedTable) {
-        window.api?.getPackData(nextSelection.packPath, { dbName, dbSubname });
+      const dbSelection = getDBSelectionForElement(element);
+      if (dbSelection) {
+        props.onOpenDBTable(dbSelection, { forceNewTab: true });
       }
-      props.onOpenDBTable(nextSelection);
     };
+
+    // Cleanup pending timeout on unmount
+    useEffect(() => {
+      return () => {
+        if (pendingOpenTimeoutRef.current != null) {
+          window.clearTimeout(pendingOpenTimeoutRef.current);
+        }
+      };
+    }, []);
 
     const ArrowIcon = ({ isOpen, className }: { isOpen: boolean; className: string }) => {
       const baseClass = "arrow";
@@ -194,7 +277,7 @@ const PackTablesTreeView = React.memo(
         baseClass,
         { [`${baseClass}--closed`]: !isOpen },
         { [`${baseClass}--open`]: isOpen },
-        { "rotate-90": isOpen },
+        { [`rotate-90`]: isOpen },
         className,
         "w-4",
         "h-4",
@@ -216,6 +299,7 @@ const PackTablesTreeView = React.memo(
       setContextMenu({ x: e.clientX, y: e.clientY });
     };
 
+    // Close context menu when clicking outside
     useEffect(() => {
       const handleClick = () => setContextMenu(null);
       if (contextMenu) {
@@ -230,8 +314,6 @@ const PackTablesTreeView = React.memo(
     };
 
     const handleCreateNewFlow = async () => {
-      if (!packData) return;
-
       if (!newFlowName.trim()) {
         alert("Please enter a valid flow name");
         return;
@@ -251,8 +333,10 @@ const PackTablesTreeView = React.memo(
       const flowData = JSON.stringify(emptyFlow, null, 2);
 
       try {
-        const result = await window.api?.saveNodeFlow(newFlowName, flowData, packData.packPath);
-        if (!result?.success) {
+        const result = await window.api?.saveNodeFlow(newFlowName, flowData, packData!.packPath);
+        if (result?.success) {
+          console.log("Flow created successfully at:", result.filePath);
+        } else {
           console.error("Failed to create flow:", result?.error);
         }
       } catch (error) {
@@ -268,12 +352,64 @@ const PackTablesTreeView = React.memo(
     }
 
     return (
-      <div onContextMenu={handleContextMenu} className="relative">
+      <div onContextMenu={handleContextMenu} className="relative select-none">
         <TreeView
           data={data}
           aria-label="Controlled expanded node tree"
-          onSelect={(selectionProps) => onTreeSelect(selectionProps)}
-          nodeRenderer={({ element, isBranch, isExpanded, isDisabled, getNodeProps, level, handleExpand, handleSelect }) => {
+          multiSelect={true}
+          selectedIds={selectedNodeIds}
+          onSelect={(props) => onTreeSelect(props)}
+          nodeRenderer={({
+            element,
+            isBranch,
+            isExpanded,
+            isSelected,
+            isDisabled,
+            getNodeProps,
+            level,
+            handleExpand,
+            handleSelect,
+          }) => {
+            const handleLabelClick = (e: React.MouseEvent<HTMLSpanElement>) => {
+              if (e.shiftKey) {
+                lastLabelSelectionModeRef.current = "shift";
+                e.preventDefault();
+                e.stopPropagation();
+                if (pendingOpenTimeoutRef.current != null) {
+                  window.clearTimeout(pendingOpenTimeoutRef.current);
+                  pendingOpenTimeoutRef.current = null;
+                }
+
+                const idsToSelect = isBranch
+                  ? getDescendantLeafIds(element)
+                  : [element.id as string | number];
+                addIdsToSelection(idsToSelect);
+                lastLabelSelectionModeRef.current = null;
+                return;
+              }
+
+              if (e.ctrlKey || e.metaKey) {
+                lastLabelSelectionModeRef.current = "ctrl";
+                e.preventDefault();
+                e.stopPropagation();
+                if (pendingOpenTimeoutRef.current != null) {
+                  window.clearTimeout(pendingOpenTimeoutRef.current);
+                  pendingOpenTimeoutRef.current = null;
+                }
+
+                const idsToToggle = isBranch
+                  ? getDescendantLeafIds(element)
+                  : [element.id as string | number];
+                toggleIdsInSelection(idsToToggle);
+                lastLabelSelectionModeRef.current = null;
+                return;
+              }
+
+              lastLabelSelectionModeRef.current = "single";
+              setSelectedNodeIds([element.id as string | number]);
+              handleSelect(e);
+            };
+
             return (
               <div
                 {...getNodeProps({ onClick: handleExpand })}
@@ -282,12 +418,21 @@ const PackTablesTreeView = React.memo(
                   opacity: isDisabled ? 0.5 : 1,
                 }}
                 className={
-                  "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible hover:underline cursor-pointer " +
+                  "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
+                  (isSelected ? "bg-gray-700/60 " : "") +
+                  "hover:underline " +
                   (isTreeNodeFiltered(element) ? "hidden" : "")
                 }
               >
                 {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
-                <span onClick={(e) => handleSelect(e)} className="relative">
+                <span
+                  onClick={handleLabelClick}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenInNewTab(element);
+                  }}
+                  className="relative select-none"
+                >
                   {element.name}
                 </span>
               </div>
@@ -295,6 +440,7 @@ const PackTablesTreeView = React.memo(
           }}
         />
 
+        {/* Context Menu */}
         {contextMenu && (
           <div
             className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[150px]"
@@ -309,6 +455,7 @@ const PackTablesTreeView = React.memo(
           </div>
         )}
 
+        {/* New Flow Dialog */}
         {isNewFlowDialogOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
