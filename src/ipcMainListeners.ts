@@ -8,6 +8,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron"
 import windowStateKeeper from "electron-window-state";
 import * as fs from "fs";
 import * as fsExtra from "fs-extra";
+import * as net from "node:net";
 import debounce from "just-debounce-it";
 import fetch from "node-fetch";
 import * as nodePath from "path";
@@ -112,6 +113,210 @@ export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
   skillsWindow: undefined as BrowserWindow | undefined,
+};
+
+type VisualsSession = {
+  sessionId: string;
+  enabledModPaths: string[];
+  dbPriorityPackPaths: string[];
+  fileSearchPackPaths: string[];
+  createdAt: number;
+};
+
+const visualsSessions = new Map<string, VisualsSession>();
+
+const normalizePackFilePath = (value: string) =>
+  value.replace(/\//g, "\\").replace(/\\+/g, "\\").replace(/^\\+/, "").trim();
+
+const normalizePackFilePathKey = (value: string) => normalizePackFilePath(value).toLowerCase();
+
+const toVariantMeshDefinitionPath = (value: string) => {
+  let path = normalizePackFilePath(value);
+  if (!path) return path;
+
+  if (!path.toLowerCase().endsWith(".variantmeshdefinition")) {
+    path = `${path}.variantmeshdefinition`;
+  }
+
+  const lower = path.toLowerCase();
+  if (!lower.startsWith("variantmeshes\\")) {
+    path = `variantmeshes\\variantmeshdefinitions\\${path}`;
+  } else if (!lower.startsWith("variantmeshes\\variantmeshdefinitions\\")) {
+    const baseName = nodePath.basename(path);
+    path = `variantmeshes\\variantmeshdefinitions\\${baseName}`;
+  }
+
+  return normalizePackFilePath(path);
+};
+
+const decodePackedFileText = (packedFile: PackedFile) => {
+  if (packedFile.text != null) return packedFile.text;
+  if (!packedFile.buffer) return undefined;
+
+  const buffer = packedFile.buffer;
+  if (buffer.length >= 2 && buffer.subarray(0, 2).toString("hex") === "fffe") {
+    return buffer.subarray(2).toString("utf16le");
+  }
+
+  if (buffer.length >= 3 && buffer.subarray(0, 3).toString("hex") === "efbbbf") {
+    return buffer.subarray(3).toString("utf8");
+  }
+
+  return buffer.toString("utf8");
+};
+
+const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
+  const normalizedTarget = normalizePackFilePathKey(fileName);
+
+  const exactIndex = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) => collator.compare(a.name, b));
+  if (exactIndex >= 0) return pack.packedFiles[exactIndex];
+
+  return pack.packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget);
+};
+
+const getOrLoadPackFromAppData = async (packPath: string) => {
+  let pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
+  if (pack) return pack;
+
+  const newPack = await readPack(packPath, { skipParsingTables: true });
+  appendPacksData(newPack);
+  return appData.packsData.find((existingPack) => existingPack.path === packPath);
+};
+
+const resolveVisualsFileInSession = async (
+  session: VisualsSession,
+  fileName: string,
+  options?: { variantMeshDefinitionFallback?: boolean; preferredPackPath?: string },
+) => {
+  let requestedPath = normalizePackFilePath(fileName);
+  if (!requestedPath) return undefined;
+
+  if (options?.variantMeshDefinitionFallback) {
+    const lowerRequested = requestedPath.toLowerCase();
+    const looksExplicitPath = lowerRequested.includes("\\") || lowerRequested.startsWith("variantmeshes");
+    if (
+      lowerRequested.endsWith(".variantmeshdefinition") ||
+      !looksExplicitPath ||
+      !(/\.[a-z0-9_]+$/i.test(lowerRequested) && !lowerRequested.endsWith(".variantmeshdefinition"))
+    ) {
+      requestedPath = toVariantMeshDefinitionPath(requestedPath);
+    }
+  }
+
+  if (!requestedPath) return undefined;
+
+  const preferredPackPath = options?.preferredPackPath;
+  const searchPackPaths = [...session.fileSearchPackPaths].toReversed();
+  const prioritizedPackPaths =
+    preferredPackPath && searchPackPaths.includes(preferredPackPath)
+      ? [preferredPackPath, ...searchPackPaths.filter((packPath) => packPath !== preferredPackPath)]
+      : searchPackPaths;
+  for (const packPath of prioritizedPackPaths) {
+    const pack = await getOrLoadPackFromAppData(packPath);
+    if (!pack) continue;
+
+    const matchedFile = findPackedFileCaseInsensitive(pack, requestedPath);
+    if (!matchedFile) continue;
+
+    return {
+      requestedPath,
+      pack,
+      packPath,
+      fileName: matchedFile.name,
+    };
+  }
+
+  return {
+    requestedPath,
+  };
+};
+
+const sendAssetEditorOpenRequest = async (args: {
+  packPathOnDisk: string;
+  path: string;
+  openInExistingKitbashTab: boolean;
+}) => {
+  const pipePath = "\\\\.\\pipe\\TheAssetEditor.Ipc";
+
+  return new Promise<{ ok?: boolean; error?: string; normalizedPath?: string }>((resolve, reject) => {
+    const socket = net.connect(pipePath);
+    socket.setEncoding("utf8");
+
+    let buffer = "";
+    let settled = false;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      try {
+        fn();
+      } finally {
+        socket.removeAllListeners();
+        socket.end();
+        socket.destroy();
+      }
+    };
+
+    const timeout = setTimeout(() => {
+      finish(() => reject(new Error(`Timed out connecting to AssetEditor IPC pipe ${pipePath}`)));
+    }, 3500);
+
+    const clear = () => clearTimeout(timeout);
+
+    socket.on("connect", () => {
+      const request = {
+        action: "open",
+        path: args.path,
+        bringToFront: true,
+        openInExistingKitbashTab: args.openInExistingKitbashTab,
+        packPathOnDisk: args.packPathOnDisk,
+      };
+
+      socket.write(`${JSON.stringify(request)}\n`);
+    });
+
+    socket.on("data", (chunk: string) => {
+      if (settled) return;
+      buffer += chunk;
+      const newlineIndex = buffer.indexOf("\n");
+      if (newlineIndex === -1) return;
+
+      const line = buffer.slice(0, newlineIndex).trim();
+      finish(() => {
+        clear();
+        if (!line) {
+          reject(new Error("AssetEditor IPC returned an empty response"));
+          return;
+        }
+        try {
+          resolve(JSON.parse(line) as { ok?: boolean; error?: string; normalizedPath?: string });
+        } catch (error) {
+          reject(
+            new Error(
+              `Failed to parse AssetEditor IPC response: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            ),
+          );
+        }
+      });
+    });
+
+    socket.on("error", (error) => {
+      finish(() => {
+        clear();
+        reject(new Error(`Failed to connect to ${pipePath}: ${error.message}`));
+      });
+    });
+
+    socket.on("close", () => {
+      if (settled) return;
+      finish(() => {
+        clear();
+        reject(new Error("AssetEditor IPC connection closed before a response was received"));
+      });
+    });
+  });
 };
 
 const appendCollisions = async (newPack: Pack) => {
@@ -2198,6 +2403,356 @@ export const registerIpcMainListeners = (
         return {
           success: false,
           error: error instanceof Error ? error.message : "Failed to save pack",
+        };
+      }
+    },
+  );
+
+  ipcMain.handle("getVisualsUnitsData", async (event, enabledMods: Mod[]) => {
+    try {
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
+      if (!dataFolder) {
+        return { success: false, error: "Data folder is not configured for the current game" };
+      }
+
+      const enabledModPaths = enabledMods.map((mod) => mod.path);
+      const tablesToRead = Array.from(
+        new Set(
+          ["land_units_tables", "unit_variants_tables", "variants_tables"]
+            .flatMap((tableName) => resolveTable(tableName))
+            .map((tableName) => `db\\${tableName}\\`),
+        ),
+      );
+
+      const sortedEnabledMods = sortByNameAndLoadOrder(enabledMods);
+      const dbPriorityMods = sortedEnabledMods.toReversed();
+
+      const dbPackName = gameToPackWithDBTablesName[appData.currentGame] || "db.pack";
+      const dbPackPath = nodePath.join(dataFolder, dbPackName);
+      const dataPackPath = nodePath.join(dataFolder, "data.pack");
+
+      await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true);
+      await readModsByPath(enabledModPaths, { skipParsingTables: false, readLocs: true, tablesToRead }, true);
+
+      const localPackNames = [] as string[];
+      const currentLanguage = appData.currentLanguage || "en";
+      const preferredLocPack = `local_${currentLanguage}.pack`;
+      if (appData.allVanillaPackNames.includes(preferredLocPack)) localPackNames.push(preferredLocPack);
+      if (!localPackNames.includes("local_en.pack") && appData.allVanillaPackNames.includes("local_en.pack")) {
+        localPackNames.push("local_en.pack");
+      }
+      const localPackPaths = localPackNames.map((packName) => nodePath.join(dataFolder, packName));
+      if (localPackPaths.length > 0) {
+        await readModsByPath(localPackPaths, { skipParsingTables: true, readLocs: true }, true);
+      }
+
+      if (fsExtra.existsSync(dataPackPath)) {
+        await readModsByPath([dataPackPath], { skipParsingTables: true }, true);
+      }
+
+      const packsForTables = appData.packsData.filter(
+        (pack) => pack.path === dbPackPath || enabledModPaths.includes(pack.path),
+      );
+      const unsortedPacksTableData = getPacksTableData(packsForTables, tablesToRead, false);
+      if (!unsortedPacksTableData) {
+        return { success: false, error: "Failed to build table data for visuals tab" };
+      }
+
+      const orderedPacksTableData = [] as PackViewData[];
+      const dbPackTableData = unsortedPacksTableData.find((pack) => pack.packPath === dbPackPath);
+      if (dbPackTableData) orderedPacksTableData.push(dbPackTableData);
+      for (const mod of dbPriorityMods) {
+        const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
+        if (ptd) orderedPacksTableData.push(ptd);
+      }
+
+      const variantsByName = new Map<string, string>();
+      const unitToVariantRows = new Map<string, { faction: string; variantName: string }[]>();
+      const landUnitKeys = new Set<string>();
+
+      getTableRowData(orderedPacksTableData, "variants_tables", (schemaFieldRow) => {
+        const variantName = schemaFieldRow.find((field) => field.name == "variant_name")?.resolvedKeyValue;
+        const variantFilename = schemaFieldRow.find((field) => field.name == "variant_filename")?.resolvedKeyValue;
+        if (variantName) {
+          variantsByName.set(variantName, variantFilename || "");
+        }
+      });
+
+      getTableRowData(orderedPacksTableData, "unit_variants_tables", (schemaFieldRow) => {
+        const unitKey = schemaFieldRow.find((field) => field.name == "unit")?.resolvedKeyValue;
+        const variantName = schemaFieldRow.find((field) => field.name == "variant")?.resolvedKeyValue;
+        const faction = schemaFieldRow.find((field) => field.name == "faction")?.resolvedKeyValue || "";
+        if (!unitKey) return;
+
+        const rows = unitToVariantRows.get(unitKey) || [];
+        const existingIndex = rows.findIndex((row) => row.faction === faction);
+        const nextRow = { faction, variantName: variantName || "" };
+        if (existingIndex >= 0) rows.splice(existingIndex, 1, nextRow);
+        else rows.push(nextRow);
+        unitToVariantRows.set(unitKey, rows);
+      });
+
+      getTableRowData(orderedPacksTableData, "land_units_tables", (schemaFieldRow) => {
+        const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
+        if (unitKey) landUnitKeys.add(unitKey);
+      });
+
+      const locPacksInPriority = [
+        ...localPackPaths,
+        ...dbPriorityMods.map((mod) => mod.path),
+      ]
+        .map((packPath) => appData.packsData.find((pack) => pack.path === packPath))
+        .filter((pack): pack is Pack => !!pack);
+
+      const localizedNames = new Map<string, string>();
+      for (const pack of locPacksInPriority) {
+        const trie = getLocsTrie(pack);
+        if (!trie) continue;
+        for (const [key, value] of Object.entries(trie.getEntries())) {
+          localizedNames.set(key, value);
+        }
+      }
+
+      const visualsUnits = [] as {
+        unitKey: string;
+        faction: string;
+        localizedName: string;
+        variantName?: string;
+        variantMeshPath?: string;
+      }[];
+
+      for (const unitKey of landUnitKeys) {
+        const rows = unitToVariantRows.get(unitKey);
+        const localizedName = localizedNames.get(`land_units_onscreen_name_${unitKey}`) || unitKey;
+
+        if (!rows || rows.length === 0) {
+          visualsUnits.push({ unitKey, faction: "", localizedName });
+          continue;
+        }
+
+        for (const row of rows) {
+          const variantFilename = row.variantName ? variantsByName.get(row.variantName) : undefined;
+          const variantMeshPath =
+            variantFilename && variantFilename.trim() !== ""
+              ? toVariantMeshDefinitionPath(variantFilename)
+              : undefined;
+          visualsUnits.push({
+            unitKey,
+            faction: row.faction,
+            localizedName,
+            variantName: row.variantName || undefined,
+            variantMeshPath,
+          });
+        }
+      }
+
+      visualsUnits.sort((first, second) => {
+        const nameDiff = collator.compare(first.localizedName, second.localizedName);
+        if (nameDiff !== 0) return nameDiff;
+        const keyDiff = collator.compare(first.unitKey, second.unitKey);
+        if (keyDiff !== 0) return keyDiff;
+        return collator.compare(first.faction || "", second.faction || "");
+      });
+
+      const vanillaVariantsPackPaths = appData.allVanillaPackNames
+        .filter((packName) => packName.toLowerCase().startsWith("variants"))
+        .map((packName) => nodePath.join(dataFolder, packName))
+        .filter((packPath) => fsExtra.existsSync(packPath))
+        .toSorted((first, second) => collator.compare(nodePath.basename(first), nodePath.basename(second)));
+
+      // Keep this in low->high priority order so later packs override earlier ones in search aggregation.
+      const fileSearchPackPaths = [
+        ...vanillaVariantsPackPaths,
+        ...(fsExtra.existsSync(dataPackPath) ? [dataPackPath] : []),
+        ...sortedEnabledMods.map((mod) => mod.path),
+      ];
+      const sessionId = `visuals_${hash({
+        game: appData.currentGame,
+        language: appData.currentLanguage || "en",
+        enabledModPaths: [...enabledModPaths].sort(),
+      })}`;
+
+      visualsSessions.set(sessionId, {
+        sessionId,
+        enabledModPaths,
+        dbPriorityPackPaths: [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)],
+        fileSearchPackPaths,
+        createdAt: Date.now(),
+      });
+
+      return {
+        success: true,
+        sessionId,
+        units: visualsUnits,
+      };
+    } catch (error) {
+      console.error("Error building visuals units data:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to build visuals units data",
+      };
+    }
+  });
+
+  ipcMain.handle("readVariantMeshDefinition", async (event, sessionId: string, fileName: string) => {
+    try {
+      const session = visualsSessions.get(sessionId);
+      if (!session) return { success: false, error: "Visuals session expired or missing" };
+
+      const resolved = await resolveVisualsFileInSession(session, fileName, { variantMeshDefinitionFallback: true });
+      if (!resolved?.requestedPath) return { success: false, error: "Missing variantmeshdefinition path" };
+      if (!resolved.pack || !resolved.fileName) {
+        return {
+          success: false,
+          error: `File not found in enabled mods or vanilla visuals packs (variants*.pack/data.pack): ${resolved.requestedPath}`,
+        };
+      }
+
+      await readFromExistingPack(resolved.pack, { filesToRead: [resolved.fileName], skipParsingTables: true });
+      const refreshedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
+      if (refreshedFile) {
+        const text = decodePackedFileText(refreshedFile);
+        if (text == null) {
+          return { success: false, error: `Unable to decode ${resolved.fileName}` };
+        }
+
+        return {
+          success: true,
+          text,
+          resolved: {
+            packPath: resolved.packPath,
+            fileName: resolved.fileName,
+          },
+        };
+      }
+      return { success: false, error: `File was found but could not be reloaded: ${resolved.fileName}` };
+    } catch (error) {
+      console.error("Error reading variantmeshdefinition:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to read variantmeshdefinition",
+      };
+    }
+  });
+
+  ipcMain.handle(
+    "searchVisualsFiles",
+    async (event, sessionId: string, query: string, offset = 0, limit = 200) => {
+      try {
+        const session = visualsSessions.get(sessionId);
+        if (!session) return { success: false, error: "Visuals session expired or missing" };
+
+        const normalizedQuery = normalizePackFilePathKey(query || "");
+        const uniqueResults = new Map<
+          string,
+          { path: string; ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" }
+        >();
+
+        for (const packPath of session.fileSearchPackPaths) {
+          let pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
+          if (!pack) {
+            const newPack = await readPack(packPath, { skipParsingTables: true });
+            appendPacksData(newPack);
+            pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
+          }
+          if (!pack) continue;
+
+          for (const packedFile of pack.packedFiles) {
+            const normalizedName = normalizePackFilePathKey(packedFile.name);
+            let ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | undefined;
+            if (normalizedName.endsWith(".variantmeshdefinition")) ext = "variantmeshdefinition";
+            else if (normalizedName.endsWith(".wsmodel")) ext = "wsmodel";
+            else if (normalizedName.endsWith(".rigid_model_v2")) ext = "rigid_model_v2";
+            if (!ext) continue;
+            if (normalizedQuery && !normalizedName.includes(normalizedQuery)) continue;
+
+            uniqueResults.set(normalizedName, { path: packedFile.name, ext });
+          }
+        }
+
+        const allResults = Array.from(uniqueResults.values()).sort((first, second) =>
+          collator.compare(first.path, second.path),
+        );
+        const safeOffset = Math.max(0, offset || 0);
+        const safeLimit = Math.max(1, Math.min(1000, limit || 200));
+
+        return {
+          success: true,
+          total: allResults.length,
+          results: allResults.slice(safeOffset, safeOffset + safeLimit),
+        };
+      } catch (error) {
+        console.error("Error searching visuals files:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to search visuals files",
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "openInAssetEditor",
+    async (
+      event,
+      sessionId: string,
+      packInternalPath: string,
+      mode: "new" | "existing",
+      preferredPackPath?: string,
+    ) => {
+      try {
+        const session = visualsSessions.get(sessionId);
+        if (!session) return { success: false, error: "Visuals session expired or missing" };
+        if (mode !== "new" && mode !== "existing") {
+          return { success: false, error: `Invalid AssetEditor open mode: ${String(mode)}` };
+        }
+        if (process.platform !== "win32") {
+          return { success: false, error: "AssetEditor IPC is supported only on Windows." };
+        }
+
+        const resolved = await resolveVisualsFileInSession(session, packInternalPath, {
+          variantMeshDefinitionFallback: true,
+          preferredPackPath,
+        });
+        if (!resolved?.requestedPath) return { success: false, error: "Missing file path" };
+        if (!resolved.packPath || !resolved.fileName) {
+          return {
+            success: false,
+            error: `File not found in enabled mods or vanilla visuals packs (variants*.pack/data.pack): ${resolved.requestedPath}`,
+          };
+        }
+
+        const response = await sendAssetEditorOpenRequest({
+          path: resolved.fileName,
+          packPathOnDisk: resolved.packPath,
+          openInExistingKitbashTab: mode === "existing",
+        });
+
+        if (!response.ok) {
+          return {
+            success: false,
+            error: response.error || "AssetEditor rejected the open request",
+            resolved: {
+              packPath: resolved.packPath,
+              fileName: resolved.fileName,
+            },
+            response,
+          };
+        }
+
+        return {
+          success: true,
+          resolved: {
+            packPath: resolved.packPath,
+            fileName: resolved.fileName,
+          },
+          response,
+        };
+      } catch (error) {
+        console.error("Error sending AssetEditor open request:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to send AssetEditor open request",
         };
       }
     },

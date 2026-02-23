@@ -37,6 +37,7 @@ import deepClone from "clone-deep";
 import { gameToIntroMovies, gameToPackHeader, supportsCompression } from "./supportedGames";
 import { getSavesFolderPath } from "./gameSaves";
 import * as fs from "fs";
+import * as zlib from "zlib";
 import { collator } from "./utility/packFileSorting";
 import bs from "binary-search";
 import { decompress } from "@mongodb-js/zstd";
@@ -64,6 +65,107 @@ const string_schema = `{
 const object_schema = JSON.parse(string_schema);
 const latest_version = Object.keys(object_schema.units_custom_battle_permissions_tables).sort()[0];
 const ver_schema = object_schema.units_custom_battle_permissions_tables[latest_version];
+
+const zstdFrameMagic = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+const lz4FrameMagic = Buffer.from([0x04, 0x22, 0x4d, 0x18]);
+
+let lz4DecompressFrame:
+  | ((data: string | Buffer) => Promise<Buffer>)
+  | undefined;
+try {
+  lz4DecompressFrame = (require("lz4-napi") as {
+    decompressFrame?: (data: string | Buffer) => Promise<Buffer>;
+  }).decompressFrame;
+} catch (error) {
+  console.log("lz4-napi unavailable in this environment, LZ4 pack payloads will fail to decompress");
+}
+
+const tryZstdDecompress = async (payload: Buffer): Promise<Buffer> => Buffer.from(await decompress(payload));
+const tryLz4FrameDecompress = async (payload: Buffer): Promise<Buffer> => {
+  if (!lz4DecompressFrame) throw new Error("lz4-napi is not available");
+  return Buffer.from(await lz4DecompressFrame(payload));
+};
+
+const tryZlibDecompress = (payload: Buffer): Buffer => {
+  try {
+    return Buffer.from(zlib.inflateRawSync(payload));
+  } catch {
+    return Buffer.from(zlib.inflateSync(payload));
+  }
+};
+
+const decompressPackedPayload = async (buffer: Buffer, context?: string): Promise<Buffer> => {
+  const offsets = [] as number[];
+  const addOffset = (offset: number) => {
+    if (offset < 0 || offset >= buffer.length) return;
+    if (!offsets.includes(offset)) offsets.push(offset);
+  };
+
+  addOffset(4);
+  addOffset(0);
+  for (let i = 0; i <= Math.min(32, buffer.length - 4); i++) {
+    if (buffer.subarray(i, i + 4).equals(zstdFrameMagic)) addOffset(i);
+    if (buffer.subarray(i, i + 4).equals(lz4FrameMagic)) addOffset(i);
+  }
+  addOffset(8);
+  addOffset(12);
+  addOffset(16);
+
+  let lastError: unknown;
+
+  for (const offset of offsets) {
+    const payload = buffer.subarray(offset);
+    if (payload.length < 4) continue;
+
+    if (!payload.subarray(0, 4).equals(zstdFrameMagic)) continue;
+    try {
+      return await tryZstdDecompress(payload);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  for (const offset of offsets) {
+    const payload = buffer.subarray(offset);
+    if (payload.length < 4) continue;
+
+    if (!payload.subarray(0, 4).equals(lz4FrameMagic)) continue;
+    try {
+      return await tryLz4FrameDecompress(payload);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  for (const offset of offsets) {
+    const payload = buffer.subarray(offset);
+    if (payload.length < 4) continue;
+
+    try {
+      return await tryZstdDecompress(payload);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  for (const offset of offsets) {
+    const payload = buffer.subarray(offset);
+    if (payload.length < 2) continue;
+
+    try {
+      return tryZlibDecompress(payload);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const contextSuffix = context ? ` (${context})` : "";
+  throw new Error(
+    `Failed to decompress packed payload${contextSuffix}: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+};
 
 function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE): number {
   switch (type) {
@@ -2607,7 +2709,7 @@ export const readFromExistingPack = async (
           let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
           if (packedFileToRead.is_compressed) {
-            buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+            buffer = Buffer.concat([Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name))]);
           }
           packedFileToRead.buffer = buffer;
         }
@@ -2711,7 +2813,7 @@ const readDBPackedFiles = async (
     if (pack_file.is_compressed) {
       // console.log("dbbuffer before: currentPos", currentPos, "len", pack_file.file_size);
       // fs.writeFileSync("dbbuffer_raw_" + pack_file.name.replaceAll("\\", "_"), packBuffer);
-      packBuffer = Buffer.from(await decompress(packBuffer.subarray(4)));
+      packBuffer = Buffer.from(await decompressPackedPayload(packBuffer, pack_file.name));
       // fs.writeFileSync("dbbuffer_" + pack_file.name.replaceAll("\\", "_"), packBuffer);
     }
 
@@ -3171,7 +3273,7 @@ export const readPack = async (
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
 
         if (scriptFile.is_compressed) {
-          buffer = Buffer.from(await decompress(buffer.subarray(4)));
+          buffer = Buffer.from(await decompressPackedPayload(buffer, scriptFile.name));
         }
         scriptFile.text = buffer.toString("utf8");
       }
@@ -3181,7 +3283,7 @@ export const readPack = async (
         fs.readSync(fileId, buffer, 0, buffer.length, scriptFile.start_pos);
 
         if (scriptFile.is_compressed) {
-          buffer = Buffer.from(await decompress(buffer.subarray(4)));
+          buffer = Buffer.from(await decompressPackedPayload(buffer, scriptFile.name));
         }
         if (buffer.subarray(0, 2).toString("hex") == "fffe") {
           scriptFile.text = buffer.subarray(2).toString("utf16le");
@@ -3202,7 +3304,7 @@ export const readPack = async (
         fs.readSync(fileId, buffer, 0, buffer.length, locPackFile.start_pos);
 
         if (locPackFile.is_compressed) {
-          buffer = Buffer.concat([Buffer.from(await decompress(buffer.subarray(4)))]);
+          buffer = Buffer.concat([Buffer.from(await decompressPackedPayload(buffer, locPackFile.name))]);
           // console.log("it's compressed!");
           // console.log("buffer:", buffer);
           // fs.writeFileSync("locbuffer" + locPackFile.name.replaceAll("\\", "_"), buffer);
@@ -3223,7 +3325,7 @@ export const readPack = async (
           let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
           if (packedFileToRead.is_compressed) {
-            buffer = Buffer.from(await decompress(buffer.subarray(4)));
+            buffer = Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name));
           }
           packedFileToRead.buffer = buffer;
         }
@@ -3237,7 +3339,7 @@ export const readPack = async (
         let buffer = Buffer.allocUnsafe(flowFile.file_size);
         fs.readSync(fileId, buffer, 0, buffer.length, flowFile.start_pos);
         if (flowFile.is_compressed) {
-          buffer = Buffer.from(await decompress(buffer.subarray(4)));
+          buffer = Buffer.from(await decompressPackedPayload(buffer, flowFile.name));
         }
         flowFile.buffer = buffer;
       }
