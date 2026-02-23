@@ -359,6 +359,58 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("savePackAsWithUnsavedFiles", packPath, newPackName, newPackDirectory),
 
+  getVisualsUnitsData: (
+    enabledMods: Mod[],
+  ): Promise<{
+    success: boolean;
+    sessionId?: string;
+    units?: {
+      unitKey: string;
+      faction: string;
+      localizedName: string;
+      variantName?: string;
+      variantMeshPath?: string;
+    }[];
+    error?: string;
+  }> => ipcRenderer.invoke("getVisualsUnitsData", enabledMods),
+
+  readVariantMeshDefinition: (
+    sessionId: string,
+    fileName: string,
+  ): Promise<{
+    success: boolean;
+    text?: string;
+    resolved?: { packPath: string; fileName: string };
+    error?: string;
+  }> => ipcRenderer.invoke("readVariantMeshDefinition", sessionId, fileName),
+
+  searchVisualsFiles: (
+    sessionId: string,
+    query: string,
+    offset?: number,
+    limit?: number,
+  ): Promise<{
+    success: boolean;
+    total?: number;
+    results?: {
+      path: string;
+      ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2";
+    }[];
+    error?: string;
+  }> => ipcRenderer.invoke("searchVisualsFiles", sessionId, query, offset, limit),
+
+  openInAssetEditor: (
+    sessionId: string,
+    packInternalPath: string,
+    mode: "new" | "existing",
+    preferredPackPath?: string,
+  ): Promise<{
+    success: boolean;
+    resolved?: { packPath: string; fileName: string };
+    response?: { ok?: boolean; error?: string; normalizedPath?: string };
+    error?: string;
+  }> => ipcRenderer.invoke("openInAssetEditor", sessionId, packInternalPath, mode, preferredPackPath),
+
   readFileFromPack: (
     packPath: string,
     fileName: string,

@@ -215,6 +215,7 @@
     "just-clone": "^6.1.1",
     "just-debounce-it": "^3.1.1",
     "luaparse": "^0.3.1",
+    "lz4-napi": "^2.9.0",
     "node-fetch": "^3.3.2",
     "object.groupby": "^1.0.3",
     "os-browserify": "^0.3.0",

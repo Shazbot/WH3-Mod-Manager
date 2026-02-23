@@ -4,21 +4,24 @@ import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
 import { FaProjectDiagram } from "react-icons/fa";
+import { BsPersonVcard } from "react-icons/bs";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
 import localizationContext from "../localizationContext";
 
 // const Tab = () => {}
 
-const tabIndexToTabType: MainWindowTab[] = ["mods", "enabledMods", "categories", "nodeEditor"];
-
 const LeftSidebar = memo(() => {
   const dispatch = useAppDispatch();
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const tabIndexToTabType: MainWindowTab[] = isFeaturesForModdersEnabled
+    ? ["mods", "enabledMods", "categories", "visuals", "nodeEditor"]
+    : ["mods", "enabledMods", "categories"];
 
   const onTabSelected = (index: number) => {
     const tabType = tabIndexToTabType[index];
+    if (!tabType) return;
     console.log("setting tab", tabType);
     dispatch(setCurrentTab(tabType));
   };
@@ -28,19 +31,9 @@ const LeftSidebar = memo(() => {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey) {
-        switch (e.key) {
-          case "1":
-            onTabSelected(0);
-            break;
-          case "2":
-            onTabSelected(1);
-            break;
-          case "3":
-            onTabSelected(2);
-            break;
-          case "4":
-            onTabSelected(3);
-            break;
+        const keyNum = parseInt(e.key, 10);
+        if (!Number.isNaN(keyNum)) {
+          onTabSelected(keyNum - 1);
         }
       }
     };
@@ -58,7 +51,10 @@ const LeftSidebar = memo(() => {
         id="left-sidebar"
         className="fixed top-8 z-[200] left-0 outline-transparent parent-unhide-child select-none"
         onSelect={(index) => onTabSelected(index)}
-        selectedIndex={tabIndexToTabType.findIndex((tabType) => tabType == currentTab)}
+        selectedIndex={Math.max(
+          0,
+          tabIndexToTabType.findIndex((tabType) => tabType == currentTab),
+        )}
       >
         <TabList>
           <Tab>
@@ -85,17 +81,25 @@ const LeftSidebar = memo(() => {
           {isFeaturesForModdersEnabled && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
-                <FaProjectDiagram size="1.5rem" />
-                <span className="ml-2 mr-2 hidden-child">Node Editor</span>
+                <BsPersonVcard size="1.25rem" />
+                <span className="ml-2 mr-2 hidden-child">Visuals</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+4</span>
               </div>
             </Tab>
           )}
+          {isFeaturesForModdersEnabled && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <FaProjectDiagram size="1.5rem" />
+                <span className="ml-2 mr-2 hidden-child">Node Editor</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+5</span>
+              </div>
+            </Tab>
+          )}
         </TabList>
-        <TabPanel></TabPanel>
-        <TabPanel></TabPanel>
-        <TabPanel></TabPanel>
-        {isFeaturesForModdersEnabled && <TabPanel></TabPanel>}
+        {tabIndexToTabType.map((tabType) => (
+          <TabPanel key={tabType}></TabPanel>
+        ))}
       </Tabs>
     </>
   );
