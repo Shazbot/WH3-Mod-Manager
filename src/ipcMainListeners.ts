@@ -5686,6 +5686,54 @@ export const registerIpcMainListeners = (
     }
   });
 
+  ipcMain.handle(
+    "writeTextFilesToDirectory",
+    async (
+      event,
+      baseDirectory: string,
+      files: { relativePath: string; content: string }[],
+    ): Promise<{ success: boolean; writtenFiles?: string[]; error?: string }> => {
+      try {
+        if (!baseDirectory) {
+          return { success: false, error: "No output directory selected" };
+        }
+        if (!Array.isArray(files) || files.length === 0) {
+          return { success: false, error: "No files to write" };
+        }
+
+        const resolvedBaseDirectory = nodePath.resolve(baseDirectory);
+        const writtenFiles: string[] = [];
+
+        for (const file of files) {
+          const normalizedRelativePath = file.relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+          if (normalizedRelativePath.includes("..")) {
+            return { success: false, error: `Invalid relative path: ${file.relativePath}` };
+          }
+
+          const outputPath = nodePath.resolve(resolvedBaseDirectory, normalizedRelativePath);
+          const baseWithSep = resolvedBaseDirectory.endsWith(nodePath.sep)
+            ? resolvedBaseDirectory
+            : `${resolvedBaseDirectory}${nodePath.sep}`;
+          if (outputPath !== resolvedBaseDirectory && !outputPath.startsWith(baseWithSep)) {
+            return { success: false, error: `Invalid output path: ${file.relativePath}` };
+          }
+
+          await fsExtra.ensureDir(nodePath.dirname(outputPath));
+          await fs.promises.writeFile(outputPath, file.content, "utf8");
+          writtenFiles.push(outputPath);
+        }
+
+        return { success: true, writtenFiles };
+      } catch (error) {
+        console.error("Error writing text files to directory:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to write files",
+        };
+      }
+    },
+  );
+
   ipcMain.handle("createNewPack", async (event, packName: string, packDirectory: string) => {
     try {
       console.log("createNewPack:", packName, packDirectory);

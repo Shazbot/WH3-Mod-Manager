@@ -431,6 +431,15 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("getFlowFilesFromPack", packPath),
 
+  writeTextFilesToDirectory: (
+    baseDirectory: string,
+    files: { relativePath: string; content: string }[],
+  ): Promise<{
+    success: boolean;
+    writtenFiles?: string[];
+    error?: string;
+  }> => ipcRenderer.invoke("writeTextFilesToDirectory", baseDirectory, files),
+
   selectDirectory: (): Promise<string | undefined> => ipcRenderer.invoke("selectDirectory"),
 
   createNewPack: (
