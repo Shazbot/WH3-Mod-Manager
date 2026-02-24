@@ -370,6 +370,8 @@ const api = {
       localizedName: string;
       variantName?: string;
       variantMeshPath?: string;
+      originPackPath: string;
+      originLabel: string;
     }[];
     error?: string;
   }> => ipcRenderer.invoke("getVisualsUnitsData", enabledMods),

@@ -2416,6 +2416,15 @@ export const registerIpcMainListeners = (
       }
 
       const enabledModPaths = enabledMods.map((mod) => mod.path);
+      const modPathToLabel = new Map<string, string>();
+      for (const mod of enabledMods) {
+        const trimmedHumanName = mod.humanName?.trim();
+        if (trimmedHumanName) modPathToLabel.set(mod.path, trimmedHumanName);
+        else {
+          const baseName = nodePath.basename(mod.path);
+          modPathToLabel.set(mod.path, baseName.toLowerCase().endsWith(".pack") ? baseName.slice(0, -5) : baseName);
+        }
+      }
       const tablesToRead = Array.from(
         new Set(
           ["land_units_tables", "unit_variants_tables", "variants_tables"]
@@ -2466,9 +2475,37 @@ export const registerIpcMainListeners = (
         if (ptd) orderedPacksTableData.push(ptd);
       }
 
+      const getTableRowDataWithPackPath = (
+        packsTableData: PackViewData[],
+        tableName: string,
+        rowDataExtractor: (packPath: string, schemaFieldRow: AmendedSchemaField[]) => void,
+      ) => {
+        packsTableData.forEach((pTD) => {
+          const tableFiles = Object.keys(pTD.packedFiles).filter((pFName) => pFName.startsWith(`db\\${tableName}\\`));
+          for (const tableFile of tableFiles) {
+            const packedFile = pTD.packedFiles[tableFile];
+            const dbVersion = getDBVersion(packedFile);
+            if (!dbVersion) continue;
+            const schemaFields = packedFile.schemaFields as AmendedSchemaField[];
+            const chunkedShemaFields = chunkSchemaIntoRows(schemaFields, dbVersion) as AmendedSchemaField[][];
+            for (const schemaFieldRow of chunkedShemaFields) {
+              rowDataExtractor(pTD.packPath, schemaFieldRow);
+            }
+          }
+        });
+      };
+
       const variantsByName = new Map<string, string>();
       const unitToVariantRows = new Map<string, { faction: string; variantName: string }[]>();
       const landUnitKeys = new Set<string>();
+      const unitKeyToOriginPackPath = new Map<string, string>();
+
+      const packsTableDataForOrigin = [] as PackViewData[];
+      for (const mod of dbPriorityMods) {
+        const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
+        if (ptd) packsTableDataForOrigin.push(ptd);
+      }
+      if (dbPackTableData) packsTableDataForOrigin.push(dbPackTableData);
 
       getTableRowData(orderedPacksTableData, "variants_tables", (schemaFieldRow) => {
         const variantName = schemaFieldRow.find((field) => field.name == "variant_name")?.resolvedKeyValue;
@@ -2497,6 +2534,13 @@ export const registerIpcMainListeners = (
         if (unitKey) landUnitKeys.add(unitKey);
       });
 
+      getTableRowDataWithPackPath(packsTableDataForOrigin, "land_units_tables", (packPath, schemaFieldRow) => {
+        const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
+        if (!unitKey) return;
+        if (unitKeyToOriginPackPath.has(unitKey)) return;
+        unitKeyToOriginPackPath.set(unitKey, packPath);
+      });
+
       const locPacksInPriority = [
         ...localPackPaths,
         ...dbPriorityMods.map((mod) => mod.path),
@@ -2519,14 +2563,19 @@ export const registerIpcMainListeners = (
         localizedName: string;
         variantName?: string;
         variantMeshPath?: string;
+        originPackPath: string;
+        originLabel: string;
       }[];
 
       for (const unitKey of landUnitKeys) {
         const rows = unitToVariantRows.get(unitKey);
         const localizedName = localizedNames.get(`land_units_onscreen_name_${unitKey}`) || unitKey;
+        const originPackPath = unitKeyToOriginPackPath.get(unitKey) || dbPackPath;
+        const originLabel =
+          originPackPath === dbPackPath ? "Vanilla" : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
 
         if (!rows || rows.length === 0) {
-          visualsUnits.push({ unitKey, faction: "", localizedName });
+          visualsUnits.push({ unitKey, faction: "", localizedName, originPackPath, originLabel });
           continue;
         }
 
@@ -2542,6 +2591,8 @@ export const registerIpcMainListeners = (
             localizedName,
             variantName: row.variantName || undefined,
             variantMeshPath,
+            originPackPath,
+            originLabel,
           });
         }
       }
