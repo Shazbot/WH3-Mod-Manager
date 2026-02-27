@@ -575,7 +575,14 @@ declare global {
   type SkillAndLevel = [string, number];
   type NodeToSkillLocks = Record<string, SkillAndLevel[]>;
 
-  type MainWindowTab = "mods" | "enabledMods" | "categories" | "visuals" | "nodeEditor";
+  type MainWindowTab =
+    | "mods"
+    | "enabledMods"
+    | "categories"
+    | "visuals"
+    | "twui"
+    | "nodeEditor"
+    | "presets";
 
   export interface WorkshopItemStatisticStringified {
     numSubscriptions: string;

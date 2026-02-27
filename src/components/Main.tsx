@@ -6,6 +6,7 @@ import Categories from "./Categories";
 import ModTagPicker from "./ModTagPicker";
 import NodeEditor from "./NodeEditor";
 import VisualsTab from "./VisualsTab";
+import PresetsTab from "./PresetsTab";
 import { gameToPackWithDBTablesName } from "../supportedGames";
 
 type MainProps = {
@@ -31,6 +32,7 @@ const Main = (props: MainProps) => {
         <NodeEditor currentFile={currentFlowFileSelection} currentPack={currentPack}></NodeEditor>
       )) ||
         (currentTab == "visuals" && isFeaturesForModdersEnabled && <VisualsTab />) ||
+        (currentTab == "presets" && <PresetsTab />) ||
         (currentTab == "categories" && <Categories></Categories>) || (
           <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">
             <div className="col-span-10">

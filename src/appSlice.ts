@@ -185,27 +185,36 @@ const addPresetInternal = (state: AppState, newPreset: Preset, showAsLastSelecte
   } as Toast);
 };
 
+const applyPresetModsUnaryInternal = (state: AppState, presetMods: Mod[]) => {
+  state.currentPreset.mods.forEach((mod) => {
+    mod.isEnabled = false;
+  });
+
+  const normalizedPresetMods = withoutDataAndContentDuplicates(presetMods);
+
+  state.currentPreset.mods.forEach((mod) => {
+    const modToChange = findMod(normalizedPresetMods, mod);
+    if (modToChange) {
+      mod.isEnabled = modToChange.isEnabled;
+      mod.loadOrder = modToChange.loadOrder;
+    }
+  });
+
+  state.currentPreset.mods = sortAsInPreset(state.currentPreset.mods, normalizedPresetMods);
+  state.currentPreset.version = 2;
+
+  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
+    (mod) => (mod.isEnabled = true),
+  );
+};
+
 const selectPresetInternal = (state: AppState, presetSelection: SelectOperation, newPreset: Preset) => {
   state.lastSelectedPreset = newPreset;
 
   if (presetSelection === "unary") {
-    state.currentPreset.mods.forEach((mod) => {
-      mod.isEnabled = false;
-    });
-
-    const newPresetMods = withoutDataAndContentDuplicates(newPreset.mods);
-    if (newPreset.version == undefined) newPreset.mods = sortByNameAndLoadOrder(newPreset.mods);
-
-    state.currentPreset.mods.forEach((mod) => {
-      const modToChange = findMod(newPresetMods, mod);
-      if (modToChange) {
-        mod.isEnabled = modToChange.isEnabled;
-        mod.loadOrder = modToChange.loadOrder;
-      }
-    });
-
-    state.currentPreset.mods = sortAsInPreset(state.currentPreset.mods, newPresetMods);
-    state.currentPreset.version = 2;
+    const newPresetMods =
+      newPreset.version == undefined ? sortByNameAndLoadOrder(newPreset.mods) : newPreset.mods;
+    applyPresetModsUnaryInternal(state, newPresetMods);
   } else if (presetSelection === "addition" || presetSelection === "subtraction") {
     newPreset.mods.forEach((mod) => {
       if (mod.isEnabled) {
@@ -215,9 +224,7 @@ const selectPresetInternal = (state: AppState, presetSelection: SelectOperation,
     });
   }
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
-    (mod) => (mod.isEnabled = true),
-  );
+  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach((mod) => (mod.isEnabled = true));
 };
 
 const createPresetFromCollection = (state: AppState, importSteamCollection: ImportSteamCollection) => {
@@ -896,6 +903,31 @@ const appSlice = createSlice({
         sortByNameAndLoadOrder(state.currentPreset.mods);
       preset.version = 2;
     },
+    updatePresetMods: (state: AppState, action: PayloadAction<{ name: string; mods: Mod[] }>) => {
+      const { name, mods } = action.payload;
+      const preset = state.presets.find((iterPreset) => iterPreset.name === name);
+      if (!preset) return;
+
+      const enabledOnlyMods = mods.filter((mod) => mod.isEnabled);
+      preset.mods = sortByNameAndLoadOrder(withoutDataAndContentDuplicates(enabledOnlyMods));
+      preset.version = 2;
+
+      if (state.lastSelectedPreset?.name === name) {
+        state.lastSelectedPreset = preset;
+      }
+    },
+    applyPresetDraftMods: (
+      state: AppState,
+      action: PayloadAction<{ mods: Mod[]; sourcePresetName?: string }>,
+    ) => {
+      const { mods, sourcePresetName } = action.payload;
+      applyPresetModsUnaryInternal(state, mods);
+
+      if (sourcePresetName) {
+        const sourcePreset = state.presets.find((preset) => preset.name === sourcePresetName);
+        if (sourcePreset) state.lastSelectedPreset = sourcePreset;
+      }
+    },
     setFilter: (state: AppState, action: PayloadAction<string>) => {
       const filter = action.payload;
       state.filter = filter;
@@ -1359,6 +1391,8 @@ export const {
   selectPreset,
   createOnGameStartPreset,
   replacePreset,
+  updatePresetMods,
+  applyPresetDraftMods,
   deletePreset,
   setFilter,
   setModLoadOrder,

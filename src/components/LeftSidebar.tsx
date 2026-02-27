@@ -4,7 +4,7 @@ import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
 import { FaProjectDiagram } from "react-icons/fa";
-import { BsPersonVcard } from "react-icons/bs";
+import { BsCollection, BsPersonVcard } from "react-icons/bs";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -16,8 +16,8 @@ const LeftSidebar = memo(() => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const tabIndexToTabType: MainWindowTab[] = isFeaturesForModdersEnabled
-    ? ["mods", "enabledMods", "categories", "visuals", "nodeEditor"]
-    : ["mods", "enabledMods", "categories"];
+    ? ["mods", "enabledMods", "categories", "visuals", "nodeEditor", "presets"]
+    : ["mods", "enabledMods", "categories", "presets"];
 
   const onTabSelected = (index: number) => {
     const tabType = tabIndexToTabType[index];
@@ -96,6 +96,17 @@ const LeftSidebar = memo(() => {
               </div>
             </Tab>
           )}
+          <Tab>
+            <div className="flex items-center h-full parent-unhide-child relative">
+              <BsCollection size="1.3rem" />
+              <span className="ml-2 mr-2 hidden-child">
+                {localized.presetsTab || localized.editPresets || "Presets"}
+              </span>
+              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                {isFeaturesForModdersEnabled ? "Ctrl+6" : "Ctrl+4"}
+              </span>
+            </div>
+          </Tab>
         </TabList>
         {tabIndexToTabType.map((tabType) => (
           <TabPanel key={tabType}></TabPanel>
