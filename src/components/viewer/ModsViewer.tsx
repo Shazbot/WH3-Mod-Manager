@@ -12,14 +12,13 @@ import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
 import { selectDBTable, setDeepCloneTarget, setPacksData } from "@/src/appSlice";
 import NodeEditor from "../NodeEditor";
+import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 
 const ModsViewer = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const currentFlowFileSelection = useAppSelector((state) => state.app.currentFlowFileSelection);
   const currentFlowFilePackPath = useAppSelector((state) => state.app.currentFlowFilePackPath);
-  const packsData = useAppSelector((state) => state.app.packsData);
-  const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   // Use currentFlowFilePackPath if a flow file is selected, otherwise use DB table pack path
@@ -29,6 +28,10 @@ const ModsViewer = memo(() => {
     (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
   const startArgs = useAppSelector((state) => state.app.startArgs);
+  const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
+  const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
+  const currentPackData = useAppSelector((state) => selectCurrentPackData(state, packPath));
+  const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
 
   const [isOpen, setIsOpen] = React.useState(true);
   const [isSaveAsModalOpen, setIsSaveAsModalOpen] = React.useState(false);
@@ -83,10 +86,7 @@ const ModsViewer = memo(() => {
     setDBTableFilter("");
   };
 
-  const hasUnsavedFiles = useMemo(() => {
-    const unsavedFiles = unsavedPacksData[packPath];
-    return unsavedFiles && unsavedFiles.length > 0;
-  }, [unsavedPacksData, packPath]);
+  const hasUnsavedFiles = unsavedFiles.length > 0;
 
   const handleSavePack = async () => {
     if (!hasUnsavedFiles) return;
@@ -224,7 +224,7 @@ const ModsViewer = memo(() => {
     return () => {
       document.removeEventListener("keydown", onKeyDown);
     };
-  });
+  }, []);
 
   // only runs when mounted first time
   useEffect(() => {
@@ -254,7 +254,7 @@ const ModsViewer = memo(() => {
     }
   }, []);
 
-  if (!packsData[packPath]) {
+  if (!currentPackData) {
     console.log(`ModsViewer: no ${packPath} in packsData`);
     return <></>;
   }

@@ -1,31 +1,39 @@
-import React, { useEffect, useRef, memo, Suspense, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, memo, Suspense, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
 import "handsontable/styles/handsontable.min.css";
 import "handsontable/styles/ht-theme-main.min.css";
-import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
-import { AmendedSchemaField, DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
+import { getDBPackedFilePath } from "../../utility/packFileHelpers";
+import { AmendedSchemaField, DBVersion, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { setDeepCloneTarget } from "@/src/appSlice";
 import { dataFromBackend } from "./packDataStore";
 import debounce from "just-debounce-it";
-import { homedir } from "node:os";
 import Handsontable from "handsontable";
 import { HotTableRef } from "@handsontable/react-wrapper";
+import { getPreparedTable, PreparedTableData, setPreparedTable, TableCellValue } from "./tablePrepCache";
+import { makeSelectCurrentPackData } from "./viewerSelectors";
 
-// Lazy load Handsontable components
+const DEEP_CLONE_LABEL = "<b>Deep clone</b>";
+const BIG_TABLE_ROW_THRESHOLD = 20000;
+const BIG_TABLE_CELL_THRESHOLD = 2000000;
+const BIG_TABLE_ROW_HEIGHT = 23;
+const BIG_TABLE_NUMERIC_COL_WIDTH = 96;
+const BIG_TABLE_TEXT_COL_WIDTH = 220;
+const BIG_TABLE_CHECKBOX_COL_WIDTH = 36;
+const FIXED_SIZING_ROW_THRESHOLD = 1000;
+const RENDER_ALL_ROWS_MAX_ROWS = 5000;
+const RENDER_ALL_ROWS_MAX_CELLS = 400000;
+
 const LazyHotTable = React.lazy(async () => {
   const [{ HotTable }, { registerAllModules }] = await Promise.all([
     import("@handsontable/react-wrapper"),
     import("handsontable/registry"),
   ]);
 
-  // Register modules once loaded
   registerAllModules();
-
   return { default: HotTable };
 });
 
-// Loading component for table
 const TableLoadingSpinner = () => (
   <div className="flex items-center justify-center h-96 bg-gray-800">
     <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
@@ -33,23 +41,139 @@ const TableLoadingSpinner = () => (
   </div>
 );
 
-const colHeaders = (
-  index: number,
-  currentDBTableSelection: DBTableSelection,
-  currentSchema: DBVersion,
-  columnHeaders: string[]
-) => {
-  const keyColumnNames = dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
-  const field = currentSchema.fields[index];
-
-  if (keyColumnNames.indexOf(field.name) > -1) {
-    return `🔑 ${columnHeaders[index]}`;
+const fieldTypeToCellType = (fieldType: SCHEMA_FIELD_TYPE): "numeric" | "checkbox" | "text" => {
+  switch (fieldType) {
+    case "I64":
+    case "F32":
+    case "I32":
+    case "I16":
+    case "F64":
+      return "numeric";
+    case "Boolean":
+      return "checkbox";
+    default:
+      return "text";
   }
-
-  return columnHeaders[index];
 };
 
-// Handsontable wrapper component
+const resolveCellValue = (cell: AmendedSchemaField): TableCellValue => {
+  if (cell.type === "Boolean") {
+    return cell.resolvedKeyValue !== "0";
+  }
+  if (cell.type === "OptionalStringU8" && cell.resolvedKeyValue === "0") {
+    return "";
+  }
+  return cell.resolvedKeyValue;
+};
+
+const buildTableCacheKey = (
+  packPath: string,
+  packedFilePath: string,
+  packFile: PackedFile,
+  schema: DBVersion,
+): string => {
+  return [
+    packPath,
+    packedFilePath,
+    packFile.file_size,
+    packFile.start_pos,
+    schema.version,
+    packFile.schemaFields?.length ?? 0,
+  ].join("|");
+};
+
+const prepareTableData = (
+  packFile: PackedFile,
+  currentSchema: DBVersion,
+  keyColumnNamesUnderscore: string[],
+): PreparedTableData => {
+  const schemaFields = (packFile.schemaFields as AmendedSchemaField[] | undefined) || [];
+  const columnCount = currentSchema.fields.length;
+  const rowCount = columnCount > 0 ? Math.ceil(schemaFields.length / columnCount) : 0;
+
+  const keyColumnNames = currentSchema.fields
+    .filter((field) => keyColumnNamesUnderscore.includes(field.name))
+    .map((field) => field.name.replaceAll("_", " "));
+
+  const columnHeaders = currentSchema.fields.map((field) => field.name.replaceAll("_", " "));
+  const columns = currentSchema.fields.map((field) => ({ type: fieldTypeToCellType(field.field_type) }));
+  const keyColumnNameSet = new Set(keyColumnNames);
+
+  const columnFilterOptions = [...columnHeaders]
+    .map((header, index) => ({ header, index }))
+    .sort((first, second) => {
+      const isFirstKey = keyColumnNameSet.has(first.header);
+      const isSecondKey = keyColumnNameSet.has(second.header);
+      if (isFirstKey === isSecondKey) return first.index - second.index;
+      return isFirstKey ? -1 : 1;
+    })
+    .map(({ header }) => header);
+
+  const chunkedTable: AmendedSchemaField[][] = Array.from({ length: rowCount }, () => []);
+  const data: TableCellValue[][] = Array.from({ length: rowCount }, () => new Array(columnCount));
+  const lowerCaseColumnValues: string[][] = Array.from({ length: columnCount }, () => new Array(rowCount));
+
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+    for (let colIndex = 0; colIndex < columnCount; colIndex++) {
+      const fieldIndex = rowIndex * columnCount + colIndex;
+      const cell = schemaFields[fieldIndex];
+      if (!cell) continue;
+
+      chunkedTable[rowIndex].push(cell);
+      const cellValue = resolveCellValue(cell);
+      data[rowIndex][colIndex] = cellValue;
+      lowerCaseColumnValues[colIndex][rowIndex] = String(cell.resolvedKeyValue).toLowerCase();
+    }
+  }
+
+  return {
+    chunkedTable,
+    data,
+    columnHeaders,
+    columns,
+    columnFilterOptions,
+    keyColumnNames,
+    lowerCaseColumnValues,
+  };
+};
+
+const getSelectedCell = (hot: Handsontable): { row: number; col: number } | undefined => {
+  const selected = hot.getSelected();
+  if (!selected || selected.length !== 1) return undefined;
+
+  const [startRow, startCol, endRow, endCol] = selected[0];
+  if (startRow !== endRow || startCol !== endCol) return undefined;
+  return { row: startRow, col: startCol };
+};
+
+const getDeepCloneCell = (
+  hot: Handsontable,
+  currentSchema: DBVersion,
+  keyColumnNamesUnderscore: Set<string>,
+): { row: number; col: number; value: unknown } | undefined => {
+  const selectedCell = getSelectedCell(hot);
+  if (!selectedCell || keyColumnNamesUnderscore.size === 0) return undefined;
+
+  const { row: selectedRow, col: selectedCol } = selectedCell;
+  const selectedField = currentSchema.fields[selectedCol];
+  if (selectedField && keyColumnNamesUnderscore.has(selectedField.name)) {
+    return {
+      row: selectedRow,
+      col: selectedCol,
+      value: hot.getDataAtCell(selectedRow, selectedCol),
+    };
+  }
+
+  const firstKeyColumn = currentSchema.fields.findIndex((field) => keyColumnNamesUnderscore.has(field.name));
+  if (firstKeyColumn === -1) return undefined;
+
+  return {
+    row: selectedRow,
+    col: firstKeyColumn,
+    value: hot.getDataAtCell(selectedRow, firstKeyColumn),
+  };
+};
+
 const HandsontableWrapper = memo(
   ({
     data,
@@ -57,198 +181,185 @@ const HandsontableWrapper = memo(
     columnHeaders,
     hotRef,
     onContextMenuCallback,
-    currentDBTableSelection,
+    keyColumnNamesUnderscore,
     currentSchema,
+    tableHeight,
+    isBigTable,
+    rowCount,
+    colCount,
+    viewportColumnRenderingOffset,
+    viewportColumnRenderingThreshold,
+    renderAllRows,
   }: {
-    data: any[][];
-    columns: any[];
+    data: TableCellValue[][];
+    columns: Array<{ type: "numeric" | "checkbox" | "text" }>;
     columnHeaders: string[];
     hotRef: React.RefObject<HotTableRef>;
     onContextMenuCallback: (row: number, col: number) => void;
-    currentDBTableSelection: DBTableSelection;
+    keyColumnNamesUnderscore: string[];
     currentSchema: DBVersion;
+    tableHeight: number;
+    isBigTable: boolean;
+    rowCount: number;
+    colCount: number;
+    viewportColumnRenderingOffset: number | "auto";
+    viewportColumnRenderingThreshold: number | "auto";
+    renderAllRows: boolean;
   }) => {
-    const startArgs = useAppSelector((state) => state.app.startArgs);
+    const keyColumnSet = useMemo(() => new Set(keyColumnNamesUnderscore), [keyColumnNamesUnderscore]);
+
+    const bigTableColumnWidths = useCallback(
+      (columnIndex: number) => {
+        const columnType = columns[columnIndex]?.type;
+        if (columnType === "checkbox") return BIG_TABLE_CHECKBOX_COL_WIDTH;
+        if (columnType === "numeric") return BIG_TABLE_NUMERIC_COL_WIDTH;
+        return BIG_TABLE_TEXT_COL_WIDTH;
+      },
+      [columns],
+    );
+    const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
+
+    const contextMenu = useMemo(() => {
+      return {
+        items: {
+          row_above: {},
+          row_below: {},
+          about: {
+            name() {
+              if (!hotRef.current) return DEEP_CLONE_LABEL;
+              const hot = hotRef.current.hotInstance as Handsontable;
+              if (!hot) return DEEP_CLONE_LABEL;
+
+              const deepCloneCell = getDeepCloneCell(hot, currentSchema, keyColumnSet);
+              if (!deepCloneCell) return DEEP_CLONE_LABEL;
+              return `<b>Deep clone ${deepCloneCell.value}</b>`;
+            },
+            hidden() {
+              if (!hotRef.current) return true;
+              const hot = hotRef.current.hotInstance as Handsontable;
+              if (!hot) return true;
+              return !getDeepCloneCell(hot, currentSchema, keyColumnSet);
+            },
+            callback() {
+              if (!hotRef.current) return;
+              const hot = hotRef.current.hotInstance as Handsontable;
+              if (!hot) return;
+
+              const deepCloneCell = getDeepCloneCell(hot, currentSchema, keyColumnSet);
+              if (!deepCloneCell) return;
+
+              onContextMenuCallback(hot.toPhysicalRow(deepCloneCell.row), hot.toPhysicalColumn(deepCloneCell.col));
+            },
+          },
+        },
+      };
+    }, [hotRef, currentSchema, keyColumnSet, onContextMenuCallback]);
+
     return (
       <Suspense fallback={<TableLoadingSpinner />}>
         <div style={{ height: "100%", width: "100%" }}>
           <LazyHotTable
             ref={hotRef}
-            filters={true}
-            // autoColumnSize={{ useHeaders: false }}
+            filters={false}
             data={data}
             rowHeaders={true}
-            colHeaders={(i) => {
-              return colHeaders(i, currentDBTableSelection, currentSchema, columnHeaders);
+            colHeaders={(index) => {
+              const field = currentSchema.fields[index];
+              if (field && keyColumnSet.has(field.name)) {
+                return `🔑 ${columnHeaders[index]}`;
+              }
+              return columnHeaders[index];
             }}
             columns={columns}
             manualColumnResize={true}
-            columnSorting={true}
+            columnSorting={false}
             manualColumnFreeze={true}
             stretchH="all"
-            beforeRender={() => {
-              if (!hotRef || !hotRef.current) return "<b>Deep clone</b>";
-              const hot = hotRef.current.hotInstance as Handsontable;
-              if (!hot) return;
-
-              const packTablesTableParent = document.getElementById("packTablesTableParent");
-              if (!packTablesTableParent) return;
-
-              if (hot.getTableHeight() == packTablesTableParent.clientHeight) return;
-
-              hot.updateSettings({
-                height: packTablesTableParent.clientHeight,
-              });
-            }}
-            contextMenu={{
-              items: {
-                row_above: {},
-                row_below: {},
-                about: {
-                  name() {
-                    if (!hotRef || !hotRef.current) return "<b>Deep clone</b>";
-                    const hot = hotRef.current.hotInstance as Handsontable;
-                    if (!hot) return "<b>Deep clone</b>";
-
-                    const lastSelected = hot.getSelected();
-                    if (!lastSelected) return "<b>Deep clone</b>";
-                    if (lastSelected.length != 1) return "<b>Deep clone</b>";
-                    const [startRow, startCol, endRow, endCol] = lastSelected[0];
-
-                    if (startRow != endRow || startCol != endCol) return "<b>Deep clone</b>";
-
-                    const keyColumnNames =
-                      dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
-
-                    if (keyColumnNames.length == 0) return "<b>Deep clone</b>";
-
-                    // case we directly click a key column cell
-                    for (let i = 0; i < currentSchema.fields.length; i++) {
-                      const field = currentSchema.fields[i];
-                      console.log("checking", field.name, "index is", i, "startCol is", startCol);
-                      if (i == startCol && keyColumnNames.indexOf(field.name) > -1) {
-                        console.log("clicked ref column", field.name);
-                        const cellValue = hot.getDataAtCell(startRow, startCol);
-                        return `<b>Deep clone ${cellValue}</b>`;
-                      }
-                    }
-
-                    // case we click on a non-key column cell find the cell with the key column in that row
-                    for (let i = 0; i < currentSchema.fields.length; i++) {
-                      const field = currentSchema.fields[i];
-                      console.log("checking", field.name, "index is", i, "startCol is", startCol);
-                      if (keyColumnNames.indexOf(field.name) > -1) {
-                        const cellValue = hot.getDataAtCell(startRow, i);
-                        return `<b>Deep clone ${cellValue}</b>`;
-                      }
-                    }
-
-                    return "<b>Deep clone</b>";
-                  },
-                  hidden() {
-                    if (!hotRef || !hotRef.current) return;
-                    const hot = hotRef.current.hotInstance as Handsontable;
-                    if (!hot) return true;
-
-                    const lastSelected = hot.getSelected();
-                    if (!lastSelected) return true;
-                    if (lastSelected.length != 1) return true;
-                    const [startRow, startCol, endRow, endCol] = lastSelected[0];
-
-                    if (startRow != endRow || startCol != endCol) return true;
-
-                    // console.log("dataFromBackend.referencedColums:", dataFromBackend.referencedColums);
-                    console.log(
-                      "column refs:",
-                      currentDBTableSelection.dbName,
-                      dataFromBackend.referencedColums[currentDBTableSelection.dbName]
-                    );
-                    const keyColumnNames =
-                      dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
-
-                    if (keyColumnNames.length == 0) return true;
-
-                    return false;
-                  },
-                  callback(key, selection, clickEvent) {
-                    if (!hotRef || !hotRef.current) return;
-                    const hot = hotRef.current.hotInstance as Handsontable;
-                    if (!hot) return true;
-
-                    const lastSelected = hot.getSelected();
-                    if (!lastSelected) return;
-                    if (lastSelected.length != 1) return;
-                    const [startRow, startCol, endRow, endCol] = lastSelected[0];
-                    if (startRow != endRow || startCol != endCol) return;
-
-                    const keyColumnNames =
-                      dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
-
-                    if (keyColumnNames.length == 0) return false;
-
-                    // case we directly click a key column cell
-                    for (let i = 0; i < currentSchema.fields.length; i++) {
-                      const field = currentSchema.fields[i];
-                      console.log("checking", field.name, "index is", i, "startCol is", startCol);
-                      if (i == startCol && keyColumnNames.indexOf(field.name) > -1) {
-                        console.log("clicked ref column", field.name);
-                        onContextMenuCallback(hot.toPhysicalRow(startRow), hot.toPhysicalColumn(startCol));
-                        return;
-                      }
-                    }
-
-                    // case we click on a non-key column cell find the cell with the key column in that row
-                    for (let i = 0; i < currentSchema.fields.length; i++) {
-                      const field = currentSchema.fields[i];
-                      console.log("checking", field.name, "index is", i, "startCol is", startCol);
-                      if (keyColumnNames.indexOf(field.name) > -1) {
-                        onContextMenuCallback(hot.toPhysicalRow(startRow), hot.toPhysicalColumn(i));
-                        return;
-                      }
-                    }
-                  },
-                },
-              },
-            }}
-            viewportColumnRenderingOffset={20}
-            viewportRowRenderingOffset={100}
-            dropdownMenu={[
-              "filter_by_condition",
-              "filter_by_condition2",
-              "filter_operators",
-              "filter_by_value",
-              "filter_action_bar",
-            ]}
+            contextMenu={contextMenu}
+            autoRowSize={useFixedSizing ? false : undefined}
+            autoColumnSize={useFixedSizing ? false : undefined}
+            rowHeights={useFixedSizing ? BIG_TABLE_ROW_HEIGHT : undefined}
+            colWidths={useFixedSizing ? bigTableColumnWidths : undefined}
+            viewportColumnRenderingOffset={viewportColumnRenderingOffset}
+            viewportColumnRenderingThreshold={viewportColumnRenderingThreshold}
+            observeDOMVisibility={false}
+            renderAllRows={renderAllRows}
+            renderAllColumns={false}
+            dropdownMenu={false}
             width="100%"
-            height="500px"
-            // colHeaders={columnHeaders}
+            height={tableHeight}
             licenseKey="non-commercial-and-evaluation"
           />
         </div>
       </Suspense>
     );
-  }
+  },
 );
 
 const PackTablesTableView = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
-  const packsData = useAppSelector((state) => state.app.packsData);
-  const [handsontableLoaded, setHandsontableLoaded] = useState(false);
   const startArgs = useAppSelector((state) => state.app.startArgs);
 
-  const [keyFilter, setKeyFIlter] = useState<string>("");
+  const [keyFilter, setKeyFilter] = useState<string>("");
+  const [tableFilterInput, setTableFilterInput] = useState<string>("");
   const [tableFilter, setTableFilter] = useState<string>("");
+  const [tableHeight, setTableHeight] = useState<number>(500);
 
   const hotRef = useRef<HotTableRef>(null);
+  const tableParentRef = useRef<HTMLDivElement>(null);
+  const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
 
   const setTableFilterDebounced = useMemo(
     () =>
       debounce((value: string) => {
-        setTableFilter(value);
+        setTableFilter(value.toLowerCase());
       }, 250),
-    [setTableFilter]
+    [],
   );
+
+  useEffect(() => {
+    return () => {
+      (setTableFilterDebounced as unknown as { cancel?: () => void }).cancel?.();
+    };
+  }, [setTableFilterDebounced]);
+
+  useEffect(() => {
+    const tableParent = tableParentRef.current;
+    if (!tableParent) return;
+
+    let rafId: number | undefined;
+    const updateHeight = () => {
+      const nextHeight = tableParent.clientHeight;
+      if (!nextHeight) return;
+      setTableHeight((currentHeight) => (currentHeight === nextHeight ? currentHeight : nextHeight));
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      const onResize = () => updateHeight();
+      window.addEventListener("resize", onResize);
+      return () => window.removeEventListener("resize", onResize);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = undefined;
+        updateHeight();
+      });
+    });
+
+    resizeObserver.observe(tableParent);
+
+    return () => {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!startArgs.includes("-testDBClone")) return;
@@ -260,185 +371,162 @@ const PackTablesTableView = memo(() => {
     return () => {
       clearTimeout(autoDispatchTimer);
     };
-  }, []);
+  }, [dispatch, startArgs]);
 
-  // Handsontable modules are registered lazily when component loads
+  const packPath = currentDBTableSelection?.packPath ?? "";
+  const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
 
-  console.log("currentDBTableSelection:", currentDBTableSelection);
-  if (!currentDBTableSelection) {
-    return <></>;
-  }
+  const packedFilePath = useMemo(() => {
+    if (!currentDBTableSelection) return "";
+    return getDBPackedFilePath(currentDBTableSelection);
+  }, [currentDBTableSelection]);
 
-  const packName = getPackNameFromPath(currentDBTableSelection.packPath);
-  const packPath = currentDBTableSelection.packPath;
-  console.log("packPath for table view is ", packName);
+  const packFile = useMemo(() => {
+    if (!packData || !packedFilePath || !packData.packedFiles) return undefined;
 
-  // console.log("BASENAME", packName);
-  if (!packsData) {
-    return <></>;
-  }
+    const directMatch = packData.packedFiles[packedFilePath];
+    if (directMatch) return directMatch;
 
-  const packData = packsData[packPath];
-  // console.log("packData packedFiles:", packData.packedFiles);
-  if (!packData) {
-    return <></>;
-  }
-
-  const packedFilePath = getDBPackedFilePath(currentDBTableSelection);
-  console.log("packedFilePath:", packedFilePath);
-
-  if (!packData.packedFiles) {
-    console.log("No packed files!");
-    return <></>;
-  }
-  let packFile = packData.packedFiles[packedFilePath];
-  if (!packFile) {
-    // check case where we have just the pack file name as instead of full path (e.g. 'data.pack')
     for (const [iterPackedFilePath, iterPackedFile] of Object.entries(packData.packedFiles)) {
-      if (iterPackedFilePath.startsWith(`${packedFilePath}`)) {
-        packFile = iterPackedFile;
+      if (iterPackedFilePath.startsWith(packedFilePath)) {
+        return iterPackedFile;
       }
     }
 
-    if (!packFile) {
-      console.log("no packFile found:", packedFilePath);
-      return <></>;
-    }
-  }
-  const currentSchema = packFile.tableSchema;
+    return undefined;
+  }, [packData, packedFilePath]);
 
-  // console.log("PACKFILE IS ", packFile);
-  // console.log("CURRENT SCHEMA IS ", currentSchema);
+  const currentSchema = packFile?.tableSchema;
+  const keyColumnNamesUnderscore = useMemo(() => {
+    if (!currentDBTableSelection) return [];
+    return dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
+  }, [currentDBTableSelection]);
 
-  if (!currentSchema) {
-    console.log("NO current schema");
-    return <></>;
-  }
+  const tableCacheKey = useMemo(() => {
+    if (!packFile || !currentSchema || !packedFilePath || !packPath) return "";
+    return buildTableCacheKey(packPath, packedFilePath, packFile, currentSchema);
+  }, [packPath, packedFilePath, packFile, currentSchema]);
 
-  const chunkedTable =
-    (packFile.schemaFields &&
-      packFile.schemaFields.reduce<AmendedSchemaField[][]>((resultArray, item, index) => {
-        const chunkIndex = Math.floor(index / currentSchema.fields.length);
+  const preparedTableData = useMemo(() => {
+    if (!packFile || !currentSchema || !tableCacheKey) return undefined;
 
-        if (!resultArray[chunkIndex]) {
-          resultArray[chunkIndex] = []; // start a new chunk
-        }
+    const cached = getPreparedTable(tableCacheKey);
+    if (cached) return cached;
 
-        resultArray[chunkIndex].push(item as AmendedSchemaField);
+    const prepared = prepareTableData(packFile, currentSchema, keyColumnNamesUnderscore);
+    setPreparedTable(tableCacheKey, prepared);
+    return prepared;
+  }, [tableCacheKey, packFile, currentSchema, keyColumnNamesUnderscore]);
 
-        return resultArray;
-      }, [])) ||
-    [];
+  useEffect(() => {
+    if (!preparedTableData || preparedTableData.columnFilterOptions.length === 0) return;
+    if (keyFilter !== "" && preparedTableData.columnFilterOptions.includes(keyFilter)) return;
+    setKeyFilter(preparedTableData.columnFilterOptions[0]);
+  }, [preparedTableData, keyFilter]);
 
-  const keyColumnNamesUnderscore = dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
-  const keyColumnNames = currentSchema.fields
-    .filter((field) => keyColumnNamesUnderscore.includes(field.name))
-    .map((field) => field.name.replaceAll("_", " "));
-
-  const columnHeaders = currentSchema.fields.map((field) => field.name.replaceAll("_", " "));
-
-  const fieldTypeToCellType = (fieldType: SCHEMA_FIELD_TYPE) => {
-    switch (fieldType) {
-      case "I64":
-      case "F32":
-      case "I32":
-      case "I16":
-      case "F64":
-        return "numeric";
-      case "Boolean":
-        return "checkbox";
-      default:
-        return "text";
-    }
+  const onFilterInputChange = (value: string) => {
+    setTableFilterInput(value);
+    setTableFilterDebounced(value);
   };
-  const columns = currentSchema.fields.map((field) => ({ type: fieldTypeToCellType(field.field_type) }));
 
-  const columnFilterOptions = columnHeaders.toSorted((firstHeader, secondHeader) => {
-    if (keyColumnNames.includes(firstHeader) && keyColumnNames.includes(secondHeader)) return 0;
-    if (keyColumnNames.includes(firstHeader)) return -1;
-    if (keyColumnNames.includes(secondHeader)) return 1;
+  const keyFilterOrDefault =
+    keyFilter !== "" ? keyFilter : (preparedTableData?.columnFilterOptions[0] ?? "");
+  const indexOfFilteredColumn = preparedTableData?.columnHeaders.indexOf(keyFilterOrDefault) ?? -1;
+  const normalizedTableFilter = tableFilter.trim();
+  const rowCount = preparedTableData?.data.length ?? 0;
+  const colCount = preparedTableData?.columnHeaders.length ?? 0;
+  const isBigTable =
+    rowCount >= BIG_TABLE_ROW_THRESHOLD || rowCount * colCount >= BIG_TABLE_CELL_THRESHOLD;
+  const shouldRenderAllRows =
+    !isBigTable &&
+    rowCount > 0 &&
+    rowCount <= RENDER_ALL_ROWS_MAX_ROWS &&
+    rowCount * colCount <= RENDER_ALL_ROWS_MAX_CELLS;
+  const nonBigTableColumnWindow = useMemo(
+    () => Math.min(colCount, Math.max(12, Math.floor(colCount * 0.45))),
+    [colCount],
+  );
+  const nonBigTableColumnThreshold = useMemo(
+    () => Math.min(colCount, Math.max(6, Math.floor(nonBigTableColumnWindow * 0.6))),
+    [colCount, nonBigTableColumnWindow],
+  );
+  const viewportColumnRenderingOffset: number | "auto" = isBigTable ? "auto" : nonBigTableColumnWindow;
+  const viewportColumnRenderingThreshold: number | "auto" =
+    isBigTable ? "auto" : nonBigTableColumnThreshold;
 
-    return columnHeaders.indexOf(firstHeader) - columnHeaders.indexOf(secondHeader);
-  });
+  const filteredRowIndices = useMemo(() => {
+    if (!preparedTableData) return [];
+    if (indexOfFilteredColumn === -1 || normalizedTableFilter === "") {
+      return preparedTableData.data.map((_row, rowIndex) => rowIndex);
+    }
 
-  const keyFilterOrDefault = keyFilter != "" ? keyFilter : columnFilterOptions[0];
-  const indexOfFilteredColumn = columnHeaders.indexOf(keyFilterOrDefault);
-
-  console.log("keyFilter:", keyFilter);
-  console.log("indexOfFilteredColumn:", indexOfFilteredColumn);
-  console.log("tableFilter:", tableFilter);
-
-  if (keyFilter != "" && !columnFilterOptions.includes(keyFilter)) {
-    setKeyFIlter(columnFilterOptions[0]);
-  }
-
-  const filteredData =
-    indexOfFilteredColumn != -1 && tableFilter != ""
-      ? chunkedTable.filter((row) => {
-          return row[indexOfFilteredColumn].resolvedKeyValue
-            .toLowerCase()
-            .includes(tableFilter.toLowerCase());
-        })
-      : chunkedTable;
-
-  const data = filteredData.map((row) =>
-    row.map((cell) => {
-      if (cell.type == "Boolean") {
-        return cell.resolvedKeyValue != "0";
+    const lowerCaseColumn = preparedTableData.lowerCaseColumnValues[indexOfFilteredColumn] || [];
+    const filteredIndices: number[] = [];
+    for (let rowIndex = 0; rowIndex < lowerCaseColumn.length; rowIndex++) {
+      const value = lowerCaseColumn[rowIndex];
+      if (value && value.includes(normalizedTableFilter)) {
+        filteredIndices.push(rowIndex);
       }
-      if (cell.type == "OptionalStringU8" && cell.resolvedKeyValue == "0") {
-        return "";
-      }
-      return cell.resolvedKeyValue;
-    })
+    }
+
+    return filteredIndices;
+  }, [preparedTableData, indexOfFilteredColumn, normalizedTableFilter]);
+
+  const filteredData = useMemo(() => {
+    if (!preparedTableData) return [];
+    return filteredRowIndices.map((rowIndex) => preparedTableData.data[rowIndex]);
+  }, [preparedTableData, filteredRowIndices]);
+
+  const handleContextMenuCallback = useCallback(
+    (row: number, col: number) => {
+      const unfilteredRowIndex = filteredRowIndices[row] ?? row;
+      dispatch(setDeepCloneTarget({ row: unfilteredRowIndex, col }));
+    },
+    [dispatch, filteredRowIndices],
   );
 
-  const handleContextMenuCallback = (row: number, col: number) => {
-    console.log("handleContextMenuCallback:", row, col);
-    const filteredRowIndex = filteredData[row];
-    const unfilteredRowIndex = chunkedTable.findIndex((row) => row == filteredRowIndex);
-    dispatch(setDeepCloneTarget({ row: unfilteredRowIndex, col }));
-  };
-
-  // const columns = getColumns();
-
-  // const columns = currentSchema.fields.map((field) => ({ data: field.name }));
-
-  // const hotColumns = columns.map((column) => <HotColumn title={column} />);
-
-  // console.log("COLUMNS:", columns);
+  if (!currentDBTableSelection || !packData || !packFile || !currentSchema || !preparedTableData) {
+    return <></>;
+  }
 
   return (
     <div className="flex flex-col h-full">
       <div className="ht-theme-main-dark flex-1 w-full" style={{ height: "100%", overflow: "hidden" }}>
-        <div id="packTablesTableParent" style={{ height: "100%", overflow: "auto" }}>
+        <div id="packTablesTableParent" ref={tableParentRef} style={{ height: "100%", overflow: "auto" }}>
           <HandsontableWrapper
-            data={data}
-            columns={columns}
-            columnHeaders={columnHeaders}
+            data={filteredData}
+            columns={preparedTableData.columns}
+            columnHeaders={preparedTableData.columnHeaders}
             hotRef={hotRef}
             onContextMenuCallback={handleContextMenuCallback}
-            currentDBTableSelection={currentDBTableSelection}
+            keyColumnNamesUnderscore={keyColumnNamesUnderscore}
             currentSchema={currentSchema}
+            tableHeight={tableHeight}
+            isBigTable={isBigTable}
+            rowCount={rowCount}
+            colCount={colCount}
+            viewportColumnRenderingOffset={viewportColumnRenderingOffset}
+            viewportColumnRenderingThreshold={viewportColumnRenderingThreshold}
+            renderAllRows={shouldRenderAllRows}
           />
         </div>
       </div>
       <div className="mt-3 flex gap-6">
         <select
-          value={keyFilter != "" ? keyFilter : columnFilterOptions[0]}
-          onChange={(e) => setKeyFIlter(e.target.value)}
+          value={keyFilterOrDefault}
+          onChange={(e) => setKeyFilter(e.target.value)}
           className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
         >
-          {columnFilterOptions.map((option) => (
+          {preparedTableData.columnFilterOptions.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
           ))}
         </select>
         <input
-          defaultValue={tableFilter}
+          value={tableFilterInput}
           placeholder={"filter by selected column"}
-          onChange={(e) => setTableFilterDebounced(e.target.value)}
+          onChange={(e) => onFilterInputChange(e.target.value)}
           className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
         />
       </div>
