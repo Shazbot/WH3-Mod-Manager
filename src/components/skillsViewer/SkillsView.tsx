@@ -905,13 +905,22 @@ const SkillsView = memo(
       if (historyPast.current.length > 50) historyPast.current.shift();
       historyFuture.current = [];
       setHistorySize({ past: historyPast.current.length, future: 0 });
-    }, [nodes, edges, editGroups, nextGroupId, lockEdgeLevels, isRequirementsMode, isSkillLocksMode, isEditMode]);
+    }, [
+      nodes,
+      edges,
+      editGroups,
+      nextGroupId,
+      lockEdgeLevels,
+      isRequirementsMode,
+      isSkillLocksMode,
+      isEditMode,
+    ]);
 
     // Undo/redo: restore all edit state from a snapshot
     const applySnapshot = useCallback((snap: EditSnapshot) => {
       isRestoringSnapshot.current = true;
       setNodes(deepClone(snap.nodes));
-      setEdges(deepClone(snap.edges));
+      setEdges(deepClone(snap.edges) as SkillEdge[]);
       setEditGroups(snap.editGroups);
       setNextGroupId(snap.nextGroupId);
       setLockEdgeLevels(snap.lockEdgeLevels);
@@ -928,21 +937,24 @@ const SkillsView = memo(
       }, 0);
     }, []);
 
-    const buildCurrentSnapshot = useCallback((): EditSnapshot => ({
-      nodes: deepClone(nodes),
-      edges: deepClone(edges),
-      editGroups,
-      nextGroupId,
-      lockEdgeLevels,
-      isRequirementsMode,
-      isSkillLocksMode,
-      savedEditEdges: deepClone(savedEditEdges.current),
-      savedLocksEdges: deepClone(savedLocksEdges.current),
-      allLockEdges: deepClone(allLockEdges.current),
-      localNodeToSkillLocks: localNodeToSkillLocks.current
-        ? deepClone(localNodeToSkillLocks.current)
-        : null,
-    }), [nodes, edges, editGroups, nextGroupId, lockEdgeLevels, isRequirementsMode, isSkillLocksMode]);
+    const buildCurrentSnapshot = useCallback(
+      (): EditSnapshot => ({
+        nodes: deepClone(nodes),
+        edges: deepClone(edges),
+        editGroups,
+        nextGroupId,
+        lockEdgeLevels,
+        isRequirementsMode,
+        isSkillLocksMode,
+        savedEditEdges: deepClone(savedEditEdges.current),
+        savedLocksEdges: deepClone(savedLocksEdges.current),
+        allLockEdges: deepClone(allLockEdges.current),
+        localNodeToSkillLocks: localNodeToSkillLocks.current
+          ? deepClone(localNodeToSkillLocks.current)
+          : null,
+      }),
+      [nodes, edges, editGroups, nextGroupId, lockEdgeLevels, isRequirementsMode, isSkillLocksMode],
+    );
 
     const handleUndo = useCallback(() => {
       if (!isEditMode || historyPast.current.length === 0) return;
@@ -1119,7 +1131,15 @@ const SkillsView = memo(
           });
         }
       },
-      [setEdges, isSkillLocksMode, lockEdgeLevels, setLockEdgeLevels, isRequirementsMode, editGroups, captureHistory],
+      [
+        setEdges,
+        isSkillLocksMode,
+        lockEdgeLevels,
+        setLockEdgeLevels,
+        isRequirementsMode,
+        editGroups,
+        captureHistory,
+      ],
     );
 
     const confirmEdgeLevelEdit = useCallback(() => {
@@ -1223,11 +1243,14 @@ const SkillsView = memo(
     }, [contextMenu, nodes, addLockEdge]);
 
     // Edit mode: capture position before drag starts (for swap)
-    const onNodeDragStart: OnNodeDrag = useCallback((event, node) => {
-      captureHistory();
-      dragStartPos.current = { x: node.position.x, y: node.position.y };
-      setIsDragging(true);
-    }, [captureHistory]);
+    const onNodeDragStart: OnNodeDrag = useCallback(
+      (event, node) => {
+        captureHistory();
+        dragStartPos.current = { x: node.position.x, y: node.position.y };
+        setIsDragging(true);
+      },
+      [captureHistory],
+    );
 
     // Edit mode: snap node to grid after drag
     // - If dropped on another node: insert before it (or after if Shift held)
@@ -1605,7 +1628,16 @@ const SkillsView = memo(
         ),
       );
       setContextMenu(null);
-    }, [contextMenu, nodes, setNodes, setEdges, setEditGroups, repositionPlaceholders, effectiveNodeHeight, captureHistory]);
+    }, [
+      contextMenu,
+      nodes,
+      setNodes,
+      setEdges,
+      setEditGroups,
+      repositionPlaceholders,
+      effectiveNodeHeight,
+      captureHistory,
+    ]);
 
     // Context menu: group nodes (right-clicked + selected, all must be ungrouped)
     const contextMenuGroup = useCallback(
@@ -1765,9 +1797,7 @@ const SkillsView = memo(
       if (!contextMenu) return;
       captureHistory();
       const targetNode = nodes.find((n) => n.id === contextMenu.nodeId);
-      const selectedNode = nodes.find(
-        (n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId,
-      );
+      const selectedNode = nodes.find((n) => n.selected && n.type === "skill" && n.id !== contextMenu.nodeId);
       if (!targetNode || !selectedNode) {
         setContextMenu(null);
         return;
@@ -1814,8 +1844,7 @@ const SkillsView = memo(
             absY = n.position.y;
           }
           return (
-            Math.round(absY / effectiveNodeHeight) === targetRow &&
-            Math.round(absX / nodeWidth) === targetCol
+            Math.round(absY / effectiveNodeHeight) === targetRow && Math.round(absX / nodeWidth) === targetCol
           );
         }).length;
 
@@ -1993,10 +2022,22 @@ const SkillsView = memo(
       });
       setEdges((eds) => eds.filter((e) => !deleteIds.has(e.source) && !deleteIds.has(e.target)));
       setNodes((nds) =>
-        repositionPlaceholders(nds.filter((n) => !deleteIds.has(n.id)), new Set([targetRow])),
+        repositionPlaceholders(
+          nds.filter((n) => !deleteIds.has(n.id)),
+          new Set([targetRow]),
+        ),
       );
       setContextMenu(null);
-    }, [contextMenu, nodes, effectiveNodeHeight, setNodes, setEdges, setEditGroups, repositionPlaceholders, captureHistory]);
+    }, [
+      contextMenu,
+      nodes,
+      effectiveNodeHeight,
+      setNodes,
+      setEdges,
+      setEditGroups,
+      repositionPlaceholders,
+      captureHistory,
+    ]);
 
     // Context menu: move entire group left or right
     const contextMenuMoveGroup = useCallback(
@@ -2452,7 +2493,16 @@ const SkillsView = memo(
         setIsAddNodeModalOpen(false);
         setEditingNodeId(undefined);
       },
-      [editingNodeId, setNodes, setEditGroups, skillsData, nodes, editGroups, repositionPlaceholders, captureHistory],
+      [
+        editingNodeId,
+        setNodes,
+        setEditGroups,
+        skillsData,
+        nodes,
+        editGroups,
+        repositionPlaceholders,
+        captureHistory,
+      ],
     );
 
     // Edit mode: export skill tree to JSON
@@ -3017,7 +3067,9 @@ const SkillsView = memo(
               const subcultureChanged = (data.subculture || "") !== (origSkill.subculture || "");
 
               if (posChanged || skillChanged || factionChanged || subcultureChanged) {
-                console.log(`[SaveChanges] POS/SKILL CHANGED for ${origNodeId}: currentRow=${currentRow} origRow=${origSkill.x} currentCol=${currentCol} origCol=${origSkill.y} skillChanged=${skillChanged}`);
+                console.log(
+                  `[SaveChanges] POS/SKILL CHANGED for ${origNodeId}: currentRow=${currentRow} origRow=${origSkill.x} currentCol=${currentCol} origCol=${origSkill.y} skillChanged=${skillChanged}`,
+                );
                 nodeKeyMap.set(origNodeId, origNodeId); // same key
                 overrideNodes.push({
                   originalNodeKey: origNodeId,

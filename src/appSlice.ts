@@ -1254,7 +1254,14 @@ const appSlice = createSlice({
       delete state.packDataOverwrites[packName];
     },
     selectDBTable: (state: AppState, action: PayloadAction<DBTableSelection>) => {
-      if (state.currentDBTableSelection == action.payload) {
+      const currentSelection = state.currentDBTableSelection;
+      const nextSelection = action.payload;
+      if (
+        currentSelection &&
+        currentSelection.packPath === nextSelection.packPath &&
+        currentSelection.dbName === nextSelection.dbName &&
+        currentSelection.dbSubname === nextSelection.dbSubname
+      ) {
         console.log("selectDBTable for same selection, not updating app state");
         return;
       }
