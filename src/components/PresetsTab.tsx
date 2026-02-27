@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import Select, { SingleValue } from "react-select";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLock, faTriangleExclamation, faXmark } from "@fortawesome/free-solid-svg-icons";
@@ -96,6 +96,7 @@ const PresetsTab = memo(() => {
 
   const [baselineEnabledNames, setBaselineEnabledNames] = useState<Set<string>>(new Set());
   const [baselineLoadOrderByName, setBaselineLoadOrderByName] = useState<Map<string, number>>(new Map());
+  const didInitializeFromCurrentPresetRef = useRef(false);
 
   const installedMods = useMemo(() => {
     const mods = withoutDataAndContentDuplicates(currentPresetMods);
@@ -237,22 +238,51 @@ const PresetsTab = memo(() => {
     [alwaysEnabledNames, computeEnabledPresetMods, presets],
   );
 
+  const loadCurrentEnabledDraft = useCallback(() => {
+    const enabledCurrentMods = currentPresetMods.filter(
+      (mod) => mod.isEnabled || alwaysEnabledNames.has(mod.name),
+    );
+    const nextEnabledNames = new Set<string>(enabledCurrentMods.map((mod) => mod.name));
+    alwaysEnabledNames.forEach((name) => nextEnabledNames.add(name));
+
+    const nextLoadOrderByName = new Map<string, number>();
+    enabledCurrentMods.forEach((mod) => {
+      if (mod.loadOrder != null) nextLoadOrderByName.set(mod.name, mod.loadOrder);
+    });
+
+    setSelectedPresetName(undefined);
+    setDraftEnabledNames(nextEnabledNames);
+    setDraftLoadOrderByName(nextLoadOrderByName);
+    setBaselineEnabledNames(new Set(nextEnabledNames));
+    setBaselineLoadOrderByName(new Map(nextLoadOrderByName));
+    setSelectedInPresetNames(new Set());
+    setSelectedNotInPresetNames(new Set());
+    setPlaceMode(undefined);
+    setPendingPresetName(undefined);
+    setIsDiscardConfirmOpen(false);
+    setIsDeleteConfirmOpen(false);
+  }, [alwaysEnabledNames, currentPresetMods]);
+
   useEffect(() => {
-    if (presets.length === 0) {
-      setSelectedPresetName(undefined);
-      setDraftEnabledNames(new Set());
-      setDraftLoadOrderByName(new Map());
-      setBaselineEnabledNames(new Set());
-      setBaselineLoadOrderByName(new Map());
-      setPlaceMode(undefined);
+    const selectedPresetStillExists = !!(
+      selectedPresetName && presets.some((preset) => preset.name === selectedPresetName)
+    );
+    if (selectedPresetStillExists) {
+      didInitializeFromCurrentPresetRef.current = true;
       setIsDeleteConfirmOpen(false);
       return;
     }
 
-    if (!selectedPresetName || !presets.some((preset) => preset.name === selectedPresetName)) {
-      loadPresetDraft(presets[0].name);
+    if (selectedPresetName && !selectedPresetStillExists) {
+      loadCurrentEnabledDraft();
+      return;
     }
-  }, [loadPresetDraft, presets, selectedPresetName]);
+
+    if (!didInitializeFromCurrentPresetRef.current) {
+      loadCurrentEnabledDraft();
+      didInitializeFromCurrentPresetRef.current = true;
+    }
+  }, [loadCurrentEnabledDraft, presets, selectedPresetName]);
 
   const effectiveEnabledNames = useMemo(() => {
     const effective = new Set(draftEnabledNames);
@@ -676,11 +706,9 @@ const PresetsTab = memo(() => {
   }, [draftLoadOrderByName, selectedInPresetNames]);
 
   const buildDraftPresetMods = useCallback(() => {
-    const selectedPresetByName = presets.find((preset) => preset.name === selectedPresetName);
-    if (!selectedPresetByName) return [] as Mod[];
-
     const previousPresetModsByName = new Map<string, Mod>();
-    selectedPresetByName.mods.forEach((mod) => previousPresetModsByName.set(mod.name, mod));
+    currentPresetMods.forEach((mod) => previousPresetModsByName.set(mod.name, mod));
+    selectedPreset?.mods.forEach((mod) => previousPresetModsByName.set(mod.name, mod));
 
     const modsToPersist = [...effectiveEnabledNames].map((name) => {
       const sourceMod =
@@ -694,7 +722,7 @@ const PresetsTab = memo(() => {
     });
 
     return sortByNameAndLoadOrder(withoutDataAndContentDuplicates(modsToPersist));
-  }, [draftLoadOrderByName, effectiveEnabledNames, installedByName, presets, selectedPresetName]);
+  }, [currentPresetMods, draftLoadOrderByName, effectiveEnabledNames, installedByName, selectedPreset]);
 
   const onSavePreset = useCallback(() => {
     if (!selectedPresetName) return;
@@ -721,8 +749,8 @@ const PresetsTab = memo(() => {
   ]);
 
   const onSavePresetAs = useCallback(() => {
-    if (!selectedPresetName) return;
-    setSaveAsName(`${selectedPresetName} Copy`);
+    const defaultName = selectedPresetName ? `${selectedPresetName} Copy` : "New Preset";
+    setSaveAsName(defaultName);
     setSaveAsError(undefined);
     setIsSaveAsOpen(true);
   }, [selectedPresetName]);
@@ -762,7 +790,6 @@ const PresetsTab = memo(() => {
   ]);
 
   const onUsePreset = useCallback(() => {
-    if (!selectedPresetName) return;
     const draftPresetMods = buildDraftPresetMods();
     dispatch(setModRowsSortingType(SortingType.Ordered));
     dispatch(applyPresetDraftMods({ mods: draftPresetMods, sourcePresetName: selectedPresetName }));
@@ -785,14 +812,6 @@ const PresetsTab = memo(() => {
         label: selectedPresetName,
       }
     : null;
-
-  if (presets.length < 1) {
-    return (
-      <div className="max-w-[100rem] mx-auto p-6 text-slate-100">
-        {localized.noPresets || "No presets available. Create one in the right sidebar first."}
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-[100rem] mx-auto px-4 py-4 text-slate-100">
@@ -830,14 +849,12 @@ const PresetsTab = memo(() => {
           </button>
           <button
             className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
-            disabled={!selectedPresetName}
             onClick={() => onSavePresetAs()}
           >
             {localized.saveAs || "Save As"}
           </button>
           <button
             className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
-            disabled={!selectedPresetName}
             onClick={() => onUsePreset()}
           >
             {localized.use || "Use"}
