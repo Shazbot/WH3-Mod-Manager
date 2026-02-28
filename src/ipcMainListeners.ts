@@ -1,5 +1,6 @@
 import assert from "assert";
 import bs from "binary-search";
+import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
 import { exec, fork } from "child_process";
 import chokidar from "chokidar";
@@ -58,6 +59,7 @@ import {
   Pack,
   PackCollisions,
   PackedFile,
+  PackHeader,
 } from "./packFileTypes";
 import { resolveTable } from "./resolveTable";
 import {
@@ -1530,20 +1532,26 @@ export const registerIpcMainListeners = (
       console.log("after subscription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
 
-      mods.forEach(async (mod) => {
-        try {
-          if (mod == null || mod.path == null) {
-            console.error("MOD OR MOD PATH IS NULL");
+      const packHeadersToSend: PackHeaderData[] = [];
+      await Promise.all(
+        mods.map(async (mod) => {
+          try {
+            if (mod == null || mod.path == null) {
+              console.error("MOD OR MOD PATH IS NULL");
+              return;
+            }
+            const packHeaderData = await readPackHeaderCached(mod.path);
+            if (packHeaderData.isMovie || packHeaderData.dependencyPacks.length > 0)
+              packHeadersToSend.push(packHeaderData);
+          } catch (e) {
+            if (e instanceof Error) {
+              log(e.message);
+            }
           }
-          const packHeaderData = await readPackHeader(mod.path);
-          if (packHeaderData.isMovie || packHeaderData.dependencyPacks.length > 0)
-            mainWindow?.webContents.send("setPackHeaderData", packHeaderData);
-        } catch (e) {
-          if (e instanceof Error) {
-            log(e.message);
-          }
-        }
-      });
+        }),
+      );
+      packHeadersToSend.forEach((h) => mainWindow?.webContents.send("setPackHeaderData", h));
+      await savePackHeaderCache();
 
       if (!appData.saveSetupDone) {
         appData.saveSetupDone = true;
@@ -1579,32 +1587,79 @@ export const registerIpcMainListeners = (
             tags: ["mod"],
           };
           if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
-            console.log("READING DATA PACK");
-            appData.currentlyReadingModPaths.push(dataPackPath);
-            const dataPackData = await readPack(dataMod.path, {
-              // tablesToRead: ["db\\units_custom_battle_permissions_tables\\"],
-              skipParsingTables: true,
-            });
-            appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
-              (path) => path != dataPackPath,
-            );
-            if (dataPackData) {
-              appData.vanillaPacks.push(dataPackData);
+            const vanillaCache = await loadVanillaPackFilesCache();
+            let vanillaStat: { size: number; mtimeMs: number } | null = null;
+            try {
+              vanillaStat = await fs.promises.stat(dataPackPath);
+            } catch {
+              // pack doesn't exist, skip
+            }
 
-              const vanillaDBFileNames = dataPackData.packedFiles
-                .map((vanillaDBFileName) => vanillaDBFileName.name.match(matchTableNamePart))
-                .filter((matchResult) => matchResult)
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                .map((matchResult) => matchResult![1]);
+            const cacheEntry = vanillaStat && vanillaCache[dataPackPath];
+            const cacheHit =
+              cacheEntry &&
+              cacheEntry.size === vanillaStat!.size &&
+              cacheEntry.lastChangedLocal === vanillaStat!.mtimeMs;
 
-              if (vanillaDBFileNames.length > 0) {
-                appData.vanillaPacksDBFileNames = Array.from(
-                  new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values(),
-                );
+            let packedFileNames: string[];
+            if (cacheHit) {
+              console.log("VANILLA PACK CACHE HIT:", dataPackPath);
+              packedFileNames = cacheEntry.packedFileNames;
+            } else {
+              console.log("READING DATA PACK");
+              appData.currentlyReadingModPaths.push(dataPackPath);
+              const dataPackData = await readPack(dataMod.path, {
+                skipParsingTables: true,
+              });
+              appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
+                (path) => path != dataPackPath,
+              );
+              if (dataPackData) {
+                appData.vanillaPacks.push(dataPackData);
+                if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
+                  appendPacksData(dataPackData);
+                }
+                packedFileNames = dataPackData.packedFiles.map((pf) => pf.name);
+                if (vanillaStat) {
+                  vanillaCache[dataPackPath] = {
+                    size: vanillaStat.size,
+                    lastChangedLocal: vanillaStat.mtimeMs,
+                    packedFileNames,
+                  };
+                  await saveVanillaPackFilesCache();
+                }
+              } else {
+                packedFileNames = [];
               }
             }
-            if (appData.packsData.every((iterPack) => iterPack.path != dataPackData.path)) {
-              appendPacksData(dataPackData);
+
+            if (cacheHit) {
+              // Reconstruct a minimal Pack for vanillaPacks and appendPacksData from cached file names
+              const reconstructedPack: Pack = {
+                name: baseVanillaPackName,
+                path: dataPackPath,
+                packedFiles: packedFileNames.map((name) => ({ name, file_size: 0, start_pos: 0 })),
+                packHeader: {} as PackHeader,
+                lastChangedLocal: vanillaStat!.mtimeMs,
+                size: vanillaStat!.size,
+                readTables: [],
+              };
+              appData.vanillaPacks.push(reconstructedPack);
+              if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
+                appendPacksData(reconstructedPack);
+              }
+            }
+
+            const vanillaDBFileNames = packedFileNames
+              .map((name) => name.match(matchTableNamePart))
+              .filter((matchResult) => matchResult)
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              .map((matchResult) => matchResult![1]);
+
+            if (vanillaDBFileNames.length > 0) {
+              appData.vanillaPacksDBFileNames = Array.from(
+                new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values(),
+              );
             }
           }
         }
@@ -1902,6 +1957,111 @@ export const registerIpcMainListeners = (
       await fs.promises.writeFile(cacheFilePath, JSON.stringify(cache, null, 2), "utf8");
     } catch (err) {
       console.error("Failed to save customizable mods cache:", err);
+    }
+  };
+
+  // Cache for pack header data (isMovie, dependencyPacks) keyed by pack path
+  // Entries are invalidated when the file's size or mtime changes
+  interface PackHeaderCacheEntry {
+    size: number;
+    lastChangedLocal: number;
+    isMovie: boolean;
+    dependencyPacks: string[];
+  }
+
+  type PackHeaderCache = Record<string, PackHeaderCacheEntry>;
+
+  const PACK_HEADER_CACHE_FILE = "pack-headers-cache.bin";
+  let packHeaderCache: PackHeaderCache | null = null;
+
+  const loadPackHeaderCache = async (): Promise<PackHeaderCache> => {
+    if (packHeaderCache !== null) return packHeaderCache;
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), PACK_HEADER_CACHE_FILE);
+      const compressed = await fs.promises.readFile(cacheFilePath);
+      const json = await zstdDecompress(compressed);
+      packHeaderCache = JSON.parse(json.toString("utf8")) as PackHeaderCache;
+      return packHeaderCache!;
+    } catch {
+      packHeaderCache = {};
+      return packHeaderCache;
+    }
+  };
+
+  const savePackHeaderCache = async (): Promise<void> => {
+    if (!packHeaderCache) return;
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), PACK_HEADER_CACHE_FILE);
+      const json = Buffer.from(JSON.stringify(packHeaderCache), "utf8");
+      const compressed = await zstdCompress(json, 1);
+      await fs.promises.writeFile(cacheFilePath, compressed);
+    } catch (err) {
+      console.error("Failed to save pack header cache:", err);
+    }
+  };
+
+  const readPackHeaderCached = async (path: string): Promise<PackHeaderData> => {
+    const cache = await loadPackHeaderCache();
+    let stat: { size: number; mtimeMs: number } | null = null;
+    try {
+      stat = await fs.promises.stat(path);
+    } catch {
+      // file may not exist — readPackHeader will throw properly
+    }
+    if (stat) {
+      const entry = cache[path];
+      if (entry && entry.size === stat.size && entry.lastChangedLocal === stat.mtimeMs) {
+        return { path, isMovie: entry.isMovie, dependencyPacks: entry.dependencyPacks };
+      }
+    }
+    const data = await readPackHeader(path);
+    if (stat) {
+      cache[path] = {
+        size: stat.size,
+        lastChangedLocal: stat.mtimeMs,
+        isMovie: data.isMovie,
+        dependencyPacks: data.dependencyPacks,
+      };
+    }
+    return data;
+  };
+
+  // Cache for vanilla pack file name lists, keyed by pack path.
+  // Allows skipping readPack() on startup when the pack hasn't changed.
+  interface VanillaPackFilesCacheEntry {
+    size: number;
+    lastChangedLocal: number;
+    packedFileNames: string[];
+  }
+
+  type VanillaPackFilesCache = Record<string, VanillaPackFilesCacheEntry>;
+
+  const VANILLA_PACK_FILES_CACHE_FILE = "vanilla-pack-files-cache.bin";
+  let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
+
+  const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache> => {
+    if (vanillaPackFilesCache !== null) return vanillaPackFilesCache;
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
+      const compressed = await fs.promises.readFile(cacheFilePath);
+      const json = await zstdDecompress(compressed);
+      vanillaPackFilesCache = JSON.parse(json.toString("utf8")) as VanillaPackFilesCache;
+      return vanillaPackFilesCache!;
+    } catch {
+      vanillaPackFilesCache = {};
+      return vanillaPackFilesCache;
+    }
+  };
+
+  const saveVanillaPackFilesCache = async (): Promise<void> => {
+    if (!vanillaPackFilesCache) return;
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), VANILLA_PACK_FILES_CACHE_FILE);
+      const json = Buffer.from(JSON.stringify(vanillaPackFilesCache), "utf8");
+      const compressed = await zstdCompress(json, 1);
+      await fs.promises.writeFile(cacheFilePath, compressed);
+    } catch (err) {
+      console.error("Failed to save vanilla pack files cache:", err);
     }
   };
 

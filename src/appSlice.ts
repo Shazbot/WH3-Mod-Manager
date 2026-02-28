@@ -69,24 +69,22 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   state.currentPreset.mods = mods;
   state.allMods = mods;
 
+  // Dedup: keep inData versions, drop non-inData when an inData version exists
+  const inDataNames = new Set(mods.filter((m) => m.isInData).map((m) => m.name));
   state.currentPreset.mods = state.currentPreset.mods.filter(
-    (mod) =>
-      mod.isInData ||
-      (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData)),
+    (mod) => mod.isInData || !inDataNames.has(mod.name),
   );
 
   // filter out the mods in data that are also in data/modding
-  const dataModsThatAreInModding = state.currentPreset.mods.filter(
-    (iterMod) =>
-      iterMod.isInData &&
-      !iterMod.isInModding &&
-      state.currentPreset.mods.some(
-        (secondMod) => secondMod.isInModding && secondMod != iterMod && secondMod.name == iterMod.name,
-      ),
+  const moddingNames = new Set(
+    state.currentPreset.mods.filter((m) => m.isInModding).map((m) => m.name),
   );
-  state.currentPreset.mods = state.currentPreset.mods.filter(
-    (mod) => !dataModsThatAreInModding.includes(mod),
+  const dataModsThatAreInModding = new Set(
+    state.currentPreset.mods.filter(
+      (iterMod) => iterMod.isInData && !iterMod.isInModding && moddingNames.has(iterMod.name),
+    ),
   );
+  state.currentPreset.mods = state.currentPreset.mods.filter((mod) => !dataModsThatAreInModding.has(mod));
 
   if (state.dataFromConfig && state.dataFromConfig.currentPreset.version != undefined) {
     state.currentPreset.version = state.dataFromConfig.currentPreset.version;
@@ -98,14 +96,16 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   }
 
   if (state.dataFromConfig) {
+    const alwaysEnabledNames = new Set(state.dataFromConfig.alwaysEnabledMods.map((m) => m.name));
     state.currentPreset.mods
-      .filter((iterMod) => state.dataFromConfig?.alwaysEnabledMods.some((mod) => mod.name == iterMod.name))
+      .filter((iterMod) => alwaysEnabledNames.has(iterMod.name))
       .forEach((mod) => (mod.isEnabled = true));
 
+    const currentModsByName = new Map(state.currentPreset.mods.map((m) => [m.name, m]));
     state.dataFromConfig.currentPreset.mods
       .filter((mod) => mod !== undefined)
       .forEach((mod) => {
-        const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
+        const existingMod = currentModsByName.get(mod.name);
         if (existingMod) {
           existingMod.isEnabled = mod.isEnabled;
           existingMod.categories = mod.categories;
@@ -191,9 +191,10 @@ const applyPresetModsUnaryInternal = (state: AppState, presetMods: Mod[]) => {
   });
 
   const normalizedPresetMods = withoutDataAndContentDuplicates(presetMods);
+  const presetModsByName = new Map(normalizedPresetMods.map((m) => [m.name, m]));
 
   state.currentPreset.mods.forEach((mod) => {
-    const modToChange = findMod(normalizedPresetMods, mod);
+    const modToChange = presetModsByName.get(mod.name);
     if (modToChange) {
       mod.isEnabled = modToChange.isEnabled;
       mod.loadOrder = modToChange.loadOrder;
@@ -475,17 +476,18 @@ const appSlice = createSlice({
       console.log("ENABLING ALL MODS WITH NAMES: ", modNames);
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
+      const modNameSet = new Set(modNames);
       state.currentPreset.mods
-        .filter((mod) => modNames.find((modName) => modName === mod.name))
+        .filter((mod) => modNameSet.has(mod.name))
         .forEach((mod) => (mod.isEnabled = true));
     },
     disableAllMods: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
-      const toEnable = state.currentPreset.mods.filter((iterMod) =>
-        state.alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
-      );
-      toEnable.forEach((mod) => (mod.isEnabled = true));
+      const alwaysEnabledNames = new Set(state.alwaysEnabledMods.map((m) => m.name));
+      state.currentPreset.mods
+        .filter((iterMod) => alwaysEnabledNames.has(iterMod.name))
+        .forEach((mod) => (mod.isEnabled = true));
     },
     setImportedMods: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
       state.importedMods = action.payload;
@@ -786,10 +788,11 @@ const appSlice = createSlice({
       state.hasConfigBeenRead = true;
       state.dataFromConfig = fromConfigAppState;
 
+      const existingModsByName = new Map(state.currentPreset.mods.map((m) => [m.name, m]));
       fromConfigAppState.currentPreset.mods
         .filter((mod) => mod !== undefined)
-        .map((mod) => {
-          const existingMod = state.currentPreset.mods.find((statelyMod) => statelyMod.name == mod.name);
+        .forEach((mod) => {
+          const existingMod = existingModsByName.get(mod.name);
           if (existingMod) {
             existingMod.isEnabled = mod.isEnabled;
             if (mod.humanName !== "") existingMod.humanName = mod.humanName;
@@ -846,10 +849,10 @@ const appSlice = createSlice({
       state.categories = Array.from(categoriesFromMods);
       state.categoryColors = fromConfigAppState.categoryColors || {};
 
-      const toEnable = fromConfigAppState.currentPreset.mods.filter((iterMod) =>
-        fromConfigAppState.alwaysEnabledMods.some((mod) => mod.name == iterMod.name),
-      );
-      toEnable.forEach((mod) => (mod.isEnabled = true));
+      const alwaysEnabledNames = new Set(fromConfigAppState.alwaysEnabledMods.map((m) => m.name));
+      fromConfigAppState.currentPreset.mods
+        .filter((iterMod) => alwaysEnabledNames.has(iterMod.name))
+        .forEach((mod) => (mod.isEnabled = true));
 
       state.wasOnboardingEverRun = fromConfigAppState.wasOnboardingEverRun;
       if (!fromConfigAppState.wasOnboardingEverRun) state.isOnboardingToRun = true;
