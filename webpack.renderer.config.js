@@ -20,6 +20,13 @@ module.exports = {
     rules,
   },
   plugins: plugins,
+  devtool: isProduction ? "source-map" : "eval-cheap-module-source-map",
+  cache: {
+    type: "filesystem",
+    buildDependencies: {
+      config: [__filename, require.resolve("./webpack.rules"), require.resolve("./webpack.plugins")],
+    },
+  },
   resolve: {
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css"],
     fallback: {
@@ -86,7 +93,7 @@ module.exports = {
         },
         // Enable tree shaking
         usedExports: true,
-        sideEffects: false,
+        sideEffects: true,
       }
     : {},
   output: {
