@@ -2,7 +2,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppSelector } from "../hooks";
 import { Resizable } from "re-resizable";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faXmark, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 
 type VisualsUnitEntry = {
   unitKey: string;
@@ -475,7 +475,7 @@ const VisualsTab = memo(() => {
 
   return (
     <div className="text-white max-w-[140rem] mx-auto pr-4">
-      <div className="flex items-center gap-4 mb-2 text-sm">
+      <div className="flex items-center gap-4 mb-2 text-sm bg-gray-800/60 border border-gray-700 rounded px-3 py-2">
         <div className="flex items-center gap-2">
           <label htmlFor="visuals-unit-filter" className="text-gray-300">
             Unit filter
@@ -574,7 +574,10 @@ const VisualsTab = memo(() => {
                           title={group.label}
                           onClick={() => toggleOriginGroupCollapsed(group.label)}
                         >
-                          <span className="mr-2">{isCollapsed ? ">" : "v"}</span>
+                          <FontAwesomeIcon
+                            icon={faChevronRight}
+                            className={`mr-2 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
+                          />
                           {group.label} ({group.units.length})
                         </button>
                       );
@@ -638,7 +641,7 @@ const VisualsTab = memo(() => {
                 <div
                   key={tab.id}
                   className={`flex items-center px-3 py-1 cursor-pointer border-r border-gray-700 text-sm whitespace-nowrap ${
-                    tab.id === activeTabId ? "bg-gray-700 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-750"
+                    tab.id === activeTabId ? "bg-gray-700 text-white border-b-2 border-blue-400" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
                   }`}
                   onClick={() => setActiveTabId(tab.id)}
                   title={tab.filePath}
@@ -736,7 +739,12 @@ const VisualsTab = memo(() => {
                           : "Right-click to open in AssetEditor"
                       }
                     >
-                      <div className="text-xs uppercase text-gray-400">{file.ext}</div>
+                      <div className={`text-xs uppercase ${
+                        file.ext === "variantmeshdefinition" ? "text-green-400" :
+                        file.ext === "wsmodel" ? "text-sky-400" :
+                        file.ext === "rigid_model_v2" ? "text-violet-400" :
+                        "text-gray-400"
+                      }`}>{file.ext}</div>
                       <div className="text-sm break-all">{file.path}</div>
                     </div>
                   );
