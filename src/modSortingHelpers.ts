@@ -18,9 +18,10 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
 }
 
 export function sortAsInPreset(mods: Mod[], modsInPreset: Mod[]) {
+  const indexMap = new Map(modsInPreset.map((mod, i) => [mod.name, i]));
   const newMods = [...mods].sort((modF, modS) => {
-    const modInPresetIndexF = modsInPreset.findIndex((iterMod) => iterMod.name == modF.name);
-    const modInPresetIndexS = modsInPreset.findIndex((iterMod) => iterMod.name == modS.name);
+    const modInPresetIndexF = indexMap.get(modF.name) ?? -1;
+    const modInPresetIndexS = indexMap.get(modS.name) ?? -1;
 
     if (modInPresetIndexF != -1 && modInPresetIndexS != -1) return modInPresetIndexF - modInPresetIndexS;
 

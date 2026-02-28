@@ -1,13 +1,11 @@
 export function withoutDataAndContentDuplicates(mods: Mod[]) {
-  return mods.filter(
-    (mod) =>
-      mod.isInData ||
-      (!mod.isInData && !mods.find((modOther) => modOther.name == mod.name && modOther.isInData))
-  );
+  const inDataNames = new Set(mods.filter((m) => m.isInData).map((m) => m.name));
+  return mods.filter((mod) => mod.isInData || !inDataNames.has(mod.name));
 }
 
 export function findAlwaysEnabledMods(mods: Mod[], alwaysEnabledMods: Mod[]) {
-  return mods.filter((iterMod) => alwaysEnabledMods.find((mod) => mod.name === iterMod.name));
+  const names = new Set(alwaysEnabledMods.map((m) => m.name));
+  return mods.filter((m) => names.has(m.name));
 }
 
 export function findMod(mods: Mod[], mod: Mod) {
