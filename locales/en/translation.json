@@ -54,6 +54,7 @@
   "presetToEdit": "Preset to edit:",
   "inPreset": "In preset",
   "notInPreset": "Not in preset",
+  "noCategoryFilter": "No category filter",
   "saveAndApply": "Save & Use",
   "saveAs": "Save As",
   "saveAsAndUse": "Save As & Use",
