@@ -79,7 +79,9 @@ const VisualsTab = memo(() => {
   const [fileResultsTotal, setFileResultsTotal] = useState(0);
   const [isFileSearchLoading, setIsFileSearchLoading] = useState(false);
   const [fileSearchError, setFileSearchError] = useState<string | null>(null);
-  const [assetEditorContextMenu, setAssetEditorContextMenu] = useState<VisualsAssetEditorContextMenu | null>(null);
+  const [assetEditorContextMenu, setAssetEditorContextMenu] = useState<VisualsAssetEditorContextMenu | null>(
+    null,
+  );
 
   const unitClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,7 +154,8 @@ const VisualsTab = memo(() => {
   const filteredUnits = useMemo(() => {
     if (!unitFilter) return units;
     return units.filter((entry) => {
-      const haystack = `${entry.localizedName} ${entry.unitKey} ${entry.faction} ${entry.variantName || ""}`.toLowerCase();
+      const haystack =
+        `${entry.localizedName} ${entry.unitKey} ${entry.faction} ${entry.variantName || ""}`.toLowerCase();
       return haystack.includes(unitFilter);
     });
   }, [units, unitFilter]);
@@ -412,7 +415,11 @@ const VisualsTab = memo(() => {
         {lines.map((line, lineIndex) => {
           if (!viewerModelPathRegex.test(line)) {
             viewerModelPathRegex.lastIndex = 0;
-            return <React.Fragment key={`line-${lineIndex}`}>{line + (lineIndex < lines.length - 1 ? "\n" : "")}</React.Fragment>;
+            return (
+              <React.Fragment key={`line-${lineIndex}`}>
+                {line + (lineIndex < lines.length - 1 ? "\n" : "")}
+              </React.Fragment>
+            );
           }
           viewerModelPathRegex.lastIndex = 0;
 
@@ -470,7 +477,11 @@ const VisualsTab = memo(() => {
   };
 
   if (!isFeaturesForModdersEnabled) {
-    return <div className="text-gray-300 p-4">Visuals tab is available only when Modders features are enabled.</div>;
+    return (
+      <div className="text-gray-300 p-4">
+        Visuals tab is available only when Modders features are enabled.
+      </div>
+    );
   }
 
   return (
@@ -485,12 +496,16 @@ const VisualsTab = memo(() => {
             type="text"
             value={unitFilterInput}
             onChange={(e) => setUnitFilterInput(e.target.value)}
-            placeholder="Search unit key / name / faction"
+            placeholder="Search unit name / key / variant"
             className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white min-w-[20rem]"
           />
         </div>
         <label className="flex items-center gap-2 text-gray-300">
-          <input type="checkbox" checked={isFilePanelOpen} onChange={() => setIsFilePanelOpen((prev) => !prev)} />
+          <input
+            type="checkbox"
+            checked={isFilePanelOpen}
+            onChange={() => setIsFilePanelOpen((prev) => !prev)}
+          />
           Show all model files
         </label>
         <label className="flex items-center gap-2 text-gray-300">
@@ -506,7 +521,9 @@ const VisualsTab = memo(() => {
         </span>
       </div>
 
-      {unitsError && <div className="mb-2 rounded bg-red-900/60 border border-red-700 px-3 py-2">{unitsError}</div>}
+      {unitsError && (
+        <div className="mb-2 rounded bg-red-900/60 border border-red-700 px-3 py-2">{unitsError}</div>
+      )}
       {viewerMessage && (
         <div className="mb-2 rounded bg-amber-900/40 border border-amber-700 px-3 py-2 text-amber-200">
           {viewerMessage}
@@ -519,70 +536,72 @@ const VisualsTab = memo(() => {
             <div className="h-[82vh] border border-gray-700 bg-gray-800 rounded overflow-auto">
               {isLoadingUnits && units.length === 0 ? (
                 <div className="p-3 text-gray-300">Loading unit list...</div>
+              ) : !isGroupedByOrigin || !groupedUnits ? (
+                filteredUnits.map((unit) => {
+                  const rowKey = `${unit.unitKey}|${unit.faction}`;
+                  const hasPath = !!unit.variantMeshPath;
+                  return (
+                    <div
+                      key={rowKey}
+                      className={`px-3 py-2 border-b border-gray-700 cursor-pointer hover:bg-gray-700 ${
+                        !hasPath ? "opacity-70" : ""
+                      }`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (unitClickTimer.current) clearTimeout(unitClickTimer.current);
+                        unitClickTimer.current = setTimeout(() => {
+                          unitClickTimer.current = null;
+                          onUnitSingleClick(unit);
+                        }, 220);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        if (unitClickTimer.current) {
+                          clearTimeout(unitClickTimer.current);
+                          unitClickTimer.current = null;
+                        }
+                        onUnitDoubleClick(unit);
+                      }}
+                      onContextMenu={(event) => openAssetEditorContextMenu(event, unit.variantMeshPath)}
+                      title={unit.variantMeshPath || "No variantmeshdefinition resolved"}
+                    >
+                      <div className="text-sm">{unit.localizedName}</div>
+                      <div className="text-xs text-gray-400 break-all">
+                        {unit.unitKey}
+                        {unit.faction ? ` | faction: ${unit.faction}` : ""}
+                      </div>
+                      {unit.variantName && (
+                        <div className="text-xs text-gray-500 break-all">variant: {unit.variantName}</div>
+                      )}
+                      {!unit.variantMeshPath && (
+                        <div className="text-xs text-red-300">No resolved variantmeshdefinition</div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
-                (!isGroupedByOrigin || !groupedUnits
-                  ? filteredUnits.map((unit) => {
-                      const rowKey = `${unit.unitKey}|${unit.faction}`;
-                      const hasPath = !!unit.variantMeshPath;
-                      return (
-                        <div
-                          key={rowKey}
-                          className={`px-3 py-2 border-b border-gray-700 cursor-pointer hover:bg-gray-700 ${
-                            !hasPath ? "opacity-70" : ""
-                          }`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            if (unitClickTimer.current) clearTimeout(unitClickTimer.current);
-                            unitClickTimer.current = setTimeout(() => {
-                              unitClickTimer.current = null;
-                              onUnitSingleClick(unit);
-                            }, 220);
-                          }}
-                          onDoubleClick={(e) => {
-                            e.preventDefault();
-                            if (unitClickTimer.current) {
-                              clearTimeout(unitClickTimer.current);
-                              unitClickTimer.current = null;
-                            }
-                            onUnitDoubleClick(unit);
-                          }}
-                          onContextMenu={(event) => openAssetEditorContextMenu(event, unit.variantMeshPath)}
-                          title={unit.variantMeshPath || "No variantmeshdefinition resolved"}
-                        >
-                          <div className="text-sm">{unit.localizedName}</div>
-                          <div className="text-xs text-gray-400 break-all">
-                            {unit.unitKey}
-                            {unit.faction ? ` | faction: ${unit.faction}` : ""}
-                          </div>
-                          {unit.variantName && (
-                            <div className="text-xs text-gray-500 break-all">variant: {unit.variantName}</div>
-                          )}
-                          {!unit.variantMeshPath && (
-                            <div className="text-xs text-red-300">No resolved variantmeshdefinition</div>
-                          )}
-                        </div>
-                      );
-                    })
-                  : groupedUnits.flatMap((group) => {
-                      const isCollapsed = !!collapsedOriginGroups[group.label];
-                      const headerKey = `header:${group.label}`;
-                      const header = (
-                        <button
-                          key={headerKey}
-                          type="button"
-                          className="w-full text-left px-3 py-2 border-b border-gray-700 bg-gray-850 text-xs uppercase tracking-wide text-gray-300 hover:bg-gray-700"
-                          title={group.label}
-                          onClick={() => toggleOriginGroupCollapsed(group.label)}
-                        >
-                          <FontAwesomeIcon
-                            icon={faChevronRight}
-                            className={`mr-2 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
-                          />
-                          {group.label} ({group.units.length})
-                        </button>
-                      );
+                groupedUnits.flatMap((group) => {
+                  const isCollapsed = !!collapsedOriginGroups[group.label];
+                  const headerKey = `header:${group.label}`;
+                  const header = (
+                    <button
+                      key={headerKey}
+                      type="button"
+                      className="w-full text-left px-3 py-2 border-b border-gray-700 bg-gray-850 text-xs uppercase tracking-wide text-gray-300 hover:bg-gray-700"
+                      title={group.label}
+                      onClick={() => toggleOriginGroupCollapsed(group.label)}
+                    >
+                      <FontAwesomeIcon
+                        icon={faChevronRight}
+                        className={`mr-2 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
+                      />
+                      {group.label} ({group.units.length})
+                    </button>
+                  );
 
-                      const rows = isCollapsed ? [] : group.units.map((unit) => {
+                  const rows = isCollapsed
+                    ? []
+                    : group.units.map((unit) => {
                         const rowKey = `${group.label}|${unit.unitKey}|${unit.faction}`;
                         const hasPath = !!unit.variantMeshPath;
                         return (
@@ -616,7 +635,9 @@ const VisualsTab = memo(() => {
                               {unit.faction ? ` | faction: ${unit.faction}` : ""}
                             </div>
                             {unit.variantName && (
-                              <div className="text-xs text-gray-500 break-all">variant: {unit.variantName}</div>
+                              <div className="text-xs text-gray-500 break-all">
+                                variant: {unit.variantName}
+                              </div>
                             )}
                             {!unit.variantMeshPath && (
                               <div className="text-xs text-red-300">No resolved variantmeshdefinition</div>
@@ -625,9 +646,9 @@ const VisualsTab = memo(() => {
                         );
                       });
 
-                      return [header, ...rows];
-                    })
-              ))}
+                  return [header, ...rows];
+                })
+              )}
             </div>
           </Resizable>
         )}
@@ -635,13 +656,17 @@ const VisualsTab = memo(() => {
         <div style={{ flex: 1, minWidth: "1px", display: "flex", flexDirection: "column" }} className="ml-3">
           <div className="flex bg-gray-800 border border-gray-700 rounded-t overflow-x-auto min-h-[36px]">
             {tabs.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-400">Open a unit to view its variantmeshdefinition</div>
+              <div className="px-3 py-2 text-sm text-gray-400">
+                Open a unit to view its variantmeshdefinition
+              </div>
             ) : (
               tabs.map((tab) => (
                 <div
                   key={tab.id}
                   className={`flex items-center px-3 py-1 cursor-pointer border-r border-gray-700 text-sm whitespace-nowrap ${
-                    tab.id === activeTabId ? "bg-gray-700 text-white border-b-2 border-blue-400" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                    tab.id === activeTabId
+                      ? "bg-gray-700 text-white border-b-2 border-blue-400"
+                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
                   }`}
                   onClick={() => setActiveTabId(tab.id)}
                   title={tab.filePath}
@@ -689,7 +714,12 @@ const VisualsTab = memo(() => {
         </div>
 
         {isFilePanelOpen && (
-          <Resizable defaultSize={{ width: "25%", height: "82vh" }} minWidth="220px" maxWidth="45%" className="ml-3">
+          <Resizable
+            defaultSize={{ width: "25%", height: "82vh" }}
+            minWidth="220px"
+            maxWidth="45%"
+            className="ml-3"
+          >
             <div className="h-[82vh] border border-gray-700 bg-gray-800 rounded flex flex-col min-w-0">
               <div className="p-2 border-b border-gray-700">
                 <input
@@ -739,12 +769,19 @@ const VisualsTab = memo(() => {
                           : "Right-click to open in AssetEditor"
                       }
                     >
-                      <div className={`text-xs uppercase ${
-                        file.ext === "variantmeshdefinition" ? "text-green-400" :
-                        file.ext === "wsmodel" ? "text-sky-400" :
-                        file.ext === "rigid_model_v2" ? "text-violet-400" :
-                        "text-gray-400"
-                      }`}>{file.ext}</div>
+                      <div
+                        className={`text-xs uppercase ${
+                          file.ext === "variantmeshdefinition"
+                            ? "text-green-400"
+                            : file.ext === "wsmodel"
+                              ? "text-sky-400"
+                              : file.ext === "rigid_model_v2"
+                                ? "text-violet-400"
+                                : "text-gray-400"
+                        }`}
+                      >
+                        {file.ext}
+                      </div>
                       <div className="text-sm break-all">{file.path}</div>
                     </div>
                   );

@@ -76,6 +76,7 @@ const PresetsTab = memo(() => {
   const allMods = useAppSelector((state) => state.app.allMods);
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
+  const categories = useAppSelector((state) => state.app.categories);
 
   const [selectedPresetName, setSelectedPresetName] = useState<string | undefined>(undefined);
   const [pendingPresetName, setPendingPresetName] = useState<string | undefined>(undefined);
@@ -91,6 +92,7 @@ const PresetsTab = memo(() => {
   const [selectedNotInPresetNames, setSelectedNotInPresetNames] = useState<Set<string>>(new Set());
   const [searchInPreset, setSearchInPreset] = useState("");
   const [searchNotInPreset, setSearchNotInPreset] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
   const [placeMode, setPlaceMode] = useState<PlaceMode>(undefined);
   const [activePlaceholderIndex, setActivePlaceholderIndex] = useState(0);
 
@@ -316,12 +318,14 @@ const PresetsTab = memo(() => {
   }, [enabledDraftMods, placeMode, searchInPreset]);
 
   const visibleNotInPresetMods = useMemo(() => {
-    if (!searchNotInPreset.trim()) return notInPresetInstalledMods;
+    let mods = notInPresetInstalledMods;
+    if (categoryFilter) {
+      mods = mods.filter((mod) => mod.categories?.includes(categoryFilter));
+    }
+    if (!searchNotInPreset.trim()) return mods;
     const query = searchNotInPreset.trim().toLowerCase();
-    return notInPresetInstalledMods.filter((mod) =>
-      `${mod.humanName} ${mod.name}`.toLowerCase().includes(query),
-    );
-  }, [notInPresetInstalledMods, searchNotInPreset]);
+    return mods.filter((mod) => `${mod.humanName} ${mod.name}`.toLowerCase().includes(query));
+  }, [categoryFilter, notInPresetInstalledMods, searchNotInPreset]);
 
   const missingDependenciesByModName = useMemo(() => {
     const isDependencyEnabledByWorkshopId = (reqId: string): boolean => {
@@ -1092,6 +1096,21 @@ const PresetsTab = memo(() => {
               {`${selectedNotInPresetNames.size} ${localized.selected || "selected"}`}
             </span>
           </div>
+          {categories.length > 0 && (
+            <select
+              value={categoryFilter ?? ""}
+              onChange={(event) => setCategoryFilter(event.target.value || undefined)}
+              className="mb-2 w-full rounded bg-gray-700 px-3 py-2 text-sm disabled:opacity-40"
+              disabled={!!placeMode}
+            >
+              <option value="">{localized.noCategoryFilter || "No category filter"}</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          )}
           <input
             value={searchNotInPreset}
             onChange={(event) => setSearchNotInPreset(event.target.value)}
