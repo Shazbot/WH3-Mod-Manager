@@ -6,12 +6,13 @@ const relocateLoader = require("@vercel/webpack-asset-relocator-loader");
 const AssetRelocatorPatch = require("@electron-forge/plugin-webpack/dist/util/AssetRelocatorPatch");
 
 const isProduction = process.argv[process.argv.indexOf("--mode") + 1] === "production";
+const isVerbose = process.env.WEBPACK_VERBOSE === "1";
 
 module.exports = {
   infrastructureLogging: {
-    level: "verbose",
+    level: isVerbose ? "verbose" : "warn",
   },
-  stats: "verbose",
+  stats: isVerbose ? "verbose" : "errors-warnings",
   /**
    * This is the main entry point for your application, it's the first file
    * that runs in the main process.
@@ -38,7 +39,7 @@ module.exports = {
     },
     // Enable tree shaking
     usedExports: true,
-    sideEffects: false,
+    sideEffects: true,
   },
   externals: {
     // Externalize large schema files to load them dynamically
@@ -92,7 +93,7 @@ module.exports = {
     },
     hot: true,
   },
-  devtool: isProduction ? "source-map" : "source-map",
+  devtool: isProduction ? "source-map" : "inline-source-map",
   cache: {
     type: "filesystem",
     // Improve cache invalidation
