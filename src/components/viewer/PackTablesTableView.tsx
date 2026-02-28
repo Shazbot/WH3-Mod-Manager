@@ -248,7 +248,10 @@ const HandsontableWrapper = memo(
               const deepCloneCell = getDeepCloneCell(hot, currentSchema, keyColumnSet);
               if (!deepCloneCell) return;
 
-              onContextMenuCallback(hot.toPhysicalRow(deepCloneCell.row), hot.toPhysicalColumn(deepCloneCell.col));
+              onContextMenuCallback(
+                hot.toPhysicalRow(deepCloneCell.row),
+                hot.toPhysicalColumn(deepCloneCell.col),
+              );
             },
           },
         },
@@ -294,6 +297,9 @@ const HandsontableWrapper = memo(
             width="100%"
             height={tableHeight}
             licenseKey="non-commercial-and-evaluation"
+            comments={false}
+            undo={false}
+            fillHandle={false}
           />
         </div>
       </Suspense>
@@ -312,7 +318,7 @@ const PackTablesTableView = memo(() => {
   const [tableHeight, setTableHeight] = useState<number>(500);
 
   const hotRef = useRef<HotTableRef>(null);
-  const tableParentRef = useRef<HTMLDivElement>(null);
+  const [tableParentEl, setTableParentEl] = useState<HTMLDivElement | null>(null);
   const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
 
   const setTableFilterDebounced = useMemo(
@@ -330,8 +336,10 @@ const PackTablesTableView = memo(() => {
   }, [setTableFilterDebounced]);
 
   useEffect(() => {
-    const tableParent = tableParentRef.current;
-    if (!tableParent) return;
+    const tableParent = tableParentEl;
+    if (!tableParent) {
+      return;
+    }
 
     let rafId: number | undefined;
     const updateHeight = () => {
@@ -364,7 +372,7 @@ const PackTablesTableView = memo(() => {
       }
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [tableParentEl]);
 
   useEffect(() => {
     if (!startArgs.includes("-testDBClone")) return;
@@ -434,14 +442,12 @@ const PackTablesTableView = memo(() => {
     setTableFilterDebounced(value);
   };
 
-  const keyFilterOrDefault =
-    keyFilter !== "" ? keyFilter : (preparedTableData?.columnFilterOptions[0] ?? "");
+  const keyFilterOrDefault = keyFilter !== "" ? keyFilter : (preparedTableData?.columnFilterOptions[0] ?? "");
   const indexOfFilteredColumn = preparedTableData?.columnHeaders.indexOf(keyFilterOrDefault) ?? -1;
   const normalizedTableFilter = tableFilter.trim();
   const rowCount = preparedTableData?.data.length ?? 0;
   const colCount = preparedTableData?.columnHeaders.length ?? 0;
-  const isBigTable =
-    rowCount >= BIG_TABLE_ROW_THRESHOLD || rowCount * colCount >= BIG_TABLE_CELL_THRESHOLD;
+  const isBigTable = rowCount >= BIG_TABLE_ROW_THRESHOLD || rowCount * colCount >= BIG_TABLE_CELL_THRESHOLD;
   const shouldRenderAllRows =
     !isBigTable &&
     rowCount > 0 &&
@@ -456,8 +462,7 @@ const PackTablesTableView = memo(() => {
     [colCount, nonBigTableColumnWindow],
   );
   const viewportColumnRenderingOffset: number | "auto" = isBigTable ? "auto" : nonBigTableColumnWindow;
-  const viewportColumnRenderingThreshold: number | "auto" =
-    isBigTable ? "auto" : nonBigTableColumnThreshold;
+  const viewportColumnRenderingThreshold: number | "auto" = isBigTable ? "auto" : nonBigTableColumnThreshold;
 
   const filteredRowIndices = useMemo(() => {
     if (!preparedTableData) return [];
@@ -495,28 +500,30 @@ const PackTablesTableView = memo(() => {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="ht-theme-main-dark flex-1 w-full" style={{ height: "100%", overflow: "hidden" }}>
-        <div id="packTablesTableParent" ref={tableParentRef} style={{ height: "100%", overflow: "auto" }}>
-          <HandsontableWrapper
-            data={filteredData}
-            columns={preparedTableData.columns}
-            columnHeaders={preparedTableData.columnHeaders}
-            hotRef={hotRef}
-            onContextMenuCallback={handleContextMenuCallback}
-            keyColumnNamesUnderscore={keyColumnNamesUnderscore}
-            currentSchema={currentSchema}
-            tableHeight={tableHeight}
-            isBigTable={isBigTable}
-            rowCount={rowCount}
-            colCount={colCount}
-            viewportColumnRenderingOffset={viewportColumnRenderingOffset}
-            viewportColumnRenderingThreshold={viewportColumnRenderingThreshold}
-            renderAllRows={shouldRenderAllRows}
-          />
-        </div>
+    <div className="flex flex-col h-full min-h-0">
+      <div
+        id="packTablesTableParent"
+        ref={setTableParentEl}
+        className="ht-theme-main-dark flex-1 min-h-0 w-full overflow-hidden"
+      >
+        <HandsontableWrapper
+          data={filteredData}
+          columns={preparedTableData.columns}
+          columnHeaders={preparedTableData.columnHeaders}
+          hotRef={hotRef}
+          onContextMenuCallback={handleContextMenuCallback}
+          keyColumnNamesUnderscore={keyColumnNamesUnderscore}
+          currentSchema={currentSchema}
+          tableHeight={tableHeight}
+          isBigTable={isBigTable}
+          rowCount={rowCount}
+          colCount={colCount}
+          viewportColumnRenderingOffset={viewportColumnRenderingOffset}
+          viewportColumnRenderingThreshold={viewportColumnRenderingThreshold}
+          renderAllRows={shouldRenderAllRows}
+        />
       </div>
-      <div className="mt-3 flex gap-6">
+      <div className="mt-3 flex gap-6 shrink-0">
         <select
           value={keyFilterOrDefault}
           onChange={(e) => setKeyFilter(e.target.value)}
