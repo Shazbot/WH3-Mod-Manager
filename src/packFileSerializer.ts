@@ -69,13 +69,13 @@ const ver_schema = object_schema.units_custom_battle_permissions_tables[latest_v
 const zstdFrameMagic = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 const lz4FrameMagic = Buffer.from([0x04, 0x22, 0x4d, 0x18]);
 
-let lz4DecompressFrame:
-  | ((data: string | Buffer) => Promise<Buffer>)
-  | undefined;
+let lz4DecompressFrame: ((data: string | Buffer) => Promise<Buffer>) | undefined;
 try {
-  lz4DecompressFrame = (require("lz4-napi") as {
-    decompressFrame?: (data: string | Buffer) => Promise<Buffer>;
-  }).decompressFrame;
+  lz4DecompressFrame = (
+    require("lz4-napi") as {
+      decompressFrame?: (data: string | Buffer) => Promise<Buffer>;
+    }
+  ).decompressFrame;
 } catch (error) {
   console.log("lz4-napi unavailable in this environment, LZ4 pack payloads will fail to decompress");
 }
@@ -2709,7 +2709,9 @@ export const readFromExistingPack = async (
           let buffer = Buffer.allocUnsafe(packedFileToRead.file_size);
           fs.readSync(fileId, buffer, 0, buffer.length, packedFileToRead.start_pos);
           if (packedFileToRead.is_compressed) {
-            buffer = Buffer.concat([Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name))]);
+            buffer = Buffer.concat([
+              Buffer.from(await decompressPackedPayload(buffer, packedFileToRead.name)),
+            ]);
           }
           packedFileToRead.buffer = buffer;
         }
@@ -2962,7 +2964,7 @@ const readLoc = async (
 ) => {
   let currentPos = 0;
 
-  console.log("READING LOC file", locPackFile.name);
+  // console.log("READING LOC file", locPackFile.name);
 
   const marker = await buffer.subarray(currentPos, currentPos + 2);
   currentPos += 2;
