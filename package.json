@@ -75,7 +75,7 @@
               "entryPoints": [
                 {
                   "html": "./src/index.html",
-                  "js": "./src/renderer.ts",
+                  "js": "./src/rendererMain.ts",
                   "name": "main_window",
                   "preload": {
                     "js": "./src/preload.ts"
@@ -83,7 +83,7 @@
                 },
                 {
                   "html": "./src/viewer/viewerIndex.html",
-                  "js": "./src/renderer.ts",
+                  "js": "./src/rendererViewer.ts",
                   "name": "viewer",
                   "preload": {
                     "js": "./src/preload.ts"
@@ -91,7 +91,7 @@
                 },
                 {
                   "html": "./src/viewer/viewerIndex.html",
-                  "js": "./src/renderer.ts",
+                  "js": "./src/rendererSkills.ts",
                   "name": "skills",
                   "preload": {
                     "js": "./src/preload.ts"
