@@ -170,10 +170,14 @@ const decodePackedFileText = (packedFile: PackedFile) => {
 const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
   const normalizedTarget = normalizePackFilePathKey(fileName);
 
-  const exactIndex = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) => collator.compare(a.name, b));
+  const exactIndex = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) =>
+    collator.compare(a.name, b),
+  );
   if (exactIndex >= 0) return pack.packedFiles[exactIndex];
 
-  return pack.packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget);
+  return pack.packedFiles.find(
+    (packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget,
+  );
 };
 
 const getOrLoadPackFromAppData = async (packPath: string) => {
@@ -2583,7 +2587,10 @@ export const registerIpcMainListeners = (
         if (trimmedHumanName) modPathToLabel.set(mod.path, trimmedHumanName);
         else {
           const baseName = nodePath.basename(mod.path);
-          modPathToLabel.set(mod.path, baseName.toLowerCase().endsWith(".pack") ? baseName.slice(0, -5) : baseName);
+          modPathToLabel.set(
+            mod.path,
+            baseName.toLowerCase().endsWith(".pack") ? baseName.slice(0, -5) : baseName,
+          );
         }
       }
       const tablesToRead = Array.from(
@@ -2608,7 +2615,10 @@ export const registerIpcMainListeners = (
       const currentLanguage = appData.currentLanguage || "en";
       const preferredLocPack = `local_${currentLanguage}.pack`;
       if (appData.allVanillaPackNames.includes(preferredLocPack)) localPackNames.push(preferredLocPack);
-      if (!localPackNames.includes("local_en.pack") && appData.allVanillaPackNames.includes("local_en.pack")) {
+      if (
+        !localPackNames.includes("local_en.pack") &&
+        appData.allVanillaPackNames.includes("local_en.pack")
+      ) {
         localPackNames.push("local_en.pack");
       }
       const localPackPaths = localPackNames.map((packName) => nodePath.join(dataFolder, packName));
@@ -2642,7 +2652,9 @@ export const registerIpcMainListeners = (
         rowDataExtractor: (packPath: string, schemaFieldRow: AmendedSchemaField[]) => void,
       ) => {
         packsTableData.forEach((pTD) => {
-          const tableFiles = Object.keys(pTD.packedFiles).filter((pFName) => pFName.startsWith(`db\\${tableName}\\`));
+          const tableFiles = Object.keys(pTD.packedFiles).filter((pFName) =>
+            pFName.startsWith(`db\\${tableName}\\`),
+          );
           for (const tableFile of tableFiles) {
             const packedFile = pTD.packedFiles[tableFile];
             const dbVersion = getDBVersion(packedFile);
@@ -2670,7 +2682,9 @@ export const registerIpcMainListeners = (
 
       getTableRowData(orderedPacksTableData, "variants_tables", (schemaFieldRow) => {
         const variantName = schemaFieldRow.find((field) => field.name == "variant_name")?.resolvedKeyValue;
-        const variantFilename = schemaFieldRow.find((field) => field.name == "variant_filename")?.resolvedKeyValue;
+        const variantFilename = schemaFieldRow.find(
+          (field) => field.name == "variant_filename",
+        )?.resolvedKeyValue;
         if (variantName) {
           variantsByName.set(variantName, variantFilename || "");
         }
@@ -2695,17 +2709,18 @@ export const registerIpcMainListeners = (
         if (unitKey) landUnitKeys.add(unitKey);
       });
 
-      getTableRowDataWithPackPath(packsTableDataForOrigin, "land_units_tables", (packPath, schemaFieldRow) => {
-        const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
-        if (!unitKey) return;
-        if (unitKeyToOriginPackPath.has(unitKey)) return;
-        unitKeyToOriginPackPath.set(unitKey, packPath);
-      });
+      getTableRowDataWithPackPath(
+        packsTableDataForOrigin,
+        "land_units_tables",
+        (packPath, schemaFieldRow) => {
+          const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
+          if (!unitKey) return;
+          if (unitKeyToOriginPackPath.has(unitKey)) return;
+          unitKeyToOriginPackPath.set(unitKey, packPath);
+        },
+      );
 
-      const locPacksInPriority = [
-        ...localPackPaths,
-        ...dbPriorityMods.map((mod) => mod.path),
-      ]
+      const locPacksInPriority = [...localPackPaths, ...dbPriorityMods.map((mod) => mod.path)]
         .map((packPath) => appData.packsData.find((pack) => pack.path === packPath))
         .filter((pack): pack is Pack => !!pack);
 
@@ -2733,7 +2748,9 @@ export const registerIpcMainListeners = (
         const localizedName = localizedNames.get(`land_units_onscreen_name_${unitKey}`) || unitKey;
         const originPackPath = unitKeyToOriginPackPath.get(unitKey) || dbPackPath;
         const originLabel =
-          originPackPath === dbPackPath ? "Vanilla" : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
+          originPackPath === dbPackPath
+            ? "Vanilla"
+            : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
 
         if (!rows || rows.length === 0) {
           visualsUnits.push({ unitKey, faction: "", localizedName, originPackPath, originLabel });
@@ -2811,7 +2828,9 @@ export const registerIpcMainListeners = (
       const session = visualsSessions.get(sessionId);
       if (!session) return { success: false, error: "Visuals session expired or missing" };
 
-      const resolved = await resolveVisualsFileInSession(session, fileName, { variantMeshDefinitionFallback: true });
+      const resolved = await resolveVisualsFileInSession(session, fileName, {
+        variantMeshDefinitionFallback: true,
+      });
       if (!resolved?.requestedPath) return { success: false, error: "Missing variantmeshdefinition path" };
       if (!resolved.pack || !resolved.fileName) {
         return {
@@ -2820,7 +2839,10 @@ export const registerIpcMainListeners = (
         };
       }
 
-      await readFromExistingPack(resolved.pack, { filesToRead: [resolved.fileName], skipParsingTables: true });
+      await readFromExistingPack(resolved.pack, {
+        filesToRead: [resolved.fileName],
+        skipParsingTables: true,
+      });
       const refreshedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
       if (refreshedFile) {
         const text = decodePackedFileText(refreshedFile);
