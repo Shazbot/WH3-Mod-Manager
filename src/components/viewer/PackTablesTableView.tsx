@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, memo, Suspense, useState, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import "@silevis/reactgrid/styles.css";
+import "handsontable/styles/handsontable.min.css";
+import "handsontable/styles/ht-theme-main.min.css";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { setDeepCloneTarget } from "@/src/appSlice";
@@ -12,8 +14,6 @@ import { HotTableRef } from "@handsontable/react-wrapper";
 
 // Lazy load Handsontable components
 const LazyHotTable = React.lazy(async () => {
-  // CSS imports handled via webpack configuration - remove direct imports
-
   const [{ HotTable }, { registerAllModules }] = await Promise.all([
     import("@handsontable/react-wrapper"),
     import("handsontable/registry"),
