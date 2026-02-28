@@ -819,6 +819,9 @@ const Categories = memo(() => {
       </div>
       <div
         id="categoriesTableContainer"
+        onMouseDownCapture={(ev) => {
+          if (ev.button === 1) ev.stopPropagation();
+        }}
         onClick={(ev) => {
           console.log("HT: onClick");
           const targetElement = ev.target as HTMLElement;
