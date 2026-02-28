@@ -1550,7 +1550,7 @@ export const registerIpcMainListeners = (
           }
         }),
       );
-      packHeadersToSend.forEach((h) => mainWindow?.webContents.send("setPackHeaderData", h));
+      mainWindow?.webContents.send("setPackHeaderData", packHeadersToSend);
       await savePackHeaderCache();
 
       if (!appData.saveSetupDone) {
