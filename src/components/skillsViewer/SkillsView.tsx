@@ -197,7 +197,7 @@ const sortSameCoordinateSkills = (first: Skill, second: Skill) => {
 
 export type SkillsViewSnapshot = {
   nodes: Nodes[];
-  edges: Edge[];
+  edges: SkillEdge[];
   isEditMode: boolean;
   isRequirementsMode: boolean;
   isSkillLocksMode: boolean;
@@ -207,9 +207,9 @@ export type SkillsViewSnapshot = {
   isShowingHiddentSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
   isCheckingSkillRequirements: boolean;
-  savedEditEdges: Edge[];
-  savedLocksEdges: Edge[];
-  allLockEdges: Edge[];
+  savedEditEdges: SkillEdge[];
+  savedLocksEdges: SkillEdge[];
+  allLockEdges: SkillEdge[];
   lockEdgeLevels: Record<string, number>;
   localNodeToSkillLocks: Record<string, [string, number][]> | null;
 };
@@ -218,17 +218,23 @@ export type SkillsViewHandle = {
   getSnapshot: () => SkillsViewSnapshot;
 };
 
+export type SkillEdge = Edge & {
+  type: string;
+  animated: boolean;
+  curveBelow?: boolean;
+};
+
 type EditSnapshot = {
   nodes: Nodes[];
-  edges: Edge[];
+  edges: SkillEdge[];
   editGroups: Record<string, string>;
   nextGroupId: number;
   lockEdgeLevels: Record<string, number>;
   isRequirementsMode: boolean;
   isSkillLocksMode: boolean;
-  savedEditEdges: Edge[];
-  savedLocksEdges: Edge[];
-  allLockEdges: Edge[];
+  savedEditEdges: SkillEdge[];
+  savedLocksEdges: SkillEdge[];
+  allLockEdges: SkillEdge[];
   localNodeToSkillLocks: Record<string, [string, number][]> | null;
 };
 
@@ -771,14 +777,6 @@ const SkillsView = memo(
     }
     console.log("LINKED SKILLS DONE-------------------------");
 
-    type SkillEdge = Edge & {
-      id: string;
-      source: string;
-      target: string;
-      type: string;
-      animated: boolean;
-      curveBelow?: boolean;
-    };
     const initialEdges: SkillEdge[] = [];
     skills
       .filter((skill) => skill.linkedToNode)
@@ -819,9 +817,9 @@ const SkillsView = memo(
     const [nodes, setNodes, onNodesChange] = useNodesState<Nodes>(
       initialSnapshot?.nodes ? deepClone(initialSnapshot.nodes) : deepClone(skillNodes),
     );
-    const [edges, setEdges, onEdgesChange] = useEdgesState<(typeof initialEdges)[0]>(
+    const [edges, setEdges, onEdgesChange] = useEdgesState<SkillEdge>(
       initialSnapshot?.edges
-        ? (deepClone(initialSnapshot.edges) as typeof initialEdges)
+        ? (deepClone(initialSnapshot.edges) as SkillEdge[])
         : deepClone(initialEdges),
     );
 
