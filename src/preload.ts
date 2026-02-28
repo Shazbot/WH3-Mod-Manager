@@ -114,8 +114,9 @@ const api = {
     ipcRenderer.on("removeMod", callback),
   setModData: (callback: (event: Electron.IpcRendererEvent, modDatas: ModData[]) => void) =>
     ipcRenderer.on("setModData", callback),
-  setPackHeaderData: (callback: (event: Electron.IpcRendererEvent, packHeaderData: PackHeaderData) => void) =>
-    ipcRenderer.on("setPackHeaderData", callback),
+  setPackHeaderData: (
+    callback: (event: Electron.IpcRendererEvent, packHeaderData: PackHeaderData[]) => void,
+  ) => ipcRenderer.on("setPackHeaderData", callback),
   setPacksData: (callback: (event: Electron.IpcRendererEvent, packsData: PackViewData[]) => void) =>
     ipcRenderer.on("setPacksData", callback),
   setUnsavedPacksData: (

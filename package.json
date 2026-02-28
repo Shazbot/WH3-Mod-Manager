@@ -8,7 +8,6 @@
     "*.css",
     "*.scss",
     "src/index.css",
-    "src/renderer.ts",
     "src/schema.ts",
     "src/app.tsx",
     "handsontable/styles/*.css"

@@ -179,15 +179,8 @@ window.api?.setModData((event, modDatas: ModData[]) => {
   store.dispatch(setModData(modDatas));
 });
 
-const packHeaders: PackHeaderData[] = [];
-const setPackHeaderDataLimited = debounce(() => {
-  store.dispatch(setPackHeaderData(packHeaders));
-  packHeaders.splice(0, packHeaders.length);
-}, 250);
-
-window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData) => {
-  packHeaders.push(packHeaderData);
-  setPackHeaderDataLimited();
+window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData[]) => {
+  store.dispatch(setPackHeaderData(packHeaderData));
 });
 
 window.api?.setCustomizableMods((event, customizableMods: Record<string, string[]>) => {
