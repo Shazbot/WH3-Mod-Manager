@@ -16,7 +16,7 @@ const LeftSidebar = memo(() => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const tabIndexToTabType: MainWindowTab[] = isFeaturesForModdersEnabled
-    ? ["mods", "enabledMods", "categories", "visuals", "nodeEditor", "presets"]
+    ? ["mods", "enabledMods", "categories", "presets", "visuals", "nodeEditor"]
     : ["mods", "enabledMods", "categories", "presets"];
 
   const onTabSelected = (index: number) => {
@@ -78,12 +78,21 @@ const LeftSidebar = memo(() => {
               <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+3</span>
             </div>
           </Tab>
+          <Tab>
+            <div className="flex items-center h-full parent-unhide-child relative">
+              <BsCollection size="1.3rem" />
+              <span className="ml-2 mr-2 hidden-child">
+                {localized.presetsTab || localized.editPresets || "Presets"}
+              </span>
+              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+4</span>
+            </div>
+          </Tab>
           {isFeaturesForModdersEnabled && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
                 <BsPersonVcard size="1.25rem" />
                 <span className="ml-2 mr-2 hidden-child">Visuals</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+4</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+5</span>
               </div>
             </Tab>
           )}
@@ -92,21 +101,10 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <FaProjectDiagram size="1.5rem" />
                 <span className="ml-2 mr-2 hidden-child">Node Editor</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+5</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+6</span>
               </div>
             </Tab>
           )}
-          <Tab>
-            <div className="flex items-center h-full parent-unhide-child relative">
-              <BsCollection size="1.3rem" />
-              <span className="ml-2 mr-2 hidden-child">
-                {localized.presetsTab || localized.editPresets || "Presets"}
-              </span>
-              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
-                {isFeaturesForModdersEnabled ? "Ctrl+6" : "Ctrl+4"}
-              </span>
-            </div>
-          </Tab>
         </TabList>
         {tabIndexToTabType.map((tabType) => (
           <TabPanel key={tabType}></TabPanel>

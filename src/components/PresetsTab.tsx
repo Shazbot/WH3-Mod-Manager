@@ -830,14 +830,28 @@ const PresetsTab = memo(() => {
             </div>
           </div>
         </div>
-        <div className="col-span-5 text-sm">
-          <span className="mr-3">{`+${summary.added}`}</span>
-          <span className="mr-3">{`-${summary.removed}`}</span>
-          <span className="mr-3">{`${summary.reordered} ${localized.reordered || "reordered"}`}</span>
-          <span className="mr-3">{`${summary.pinned} ${localized.pinned || "pinned"}`}</span>
-          <span>{`${summary.missingDependencies} ${
-            localized.missingDependenciesShort || "missing deps"
-          }`}</span>
+        <div className="col-span-5 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 border bg-green-700/40 text-green-300 border-green-700">
+            {`+${summary.added}`}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 border bg-red-700/40 text-red-300 border-red-700">
+            {`-${summary.removed}`}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 border bg-blue-700/40 text-blue-300 border-blue-700">
+            {`${summary.reordered} ${localized.reordered || "reordered"}`}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 border bg-indigo-700/40 text-indigo-300 border-indigo-700">
+            {`${summary.pinned} ${localized.pinned || "pinned"}`}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1 rounded px-2 py-0.5 border ${
+              summary.missingDependencies > 0
+                ? "bg-amber-700/40 text-amber-300 border-amber-700"
+                : "bg-gray-700/40 text-gray-400 border-gray-600"
+            }`}
+          >
+            {`${summary.missingDependencies} ${localized.missingDependenciesShort || "missing deps"}`}
+          </span>
         </div>
         <div className="col-span-3 flex justify-end gap-2 flex-wrap">
           <button
@@ -854,7 +868,7 @@ const PresetsTab = memo(() => {
             {localized.saveAs || "Save As"}
           </button>
           <button
-            className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
+            className="bg-green-700 hover:bg-green-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
             onClick={() => onUsePreset()}
           >
             {localized.use || "Use"}
@@ -888,7 +902,10 @@ const PresetsTab = memo(() => {
         <div className="col-span-5">
           <div className="mb-2 flex items-center justify-between">
             <span>{localized.inPreset || "In preset"}</span>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs opacity-80">
+                {`${selectedInPresetNames.size} ${localized.selected || "selected"}`}
+              </span>
               <button
                 className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-50"
                 onClick={() => onResetAllLoadOrder()}
