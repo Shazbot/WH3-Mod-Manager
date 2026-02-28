@@ -4617,6 +4617,7 @@ async function executeGenerateRowsNode(
       handleId: string;
       name: string;
       existingTableName: string;
+      tableVersion?: number;
       columnMapping: string[];
       staticValues?: Record<string, string>;
     }>;
@@ -5100,14 +5101,18 @@ async function executeGenerateRowsNode(
         };
       }
 
-      const defaultTableVersions = await getDefaultTableVersions();
-      const defaultTableVersionNumber =
-        defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
-
       schema = versions[0];
-      if (defaultTableVersionNumber) {
-        const version = versions.find((version) => version.version == defaultTableVersionNumber);
+      if (outputConfig.tableVersion !== undefined) {
+        const version = versions.find((v) => v.version === outputConfig.tableVersion);
         if (version) schema = version;
+      } else {
+        const defaultTableVersions = await getDefaultTableVersions();
+        const defaultTableVersionNumber =
+          defaultTableVersions && defaultTableVersions[outputConfig.existingTableName];
+        if (defaultTableVersionNumber) {
+          const version = versions.find((version) => version.version == defaultTableVersionNumber);
+          if (version) schema = version;
+        }
       }
 
       console.log(`Generate Rows Node ${nodeId}: Using schema for "${outputConfig.existingTableName}"`, {

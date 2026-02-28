@@ -514,6 +514,7 @@ interface OutputTableConfig {
   handleId: string; // e.g., "output-table1"
   name: string; // Display name
   existingTableName: string; // Table schema to use
+  tableVersion?: number; // Explicit version override; falls back to defaultTableVersions then versions[0]
   columnMapping: string[]; // Which transformation outputs go here
   staticValues?: Record<string, string>; // Static values for columns not in transformations
 }
@@ -4127,8 +4128,12 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     const versions = data.DBNameToDBVersions[output.existingTableName];
     if (!versions || versions.length === 0) return [];
 
-    const defaultVersion = getTableVersion(output.existingTableName, versions, defaultTableVersions);
-    const schema = defaultVersion ?? versions[0];
+    const schema =
+      (output.tableVersion !== undefined
+        ? versions.find((v) => v.version === output.tableVersion)
+        : undefined) ??
+      getTableVersion(output.existingTableName, versions, defaultTableVersions) ??
+      versions[0];
     const allColumns = schema.fields.map((f: any) => f.name);
 
     // Get transformed column names for this table
@@ -4422,7 +4427,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
               <select
                 value={output.existingTableName}
-                onChange={(e) => updateOutputTable(idx, { existingTableName: e.target.value })}
+                onChange={(e) => updateOutputTable(idx, { existingTableName: e.target.value, tableVersion: undefined })}
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               >
                 <option value="">Select table schema...</option>
@@ -4437,6 +4442,30 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   </option>
                 ))}
               </select>
+
+              {(() => {
+                const versions = output.existingTableName && data.DBNameToDBVersions
+                  ? data.DBNameToDBVersions[output.existingTableName]
+                  : undefined;
+                if (!versions || versions.length <= 1) return null;
+                const activeVersion =
+                  output.tableVersion !== undefined
+                    ? output.tableVersion
+                    : (getTableVersion(output.existingTableName, versions, defaultTableVersions)?.version ?? versions[0].version);
+                return (
+                  <select
+                    value={activeVersion}
+                    onChange={(e) => updateOutputTable(idx, { tableVersion: Number(e.target.value) })}
+                    className="w-full bg-gray-700 border border-gray-600 text-yellow-300 text-xs rounded p-1 mb-1"
+                  >
+                    {versions.map((v) => (
+                      <option key={v.version} value={v.version}>
+                        v{v.version} ({v.fields?.length ?? 0} cols)
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
 
               <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
               <div
@@ -7735,6 +7764,30 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           } else if (hasCustomSchemaColumns) {
             tableName = `_custom_schema_${sourceNode.id}`;
             cols = sourceData.customSchemaColumns || [];
+          } else if (sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") {
+            // generaterows has per-output table configs — resolve from the specific output handle being connected
+            const outputTables: Array<{ handleId: string; existingTableName: string; tableVersion?: number }> =
+              sourceData.outputTables || [];
+            const outputConfig =
+              outputTables.find((ot) => ot.handleId === params.sourceHandle) ?? outputTables[0];
+            if (outputConfig?.existingTableName) {
+              if (outputConfig.existingTableName === "__custom_schema__") {
+                tableName = `_custom_schema_${sourceNode.id}`;
+                cols = sourceData.customSchemaColumns || [];
+              } else {
+                tableName = outputConfig.existingTableName;
+                const tableVersions = (sourceData.DBNameToDBVersions || DBNameToDBVersions)?.[tableName];
+                if (tableVersions && tableVersions.length > 0) {
+                  const schema =
+                    (outputConfig.tableVersion !== undefined
+                      ? tableVersions.find((v) => v.version === outputConfig.tableVersion)
+                      : undefined) ??
+                    getTableVersion(tableName, tableVersions, defaultTableVersions) ??
+                    tableVersions[0];
+                  cols = schema.fields.map((f: any) => f.name);
+                }
+              }
+            }
           } else {
             const outputInfo = getSourceNodeOutputInfo(
               sourceNode,
@@ -8025,6 +8078,29 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               if (hasSchemaColumns) {
                 columnNames = (sourceData.schemaColumns || []).map((col: any) => col.name);
                 tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
+              } else if (sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") {
+                const outputTables: Array<{ handleId: string; existingTableName: string; tableVersion?: number }> =
+                  sourceData.outputTables || [];
+                const outputConfig =
+                  outputTables.find((ot) => ot.handleId === params.sourceHandle) ?? outputTables[0];
+                if (outputConfig?.existingTableName && outputConfig.existingTableName !== "__custom_schema__") {
+                  tableName = outputConfig.existingTableName;
+                  const tableVersions = (sourceData.DBNameToDBVersions || DBNameToDBVersions)?.[tableName];
+                  if (tableVersions && tableVersions.length > 0) {
+                    const schema =
+                      (outputConfig.tableVersion !== undefined
+                        ? tableVersions.find((v) => v.version === outputConfig.tableVersion)
+                        : undefined) ??
+                      getTableVersion(tableName, tableVersions, defaultTableVersions) ??
+                      tableVersions[0];
+                    columnNames = schema.fields.map((f: any) => f.name);
+                  } else {
+                    columnNames = [];
+                  }
+                } else {
+                  tableName = `_custom_schema_${sourceNode.id}`;
+                  columnNames = sourceData.customSchemaColumns || [];
+                }
               } else {
                 // Use helper for reference/reverse lookup nodes
                 const outputInfo = getSourceNodeOutputInfo(
@@ -8092,6 +8168,29 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             if (hasSchemaColumns) {
               columnNames = (sourceData.schemaColumns || []).map((col: any) => col.name);
               tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
+            } else if (sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") {
+              const outputTables: Array<{ handleId: string; existingTableName: string; tableVersion?: number }> =
+                sourceData.outputTables || [];
+              const outputConfig =
+                outputTables.find((ot) => ot.handleId === params.sourceHandle) ?? outputTables[0];
+              if (outputConfig?.existingTableName && outputConfig.existingTableName !== "__custom_schema__") {
+                tableName = outputConfig.existingTableName;
+                const tableVersions = (sourceData.DBNameToDBVersions || DBNameToDBVersions)?.[tableName];
+                if (tableVersions && tableVersions.length > 0) {
+                  const schema =
+                    (outputConfig.tableVersion !== undefined
+                      ? tableVersions.find((v) => v.version === outputConfig.tableVersion)
+                      : undefined) ??
+                    getTableVersion(tableName, tableVersions, defaultTableVersions) ??
+                    tableVersions[0];
+                  columnNames = schema.fields.map((f: any) => f.name);
+                } else {
+                  columnNames = [];
+                }
+              } else {
+                tableName = `_custom_schema_${sourceNode.id}`;
+                columnNames = sourceData.customSchemaColumns || [];
+              }
             } else {
               // Use helper for reference/reverse lookup nodes
               const outputInfo = getSourceNodeOutputInfo(
@@ -8273,11 +8372,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           // For customrowsinput and readtsvfrompack, get columns from schemaColumns
           const hasSchemaColumns =
             sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
+          // tableselectiondropdown uses selectedTable instead of connectedTableName
+          const isTableDropdown =
+            sourceNode.type === "tableselectiondropdown" && !!sourceData.selectedTable;
           const isValidSource =
             (sourceData.connectedTableName &&
               (sourceData.DBNameToDBVersions ||
                 (sourceData.columnNames && sourceData.columnNames.length > 0))) ||
-            hasSchemaColumns;
+            hasSchemaColumns ||
+            isTableDropdown;
 
           if (isValidSource) {
             setNodes((nds) =>
@@ -8355,6 +8458,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     }
                   } else if (newSourceColumns.length === 0 && hasSchemaColumns) {
                     newSourceColumns = (sourceData.schemaColumns || []).map((col: any) => col.name);
+                  } else if (newSourceColumns.length === 0 && isTableDropdown) {
+                    tableNameToUse = sourceData.selectedTable;
+                    if (DBNameToDBVersions && DBNameToDBVersions[tableNameToUse]) {
+                      const tableVersions = DBNameToDBVersions[tableNameToUse];
+                      if (tableVersions && tableVersions.length > 0) {
+                        const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                        const tableFields = selectedVersion?.fields || [];
+                        newSourceColumns = tableFields.map((field: any) => field.name);
+                      }
+                    }
                   }
 
                   newSourceColumns.forEach((col: string) => allSourceColumns.add(col));
@@ -8366,7 +8479,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       columnNames: Array.from(allSourceColumns),
                       inputColumnNames: Array.from(allSourceColumns), // Preserve input columns
                       connectedTableName: tableNameToUse,
-                      DBNameToDBVersions: hasSchemaColumns
+                      DBNameToDBVersions: hasSchemaColumns || isTableDropdown
                         ? DBNameToDBVersions
                         : sourceData.DBNameToDBVersions,
                     },
