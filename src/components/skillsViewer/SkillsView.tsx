@@ -30,7 +30,7 @@ import {
 } from "@xyflow/react";
 import groupBy from "object.groupby";
 
-import "reactflow/dist/style.css";
+import "@xyflow/react/dist/style.css";
 import Skill, { SkillData } from "./Skill";
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
@@ -79,7 +79,7 @@ const nodeTypes = { skill: Skill, addPlaceholder: AddPlaceholderNode };
 
 const RequirementEdge = ({ id, sourceX, sourceY, targetX, targetY, style, markerEnd, data }: any) => {
   const midX = (sourceX + targetX) / 2;
-  const arc = Math.min(Math.abs(targetX - sourceX) * 0.3, 135);
+  const arc = Math.max(Math.min(Math.abs(targetX - sourceX) * 0.3, 135), 30);
   const dy = data?.curveBelow ? arc : -arc;
   const baseY = data?.curveBelow ? Math.max(sourceY, targetY) : Math.min(sourceY, targetY);
   const path = `M ${sourceX},${sourceY} Q ${midX},${baseY + dy} ${targetX},${targetY}`;
@@ -326,6 +326,8 @@ const SkillsView = memo(
     const skipEditGroupsEffect = useRef(!!initialSnapshot);
     const skipSubtypeReset = useRef(!!initialSnapshot);
     const skipTransitionEffect = useRef(false);
+    const isFirstEditModeTransition = useRef(true);
+    const justAutoGrouped = useRef(false);
     const enterEditModeAfterLoad = useRef(false);
     const historyPast = useRef<EditSnapshot[]>([]);
     const historyFuture = useRef<EditSnapshot[]>([]);
@@ -467,6 +469,9 @@ const SkillsView = memo(
     const skillNodes: Nodes[] = [];
 
     if (!isEditMode) {
+      // LOG 1 (normal mode)
+      console.log("[SV] skillNodes render: isEditMode=false skills w/ group=", skills.filter(s => s.group).length,
+        "groupedSkills keys=", Object.keys(groupedSkills));
       for (const [group, skills] of Object.entries(groupedSkills)) {
         let lowest = skills[0],
           highest = skills[0];
@@ -482,10 +487,11 @@ const SkillsView = memo(
           "skills:",
           skills.map((skill) => skill.id),
         );
+        console.log("[SV] pushing non-edit container:", `${group}_group`, "skills=", skills.length); // LOG 2
         skillNodes.push({
           id: `${group}_group`,
           data: {
-            label: group,
+            label: "",
             id: group,
             isAbilityIcon: false,
             imgPath: "",
@@ -508,7 +514,7 @@ const SkillsView = memo(
             unlockRank: 0,
           },
           position: {
-            y: lowest.x * effectiveNodeHeight - (usingBiggerNodeHeight ? 15 + nodeSizeDelta / 2 : 15),
+            y: lowest.x * effectiveNodeHeight - 15,
             x: lowest.y * nodeWidth - 10,
           },
           sourcePosition: Position.Right,
@@ -520,10 +526,12 @@ const SkillsView = memo(
             border: "2px solid rgb(42,11,13)",
             boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
             zIndex: "0",
+            width: skills.length * nodeWidth - 15,
+            height: nodeHeight - 10,
           },
           className: "reactFlowGroup",
           width: skills.length * nodeWidth - 15,
-          height: effectiveNodeHeight - 10,
+          height: nodeHeight - 10,
         });
       }
     }
@@ -539,10 +547,16 @@ const SkillsView = memo(
       for (const members of Object.values(editGroupMembers)) {
         members.sort((a, b) => a.y - b.y);
       }
+      // LOG 1 (edit mode)
+      console.log("[SV] skillNodes render: isEditMode=true skills w/ group=", skills.filter(s => s.group).length,
+        "groupedSkills keys=", Object.keys(groupedSkills),
+        "editGroups=", JSON.stringify(editGroups),
+        "editGroupMembers keys=", Object.keys(editGroupMembers));
       for (const [groupId, members] of Object.entries(editGroupMembers)) {
         if (members.length < 2) continue;
         const lowest = members[0];
         const groupColor = groupIdToColor[groupId];
+        console.log("[SV] pushing edit container:", `${groupId}_group`, "members=", members.length); // LOG 3
         skillNodes.push({
           id: `${groupId}_group`,
           data: {
@@ -581,10 +595,12 @@ const SkillsView = memo(
             border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
             boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
             zIndex: "0",
+            width: members.length * nodeWidth - 15,
+            height: nodeHeight + 10,
           },
           className: "reactFlowGroup",
           width: members.length * nodeWidth - 15,
-          height: effectiveNodeHeight - 10,
+          height: nodeHeight + 10,
         });
       }
     }
@@ -633,7 +649,7 @@ const SkillsView = memo(
             const index = skillsInGroup.indexOf(skill);
             if (index > -1) {
               position = {
-                y: (usingBiggerNodeHeight ? 10 + nodeSizeDelta / 2 : 15) + indexInSameCoords * 40,
+                y: 15 + indexInSameCoords * 40,
                 x: index * nodeWidth + 10 + indexInSameCoords * 25,
               };
             }
@@ -817,7 +833,22 @@ const SkillsView = memo(
     const [nodes, setNodes, onNodesChange] = useNodesState<Nodes>(
       initialSnapshot?.nodes ? deepClone(initialSnapshot.nodes) : deepClone(skillNodes),
     );
-    const [edges, setEdges, onEdgesChange] = useEdgesState<SkillEdge>(
+
+    useEffect(() => {
+      const containers = nodes.filter((n) => n.className === "reactFlowGroup");
+      if (containers.length > 0) {
+        console.log("[SV] RF nodes containers:", containers.map((c) => ({
+          id: c.id,
+          w: c.width, h: c.height,
+          sw: (c.style as any)?.width, sh: (c.style as any)?.height,
+          measured: c.measured,
+        })));
+        const children = nodes.filter((n) => n.parentId);
+        console.log("[SV] RF nodes children:", children.map((c) => ({ id: c.id, parentId: c.parentId, pos: c.position })));
+      }
+    }, [nodes, isEditMode, editGroups]);
+
+    const [edges, setEdges, onEdgesChange] = useEdgesState<(typeof initialEdges)[0]>(
       initialSnapshot?.edges
         ? (deepClone(initialSnapshot.edges) as SkillEdge[])
         : deepClone(initialEdges),
@@ -920,7 +951,7 @@ const SkillsView = memo(
     const applySnapshot = useCallback((snap: EditSnapshot) => {
       isRestoringSnapshot.current = true;
       setNodes(deepClone(snap.nodes));
-      setEdges(deepClone(snap.edges) as SkillEdge[]);
+      setEdges(deepClone(snap.edges as SkillEdge[]));
       setEditGroups(snap.editGroups);
       setNextGroupId(snap.nextGroupId);
       setLockEdgeLevels(snap.lockEdgeLevels);
@@ -1641,8 +1672,9 @@ const SkillsView = memo(
 
     // Context menu: group nodes (right-clicked + selected, all must be ungrouped)
     const contextMenuGroup = useCallback(
-      (connect: boolean) => {
+      (connect: boolean | "required" | "subset_required") => {
         if (!contextMenu) return;
+        captureHistory();
         const rightClicked = nodes.find((n) => n.id === contextMenu.nodeId);
         const selected = nodes.filter((n) => n.selected && n.type === "skill");
 
@@ -1668,6 +1700,9 @@ const SkillsView = memo(
         });
 
         if (connect) {
+          const makeRequired = connect === true || connect === "required";
+          const makeSubsetRequired = connect === true || connect === "subset_required";
+
           // Find the row and column range of the group
           const row = Math.round(toGroup[0].position.y / effectiveNodeHeight);
           const groupCols = toGroup.map((n) => Math.round(n.position.x / nodeWidth));
@@ -1675,26 +1710,30 @@ const SkillsView = memo(
           const maxCol = Math.max(...groupCols);
 
           // Find ungrouped node to the left (column = minCol - 1, same row)
-          const leftNode = nodes.find(
-            (n) =>
-              n.type === "skill" &&
-              !n.parentId &&
-              !editGroups[(n.data as SkillData).nodeId] &&
-              !toGroupMap.has(n.id) &&
-              Math.round(n.position.y / effectiveNodeHeight) === row &&
-              Math.round(n.position.x / nodeWidth) === minCol - 1,
-          );
+          const leftNode = makeRequired
+            ? nodes.find(
+                (n) =>
+                  n.type === "skill" &&
+                  !n.parentId &&
+                  !editGroups[(n.data as SkillData).nodeId] &&
+                  !toGroupMap.has(n.id) &&
+                  Math.round(n.position.y / effectiveNodeHeight) === row &&
+                  Math.round(n.position.x / nodeWidth) === minCol - 1,
+              )
+            : undefined;
 
           // Find ungrouped node to the right (column = maxCol + 1, same row)
-          const rightNode = nodes.find(
-            (n) =>
-              n.type === "skill" &&
-              !n.parentId &&
-              !editGroups[(n.data as SkillData).nodeId] &&
-              !toGroupMap.has(n.id) &&
-              Math.round(n.position.y / effectiveNodeHeight) === row &&
-              Math.round(n.position.x / nodeWidth) === maxCol + 1,
-          );
+          const rightNode = makeSubsetRequired
+            ? nodes.find(
+                (n) =>
+                  n.type === "skill" &&
+                  !n.parentId &&
+                  !editGroups[(n.data as SkillData).nodeId] &&
+                  !toGroupMap.has(n.id) &&
+                  Math.round(n.position.y / effectiveNodeHeight) === row &&
+                  Math.round(n.position.x / nodeWidth) === maxCol + 1,
+              )
+            : undefined;
 
           setEdges((eds) => {
             const newEdges = [...eds];
@@ -1738,7 +1777,16 @@ const SkillsView = memo(
 
         setContextMenu(null);
       },
-      [contextMenu, nodes, nextGroupId, editGroups, effectiveNodeHeight, setEditGroups, setEdges],
+      [
+        contextMenu,
+        nodes,
+        nextGroupId,
+        editGroups,
+        effectiveNodeHeight,
+        setEditGroups,
+        setEdges,
+        captureHistory,
+      ],
     );
 
     // Context menu: delete group (ungroup + remove group edges)
@@ -3318,6 +3366,25 @@ const SkillsView = memo(
       const newEdges: SkillEdge[] = [];
       let groupCounter = nextGroupId;
 
+      // Group targets that share the same REQUIRED source (curveBelow: true).
+      // Mirrors the targetToSources logic but for the opposite edge direction:
+      // one source → multiple targets means those targets are siblings and should be grouped.
+      const sourceToRequiredTargets: Record<string, string[]> = {};
+      for (const edge of edges) {
+        if (edge.data?.curveBelow !== true) continue;
+        if (!sourceToRequiredTargets[edge.source]) sourceToRequiredTargets[edge.source] = [];
+        if (!sourceToRequiredTargets[edge.source].includes(edge.target)) {
+          sourceToRequiredTargets[edge.source].push(edge.target);
+        }
+      }
+      for (const targets of Object.values(sourceToRequiredTargets)) {
+        if (targets.length < 2) continue;
+        const groupId = `editGroup_${groupCounter++}`;
+        for (const target of targets) {
+          if (!newEditGroups[target]) newEditGroups[target] = groupId;
+        }
+      }
+
       for (const [target, sources] of Object.entries(targetToSources)) {
         if (sources.length === 1) {
           newEdges.push({
@@ -3616,8 +3683,14 @@ const SkillsView = memo(
     // ReactFlow won't refresh when things like isShowingHiddenModifiersInsideSkills change, so force it.
     // In edit mode this is guarded to avoid wiping edit state on data changes (e.g. pack load).
     useEffect(() => {
+      console.log("[SV] RF-refresh effect fired: isEditMode=", isEditMode, // LOG 4
+        "skipTransition=", skipTransitionEffect.current,
+        "isRestoring=", isRestoringSnapshot.current);
       if (isRestoringSnapshot.current) return;
       if (isEditMode && !skipTransitionEffect.current) return; // edit mode manages its own nodes
+      isFirstEditModeTransition.current = true;
+      console.log("[SV] RF-refresh: setting nodes count=", skillNodes.length,
+        "containers=", skillNodes.filter(n => (n.data as any)?.isGrouping).length); // LOG 4b
       setNodes(deepClone(skillNodes));
       setEdges(deepClone(initialEdges));
     }, [
@@ -3784,10 +3857,11 @@ const SkillsView = memo(
               return {
                 ...n,
                 position: { x: n.position.x, y: row * newHeight - 15 },
-                height: newHeight - 10,
+                height: nodeHeight + 10,
                 style: {
-                  ...((n.style as Record<string, string>) || {}),
+                  ...((n.style as Record<string, unknown>) || {}),
                   border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
+                  height: nodeHeight + 10,
                 },
               };
             }
@@ -3807,26 +3881,119 @@ const SkillsView = memo(
           return result;
         });
 
-        // Update edges: keep group container retargeting, just set edit-mode styling
-        setEdges((currentEdges) =>
-          currentEdges.map((e) => ({
+        // Update edges: set edit-mode styling, and on first entry add all missing edges from nodeLinks
+        // Capture and clear the flag synchronously before entering the setEdges callback
+        const isFirst = isFirstEditModeTransition.current;
+        if (isFirst) isFirstEditModeTransition.current = false;
+
+        setEdges((currentEdges) => {
+          const styledEdges = currentEdges.map((e) => ({
             ...e,
             interactionWidth: 20,
             style: { stroke: "#ef4444", strokeWidth: 2 },
-          })),
-        );
+          }));
+
+          if (isFirst) {
+            const existingIds = new Set(styledEdges.map((e) => e.id));
+            const skillNodeIds = new Set(skillsData.currentSkills.map((s) => s.nodeId));
+            const newEdges = [...styledEdges];
+
+            for (const [parentNodeId, links] of Object.entries(skillsData.nodeLinks)) {
+              // parentNodeId = dependent node (e.g. magic_3_X); link.child = prerequisite (e.g. magic_2)
+              if (!skillNodeIds.has(parentNodeId)) continue;
+              for (const link of links) {
+                const childNodeId = link.child; // prerequisite
+                if (!skillNodeIds.has(childNodeId)) continue;
+                // Match initialEdges convention: e{dependent}2{prerequisite}, source=dependent, target=prerequisite
+                const edgeId = `e${parentNodeId}2${childNodeId}`;
+                if (!existingIds.has(edgeId)) {
+                  existingIds.add(edgeId);
+                  newEdges.push({
+                    id: edgeId,
+                    source: parentNodeId,
+                    target: childNodeId,
+                    type: edgeType,
+                    animated: false,
+                    interactionWidth: 20,
+                    style: { stroke: "#ef4444", strokeWidth: 2 },
+                  });
+                }
+              }
+            }
+            return newEdges;
+          }
+
+          return styledEdges;
+        });
+
+        // Auto-group sibling nodes on first entry from fresh game data.
+        // Use nodeRequirements (indexed by prerequisite) to find all REQUIRED dependents per prereq,
+        // then group those that share the same prereq AND same origTier.
+        if (isFirst) {
+          let groupCounter = nextGroupId;
+          const newGroupEntries: Record<string, string> = {};
+
+          // Use skill.group already computed by getSkills(): skills sharing the same
+          // group value are siblings that should appear in a group container.
+          const groupKeyToNodeIds: Record<string, string[]> = {};
+          for (const skill of skillsData.currentSkills) {
+            if (!skill.group) continue;
+            if (editGroups[skill.nodeId]) continue;
+            if (!groupKeyToNodeIds[skill.group]) groupKeyToNodeIds[skill.group] = [];
+            groupKeyToNodeIds[skill.group].push(skill.nodeId);
+          }
+
+          console.log("[SV] isFirst: currentSkillsWithGroup=", // LOG 5
+            skillsData.currentSkills.filter(s => s.group).length,
+            "groupKeyToNodeIds=", JSON.stringify(groupKeyToNodeIds));
+
+          for (const members of Object.values(groupKeyToNodeIds)) {
+            if (members.length < 2) continue;
+            const groupId = `editGroup_${groupCounter++}`;
+            for (const nodeId of members) newGroupEntries[nodeId] = groupId;
+          }
+
+          console.log("[SV] isFirst: newGroupEntries=", JSON.stringify(newGroupEntries), // LOG 5b
+            "groupCounter=", groupCounter, "nextGroupId=", nextGroupId);
+
+          if (groupCounter > nextGroupId) {
+            justAutoGrouped.current = true;
+            setEditGroups((prev) => ({ ...prev, ...newGroupEntries }));
+            setNextGroupId(groupCounter);
+          } else if (Object.keys(editGroups).length > 0) {
+            // editGroups already populated from a previous set of the same subtype.
+            // No new entries were added (same node IDs already tracked), but the isFirst
+            // path just added individual-node edges that need retargeting to group containers.
+            // Force the editGroups effect to fire by creating a new object reference.
+            justAutoGrouped.current = true;
+            setEditGroups((prev) => ({ ...prev }));
+          }
+        }
       }
     }, [isEditMode]);
 
     // Recalculate group containers and member positions from current nodes state
     useEffect(() => {
+      console.log("[SV] editGroups effect: isEditMode=", isEditMode, // LOG 6
+        "skip=", skipEditGroupsEffect.current,
+        "justAutoGrouped=", justAutoGrouped.current,
+        "editGroups keys=", Object.keys(editGroups).length);
       if (!isEditMode) return;
       if (skipEditGroupsEffect.current) {
         skipEditGroupsEffect.current = false;
         return;
       }
 
-      setNodes((currentNodes) => {
+      // For auto-grouping on first edit mode entry: skillNodes is already computed with the
+      // new editGroups in this render, so we can use it directly instead of the functional update.
+      if (justAutoGrouped.current) {
+        justAutoGrouped.current = false;
+        console.log("[SV] editGroups effect: justAutoGrouped path, skillNodes containers=",
+          skillNodes.filter(n => (n.data as any)?.isGrouping).length,
+          "total=", skillNodes.length); // LOG 6b
+        setNodes(deepClone(skillNodes));
+      } else {
+        setNodes((currentNodes) => {
         // Build group membership from current nodes + editGroups
         const groupMembers: Record<string, typeof currentNodes> = {};
         for (const [nodeId, groupId] of Object.entries(editGroups)) {
@@ -3932,6 +4099,8 @@ const SkillsView = memo(
               border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
               boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
               zIndex: "0",
+              width: members.length * nodeWidth - 15,
+              height: nodeHeight + 10,
             },
             className: "reactFlowGroup",
             width: members.length * nodeWidth - 15,
@@ -4065,7 +4234,8 @@ const SkillsView = memo(
         });
 
         return result;
-      });
+        }); // end setNodes functional update
+      } // end else (user-initiated group change)
 
       // Retarget edges: if an edge targets an individual node that is now inside a group,
       // point it at the group container instead
@@ -5233,6 +5403,15 @@ const SkillsView = memo(
                           </button>
                           <button className={menuItemClass} onClick={() => contextMenuGroup(false)}>
                             Group {groupCandidates.length} Nodes (Don't connect)
+                          </button>
+                          <button className={menuItemClass} onClick={() => contextMenuGroup("required")}>
+                            Group {groupCandidates.length} Nodes (Required)
+                          </button>
+                          <button
+                            className={menuItemClass}
+                            onClick={() => contextMenuGroup("subset_required")}
+                          >
+                            Group {groupCandidates.length} Nodes (Subset Required)
                           </button>
                         </>
                       )}

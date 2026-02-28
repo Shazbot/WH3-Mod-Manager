@@ -1190,6 +1190,7 @@ export const registerIpcMainListeners = (
     }
 
     const setKF = cachedSkillsData.subtypesToSet[subtype];
+    console.log("sets for subtype:", setKF);
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
 
     const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet, nodeToSkillLocks } =

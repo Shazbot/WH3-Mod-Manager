@@ -185,6 +185,45 @@ export function getSkills(
     }
   }
 
+  // Group skills that are REQUIRED children of the same visible convergence-gate parent, at the same row.
+  // Only "convergence gates" are eligible parents: nodes that appear as a SUBSET_REQUIRED target
+  // in at least one other node's links (i.e. multiple prereq choices unlock this gate).
+  // This prevents over-grouping from ROOT gate nodes whose many REQUIRED children have no
+  // common downstream node and thus were never pre-grouped by nodesToParents.
+  const subsetRequiredChildSet = new Set<string>();
+  for (const links of Object.values(nodeLinks)) {
+    for (const link of links) {
+      if (link.linkType === "SUBSET_REQUIRED") {
+        subsetRequiredChildSet.add(link.child);
+      }
+    }
+  }
+
+  const parentToChildren: Record<string, string[]> = {};
+  for (const [parentNodeId, links] of Object.entries(nodeLinks)) {
+    if (!subsetRequiredChildSet.has(parentNodeId)) continue; // skip non-convergence-gate parents
+    for (const link of links) {
+      if (link.linkType !== "REQUIRED") continue;
+      if (!parentToChildren[parentNodeId]) parentToChildren[parentNodeId] = [];
+      if (!parentToChildren[parentNodeId].includes(link.child)) {
+        parentToChildren[parentNodeId].push(link.child);
+      }
+    }
+  }
+  for (const [parentNodeId, childNodeIds] of Object.entries(parentToChildren)) {
+    if (childNodeIds.length < 2) continue;
+    const parentSkill = skills.find((s) => s.nodeId === parentNodeId);
+    if (!parentSkill || parentSkill.isHiddentInUI) continue;
+    const sameRowChildren = childNodeIds.flatMap((c) => {
+      const s = skills.find((sk) => sk.nodeId === c);
+      return s && !s.isHiddentInUI && s.x === parentSkill.x ? [s] : [];
+    });
+    if (sameRowChildren.length < 2) continue;
+    for (const s of sameRowChildren) {
+      if (!s.group) s.group = "req:" + parentNodeId; // distinct prefix — avoids collision with nodesToParents keys
+    }
+  }
+
   return skills;
 }
 
