@@ -257,7 +257,12 @@ const HandsontableWrapper = memo(
 
     return (
       <Suspense fallback={<TableLoadingSpinner />}>
-        <div style={{ height: "100%", width: "100%" }}>
+        <div
+          style={{ height: "100%", width: "100%" }}
+          onMouseDownCapture={(ev) => {
+            if (ev.button === 1) ev.stopPropagation();
+          }}
+        >
           <LazyHotTable
             ref={hotRef}
             filters={false}
