@@ -15,6 +15,12 @@ const formatNumber = (value: number | undefined, suffix = "") => {
   return `${value}${suffix}`;
 };
 
+const formatDelta = (value: number, suffix = "") => {
+  const rounded = Number.isInteger(value) ? value : Math.round(value * 100) / 100;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded}${suffix}`;
+};
+
 const getAdditionalEffectStatePresentation = (effectState: string | undefined) => {
   const normalized = (effectState || "").toLowerCase();
   if (normalized === "negative") {
@@ -26,180 +32,277 @@ const getAdditionalEffectStatePresentation = (effectState: string | undefined) =
   return { arrow: "▲", className: "text-lime-300" };
 };
 
+const getDiffClassName = (delta: number) => {
+  if (delta > 0) return "text-lime-300";
+  if (delta < 0) return "text-red-300";
+  return "text-gray-400";
+};
+
+const nearlyEqual = (left: number | undefined, right: number | undefined) => {
+  if (left == undefined || right == undefined) return false;
+  return Math.abs(left - right) < 0.0001;
+};
+
+const renderValueWithDiff = (
+  value: number | undefined,
+  compareValue: number | undefined,
+  suffix = "",
+): React.ReactNode => {
+  if (value == undefined) return null;
+  const showDiff =
+    compareValue != undefined &&
+    Number.isFinite(value) &&
+    Number.isFinite(compareValue) &&
+    Math.abs(value - compareValue) > 0.0001;
+
+  return (
+    <>
+      {formatNumber(value, suffix)}
+      {showDiff && (
+        <span className={`ml-1 text-[12px] ${getDiffClassName(value - compareValue)}`}>
+          ({formatDelta(value - compareValue, suffix)})
+        </span>
+      )}
+    </>
+  );
+};
+
+const Row = ({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) => {
+  return (
+    <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-3">
+      <span className="text-gray-300">{label}:</span>
+      <span className="text-right">{children}</span>
+    </div>
+  );
+};
+
 const AbilityTooltipCard = ({
   ability,
+  compareAbility,
   icons,
   fallbackIconData,
 }: {
   ability: AbilityTooltipData;
+  compareAbility?: AbilityTooltipData;
   icons: Record<string, string>;
   fallbackIconData?: string;
 }) => {
   const abilityIcon = getIconData(ability.iconPath, icons, fallbackIconData);
   const typeIcon = getIconData(ability.typeIconPath, icons, undefined);
   const loreIcon = getIconData(ability.loreIconPath, icons, undefined);
+  const displayedVortex = ability.projectile?.spawnedVortex || ability.vortex;
+  const displayedCompareVortex = compareAbility?.projectile?.spawnedVortex || compareAbility?.vortex;
+  const isDirectDurationDuplicated = nearlyEqual(ability.directDamage?.duration, ability.stats.duration);
+  const isVortexDurationDuplicated = nearlyEqual(displayedVortex?.duration, ability.stats.duration);
+  const isStatsDurationDuplicated = isDirectDurationDuplicated || isVortexDurationDuplicated;
+
+  const bonusCompareMap = new Map<string, AbilityTooltipBonusData>();
+  for (const baseBonus of compareAbility?.bonuses || []) {
+    const compareKey = baseBonus.compareKey || baseBonus.label;
+    bonusCompareMap.set(compareKey, baseBonus);
+  }
 
   return (
-    <div className="border border-red-900/70 bg-black/55 px-3 py-2 text-gray-100">
-      <div className="flex items-center gap-2">
-        {abilityIcon && <img className="h-6 w-6 object-contain" src={`data:image/png;base64,${abilityIcon}`} alt="" />}
-        <div className="font-semibold text-[15px]">{ability.name}</div>
+    <div className="border border-red-900/70 bg-black/60 px-4 py-3 text-[13px] leading-5 text-gray-100">
+      <div className="flex items-center gap-2.5">
+        {abilityIcon && <img className="h-7 w-7 object-contain" src={`data:image/png;base64,${abilityIcon}`} alt="" />}
+        <div className="font-semibold text-[18px] leading-tight">{ability.name}</div>
       </div>
-      <div className="mt-1 space-y-0.5 text-[12px] text-gray-300">
-        <div className="flex items-center gap-1">
+
+      <div className="mt-1.5 space-y-0.5 text-[13px] text-gray-300">
+        <div className="flex items-center gap-1.5">
           {loreIcon && <img className="h-4 w-4 object-contain" src={`data:image/png;base64,${loreIcon}`} alt="" />}
           <span>{ability.sourceTypeName}</span>
           {ability.loreGroupName && <span>{ability.loreGroupName}</span>}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {typeIcon && <img className="h-4 w-4 object-contain" src={`data:image/png;base64,${typeIcon}`} alt="" />}
           <span>{ability.abilityTypeName}</span>
         </div>
       </div>
 
       {ability.projectile && (
-        <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
-          <div>
-            <span className="text-gray-300">Ranged Damage:</span>{" "}
-            <span>{formatNumber(ability.projectile.totalDamage)}</span>
+        <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
+          <Row label="Ranged Damage">
+            {renderValueWithDiff(ability.projectile.totalDamage, compareAbility?.projectile?.totalDamage)}
             {ability.projectile.apPct != undefined && (
-              <span className="text-gray-400"> ({ability.projectile.apPct}% AP)</span>
+              <span className="text-gray-400">
+                {" "}
+                ({ability.projectile.apPct}% AP
+                {compareAbility?.projectile?.apPct != undefined && Math.abs(ability.projectile.apPct - compareAbility.projectile.apPct) > 0.0001 && (
+                  <span className={`ml-1 ${getDiffClassName(ability.projectile.apPct - compareAbility.projectile.apPct)}`}>
+                    {formatDelta(ability.projectile.apPct - compareAbility.projectile.apPct, "%")}
+                  </span>
+                )}
+                )
+              </span>
             )}
-          </div>
+          </Row>
+
           {ability.projectile.explosion && (
-            <div>
-              <span className="text-gray-300">Explosive Damage:</span>{" "}
-              <span>{formatNumber(ability.projectile.explosion.totalDamage)}</span>
-              {ability.projectile.explosion.apPct != undefined && (
-                <span className="text-gray-400"> ({ability.projectile.explosion.apPct}% AP)</span>
+            <Row label="Explosive Damage">
+              {renderValueWithDiff(
+                ability.projectile.explosion.totalDamage,
+                compareAbility?.projectile?.explosion?.totalDamage,
               )}
-            </div>
+              {ability.projectile.explosion.apPct != undefined && (
+                <span className="text-gray-400">
+                  {" "}
+                  ({ability.projectile.explosion.apPct}% AP
+                  {compareAbility?.projectile?.explosion?.apPct != undefined &&
+                    Math.abs(ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct) > 0.0001 && (
+                      <span
+                        className={`ml-1 ${getDiffClassName(
+                          ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct,
+                        )}`}
+                      >
+                        {formatDelta(ability.projectile.explosion.apPct - compareAbility.projectile.explosion.apPct, "%")}
+                      </span>
+                    )}
+                  )
+                </span>
+              )}
+            </Row>
           )}
+
           {ability.projectile.numProjectiles != undefined && (
-            <div>
-              <span className="text-gray-300">Number of projectiles:</span> {ability.projectile.numProjectiles}
-            </div>
+            <Row label="Number of projectiles">
+              {renderValueWithDiff(ability.projectile.numProjectiles, compareAbility?.projectile?.numProjectiles)}
+            </Row>
           )}
         </div>
       )}
 
-      {(ability.projectile?.spawnedVortex || ability.vortex) && (
-        <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
-          {(() => {
-            const vortex = ability.projectile?.spawnedVortex || ability.vortex;
-            if (!vortex) return null;
-            return (
-              <>
-                {vortex.dps != undefined && (
-                  <div>
-                    <span className="text-gray-300">Damage Per Second:</span> {vortex.dps}
-                    {vortex.apPct != undefined && (
-                      <span className="text-gray-400"> ({vortex.apPct}% AP)</span>
+      {displayedVortex && (
+        <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
+          {displayedVortex.dps != undefined && (
+            <Row label="Damage Per Second">
+              {renderValueWithDiff(displayedVortex.dps, displayedCompareVortex?.dps)}
+              {displayedVortex.apPct != undefined && (
+                <span className="text-gray-400">
+                  {" "}
+                  ({displayedVortex.apPct}% AP
+                  {displayedCompareVortex?.apPct != undefined &&
+                    Math.abs(displayedVortex.apPct - displayedCompareVortex.apPct) > 0.0001 && (
+                      <span className={`ml-1 ${getDiffClassName(displayedVortex.apPct - displayedCompareVortex.apPct)}`}>
+                        {formatDelta(displayedVortex.apPct - displayedCompareVortex.apPct, "%")}
+                      </span>
                     )}
-                  </div>
-                )}
-                {vortex.duration != undefined && (
-                  <div>
-                    <span className="text-gray-300">Duration:</span> {formatNumber(vortex.duration, "s")}
-                  </div>
-                )}
-                {vortex.radius != undefined && (
-                  <div>
-                    <span className="text-gray-300">Radius:</span> {formatNumber(vortex.radius, "m")}
-                  </div>
-                )}
-                {vortex.movementSpeed != undefined && (
-                  <div>
-                    <span className="text-gray-300">Movement Speed:</span>{" "}
-                    {formatNumber(vortex.movementSpeed, "m/s")}
-                  </div>
-                )}
-              </>
-            );
-          })()}
+                  )
+                </span>
+              )}
+            </Row>
+          )}
+          {displayedVortex.duration != undefined && (
+            <Row label="Duration">
+              {renderValueWithDiff(displayedVortex.duration, displayedCompareVortex?.duration, "s")}
+            </Row>
+          )}
+          {displayedVortex.radius != undefined && (
+            <Row label="Radius">{renderValueWithDiff(displayedVortex.radius, displayedCompareVortex?.radius, "m")}</Row>
+          )}
+          {displayedVortex.movementSpeed != undefined && (
+            <Row label="Movement Speed">
+              {renderValueWithDiff(displayedVortex.movementSpeed, displayedCompareVortex?.movementSpeed, "m/s")}
+            </Row>
+          )}
         </div>
       )}
 
       {ability.directDamage && (
-        <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
+        <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
           {(ability.directDamage.dpsMin != undefined || ability.directDamage.dpsMax != undefined) && (
-            <div>
-              <span className="text-gray-300">Damage Per Second:</span> {ability.directDamage.dpsMin ?? 0}-
-              {ability.directDamage.dpsMax ?? 0}
-            </div>
+            <Row label="Damage Per Second">
+              <>
+                {renderValueWithDiff(ability.directDamage.dpsMin, compareAbility?.directDamage?.dpsMin)}-
+                {renderValueWithDiff(ability.directDamage.dpsMax, compareAbility?.directDamage?.dpsMax)}
+              </>
+            </Row>
           )}
           {ability.directDamage.duration != undefined && (
-            <div>
-              <span className="text-gray-300">Duration:</span> {formatNumber(ability.directDamage.duration, "s")}
-            </div>
+            <Row label="Duration">
+              {renderValueWithDiff(ability.directDamage.duration, compareAbility?.directDamage?.duration, "s")}
+            </Row>
           )}
         </div>
       )}
 
       {ability.bonuses.length > 0 && (
-        <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
+        <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
           {ability.bonuses.map((bonus) => {
             const bonusIcon = getIconData(bonus.iconPath, icons, undefined);
+            const compareKey = bonus.compareKey || bonus.label;
+            const compareBonus = bonusCompareMap.get(compareKey);
+            const hasDiff =
+              compareBonus?.numericValue != undefined &&
+              bonus.numericValue != undefined &&
+              Math.abs(bonus.numericValue - compareBonus.numericValue) > 0.0001;
+            const diffValue =
+              compareBonus?.numericValue != undefined && bonus.numericValue != undefined
+                ? bonus.numericValue - compareBonus.numericValue
+                : undefined;
+
             return (
               <div key={bonus.key} className={bonus.isPositive ? "text-lime-300" : "text-red-300"}>
                 {bonusIcon ? (
-                  <img className="mr-1 inline-block h-3.5 w-3.5 object-contain" src={`data:image/png;base64,${bonusIcon}`} alt="" />
+                  <img className="mr-1 inline-block h-4 w-4 object-contain align-[-2px]" src={`data:image/png;base64,${bonusIcon}`} alt="" />
                 ) : (
                   <span className="text-yellow-200">➤</span>
                 )}
                 {" "}
                 {bonus.label}: {bonus.valueText}
+                {hasDiff && diffValue != undefined && (
+                  <span className={`ml-1 text-[12px] ${getDiffClassName(diffValue)}`}>
+                    ({formatDelta(diffValue, bonus.valueSuffix || "")})
+                  </span>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
+      <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
         {ability.stats.range != undefined && (
-          <div>
-            <span className="text-gray-300">Range:</span> {formatNumber(ability.stats.range, "m")}
-          </div>
+          <Row label="Range">{renderValueWithDiff(ability.stats.range, compareAbility?.stats.range, "m")}</Row>
         )}
         {ability.stats.effectRange != undefined && (
-          <div>
-            <span className="text-gray-300">Effect range:</span> {formatNumber(ability.stats.effectRange, "m")}
-          </div>
+          <Row label="Effect range">
+            {renderValueWithDiff(ability.stats.effectRange, compareAbility?.stats.effectRange, "m")}
+          </Row>
         )}
         {ability.stats.cooldown != undefined && (
-          <div>
-            <span className="text-gray-300">Cooldown:</span> {formatNumber(ability.stats.cooldown, "s")}
-          </div>
+          <Row label="Cooldown">
+            {renderValueWithDiff(ability.stats.cooldown, compareAbility?.stats.cooldown, "s")}
+          </Row>
         )}
-        {ability.stats.duration != undefined && (
-          <div>
-            <span className="text-gray-300">Duration:</span> {formatNumber(ability.stats.duration, "s")}
-          </div>
+        {ability.stats.duration != undefined && !isStatsDurationDuplicated && (
+          <Row label="Duration">
+            {renderValueWithDiff(ability.stats.duration, compareAbility?.stats.duration, "s")}
+          </Row>
         )}
         {ability.stats.womCost != undefined && (
-          <div>
-            <span className="text-gray-300">Winds of Magic Cost:</span> {ability.stats.womCost}
-          </div>
+          <Row label="Winds of Magic Cost">
+            {renderValueWithDiff(ability.stats.womCost, compareAbility?.stats.womCost)}
+          </Row>
         )}
         {ability.stats.miscastChance != undefined && (
-          <div>
-            <span className="text-gray-300">Miscast Chance:</span> {formatNumber(ability.stats.miscastChance, "%")}
-          </div>
+          <Row label="Miscast Chance">
+            {renderValueWithDiff(ability.stats.miscastChance, compareAbility?.stats.miscastChance, "%")}
+          </Row>
         )}
-        {ability.affectedUnitsText && (
-          <div>
-            <span className="text-gray-300">Affected units:</span> {ability.affectedUnitsText}
-          </div>
-        )}
-        {ability.enabledIfText && (
-          <div>
-            <span className="text-gray-300">Enabled if:</span> {ability.enabledIfText}
-          </div>
-        )}
+        {ability.affectedUnitsText && <Row label="Affected units">{ability.affectedUnitsText}</Row>}
+        {ability.enabledIfText && <Row label="Enabled if">{ability.enabledIfText}</Row>}
       </div>
 
       {ability.additionalUiEffects.length > 0 && (
-        <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
+        <div className="mt-2.5 space-y-0.5 border-t border-red-900/60 pt-1.5">
           {ability.additionalUiEffects.map((additionalEffect) => {
             const presentation = getAdditionalEffectStatePresentation(additionalEffect.effectState);
             return (
@@ -211,7 +314,7 @@ const AbilityTooltipCard = ({
         </div>
       )}
 
-      {ability.description && <div className="mt-2 text-[12px] italic text-gray-200">{ability.description}</div>}
+      {ability.description && <div className="mt-2.5 text-[13px] italic leading-5 text-gray-200">{ability.description}</div>}
     </div>
   );
 };
