@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "Wykonuje wyszukiwania/łączenia przy użyciu tabel indeksowanych (wewnętrzna/lewa/zagnieżdżona)",
   "nodeEditorNodeCustomRowsInputDescription": "Ręcznie wprowadzaj wiersze tabeli za pomocą niestandardowego schematu",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Generuj wiersze przy użyciu niestandardowego schematu z zakresem liczników",
-  "nodeEditorNodeReadTSVFromPackDescription": "Odczytuje plik TSV z pakietu przy użyciu niestandardowego schematu"
+  "nodeEditorNodeReadTSVFromPackDescription": "Odczytuje plik TSV z pakietu przy użyciu niestandardowego schematu",
+  "visualsTab": "Wizualizacje",
+  "nodeEditorTab": "Edytor węzłów"
 }

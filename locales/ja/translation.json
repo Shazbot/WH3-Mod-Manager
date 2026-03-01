@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "インデックス付きテーブル (内部/左/ネスト) を使用して検索/結合を実行します。",
   "nodeEditorNodeCustomRowsInputDescription": "カスタム スキーマを使用してテーブル行を手動で入力する",
   "nodeEditorNodeGenerateRowsSchemaDescription": "カウンタ範囲を指定したカスタム スキーマを使用して行を生成する",
-  "nodeEditorNodeReadTSVFromPackDescription": "カスタムスキーマを使用してパックからTSVファイルを読み取ります"
+  "nodeEditorNodeReadTSVFromPackDescription": "カスタムスキーマを使用してパックからTSVファイルを読み取ります",
+  "visualsTab": "ビジュアル",
+  "nodeEditorTab": "ノードエディタ"
 }

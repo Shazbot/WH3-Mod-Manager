@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "Führt Suchvorgänge/Joins mithilfe indizierter Tabellen durch (innen/links/verschachtelt)",
   "nodeEditorNodeCustomRowsInputDescription": "Geben Sie Tabellenzeilen manuell mit einem benutzerdefinierten Schema ein",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Generieren Sie Zeilen mithilfe eines benutzerdefinierten Schemas mit Zählerbereich",
-  "nodeEditorNodeReadTSVFromPackDescription": "Liest die TSV-Datei aus dem Paket mithilfe eines benutzerdefinierten Schemas"
+  "nodeEditorNodeReadTSVFromPackDescription": "Liest die TSV-Datei aus dem Paket mithilfe eines benutzerdefinierten Schemas",
+  "visualsTab": "Visuals",
+  "nodeEditorTab": "Knoteneditor"
 }

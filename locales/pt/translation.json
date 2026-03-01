@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "Executa pesquisas/junções usando tabelas indexadas (interna/esquerda/aninhada)",
   "nodeEditorNodeCustomRowsInputDescription": "Insira manualmente linhas da tabela com esquema personalizado",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Gere linhas usando esquema personalizado com intervalo de contadores",
-  "nodeEditorNodeReadTSVFromPackDescription": "Lê o arquivo TSV do pacote usando esquema personalizado"
+  "nodeEditorNodeReadTSVFromPackDescription": "Lê o arquivo TSV do pacote usando esquema personalizado",
+  "visualsTab": "Visuais",
+  "nodeEditorTab": "Editor de nós"
 }

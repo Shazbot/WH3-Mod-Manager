@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "Dizine alınmış tabloları (iç/sol/yuvalanmış) kullanarak aramaları/birleştirmeleri gerçekleştirir",
   "nodeEditorNodeCustomRowsInputDescription": "Özel şemayla tablo satırlarını manuel olarak girin",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Sayaç aralığına sahip özel şema kullanarak satırlar oluşturun",
-  "nodeEditorNodeReadTSVFromPackDescription": "Özel şemayı kullanarak TSV dosyasını paketten okur"
+  "nodeEditorNodeReadTSVFromPackDescription": "Özel şemayı kullanarak TSV dosyasını paketten okur",
+  "visualsTab": "Görseller",
+  "nodeEditorTab": "Düğüm Düzenleyici"
 }

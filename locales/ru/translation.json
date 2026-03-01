@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "Выполняет поиск/объединение с использованием индексированных таблиц (внутренних/левых/вложенных).",
   "nodeEditorNodeCustomRowsInputDescription": "Ввод строк таблицы вручную с помощью пользовательской схемы",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Генерируйте строки, используя пользовательскую схему с диапазоном счетчиков.",
-  "nodeEditorNodeReadTSVFromPackDescription": "Читает файл TSV из пакета, используя пользовательскую схему."
+  "nodeEditorNodeReadTSVFromPackDescription": "Читает файл TSV из пакета, используя пользовательскую схему.",
+  "visualsTab": "Визуальные эффекты",
+  "nodeEditorTab": "Редактор узлов"
 }

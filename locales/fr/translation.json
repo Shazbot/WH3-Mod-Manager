@@ -879,5 +879,7 @@
   "nodeEditorNodeLookupJoinDescription": "Effectue des recherches/jointures à l'aide de tables indexées (intérieures/gauches/imbriquées)",
   "nodeEditorNodeCustomRowsInputDescription": "Saisir manuellement les lignes du tableau avec un schéma personnalisé",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Générer des lignes à l'aide d'un schéma personnalisé avec une plage de compteurs",
-  "nodeEditorNodeReadTSVFromPackDescription": "Lit le fichier TSV du pack à l'aide d'un schéma personnalisé"
+  "nodeEditorNodeReadTSVFromPackDescription": "Lit le fichier TSV du pack à l'aide d'un schéma personnalisé",
+  "visualsTab": "Visuels",
+  "nodeEditorTab": "Éditeur de nœuds"
 }
