@@ -25,8 +25,12 @@ import {
   setFromConfig,
   setHasConfigBeenRead,
   setIsAdmin,
+  setIsCheckingSkillRequirements,
   setIsDev,
   setIsFeaturesForModdersEnabled,
+  setIsShowingHiddenModifiersInsideSkills,
+  setIsShowingHiddenSkills,
+  setIsShowingSkillNodeSetNames,
   setIsOnboardingToRun,
   setIsWH3Running,
   setLastModThatWasRead,
@@ -229,6 +233,15 @@ window.api?.setAvailableLanguages((event, languages: string[]) => {
 
 window.api?.setCurrentLanguage((event, language: string) => {
   store.dispatch(setCurrentLanguage(language));
+});
+
+window.api?.onSkillsViewOptions((event, skillsViewOptions: SkillsViewOptions) => {
+  store.dispatch(setIsShowingSkillNodeSetNames(skillsViewOptions.isShowingSkillNodeSetNames));
+  store.dispatch(setIsShowingHiddenSkills(skillsViewOptions.isShowingHiddenSkills));
+  store.dispatch(
+    setIsShowingHiddenModifiersInsideSkills(skillsViewOptions.isShowingHiddenModifiersInsideSkills),
+  );
+  store.dispatch(setIsCheckingSkillRequirements(skillsViewOptions.isCheckingSkillRequirements));
 });
 
 window.api?.setCurrentGame((event, game: SupportedGames, currentPreset: Preset, presets: Preset[]) => {

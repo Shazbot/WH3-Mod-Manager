@@ -76,8 +76,13 @@ const api = {
   skillsAreReady: () => ipcRenderer.send("skillsAreReady"),
   requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
   requestOpenSkillsWindow: (mods: Mod[]) => ipcRenderer.send("requestOpenSkillsWindow", mods),
+  setSkillsViewOptions: (skillsViewOptions: SkillsViewOptions) =>
+    ipcRenderer.send("setSkillsViewOptions", skillsViewOptions),
   openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("openModInViewer", callback),
+  onSkillsViewOptions: (
+    callback: (event: Electron.IpcRendererEvent, skillsViewOptions: SkillsViewOptions) => void,
+  ) => ipcRenderer.on("setSkillsViewOptions", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
   copyToData: (modPathsToCopy?: string[]) => ipcRenderer.send("copyToData", modPathsToCopy),
   copyToDataAsSymbolicLink: (modPathsToCopy?: string[]) =>

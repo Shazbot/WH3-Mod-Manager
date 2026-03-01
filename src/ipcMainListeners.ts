@@ -1897,6 +1897,13 @@ export const registerIpcMainListeners = (
 
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
+      appData.isShowingSkillNodeSetNames =
+        appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
+      appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
+      appData.isShowingHiddenModifiersInsideSkills =
+        appState.isShowingHiddenModifiersInsideSkills ?? appData.isShowingHiddenModifiersInsideSkills;
+      appData.isCheckingSkillRequirements =
+        appState.isCheckingSkillRequirements ?? appData.isCheckingSkillRequirements;
 
       return appState;
     } finally {
@@ -4233,6 +4240,15 @@ export const registerIpcMainListeners = (
     }
   });
 
+  ipcMain.on("setSkillsViewOptions", (event, skillsViewOptions: SkillsViewOptions) => {
+    appData.isShowingSkillNodeSetNames = skillsViewOptions.isShowingSkillNodeSetNames;
+    appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
+    appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
+    appData.isCheckingSkillRequirements = skillsViewOptions.isCheckingSkillRequirements;
+
+    windows.mainWindow?.webContents.send("setSkillsViewOptions", skillsViewOptions);
+  });
+
   ipcMain.on("requestLanguageChange", async (event, language: string) => {
     console.log("requestLanguageChange:", language);
     await i18n.changeLanguage(language);
@@ -4572,6 +4588,12 @@ export const registerIpcMainListeners = (
       "setIsFeaturesForModdersEnabled",
       appData.isFeaturesForModdersEnabled,
     );
+    windows.skillsWindow?.webContents.send("setSkillsViewOptions", {
+      isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
+      isShowingHiddenSkills: appData.isShowingHiddenSkills,
+      isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
+      isCheckingSkillRequirements: appData.isCheckingSkillRequirements,
+    } as SkillsViewOptions);
 
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {
