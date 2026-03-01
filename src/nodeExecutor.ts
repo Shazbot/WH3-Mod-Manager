@@ -297,7 +297,7 @@ async function executePackFilesDropdownNode(nodeId: string, textValue: string): 
             console.log(`PackFiles Dropdown Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
           } else {
             console.warn(
-              `PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`
+              `PackFiles Dropdown Node ${nodeId}: Base game pack not found at ${baseGamePackPath}`,
             );
           }
         }
@@ -376,7 +376,7 @@ async function executeAllEnabledModsNode(nodeId: string, textValue: string): Pro
     }
 
     console.log(
-      `AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`
+      `AllEnabledMods Node ${nodeId}: Found ${packFiles.length} packs (includeBaseGame: ${includeBaseGame})`,
     );
 
     return {
@@ -400,7 +400,7 @@ async function executeAllEnabledModsNode(nodeId: string, textValue: string): Pro
 async function executeTableSelectionNode(
   nodeId: string,
   textValue: string,
-  inputData: PackFilesNodeData
+  inputData: PackFilesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`TableSelection Node ${nodeId}: Processing "${textValue}" with input:`, inputData);
 
@@ -458,11 +458,11 @@ async function executeTableSelectionNode(
 async function executeTableSelectionDropdownNode(
   nodeId: string,
   selectedTable: string,
-  inputData: PackFilesNodeData
+  inputData: PackFilesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(
     `TableSelection Dropdown Node ${nodeId}: Processing selected table "${selectedTable}" with input:`,
-    inputData
+    inputData,
   );
 
   if (!inputData || inputData.type !== "PackFiles") {
@@ -540,7 +540,7 @@ async function executeTableSelectionDropdownNode(
 async function executeColumnSelectionNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`ColumnSelection Node ${nodeId}: Processing "${textValue}" with input:`, inputData);
 
@@ -563,7 +563,7 @@ async function executeColumnSelectionNode(
     ) {
       const rows = chunkSchemaIntoRows(
         tableData.table.schemaFields,
-        tableData.table.tableSchema
+        tableData.table.tableSchema,
       ) as AmendedSchemaField[][];
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
@@ -598,7 +598,7 @@ async function executeColumnSelectionNode(
 async function executeGroupByColumnsNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`GroupByColumns Node ${nodeId}: Processing with textValue:`, textValue);
   console.log(`GroupByColumns Node ${nodeId}: Input data:`, inputData);
@@ -646,7 +646,7 @@ async function executeGroupByColumnsNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     // Find the column indices
@@ -655,7 +655,7 @@ async function executeGroupByColumnsNode(
 
     if (column1Index === -1 || column2Index === -1) {
       console.warn(
-        `Columns ${column1} or ${column2} not found in table ${tableData.name}. Skipping this table.`
+        `Columns ${column1} or ${column2} not found in table ${tableData.name}. Skipping this table.`,
       );
       continue;
     }
@@ -684,7 +684,7 @@ async function executeGroupByColumnsNode(
       }
     }
     console.log(
-      `GroupByColumns Node ${nodeId}: Filtered from ${groupedData.size} to ${filteredData.size} groups`
+      `GroupByColumns Node ${nodeId}: Filtered from ${groupedData.size} to ${filteredData.size} groups`,
     );
     groupedData.clear();
     for (const [key, values] of filteredData.entries()) {
@@ -713,7 +713,7 @@ async function executeGroupByColumnsNode(
 async function executeFilterNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Filter Node ${nodeId}: Processing filters with input tables:`, {
     tableCount: inputData?.tables?.length,
@@ -746,7 +746,7 @@ async function executeFilterNode(
   }
 
   console.log(
-    `Filter Node ${nodeId}: Applying ${filters.length} filters to ${inputData.tables.length} table(s)`
+    `Filter Node ${nodeId}: Applying ${filters.length} filters to ${inputData.tables.length} table(s)`,
   );
 
   // Create a filtered version of the input data
@@ -765,7 +765,7 @@ async function executeFilterNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     console.log(`Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
@@ -819,7 +819,7 @@ async function executeFilterNode(
     });
 
     console.log(
-      `Filter Node ${nodeId}: ${filteredRows.length} rows passed filters out of ${rows.length} in table "${tableData.name}"`
+      `Filter Node ${nodeId}: ${filteredRows.length} rows passed filters out of ${rows.length} in table "${tableData.name}"`,
     );
 
     // Flatten filtered rows back into schemaFields array
@@ -857,7 +857,7 @@ async function executeFilterNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     // Filter rows that DON'T match (inverse of the match filter)
@@ -932,7 +932,7 @@ async function executeFilterNode(
   elseData.tableCount = elseData.tables.length;
 
   console.log(
-    `Filter Node ${nodeId}: Match output has ${filteredData.tableCount} tables, Else output has ${elseData.tableCount} tables`
+    `Filter Node ${nodeId}: Match output has ${filteredData.tableCount} tables, Else output has ${elseData.tableCount} tables`,
   );
 
   // Return both outputs - the executor will select the correct one based on the connection handle
@@ -946,7 +946,7 @@ async function executeFilterNode(
 async function executeMultiFilterNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Multi-Filter Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
@@ -991,7 +991,7 @@ async function executeMultiFilterNode(
 
   console.log(
     `Multi-Filter Node ${nodeId}: Splitting by column "${selectedColumn}" into ${enabledSplitValues.length} outputs:`,
-    enabledSplitValues.map((s) => s.value)
+    enabledSplitValues.map((s) => s.value),
   );
 
   // Create output data for each split value
@@ -1017,7 +1017,7 @@ async function executeMultiFilterNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     console.log(`Multi-Filter Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
@@ -1069,7 +1069,7 @@ async function executeMultiFilterNode(
       }
 
       console.log(
-        `Multi-Filter Node ${nodeId}: Output "${outputKey}" has ${matchingRows.length} rows from table "${tableData.name}"`
+        `Multi-Filter Node ${nodeId}: Output "${outputKey}" has ${matchingRows.length} rows from table "${tableData.name}"`,
       );
     }
   }
@@ -1081,7 +1081,7 @@ async function executeMultiFilterNode(
 
   console.log(
     `Multi-Filter Node ${nodeId}: Created ${Object.keys(multiOutputs).length} outputs:`,
-    Object.keys(multiOutputs).map((key) => `${key} (${multiOutputs[key].tableCount} tables)`)
+    Object.keys(multiOutputs).map((key) => `${key} (${multiOutputs[key].tableCount} tables)`),
   );
 
   // Return multi-output format (same as generaterows - outputs in data field)
@@ -1094,7 +1094,7 @@ async function executeMultiFilterNode(
 async function executeReferenceLookupNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Reference Lookup Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
@@ -1127,7 +1127,7 @@ async function executeReferenceLookupNode(
       if (baseGameFolder) {
         const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
         // Check if base game pack is not already in sourceFiles
-        if (!sourceFiles.some(sf => sf.path === baseGamePackPath)) {
+        if (!sourceFiles.some((sf) => sf.path === baseGamePackPath)) {
           if (fs.existsSync(baseGamePackPath)) {
             sourceFiles.push({
               name: baseGamePackName,
@@ -1155,7 +1155,7 @@ async function executeReferenceLookupNode(
   }
 
   console.log(
-    `Reference Lookup Node ${nodeId}: Looking up references to table "${selectedReferenceTable}" from ${inputData.tables.length} input table(s)`
+    `Reference Lookup Node ${nodeId}: Looking up references to table "${selectedReferenceTable}" from ${inputData.tables.length} input table(s)`,
   );
 
   // Collect all reference values from the input tables
@@ -1169,7 +1169,7 @@ async function executeReferenceLookupNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     // Find columns that reference the selected table
@@ -1178,11 +1178,11 @@ async function executeReferenceLookupNode(
       (field) =>
         field.is_reference &&
         field.is_reference.length > 0 &&
-        field.is_reference[0] === selectedReferenceTable
+        field.is_reference[0] === selectedReferenceTable,
     );
 
     console.log(
-      `Reference Lookup Node ${nodeId}: Found ${referenceColumns.length} reference column(s) in table "${tableData.name}"`
+      `Reference Lookup Node ${nodeId}: Found ${referenceColumns.length} reference column(s) in table "${tableData.name}"`,
     );
 
     // Extract reference values from those columns
@@ -1238,7 +1238,7 @@ async function executeReferenceLookupNode(
       // Find tables that match the reference table name exactly
       // Match db\land_units or db\land_units\!variant but NOT db\land_units_to_something
       console.log(
-        `Reference Lookup Node ${nodeId}: Pack ${sourceFile.name} has ${pack.packedFiles.length} packed files`
+        `Reference Lookup Node ${nodeId}: Pack ${sourceFile.name} has ${pack.packedFiles.length} packed files`,
       );
 
       // Show sample file names to debug
@@ -1246,7 +1246,7 @@ async function executeReferenceLookupNode(
       if (dbFiles.length > 0) {
         console.log(
           `Reference Lookup Node ${nodeId}: Sample DB files (${dbFiles.length} total):`,
-          dbFiles.slice(0, 5).map((pf) => pf.name)
+          dbFiles.slice(0, 5).map((pf) => pf.name),
         );
       }
 
@@ -1278,7 +1278,7 @@ async function executeReferenceLookupNode(
   }
 
   console.log(
-    `Reference Lookup Node ${nodeId}: Found ${referencedTables.length} table(s) matching "${selectedReferenceTable}"`
+    `Reference Lookup Node ${nodeId}: Found ${referencedTables.length} table(s) matching "${selectedReferenceTable}"`,
   );
 
   // Filter the referenced tables to only include rows with matching key values
@@ -1298,7 +1298,7 @@ async function executeReferenceLookupNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     // Find the key column (usually the first column or a column with is_key=true)
@@ -1308,14 +1308,14 @@ async function executeReferenceLookupNode(
 
     if (!keyField) {
       console.warn(
-        `Reference Lookup Node ${nodeId}: No key field found in table "${tableData.name}", skipping`
+        `Reference Lookup Node ${nodeId}: No key field found in table "${tableData.name}", skipping`,
       );
       continue;
     }
 
     const keyColumnName = keyField.name;
     console.log(
-      `Reference Lookup Node ${nodeId}: Using key column "${keyColumnName}" in table "${tableData.name}"`
+      `Reference Lookup Node ${nodeId}: Using key column "${keyColumnName}" in table "${tableData.name}"`,
     );
 
     // Filter rows where the key column value is in our reference values set
@@ -1328,7 +1328,7 @@ async function executeReferenceLookupNode(
     });
 
     console.log(
-      `Reference Lookup Node ${nodeId}: ${filteredRows.length} row(s) matched out of ${rows.length} in table "${tableData.name}"`
+      `Reference Lookup Node ${nodeId}: ${filteredRows.length} row(s) matched out of ${rows.length} in table "${tableData.name}"`,
     );
 
     if (filteredRows.length > 0) {
@@ -1354,7 +1354,7 @@ async function executeReferenceLookupNode(
   filteredReferencedTables.tableCount = filteredReferencedTables.tables.length;
 
   console.log(
-    `Reference Lookup Node ${nodeId}: Returning ${filteredReferencedTables.tableCount} filtered table(s)`
+    `Reference Lookup Node ${nodeId}: Returning ${filteredReferencedTables.tableCount} filtered table(s)`,
   );
 
   return {
@@ -1366,7 +1366,7 @@ async function executeReferenceLookupNode(
 async function executeReverseReferenceLookupNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Reverse Reference Lookup Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
@@ -1399,14 +1399,16 @@ async function executeReverseReferenceLookupNode(
       if (baseGameFolder) {
         const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
         // Check if base game pack is not already in sourceFiles
-        if (!sourceFiles.some(sf => sf.path === baseGamePackPath)) {
+        if (!sourceFiles.some((sf) => sf.path === baseGamePackPath)) {
           if (fs.existsSync(baseGamePackPath)) {
             sourceFiles.push({
               name: baseGamePackName,
               path: baseGamePackPath,
               loaded: true,
             });
-            console.log(`Reverse Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`);
+            console.log(
+              `Reverse Reference Lookup Node ${nodeId}: Added base game pack from ${baseGamePackPath}`,
+            );
           }
         }
       }
@@ -1422,7 +1424,7 @@ async function executeReverseReferenceLookupNode(
   // If no reverse table is selected, try to auto-select if there's only one option
   if ((!selectedReverseTable || selectedReverseTable.trim() === "") && inputTableName) {
     console.log(
-      `Reverse Reference Lookup Node ${nodeId}: No reverse table selected, checking for auto-selection for input table "${inputTableName}"`
+      `Reverse Reference Lookup Node ${nodeId}: No reverse table selected, checking for auto-selection for input table "${inputTableName}"`,
     );
 
     // Find all tables that have fields referencing the input table
@@ -1445,7 +1447,7 @@ async function executeReverseReferenceLookupNode(
         }
 
         console.log(
-          `Reverse Reference Lookup Node ${nodeId}: Found ${dbTableNames.size} potential table(s) in ${sourceFile.name}`
+          `Reverse Reference Lookup Node ${nodeId}: Found ${dbTableNames.size} potential table(s) in ${sourceFile.name}`,
         );
 
         // Now read each table's schema to check if it references the input table
@@ -1463,13 +1465,13 @@ async function executeReverseReferenceLookupNode(
                   (field) =>
                     field.is_reference &&
                     field.is_reference.length > 0 &&
-                    field.is_reference[0] === inputTableName
+                    field.is_reference[0] === inputTableName,
                 );
 
                 if (hasReferenceToInput) {
                   reverseTableOptions.add(tableName);
                   console.log(
-                    `Reverse Reference Lookup Node ${nodeId}: Table "${tableName}" has references to "${inputTableName}"`
+                    `Reverse Reference Lookup Node ${nodeId}: Table "${tableName}" has references to "${inputTableName}"`,
                   );
                   break; // Found reference in this table, no need to check other variants
                 }
@@ -1482,24 +1484,24 @@ async function executeReverseReferenceLookupNode(
       } catch (error) {
         console.error(
           `Reverse Reference Lookup Node ${nodeId}: Error reading pack ${sourceFile.path} for auto-selection:`,
-          error
+          error,
         );
       }
     }
 
     console.log(
       `Reverse Reference Lookup Node ${nodeId}: Found ${reverseTableOptions.size} table(s) that reference "${inputTableName}":`,
-      Array.from(reverseTableOptions)
+      Array.from(reverseTableOptions),
     );
 
     if (reverseTableOptions.size === 1) {
       selectedReverseTable = Array.from(reverseTableOptions)[0];
       console.log(
-        `Reverse Reference Lookup Node ${nodeId}: Auto-selected only available reverse table: "${selectedReverseTable}"`
+        `Reverse Reference Lookup Node ${nodeId}: Auto-selected only available reverse table: "${selectedReverseTable}"`,
       );
     } else if (reverseTableOptions.size === 0) {
       console.log(
-        `Reverse Reference Lookup Node ${nodeId}: No tables reference "${inputTableName}", returning empty result`
+        `Reverse Reference Lookup Node ${nodeId}: No tables reference "${inputTableName}", returning empty result`,
       );
       return {
         success: true,
@@ -1527,7 +1529,7 @@ async function executeReverseReferenceLookupNode(
   }
 
   console.log(
-    `Reverse Reference Lookup Node ${nodeId}: Finding rows in "${selectedReverseTable}" that reference ${inputData.tables.length} input table(s)`
+    `Reverse Reference Lookup Node ${nodeId}: Finding rows in "${selectedReverseTable}" that reference ${inputData.tables.length} input table(s)`,
   );
 
   // Collect all key values from the input tables
@@ -1546,7 +1548,7 @@ async function executeReverseReferenceLookupNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     // Find key columns (columns marked as is_key)
@@ -1569,12 +1571,12 @@ async function executeReverseReferenceLookupNode(
   }
 
   console.log(
-    `Reverse Reference Lookup Node ${nodeId}: Collected ${inputKeyValues.size} unique key value(s) from input`
+    `Reverse Reference Lookup Node ${nodeId}: Collected ${inputKeyValues.size} unique key value(s) from input`,
   );
 
   if (inputKeyValues.size === 0) {
     console.log(
-      `Reverse Reference Lookup Node ${nodeId}: No key values found in input, returning empty result`
+      `Reverse Reference Lookup Node ${nodeId}: No key values found in input, returning empty result`,
     );
     return {
       success: true,
@@ -1624,7 +1626,7 @@ async function executeReverseReferenceLookupNode(
   }
 
   console.log(
-    `Reverse Reference Lookup Node ${nodeId}: Found ${reverseTables.length} table(s) from pack files`
+    `Reverse Reference Lookup Node ${nodeId}: Found ${reverseTables.length} table(s) from pack files`,
   );
 
   const filteredReverseTables: DBTablesNodeData = {
@@ -1648,24 +1650,24 @@ async function executeReverseReferenceLookupNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     // Find columns that reference the input table
     const referenceColumns = tableData.table.tableSchema.fields.filter(
       (field) =>
-        field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName
+        field.is_reference && field.is_reference.length > 0 && field.is_reference[0] === inputTableName,
     );
 
     if (referenceColumns.length === 0) {
       console.log(
-        `Reverse Reference Lookup Node ${nodeId}: No reference columns found in "${tableData.name}" pointing to "${inputTableName}"`
+        `Reverse Reference Lookup Node ${nodeId}: No reference columns found in "${tableData.name}" pointing to "${inputTableName}"`,
       );
       continue;
     }
 
     console.log(
-      `Reverse Reference Lookup Node ${nodeId}: Found ${referenceColumns.length} reference column(s) in "${tableData.name}"`
+      `Reverse Reference Lookup Node ${nodeId}: Found ${referenceColumns.length} reference column(s) in "${tableData.name}"`,
     );
 
     // Filter rows where reference column values match input key values
@@ -1683,7 +1685,7 @@ async function executeReverseReferenceLookupNode(
     });
 
     console.log(
-      `Reverse Reference Lookup Node ${nodeId}: ${filteredRows.length} row(s) matched out of ${rows.length} in table "${tableData.name}"`
+      `Reverse Reference Lookup Node ${nodeId}: ${filteredRows.length} row(s) matched out of ${rows.length} in table "${tableData.name}"`,
     );
 
     if (filteredRows.length > 0) {
@@ -1707,7 +1709,7 @@ async function executeReverseReferenceLookupNode(
   filteredReverseTables.tableCount = filteredReverseTables.tables.length;
 
   console.log(
-    `Reverse Reference Lookup Node ${nodeId}: Returning ${filteredReverseTables.tableCount} filtered table(s)`
+    `Reverse Reference Lookup Node ${nodeId}: Returning ${filteredReverseTables.tableCount} filtered table(s)`,
   );
 
   return {
@@ -1751,13 +1753,13 @@ function evaluateFormula(formula: string, x: number): number {
 async function executeColumnSelectionDropdownNode(
   nodeId: string,
   selectedColumn: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(
     `ColumnSelection Dropdown Node ${nodeId}: Processing selected column "${selectedColumn}" with num input tables:`,
     inputData.tables.length,
     `table names:`,
-    inputData.tables.map((t) => t.name)
+    inputData.tables.map((t) => t.name),
   );
 
   if (!inputData || inputData.type !== "TableSelection") {
@@ -1783,7 +1785,7 @@ async function executeColumnSelectionDropdownNode(
     ) {
       const rows = chunkSchemaIntoRows(
         tableData.table.schemaFields,
-        tableData.table.tableSchema
+        tableData.table.tableSchema,
       ) as AmendedSchemaField[][];
       const cellData = [] as { col: string; data: string }[];
       for (const row of rows) {
@@ -1818,7 +1820,11 @@ async function executeColumnSelectionDropdownNode(
 async function executeNumericAdjustmentNode(
   nodeId: string,
   textValue: string,
-  inputData: DBColumnSelectionNodeData | DBColumnSelectionNodeData[] | DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[]
+  inputData:
+    | DBColumnSelectionNodeData
+    | DBColumnSelectionNodeData[]
+    | DBNumericAdjustmentNodeData
+    | DBNumericAdjustmentNodeData[],
 ): Promise<NodeExecutionResult> {
   console.log(`NumericAdjustment Node ${nodeId}: Processing formula "${textValue}" with input:`, inputData);
 
@@ -1842,7 +1848,10 @@ async function executeNumericAdjustmentNode(
     } else if (input.type === "ChangedColumnSelection") {
       columnSelectionInputs.push((input as DBNumericAdjustmentNodeData).adjustedInputData);
     } else {
-      return { success: false, error: `Invalid input at index ${i}: Expected ColumnSelection or ChangedColumnSelection data` };
+      return {
+        success: false,
+        error: `Invalid input at index ${i}: Expected ColumnSelection or ChangedColumnSelection data`,
+      };
     }
   }
 
@@ -1855,7 +1864,10 @@ async function executeNumericAdjustmentNode(
 
     // Collect unique tables and merge selectedColumns/data WITHOUT cloning yet
     // We'll clone once at the end when we apply the formula
-    const tableMap = new Map<string, { column: any; selectedColumns: Set<string>; dataMap: Map<string, any> }>();
+    const tableMap = new Map<
+      string,
+      { column: any; selectedColumns: Set<string>; dataMap: Map<string, any> }
+    >();
     const allSourceTables: any[] = [];
     const seenSourceTables = new Set<string>();
 
@@ -1913,7 +1925,9 @@ async function executeNumericAdjustmentNode(
   // Log the tables we're processing
   console.log(`NumericAdjustment Node ${nodeId}: Processing ${mergedInput.columns.length} table(s):`);
   for (const col of mergedInput.columns) {
-    console.log(`  - ${col.tableName} (${col.selectedColumns.length} columns, ${col.data.length} data entries)`);
+    console.log(
+      `  - ${col.tableName} (${col.selectedColumns.length} columns, ${col.data.length} data entries)`,
+    );
   }
 
   const formula = textValue.trim();
@@ -1958,7 +1972,7 @@ async function executeNumericAdjustmentNode(
 
     const rows = chunkSchemaIntoRows(
       column.sourceTable.schemaFields,
-      column.sourceTable.tableSchema
+      column.sourceTable.tableSchema,
     ) as AmendedSchemaField[][];
 
     for (let i = 0; i < rows.length; i++) {
@@ -2000,7 +2014,7 @@ async function executeNumericAdjustmentNode(
 async function executeMathMaxNode(
   nodeId: string,
   textValue: string,
-  inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[]
+  inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[],
 ): Promise<NodeExecutionResult> {
   console.log(`MathMax Node ${nodeId}: Processing with value "${textValue}" and input:`, inputData);
 
@@ -2041,9 +2055,7 @@ async function executeMathMaxNode(
       for (const currentColumn of currentInput.columns) {
         // Find if this table already exists in mergedInputData
         const existingColumn = mergedInputData.columns.find(
-          (col) =>
-            col.tableName === currentColumn.tableName &&
-            col.fileName === currentColumn.fileName
+          (col) => col.tableName === currentColumn.tableName && col.fileName === currentColumn.fileName,
         );
 
         if (existingColumn) {
@@ -2057,12 +2069,12 @@ async function executeMathMaxNode(
             // Merge schemaFields row by row
             const currentRows = chunkSchemaIntoRows(
               currentColumn.sourceTable.schemaFields,
-              currentColumn.sourceTable.tableSchema
+              currentColumn.sourceTable.tableSchema,
             ) as AmendedSchemaField[][];
 
             const existingRows = chunkSchemaIntoRows(
               existingColumn.sourceTable.schemaFields,
-              existingColumn.sourceTable.tableSchema
+              existingColumn.sourceTable.tableSchema,
             ) as AmendedSchemaField[][];
 
             // Use Set for O(1) lookup
@@ -2113,7 +2125,11 @@ async function executeMathMaxNode(
 
       // Merge sourceTables
       for (const sourceTable of currentInput.sourceTables) {
-        if (!mergedInputData.sourceTables.some(t => t.name === sourceTable.name && t.fileName === sourceTable.fileName)) {
+        if (
+          !mergedInputData.sourceTables.some(
+            (t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName,
+          )
+        ) {
           mergedInputData.sourceTables.push(sourceTable);
         }
       }
@@ -2146,7 +2162,7 @@ async function executeMathMaxNode(
 
     const rows = chunkSchemaIntoRows(
       column.sourceTable.schemaFields,
-      column.sourceTable.tableSchema
+      column.sourceTable.tableSchema,
     ) as AmendedSchemaField[][];
 
     for (let i = 0; i < rows.length; i++) {
@@ -2183,7 +2199,7 @@ async function executeMathMaxNode(
 
 async function executeMathCeilNode(
   nodeId: string,
-  inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[]
+  inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[],
 ): Promise<NodeExecutionResult> {
   console.log(`MathCeil Node ${nodeId}: Processing with input:`, inputData);
 
@@ -2224,9 +2240,7 @@ async function executeMathCeilNode(
       for (const currentColumn of currentInput.columns) {
         // Find if this table already exists in mergedInputData
         const existingColumn = mergedInputData.columns.find(
-          (col) =>
-            col.tableName === currentColumn.tableName &&
-            col.fileName === currentColumn.fileName
+          (col) => col.tableName === currentColumn.tableName && col.fileName === currentColumn.fileName,
         );
 
         if (existingColumn) {
@@ -2240,12 +2254,12 @@ async function executeMathCeilNode(
             // Merge schemaFields row by row
             const currentRows = chunkSchemaIntoRows(
               currentColumn.sourceTable.schemaFields,
-              currentColumn.sourceTable.tableSchema
+              currentColumn.sourceTable.tableSchema,
             ) as AmendedSchemaField[][];
 
             const existingRows = chunkSchemaIntoRows(
               existingColumn.sourceTable.schemaFields,
-              existingColumn.sourceTable.tableSchema
+              existingColumn.sourceTable.tableSchema,
             ) as AmendedSchemaField[][];
 
             // Use Set for O(1) lookup
@@ -2296,7 +2310,11 @@ async function executeMathCeilNode(
 
       // Merge sourceTables
       for (const sourceTable of currentInput.sourceTables) {
-        if (!mergedInputData.sourceTables.some(t => t.name === sourceTable.name && t.fileName === sourceTable.fileName)) {
+        if (
+          !mergedInputData.sourceTables.some(
+            (t) => t.name === sourceTable.name && t.fileName === sourceTable.fileName,
+          )
+        ) {
           mergedInputData.sourceTables.push(sourceTable);
         }
       }
@@ -2320,7 +2338,7 @@ async function executeMathCeilNode(
 
     const rows = chunkSchemaIntoRows(
       column.sourceTable.schemaFields,
-      column.sourceTable.tableSchema
+      column.sourceTable.tableSchema,
     ) as AmendedSchemaField[][];
 
     for (let i = 0; i < rows.length; i++) {
@@ -2357,7 +2375,7 @@ async function executeMathCeilNode(
 
 async function executeMergeChangesNode(
   nodeId: string,
-  inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[]
+  inputData: DBNumericAdjustmentNodeData | DBNumericAdjustmentNodeData[],
 ): Promise<NodeExecutionResult> {
   console.log(`MergeChanges Node ${nodeId}: Merging multiple ChangedColumnSelection inputs`);
 
@@ -2392,9 +2410,7 @@ async function executeMergeChangesNode(
     for (const currentColumn of currentInput.columns) {
       // Find if this table already exists in mergedData
       const existingColumn = mergedData.columns.find(
-        (col) =>
-          col.tableName === currentColumn.tableName &&
-          col.fileName === currentColumn.fileName
+        (col) => col.tableName === currentColumn.tableName && col.fileName === currentColumn.fileName,
       );
 
       if (existingColumn) {
@@ -2409,12 +2425,12 @@ async function executeMergeChangesNode(
           // Merge schemaFields row by row
           const currentRows = chunkSchemaIntoRows(
             currentColumn.sourceTable.schemaFields,
-            currentColumn.sourceTable.tableSchema
+            currentColumn.sourceTable.tableSchema,
           ) as AmendedSchemaField[][];
 
           const existingRows = chunkSchemaIntoRows(
             existingColumn.sourceTable.schemaFields,
-            existingColumn.sourceTable.tableSchema
+            existingColumn.sourceTable.tableSchema,
           ) as AmendedSchemaField[][];
 
           // Use Set for O(1) lookup
@@ -2481,10 +2497,10 @@ async function executeSaveTextNode(
   nodeId: string,
   textContent: string,
   packName: string,
-  packedFileName: string
+  packedFileName: string,
 ): Promise<NodeExecutionResult> {
   console.log(
-    `SaveText Node ${nodeId}: Saving text file with packName="${packName}", packedFileName="${packedFileName}"`
+    `SaveText Node ${nodeId}: Saving text file with packName="${packName}", packedFileName="${packedFileName}"`,
   );
 
   try {
@@ -2545,7 +2561,7 @@ async function executeSaveTextNode(
 async function executeSaveChangesNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with tables:`, {
     tableCount: inputData?.tables?.length,
@@ -2587,12 +2603,12 @@ async function executeSaveChangesNode(
       let packFileSize = 0;
       const rows = chunkSchemaIntoRows(
         table.table.schemaFields,
-        table.table.tableSchema
+        table.table.tableSchema,
       ) as AmendedSchemaField[][];
 
       console.log(`Save Changes Node ${nodeId}: Calculating pack file size for ${table.name}`);
       console.log(
-        `Save Changes Node ${nodeId}: Table has ${table.table.tableSchema.fields.length} schema fields`
+        `Save Changes Node ${nodeId}: Table has ${table.table.tableSchema.fields.length} schema fields`,
       );
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -2601,7 +2617,7 @@ async function executeSaveChangesNode(
           const field = table.table.tableSchema.fields[j];
           if (!field) {
             console.error(
-              `Save Changes Node ${nodeId}: No schema field at index ${j}, cell name: ${cell.name}`
+              `Save Changes Node ${nodeId}: No schema field at index ${j}, cell name: ${cell.name}`,
             );
             return {
               success: false,
@@ -2663,7 +2679,7 @@ async function executeSaveChangesNode(
     const packFilePath = nodePath.join(outputDir, `${packFileBaseName}.pack`);
 
     console.log(
-      `Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`
+      `Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`,
     );
     console.log(`Save Changes Node ${nodeId}: Output path: ${packFilePath}`);
 
@@ -2714,7 +2730,7 @@ async function executeSaveChangesNode(
     let packFileSize = 0;
     const rows = chunkSchemaIntoRows(
       column.sourceTable.schemaFields,
-      column.sourceTable.tableSchema
+      column.sourceTable.tableSchema,
     ) as AmendedSchemaField[][];
 
     for (let i = 0; i < rows.length; i++) {
@@ -2734,9 +2750,10 @@ async function executeSaveChangesNode(
     // Generate random suffix (6 alphanumeric characters)
     const randomSuffix = Math.random().toString(36).substring(2, 8);
     if (lastBackslashIndex > -1) {
+      const isVanillaPack = appData.allVanillaPackNames.has(column.sourcePack.name);
       dbFileName =
         dbFileName.substring(0, lastBackslashIndex + 1) +
-        "!" +
+        (isVanillaPack ? "" : "!") +
         dbFileName.substring(lastBackslashIndex + 1) +
         "_" +
         randomSuffix;
@@ -2811,7 +2828,7 @@ async function executeSaveChangesNode(
 
       if (uniqueTableNames.length > 0) {
         console.log(
-          `SaveChanges Node ${nodeId}: Parsing ${uniqueTableNames.length} table(s) from existing pack`
+          `SaveChanges Node ${nodeId}: Parsing ${uniqueTableNames.length} table(s) from existing pack`,
         );
         getPacksTableData([existingPack], uniqueTableNames);
       }
@@ -2844,7 +2861,7 @@ async function executeSaveChangesNode(
 
       filesToSave = Array.from(fileMap.values());
       console.log(
-        `SaveChanges Node ${nodeId}: Merged ${existingFiles.length} existing files with ${toSave.length} new files, total ${filesToSave.length} files`
+        `SaveChanges Node ${nodeId}: Merged ${existingFiles.length} existing files with ${toSave.length} new files, total ${filesToSave.length} files`,
       );
     } catch (error) {
       console.error(`SaveChanges Node ${nodeId}: Error reading existing pack, will overwrite:`, error);
@@ -2892,7 +2909,9 @@ async function executeSaveChangesNode(
     //   })),
     // };
 
-    console.log(`SaveChanges Node ${nodeId}: Successfully saved ${filesToSave.length} file(s) to ${newPackPath}`);
+    console.log(
+      `SaveChanges Node ${nodeId}: Successfully saved ${filesToSave.length} file(s) to ${newPackPath}`,
+    );
 
     return {
       success: true,
@@ -2917,7 +2936,7 @@ async function executeSaveChangesNode(
 async function executeTextSurroundNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`TextSurround Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
 
@@ -2971,7 +2990,7 @@ async function executeTextSurroundNode(
       if (inputData.textLines && Array.isArray(inputData.textLines)) {
         // TextLines is array of arrays - surround each value within each array
         outputTextLines = inputData.textLines.map((valueArray: string[]) =>
-          valueArray.map((value: string) => `${prefix}${value}${suffix}`)
+          valueArray.map((value: string) => `${prefix}${value}${suffix}`),
         );
       }
     }
@@ -3000,7 +3019,7 @@ async function executeTextSurroundNode(
 async function executeAppendTextNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`AppendText Node ${nodeId}: Processing with config "${textValue}" and input:`, inputData);
 
@@ -3049,7 +3068,7 @@ async function executeAppendTextNode(
       if (inputData.textLines && Array.isArray(inputData.textLines)) {
         // TextLines is array of arrays - append to each value within each array
         outputTextLines = inputData.textLines.map((valueArray: string[]) =>
-          valueArray.map((value: string) => `${beforeText}${value}${afterText}`)
+          valueArray.map((value: string) => `${beforeText}${value}${afterText}`),
         );
       }
     }
@@ -3106,7 +3125,7 @@ async function executeAppendTextNode(
 async function executeTextJoinNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`TextJoin Node ${nodeId}: Processing with separator "${textValue}" and input:`, inputData);
 
@@ -3157,11 +3176,11 @@ async function executeTextJoinNode(
 async function executeGroupedColumnsToTextNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(
     `GroupedColumnsToText Node ${nodeId}: Processing with config "${textValue}" and input:`,
-    inputData
+    inputData,
   );
 
   if (!inputData) {
@@ -3228,7 +3247,7 @@ async function executeGroupedColumnsToTextNode(
 async function executeIndexTableNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Index Table Node ${nodeId}: Processing ${inputData?.tables?.length || 0} table(s)`);
 
@@ -3268,7 +3287,7 @@ async function executeIndexTableNode(
 
     const rows = chunkSchemaIntoRows(
       table.table.schemaFields,
-      table.table.tableSchema
+      table.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     allRows.push(...rows);
@@ -3276,7 +3295,7 @@ async function executeIndexTableNode(
 
   const rows = allRows;
   console.log(
-    `Index Table Node ${nodeId}: Indexing ${rows.length} rows from ${inputData.tables.length} pack file(s)`
+    `Index Table Node ${nodeId}: Indexing ${rows.length} rows from ${inputData.tables.length} pack file(s)`,
   );
 
   // Build the index map
@@ -3313,7 +3332,7 @@ async function executeIndexTableNode(
   }
 
   console.log(
-    `Index Table Node ${nodeId}: Created index with ${indexMap.size} unique keys for table "${sourceTable.name}"`
+    `Index Table Node ${nodeId}: Created index with ${indexMap.size} unique keys for table "${sourceTable.name}"`,
   );
 
   return {
@@ -3331,7 +3350,7 @@ async function executeIndexTableNode(
 async function executeLookupNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`Lookup Node ${nodeId}: Processing with input tables:`, {
     sourceTableCount: inputData?.source?.tables?.length,
@@ -3382,8 +3401,8 @@ async function executeLookupNode(
     const columnsToIndex = indexJoinColumn
       ? [indexJoinColumn]
       : indexColumns.length > 0
-      ? indexColumns
-      : [lookupColumn];
+        ? indexColumns
+        : [lookupColumn];
 
     console.log(`Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`);
 
@@ -3401,7 +3420,7 @@ async function executeLookupNode(
 
       const rows = chunkSchemaIntoRows(
         table.table.schemaFields,
-        table.table.tableSchema
+        table.table.tableSchema,
       ) as AmendedSchemaField[][];
 
       allRightRows.push(...rows);
@@ -3409,7 +3428,7 @@ async function executeLookupNode(
     }
 
     console.log(
-      `Lookup Node ${nodeId}: Indexing ${allRightRows.length} rows from ${rightInputData.tables.length} pack files`
+      `Lookup Node ${nodeId}: Indexing ${allRightRows.length} rows from ${rightInputData.tables.length} pack files`,
     );
 
     // Build index
@@ -3462,7 +3481,7 @@ async function executeLookupNode(
 
     const rows = chunkSchemaIntoRows(
       table.table.schemaFields,
-      table.table.tableSchema
+      table.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     allSourceRows.push(...rows);
@@ -3470,7 +3489,7 @@ async function executeLookupNode(
 
   const sourceRows = allSourceRows;
   console.log(
-    `Lookup Node ${nodeId}: Processing ${sourceRows.length} source rows from ${sourceData.tables.length} pack files`
+    `Lookup Node ${nodeId}: Processing ${sourceRows.length} source rows from ${sourceData.tables.length} pack files`,
   );
 
   // Get table names for auto-prefixing
@@ -3489,7 +3508,7 @@ async function executeLookupNode(
     }
 
     console.log(
-      `Lookup Node ${nodeId}: Cross joining ${sourceRows.length} source rows with ${allRightRows.length} right rows`
+      `Lookup Node ${nodeId}: Cross joining ${sourceRows.length} source rows with ${allRightRows.length} right rows`,
     );
 
     const crossJoinedRows: AmendedSchemaField[][] = [];
@@ -3658,10 +3677,10 @@ async function executeLookupNode(
     const tableVersion = sourceTable.table.version;
 
     console.log(
-      `Lookup Node ${nodeId}: Source table version=${sourceTable.table.version}, schema version=${sourceTable.table.tableSchema?.version}`
+      `Lookup Node ${nodeId}: Source table version=${sourceTable.table.version}, schema version=${sourceTable.table.tableSchema?.version}`,
     );
     console.log(
-      `Lookup Node ${nodeId}: Creating joined table with schema version=${schemaVersion}, table version=${tableVersion}`
+      `Lookup Node ${nodeId}: Creating joined table with schema version=${schemaVersion}, table version=${tableVersion}`,
     );
 
     const joinedTable: DBTablesNodeTable = {
@@ -3695,7 +3714,7 @@ async function executeLookupNode(
 
 async function executeFlattenNestedNode(
   nodeId: string,
-  inputData: NestedTableSelection
+  inputData: NestedTableSelection,
 ): Promise<NodeExecutionResult> {
   console.log(`Flatten Nested Node ${nodeId}: Processing with input:`, inputData);
 
@@ -3782,7 +3801,7 @@ async function executeFlattenNestedNode(
 async function executeExtractTableNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Extract Table Node ${nodeId}: Processing with input:`, inputData);
 
@@ -3819,7 +3838,7 @@ async function executeExtractTableNode(
 
   const rows = chunkSchemaIntoRows(
     sourceTable.table.schemaFields,
-    sourceTable.table.tableSchema
+    sourceTable.table.tableSchema,
   ) as AmendedSchemaField[][];
 
   console.log(`Extract Table Node ${nodeId}: Processing ${rows.length} rows`);
@@ -3893,7 +3912,7 @@ async function executeExtractTableNode(
 async function executeAggregateNestedNode(
   nodeId: string,
   textValue: string,
-  inputData: NestedTableSelection
+  inputData: NestedTableSelection,
 ): Promise<NodeExecutionResult> {
   console.log(`Aggregate Nested Node ${nodeId}: Processing with input:`, inputData);
 
@@ -3932,7 +3951,7 @@ async function executeAggregateNestedNode(
   console.log(
     `Aggregate Nested Node ${nodeId}: Performing ${aggregateType.toUpperCase()} on column "${aggregateColumn}"${
       filterColumn ? ` with filter ${filterColumn} ${filterOperator} ${filterValue}` : ""
-    }`
+    }`,
   );
 
   // Helper function to apply filter
@@ -3989,7 +4008,7 @@ async function executeAggregateNestedNode(
         const cell = lookupRow.find((c: AmendedSchemaField) => c.name === aggregateColumn);
         if (!cell) {
           console.warn(
-            `Aggregate Nested Node ${nodeId}: Column "${aggregateColumn}" not found in lookup row`
+            `Aggregate Nested Node ${nodeId}: Column "${aggregateColumn}" not found in lookup row`,
           );
           continue;
         }
@@ -3997,7 +4016,7 @@ async function executeAggregateNestedNode(
         const value = parseFloat(String(cell.resolvedKeyValue || "0"));
         if (isNaN(value)) {
           console.warn(
-            `Aggregate Nested Node ${nodeId}: Non-numeric value in column "${aggregateColumn}": ${cell.resolvedKeyValue}`
+            `Aggregate Nested Node ${nodeId}: Non-numeric value in column "${aggregateColumn}": ${cell.resolvedKeyValue}`,
           );
           continue;
         }
@@ -4085,7 +4104,7 @@ async function executeAggregateNestedNode(
 async function executeGroupByNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Group By Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
@@ -4125,7 +4144,7 @@ async function executeGroupByNode(
   console.log(
     `Group By Node ${nodeId}: Grouping by [${groupByColumns.join(", ")}] with ${
       aggregations.length
-    } aggregation(s)`
+    } aggregation(s)`,
   );
 
   // Process each table
@@ -4141,7 +4160,7 @@ async function executeGroupByNode(
     // Chunk into rows
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     console.log(`Group By Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
@@ -4156,7 +4175,7 @@ async function executeGroupByNode(
         const cell = row.find((c: AmendedSchemaField) => c.name === colName);
         if (!cell) {
           console.warn(
-            `Group By Node ${nodeId}: Group by column "${colName}" not found in row, skipping row`
+            `Group By Node ${nodeId}: Group by column "${colName}" not found in row, skipping row`,
           );
           continue;
         }
@@ -4199,7 +4218,7 @@ async function executeGroupByNode(
           aggregateValue = cell ? cell.resolvedKeyValue : "";
         } else if (agg.operation === "last") {
           const cell = groupRows[groupRows.length - 1].find(
-            (c: AmendedSchemaField) => c.name === agg.sourceColumn
+            (c: AmendedSchemaField) => c.name === agg.sourceColumn,
           );
           aggregateValue = cell ? cell.resolvedKeyValue : "";
         } else {
@@ -4262,7 +4281,7 @@ async function executeGroupByNode(
     }
 
     console.log(
-      `Group By Node ${nodeId}: Output ${groupedRows.length} grouped rows from ${rows.length} input rows`
+      `Group By Node ${nodeId}: Output ${groupedRows.length} grouped rows from ${rows.length} input rows`,
     );
 
     // Flatten grouped rows back into schemaFields array
@@ -4278,7 +4297,7 @@ async function executeGroupByNode(
     for (const colName of groupByColumns) {
       // Try to find the field in the original schema
       const originalField = tableData.table.tableSchema?.fields.find(
-        (field: DBField) => field.name === colName
+        (field: DBField) => field.name === colName,
       );
 
       if (originalField) {
@@ -4290,7 +4309,7 @@ async function executeGroupByNode(
         const sampleField = groupedRows[0]?.find((f: AmendedSchemaField) => f.name === colName);
         if (sampleField) {
           console.log(
-            `Group By: Found sample field: name=${sampleField.name}, type=${sampleField.type}, isKey=${sampleField.isKey}`
+            `Group By: Found sample field: name=${sampleField.name}, type=${sampleField.type}, isKey=${sampleField.isKey}`,
           );
           newSchemaFields.push({
             name: colName,
@@ -4334,7 +4353,7 @@ async function executeGroupByNode(
     };
 
     console.log(
-      `Group By Node ${nodeId}: Created schema with ${newSchemaFields.length} fields (schema version=${schemaVersion}):`
+      `Group By Node ${nodeId}: Created schema with ${newSchemaFields.length} fields (schema version=${schemaVersion}):`,
     );
     newSchemaFields.forEach((f, idx) => {
       console.log(`  [${idx}] ${f.name} (${f.field_type}) key=${f.is_key}`);
@@ -4367,7 +4386,7 @@ async function executeGroupByNode(
 async function executeDeduplicateNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Deduplicate Node ${nodeId}: Processing with input tables:`, {
     tableCount: inputData?.tables?.length,
@@ -4391,7 +4410,9 @@ async function executeDeduplicateNode(
     return { success: false, error: "Invalid deduplicate configuration" };
   }
 
-  console.log(`Deduplicate Node ${nodeId}: dedupeByColumns: [${dedupeByColumns.join(", ")}], dedupeAgainstVanilla: ${dedupeAgainstVanilla}`);
+  console.log(
+    `Deduplicate Node ${nodeId}: dedupeByColumns: [${dedupeByColumns.join(", ")}], dedupeAgainstVanilla: ${dedupeAgainstVanilla}`,
+  );
 
   if (dedupeByColumns.length === 0) {
     return { success: false, error: "No dedupe by columns specified" };
@@ -4419,11 +4440,15 @@ async function executeDeduplicateNode(
             tableNamesToRead.add(tableData.name);
           }
 
-          console.log(`Deduplicate Node ${nodeId}: Reading vanilla tables: [${Array.from(tableNamesToRead).join(", ")}]`);
+          console.log(
+            `Deduplicate Node ${nodeId}: Reading vanilla tables: [${Array.from(tableNamesToRead).join(", ")}]`,
+          );
 
           try {
             // Read the vanilla pack for the same tables
-            const vanillaPack = await readPack(baseGamePackPath, { tablesToRead: Array.from(tableNamesToRead) });
+            const vanillaPack = await readPack(baseGamePackPath, {
+              tablesToRead: Array.from(tableNamesToRead),
+            });
             getPacksTableData([vanillaPack], Array.from(tableNamesToRead));
 
             // Process each vanilla table and build hashes
@@ -4441,10 +4466,12 @@ async function executeDeduplicateNode(
 
                 const vanillaRows = chunkSchemaIntoRows(
                   vanillaTable.schemaFields,
-                  vanillaTable.tableSchema
+                  vanillaTable.tableSchema,
                 ) as AmendedSchemaField[][];
 
-                console.log(`Deduplicate Node ${nodeId}: Vanilla table "${vanillaTable.name}" has ${vanillaRows.length} rows`);
+                console.log(
+                  `Deduplicate Node ${nodeId}: Vanilla table "${vanillaTable.name}" has ${vanillaRows.length} rows`,
+                );
 
                 for (const row of vanillaRows) {
                   let cellConcat = "";
@@ -4478,7 +4505,7 @@ async function executeDeduplicateNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     console.log(`Deduplicate Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
@@ -4538,7 +4565,7 @@ async function executeDeduplicateNode(
 
     const rows = chunkSchemaIntoRows(
       tableData.table.schemaFields,
-      tableData.table.tableSchema
+      tableData.table.tableSchema,
     ) as AmendedSchemaField[][];
 
     console.log(`Deduplicate Node ${nodeId}: Processing table "${tableData.name}" with ${rows.length} rows`);
@@ -4578,7 +4605,7 @@ async function executeDeduplicateNode(
 async function executeGenerateRowsNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Generate Rows Node ${nodeId}: Starting execution`);
 
@@ -4630,11 +4657,11 @@ async function executeGenerateRowsNode(
     config = JSON.parse(textValue);
     console.log(
       `Generate Rows Node ${nodeId}: Parsed - transformations length:`,
-      (config.transformations || []).length
+      (config.transformations || []).length,
     );
     console.log(
       `Generate Rows Node ${nodeId}: Parsed - outputTables length:`,
-      (config.outputTables || []).length
+      (config.outputTables || []).length,
     );
   } catch (error) {
     console.log(`Generate Rows Node ${nodeId}: JSON parse error:`, error);
@@ -4662,7 +4689,7 @@ async function executeGenerateRowsNode(
 
   // Check if we have a counter_range transformation that can generate rows without input
   const counterRangeTransformation = config.transformations.find(
-    (t) => t.transformationType === "counter_range"
+    (t) => t.transformationType === "counter_range",
   );
   const hasCustomSchema = !!config.customSchemaData;
 
@@ -4696,7 +4723,7 @@ async function executeGenerateRowsNode(
     }
 
     console.log(
-      `Generate Rows Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`
+      `Generate Rows Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`,
     );
   } else {
     console.log(`Generate Rows Node ${nodeId}: No input tables, will generate rows from counter_range`);
@@ -4711,7 +4738,7 @@ async function executeGenerateRowsNode(
     const rangeIncrement = parseInt(counterRangeTransformation.rangeIncrement || "1", 10) || 1;
 
     console.log(
-      `Generate Rows Node ${nodeId}: Generating rows from ${rangeStart} to ${rangeEnd} with increment ${rangeIncrement}`
+      `Generate Rows Node ${nodeId}: Generating rows from ${rangeStart} to ${rangeEnd} with increment ${rangeIncrement}`,
     );
 
     // Generate placeholder rows based on the range
@@ -4808,7 +4835,7 @@ async function executeGenerateRowsNode(
       });
 
       console.log(
-        `Generate Rows Node ${nodeId}: Initialized counter for "${key}" starting at ${startNumber} with ${existingValues.size} existing values`
+        `Generate Rows Node ${nodeId}: Initialized counter for "${key}" starting at ${startNumber} with ${existingValues.size} existing values`,
       );
     }
   }
@@ -4884,7 +4911,7 @@ async function executeGenerateRowsNode(
       if (!sourceCell) {
         if (transformation.transformationType !== "counter") {
           console.warn(
-            `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row ${rowIdx}. Using default value.`
+            `Generate Rows Node ${nodeId}: Source column "${transformation.sourceColumn}" not found in row ${rowIdx}. Using default value.`,
           );
         }
 
@@ -5028,7 +5055,7 @@ async function executeGenerateRowsNode(
 
         default:
           console.warn(
-            `Generate Rows Node ${nodeId}: Unknown transformation type "${transformation.transformationType}"`
+            `Generate Rows Node ${nodeId}: Unknown transformation type "${transformation.transformationType}"`,
           );
       }
 
@@ -5065,7 +5092,9 @@ async function executeGenerateRowsNode(
 
     if (outputConfig.existingTableName === "__custom_schema__") {
       if (!config.customSchemaData || config.customSchemaData.length === 0) {
-        console.error(`Generate Rows Node ${nodeId}: Custom schema selected but no customSchemaData provided`);
+        console.error(
+          `Generate Rows Node ${nodeId}: Custom schema selected but no customSchemaData provided`,
+        );
         console.error(`Generate Rows Node ${nodeId}: config.customSchemaData:`, config.customSchemaData);
         return {
           success: false,
@@ -5089,8 +5118,10 @@ async function executeGenerateRowsNode(
           enum_values: {},
         })),
       };
-      console.log(`Generate Rows Node ${nodeId}: Using custom schema with ${schema.fields.length} fields:`,
-        schema.fields.map((f: any) => f.name));
+      console.log(
+        `Generate Rows Node ${nodeId}: Using custom schema with ${schema.fields.length} fields:`,
+        schema.fields.map((f: any) => f.name),
+      );
     } else {
       // Look up existing table schema from DBNameToDBVersions
       const versions = config.DBNameToDBVersions?.[outputConfig.existingTableName];
@@ -5280,7 +5311,7 @@ async function executeGenerateRowsNode(
 async function executeAddNewColumnNode(
   nodeId: string,
   textValue: string,
-  inputData: DBTablesNodeData
+  inputData: DBTablesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Add New Column Node ${nodeId}: Starting execution`);
 
@@ -5319,7 +5350,7 @@ async function executeAddNewColumnNode(
   try {
     config = JSON.parse(textValue);
     console.log(
-      `Add New Column Node ${nodeId}: Parsed ${(config.transformations || []).length} transformations`
+      `Add New Column Node ${nodeId}: Parsed ${(config.transformations || []).length} transformations`,
     );
   } catch (error) {
     return {
@@ -5361,7 +5392,7 @@ async function executeAddNewColumnNode(
   }
 
   console.log(
-    `Add New Column Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`
+    `Add New Column Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`,
   );
 
   if (rows.length === 0) {
@@ -5479,7 +5510,7 @@ async function executeAddNewColumnNode(
           } catch (error) {
             console.warn(
               `Add New Column Node ${nodeId}: Invalid regex pattern "${transformation.regexPattern}":`,
-              error
+              error,
             );
             // Keep original value on error
           }
@@ -5605,7 +5636,7 @@ async function executeAddNewColumnNode(
 async function executeDumpToTSVNode(
   nodeId: string,
   textValue: string,
-  inputData: DumpToTSVNodeData | DBNumericAdjustmentNodeData
+  inputData: DumpToTSVNodeData | DBNumericAdjustmentNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`Dump to TSV Node ${nodeId}: Processing with input type: ${inputData?.type}`);
 
@@ -5628,7 +5659,9 @@ async function executeDumpToTSVNode(
       };
     }
 
-    console.log(`Dump to TSV Node ${nodeId}: Processing ChangedColumnSelection with ${adjustedInputData.columns.length} table entries`);
+    console.log(
+      `Dump to TSV Node ${nodeId}: Processing ChangedColumnSelection with ${adjustedInputData.columns.length} table entries`,
+    );
 
     // Build TSV from ChangedColumnSelection
     const tsvLines: string[] = [];
@@ -5640,7 +5673,9 @@ async function executeDumpToTSVNode(
       const columnNames = tableEntry.selectedColumns || [];
       const data = tableEntry.data || [];
 
-      console.log(`Dump to TSV Node ${nodeId}: Table "${tableName}" has ${columnNames.length} columns and ${data.length} data entries`);
+      console.log(
+        `Dump to TSV Node ${nodeId}: Table "${tableName}" has ${columnNames.length} columns and ${data.length} data entries`,
+      );
 
       // Header: table name, file name, then column names
       if (tsvLines.length === 0 && columnNames.length > 0) {
@@ -5659,11 +5694,7 @@ async function executeDumpToTSVNode(
         for (let colIdx = 0; colIdx < numCols; colIdx++) {
           const dataIdx = rowIdx * numCols + colIdx;
           const value = data[dataIdx]?.data ?? "";
-          rowValues.push(
-            String(value)
-              .replace(/\t/g, " ")
-              .replace(/\n/g, " ")
-          );
+          rowValues.push(String(value).replace(/\t/g, " ").replace(/\n/g, " "));
         }
         tsvLines.push(rowValues.join("\t"));
       }
@@ -5765,7 +5796,7 @@ async function executeDumpToTSVNode(
       // Chunk into rows
       const rows = chunkSchemaIntoRows(
         tableData.table.schemaFields,
-        tableData.table.tableSchema
+        tableData.table.tableSchema,
       ) as AmendedSchemaField[][];
 
       console.log(`Dump to TSV Node ${nodeId}: Processing table with ${rows.length} rows`);
@@ -5835,7 +5866,7 @@ async function executeDumpToTSVNode(
 async function executeGetCounterColumnNode(
   nodeId: string,
   textValue: string,
-  inputData: PackFilesNodeData
+  inputData: PackFilesNodeData,
 ): Promise<NodeExecutionResult> {
   console.log(`GetCounterColumn Node ${nodeId}: Processing with input:`, inputData);
 
@@ -6017,7 +6048,7 @@ async function executeGetCounterColumnNode(
 async function executeCustomSchemaNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`CustomSchema Node ${nodeId}: Processing schema definition`);
 
@@ -6053,7 +6084,7 @@ async function executeCustomSchemaNode(
 async function executeReadTSVFromPackNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`ReadTSVFromPack Node ${nodeId}: Processing with input:`, inputData);
 
@@ -6124,13 +6155,13 @@ async function executeReadTSVFromPackNode(
     // Extract paths from the files array
     packFilesToSearch = (packsData.files || []).map((file: any) => file.path).filter((path: string) => path);
     console.log(
-      `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in ${packFilesToSearch.length} connected pack(s)`
+      `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in ${packFilesToSearch.length} connected pack(s)`,
     );
   } else {
     // Fall back to all enabled mods (backward compatibility)
     packFilesToSearch = appData.enabledMods.map((mod) => mod.path);
     console.log(
-      `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in ${packFilesToSearch.length} enabled pack(s)`
+      `ReadTSVFromPack Node ${nodeId}: Searching for TSV file "${tsvFileName}" in ${packFilesToSearch.length} enabled pack(s)`,
     );
   }
 
@@ -6147,7 +6178,7 @@ async function executeReadTSVFromPackNode(
 
       // Search for the TSV file in packed files
       const tsvFile = pack.packedFiles.find((pf) =>
-        pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase())
+        pf.name.toLowerCase().endsWith(tsvFileName.toLowerCase()),
       );
 
       if (tsvFile) {
@@ -6213,7 +6244,7 @@ async function executeReadTSVFromPackNode(
   const dataLines = lines.slice(1);
 
   console.log(
-    `ReadTSVFromPack Node ${nodeId}: Parsing ${dataLines.length} data rows with ${schemaColumns.length} columns`
+    `ReadTSVFromPack Node ${nodeId}: Parsing ${dataLines.length} data rows with ${schemaColumns.length} columns`,
   );
 
   // Create the output table schema from the schema columns
@@ -6289,7 +6320,7 @@ async function executeReadTSVFromPackNode(
 async function executeCustomRowsInputNode(
   nodeId: string,
   textValue: string,
-  inputData: any
+  inputData: any,
 ): Promise<NodeExecutionResult> {
   console.log(`CustomRowsInput Node ${nodeId}: Processing with input:`, inputData);
 
@@ -6339,7 +6370,7 @@ async function executeCustomRowsInputNode(
   }
 
   console.log(
-    `CustomRowsInput Node ${nodeId}: Creating table with ${customRows.length} rows and ${schemaColumns.length} columns`
+    `CustomRowsInput Node ${nodeId}: Creating table with ${customRows.length} rows and ${schemaColumns.length} columns`,
   );
 
   // Create the output table schema from the schema columns

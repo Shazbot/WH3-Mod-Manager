@@ -22,13 +22,13 @@ export function findMissingFileReferences(packsData: Pack[]) {
       // console.log("looking:", packTwo.name, packName);
       if (packTwo.name === packName) continue;
       if (!appData.isCompatCheckingVanillaPacks) {
-        if (appData.allVanillaPackNames.includes(packName)) continue;
+        if (appData.allVanillaPackNames.has(packName)) continue;
       }
 
       for (const [fileName, missingFileRefs] of Object.entries(fileToFileRefs)) {
         for (const missingFileRef of missingFileRefs) {
           const bsIndex = bs(packTwo.packedFiles, missingFileRef.reference, (a: PackedFile, b: string) =>
-            collator.compare(a.name.toLowerCase(), b.toLowerCase())
+            collator.compare(a.name.toLowerCase(), b.toLowerCase()),
           );
           if (bsIndex > -1) {
             foundFileRefs.push(missingFileRef);
@@ -39,7 +39,7 @@ export function findMissingFileReferences(packsData: Pack[]) {
         }
 
         packFileToFileReferences[packName][fileName] = packFileToFileReferences[packName][fileName].filter(
-          (ref) => !foundFileRefs.includes(ref)
+          (ref) => !foundFileRefs.includes(ref),
         );
         foundFileRefs.length = 0;
       }

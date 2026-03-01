@@ -9,7 +9,7 @@ import appData from "../appData";
 export function findPackTableCollisionsBetweenPacks(
   pack: Pack,
   packTwo: Pack,
-  packTableCollisions: PackTableCollision[]
+  packTableCollisions: PackTableCollision[],
 ) {
   for (const packFile of pack.packedFiles) {
     if (!packFile.schemaFields) continue;
@@ -80,7 +80,7 @@ export function findPackTableCollisionsBetweenPacks(
                       collision.fileName == packFile.name &&
                       collision.secondFileName == packTwoFile.name &&
                       collision.key == firstVerKeyField.name &&
-                      collision.value == v1
+                      collision.value == v1,
                   )
                 ) {
                   packTableCollisions.push({
@@ -102,7 +102,7 @@ export function findPackTableCollisionsBetweenPacks(
                       collision.fileName == packTwoFile.name &&
                       collision.secondFileName == packFile.name &&
                       collision.key == firstVerKeyField.name &&
-                      collision.value == v1
+                      collision.value == v1,
                   )
                 ) {
                   packTableCollisions.push({
@@ -135,7 +135,7 @@ export function getCollisionsBetweenSameTables(
   packTwo: Pack,
   packTableCollisions: PackTableCollision[],
   dbNameOne?: string,
-  dbNameTwo?: string
+  dbNameTwo?: string,
 ) {
   if (!packFileOne.schemaFields) return;
   if (!packFileTwo.schemaFields) return;
@@ -186,7 +186,7 @@ export function getCollisionsBetweenSameTables(
               collision.fileName == packFileOne.name &&
               collision.secondFileName == packFileTwo.name &&
               collision.key == firstVerKeyField.name &&
-              collision.value == v1
+              collision.value == v1,
           )
         ) {
           packTableCollisions.push({
@@ -208,7 +208,7 @@ export function getCollisionsBetweenSameTables(
               collision.fileName == packFileTwo.name &&
               collision.secondFileName == packFileOne.name &&
               collision.key == firstVerKeyField.name &&
-              collision.value == v1
+              collision.value == v1,
           )
         ) {
           packTableCollisions.push({
@@ -231,7 +231,7 @@ export function getCollisionsBetweenSameTables(
 export function findPackTableCollisionsBetweenPacksOptimized(
   pack: Pack,
   packTwo: Pack,
-  packTableCollisions: PackTableCollision[]
+  packTableCollisions: PackTableCollision[],
 ) {
   let i = 0,
     j = 0;
@@ -303,7 +303,7 @@ export function findPackTableCollisionsBetweenPacksOptimized(
                   packTwo,
                   packTableCollisions,
                   dbNameOne,
-                  dbNameTwo
+                  dbNameTwo,
                 );
               }
             }
@@ -318,7 +318,7 @@ export function findPackTableCollisionsBetweenPacksOptimized(
 
 export function removeFromPackTableCollisions(
   packTableCollisions: PackTableCollision[],
-  removedPackName: string
+  removedPackName: string,
 ) {
   return packTableCollisions.filter((collision) => {
     return collision.firstPackName != removedPackName && collision.secondPackName != removedPackName;
@@ -328,15 +328,14 @@ export function removeFromPackTableCollisions(
 export function appendPackTableCollisions(
   packsData: Pack[],
   packTableCollisions: PackTableCollision[],
-  newPack: Pack
+  newPack: Pack,
 ) {
   console.time("appendPackTableCollisions");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     if (pack === newPack) continue;
     if (pack.name === newPack.name) continue;
-    if (appData.allVanillaPackNames.includes(pack.name) || appData.allVanillaPackNames.includes(newPack.name))
-      continue;
+    if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(newPack.name)) continue;
 
     findPackTableCollisionsBetweenPacks(pack, newPack, packTableCollisions);
   }
@@ -356,10 +355,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (
-        appData.allVanillaPackNames.includes(pack.name) ||
-        appData.allVanillaPackNames.includes(packTwo.name)
-      )
+      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
         continue;
 
       findPackTableCollisionsBetweenPacksOptimized(pack, packTwo, packTableCollisions);
@@ -374,7 +370,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
 // TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
 export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
   packsData: Pack[],
-  onPackChecked?: OnPackChecked
+  onPackChecked?: OnPackChecked,
 ) {
   const packTableCollisions: PackTableCollision[] = [];
   console.time("findPackTableCollisions1");
@@ -385,10 +381,7 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (
-        appData.allVanillaPackNames.includes(pack.name) ||
-        appData.allVanillaPackNames.includes(packTwo.name)
-      )
+      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
         continue;
 
       findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
@@ -409,8 +402,8 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
           collision.fileName == collision2.fileName &&
           collision.secondFileName == collision2.secondFileName &&
           collision.key == collision2.key &&
-          collision.value == collision2.value
-      )
+          collision.value == collision2.value,
+      ),
     );
   console.log("findPackTableCollisions are EQUAL:", areCollisionsEqual);
 
