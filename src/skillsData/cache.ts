@@ -2,13 +2,13 @@ import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as nodePath from "path";
-import appData from "./appData";
-import { readFromExistingPack } from "./packFileSerializer";
-import { Pack, PackedFile } from "./packFileTypes";
-import { SkillAndIcons } from "./skills";
-import { gameToPackWithDBTablesName, SupportedGames } from "./supportedGames";
-import { collator } from "./utility/packFileSorting";
-import Trie from "./utility/trie";
+import appData from "../appData";
+import { readFromExistingPack } from "../packFileSerializer";
+import { Pack, PackedFile } from "../packFileTypes";
+import { SkillAndIcons } from "../skills";
+import { gameToPackWithDBTablesName, SupportedGames } from "../supportedGames";
+import { collator } from "../utility/packFileSorting";
+import Trie from "../utility/trie";
 
 export type SkillsDataCacheCore = Omit<NonNullable<typeof appData.skillsData>, "locs" | "icons" | "skillsDataPackPaths">;
 

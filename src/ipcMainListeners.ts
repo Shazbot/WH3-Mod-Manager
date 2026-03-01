@@ -88,8 +88,8 @@ import {
   getVanillaSkillsDataCoreFromCache,
   loadIconsFromPacks,
   saveVanillaSkillsDataCoreCache,
-} from "./skillsDataCache";
-import { applyModOverlayToSkillsDataCore } from "./skillsDataOverlay";
+} from "./skillsData/cache";
+import { applyModOverlayToSkillsDataCore } from "./skillsData/overlay";
 import {
   gameToGameName,
   gameToPackWithDBTablesName,
