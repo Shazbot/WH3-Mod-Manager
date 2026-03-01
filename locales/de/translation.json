@@ -876,5 +876,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "Liest die TSV-Datei aus dem Paket mithilfe eines benutzerdefinierten Schemas",
   "visualsTab": "Visuals",
   "nodeEditorTab": "Knoteneditor",
-  "showSkillNodeSetNames": "Namen von Skill-Knotensätzen anzeigen"
+  "showSkillNodeSetNames": "Namen von Skill-Knotensätzen anzeigen",
+  "noCategoryFilter": "Kein Kategoriefilter",
+  "addAllToPreset": "<- Alle hinzufügen",
+  "removeAllFromPreset": "Alle entfernen ->"
 }

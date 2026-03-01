@@ -798,5 +798,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "使用自定义模式从包中读取 TSV 文件",
   "visualsTab": "视觉效果",
   "nodeEditorTab": "节点编辑器",
-  "showSkillNodeSetNames": "显示技能节点集名称"
+  "showSkillNodeSetNames": "显示技能节点集名称",
+  "noCategoryFilter": "无类别过滤器",
+  "addAllToPreset": "<- 添加全部",
+  "removeAllFromPreset": "全部删除->"
 }

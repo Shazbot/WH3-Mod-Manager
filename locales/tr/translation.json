@@ -876,5 +876,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "Özel şemayı kullanarak TSV dosyasını paketten okur",
   "visualsTab": "Görseller",
   "nodeEditorTab": "Düğüm Düzenleyici",
-  "showSkillNodeSetNames": "Beceri Düğümü Seti Adlarını Göster"
+  "showSkillNodeSetNames": "Beceri Düğümü Seti Adlarını Göster",
+  "noCategoryFilter": "Kategori filtresi yok",
+  "addAllToPreset": "<- Tümünü Ekle",
+  "removeAllFromPreset": "Tümünü Kaldır ->"
 }

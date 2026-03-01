@@ -876,5 +876,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "カスタムスキーマを使用してパックからTSVファイルを読み取ります",
   "visualsTab": "ビジュアル",
   "nodeEditorTab": "ノードエディタ",
-  "showSkillNodeSetNames": "スキルノードセット名の表示"
+  "showSkillNodeSetNames": "スキルノードセット名の表示",
+  "noCategoryFilter": "カテゴリフィルターなし",
+  "addAllToPreset": "<- すべて追加",
+  "removeAllFromPreset": "すべて削除 ->"
 }
