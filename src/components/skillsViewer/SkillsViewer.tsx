@@ -17,6 +17,7 @@ type SkillTab = {
 };
 
 let nextTabId = 1;
+const SKILL_NODE_SET_MARKER = "_skill_node_set_";
 
 const SkillsViewer = memo(() => {
   const [isOpen, setIsOpen] = useState(true);
@@ -55,14 +56,31 @@ const SkillsViewer = memo(() => {
   const getTabLabel = useCallback(
     (tab: SkillTab) => {
       if (isShowingSkillNodeSetNames) {
-        return tab.skillsData.subtypesToSet?.[tab.subtype]?.[tab.subtypeIndex] ?? tab.subtype;
+        const fullSetKey = tab.skillsData.subtypesToSet?.[tab.subtype]?.[tab.subtypeIndex] ?? tab.subtype;
+        const markerIndex = fullSetKey.indexOf(SKILL_NODE_SET_MARKER);
+        const hasPrefix = markerIndex > 0;
+        const suffixStart = markerIndex + SKILL_NODE_SET_MARKER.length;
+        const hasSuffix = suffixStart < fullSetKey.length;
+        if (hasPrefix && hasSuffix) {
+          return {
+            display: fullSetKey.slice(suffixStart),
+            tooltip: fullSetKey,
+          };
+        }
+        return {
+          display: fullSetKey,
+          tooltip: fullSetKey,
+        };
       }
 
       const subtypeName = isLocalizingSubtypes
         ? (tab.skillsData.subtypesToLocalizedNames[tab.subtype] ?? tab.subtype)
         : tab.subtype;
       const indexSuffix = (tab.skillsData.subtypeToNumSets[tab.subtype] ?? 0) > 1 ? ` ${tab.subtypeIndex + 1}` : "";
-      return `${subtypeName}${indexSuffix}`;
+      return {
+        display: `${subtypeName}${indexSuffix}`,
+        tooltip: undefined,
+      };
     },
     [isShowingSkillNodeSetNames, isLocalizingSubtypes],
   );
@@ -171,30 +189,35 @@ const SkillsViewer = memo(() => {
             <div style={{ width: "100%", minWidth: "1px", display: "flex", flexDirection: "column" }}>
               {tabs.length > 0 && (
                 <div className="flex bg-gray-800 overflow-x-auto" style={{ minHeight: "32px" }}>
-                  {tabs.map((tab) => (
-                    <div
-                      key={tab.id}
-                      className={`flex shrink-0 items-center px-3 py-1 cursor-pointer border-r border-gray-700 text-sm whitespace-nowrap ${
-                        tab.id === activeTabId
-                          ? "bg-gray-700 text-white"
-                          : "bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-gray-300"
-                      }`}
-                      onClick={() => switchTab(tab.id)}
-                    >
-                      <span className="mr-2">{getTabLabel(tab)}</span>
-                      {tabs.length > 1 && (
-                        <button
-                          className="text-gray-500 hover:text-white ml-1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            closeTab(tab.id);
-                          }}
-                        >
-                          <FontAwesomeIcon icon={faXmark} size="xs" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  {tabs.map((tab) => {
+                    const tabLabel = getTabLabel(tab);
+                    return (
+                      <div
+                        key={tab.id}
+                        className={`flex shrink-0 items-center px-3 py-1 cursor-pointer border-r border-gray-700 text-sm whitespace-nowrap ${
+                          tab.id === activeTabId
+                            ? "bg-gray-700 text-white"
+                            : "bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-gray-300"
+                        }`}
+                        onClick={() => switchTab(tab.id)}
+                      >
+                        <span className="mr-2" title={tabLabel.tooltip}>
+                          {tabLabel.display}
+                        </span>
+                        {tabs.length > 1 && (
+                          <button
+                            className="text-gray-500 hover:text-white ml-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeTab(tab.id);
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faXmark} size="xs" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div style={{ flex: 1 }}>
