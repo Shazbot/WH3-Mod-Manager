@@ -13,7 +13,6 @@ type SkillTab = {
   subtype: string;
   subtypeIndex: number;
   skillsData: SkillsData;
-  label: string;
   snapshot?: SkillsViewSnapshot;
 };
 
@@ -51,6 +50,22 @@ const SkillsViewer = memo(() => {
   const skillsData = useAppSelector((state) => state.app.skillsData);
   const localized = useAppSelector((state) => state.app.currentLocalization);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
+  const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
+
+  const getTabLabel = useCallback(
+    (tab: SkillTab) => {
+      if (isShowingSkillNodeSetNames) {
+        return tab.skillsData.subtypesToSet?.[tab.subtype]?.[tab.subtypeIndex] ?? tab.subtype;
+      }
+
+      const subtypeName = isLocalizingSubtypes
+        ? (tab.skillsData.subtypesToLocalizedNames[tab.subtype] ?? tab.subtype)
+        : tab.subtype;
+      const indexSuffix = (tab.skillsData.subtypeToNumSets[tab.subtype] ?? 0) > 1 ? ` ${tab.subtypeIndex + 1}` : "";
+      return `${subtypeName}${indexSuffix}`;
+    },
+    [isShowingSkillNodeSetNames, isLocalizingSubtypes],
+  );
 
   // Snapshot the current tab before switching away
   const snapshotCurrentTab = useCallback(() => {
@@ -79,30 +94,22 @@ const SkillsViewer = memo(() => {
       pendingNewTab.current = null;
       snapshotCurrentTab();
       const id = `tab_${nextTabId++}`;
-      const indexSuffix =
-        skillsData.subtypeToNumSets[pending.subtype] > 1 ? ` ${pending.subtypeIndex + 1}` : "";
       const newTab: SkillTab = {
         id,
         subtype: pending.subtype,
         subtypeIndex: pending.subtypeIndex,
         skillsData,
-        label: pending.subtype + indexSuffix,
       };
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(id);
     } else if (tabs.length === 0) {
       // First load: create the initial tab
       const id = `tab_${nextTabId++}`;
-      const indexSuffix =
-        skillsData.subtypeToNumSets[skillsData.currentSubtype] > 1
-          ? ` ${skillsData.currentSubtypeIndex + 1}`
-          : "";
       const newTab: SkillTab = {
         id,
         subtype: skillsData.currentSubtype,
         subtypeIndex: skillsData.currentSubtypeIndex,
         skillsData,
-        label: skillsData.currentSubtype + indexSuffix,
       };
       setTabs([newTab]);
       setActiveTabId(id);
@@ -111,16 +118,11 @@ const SkillsViewer = memo(() => {
       setTabs((prev) =>
         prev.map((tab) => {
           if (tab.id !== activeTabId) return tab;
-          const indexSuffix =
-            skillsData.subtypeToNumSets[skillsData.currentSubtype] > 1
-              ? ` ${skillsData.currentSubtypeIndex + 1}`
-              : "";
           return {
             ...tab,
             subtype: skillsData.currentSubtype,
             subtypeIndex: skillsData.currentSubtypeIndex,
             skillsData,
-            label: skillsData.currentSubtype + indexSuffix,
             snapshot: undefined,
           };
         }),
@@ -172,14 +174,14 @@ const SkillsViewer = memo(() => {
                   {tabs.map((tab) => (
                     <div
                       key={tab.id}
-                      className={`flex items-center px-3 py-1 cursor-pointer border-r border-gray-700 text-sm whitespace-nowrap ${
+                      className={`flex shrink-0 items-center px-3 py-1 cursor-pointer border-r border-gray-700 text-sm whitespace-nowrap ${
                         tab.id === activeTabId
                           ? "bg-gray-700 text-white"
                           : "bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-gray-300"
                       }`}
                       onClick={() => switchTab(tab.id)}
                     >
-                      <span className="mr-2 max-w-[200px] overflow-hidden text-ellipsis">{tab.label}</span>
+                      <span className="mr-2">{getTabLabel(tab)}</span>
                       {tabs.length > 1 && (
                         <button
                           className="text-gray-500 hover:text-white ml-1"
