@@ -123,6 +123,7 @@ interface AppData {
         how: string;
       }[]
     >;
+    uiUnitStatIconsByStat: Record<string, string>;
     kvDirectDamageMinUnary: number;
     kvDirectDamageLarge: number;
     abilityToAdditionalUiEffectKeys: Record<string, string[]>;

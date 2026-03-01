@@ -138,11 +138,20 @@ const AbilityTooltipCard = ({
 
       {ability.bonuses.length > 0 && (
         <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
-          {ability.bonuses.map((bonus) => (
-            <div key={bonus.key} className={bonus.isPositive ? "text-lime-300" : "text-red-300"}>
-              <span className="text-yellow-200">➤</span> {bonus.label}: {bonus.valueText}
-            </div>
-          ))}
+          {ability.bonuses.map((bonus) => {
+            const bonusIcon = getIconData(bonus.iconPath, icons, undefined);
+            return (
+              <div key={bonus.key} className={bonus.isPositive ? "text-lime-300" : "text-red-300"}>
+                {bonusIcon ? (
+                  <img className="mr-1 inline-block h-3.5 w-3.5 object-contain" src={`data:image/png;base64,${bonusIcon}`} alt="" />
+                ) : (
+                  <span className="text-yellow-200">➤</span>
+                )}
+                {" "}
+                {bonus.label}: {bonus.valueText}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -516,6 +516,7 @@ declare global {
     label: string;
     valueText: string;
     isPositive: boolean;
+    iconPath?: string;
   }
 
   interface AbilityTooltipData {

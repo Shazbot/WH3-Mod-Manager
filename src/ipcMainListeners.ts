@@ -620,6 +620,7 @@ export const registerIpcMainListeners = (
       "special_ability_to_special_ability_phase_junctions_tables",
       "special_ability_phases_tables",
       "special_ability_phase_stat_effects_tables",
+      "ui_unit_stats_tables",
       "unit_abilities_to_additional_ui_effects_juncs_tables",
       "unit_abilities_additional_ui_effects_tables",
       "special_ability_groups_to_unit_abilities_junctions_tables",
@@ -1222,6 +1223,14 @@ export const registerIpcMainListeners = (
       }
     });
 
+    const uiUnitStatIconsByStat = {} as Record<string, string>;
+    getTableRowData(packsTableData, "ui_unit_stats_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
+      if (!key || !icon) return;
+      uiUnitStatIconsByStat[key] = icon;
+    });
+
     let kvDirectDamageMinUnary = 0.5;
     let kvDirectDamageLarge = 0.75;
     getTableRowData(packsTableData, "_kv_unit_ability_scaling_rules_tables", (schemaFieldRow) => {
@@ -1434,6 +1443,7 @@ export const registerIpcMainListeners = (
       abilityToPhaseIds,
       phasesById,
       phaseStatEffectsByPhaseId,
+      uiUnitStatIconsByStat,
       kvDirectDamageMinUnary,
       kvDirectDamageLarge,
       abilityToAdditionalUiEffectKeys,
@@ -1490,6 +1500,7 @@ export const registerIpcMainListeners = (
       abilityToPhaseIds,
       phasesById,
       phaseStatEffectsByPhaseId,
+      uiUnitStatIconsByStat,
       kvDirectDamageMinUnary,
       kvDirectDamageLarge,
       abilityToAdditionalUiEffectKeys,
@@ -1643,6 +1654,7 @@ export const registerIpcMainListeners = (
         abilityToPhaseIds: cachedSkillsData.abilityToPhaseIds,
         phasesById: cachedSkillsData.phasesById,
         phaseStatEffectsByPhaseId: cachedSkillsData.phaseStatEffectsByPhaseId,
+        uiUnitStatIconsByStat: cachedSkillsData.uiUnitStatIconsByStat,
         kvDirectDamageMinUnary: cachedSkillsData.kvDirectDamageMinUnary,
         kvDirectDamageLarge: cachedSkillsData.kvDirectDamageLarge,
         abilityToAdditionalUiEffectKeys: cachedSkillsData.abilityToAdditionalUiEffectKeys,
