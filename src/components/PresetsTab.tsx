@@ -753,11 +753,13 @@ const PresetsTab = memo(() => {
   ]);
 
   const onSavePresetAs = useCallback(() => {
-    const defaultName = selectedPresetName ? `${selectedPresetName} Copy` : "New Preset";
+    const defaultName = selectedPresetName
+      ? `${selectedPresetName} ${localized.copy || "Copy"}`
+      : localized.newPreset || "New Preset";
     setSaveAsName(defaultName);
     setSaveAsError(undefined);
     setIsSaveAsOpen(true);
-  }, [selectedPresetName]);
+  }, [localized.copy, localized.newPreset, selectedPresetName]);
 
   const onConfirmSavePresetAs = useCallback(() => {
     const newPresetName = saveAsName.trim();
@@ -920,7 +922,7 @@ const PresetsTab = memo(() => {
             </div>
           </div>
           <div className="text-xs opacity-80 mb-2">
-            {localized.loadOrderLegendPinned || "Blue number = pinned load order."}
+            {localized.loadOrderLegendPinned || "Blue number = custom load order."}
             <span className="ml-2">
               <span className="text-orange-500 font-semibold">D</span>{" "}
               {localized.dataModLegend || "= mod is in data folder."}
@@ -986,11 +988,15 @@ const PresetsTab = memo(() => {
                     >
                       <BsArrowDownUp />
                     </button>
-                    <span className={mod.loadOrder != null ? "text-blue-400 font-semibold" : ""}>
+                    <span
+                      className={
+                        "text-center " + (mod.loadOrder != null ? "text-blue-400 font-semibold" : "")
+                      }
+                    >
                       {(mod.loadOrder != null ? mod.loadOrder : visualOrder) + 1}
                     </span>
                     <button
-                      className="text-slate-300 hover:text-white disabled:opacity-40"
+                      className={`text-slate-300 hover:text-white disabled:opacity-40 ${mod.loadOrder == null && "invisible"}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onClearLoadOrder(mod.name);
@@ -1004,10 +1010,14 @@ const PresetsTab = memo(() => {
                       {mod.isInData && (
                         <span className="ml-1 text-orange-500 font-semibold opacity-80">D</span>
                       )}
-                      {isMissing && <span className="ml-2 text-xs text-amber-400">(missing)</span>}
+                      {isMissing && (
+                        <span className="ml-2 text-xs text-amber-400">
+                          {localized.missingModTag || "(missing)"}
+                        </span>
+                      )}
                       {isAlwaysEnabled && (
                         <span className="ml-2 text-xs text-violet-300">
-                          <FontAwesomeIcon icon={faLock} /> always
+                          <FontAwesomeIcon icon={faLock} /> {localized.alwaysEnabledShort || "always"}
                         </span>
                       )}
                     </div>
