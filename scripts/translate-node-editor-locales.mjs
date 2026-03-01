@@ -1,13 +1,86 @@
+// use like
+// node scripts/translate-node-editor-locales.mjs --start 569 --end 570
 import fs from "node:fs";
 import path from "node:path";
 
-const SOURCE_LANG = "en";
-const TARGET_LANGS = ["de", "es", "fr", "ja", "ko", "pl", "pt", "ru", "tr", "zh"];
+const DEFAULT_SOURCE_LANG = "en";
+const DEFAULT_TARGET_LANGS = ["de", "es", "fr", "ja", "ko", "pl", "pt", "ru", "tr", "zh"];
+const DEFAULT_PREFIX = "nodeEditor";
 
 const repoRoot = process.cwd();
 const localesDir = path.join(repoRoot, "locales");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const usage = () => {
+  // Keep this minimal and CLI-friendly (no extra deps).
+  console.log(
+    [
+      "Usage:",
+      "  node scripts/translate-node-editor-locales.mjs --start <line> --end <line> [--langs de,es,...] [--dry-run]",
+      "  node scripts/translate-node-editor-locales.mjs --prefix <keyPrefix> [--langs de,es,...] [--dry-run]",
+      "",
+      "Defaults:",
+      `  --prefix ${DEFAULT_PREFIX}`,
+      `  --langs ${DEFAULT_TARGET_LANGS.join(",")}`,
+      "",
+      "Notes:",
+      "  - The --start/--end range is 1-based and inclusive, and is applied to locales/en/translation.json.",
+      "  - Only updates a target locale if the key is missing or its value is still identical to English.",
+    ].join("\n"),
+  );
+};
+
+const parseArgs = () => {
+  const args = process.argv.slice(2);
+  const opts = {
+    start: undefined,
+    end: undefined,
+    prefix: undefined,
+    langs: DEFAULT_TARGET_LANGS,
+    dryRun: false,
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--start") opts.start = Number(args[++i]);
+    else if (a === "--end") opts.end = Number(args[++i]);
+    else if (a === "--prefix") opts.prefix = String(args[++i]);
+    else if (a === "--langs")
+      opts.langs = String(args[++i])
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    else if (a === "--dry-run") opts.dryRun = true;
+    else if (a === "--help" || a === "-h") {
+      usage();
+      process.exit(0);
+    } else {
+      console.error(`Unknown arg: ${a}`);
+      usage();
+      process.exit(1);
+    }
+  }
+
+  const hasRange = opts.start !== undefined || opts.end !== undefined;
+  if (hasRange) {
+    if (!Number.isInteger(opts.start) || !Number.isInteger(opts.end) || opts.start < 1 || opts.end < 1) {
+      console.error("--start and --end must be positive integers (1-based).");
+      process.exit(1);
+    }
+    if (opts.end < opts.start) {
+      console.error("--end must be >= --start.");
+      process.exit(1);
+    }
+  }
+
+  if (opts.langs.length === 0) {
+    console.error("--langs cannot be empty.");
+    process.exit(1);
+  }
+
+  return opts;
+};
 
 const protectPlaceholders = (text) => {
   const tokens = [];
@@ -40,11 +113,11 @@ const restorePlaceholders = (text, tokens) => {
   return restored;
 };
 
-const translateViaGoogle = async ({ text, targetLang }) => {
+const translateViaGoogle = async ({ text, sourceLang, targetLang }) => {
   const { protectedText, tokens } = protectPlaceholders(text);
   const url =
     "https://translate.googleapis.com/translate_a/single" +
-    `?client=gtx&sl=${encodeURIComponent(SOURCE_LANG)}` +
+    `?client=gtx&sl=${encodeURIComponent(sourceLang)}` +
     `&tl=${encodeURIComponent(targetLang)}` +
     `&dt=t&q=${encodeURIComponent(protectedText)}`;
 
@@ -59,7 +132,10 @@ const translateViaGoogle = async ({ text, targetLang }) => {
   const data = await res.json();
 
   const chunks = Array.isArray(data?.[0]) ? data[0] : [];
-  const translated = chunks.map((c) => c?.[0]).filter(Boolean).join("");
+  const translated = chunks
+    .map((c) => c?.[0])
+    .filter(Boolean)
+    .join("");
   if (!translated) return text;
   return restorePlaceholders(translated, tokens);
 };
@@ -67,32 +143,66 @@ const translateViaGoogle = async ({ text, targetLang }) => {
 const loadJson = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf8"));
 const saveJson = (filePath, value) => fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n");
 
+const getKeysInLineRange = (filePath, startLine, endLine) => {
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  const startIdx = Math.max(0, startLine - 1);
+  const endIdx = Math.min(lines.length - 1, endLine - 1);
+  const keys = [];
+
+  for (let i = startIdx; i <= endIdx; i++) {
+    const m = lines[i].match(/^\s*"([^"]+)"\s*:/);
+    if (m?.[1]) keys.push(m[1]);
+  }
+
+  return [...new Set(keys)];
+};
+
 const run = async () => {
+  const opts = parseArgs();
+  const sourceLang = DEFAULT_SOURCE_LANG;
+
   const enPath = path.join(localesDir, "en", "translation.json");
   const en = loadJson(enPath);
-  const nodeEditorKeys = Object.keys(en).filter((k) => k.startsWith("nodeEditor"));
-  if (nodeEditorKeys.length === 0) {
-    console.error("No nodeEditor keys found in locales/en/translation.json");
+
+  const keysToProcess =
+    opts.start !== undefined && opts.end !== undefined
+      ? getKeysInLineRange(enPath, opts.start, opts.end)
+      : Object.keys(en).filter((k) => k.startsWith(opts.prefix ?? DEFAULT_PREFIX));
+
+  if (keysToProcess.length === 0) {
+    console.error("No keys matched the selection.");
     process.exitCode = 1;
     return;
   }
 
-  console.log(`Found ${nodeEditorKeys.length} nodeEditor keys in ${enPath}`);
+  const missingInEn = keysToProcess.filter((k) => !(k in en));
+  if (missingInEn.length > 0) {
+    console.warn(
+      `Warning: ${missingInEn.length} selected keys are not present in ${enPath} (skipping them).`,
+    );
+  }
 
-  for (const lang of TARGET_LANGS) {
+  const selectedKeys = keysToProcess.filter((k) => k in en);
+  console.log(`Selected ${selectedKeys.length} keys from ${enPath}${opts.dryRun ? " (dry run)" : ""}`);
+
+  for (const lang of opts.langs) {
     const outPath = path.join(localesDir, lang, "translation.json");
     const target = loadJson(outPath);
 
-    const keysToTranslate = nodeEditorKeys.filter((k) => target[k] === en[k]);
-    const uniqueTexts = [...new Set(keysToTranslate.map((k) => en[k]))];
+    const keysNeedingUpdate = selectedKeys.filter((k) => !(k in target) || target[k] === en[k]);
+    const uniqueTexts = [
+      ...new Set(keysNeedingUpdate.map((k) => en[k]).filter((v) => typeof v === "string")),
+    ];
     const cache = new Map();
 
-    console.log(`\n[${lang}] keys to translate: ${keysToTranslate.length} (unique strings: ${uniqueTexts.length})`);
+    console.log(
+      `\n[${lang}] keys needing update: ${keysNeedingUpdate.length} (unique strings to translate: ${uniqueTexts.length})`,
+    );
 
     let translatedCount = 0;
     for (let i = 0; i < uniqueTexts.length; i++) {
       const text = uniqueTexts[i];
-      // Skip empty strings (some description keys might be empty placeholders)
+      // Skip empty strings
       if (!text) {
         cache.set(text, text);
         continue;
@@ -100,7 +210,7 @@ const run = async () => {
 
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const translated = await translateViaGoogle({ text, targetLang: lang });
+          const translated = await translateViaGoogle({ text, sourceLang, targetLang: lang });
           cache.set(text, translated);
           translatedCount++;
           if ((translatedCount + 1) % 25 === 0) {
@@ -122,12 +232,24 @@ const run = async () => {
       await sleep(80);
     }
 
-    for (const k of keysToTranslate) {
-      target[k] = cache.get(en[k]) ?? target[k];
+    for (const k of keysNeedingUpdate) {
+      const sourceValue = en[k];
+      if (typeof sourceValue === "string") {
+        target[k] = cache.get(sourceValue) ?? target[k];
+      } else if (!(k in target)) {
+        // Non-string values: copy only if missing.
+        target[k] = sourceValue;
+      }
     }
 
-    saveJson(outPath, target);
-    console.log(`[${lang}] wrote ${outPath} (translated unique: ${translatedCount})`);
+    if (opts.dryRun) {
+      console.log(
+        `[${lang}] dry-run: would write ${outPath} (translated unique strings: ${translatedCount})`,
+      );
+    } else {
+      saveJson(outPath, target);
+      console.log(`[${lang}] wrote ${outPath} (translated unique strings: ${translatedCount})`);
+    }
   }
 
   console.log("\nDone.");
