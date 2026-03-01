@@ -268,15 +268,11 @@ const SkillsView = memo(
     const dispatch = useAppDispatch();
     const localized: Record<string, string> = useContext(localizationContext);
 
-    const isShowingHiddentSkills = useAppSelector(
-      (state) => state.app.isShowingHiddenSkills,
-    );
+    const isShowingHiddentSkills = useAppSelector((state) => state.app.isShowingHiddenSkills);
     const isShowingHiddenModifiersInsideSkills = useAppSelector(
       (state) => state.app.isShowingHiddenModifiersInsideSkills,
     );
-    const isCheckingSkillRequirements = useAppSelector(
-      (state) => state.app.isCheckingSkillRequirements,
-    );
+    const isCheckingSkillRequirements = useAppSelector((state) => state.app.isCheckingSkillRequirements);
     const [factionFilter, setFactionFilter] = useState<string>(initialSnapshot?.factionFilter ?? "all");
     const [isEditMode, setIsEditMode] = useState(initialSnapshot?.isEditMode ?? false);
     const prevIsEditModeRef = useRef(isEditMode);
@@ -672,14 +668,14 @@ const SkillsView = memo(
         }
       }
 
-      const abilityIcon = `ui\\battle ui\\ability_icons\\${skill.img}`;
       const skillIcon = `ui\\campaign ui\\skills\\${skill.img}`;
       let skillIconBuffer = skillsData.icons[skillIcon];
 
       let isAbilityIcon = false;
       if (!skillIconBuffer) {
+        const abilityIcon = `ui\\battle ui\\ability_icons\\${skill.img}`;
         skillIconBuffer = skillsData.icons[abilityIcon];
-        isAbilityIcon = true;
+        if (skillIconBuffer) isAbilityIcon = true;
       }
 
       const node: Node<SkillData, "skill"> = {
