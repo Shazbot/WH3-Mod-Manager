@@ -182,6 +182,11 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
             >
               {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
               <span
+                onMouseDown={(e) => {
+                  if (e.detail > 1) {
+                    e.preventDefault();
+                  }
+                }}
                 onClick={(e) => {
                   if (props.onDoubleClick) {
                     const evt = { ...e } as React.MouseEvent;
@@ -194,7 +199,9 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
                     handleSelect(e);
                   }
                 }}
-                onDoubleClick={() => {
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  window.getSelection()?.removeAllRanges();
                   if (clickTimer.current) {
                     clearTimeout(clickTimer.current);
                     clickTimer.current = null;
