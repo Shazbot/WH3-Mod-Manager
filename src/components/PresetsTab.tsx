@@ -92,6 +92,7 @@ const PresetsTab = memo(() => {
   const [selectedNotInPresetNames, setSelectedNotInPresetNames] = useState<Set<string>>(new Set());
   const [searchInPreset, setSearchInPreset] = useState("");
   const [searchNotInPreset, setSearchNotInPreset] = useState("");
+  const [inPresetCategoryFilter, setInPresetCategoryFilter] = useState<string | undefined>(undefined);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
   const [placeMode, setPlaceMode] = useState<PlaceMode>(undefined);
   const [activePlaceholderIndex, setActivePlaceholderIndex] = useState(0);
@@ -312,10 +313,14 @@ const PresetsTab = memo(() => {
 
   const visibleEnabledDraftMods = useMemo(() => {
     if (placeMode) return enabledDraftMods;
-    if (!searchInPreset.trim()) return enabledDraftMods;
+    let mods = enabledDraftMods;
+    if (inPresetCategoryFilter) {
+      mods = mods.filter((mod) => mod.categories?.includes(inPresetCategoryFilter));
+    }
+    if (!searchInPreset.trim()) return mods;
     const query = searchInPreset.trim().toLowerCase();
-    return enabledDraftMods.filter((mod) => `${mod.humanName} ${mod.name}`.toLowerCase().includes(query));
-  }, [enabledDraftMods, placeMode, searchInPreset]);
+    return mods.filter((mod) => `${mod.humanName} ${mod.name}`.toLowerCase().includes(query));
+  }, [enabledDraftMods, inPresetCategoryFilter, placeMode, searchInPreset]);
 
   const visibleNotInPresetMods = useMemo(() => {
     let mods = notInPresetInstalledMods;
@@ -950,6 +955,21 @@ const PresetsTab = memo(() => {
               {localized.dataModLegend || "= mod is in data folder."}
             </span>
           </div>
+          {categories.length > 0 && (
+            <select
+              value={inPresetCategoryFilter ?? ""}
+              onChange={(event) => setInPresetCategoryFilter(event.target.value || undefined)}
+              className="mb-2 w-full rounded bg-gray-700 px-3 py-2 text-sm disabled:opacity-40"
+              disabled={!!placeMode}
+            >
+              <option value="">{localized.noCategoryFilter || "No category filter"}</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          )}
           <input
             value={searchInPreset}
             onChange={(event) => setSearchInPreset(event.target.value)}
