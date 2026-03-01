@@ -2641,6 +2641,148 @@ export const registerIpcMainListeners = (
     }
   };
 
+  interface FlowExecutionCacheEntry {
+    signatureHash: string;
+    createdAt: number;
+    modsWithFlows: Array<{ path: string; name: string }>;
+    createdFlowPackFileNames: string[];
+  }
+
+  interface FlowExecutionCache {
+    version: number;
+    byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
+  }
+
+  const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
+  const FLOW_EXECUTION_CACHE_VERSION = 1;
+  let flowExecutionCache: FlowExecutionCache | null = null;
+
+  const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
+    if (flowExecutionCache !== null) return flowExecutionCache;
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), FLOW_EXECUTION_CACHE_FILE);
+      const compressed = await fs.promises.readFile(cacheFilePath);
+      const json = await zstdDecompress(compressed);
+      const parsed = JSON.parse(json.toString("utf8")) as FlowExecutionCache;
+      if (
+        parsed &&
+        parsed.version === FLOW_EXECUTION_CACHE_VERSION &&
+        parsed.byGame &&
+        typeof parsed.byGame === "object"
+      ) {
+        flowExecutionCache = parsed;
+      } else {
+        flowExecutionCache = { version: FLOW_EXECUTION_CACHE_VERSION, byGame: {} };
+      }
+      return flowExecutionCache;
+    } catch {
+      flowExecutionCache = { version: FLOW_EXECUTION_CACHE_VERSION, byGame: {} };
+      return flowExecutionCache;
+    }
+  };
+
+  const saveFlowExecutionCache = async (): Promise<void> => {
+    if (!flowExecutionCache) return;
+    try {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), FLOW_EXECUTION_CACHE_FILE);
+      const json = Buffer.from(JSON.stringify(flowExecutionCache), "utf8");
+      const compressed = await zstdCompress(json, 1);
+      await fs.promises.writeFile(cacheFilePath, compressed);
+    } catch (err) {
+      console.error("Failed to save flow execution cache:", err);
+    }
+  };
+
+  const sortKeysDeep = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map((entry) => sortKeysDeep(entry));
+    if (value && typeof value === "object") {
+      const sortedEntries = Object.entries(value as Record<string, unknown>).sort(([first], [second]) =>
+        first.localeCompare(second),
+      );
+      const sortedObject: Record<string, unknown> = {};
+      for (const [key, entryValue] of sortedEntries) {
+        sortedObject[key] = sortKeysDeep(entryValue);
+      }
+      return sortedObject;
+    }
+    return value;
+  };
+
+  const getModStatForFlowSignature = async (
+    mod: Mod,
+    cache: PackHeaderCache,
+  ): Promise<{ size: number; mtimeMs: number } | null> => {
+    if (typeof mod.size === "number" && typeof mod.lastChangedLocal === "number") {
+      return { size: mod.size, mtimeMs: mod.lastChangedLocal };
+    }
+
+    const cachedEntry = cache[mod.path];
+    if (cachedEntry) {
+      return { size: cachedEntry.size, mtimeMs: cachedEntry.lastChangedLocal };
+    }
+
+    try {
+      const stat = await fs.promises.stat(mod.path);
+      return { size: stat.size, mtimeMs: stat.mtimeMs };
+    } catch (error) {
+      console.error(`Failed to stat enabled mod for flow signature: ${mod.path}`, error);
+      return null;
+    }
+  };
+
+  const buildFlowExecutionSignature = async (
+    sortedEnabledMods: Mod[],
+    startGameOptions: StartGameOptions,
+    dataFolderPath: string,
+  ): Promise<string | null> => {
+    const headerCache = await loadPackHeaderCache();
+
+    const enabledModsSignatureData: Array<{
+      path: string;
+      name: string;
+      loadOrder: number | null;
+      size: number;
+      mtimeMs: number;
+    }> = [];
+    for (const mod of sortedEnabledMods) {
+      const stat = await getModStatForFlowSignature(mod, headerCache);
+      if (!stat) return null;
+      enabledModsSignatureData.push({
+        path: mod.path,
+        name: mod.name,
+        loadOrder: mod.loadOrder ?? null,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+      });
+    }
+    enabledModsSignatureData.sort((first, second) => first.path.localeCompare(second.path));
+
+    const vanillaPacksSignatureData: Array<{ path: string; size: number; mtimeMs: number }> = [];
+    for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
+      const vanillaPackPath = nodePath.join(dataFolderPath, vanillaPackData.name);
+      try {
+        const stat = await fs.promises.stat(vanillaPackPath);
+        vanillaPacksSignatureData.push({ path: vanillaPackPath, size: stat.size, mtimeMs: stat.mtimeMs });
+      } catch (error) {
+        console.error(`Failed to stat vanilla pack for flow signature: ${vanillaPackPath}`, error);
+        return null;
+      }
+    }
+    vanillaPacksSignatureData.sort((first, second) => first.path.localeCompare(second.path));
+
+    const signaturePayload = {
+      cacheVersion: FLOW_EXECUTION_CACHE_VERSION,
+      game: appData.currentGame,
+      gamePath: appData.gamesToGameFolderPaths[appData.currentGame].gamePath || "",
+      enabledMods: enabledModsSignatureData,
+      vanillaPacks: vanillaPacksSignatureData,
+      userFlowOptions: sortKeysDeep(startGameOptions.userFlowOptions ?? {}),
+      packDataOverwrites: sortKeysDeep(startGameOptions.packDataOverwrites ?? {}),
+    };
+
+    return hash(signaturePayload);
+  };
+
   ipcMain.on(
     "getCustomizableMods",
     async (event, modPaths: string[], tables: string[], customizableModsHash: string) => {
@@ -6040,65 +6182,119 @@ export const registerIpcMainListeners = (
         }
 
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
+        const whmmFlowsPath = nodePath.join(gamePath as string, "whmm_flows");
+        const flowExecutionSignatureHash = await buildFlowExecutionSignature(
+          sortedMods,
+          startGameOptions,
+          dataFolder,
+        );
 
-        for (const packPath of sortedMods.map((mod) => mod.path)) {
-          const pack = appData.packsData.find((packData) => packData.path == packPath);
-          if (!pack || (pack && pack.packedFiles.length == 0)) {
-            await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
-          }
-        }
+        let shouldExecuteFlows = true;
+        let enabledModsWithFlows: Mod[] = [];
+        let createdFlowPacks: string[] = [];
+        let flowExecutionHadErrors = false;
 
-        for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
-          const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
-          if (mod) {
-            console.log("FOUND MOD TO READ FOR FLOWS:", mod.name);
-            const pack = appData.packsData.find((packData) => packData.path == mod.path);
-            if (!pack || (pack && pack.packedFiles.length == 0)) {
-              console.log("need to read pack for flows:", mod.name);
-              await readModsByPath([mod.path], { readFlows: true, skipParsingTables: true });
-            }
-          }
-        }
-
-        // Execute flows for enabled mods
-        const enabledModsWithFlows = sortedMods.filter((iterMod) => {
-          const pack = appData.packsData.find((packData) => packData.path == iterMod.path);
-          return pack && pack.packedFiles.some((file) => file.name.startsWith("whmmflows\\"));
-        });
-
-        const createdFlowPacks: string[] = [];
-        if (enabledModsWithFlows.length > 0) {
-          console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
-
-          const whmmFlowsPath = nodePath.join(gamePath as string, "whmm_flows");
-          // Clear whmm_flows directory
-          try {
-            if (fsExtra.existsSync(whmmFlowsPath)) {
-              console.log(`Clearing files in whmm_flows directory: ${whmmFlowsPath}`);
-              const entries = fsExtra.readdirSync(whmmFlowsPath);
-              for (const entry of entries) {
-                fsExtra.removeSync(nodePath.join(whmmFlowsPath, entry));
+        if (flowExecutionSignatureHash) {
+          const flowCache = await loadFlowExecutionCache();
+          const cachedEntry = flowCache.byGame[appData.currentGame];
+          if (cachedEntry && cachedEntry.signatureHash === flowExecutionSignatureHash) {
+            if (cachedEntry.modsWithFlows.length === 0) {
+              shouldExecuteFlows = false;
+              console.log("Flow execution cache hit: no flow mods found in previous launch.");
+            } else {
+              if (!fsExtra.existsSync(whmmFlowsPath)) {
+                fsExtra.mkdirSync(whmmFlowsPath, { recursive: true });
               }
-              console.log("Successfully cleared whmm_flows contents");
+              const cachedFlowPackPaths = cachedEntry.createdFlowPackFileNames.map((packFileName) =>
+                nodePath.join(whmmFlowsPath, packFileName),
+              );
+              const missingCachedFlowPacks = cachedFlowPackPaths.filter(
+                (flowPackPath) => !fsExtra.existsSync(flowPackPath),
+              );
+              if (missingCachedFlowPacks.length === 0) {
+                shouldExecuteFlows = false;
+                createdFlowPacks = cachedFlowPackPaths;
+                enabledModsWithFlows = sortedMods.filter((mod) =>
+                  cachedEntry.modsWithFlows.some((cachedMod) => cachedMod.path === mod.path),
+                );
+                mainWindow?.webContents.send("addToast", {
+                  type: "info",
+                  messages: ["Using cached flow output..."],
+                  startTime: Date.now(),
+                } as Toast);
+                console.log(
+                  `Flow execution cache hit: reusing ${createdFlowPacks.length} cached flow pack(s).`,
+                  createdFlowPacks,
+                );
+              } else {
+                console.log(
+                  `Flow execution cache miss: ${missingCachedFlowPacks.length} cached flow pack(s) missing.`,
+                );
+              }
             }
-          } catch (error) {
-            console.log(
-              `Error clearing whmm_flows: ${error instanceof Error ? error.message : "Unknown error"}`,
-            );
+          } else {
+            console.log("Flow execution cache miss: signature changed or no prior cache entry.");
+          }
+        } else {
+          console.log("Flow execution cache unavailable: failed to build signature, executing flows normally.");
+        }
+
+        if (shouldExecuteFlows) {
+          for (const packPath of sortedMods.map((mod) => mod.path)) {
+            const pack = appData.packsData.find((packData) => packData.path == packPath);
+            if (!pack || (pack && pack.packedFiles.length == 0)) {
+              await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
+            }
           }
 
-          // Create whmm_flows directory
-          if (!fsExtra.existsSync(whmmFlowsPath)) {
-            fsExtra.mkdirSync(whmmFlowsPath, { recursive: true });
+          for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
+            const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
+            if (mod) {
+              console.log("FOUND MOD TO READ FOR FLOWS:", mod.name);
+              const pack = appData.packsData.find((packData) => packData.path == mod.path);
+              if (!pack || (pack && pack.packedFiles.length == 0)) {
+                console.log("need to read pack for flows:", mod.name);
+                await readModsByPath([mod.path], { readFlows: true, skipParsingTables: true });
+              }
+            }
           }
 
-          // Get the overwrite directory path if it exists
-          const mergedDirPath = nodePath.join(
-            appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
-            "/whmm_overwrites/",
-          );
+          // Execute flows for enabled mods
+          enabledModsWithFlows = sortedMods.filter((iterMod) => {
+            const pack = appData.packsData.find((packData) => packData.path == iterMod.path);
+            return pack && pack.packedFiles.some((file) => file.name.startsWith("whmmflows\\"));
+          });
 
           if (enabledModsWithFlows.length > 0) {
+            console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
+
+            // Clear whmm_flows directory
+            try {
+              if (fsExtra.existsSync(whmmFlowsPath)) {
+                console.log(`Clearing files in whmm_flows directory: ${whmmFlowsPath}`);
+                const entries = fsExtra.readdirSync(whmmFlowsPath);
+                for (const entry of entries) {
+                  fsExtra.removeSync(nodePath.join(whmmFlowsPath, entry));
+                }
+                console.log("Successfully cleared whmm_flows contents");
+              }
+            } catch (error) {
+              console.log(
+                `Error clearing whmm_flows: ${error instanceof Error ? error.message : "Unknown error"}`,
+              );
+            }
+
+            // Create whmm_flows directory
+            if (!fsExtra.existsSync(whmmFlowsPath)) {
+              fsExtra.mkdirSync(whmmFlowsPath, { recursive: true });
+            }
+
+            // Get the overwrite directory path if it exists
+            const mergedDirPath = nodePath.join(
+              appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
+              "/whmm_overwrites/",
+            );
+
             mainWindow?.webContents.send("addToast", {
               type: "info",
               messages: ["Processing flows..."],
@@ -6109,9 +6305,7 @@ export const registerIpcMainListeners = (
             // This ensures counters are maintained across all flows in all packs
             const { resetCounterTracking } = await import("./nodeExecutor");
             resetCounterTracking();
-            console.log(
-              "Reset counter tracking for game launch - counters will be maintained across all flows",
-            );
+            console.log("Reset counter tracking for game launch - counters will be maintained across all flows");
 
             for (const pack of enabledModsWithFlows) {
               // Check if this pack has overwrites - if so, use the overwritten pack
@@ -6121,29 +6315,53 @@ export const registerIpcMainListeners = (
               const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
 
               console.log(
-                `Executing flows for pack: ${pack.name} (using ${
-                  hasOverwrites ? "overwritten" : "original"
-                } pack)`,
+                `Executing flows for pack: ${pack.name} (using ${hasOverwrites ? "overwritten" : "original"} pack)`,
               );
-              const packPaths = await executeFlowsForPack(
+              const { createdPackPaths, hadErrors } = await executeFlowsForPack(
                 packPathToUse,
                 "", // No target path needed
                 startGameOptions.userFlowOptions,
                 pack.name,
               );
-              createdFlowPacks.push(...packPaths);
+              createdFlowPacks.push(...createdPackPaths);
+              flowExecutionHadErrors = flowExecutionHadErrors || hadErrors;
             }
             console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
           }
 
-          // Add flow packs to the mod list
-          if (createdFlowPacks.length > 0) {
-            extraEnabledMods += `\nadd_working_directory "${linuxBit + whmmFlowsPath}";`;
-            for (const flowPackPath of createdFlowPacks) {
-              const packFileName = nodePath.basename(flowPackPath);
-              extraEnabledMods += `\nmod "${packFileName}";`;
-              console.log(`Added flow pack to mod list: ${packFileName}`);
+          if (flowExecutionSignatureHash) {
+            const flowCache = await loadFlowExecutionCache();
+            if (enabledModsWithFlows.length === 0) {
+              flowCache.byGame[appData.currentGame] = {
+                signatureHash: flowExecutionSignatureHash,
+                createdAt: Date.now(),
+                modsWithFlows: [],
+                createdFlowPackFileNames: [],
+              };
+              await saveFlowExecutionCache();
+            } else if (!flowExecutionHadErrors) {
+              flowCache.byGame[appData.currentGame] = {
+                signatureHash: flowExecutionSignatureHash,
+                createdAt: Date.now(),
+                modsWithFlows: enabledModsWithFlows.map((mod) => ({ path: mod.path, name: mod.name })),
+                createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))].sort(
+                  (first, second) => first.localeCompare(second),
+                ),
+              };
+              await saveFlowExecutionCache();
+            } else {
+              console.log("Skipping flow execution cache update because at least one flow failed.");
             }
+          }
+        }
+
+        // Add flow packs to the mod list
+        if (createdFlowPacks.length > 0) {
+          extraEnabledMods += `\nadd_working_directory "${linuxBit + whmmFlowsPath}";`;
+          for (const flowPackPath of createdFlowPacks) {
+            const packFileName = nodePath.basename(flowPackPath);
+            extraEnabledMods += `\nmod "${packFileName}";`;
+            console.log(`Added flow pack to mod list: ${packFileName}`);
           }
         }
 
