@@ -862,7 +862,7 @@ const PresetsTab = memo(() => {
             </div>
           </div>
         </div>
-        <div className="col-span-5 flex flex-wrap items-center gap-1.5 text-xs">
+        <div className="col-span-4 flex flex-wrap items-center gap-1.5 text-xs">
           <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 border bg-green-700/40 text-green-300 border-green-700">
             {`+${summary.added}`}
           </span>
@@ -885,28 +885,28 @@ const PresetsTab = memo(() => {
             {`${summary.missingDependencies} ${localized.missingDependenciesShort || "missing deps"}`}
           </span>
         </div>
-        <div className="col-span-3 flex justify-end gap-2 flex-wrap">
+        <div className="col-span-4 flex justify-end gap-1.5 flex-nowrap min-w-0">
           <button
-            className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
+            className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40 shrink-0 whitespace-nowrap"
             disabled={!isDirty || !selectedPresetName}
             onClick={() => onSavePreset()}
           >
             {localized.save || "Save"}
           </button>
           <button
-            className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
+            className="bg-blue-700 hover:bg-blue-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40 shrink-0 whitespace-nowrap"
             onClick={() => onSavePresetAs()}
           >
             {localized.saveAs || "Save As"}
           </button>
           <button
-            className="bg-green-700 hover:bg-green-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
+            className="bg-green-700 hover:bg-green-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40 shrink-0 whitespace-nowrap"
             onClick={() => onUsePreset()}
           >
             {localized.use || "Use"}
           </button>
           <button
-            className="bg-red-700 hover:bg-red-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40"
+            className="bg-red-700 hover:bg-red-800 text-white text-sm px-3 py-2 rounded disabled:opacity-40 shrink-0 whitespace-nowrap"
             disabled={!selectedPresetName}
             onClick={() => onDeletePreset()}
           >
