@@ -55,7 +55,16 @@ interface AppData {
         miscastChance: number;
         minRange: number;
         activatedProjectile?: string;
+        bombardment?: string;
         vortex?: string;
+      }
+    >;
+    bombardmentsByKey: Record<
+      string,
+      {
+        key: string;
+        numProjectiles: number;
+        projectileType: string;
       }
     >;
     projectilesByKey: Record<

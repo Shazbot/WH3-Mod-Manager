@@ -31,7 +31,16 @@ type AbilityTooltipBuildParams = {
       miscastChance: number;
       minRange: number;
       activatedProjectile?: string;
+      bombardment?: string;
       vortex?: string;
+    }
+  >;
+  bombardmentsByKey: Record<
+    string,
+    {
+      key: string;
+      numProjectiles: number;
+      projectileType: string;
     }
   >;
   projectilesByKey: Record<
@@ -276,6 +285,57 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
   const abilityTooltipsByKey: Record<string, AbilityTooltipData> = {};
   const iconPathsToLoad = new Set<string>();
 
+  const resolveProjectileData = (
+    projectileKey: string,
+    numProjectilesOverride?: number,
+  ): AbilityTooltipProjectileData | undefined => {
+    const projectile = params.projectilesByKey[projectileKey];
+    if (!projectile) return undefined;
+
+    const projectileTotalDamage = projectile.damage + projectile.apDamage;
+    const projectileData: AbilityTooltipProjectileData = {
+      key: projectile.key,
+      totalDamage: projectileTotalDamage,
+      apDamage: projectile.apDamage,
+      apPct: toPercent(projectile.apDamage, projectileTotalDamage),
+      numProjectiles: asOptionalPositive(numProjectilesOverride ?? projectile.projectileNumber),
+    };
+
+    if (projectile.explosionType) {
+      const explosion = params.explosionsByKey[projectile.explosionType];
+      if (explosion) {
+        const explosionTotalDamage = explosion.detonationDamage + explosion.detonationDamageAp;
+        projectileData.explosion = {
+          key: explosion.key,
+          totalDamage: asOptionalPositive(explosionTotalDamage),
+          apDamage: asOptionalPositive(explosion.detonationDamageAp),
+          apPct: toPercent(explosion.detonationDamageAp, explosionTotalDamage),
+          radius: asOptionalPositive(explosion.detonationRadius),
+          duration: asOptionalPositive(explosion.detonationDuration),
+        };
+      }
+    }
+
+    if (projectile.spawnedVortex) {
+      const vortex = params.vortexesByKey[projectile.spawnedVortex];
+      if (vortex) {
+        const vortexTotalDamage = vortex.damage + vortex.damageAp;
+        projectileData.spawnedVortex = {
+          key: vortex.key,
+          dps: asOptionalPositive(vortexTotalDamage),
+          apDps: asOptionalPositive(vortex.damageAp),
+          apPct: toPercent(vortex.damageAp, vortexTotalDamage),
+          duration: asOptionalPositive(vortex.duration),
+          radius: asOptionalPositive(vortex.goalRadius || vortex.startRadius),
+          movementSpeed: asOptionalPositive(vortex.movementSpeed),
+          numVortexes: asOptionalPositive(vortex.numVortexes),
+        };
+      }
+    }
+
+    return projectileData;
+  };
+
   for (const abilityKey of relevantAbilityKeys) {
     const unitAbility = params.unitAbilitiesByKey[abilityKey];
     const unitSpecialAbility = params.unitSpecialAbilitiesByKey[abilityKey];
@@ -333,50 +393,12 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
     };
 
     if (unitSpecialAbility.activatedProjectile) {
-      const projectile = params.projectilesByKey[unitSpecialAbility.activatedProjectile];
-      if (projectile) {
-        const projectileTotalDamage = projectile.damage + projectile.apDamage;
-        const projectileData: AbilityTooltipProjectileData = {
-          key: projectile.key,
-          totalDamage: projectileTotalDamage,
-          apDamage: projectile.apDamage,
-          apPct: toPercent(projectile.apDamage, projectileTotalDamage),
-          numProjectiles: asOptionalPositive(projectile.projectileNumber),
-        };
-
-        if (projectile.explosionType) {
-          const explosion = params.explosionsByKey[projectile.explosionType];
-          if (explosion) {
-            const explosionTotalDamage = explosion.detonationDamage + explosion.detonationDamageAp;
-            projectileData.explosion = {
-              key: explosion.key,
-              totalDamage: asOptionalPositive(explosionTotalDamage),
-              apDamage: asOptionalPositive(explosion.detonationDamageAp),
-              apPct: toPercent(explosion.detonationDamageAp, explosionTotalDamage),
-              radius: asOptionalPositive(explosion.detonationRadius),
-              duration: asOptionalPositive(explosion.detonationDuration),
-            };
-          }
-        }
-
-        if (projectile.spawnedVortex) {
-          const vortex = params.vortexesByKey[projectile.spawnedVortex];
-          if (vortex) {
-            const vortexTotalDamage = vortex.damage + vortex.damageAp;
-            projectileData.spawnedVortex = {
-              key: vortex.key,
-              dps: asOptionalPositive(vortexTotalDamage),
-              apDps: asOptionalPositive(vortex.damageAp),
-              apPct: toPercent(vortex.damageAp, vortexTotalDamage),
-              duration: asOptionalPositive(vortex.duration),
-              radius: asOptionalPositive(vortex.goalRadius || vortex.startRadius),
-              movementSpeed: asOptionalPositive(vortex.movementSpeed),
-              numVortexes: asOptionalPositive(vortex.numVortexes),
-            };
-          }
-        }
-
-        tooltip.projectile = projectileData;
+      tooltip.projectile = resolveProjectileData(unitSpecialAbility.activatedProjectile);
+    }
+    if (!tooltip.projectile && unitSpecialAbility.bombardment) {
+      const bombardment = params.bombardmentsByKey[unitSpecialAbility.bombardment];
+      if (bombardment) {
+        tooltip.projectile = resolveProjectileData(bombardment.projectileType, bombardment.numProjectiles);
       }
     }
 
@@ -437,7 +459,15 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
       }
     }
     tooltip.bonuses = bonuses;
-    tooltip.affectedUnitsText = resolveAffectedUnitsText(unitSpecialAbility, params.phasesById, phaseIds);
+    const isBombardmentAbility =
+      !!unitSpecialAbility.bombardment || unitAbility.type.toLowerCase().includes("bombard");
+    const isVortexAbility =
+      !!unitSpecialAbility.vortex ||
+      !!tooltip.projectile?.spawnedVortex ||
+      unitAbility.type.toLowerCase().includes("vortex");
+    if (!isBombardmentAbility && !isVortexAbility) {
+      tooltip.affectedUnitsText = resolveAffectedUnitsText(unitSpecialAbility, params.phasesById, phaseIds);
+    }
     tooltip.enabledIfText = resolveEnabledIfText(abilityKey, params.abilityToAutoDeactivateFlags, params.getLoc);
 
     let minDps: number | undefined;
