@@ -91,7 +91,7 @@ const LeftSidebar = memo(() => {
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
                 <BsPersonVcard size="1.25rem" />
-                <span className="ml-2 mr-2 hidden-child">Visuals</span>
+                <span className="ml-2 mr-2 hidden-child">{localized.visualsTab || "Visuals"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+5</span>
               </div>
             </Tab>
@@ -100,7 +100,7 @@ const LeftSidebar = memo(() => {
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
                 <FaProjectDiagram size="1.5rem" />
-                <span className="ml-2 mr-2 hidden-child">Node Editor</span>
+                <span className="ml-2 mr-2 hidden-child">{localized.nodeEditorTab || "Node Editor"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+6</span>
               </div>
             </Tab>

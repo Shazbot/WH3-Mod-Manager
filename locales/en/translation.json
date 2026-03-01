@@ -900,5 +900,7 @@
   "nodeEditorNodeLookupJoinDescription": "Performs lookups/joins using indexed tables (inner/left/nested)",
   "nodeEditorNodeCustomRowsInputDescription": "Manually input table rows with custom schema",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Generate rows using custom schema with counter range",
-  "nodeEditorNodeReadTSVFromPackDescription": "Reads TSV file from pack using custom schema"
+  "nodeEditorNodeReadTSVFromPackDescription": "Reads TSV file from pack using custom schema",
+  "visualsTab": "Visuals",
+  "nodeEditorTab": "Node Editor"
 }
