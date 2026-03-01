@@ -6236,7 +6236,9 @@ export const registerIpcMainListeners = (
             console.log("Flow execution cache miss: signature changed or no prior cache entry.");
           }
         } else {
-          console.log("Flow execution cache unavailable: failed to build signature, executing flows normally.");
+          console.log(
+            "Flow execution cache unavailable: failed to build signature, executing flows normally.",
+          );
         }
 
         if (shouldExecuteFlows) {
@@ -6305,7 +6307,9 @@ export const registerIpcMainListeners = (
             // This ensures counters are maintained across all flows in all packs
             const { resetCounterTracking } = await import("./nodeExecutor");
             resetCounterTracking();
-            console.log("Reset counter tracking for game launch - counters will be maintained across all flows");
+            console.log(
+              "Reset counter tracking for game launch - counters will be maintained across all flows",
+            );
 
             for (const pack of enabledModsWithFlows) {
               // Check if this pack has overwrites - if so, use the overwritten pack
@@ -6344,7 +6348,9 @@ export const registerIpcMainListeners = (
                 signatureHash: flowExecutionSignatureHash,
                 createdAt: Date.now(),
                 modsWithFlows: enabledModsWithFlows.map((mod) => ({ path: mod.path, name: mod.name })),
-                createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))],
+                createdFlowPackFileNames: [
+                  ...new Set(createdFlowPacks.map((path) => nodePath.basename(path))),
+                ],
               };
               await saveFlowExecutionCache();
             } else {
