@@ -1132,7 +1132,7 @@ const PresetsTab = memo(() => {
             {localized.removeAllFromPreset || "Remove All ->"}
           </button>
           <button
-            className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40"
+            className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40 mt-3"
             onClick={() => onAddSelectedToPreset()}
             disabled={selectedNotInPresetNames.size < 1 || !!placeMode}
           >
@@ -1146,7 +1146,7 @@ const PresetsTab = memo(() => {
             {localized.removeFromPreset || "Remove ->"}
           </button>
           <button
-            className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40"
+            className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40 mt-3"
             onClick={() => onResetSelectedLoadOrder()}
             disabled={!hasSelectedCustomLoadOrder || !!placeMode}
           >
