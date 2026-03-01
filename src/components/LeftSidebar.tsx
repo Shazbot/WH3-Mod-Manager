@@ -14,9 +14,13 @@ import localizationContext from "../localizationContext";
 const LeftSidebar = memo(() => {
   const dispatch = useAppDispatch();
   const currentTab = useAppSelector((state) => state.app.currentTab);
+  const isDev = useAppSelector((state) => state.app.isDev);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const showVisualsTab = isFeaturesForModdersEnabled && isDev;
   const tabIndexToTabType: MainWindowTab[] = isFeaturesForModdersEnabled
-    ? ["mods", "enabledMods", "categories", "presets", "visuals", "nodeEditor"]
+    ? showVisualsTab
+      ? ["mods", "enabledMods", "categories", "presets", "visuals", "nodeEditor"]
+      : ["mods", "enabledMods", "categories", "presets", "nodeEditor"]
     : ["mods", "enabledMods", "categories", "presets"];
 
   const onTabSelected = (index: number) => {
@@ -27,6 +31,12 @@ const LeftSidebar = memo(() => {
   };
 
   const localized: Record<string, string> = useContext(localizationContext);
+
+  useEffect(() => {
+    if (currentTab == "visuals" && !showVisualsTab) {
+      dispatch(setCurrentTab("mods"));
+    }
+  }, [currentTab, showVisualsTab, dispatch]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -87,7 +97,7 @@ const LeftSidebar = memo(() => {
               <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+4</span>
             </div>
           </Tab>
-          {isFeaturesForModdersEnabled && (
+          {showVisualsTab && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
                 <BsPersonVcard size="1.25rem" />
@@ -101,7 +111,9 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <FaProjectDiagram size="1.5rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.nodeEditorTab || "Node Editor"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">Ctrl+6</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  {showVisualsTab ? "Ctrl+6" : "Ctrl+5"}
+                </span>
               </div>
             </Tab>
           )}
