@@ -170,18 +170,24 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
       >
         <div
           style={{ backgroundImage: `url('${data.tooltipFrame}')` }}
-          className={`w-[430px] max-h-[75vh] overflow-y-auto skillTooltip`}
+          className={`w-[470px] max-h-[92vh] overflow-y-auto skillTooltip`}
         >
           {unlockedAbilityTooltips.length > 0 && (
             <div className="space-y-2">
-              {unlockedAbilityTooltips.map((ability) => (
-                <AbilityTooltipCard
-                  key={ability.key}
-                  ability={ability}
-                  icons={skillsData.icons}
-                  fallbackIconData={resolvedSkillIcon}
-                />
-              ))}
+              {unlockedAbilityTooltips.map((ability) => {
+                const compareAbility = unlockedAbilityTooltips.find(
+                  (iterAbility) => iterAbility.overpowerOption === ability.key,
+                );
+                return (
+                  <AbilityTooltipCard
+                    key={ability.key}
+                    ability={ability}
+                    compareAbility={compareAbility}
+                    icons={skillsData.icons}
+                    fallbackIconData={resolvedSkillIcon}
+                  />
+                );
+              })}
             </div>
           )}
 

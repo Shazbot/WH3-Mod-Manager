@@ -184,19 +184,34 @@ const resolveAbilityFromEnableMapping = (
   return baseAbility.overpowerOption;
 };
 
-const formatBonusValueText = (how: string, value: number, key: string) => {
+const getBonusValuePresentation = (how: string, value: number, key: string) => {
   if (how === "mult") {
-    const deltaPct = Math.round((value - 1) * 100);
+    const deltaPctRaw = (value - 1) * 100;
+    const deltaPct = Number.isInteger(deltaPctRaw) ? deltaPctRaw : Math.round(deltaPctRaw * 100) / 100;
     const sign = deltaPct > 0 ? "+" : "";
-    return `${sign}${deltaPct}%`;
+    return {
+      valueText: `${sign}${deltaPct}%`,
+      numericValue: deltaPct,
+      valueSuffix: "%",
+    };
   }
+
   const rounded = Number.isInteger(value) ? value : Math.round(value * 100) / 100;
   if (key.startsWith("scalar_")) {
     const sign = rounded > 0 ? "+" : "";
-    return `${sign}${rounded}%`;
+    return {
+      valueText: `${sign}${rounded}%`,
+      numericValue: rounded,
+      valueSuffix: "%",
+    };
   }
+
   const sign = rounded > 0 ? "+" : "";
-  return `${sign}${rounded}`;
+  return {
+    valueText: `${sign}${rounded}`,
+    numericValue: rounded,
+    valueSuffix: "",
+  };
 };
 
 const resolveAffectedUnitsText = (
@@ -434,10 +449,14 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
         );
         const statIconPath = normalizeUiPath(params.uiUnitStatIconsByStat[phaseStatEffect.stat]);
         if (statIconPath) iconPathsToLoad.add(statIconPath);
+        const valuePresentation = getBonusValuePresentation(phaseStatEffect.how, phaseStatEffect.value, phaseStatEffect.stat);
         bonuses.push({
           key: `${phaseId}:${phaseStatEffect.stat}:${phaseStatEffect.how}`,
+          compareKey: `${phaseStatEffect.stat}:${phaseStatEffect.how}`,
           label: statLabel,
-          valueText: formatBonusValueText(phaseStatEffect.how, phaseStatEffect.value, phaseStatEffect.stat),
+          valueText: valuePresentation.valueText,
+          numericValue: valuePresentation.numericValue,
+          valueSuffix: valuePresentation.valueSuffix,
           isPositive:
             (phaseStatEffect.how === "mult" && phaseStatEffect.value >= 1) ||
             (phaseStatEffect.how !== "mult" && phaseStatEffect.value >= 0),
@@ -451,6 +470,7 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
         const sign = fatiguePerSecond > 0 ? "+" : "";
         bonuses.push({
           key: `${phaseId}:fatigue_change_ratio`,
+          compareKey: "fatigue_change_ratio",
           label: localize(
             "random_localisation_strings_string_fatigue",
             params.getLoc,
@@ -458,6 +478,8 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
             true,
           ),
           valueText: `${sign}${fatiguePerSecond}%`,
+          numericValue: fatiguePerSecond,
+          valueSuffix: "%",
           isPositive: fatiguePerSecond >= 0,
         });
       }

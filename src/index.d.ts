@@ -513,8 +513,11 @@ declare global {
 
   interface AbilityTooltipBonusData {
     key: string;
+    compareKey?: string;
     label: string;
     valueText: string;
+    numericValue?: number;
+    valueSuffix?: string;
     isPositive: boolean;
     iconPath?: string;
   }
