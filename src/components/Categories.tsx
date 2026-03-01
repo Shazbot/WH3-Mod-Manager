@@ -28,6 +28,93 @@ type CategorySelectType = {
   label: string;
 };
 
+const COLOR_CLASS_MAP: Record<string, { bg: string; text: string; hover: string; button: string }> = {
+  blue: {
+    bg: "bg-blue-100 dark:bg-blue-900",
+    text: "text-blue-800 dark:text-blue-300",
+    hover: "hover:bg-blue-200 dark:hover:bg-blue-800",
+    button: "text-blue-400 hover:text-blue-900 dark:hover:text-blue-300",
+  },
+  emerald: {
+    bg: "bg-emerald-100 dark:bg-emerald-900",
+    text: "text-emerald-800 dark:text-emerald-300",
+    hover: "hover:bg-emerald-200 dark:hover:bg-emerald-800",
+    button: "text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300",
+  },
+  red: {
+    bg: "bg-red-100 dark:bg-red-900",
+    text: "text-red-800 dark:text-red-300",
+    hover: "hover:bg-red-200 dark:hover:bg-red-800",
+    button: "text-red-400 hover:text-red-900 dark:hover:text-red-300",
+  },
+  amber: {
+    bg: "bg-amber-100 dark:bg-amber-900",
+    text: "text-amber-800 dark:text-amber-300",
+    hover: "hover:bg-amber-200 dark:hover:bg-amber-800",
+    button: "text-amber-400 hover:text-amber-900 dark:hover:text-amber-300",
+  },
+  purple: {
+    bg: "bg-purple-100 dark:bg-purple-900",
+    text: "text-purple-800 dark:text-purple-300",
+    hover: "hover:bg-purple-200 dark:hover:bg-purple-800",
+    button: "text-purple-400 hover:text-purple-900 dark:hover:text-purple-300",
+  },
+  rose: {
+    bg: "bg-rose-100 dark:bg-rose-900",
+    text: "text-rose-800 dark:text-rose-300",
+    hover: "hover:bg-rose-200 dark:hover:bg-rose-800",
+    button: "text-rose-400 hover:text-rose-900 dark:hover:text-rose-300",
+  },
+  teal: {
+    bg: "bg-teal-100 dark:bg-teal-900",
+    text: "text-teal-800 dark:text-teal-300",
+    hover: "hover:bg-teal-200 dark:hover:bg-teal-800",
+    button: "text-teal-400 hover:text-teal-900 dark:hover:text-teal-300",
+  },
+  orange: {
+    bg: "bg-orange-100 dark:bg-orange-900",
+    text: "text-orange-800 dark:text-orange-300",
+    hover: "hover:bg-orange-200 dark:hover:bg-orange-800",
+    button: "text-orange-400 hover:text-orange-900 dark:hover:text-orange-300",
+  },
+  slate: {
+    bg: "bg-slate-100 dark:bg-slate-800",
+    text: "text-slate-800 dark:text-slate-300",
+    hover: "hover:bg-slate-200 dark:hover:bg-slate-700",
+    button: "text-slate-400 hover:text-slate-900 dark:hover:text-slate-300",
+  },
+  white: {
+    bg: "bg-white dark:bg-white",
+    text: "text-gray-900 dark:text-gray-900",
+    hover: "hover:bg-gray-50 dark:hover:bg-gray-100",
+    button: "text-gray-500 hover:text-gray-900 dark:hover:text-gray-900",
+  },
+  black: {
+    bg: "bg-gray-900 dark:bg-gray-900",
+    text: "text-white dark:text-white",
+    hover: "hover:bg-gray-800 dark:hover:bg-gray-800",
+    button: "text-gray-300 hover:text-white dark:hover:text-white",
+  },
+  lime: {
+    bg: "bg-lime-200 dark:bg-lime-200",
+    text: "text-gray-900 dark:text-gray-900",
+    hover: "hover:bg-lime-300 dark:hover:bg-lime-300",
+    button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
+  },
+  sky: {
+    bg: "bg-sky-200 dark:bg-sky-200",
+    text: "text-gray-900 dark:text-gray-900",
+    hover: "hover:bg-sky-300 dark:hover:bg-sky-300",
+    button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
+  },
+  fuchsia: {
+    bg: "bg-fuchsia-200 dark:bg-fuchsia-200",
+    text: "text-gray-900 dark:text-gray-900",
+    hover: "hover:bg-fuchsia-300 dark:hover:bg-fuchsia-300",
+    button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
+  },
+};
+
 interface CategoryRow {
   category: string;
   isEnabled: boolean;
@@ -58,113 +145,16 @@ let selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }] as {
   column2: number;
 }[];
 
-const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
-  const dispatch = useAppDispatch();
-  const categoryColors = useAppSelector((state) => state.app.categoryColors || {});
-  const localized = useLocalizations();
-
-  const getColorClasses = (color: string) => {
-    const colorMap: Record<string, { bg: string; text: string; hover: string; button: string }> = {
-      blue: {
-        bg: "bg-blue-100 dark:bg-blue-900",
-        text: "text-blue-800 dark:text-blue-300",
-        hover: "hover:bg-blue-200 dark:hover:bg-blue-800",
-        button: "text-blue-400 hover:text-blue-900 dark:hover:text-blue-300",
-      },
-      emerald: {
-        bg: "bg-emerald-100 dark:bg-emerald-900",
-        text: "text-emerald-800 dark:text-emerald-300",
-        hover: "hover:bg-emerald-200 dark:hover:bg-emerald-800",
-        button: "text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300",
-      },
-      red: {
-        bg: "bg-red-100 dark:bg-red-900",
-        text: "text-red-800 dark:text-red-300",
-        hover: "hover:bg-red-200 dark:hover:bg-red-800",
-        button: "text-red-400 hover:text-red-900 dark:hover:text-red-300",
-      },
-      amber: {
-        bg: "bg-amber-100 dark:bg-amber-900",
-        text: "text-amber-800 dark:text-amber-300",
-        hover: "hover:bg-amber-200 dark:hover:bg-amber-800",
-        button: "text-amber-400 hover:text-amber-900 dark:hover:text-amber-300",
-      },
-      purple: {
-        bg: "bg-purple-100 dark:bg-purple-900",
-        text: "text-purple-800 dark:text-purple-300",
-        hover: "hover:bg-purple-200 dark:hover:bg-purple-800",
-        button: "text-purple-400 hover:text-purple-900 dark:hover:text-purple-300",
-      },
-      rose: {
-        bg: "bg-rose-100 dark:bg-rose-900",
-        text: "text-rose-800 dark:text-rose-300",
-        hover: "hover:bg-rose-200 dark:hover:bg-rose-800",
-        button: "text-rose-400 hover:text-rose-900 dark:hover:text-rose-300",
-      },
-      teal: {
-        bg: "bg-teal-100 dark:bg-teal-900",
-        text: "text-teal-800 dark:text-teal-300",
-        hover: "hover:bg-teal-200 dark:hover:bg-teal-800",
-        button: "text-teal-400 hover:text-teal-900 dark:hover:text-teal-300",
-      },
-      orange: {
-        bg: "bg-orange-100 dark:bg-orange-900",
-        text: "text-orange-800 dark:text-orange-300",
-        hover: "hover:bg-orange-200 dark:hover:bg-orange-800",
-        button: "text-orange-400 hover:text-orange-900 dark:hover:text-orange-300",
-      },
-      slate: {
-        bg: "bg-slate-100 dark:bg-slate-800",
-        text: "text-slate-800 dark:text-slate-300",
-        hover: "hover:bg-slate-200 dark:hover:bg-slate-700",
-        button: "text-slate-400 hover:text-slate-900 dark:hover:text-slate-300",
-      },
-      white: {
-        bg: "bg-white dark:bg-white",
-        text: "text-gray-900 dark:text-gray-900",
-        hover: "hover:bg-gray-50 dark:hover:bg-gray-100",
-        button: "text-gray-500 hover:text-gray-900 dark:hover:text-gray-900",
-      },
-      black: {
-        bg: "bg-gray-900 dark:bg-gray-900",
-        text: "text-white dark:text-white",
-        hover: "hover:bg-gray-800 dark:hover:bg-gray-800",
-        button: "text-gray-300 hover:text-white dark:hover:text-white",
-      },
-      lime: {
-        bg: "bg-lime-200 dark:bg-lime-200",
-        text: "text-gray-900 dark:text-gray-900",
-        hover: "hover:bg-lime-300 dark:hover:bg-lime-300",
-        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
-      },
-      sky: {
-        bg: "bg-sky-200 dark:bg-sky-200",
-        text: "text-gray-900 dark:text-gray-900",
-        hover: "hover:bg-sky-300 dark:hover:bg-sky-300",
-        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
-      },
-      fuchsia: {
-        bg: "bg-fuchsia-200 dark:bg-fuchsia-200",
-        text: "text-gray-900 dark:text-gray-900",
-        hover: "hover:bg-fuchsia-300 dark:hover:bg-fuchsia-300",
-        button: "text-gray-600 hover:text-gray-900 dark:hover:text-gray-900",
-      },
-    };
-    return colorMap[color] || colorMap.blue;
-  };
-
-  const color = categoryColors[text] || "blue";
-  const colorClasses = getColorClasses(color);
-
+const Badge = memo(
+  ({ text, color, onRemove, removeLabel }: { text: string; color?: string; onRemove: () => void; removeLabel: string }) => {
+    const colorClasses = COLOR_CLASS_MAP[color || "blue"] || COLOR_CLASS_MAP.blue;
   return (
     <span
       className={`inline-flex items-center px-2 py-1 mr-2 text-sm font-medium rounded ${colorClasses.bg} ${colorClasses.text}`}
     >
       {text}
       <button
-        onClick={() => {
-          dispatch(removeCategory({ mods: [mod], category: text }));
-        }}
+        onClick={onRemove}
         type="button"
         className={`inline-flex items-center p-0.5 ml-2 text-sm bg-transparent rounded-sm ${colorClasses.button} ${colorClasses.hover}`}
         data-dismiss-target="#badge-dismiss-default"
@@ -183,14 +173,21 @@ const Badge = memo(({ text, mod }: { text: string; mod: Mod }) => {
             clipRule="evenodd"
           ></path>
         </svg>
-        <span className="sr-only">{localized.removeBadge}</span>
+        <span className="sr-only">{removeLabel}</span>
       </button>
     </span>
   );
-});
+  },
+);
 
 let isShiftDown = false;
 let isControlDown = false;
+
+const HANDSONTABLE_MODULES_KEY = "__whmmHandsontableModulesRegistered";
+if (!(globalThis as unknown as Record<string, unknown>)[HANDSONTABLE_MODULES_KEY]) {
+  registerAllModules();
+  (globalThis as unknown as Record<string, unknown>)[HANDSONTABLE_MODULES_KEY] = true;
+}
 
 const Categories = memo(() => {
   const dispatch = useAppDispatch();
@@ -205,6 +202,7 @@ const Categories = memo(() => {
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const categories = useAppSelector((state) => state.app.categories);
+  const categoryColors = useAppSelector((state) => state.app.categoryColors || {});
   const categoriesWithUncategorized = categories.includes("Uncategorized")
     ? categories
     : categories.concat(["Uncategorized"]);
@@ -239,6 +237,41 @@ const Categories = memo(() => {
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const hotRef = useRef<HotTable>(null);
 
+  const modByPath = useMemo(
+    () => new Map<string, Mod>((mods as Mod[]).map((mod) => [mod.path, mod])),
+    [mods],
+  );
+
+  const getSelectedMods = useCallback((): Mod[] => {
+    if (!hotRef || !hotRef.current) return [];
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const hot = hotRef.current.hotInstance as Handsontable;
+    if (!hot) return [];
+
+    const selectedRows: number[] = [];
+    for (const selection of selectedInTable) {
+      if (selection.row == -1) continue;
+      const rowMin = Math.min(selection.row, selection.row2);
+      const rowMax = Math.max(selection.row, selection.row2);
+
+      for (let i = rowMin; i <= rowMax; i++) {
+        selectedRows.push(i);
+      }
+    }
+
+    const selectedMods: Mod[] = [];
+    for (const rowNum of selectedRows) {
+      const rowData = hot.getSourceDataAtRow(rowNum) as CategoryRow | ModRow;
+      if (!rowData) continue;
+      if (isCategoryRow(rowData)) continue;
+      const path = rowData.path;
+      const selectedMod = modByPath.get(path);
+      if (selectedMod) selectedMods.push(selectedMod);
+    }
+    return selectedMods;
+  }, [modByPath]);
+
   const getCurrentlySelectedMods = useCallback(() => {
     if (!hotRef || !hotRef.current) return [];
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -260,18 +293,18 @@ const Categories = memo(() => {
       const rowData = hot.getSourceDataAtRow(i) as ModRow | CategoryRow;
       if (!rowData) continue;
       if (!isCategoryRow(rowData)) {
-        const mod = mods.find((mod) => mod.path == rowData.path);
+        const mod = modByPath.get(rowData.path);
         if (mod) selectedMods.push(mod);
       }
     }
 
     return selectedMods;
-  }, [hotRef]);
+  }, [modByPath]);
 
   // console.log("currentlySelectedMods:", getCurrentlySelectedMods());
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const BadgesRowRenderer = (props: HotRendererProps) => {
+  const BadgesRowRenderer = useCallback((props: HotRendererProps) => {
     // the available renderer-related props are:
     // - `row` (row index)
     // - `col` (column index)
@@ -304,9 +337,10 @@ const Categories = memo(() => {
       props.TD.style.background = "rgba(89, 22, 139, 0.5)"; // purple-900
 
       if (isRowCurrentlySelected) props.TD.style.background = "rgb(60, 3, 102, 0.5)"; // purple-950
+      return <></>;
     }
 
-    const mod = (mods as Mod[]).find((iterMod) => iterMod.path == rowData.path);
+    const mod = modByPath.get(rowData.path);
     if (!mod) return <></>;
 
     if (!props.value) return <></>;
@@ -315,14 +349,19 @@ const Categories = memo(() => {
     return (
       <>
         {categories.map((category) => (
-          <Badge key={category} text={category} mod={mod} />
+          <Badge
+            key={category}
+            text={category}
+            color={categoryColors[category]}
+            removeLabel={localized.removeBadge}
+            onRemove={() => dispatch(removeCategory({ mods: [mod], category }))}
+          />
         ))}
       </>
     );
-  };
+  }, [categoryColors, dispatch, isContextMenuOpen, localized.removeBadge, modByPath]);
 
   useEffect(() => {
-    // console.log("REDRAW");
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Shift") isShiftDown = true;
       if (e.key === "Control") isControlDown = true;
@@ -344,154 +383,165 @@ const Categories = memo(() => {
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
 
-    if (isContextMenuOpen) {
-      setTimeout(() => {
-        const contextMenu = document.getElementById("categoriesContextMenu");
-        if (contextMenu) {
-          const bounds = contextMenu.getBoundingClientRect();
-          if (window.innerHeight < bounds.y + bounds.height) {
-            contextMenu.style.top = `${bounds.y - bounds.height}px`;
-          }
-        }
-      }, 10);
-    }
-
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
     };
-  });
+  }, [dispatch, getSelectedMods, isContextMenuOpen]);
 
-  registerAllModules();
+  useEffect(() => {
+    if (!isContextMenuOpen) return;
+    const timer = setTimeout(() => {
+      const contextMenu = document.getElementById("categoriesContextMenu");
+      if (!contextMenu) return;
+      const bounds = contextMenu.getBoundingClientRect();
+      if (window.innerHeight < bounds.y + bounds.height) {
+        contextMenu.style.top = `${bounds.y - bounds.height}px`;
+      }
+    }, 10);
+    return () => clearTimeout(timer);
+  }, [isContextMenuOpen]);
 
-  let sourceDataObject = useMemo(() => {
-    const sourceDataObject = getModsSortedByHumanNameAndName(mods).reduce((acc, current) => {
-      let modCategories = current.categories ?? ["Uncategorized"];
+  const baseData = useMemo(() => {
+    const rowsByCategory = new Map<string, CategoryRow>();
+    const enabledTracker = new Map<string, { total: number; enabled: number }>();
+
+    for (const mod of getModsSortedByHumanNameAndName(mods) as Mod[]) {
+      let modCategories = mod.categories ?? ["Uncategorized"];
       if (modCategories.length == 0) modCategories = ["Uncategorized"];
 
       for (const category of modCategories) {
-        const existingCategoryRow = acc.find((row) => row.category === category);
-        const { isEnabled, humanName, path, name, categories } = current;
-
-        const newModRow = {
-          isEnabled,
-          humanName: humanName != "" ? humanName : name.replace(".pack", ""),
-          path,
-          name,
-          categories: categories ?? [],
-        };
-
-        if (existingCategoryRow) {
-          if (!hiddenCategories.includes(category)) {
-            existingCategoryRow.__children.push(newModRow);
-          }
-        } else {
-          const children = (!hiddenCategories.includes(category) && [newModRow]) || [];
-          acc.push({
+        let categoryRow = rowsByCategory.get(category);
+        if (!categoryRow) {
+          categoryRow = {
             category,
             isEnabled: false,
             humanName: null,
             path: null,
             name: null,
             categories: null,
-            __children: children,
+            __children: [],
+          };
+          rowsByCategory.set(category, categoryRow);
+          enabledTracker.set(category, { total: 0, enabled: 0 });
+        }
+
+        const tracker = enabledTracker.get(category) || { total: 0, enabled: 0 };
+        enabledTracker.set(category, tracker);
+        tracker.total += 1;
+        if (mod.isEnabled) tracker.enabled += 1;
+
+        if (!hiddenCategories.includes(category)) {
+          categoryRow.__children.push({
+            isEnabled: mod.isEnabled,
+            humanName: mod.humanName != "" ? mod.humanName : mod.name.replace(".pack", ""),
+            path: mod.path,
+            name: mod.name,
+            categories: mod.categories ?? [],
           });
         }
       }
-      return acc;
-    }, [] as CategoriesTable);
-
-    for (const categoryRowObject of sourceDataObject) {
-      const category = categoryRowObject.category;
-      const modsInCategory =
-        (category == "Uncategorized" &&
-          mods.filter((mod) => !mod.categories || mod.categories.length == 0)) ||
-        mods.filter((mod) => mod.categories?.includes(category));
-      categoryRowObject.isEnabled = modsInCategory.every((child) => child.isEnabled);
     }
 
-    return sourceDataObject;
-  }, [mods, hiddenCategories, categoriesFilter, nameFilter, categoryFilter]);
-
-  // filter out the name column, supports comma as OR
-  if (nameFilter.trim() != "") {
-    const filterNames = nameFilter
-      .trim()
-      .toLowerCase()
-      .split(",")
-      .map((name) => name.trim())
-      .filter((category) => category != "");
-
-    for (const categoryRow of sourceDataObject) {
-      categoryRow.__children = categoryRow.__children.filter((row) =>
-        filterNames.some((filterName) => row.humanName.toLowerCase().includes(filterName)),
-      );
+    const result = Array.from(rowsByCategory.values());
+    for (const row of result) {
+      const tracker = enabledTracker.get(row.category);
+      row.isEnabled = !!tracker && tracker.total > 0 && tracker.enabled === tracker.total;
     }
 
-    sourceDataObject = sourceDataObject.filter((categoryRow) => categoryRow.__children.length > 0);
-  }
+    result.sort((firstCategory, secondCategory) => {
+      if (firstCategory.category == "Uncategorized") return -1;
+      if (secondCategory.category == "Uncategorized") return 1;
+      return firstCategory.category.localeCompare(secondCategory.category);
+    });
 
-  // filter out the category column, supports comma as OR
-  if (categoryFilter.trim() != "") {
-    const filterCategories = categoryFilter
-      .trim()
-      .toLowerCase()
-      .split(",")
-      .map((category) => category.trim())
-      .filter((category) => category != "");
+    return result;
+  }, [hiddenCategories, mods]);
 
-    sourceDataObject = sourceDataObject.filter((categoryRow) =>
-      filterCategories.some((category) =>
-        categoryRow.category.toLowerCase().includes(category.toLowerCase().trim()),
-      ),
-    );
-  }
+  const sourceDataObject = useMemo(() => {
+    let data: CategoriesTable = baseData.map((row) => ({ ...row, __children: [...row.__children] }));
 
-  // filter out the categories column, supports comma as OR
-  if (categoriesFilter.trim() != "") {
-    const filterCategories = categoriesFilter
-      .trim()
-      .toLowerCase()
-      .split(",")
-      .map((category) => category.trim())
-      .filter((category) => category != "");
+    // filter out the name column, supports comma as OR
+    if (nameFilter.trim() != "") {
+      const filterNames = nameFilter
+        .trim()
+        .toLowerCase()
+        .split(",")
+        .map((name) => name.trim())
+        .filter((category) => category != "");
 
-    for (const categoryRow of sourceDataObject) {
-      categoryRow.__children = categoryRow.__children.filter((row) =>
-        filterCategories.some((filterCategory) =>
-          (row.categories ?? []).some((category) =>
-            category.toLowerCase().includes(filterCategory.toLowerCase().trim()),
-          ),
+      for (const categoryRow of data) {
+        categoryRow.__children = categoryRow.__children.filter((row) =>
+          filterNames.some((filterName) => row.humanName.toLowerCase().includes(filterName)),
+        );
+      }
+
+      data = data.filter((categoryRow) => categoryRow.__children.length > 0);
+    }
+
+    // filter out the category column, supports comma as OR
+    if (categoryFilter.trim() != "") {
+      const filterCategories = categoryFilter
+        .trim()
+        .toLowerCase()
+        .split(",")
+        .map((category) => category.trim())
+        .filter((category) => category != "");
+
+      data = data.filter((categoryRow) =>
+        filterCategories.some((category) =>
+          categoryRow.category.toLowerCase().includes(category.toLowerCase().trim()),
         ),
       );
     }
 
-    sourceDataObject = sourceDataObject.filter((categoryRow) => categoryRow.__children.length > 0);
-  }
+    // filter out the categories column, supports comma as OR
+    if (categoriesFilter.trim() != "") {
+      const filterCategories = categoriesFilter
+        .trim()
+        .toLowerCase()
+        .split(",")
+        .map((category) => category.trim())
+        .filter((category) => category != "");
 
-  // if we filtered out all rows make a new blank row or HotTable will disable its plugins permanently
-  if (sourceDataObject.length == 0) {
-    sourceDataObject.push({
-      category: localized.noMatches,
-      isEnabled: false,
-      humanName: null,
-      path: null,
-      name: null,
-      categories: null,
-      __children: [],
-    });
-  }
+      for (const categoryRow of data) {
+        categoryRow.__children = categoryRow.__children.filter((row) =>
+          filterCategories.some((filterCategory) =>
+            (row.categories ?? []).some((category) =>
+              category.toLowerCase().includes(filterCategory.toLowerCase().trim()),
+            ),
+          ),
+        );
+      }
 
-  sourceDataObject.sort((firstCategory, secondCategory) => {
-    if (firstCategory.category == "Uncategorized") return -1;
-    if (secondCategory.category == "Uncategorized") return 1;
-    return firstCategory.category.localeCompare(secondCategory.category);
-  });
+      data = data.filter((categoryRow) => categoryRow.__children.length > 0);
+    }
 
-  const flattenedData: (CategoryRow | ModRow)[] = [];
-  for (const categoryRow of sourceDataObject) {
-    flattenedData.push(categoryRow, ...categoryRow.__children);
-  }
+    // if we filtered out all rows make a new blank row or HotTable will disable its plugins permanently
+    if (data.length == 0) {
+      data = [
+        {
+          category: localized.noMatches,
+          isEnabled: false,
+          humanName: null,
+          path: null,
+          name: null,
+          categories: null,
+          __children: [],
+        },
+      ];
+    }
+
+    return data;
+  }, [baseData, categoriesFilter, categoryFilter, localized.noMatches, nameFilter]);
+
+  const flattenedData = useMemo(() => {
+    const flattened: (CategoryRow | ModRow)[] = [];
+    for (const categoryRow of sourceDataObject) {
+      flattened.push(categoryRow, ...categoryRow.__children);
+    }
+    return flattened;
+  }, [sourceDataObject]);
 
   const onOverlayClick = useCallback(() => {
     selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
@@ -509,59 +559,17 @@ const Categories = memo(() => {
   }, []);
 
   useEffect(() => {
-    document.removeEventListener("contextmenu", onContextMenu);
     document.addEventListener("contextmenu", onContextMenu);
-
-    if (!hotRef || !hotRef.current) return;
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const hot = hotRef.current.hotInstance as Handsontable;
-    if (!hot) return;
-
     return () => document.removeEventListener("contextmenu", onContextMenu);
-  }, [contextMenuRef.current]);
-
-  const getSelectedMods = (): Mod[] => {
-    if (!hotRef || !hotRef.current) return [];
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const hot = hotRef.current.hotInstance as Handsontable;
-    if (!hot) return [];
-
-    const selectedRows: number[] = [];
-    for (const selection of selectedInTable) {
-      if (selection.row == -1) continue;
-      const rowMin = Math.min(selection.row, selection.row2);
-      const rowMax = Math.max(selection.row, selection.row2);
-
-      for (let i = rowMin; i <= rowMax; i++) {
-        selectedRows.push(i);
-      }
-    }
-
-    const selectedMods: Mod[] = [];
-    for (const rowNum of selectedRows) {
-      const rowData = hot.getSourceDataAtRow(rowNum) as CategoryRow | ModRow;
-      if (!rowData) continue;
-      if (isCategoryRow(rowData)) continue;
-      const path = rowData.path;
-      const selectedMod = mods.find((iterMod) => iterMod.path == path);
-      if (selectedMod) selectedMods.push(selectedMod);
-    }
-    return selectedMods;
-  };
+  }, [onContextMenu]);
 
   const onSelectCategoryChange = (
     newValue: SingleValue<CategorySelectType>,
     actionMeta: ActionMeta<CategorySelectType>,
   ) => {
     if (!newValue) return;
-    console.log(
-      `category select, label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`,
-    );
     if (actionMeta.action !== "select-option") return;
 
-    console.log("isControlDown", isControlDown);
     let selectOperation = "addition" as SelectOperation;
     if (isControlDown && isShiftDown) selectOperation = "unary" as SelectOperation;
     else if (isControlDown) selectOperation = "subtraction" as SelectOperation;
@@ -576,12 +584,16 @@ const Categories = memo(() => {
     setIsContextMenuOpen(false);
   };
 
-  const options = categories.map(
-    (category) =>
-      ({
-        value: category,
-        label: category,
-      }) as CategorySelectType,
+  const options = useMemo(
+    () =>
+      categories.map(
+        (category) =>
+          ({
+            value: category,
+            label: category,
+          }) as CategorySelectType,
+      ),
+    [categories],
   );
 
   function firstRowRenderer(
@@ -823,26 +835,22 @@ const Categories = memo(() => {
           if (ev.button === 1) ev.stopPropagation();
         }}
         onClick={(ev) => {
-          console.log("HT: onClick");
           const targetElement = ev.target as HTMLElement;
           let innerHmtl = "";
           if (
             targetElement.classList.contains("rowHeader") ||
             targetElement.classList.contains("rowHeaderChild")
           ) {
-            console.log("HT: classList rowHeader");
             innerHmtl = targetElement.innerHTML;
           } else if (
             targetElement.parentElement?.classList.contains("rowHeader") ||
             targetElement.parentElement?.classList.contains("rowHeaderChild")
           ) {
-            console.log("HT: parentElement classList rowHeader");
             innerHmtl = targetElement.parentElement?.innerHTML;
           }
 
           if (innerHmtl == "") return;
           const rowNum = Number(innerHmtl.split(" ")[0]) - 1;
-          console.log("rowNum:", rowNum);
           if (flattenedData.length <= rowNum) return;
 
           const rowData = flattenedData[rowNum];
@@ -981,7 +989,6 @@ const Categories = memo(() => {
                   if (!rowData) return;
                   const currentRowCategory = rowData[0];
                   if (currentRowCategory) {
-                    console.log("NEW selectedInTable", { row, column, row2: currentRowNum - 1, column2 });
                     selectedInTable.push({ row, column, row2: currentRowNum - 1, column2 });
                     setTimeout(() => {
                       hot.selectRows(row, currentRowNum - 1);
