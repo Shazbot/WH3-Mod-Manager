@@ -93,3 +93,7 @@ out/
 dumps
 
 sublog.txt
+
+.claude
+
+agentdocs
