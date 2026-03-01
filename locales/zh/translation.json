@@ -795,5 +795,7 @@
   "nodeEditorNodeLookupJoinDescription": "使用索引表（内部/左/嵌套）执行查找/连接",
   "nodeEditorNodeCustomRowsInputDescription": "使用自定义架构手动输入表行",
   "nodeEditorNodeGenerateRowsSchemaDescription": "使用具有计数器范围的自定义架构生成行",
-  "nodeEditorNodeReadTSVFromPackDescription": "使用自定义模式从包中读取 TSV 文件"
+  "nodeEditorNodeReadTSVFromPackDescription": "使用自定义模式从包中读取 TSV 文件",
+  "visualsTab": "视觉效果",
+  "nodeEditorTab": "节点编辑器"
 }

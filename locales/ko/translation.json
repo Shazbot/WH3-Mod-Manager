@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "인덱싱된 테이블(내부/왼쪽/중첩)을 사용하여 조회/조인을 수행합니다.",
   "nodeEditorNodeCustomRowsInputDescription": "사용자 정의 스키마를 사용하여 테이블 행을 수동으로 입력",
   "nodeEditorNodeGenerateRowsSchemaDescription": "카운터 범위가 있는 사용자 정의 스키마를 사용하여 행 생성",
-  "nodeEditorNodeReadTSVFromPackDescription": "사용자 정의 스키마를 사용하여 팩에서 TSV 파일을 읽습니다."
+  "nodeEditorNodeReadTSVFromPackDescription": "사용자 정의 스키마를 사용하여 팩에서 TSV 파일을 읽습니다.",
+  "visualsTab": "비주얼",
+  "nodeEditorTab": "노드 편집기"
 }

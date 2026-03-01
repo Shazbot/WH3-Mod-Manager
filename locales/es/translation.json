@@ -873,5 +873,7 @@
   "nodeEditorNodeLookupJoinDescription": "Realiza búsquedas/uniones usando tablas indexadas (interna/izquierda/anidada)",
   "nodeEditorNodeCustomRowsInputDescription": "Ingrese manualmente filas de la tabla con un esquema personalizado",
   "nodeEditorNodeGenerateRowsSchemaDescription": "Genere filas usando un esquema personalizado con rango de contador",
-  "nodeEditorNodeReadTSVFromPackDescription": "Lee el archivo TSV del paquete usando un esquema personalizado"
+  "nodeEditorNodeReadTSVFromPackDescription": "Lee el archivo TSV del paquete usando un esquema personalizado",
+  "visualsTab": "Imágenes",
+  "nodeEditorTab": "Editor de nodos"
 }
