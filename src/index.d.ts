@@ -462,6 +462,81 @@ declare global {
     subculture?: string;
     unlockRank: number;
   }
+
+  interface AbilityEnableMapping {
+    unitAbilityKey: string;
+    bonusValueId: string;
+  }
+
+  interface AbilityTooltipProjectileExplosionData {
+    key: string;
+    totalDamage?: number;
+    apDamage?: number;
+    apPct?: number;
+    radius?: number;
+    duration?: number;
+  }
+
+  interface AbilityTooltipVortexData {
+    key: string;
+    dps?: number;
+    apDps?: number;
+    apPct?: number;
+    duration?: number;
+    radius?: number;
+    movementSpeed?: number;
+    numVortexes?: number;
+  }
+
+  interface AbilityTooltipProjectileData {
+    key: string;
+    totalDamage?: number;
+    apDamage?: number;
+    apPct?: number;
+    numProjectiles?: number;
+    explosion?: AbilityTooltipProjectileExplosionData;
+    spawnedVortex?: AbilityTooltipVortexData;
+  }
+
+  interface AbilityTooltipDirectDamageData {
+    dpsMin?: number;
+    dpsMax?: number;
+    duration?: number;
+  }
+
+  interface AbilityTooltipAdditionalUiEffectData {
+    key: string;
+    text: string;
+    sortOrder?: number;
+    effectState?: string;
+  }
+
+  interface AbilityTooltipData {
+    key: string;
+    name: string;
+    description: string;
+    sourceTypeName: string;
+    loreGroupName: string;
+    abilityTypeName: string;
+    overpowerOption?: string;
+    iconPath?: string;
+    loreIconPath?: string;
+    typeIconPath?: string;
+    stats: {
+      range?: number;
+      cooldown?: number;
+      duration?: number;
+      effectRange?: number;
+      womCost?: number;
+      miscastChance?: number;
+      minRange?: number;
+    };
+    projectile?: AbilityTooltipProjectileData;
+    vortex?: AbilityTooltipVortexData;
+    directDamage?: AbilityTooltipDirectDamageData;
+    additionalUiEffects: AbilityTooltipAdditionalUiEffectData[];
+  }
+
   interface SkillsData {
     // subtypeToSkills: Record<string, Skill[]>;
     currentSubtype: string;
@@ -483,6 +558,8 @@ declare global {
     subtypes: string[];
     subtypesToLocalizedNames: Record<string, string>;
     nodeToSkillLocks: NodeToSkillLocks;
+    abilityTooltipsByKey: Record<string, AbilityTooltipData>;
+    effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
     allEffects: { effectKey: string; localizedKey: string; icon?: string; priority: string }[];
     allSkills: {
       key: string;

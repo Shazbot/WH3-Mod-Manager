@@ -3,6 +3,7 @@ import { Handle, NodeToolbar, Position } from "@xyflow/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
+import AbilityTooltipCard from "./AbilityTooltipCard";
 
 export type SkillData = {
   skillBackground: string;
@@ -145,6 +146,21 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
 
   if (!isCheckingSkillRequirements) areRequirementsValid = true;
 
+  const shownLevel = Math.min(currentLevel + 1, data.numLevels);
+  const effectsAtShownLevel = data.effects.filter((effect) => effect.level == shownLevel);
+  const unlockedAbilityKeys = [] as string[];
+  for (const effect of effectsAtShownLevel) {
+    const mappings = skillsData.effectToUnitAbilityEnables[effect.effectKey] || [];
+    for (const mapping of mappings) {
+      const abilityKey = mapping.unitAbilityKey;
+      if (!skillsData.abilityTooltipsByKey[abilityKey]) continue;
+      if (!unlockedAbilityKeys.includes(abilityKey)) unlockedAbilityKeys.push(abilityKey);
+    }
+  }
+  const unlockedAbilityTooltips = unlockedAbilityKeys
+    .map((abilityKey) => skillsData.abilityTooltipsByKey[abilityKey])
+    .filter((ability): ability is AbilityTooltipData => !!ability);
+
   return (
     <>
       <NodeToolbar
@@ -152,32 +168,50 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         isVisible={isTooltipOpen}
         position={Position.Right}
       >
-        <div style={{ backgroundImage: `url('${data.tooltipFrame}')` }} className={`w-96 skillTooltip`}>
-          <div className="font-bold text-center">{data.label}</div>
-          {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
-          {data.faction && <div className="font-bold text-center">{data.faction}</div>}
-          {data.numLevels > 3 && (
-            <div className="font-bold text-center">
-              {currentLevel}/{data.numLevels}
-            </div>
-          )}
-          <div className="text-sm italic">{data.description}</div>
-          {data.unlockRank > 0 && data.unlockRank > currentRank && (
-            <div className="text-sm text-red-600">
-              {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
-            </div>
-          )}
-          {!areRequirementsValid && reqsMessage != "" && (
-            <div className="text-sm text-red-600">{reqsMessage}</div>
-          )}
-          {skillsBeingDisabled.length > 0 && (
-            <>
-              <div className="text-sm text-yellow-200">{localized.skillUnlockWillLock}</div>
-              {skillsBeingDisabled.map((skillBeingDisabled) => (
-                <div className="text-sm text-yellow-200">{skillBeingDisabled}</div>
+        <div
+          style={{ backgroundImage: `url('${data.tooltipFrame}')` }}
+          className={`w-[430px] max-h-[75vh] overflow-y-auto skillTooltip`}
+        >
+          {unlockedAbilityTooltips.length > 0 && (
+            <div className="space-y-2">
+              {unlockedAbilityTooltips.map((ability) => (
+                <AbilityTooltipCard
+                  key={ability.key}
+                  ability={ability}
+                  icons={skillsData.icons}
+                  fallbackIconData={resolvedSkillIcon}
+                />
               ))}
-            </>
+            </div>
           )}
+
+          <div className={unlockedAbilityTooltips.length > 0 ? "mt-3 border-t border-red-900/70 pt-2" : ""}>
+            <div className="font-bold text-center">{data.label}</div>
+            {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
+            {data.faction && <div className="font-bold text-center">{data.faction}</div>}
+            {data.numLevels > 3 && (
+              <div className="font-bold text-center">
+                {currentLevel}/{data.numLevels}
+              </div>
+            )}
+            <div className="text-sm italic">{data.description}</div>
+            {data.unlockRank > 0 && data.unlockRank > currentRank && (
+              <div className="text-sm text-red-600">
+                {localized.skillUnlockRank?.replace("UNLOCK_RANK", data.unlockRank.toString())}
+              </div>
+            )}
+            {!areRequirementsValid && reqsMessage != "" && (
+              <div className="text-sm text-red-600">{reqsMessage}</div>
+            )}
+            {skillsBeingDisabled.length > 0 && (
+              <>
+                <div className="text-sm text-yellow-200">{localized.skillUnlockWillLock}</div>
+                {skillsBeingDisabled.map((skillBeingDisabled) => (
+                  <div className="text-sm text-yellow-200">{skillBeingDisabled}</div>
+                ))}
+              </>
+            )}
+          </div>
           {/* <div className="mt-2">
             {data.effects
               .filter((effect) => effect.level == Math.min(currentLevel + 1, data.numLevels))
@@ -193,20 +227,14 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           </div> */}
           <div className="mt-2">
             <div className="flex gap-2 flex-col">
-              {data.effects
-                .filter((effect) => effect.level == Math.min(currentLevel + 1, data.numLevels))
-                .map((effect, i) => {
-                  return (
-                    <div key={effect.key + i} id={effect.key + i} className="flex gap-2 text-sm">
-                      <img
-                        className="h-6"
-                        src={`data:image/png;base64,${effect.iconData}`}
-                        alt={effect.icon}
-                      />
-                      {effect.localizedKey}
-                    </div>
-                  );
-                })}
+              {effectsAtShownLevel.map((effect, i) => {
+                return (
+                  <div key={effect.key + i} id={effect.key + i} className="flex gap-2 text-sm">
+                    <img className="h-6" src={`data:image/png;base64,${effect.iconData}`} alt={effect.icon} />
+                    {effect.localizedKey}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

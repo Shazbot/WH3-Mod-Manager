@@ -20,6 +20,7 @@ import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
 import { packDataStore } from "./components/viewer/packDataStore";
 import i18n from "./configs/i18next.config";
 import { buildDBReferenceTree } from "./DBClone";
+import { buildAbilityTooltipDataForEffects } from "./abilityTooltips";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
 import { emptyAllCompatDataCollections, getCompatData } from "./modCompat/packFileCompatManager";
@@ -607,6 +608,27 @@ export const registerIpcMainListeners = (
         tablesToRead.push(effectBonusValueIdsUnitSetsTable);
     }
 
+    const abilityTooltipTablesToRead = [
+      "effect_bonus_value_unit_ability_junctions_tables",
+      "unit_abilities_tables",
+      "unit_special_abilities_tables",
+      "projectiles_tables",
+      "projectiles_explosions_tables",
+      "battle_vortexs_tables",
+      "_kv_unit_ability_scaling_rules_tables",
+      "special_ability_to_special_ability_phase_junctions_tables",
+      "special_ability_phases_tables",
+      "unit_abilities_to_additional_ui_effects_juncs_tables",
+      "unit_abilities_additional_ui_effects_tables",
+      "special_ability_groups_to_unit_abilities_junctions_tables",
+      "special_ability_groups_tables",
+    ];
+    for (const table of abilityTooltipTablesToRead) {
+      for (const resolvedTable of resolveTable(table).map((resolvedTable) => `db\\${resolvedTable}\\`)) {
+        if (!tablesToRead.includes(resolvedTable)) tablesToRead.push(resolvedTable);
+      }
+    }
+
     // const effectsTablesToRead = resolveTable("effects_tables").map((table) => `db\\${table}\\`);
     // for (const effectsTable of effectsTablesToRead) {
     //   if (!tablesToRead.includes(effectsTable)) tablesToRead.push(effectsTable);
@@ -941,6 +963,258 @@ export const registerIpcMainListeners = (
       if (skillInSkills) skillInSkills.maxLevel = maxLevel;
     }
 
+    const parseNumber = (value: string | undefined) => {
+      if (value == undefined || value === "") return 0;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const effectToUnitAbilityEnables = {} as Record<string, AbilityEnableMapping[]>;
+    getTableRowData(packsTableData, "effect_bonus_value_unit_ability_junctions_tables", (schemaFieldRow) => {
+      const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+      const bonusValueId = schemaFieldRow.find((sF) => sF.name == "bonus_value_id")?.resolvedKeyValue;
+      const unitAbilityKey = schemaFieldRow.find((sF) => sF.name == "unit_ability")?.resolvedKeyValue;
+      if (!effect || !bonusValueId || !unitAbilityKey) return;
+      if (!bonusValueId.startsWith("enable")) return;
+      effectToUnitAbilityEnables[effect] = effectToUnitAbilityEnables[effect] || [];
+      if (
+        !effectToUnitAbilityEnables[effect].some(
+          (iterEntry) => iterEntry.unitAbilityKey == unitAbilityKey && iterEntry.bonusValueId == bonusValueId,
+        )
+      ) {
+        effectToUnitAbilityEnables[effect].push({
+          unitAbilityKey,
+          bonusValueId,
+        });
+      }
+    });
+
+    const unitAbilitiesByKey = {} as Record<
+      string,
+      { key: string; iconName: string; type: string; sourceType: string; overpowerOption?: string }
+    >;
+    getTableRowData(packsTableData, "unit_abilities_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const iconName = schemaFieldRow.find((sF) => sF.name == "icon_name")?.resolvedKeyValue;
+      const type = schemaFieldRow.find((sF) => sF.name == "type")?.resolvedKeyValue;
+      const sourceType = schemaFieldRow.find((sF) => sF.name == "source_type")?.resolvedKeyValue;
+      const overpowerOption = schemaFieldRow.find((sF) => sF.name == "overpower_option")?.resolvedKeyValue;
+      if (!key || !iconName || !type || !sourceType) return;
+      unitAbilitiesByKey[key] = {
+        key,
+        iconName,
+        type,
+        sourceType,
+        overpowerOption: overpowerOption || undefined,
+      };
+    });
+
+    const unitSpecialAbilitiesByKey = {} as Record<
+      string,
+      {
+        key: string;
+        targetInterceptRange: number;
+        rechargeTime: number;
+        activeTime: number;
+        effectRange: number;
+        manaCost: number;
+        miscastChance: number;
+        minRange: number;
+        activatedProjectile?: string;
+        vortex?: string;
+      }
+    >;
+    getTableRowData(packsTableData, "unit_special_abilities_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      if (!key) return;
+      unitSpecialAbilitiesByKey[key] = {
+        key,
+        targetInterceptRange: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "target_intercept_range")?.resolvedKeyValue,
+        ),
+        rechargeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "recharge_time")?.resolvedKeyValue),
+        activeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "active_time")?.resolvedKeyValue),
+        effectRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "effect_range")?.resolvedKeyValue),
+        manaCost: parseNumber(schemaFieldRow.find((sF) => sF.name == "mana_cost")?.resolvedKeyValue),
+        miscastChance: parseNumber(schemaFieldRow.find((sF) => sF.name == "miscast_chance")?.resolvedKeyValue),
+        minRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "min_range")?.resolvedKeyValue),
+        activatedProjectile:
+          schemaFieldRow.find((sF) => sF.name == "activated_projectile")?.resolvedKeyValue || undefined,
+        vortex: schemaFieldRow.find((sF) => sF.name == "vortex")?.resolvedKeyValue || undefined,
+      };
+    });
+
+    const projectilesByKey = {} as Record<
+      string,
+      {
+        key: string;
+        damage: number;
+        apDamage: number;
+        projectileNumber: number;
+        explosionType?: string;
+        spawnedVortex?: string;
+      }
+    >;
+    getTableRowData(packsTableData, "projectiles_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      if (!key) return;
+      projectilesByKey[key] = {
+        key,
+        damage: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage")?.resolvedKeyValue),
+        apDamage: parseNumber(schemaFieldRow.find((sF) => sF.name == "ap_damage")?.resolvedKeyValue),
+        projectileNumber: parseNumber(schemaFieldRow.find((sF) => sF.name == "projectile_number")?.resolvedKeyValue),
+        explosionType: schemaFieldRow.find((sF) => sF.name == "explosion_type")?.resolvedKeyValue || undefined,
+        spawnedVortex: schemaFieldRow.find((sF) => sF.name == "spawned_vortex")?.resolvedKeyValue || undefined,
+      };
+    });
+
+    const explosionsByKey = {} as Record<
+      string,
+      {
+        key: string;
+        detonationDamage: number;
+        detonationDamageAp: number;
+        detonationRadius: number;
+        detonationDuration: number;
+      }
+    >;
+    getTableRowData(packsTableData, "projectiles_explosions_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      if (!key) return;
+      explosionsByKey[key] = {
+        key,
+        detonationDamage: parseNumber(schemaFieldRow.find((sF) => sF.name == "detonation_damage")?.resolvedKeyValue),
+        detonationDamageAp: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "detonation_damage_ap")?.resolvedKeyValue,
+        ),
+        detonationRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "detonation_radius")?.resolvedKeyValue),
+        detonationDuration: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "detonation_duration")?.resolvedKeyValue,
+        ),
+      };
+    });
+
+    const vortexesByKey = {} as Record<
+      string,
+      {
+        key: string;
+        damage: number;
+        damageAp: number;
+        duration: number;
+        goalRadius: number;
+        startRadius: number;
+        movementSpeed: number;
+        numVortexes: number;
+      }
+    >;
+    getTableRowData(packsTableData, "battle_vortexs_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "vortex_key")?.resolvedKeyValue;
+      if (!key) return;
+      vortexesByKey[key] = {
+        key,
+        damage: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage")?.resolvedKeyValue),
+        damageAp: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage_ap")?.resolvedKeyValue),
+        duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
+        goalRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "goal_radius")?.resolvedKeyValue),
+        startRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "start_radius")?.resolvedKeyValue),
+        movementSpeed: parseNumber(schemaFieldRow.find((sF) => sF.name == "movement_speed")?.resolvedKeyValue),
+        numVortexes: parseNumber(schemaFieldRow.find((sF) => sF.name == "num_vortexes")?.resolvedKeyValue),
+      };
+    });
+
+    const abilityToPhaseIds = {} as Record<string, string[]>;
+    getTableRowData(
+      packsTableData,
+      "special_ability_to_special_ability_phase_junctions_tables",
+      (schemaFieldRow) => {
+        const abilityKey = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
+        const phaseId = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
+        if (!abilityKey || !phaseId) return;
+        abilityToPhaseIds[abilityKey] = abilityToPhaseIds[abilityKey] || [];
+        if (!abilityToPhaseIds[abilityKey].includes(phaseId)) abilityToPhaseIds[abilityKey].push(phaseId);
+      },
+    );
+
+    const phasesById = {} as Record<
+      string,
+      {
+        id: string;
+        damageAmount: number;
+        maxDamagedEntities: number;
+        hpChangeFrequency: number;
+        duration: number;
+      }
+    >;
+    getTableRowData(packsTableData, "special_ability_phases_tables", (schemaFieldRow) => {
+      const id = schemaFieldRow.find((sF) => sF.name == "id")?.resolvedKeyValue;
+      if (!id) return;
+      phasesById[id] = {
+        id,
+        damageAmount: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage_amount")?.resolvedKeyValue),
+        maxDamagedEntities: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "max_damaged_entities")?.resolvedKeyValue,
+        ),
+        hpChangeFrequency: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue,
+        ),
+        duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
+      };
+    });
+
+    let kvDirectDamageMinUnary = 0.5;
+    let kvDirectDamageLarge = 0.75;
+    getTableRowData(packsTableData, "_kv_unit_ability_scaling_rules_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const value = parseNumber(schemaFieldRow.find((sF) => sF.name == "value")?.resolvedKeyValue);
+      if (key == "direct_damage_damage_scale_min_unary") kvDirectDamageMinUnary = value;
+      if (key == "direct_damage_large") kvDirectDamageLarge = value;
+    });
+
+    const abilityToAdditionalUiEffectKeys = {} as Record<string, string[]>;
+    getTableRowData(packsTableData, "unit_abilities_to_additional_ui_effects_juncs_tables", (schemaFieldRow) => {
+      const ability = schemaFieldRow.find((sF) => sF.name == "ability")?.resolvedKeyValue;
+      const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+      if (!ability || !effect) return;
+      abilityToAdditionalUiEffectKeys[ability] = abilityToAdditionalUiEffectKeys[ability] || [];
+      if (!abilityToAdditionalUiEffectKeys[ability].includes(effect)) {
+        abilityToAdditionalUiEffectKeys[ability].push(effect);
+      }
+    });
+
+    const additionalUiEffectsByKey = {} as Record<string, { key: string; sortOrder: number; effectState: string }>;
+    getTableRowData(packsTableData, "unit_abilities_additional_ui_effects_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const sortOrder = parseNumber(schemaFieldRow.find((sF) => sF.name == "sort_order")?.resolvedKeyValue);
+      const effectState =
+        schemaFieldRow.find((sF) => sF.name == "effect_state")?.resolvedKeyValue?.toString() || "";
+      if (!key) return;
+      additionalUiEffectsByKey[key] = { key, sortOrder, effectState };
+    });
+
+    const abilityToGroupKeys = {} as Record<string, string[]>;
+    getTableRowData(
+      packsTableData,
+      "special_ability_groups_to_unit_abilities_junctions_tables",
+      (schemaFieldRow) => {
+        const group = schemaFieldRow.find((sF) => sF.name == "special_ability_groups")?.resolvedKeyValue;
+        const ability = schemaFieldRow.find((sF) => sF.name == "unit_special_abilities")?.resolvedKeyValue;
+        if (!ability || !group) return;
+        abilityToGroupKeys[ability] = abilityToGroupKeys[ability] || [];
+        if (!abilityToGroupKeys[ability].includes(group)) abilityToGroupKeys[ability].push(group);
+      },
+    );
+
+    const specialAbilityGroupsByKey = {} as Record<string, { key: string; iconPath: string }>;
+    getTableRowData(packsTableData, "special_ability_groups_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;
+      const iconPath = schemaFieldRow.find((sF) => sF.name == "icon_path")?.resolvedKeyValue;
+      if (!key || !iconPath) return;
+      specialAbilityGroupsByKey[key] = {
+        key,
+        iconPath,
+      };
+    });
+
     // const set = subtypeToSet["wh_main_emp_karl_franz"];
     // const nodes = setToNodes[set];
     // for (const node of nodes) {
@@ -1064,6 +1338,7 @@ export const registerIpcMainListeners = (
     }
 
     const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
+    const skillsDataPackPaths = vanillaPacks.concat(enabledModPacks).map((pack) => pack.path);
     appData.skillsData = {
       subtypesToSet,
       subtypeAndSets,
@@ -1076,6 +1351,21 @@ export const registerIpcMainListeners = (
       locs,
       icons,
       effectsToEffectData,
+      skillsDataPackPaths,
+      effectToUnitAbilityEnables,
+      unitAbilitiesByKey,
+      unitSpecialAbilitiesByKey,
+      projectilesByKey,
+      explosionsByKey,
+      vortexesByKey,
+      abilityToPhaseIds,
+      phasesById,
+      kvDirectDamageMinUnary,
+      kvDirectDamageLarge,
+      abilityToAdditionalUiEffectKeys,
+      additionalUiEffectsByKey,
+      abilityToGroupKeys,
+      specialAbilityGroupsByKey,
     };
     const nodesKF = setToNodes[setKF];
 
@@ -1105,6 +1395,47 @@ export const registerIpcMainListeners = (
     };
 
     appendLocalizationsToSkills(kfSkills, getLoc);
+
+    const effectKeysForCurrentSkills = Array.from(
+      new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
+    );
+    const {
+      abilityTooltipsByKey: kfAbilityTooltipsByKey,
+      reducedEffectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
+      iconPathsToLoad: kfAbilityIconPaths,
+    } = buildAbilityTooltipDataForEffects({
+      effectKeys: effectKeysForCurrentSkills,
+      effectToUnitAbilityEnables,
+      unitAbilitiesByKey,
+      unitSpecialAbilitiesByKey,
+      projectilesByKey,
+      explosionsByKey,
+      vortexesByKey,
+      abilityToPhaseIds,
+      phasesById,
+      kvDirectDamageMinUnary,
+      kvDirectDamageLarge,
+      abilityToAdditionalUiEffectKeys,
+      additionalUiEffectsByKey,
+      abilityToGroupKeys,
+      specialAbilityGroupsByKey,
+      getLoc,
+    });
+    const missingAbilityIconPaths = kfAbilityIconPaths.filter((iconPath) => !icons[iconPath]);
+    if (missingAbilityIconPaths.length > 0) {
+      for (const pack of vanillaPacks.concat(enabledModPacks)) {
+        await readFromExistingPack(pack, { filesToRead: missingAbilityIconPaths, skipParsingTables: true });
+      }
+      for (const pack of vanillaPacks.concat(enabledModPacks)) {
+        for (const iconPath of missingAbilityIconPaths) {
+          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
+          if (iconIndex < 0) continue;
+          const iconPackedFile = pack.packedFiles[iconIndex];
+          if (!iconPackedFile.buffer) continue;
+          icons[iconPath] = iconPackedFile.buffer.toString("base64");
+        }
+      }
+    }
 
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
@@ -1172,6 +1503,8 @@ export const registerIpcMainListeners = (
       icons,
       subtypes,
       nodeToSkillLocks,
+      abilityTooltipsByKey: kfAbilityTooltipsByKey,
+      effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
       allEffects,
       allSkills,
       allSkillIcons,
@@ -1190,7 +1523,7 @@ export const registerIpcMainListeners = (
     }
   };
 
-  const getSkillsForSubtype = (subtype: string, subtypeIndex: number) => {
+  const getSkillsForSubtype = async (subtype: string, subtypeIndex: number) => {
     console.log("getSkillsForSubtype:", subtype);
     const cachedSkillsData = appData.skillsData;
     if (!cachedSkillsData) {
@@ -1215,6 +1548,47 @@ export const registerIpcMainListeners = (
     };
 
     appendLocalizationsToSkills(kfSkills, getLoc);
+
+    const effectKeysForCurrentSkills = Array.from(
+      new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
+    );
+    const { abilityTooltipsByKey, reducedEffectToUnitAbilityEnables, iconPathsToLoad: tooltipIconPaths } =
+      buildAbilityTooltipDataForEffects({
+        effectKeys: effectKeysForCurrentSkills,
+        effectToUnitAbilityEnables: cachedSkillsData.effectToUnitAbilityEnables,
+        unitAbilitiesByKey: cachedSkillsData.unitAbilitiesByKey,
+        unitSpecialAbilitiesByKey: cachedSkillsData.unitSpecialAbilitiesByKey,
+        projectilesByKey: cachedSkillsData.projectilesByKey,
+        explosionsByKey: cachedSkillsData.explosionsByKey,
+        vortexesByKey: cachedSkillsData.vortexesByKey,
+        abilityToPhaseIds: cachedSkillsData.abilityToPhaseIds,
+        phasesById: cachedSkillsData.phasesById,
+        kvDirectDamageMinUnary: cachedSkillsData.kvDirectDamageMinUnary,
+        kvDirectDamageLarge: cachedSkillsData.kvDirectDamageLarge,
+        abilityToAdditionalUiEffectKeys: cachedSkillsData.abilityToAdditionalUiEffectKeys,
+        additionalUiEffectsByKey: cachedSkillsData.additionalUiEffectsByKey,
+        abilityToGroupKeys: cachedSkillsData.abilityToGroupKeys,
+        specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
+        getLoc,
+      });
+    const missingTooltipIcons = tooltipIconPaths.filter((iconPath) => !cachedSkillsData.icons[iconPath]);
+    if (missingTooltipIcons.length > 0) {
+      const packsToRead = appData.packsData.filter((pack) =>
+        cachedSkillsData.skillsDataPackPaths.includes(pack.path),
+      );
+      for (const pack of packsToRead) {
+        await readFromExistingPack(pack, { filesToRead: missingTooltipIcons, skipParsingTables: true });
+      }
+      for (const pack of packsToRead) {
+        for (const iconPath of missingTooltipIcons) {
+          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
+          if (iconIndex < 0) continue;
+          const iconPackedFile = pack.packedFiles[iconIndex];
+          if (!iconPackedFile.buffer) continue;
+          cachedSkillsData.icons[iconPath] = iconPackedFile.buffer.toString("base64");
+        }
+      }
+    }
 
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
@@ -1283,6 +1657,8 @@ export const registerIpcMainListeners = (
       nodeRequirements,
       nodeToSkillLocks,
       icons,
+      abilityTooltipsByKey,
+      effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
       subtypes,
       allEffects,
       allSkills,
