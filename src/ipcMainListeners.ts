@@ -492,7 +492,11 @@ export const getDefaultTableVersions = async () => {
   for (const packedFile of dataPackData.packedFiles.filter((pf) => pf.name.startsWith("db\\"))) {
     const dbNameMatch = packedFile.name.match(matchDBFileRegex);
     if (dbNameMatch != null && dbNameMatch.length > 0) {
-      if (packedFile.version != undefined) tableNameToVersion[dbNameMatch[1]] = packedFile.version;
+      if (packedFile.version != undefined) {
+        tableNameToVersion[dbNameMatch[1]] = packedFile.version;
+      } else {
+        tableNameToVersion[dbNameMatch[1]] = 0;
+      }
     }
   }
 

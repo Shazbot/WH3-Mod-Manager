@@ -539,5 +539,7 @@
   "shogun2Folder": "Shogun 2 フォルダ:",
   "selectShogun2Folder": "Shogun 2 フォルダを選択",
   "shogun2ContentFolder": "Shogun 2 の Steam ワークショップ コンテンツフォルダ 201270 (Shogun 2 の Steam ID) に含まれる Mod。例: C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
-  "copyModToData": "Mod を data フォルダにコピー"
+  "copyModToData": "Mod を data フォルダにコピー",
+  "version": "バージョン",
+  "columns": "カラム"
 }
