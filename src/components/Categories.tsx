@@ -211,7 +211,7 @@ const Categories = memo(() => {
 
   const headerNames = useMemo(
     () => [localized.category, localized.enabled, localized.name, localized.categories],
-    [localized]
+    [localized],
   );
 
   const setNewCategoryFilter = useMemo(
@@ -219,21 +219,21 @@ const Categories = memo(() => {
       debounce((value: string) => {
         setCategoryFilter(value);
       }, 200),
-    [setCategoryFilter]
+    [setCategoryFilter],
   );
   const setNewNameFilter = useMemo(
     () =>
       debounce((value: string) => {
         setNameFilter(value);
       }, 200),
-    [setNameFilter]
+    [setNameFilter],
   );
   const setNewCategoriesFilter = useMemo(
     () =>
       debounce((value: string) => {
         setCategoriesFilter(value);
       }, 200),
-    [setCategoriesFilter]
+    [setCategoriesFilter],
   );
 
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -322,7 +322,7 @@ const Categories = memo(() => {
   };
 
   useEffect(() => {
-    console.log("REDRAW");
+    // console.log("REDRAW");
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Shift") isShiftDown = true;
       if (e.key === "Control") isControlDown = true;
@@ -424,7 +424,7 @@ const Categories = memo(() => {
 
     for (const categoryRow of sourceDataObject) {
       categoryRow.__children = categoryRow.__children.filter((row) =>
-        filterNames.some((filterName) => row.humanName.toLowerCase().includes(filterName))
+        filterNames.some((filterName) => row.humanName.toLowerCase().includes(filterName)),
       );
     }
 
@@ -442,8 +442,8 @@ const Categories = memo(() => {
 
     sourceDataObject = sourceDataObject.filter((categoryRow) =>
       filterCategories.some((category) =>
-        categoryRow.category.toLowerCase().includes(category.toLowerCase().trim())
-      )
+        categoryRow.category.toLowerCase().includes(category.toLowerCase().trim()),
+      ),
     );
   }
 
@@ -460,9 +460,9 @@ const Categories = memo(() => {
       categoryRow.__children = categoryRow.__children.filter((row) =>
         filterCategories.some((filterCategory) =>
           (row.categories ?? []).some((category) =>
-            category.toLowerCase().includes(filterCategory.toLowerCase().trim())
-          )
-        )
+            category.toLowerCase().includes(filterCategory.toLowerCase().trim()),
+          ),
+        ),
       );
     }
 
@@ -495,7 +495,7 @@ const Categories = memo(() => {
 
   const onOverlayClick = useCallback(() => {
     selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
-    console.log("clearing tracked selection");
+    // console.log("clearing tracked selection");
     setIsContextMenuOpen(false);
   }, []);
 
@@ -553,11 +553,11 @@ const Categories = memo(() => {
 
   const onSelectCategoryChange = (
     newValue: SingleValue<CategorySelectType>,
-    actionMeta: ActionMeta<CategorySelectType>
+    actionMeta: ActionMeta<CategorySelectType>,
   ) => {
     if (!newValue) return;
     console.log(
-      `category select, label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`
+      `category select, label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`,
     );
     if (actionMeta.action !== "select-option") return;
 
@@ -581,7 +581,7 @@ const Categories = memo(() => {
       ({
         value: category,
         label: category,
-      } as CategorySelectType)
+      }) as CategorySelectType,
   );
 
   function firstRowRenderer(
@@ -594,7 +594,7 @@ const Categories = memo(() => {
     prop: string | number,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value: any,
-    cellProperties: CellProperties
+    cellProperties: CellProperties,
   ) {
     if (col == 0) {
       td.style.verticalAlign = "left";
@@ -684,8 +684,8 @@ const Categories = memo(() => {
                     onClick={() => {
                       dispatch(
                         setAreModsEnabled(
-                          getCurrentlySelectedMods().map((mod) => ({ mod: mod, isEnabled: true }))
-                        )
+                          getCurrentlySelectedMods().map((mod) => ({ mod: mod, isEnabled: true })),
+                        ),
                       );
                       setIsContextMenuOpen(false);
                     }}
@@ -700,8 +700,8 @@ const Categories = memo(() => {
                     onClick={() => {
                       dispatch(
                         setAreModsEnabled(
-                          getCurrentlySelectedMods().map((mod) => ({ mod: mod, isEnabled: false }))
-                        )
+                          getCurrentlySelectedMods().map((mod) => ({ mod: mod, isEnabled: false })),
+                        ),
                       );
                       setIsContextMenuOpen(false);
                     }}
@@ -1002,7 +1002,7 @@ const Categories = memo(() => {
             }
           }}
           afterDeselect={() => {
-            console.log("deselected");
+            // console.log("deselected");
             // if (!isContextMenuOpen) {
             //   selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
             //   console.log("clearing tracked selection");
