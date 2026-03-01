@@ -882,5 +882,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "Lit le fichier TSV du pack à l'aide d'un schéma personnalisé",
   "visualsTab": "Visuels",
   "nodeEditorTab": "Éditeur de nœuds",
-  "showSkillNodeSetNames": "Afficher les noms des ensembles de nœuds de compétences"
+  "showSkillNodeSetNames": "Afficher les noms des ensembles de nœuds de compétences",
+  "noCategoryFilter": "Aucun filtre de catégorie",
+  "addAllToPreset": "<- Tout ajouter",
+  "removeAllFromPreset": "Supprimer tout ->"
 }

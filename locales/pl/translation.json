@@ -876,5 +876,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "Odczytuje plik TSV z pakietu przy użyciu niestandardowego schematu",
   "visualsTab": "Wizualizacje",
   "nodeEditorTab": "Edytor węzłów",
-  "showSkillNodeSetNames": "Pokaż nazwy zestawów węzłów umiejętności"
+  "showSkillNodeSetNames": "Pokaż nazwy zestawów węzłów umiejętności",
+  "noCategoryFilter": "Brak filtra kategorii",
+  "addAllToPreset": "<- Dodaj wszystko",
+  "removeAllFromPreset": "Usuń wszystko ->"
 }

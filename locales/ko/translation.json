@@ -876,5 +876,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "사용자 정의 스키마를 사용하여 팩에서 TSV 파일을 읽습니다.",
   "visualsTab": "비주얼",
   "nodeEditorTab": "노드 편집기",
-  "showSkillNodeSetNames": "스킬 노드 세트 이름 표시"
+  "showSkillNodeSetNames": "스킬 노드 세트 이름 표시",
+  "noCategoryFilter": "카테고리 필터 없음",
+  "addAllToPreset": "<- 모두 추가",
+  "removeAllFromPreset": "모두 제거 ->"
 }

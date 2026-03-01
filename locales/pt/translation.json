@@ -876,5 +876,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "Lê o arquivo TSV do pacote usando esquema personalizado",
   "visualsTab": "Visuais",
   "nodeEditorTab": "Editor de nós",
-  "showSkillNodeSetNames": "Mostrar nomes de conjuntos de nós de habilidades"
+  "showSkillNodeSetNames": "Mostrar nomes de conjuntos de nós de habilidades",
+  "noCategoryFilter": "Sem filtro de categoria",
+  "addAllToPreset": "<- Adicionar tudo",
+  "removeAllFromPreset": "Remover tudo ->"
 }

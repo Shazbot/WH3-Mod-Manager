@@ -876,5 +876,8 @@
   "nodeEditorNodeReadTSVFromPackDescription": "Читает файл TSV из пакета, используя пользовательскую схему.",
   "visualsTab": "Визуальные эффекты",
   "nodeEditorTab": "Редактор узлов",
-  "showSkillNodeSetNames": "Показать имена наборов узлов навыков"
+  "showSkillNodeSetNames": "Показать имена наборов узлов навыков",
+  "noCategoryFilter": "Нет фильтра по категориям",
+  "addAllToPreset": "<- Добавить все",
+  "removeAllFromPreset": "Удалить все ->"
 }
