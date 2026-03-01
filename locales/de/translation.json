@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "Generieren Sie Zeilen mithilfe eines benutzerdefinierten Schemas mit Zählerbereich",
   "nodeEditorNodeReadTSVFromPackDescription": "Liest die TSV-Datei aus dem Paket mithilfe eines benutzerdefinierten Schemas",
   "visualsTab": "Visuals",
-  "nodeEditorTab": "Knoteneditor"
+  "nodeEditorTab": "Knoteneditor",
+  "showSkillNodeSetNames": "Namen von Skill-Knotensätzen anzeigen"
 }

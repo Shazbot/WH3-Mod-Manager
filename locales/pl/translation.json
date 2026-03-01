@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "Generuj wiersze przy użyciu niestandardowego schematu z zakresem liczników",
   "nodeEditorNodeReadTSVFromPackDescription": "Odczytuje plik TSV z pakietu przy użyciu niestandardowego schematu",
   "visualsTab": "Wizualizacje",
-  "nodeEditorTab": "Edytor węzłów"
+  "nodeEditorTab": "Edytor węzłów",
+  "showSkillNodeSetNames": "Pokaż nazwy zestawów węzłów umiejętności"
 }

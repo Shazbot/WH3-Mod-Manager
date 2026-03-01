@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "Sayaç aralığına sahip özel şema kullanarak satırlar oluşturun",
   "nodeEditorNodeReadTSVFromPackDescription": "Özel şemayı kullanarak TSV dosyasını paketten okur",
   "visualsTab": "Görseller",
-  "nodeEditorTab": "Düğüm Düzenleyici"
+  "nodeEditorTab": "Düğüm Düzenleyici",
+  "showSkillNodeSetNames": "Beceri Düğümü Seti Adlarını Göster"
 }

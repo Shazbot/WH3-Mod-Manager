@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "Генерируйте строки, используя пользовательскую схему с диапазоном счетчиков.",
   "nodeEditorNodeReadTSVFromPackDescription": "Читает файл TSV из пакета, используя пользовательскую схему.",
   "visualsTab": "Визуальные эффекты",
-  "nodeEditorTab": "Редактор узлов"
+  "nodeEditorTab": "Редактор узлов",
+  "showSkillNodeSetNames": "Показать имена наборов узлов навыков"
 }

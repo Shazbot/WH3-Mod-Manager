@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "カウンタ範囲を指定したカスタム スキーマを使用して行を生成する",
   "nodeEditorNodeReadTSVFromPackDescription": "カスタムスキーマを使用してパックからTSVファイルを読み取ります",
   "visualsTab": "ビジュアル",
-  "nodeEditorTab": "ノードエディタ"
+  "nodeEditorTab": "ノードエディタ",
+  "showSkillNodeSetNames": "スキルノードセット名の表示"
 }
