@@ -841,6 +841,13 @@ const appSlice = createSlice({
       state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
       state.currentGame = fromConfigAppState.currentGame || "wh3";
       state.userFlowOptions = fromConfigAppState.userFlowOptions || {};
+      state.isShowingSkillNodeSetNames =
+        fromConfigAppState.isShowingSkillNodeSetNames ?? state.isShowingSkillNodeSetNames;
+      state.isShowingHiddenSkills = fromConfigAppState.isShowingHiddenSkills ?? state.isShowingHiddenSkills;
+      state.isShowingHiddenModifiersInsideSkills =
+        fromConfigAppState.isShowingHiddenModifiersInsideSkills ?? state.isShowingHiddenModifiersInsideSkills;
+      state.isCheckingSkillRequirements =
+        fromConfigAppState.isCheckingSkillRequirements ?? state.isCheckingSkillRequirements;
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -1361,6 +1368,15 @@ const appSlice = createSlice({
     setIsShowingSkillNodeSetNames: (state: AppState, action: PayloadAction<boolean>) => {
       state.isShowingSkillNodeSetNames = action.payload;
     },
+    setIsShowingHiddenSkills: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isShowingHiddenSkills = action.payload;
+    },
+    setIsShowingHiddenModifiersInsideSkills: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isShowingHiddenModifiersInsideSkills = action.payload;
+    },
+    setIsCheckingSkillRequirements: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isCheckingSkillRequirements = action.payload;
+    },
     setSkillNodeLevel: (state: AppState, action: PayloadAction<{ skillNodeId: string; level: number }>) => {
       state.skillNodesToLevel[action.payload.skillNodeId] = action.payload.level;
 
@@ -1488,6 +1504,9 @@ export const {
   setPackSearchResults,
   setIsLocalizingSubtypes,
   setIsShowingSkillNodeSetNames,
+  setIsShowingHiddenSkills,
+  setIsShowingHiddenModifiersInsideSkills,
+  setIsCheckingSkillRequirements,
   setUserFlowOptions,
 
   // for DB viewer

@@ -81,6 +81,9 @@ const initialState = {
   currentModToUpload: undefined,
   isLocalizingSubtypes: false,
   isShowingSkillNodeSetNames: false,
+  isShowingHiddenSkills: true,
+  isShowingHiddenModifiersInsideSkills: true,
+  isCheckingSkillRequirements: true,
   currentLocalization: {},
   userFlowOptions: {},
 

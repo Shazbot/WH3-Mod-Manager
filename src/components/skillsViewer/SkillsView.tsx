@@ -10,7 +10,12 @@ import React, {
   useState,
 } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
-import { setSkillNodeLevel } from "../../appSlice";
+import {
+  setIsCheckingSkillRequirements,
+  setIsShowingHiddenModifiersInsideSkills,
+  setIsShowingHiddenSkills,
+  setSkillNodeLevel,
+} from "../../appSlice";
 import deepClone from "clone-deep";
 import "@silevis/reactgrid/styles.css";
 import localizationContext from "../../localizationContext";
@@ -263,14 +268,14 @@ const SkillsView = memo(
     const dispatch = useAppDispatch();
     const localized: Record<string, string> = useContext(localizationContext);
 
-    const [isShowingHiddentSkills, setIsShowingHiddenSkills] = useState(
-      initialSnapshot?.isShowingHiddentSkills ?? true,
+    const isShowingHiddentSkills = useAppSelector(
+      (state) => state.app.isShowingHiddenSkills,
     );
-    const [isShowingHiddenModifiersInsideSkills, setIsShowingHiddenModifiersInsideSkills] = useState(
-      initialSnapshot?.isShowingHiddenModifiersInsideSkills ?? true,
+    const isShowingHiddenModifiersInsideSkills = useAppSelector(
+      (state) => state.app.isShowingHiddenModifiersInsideSkills,
     );
-    const [isCheckingSkillRequirements, setIsCheckingSkillRequirements] = useState(
-      initialSnapshot?.isCheckingSkillRequirements ?? true,
+    const isCheckingSkillRequirements = useAppSelector(
+      (state) => state.app.isCheckingSkillRequirements,
     );
     const [factionFilter, setFactionFilter] = useState<string>(initialSnapshot?.factionFilter ?? "all");
     const [isEditMode, setIsEditMode] = useState(initialSnapshot?.isEditMode ?? false);
@@ -4403,7 +4408,7 @@ const SkillsView = memo(
                           type="checkbox"
                           checked={!!isShowingHiddentSkills}
                           onChange={() => {
-                            setIsShowingHiddenSkills(!isShowingHiddentSkills);
+                            dispatch(setIsShowingHiddenSkills(!isShowingHiddentSkills));
                           }}
                         ></input>
                         <span className="ml-2">{localized.showHiddenSkills}</span>
@@ -4418,7 +4423,9 @@ const SkillsView = memo(
                           type="checkbox"
                           checked={!!isShowingHiddenModifiersInsideSkills}
                           onChange={() => {
-                            setIsShowingHiddenModifiersInsideSkills(!isShowingHiddenModifiersInsideSkills);
+                            dispatch(
+                              setIsShowingHiddenModifiersInsideSkills(!isShowingHiddenModifiersInsideSkills),
+                            );
                           }}
                         ></input>
                         <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
@@ -4433,7 +4440,7 @@ const SkillsView = memo(
                           type="checkbox"
                           checked={!!isCheckingSkillRequirements}
                           onChange={() => {
-                            setIsCheckingSkillRequirements(!isCheckingSkillRequirements);
+                            dispatch(setIsCheckingSkillRequirements(!isCheckingSkillRequirements));
                           }}
                         ></input>
                         <span className="ml-2">{localized.checkSkillRequirements}</span>
