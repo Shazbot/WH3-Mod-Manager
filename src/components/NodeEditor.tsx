@@ -1019,28 +1019,19 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
 
   // Update column names when connected table changes
   React.useEffect(() => {
-    console.log(
-      `ColumnSelectionDropdownNode ${id}: useEffect triggered, connectedTableName=${
-        data.connectedTableName
-      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
-    );
-
     if (data.connectedTableName && data.DBNameToDBVersions) {
-      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
-      console.log(
-        `ColumnSelectionDropdownNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${
-          data.connectedTableName
-        }`
-      );
+      // If columnNames were explicitly provided by the connection handler (e.g. from a generaterows
+      // node with a specific tableVersion), trust them rather than re-deriving from defaultTableVersions.
+      if (data.columnNames && data.columnNames.length > 0) {
+        setColumnNames(data.columnNames);
+        return;
+      }
 
+      const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
         const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
         const tableFields = selectedVersion?.fields || [];
         const fieldNames = tableFields.map((field) => field.name);
-
-        console.log(
-          `ColumnSelectionDropdownNode ${id}: Setting ${fieldNames.length} column names from table version ${selectedVersion?.version}`
-        );
         setColumnNames(fieldNames);
 
         // Update the node data with new column names
@@ -1049,10 +1040,8 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
         });
         window.dispatchEvent(updateEvent);
       }
-    } else {
-      console.log(`ColumnSelectionDropdownNode ${id}: Missing connectedTableName or DBNameToDBVersions`);
     }
-  }, [data.connectedTableName, id]);
+  }, [data.connectedTableName, data.columnNames, id]);
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -1113,6 +1102,10 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
 
   // Update column names when connected table changes
   React.useEffect(() => {
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+      return;
+    }
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
@@ -1128,7 +1121,7 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.connectedTableName, id]);
+  }, [data.connectedTableName, data.columnNames, id]);
 
   const handleDropdown1Change = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -2589,7 +2582,11 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
       if (tableVersions && tableVersions.length > 0) {
         const selectedVersion = getTableVersion(data.connectedTableName, tableVersions, defaultTableVersions);
         const tableFields = selectedVersion?.fields || [];
-        const fieldNames = tableFields.map((field) => field.name);
+
+        // Prefer explicitly-provided columnNames (e.g. from generaterows with a specific tableVersion)
+        const fieldNames = (data.columnNames && data.columnNames.length > 0)
+          ? data.columnNames
+          : tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
         const updateEvent = new CustomEvent("nodeDataUpdate", {
@@ -2597,7 +2594,7 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
         });
         window.dispatchEvent(updateEvent);
 
-        // Auto-select key columns if no selection exists
+        // Auto-select key columns if no selection exists (uses schema metadata regardless)
         if (indexColumns.length === 0) {
           const keyColumns = tableFields.filter((field) => field.is_key).map((field) => field.name);
           if (keyColumns.length > 0) {
@@ -2610,7 +2607,7 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
         }
       }
     }
-  }, [data.connectedTableName, id]);
+  }, [data.connectedTableName, data.columnNames, id]);
 
   const handleColumnToggle = (columnName: string) => {
     const newIndexColumns = indexColumns.includes(columnName)
@@ -3296,6 +3293,10 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
 
   // Update column names when connected table changes
   React.useEffect(() => {
+    if (data.columnNames && data.columnNames.length > 0) {
+      setColumnNames(data.columnNames);
+      return;
+    }
     if (data.connectedTableName && data.DBNameToDBVersions) {
       const tableVersions = data.DBNameToDBVersions[data.connectedTableName];
       if (tableVersions && tableVersions.length > 0) {
@@ -3310,7 +3311,7 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
         window.dispatchEvent(updateEvent);
       }
     }
-  }, [data.connectedTableName, id]);
+  }, [data.connectedTableName, data.columnNames, id]);
 
   const handleColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -7477,6 +7478,59 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         }
       }
 
+      // If a generaterows/generaterowsschema node's outputTables changed, push new columns to downstream nodes
+      if (outputTables !== undefined) {
+        const sourceNode = nodes.find((n) => n.id === nodeId);
+        if (sourceNode && (sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema")) {
+          const connectedEdges = edges.filter((e) => e.source === nodeId);
+
+          connectedEdges.forEach((edge) => {
+            const outputConfig = (outputTables as Array<{ handleId: string; existingTableName: string; tableVersion?: number }>)
+              .find((ot) => ot.handleId === edge.sourceHandle);
+            if (!outputConfig?.existingTableName) return;
+
+            let cols: string[] = [];
+            let tableName: string | undefined;
+
+            if (outputConfig.existingTableName === "__custom_schema__") {
+              tableName = `_custom_schema_${nodeId}`;
+              cols = (sourceNode.data as any).customSchemaColumns || [];
+            } else {
+              tableName = outputConfig.existingTableName;
+              const tableVersions = DBNameToDBVersions?.[tableName];
+              if (tableVersions && tableVersions.length > 0) {
+                const schema =
+                  (outputConfig.tableVersion !== undefined
+                    ? tableVersions.find((v) => v.version === outputConfig.tableVersion)
+                    : undefined) ??
+                  getTableVersion(tableName, tableVersions, defaultTableVersions) ??
+                  tableVersions[0];
+                cols = schema.fields.map((f: any) => f.name);
+              }
+            }
+
+            if (tableName) {
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === edge.target) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        columnNames: cols,
+                        inputColumnNames: cols,
+                        connectedTableName: tableName,
+                      },
+                    };
+                  }
+                  return node;
+                })
+              );
+            }
+          });
+        }
+      }
+
       // If a customschema node's schemaColumns changed, update connected generaterows/generaterowsschema nodes
       if (schemaColumns !== undefined) {
         const sourceNode = nodes.find((n) => n.id === nodeId);
@@ -7780,7 +7834,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 if (tableVersions && tableVersions.length > 0) {
                   const schema =
                     (outputConfig.tableVersion !== undefined
-                      ? tableVersions.find((v) => v.version === outputConfig.tableVersion)
+                      ? tableVersions.find((v: DBVersion) => v.version === outputConfig.tableVersion)
                       : undefined) ??
                     getTableVersion(tableName, tableVersions, defaultTableVersions) ??
                     tableVersions[0];
@@ -8089,7 +8143,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   if (tableVersions && tableVersions.length > 0) {
                     const schema =
                       (outputConfig.tableVersion !== undefined
-                        ? tableVersions.find((v) => v.version === outputConfig.tableVersion)
+                        ? tableVersions.find((v: DBVersion) => v.version === outputConfig.tableVersion)
                         : undefined) ??
                       getTableVersion(tableName, tableVersions, defaultTableVersions) ??
                       tableVersions[0];
@@ -8179,7 +8233,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 if (tableVersions && tableVersions.length > 0) {
                   const schema =
                     (outputConfig.tableVersion !== undefined
-                      ? tableVersions.find((v) => v.version === outputConfig.tableVersion)
+                      ? tableVersions.find((v: DBVersion) => v.version === outputConfig.tableVersion)
                       : undefined) ??
                     getTableVersion(tableName, tableVersions, defaultTableVersions) ??
                     tableVersions[0];
