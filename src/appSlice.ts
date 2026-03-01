@@ -1358,6 +1358,9 @@ const appSlice = createSlice({
     setIsLocalizingSubtypes: (state: AppState, action: PayloadAction<boolean>) => {
       state.isLocalizingSubtypes = action.payload;
     },
+    setIsShowingSkillNodeSetNames: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isShowingSkillNodeSetNames = action.payload;
+    },
     setSkillNodeLevel: (state: AppState, action: PayloadAction<{ skillNodeId: string; level: number }>) => {
       state.skillNodesToLevel[action.payload.skillNodeId] = action.payload.level;
 
@@ -1484,6 +1487,7 @@ export const {
   setSkillsData,
   setPackSearchResults,
   setIsLocalizingSubtypes,
+  setIsShowingSkillNodeSetNames,
   setUserFlowOptions,
 
   // for DB viewer

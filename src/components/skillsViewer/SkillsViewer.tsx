@@ -1,11 +1,12 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
-import { useAppSelector } from "../../hooks";
+import { useAppDispatch, useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import SkillsTreeView from "./SkillsTreeView";
 import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
+import { setIsShowingSkillNodeSetNames } from "../../appSlice";
 
 type SkillTab = {
   id: string;
@@ -25,6 +26,7 @@ const SkillsViewer = memo(() => {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const pendingNewTab = useRef<{ subtype: string; subtypeIndex: number } | null>(null);
   const skillsViewRef = useRef<SkillsViewHandle>(null);
+  const dispatch = useAppDispatch();
 
   const debouncedFilterChange = debounce((val: string) => setDBTableFilter(val), 150);
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,6 +49,8 @@ const SkillsViewer = memo(() => {
   });
 
   const skillsData = useAppSelector((state) => state.app.skillsData);
+  const localized = useAppSelector((state) => state.app.currentLocalization);
+  const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
 
   // Snapshot the current tab before switching away
   const snapshotCurrentTab = useCallback(() => {
@@ -220,6 +224,17 @@ const SkillsViewer = memo(() => {
                 </button>
               </span>
             </span>
+            <label htmlFor="isShowingSkillNodeSetNamesCheckbox" className="ml-4 flex items-center text-sm">
+              <input
+                id="isShowingSkillNodeSetNamesCheckbox"
+                type="checkbox"
+                checked={!!isShowingSkillNodeSetNames}
+                onChange={() => dispatch(setIsShowingSkillNodeSetNames(!isShowingSkillNodeSetNames))}
+              ></input>
+              <span className="ml-2">
+                {localized.showSkillNodeSetNames || "Show Skill Node Set Names"}
+              </span>
+            </label>
           </div>
         </>
       )}
