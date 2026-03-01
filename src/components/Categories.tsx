@@ -217,9 +217,10 @@ const Categories = memo(() => {
   const dispatch = useAppDispatch();
   const localized = useLocalizations();
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
-  const [contextMenuAnchor, setContextMenuAnchor] = useState<{ x: number; y: number } | null>(null);
-  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [isContextMenuPositioned, setIsContextMenuPositioned] = useState(false);
+  const contextMenuAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const [contextMenuSelection, setContextMenuSelection] = useState<{ kind: "none" | "one" | "many"; mod?: Mod }>({
+    kind: "none",
+  });
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
 
   const [categoryFilter, setCategoryFilter] = useState<string>("");
@@ -299,36 +300,37 @@ const Categories = memo(() => {
     return selectedMods;
   }, [modByPath]);
 
-  const getCurrentlySelectedMods = useCallback(() => {
-    if (!hotRef || !hotRef.current) return [];
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const hot = hotRef.current.hotInstance as Handsontable;
-    if (!hot) return [];
+  const getSelectedModsPreview = useCallback(
+    (maxMods: number): { mods: Mod[]; isTruncated: boolean } => {
+      if (!hotRef || !hotRef.current) return { mods: [], isTruncated: false };
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const hot = hotRef.current.hotInstance as Handsontable;
+      if (!hot) return { mods: [], isTruncated: false };
 
-    const selectedRows: number[] = [];
-    for (const selection of selectedInTable) {
-      if (selection.row == -1) continue;
-      const rowMin = Math.min(selection.row, selection.row2);
-      const rowMax = Math.max(selection.row, selection.row2);
+      const selectedMods: Mod[] = [];
+      for (const selection of selectedInTable) {
+        if (selection.row == -1) continue;
+        const rowMin = Math.min(selection.row, selection.row2);
+        const rowMax = Math.max(selection.row, selection.row2);
 
-      for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
-    }
+        for (let row = rowMin; row <= rowMax; row++) {
+          const rowData = hot.getSourceDataAtRow(row) as CategoryRow | ModRow;
+          if (!rowData) continue;
+          if (isCategoryRow(rowData)) continue;
 
-    const selectedMods: Mod[] = [];
-    for (const i of selectedRows) {
-      const rowData = hot.getSourceDataAtRow(i) as ModRow | CategoryRow;
-      if (!rowData) continue;
-      if (!isCategoryRow(rowData)) {
-        const mod = modByPath.get(rowData.path);
-        if (mod) selectedMods.push(mod);
+          const mod = modByPath.get(rowData.path);
+          if (!mod) continue;
+          selectedMods.push(mod);
+
+          if (selectedMods.length >= maxMods) return { mods: selectedMods, isTruncated: true };
+        }
       }
-    }
 
-    return selectedMods;
-  }, [modByPath]);
-
-  // console.log("currentlySelectedMods:", getCurrentlySelectedMods());
+      return { mods: selectedMods, isTruncated: false };
+    },
+    [modByPath],
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const BadgesRowRenderer = useCallback((props: HotRendererProps) => {
@@ -574,30 +576,21 @@ const Categories = memo(() => {
     selectedInTable = [{ row: -1, column: 0, row2: 0, column2: 0 }];
     // console.log("clearing tracked selection");
     setIsContextMenuOpen(false);
-    setIsContextMenuPositioned(false);
-    setContextMenuAnchor(null);
-    setContextMenuPos(null);
+    setContextMenuSelection({ kind: "none" });
+    contextMenuAnchorRef.current = null;
   }, []);
-
-  const currentlySelectedMods = useMemo(
-    () => (isContextMenuOpen ? getCurrentlySelectedMods() : []),
-    [getCurrentlySelectedMods, isContextMenuOpen],
-  );
 
   useLayoutEffect(() => {
     if (!isContextMenuOpen) return;
-    if (!contextMenuAnchor) return;
-
     const menuEl = contextMenuRef.current;
-    if (!menuEl) {
-      setIsContextMenuPositioned(true);
-      return;
-    }
+    if (!menuEl) return;
+    const anchor = contextMenuAnchorRef.current;
+    if (!anchor) return;
 
     const rect = menuEl.getBoundingClientRect();
     const nextPos = computeContextMenuPosition({
-      anchorX: contextMenuAnchor.x,
-      anchorY: contextMenuAnchor.y,
+      anchorX: anchor.x,
+      anchorY: anchor.y,
       menuWidth: rect.width,
       menuHeight: rect.height,
       viewportWidth: window.innerWidth,
@@ -605,34 +598,36 @@ const Categories = memo(() => {
       padding: 8,
     });
 
-    setContextMenuPos(nextPos);
-    setIsContextMenuPositioned(true);
-  }, [contextMenuAnchor, currentlySelectedMods.length, isContextMenuOpen]);
+    menuEl.style.left = `${nextPos.x}px`;
+    menuEl.style.top = `${nextPos.y}px`;
+    menuEl.style.visibility = "visible";
+  }, [contextMenuSelection.kind, contextMenuSelection.mod?.path, isContextMenuOpen]);
 
   useEffect(() => {
     if (!isContextMenuOpen) return;
-    if (!contextMenuAnchor) return;
+    const anchor = contextMenuAnchorRef.current;
+    if (!anchor) return;
 
     const onResize = () => {
       const menuEl = contextMenuRef.current;
       if (!menuEl) return;
       const rect = menuEl.getBoundingClientRect();
-      setContextMenuPos(
-        computeContextMenuPosition({
-          anchorX: contextMenuAnchor.x,
-          anchorY: contextMenuAnchor.y,
-          menuWidth: rect.width,
-          menuHeight: rect.height,
-          viewportWidth: window.innerWidth,
-          viewportHeight: window.innerHeight,
-          padding: 8,
-        }),
-      );
+      const nextPos = computeContextMenuPosition({
+        anchorX: anchor.x,
+        anchorY: anchor.y,
+        menuWidth: rect.width,
+        menuHeight: rect.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        padding: 8,
+      });
+      menuEl.style.left = `${nextPos.x}px`;
+      menuEl.style.top = `${nextPos.y}px`;
     };
 
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [contextMenuAnchor, isContextMenuOpen]);
+  }, [isContextMenuOpen]);
 
   const onSelectCategoryChange = (
     newValue: SingleValue<CategorySelectType>,
@@ -735,11 +730,6 @@ const Categories = memo(() => {
             `${isContextMenuOpen ? "" : "hidden"}` +
             ` fixed w-52 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 z-[300]`
           }
-          style={{
-            left: contextMenuPos?.x ?? 0,
-            top: contextMenuPos?.y ?? 0,
-            visibility: isContextMenuPositioned ? "visible" : "hidden",
-          }}
           ref={contextMenuRef}
         >
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
@@ -763,16 +753,15 @@ const Categories = memo(() => {
               ></Creatable>
             </li>
           </ul>
-          {currentlySelectedMods.length > 1 && (
+          {contextMenuSelection.kind === "many" && (
             <div>
               <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
                 <li>
                   <a
                     onClick={() => {
+                      const selectedMods = getSelectedMods();
                       dispatch(
-                        setAreModsEnabled(
-                          currentlySelectedMods.map((mod) => ({ mod: mod, isEnabled: true })),
-                        ),
+                        setAreModsEnabled(selectedMods.map((mod) => ({ mod: mod, isEnabled: true }))),
                       );
                       setIsContextMenuOpen(false);
                     }}
@@ -785,10 +774,9 @@ const Categories = memo(() => {
                 <li>
                   <a
                     onClick={() => {
+                      const selectedMods = getSelectedMods();
                       dispatch(
-                        setAreModsEnabled(
-                          currentlySelectedMods.map((mod) => ({ mod: mod, isEnabled: false })),
-                        ),
+                        setAreModsEnabled(selectedMods.map((mod) => ({ mod: mod, isEnabled: false }))),
                       );
                       setIsContextMenuOpen(false);
                     }}
@@ -801,9 +789,9 @@ const Categories = memo(() => {
               </ul>
             </div>
           )}
-          {currentlySelectedMods.length == 1 && (
+          {contextMenuSelection.kind === "one" && contextMenuSelection.mod && (
             <ModDropdownOptions
-              mod={currentlySelectedMods[0]}
+              mod={contextMenuSelection.mod}
               mods={mods}
               visibleMods={mods}
             ></ModDropdownOptions>
@@ -945,35 +933,22 @@ const Categories = memo(() => {
           ev.preventDefault();
           ev.stopPropagation();
           if (!hotRef || !hotRef.current) return;
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          const hot = hotRef.current.hotInstance as Handsontable;
-          if (!hot) return;
-
-          const selectedRows: number[] = [];
-          for (const selection of selectedInTable) {
-            if (selection.row == -1) continue;
-            const rowMin = Math.min(selection.row, selection.row2);
-            const rowMax = Math.max(selection.row, selection.row2);
-
-            for (let i = rowMin; i <= rowMax; i++) selectedRows.push(i);
+          const menuEl = contextMenuRef.current;
+          if (menuEl) {
+            menuEl.style.visibility = "hidden";
+            menuEl.style.left = `${ev.clientX}px`;
+            menuEl.style.top = `${ev.clientY}px`;
           }
 
-          const selectedMods: Mod[] = [];
-          for (const i of selectedRows) {
-            const rowData = hot.getSourceDataAtRow(i) as ModRow | CategoryRow;
-            if (!rowData) continue;
-            if (!isCategoryRow(rowData)) {
-              const mod = mods.find((mod) => mod.path == rowData.path);
-              if (mod) selectedMods.push(mod);
-            }
-          }
-          // console.log("CSM:", getCurrentlySelectedMods());
-          // console.log("NEW CSM:", selectedMods);
-          // setCurrentlySelectedMods(selectedMods);
-          setIsContextMenuPositioned(false);
-          setContextMenuAnchor({ x: ev.clientX, y: ev.clientY });
-          setContextMenuPos({ x: ev.clientX, y: ev.clientY });
+          contextMenuAnchorRef.current = { x: ev.clientX, y: ev.clientY };
+          const preview = getSelectedModsPreview(2);
+          const selection =
+            preview.mods.length === 0
+              ? ({ kind: "none" } as const)
+              : preview.mods.length === 1 && !preview.isTruncated
+                ? ({ kind: "one", mod: preview.mods[0] } as const)
+                : ({ kind: "many" } as const);
+          setContextMenuSelection(selection);
           setIsContextMenuOpen(true);
         }}
         className="overflow-hidden mr-10 ht-theme-main-dark"
