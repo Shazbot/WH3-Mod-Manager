@@ -124,10 +124,25 @@ const AbilityTooltipCard = ({
         </div>
       )}
 
+      {ability.bonuses.length > 0 && (
+        <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
+          {ability.bonuses.map((bonus) => (
+            <div key={bonus.key} className={bonus.isPositive ? "text-lime-300" : "text-red-300"}>
+              <span className="text-yellow-200">➤</span> {bonus.label}: {bonus.valueText}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
         {ability.stats.range != undefined && (
           <div>
             <span className="text-gray-300">Range:</span> {formatNumber(ability.stats.range, "m")}
+          </div>
+        )}
+        {ability.stats.effectRange != undefined && (
+          <div>
+            <span className="text-gray-300">Effect range:</span> {formatNumber(ability.stats.effectRange, "m")}
           </div>
         )}
         {ability.stats.cooldown != undefined && (
@@ -150,6 +165,11 @@ const AbilityTooltipCard = ({
             <span className="text-gray-300">Miscast Chance:</span> {formatNumber(ability.stats.miscastChance, "%")}
           </div>
         )}
+        {ability.affectedUnitsText && (
+          <div>
+            <span className="text-gray-300">Affected units:</span> {ability.affectedUnitsText}
+          </div>
+        )}
       </div>
 
       {ability.additionalUiEffects.length > 0 && (
@@ -168,4 +188,3 @@ const AbilityTooltipCard = ({
 };
 
 export default AbilityTooltipCard;
-

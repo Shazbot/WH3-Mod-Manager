@@ -21,6 +21,12 @@ type AbilityTooltipBuildParams = {
       rechargeTime: number;
       activeTime: number;
       effectRange: number;
+      affectSelf: boolean;
+      numEffectedFriendlyUnits: number;
+      numEffectedEnemyUnits: number;
+      targetFriends: boolean;
+      targetEnemies: boolean;
+      targetSelf: boolean;
       manaCost: number;
       miscastChance: number;
       minRange: number;
@@ -71,7 +77,18 @@ type AbilityTooltipBuildParams = {
       maxDamagedEntities: number;
       hpChangeFrequency: number;
       duration: number;
+      fatigueChangeRatio: number;
+      affectsAllies: boolean;
+      affectsEnemies: boolean;
     }
+  >;
+  phaseStatEffectsByPhaseId: Record<
+    string,
+    {
+      stat: string;
+      value: number;
+      how: string;
+    }[]
   >;
   kvDirectDamageMinUnary: number;
   kvDirectDamageLarge: number;
@@ -103,6 +120,12 @@ const asNumber = (value: string | number | undefined): number => {
 };
 
 const asOptionalPositive = (value: number): number | undefined => (value > 0 ? value : undefined);
+const asBool = (value: string | boolean | number | undefined): boolean => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+  if (!value) return false;
+  return value.toString().toLowerCase() === "true" || value === "1";
+};
 
 const toPercent = (numerator: number, denominator: number) =>
   denominator > 0 ? Math.round((numerator / denominator) * 100) : undefined;
@@ -148,6 +171,38 @@ const resolveAbilityFromEnableMapping = (
   const isOvercastEnable = /^enable_over/i.test(mapping.bonusValueId);
   if (!isOvercastEnable || !baseAbility?.overpowerOption) return mapping.unitAbilityKey;
   return baseAbility.overpowerOption;
+};
+
+const formatBonusValueText = (how: string, value: number, key: string) => {
+  if (how === "mult") {
+    const deltaPct = Math.round((value - 1) * 100);
+    const sign = deltaPct > 0 ? "+" : "";
+    return `${sign}${deltaPct}%`;
+  }
+  const rounded = Number.isInteger(value) ? value : Math.round(value * 100) / 100;
+  if (key.startsWith("scalar_")) {
+    const sign = rounded > 0 ? "+" : "";
+    return `${sign}${rounded}%`;
+  }
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded}`;
+};
+
+const resolveAffectedUnitsText = (
+  ability: AbilityTooltipBuildParams["unitSpecialAbilitiesByKey"][string],
+  phases: AbilityTooltipBuildParams["phasesById"],
+  phaseIds: string[],
+) => {
+  const phaseData = phaseIds.map((phaseId) => phases[phaseId]).filter((phase) => !!phase);
+  const affectsAlliesFromPhase = phaseData.some((phase) => asBool(phase.affectsAllies));
+  const affectsEnemiesFromPhase = phaseData.some((phase) => asBool(phase.affectsEnemies));
+  const affectsAllies = ability.targetFriends || ability.numEffectedFriendlyUnits !== 0 || affectsAlliesFromPhase;
+  const affectsEnemies = ability.targetEnemies || ability.numEffectedEnemyUnits !== 0 || affectsEnemiesFromPhase;
+  if (!affectsAllies && !affectsEnemies) return undefined;
+  const groupLabel = affectsAllies && affectsEnemies ? "all units" : affectsAllies ? "allies" : "enemies";
+  const count = affectsEnemies ? ability.numEffectedEnemyUnits : ability.numEffectedFriendlyUnits;
+  const scopeLabel = count < 0 ? "range(all)" : `range(${count})`;
+  return `Affects ${groupLabel} in ${scopeLabel}`;
 };
 
 export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildParams) => {
@@ -227,6 +282,7 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
       loreIconPath: loreGroupIconPath,
       typeIconPath,
       stats,
+      bonuses: [],
       additionalUiEffects: [],
     };
 
@@ -296,6 +352,47 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
     }
 
     const phaseIds = params.abilityToPhaseIds[abilityKey] || [];
+
+    const bonuses: AbilityTooltipBonusData[] = [];
+    for (const phaseId of phaseIds) {
+      const phaseStatEffects = params.phaseStatEffectsByPhaseId[phaseId] || [];
+      for (const phaseStatEffect of phaseStatEffects) {
+        const statLabel = localize(
+          `unit_stat_localisations_onscreen_name_${phaseStatEffect.stat}`,
+          params.getLoc,
+          phaseStatEffect.stat,
+          true,
+        );
+        bonuses.push({
+          key: `${phaseId}:${phaseStatEffect.stat}:${phaseStatEffect.how}`,
+          label: statLabel,
+          valueText: formatBonusValueText(phaseStatEffect.how, phaseStatEffect.value, phaseStatEffect.stat),
+          isPositive:
+            (phaseStatEffect.how === "mult" && phaseStatEffect.value >= 1) ||
+            (phaseStatEffect.how !== "mult" && phaseStatEffect.value >= 0),
+        });
+      }
+
+      const phase = params.phasesById[phaseId];
+      if (phase && phase.fatigueChangeRatio !== 0) {
+        const fatiguePerSecond = Math.round(phase.fatigueChangeRatio * 100);
+        const sign = fatiguePerSecond > 0 ? "+" : "";
+        bonuses.push({
+          key: `${phaseId}:fatigue_change_ratio`,
+          label: localize(
+            "random_localisation_strings_string_fatigue",
+            params.getLoc,
+            "Vigour per second",
+            true,
+          ),
+          valueText: `${sign}${fatiguePerSecond}%`,
+          isPositive: fatiguePerSecond >= 0,
+        });
+      }
+    }
+    tooltip.bonuses = bonuses;
+    tooltip.affectedUnitsText = resolveAffectedUnitsText(unitSpecialAbility, params.phasesById, phaseIds);
+
     let minDps: number | undefined;
     let maxDps: number | undefined;
     let directDamageDuration: number | undefined;
@@ -355,4 +452,3 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
     iconPathsToLoad: Array.from(iconPathsToLoad),
   };
 };
-

@@ -511,6 +511,13 @@ declare global {
     effectState?: string;
   }
 
+  interface AbilityTooltipBonusData {
+    key: string;
+    label: string;
+    valueText: string;
+    isPositive: boolean;
+  }
+
   interface AbilityTooltipData {
     key: string;
     name: string;
@@ -534,6 +541,8 @@ declare global {
     projectile?: AbilityTooltipProjectileData;
     vortex?: AbilityTooltipVortexData;
     directDamage?: AbilityTooltipDirectDamageData;
+    bonuses: AbilityTooltipBonusData[];
+    affectedUnitsText?: string;
     additionalUiEffects: AbilityTooltipAdditionalUiEffectData[];
   }
 
