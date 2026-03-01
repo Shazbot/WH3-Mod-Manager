@@ -15,6 +15,7 @@ const collator = new Intl.Collator("en");
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
+  const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
   const skillsData = useAppSelector((state) => state.app.skillsData);
   if (!skillsData || !skillsData.subtypes) {
     console.log("skillsData or skillsData.subtypes missing!");
@@ -44,6 +45,32 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
 
   // console.log(result);
   const data = flattenTree(result);
+
+  const getSkillNodeSetKey = (metadata: TreeMetadata) =>
+    skillsData.subtypesToSet?.[metadata.subtype]?.[metadata.subtypeIndex] ?? metadata.subtype;
+
+  const getNodeLabel = (element: INode) => {
+    const metadata = element.metadata as TreeMetadata;
+    if (isShowingSkillNodeSetNames) {
+      return getSkillNodeSetKey(metadata);
+    }
+
+    const subtypeName = isLocalizingSubtypes
+      ? (skillsData.subtypesToLocalizedNames[metadata.subtype] ?? metadata.subtype)
+      : metadata.subtype;
+    const indexSuffix =
+      (skillsData.subtypeToNumSets[metadata.subtype] ?? 0) > 1 ? ` ${metadata.subtypeIndex + 1}` : "";
+    return `${subtypeName}${indexSuffix}`;
+  };
+
+  const getNodeTooltip = (element: INode) => {
+    const metadata = element.metadata as TreeMetadata;
+    if (isShowingSkillNodeSetNames) {
+      return metadata.subtype;
+    }
+
+    return getSkillNodeSetKey(metadata);
+  };
 
   const onTreeSelect = (props: ITreeViewOnSelectProps) => {
     console.log("SkillsTreeView onTreeSelect");
@@ -94,7 +121,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
 
     const res = childNodes.reduce((isShown, currentNode) => {
       if (!currentNode) return isShown;
-      return isShown || currentNode.name.includes(props.tableFilter) || areNodeChildrenShown(currentNode);
+      return isShown || getNodeLabel(currentNode).includes(props.tableFilter) || areNodeChildrenShown(currentNode);
     }, false);
 
     return res;
@@ -108,7 +135,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     let isParentFiltered = false;
     const parentNode = data.find((node) => node.id == element.parent);
     if (parentNode)
-      isParentFiltered = parentNode.name.includes(props.tableFilter) || isAnyNodeParentShown(parentNode);
+      isParentFiltered = getNodeLabel(parentNode).includes(props.tableFilter) || isAnyNodeParentShown(parentNode);
 
     return isParentFiltered;
   };
@@ -117,7 +144,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     if (props.tableFilter == "") return false;
 
     return !(
-      element.name.includes(props.tableFilter) ||
+      getNodeLabel(element).includes(props.tableFilter) ||
       areNodeChildrenShown(element) ||
       isAnyNodeParentShown(element)
     );
@@ -176,19 +203,9 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
                   props.onDoubleClick?.(metadata.subtype, metadata.subtypeIndex);
                 }}
                 className="relative hover:underline cursor-pointer"
+                title={getNodeTooltip(element)}
               >
-                {/* <span onClick={(e) => handleSelect(e)} className="absolute">
-                  {element.name}
-                </span> */}
-                {`${
-                  isLocalizingSubtypes
-                    ? (skillsData.subtypesToLocalizedNames[element.name] ?? element.name)
-                    : element.name
-                }${
-                  skillsData.subtypeToNumSets[(element.metadata as TreeMetadata).subtype] > 1
-                    ? ` ${(element.metadata as TreeMetadata).subtypeIndex + 1}`
-                    : ""
-                }`}
+                {getNodeLabel(element)}
               </span>
             </div>
           );

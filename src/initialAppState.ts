@@ -80,6 +80,7 @@ const initialState = {
   isModTagPickerOpen: false,
   currentModToUpload: undefined,
   isLocalizingSubtypes: false,
+  isShowingSkillNodeSetNames: false,
   currentLocalization: {},
   userFlowOptions: {},
 

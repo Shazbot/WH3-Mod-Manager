@@ -447,6 +447,7 @@
   "upload": "Upload",
   "showHiddenSkills": "Show Hidden Skills",
   "showHiddenModifiersInsideSkills": "Show Hidden Modifiers Inside Skills",
+  "showSkillNodeSetNames": "Show Skill Node Set Names",
   "options": "Options",
   "relaunchingGame": "Auto-relaunching game (click to cancel)...",
   "queueUpRelaunchingGame": "Click to queue up relaunching the game once the game is closed.",

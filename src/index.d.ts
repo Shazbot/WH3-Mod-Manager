@@ -177,6 +177,7 @@ declare global {
 
     //skills view
     isLocalizingSubtypes: boolean;
+    isShowingSkillNodeSetNames: boolean;
     skillNodesToLevel: Record<string, number>;
     currentRank: number;
   }
@@ -452,6 +453,7 @@ declare global {
     currentSubtypeIndex: number;
     currentSkills: Skill[];
     subtypeToNumSets: subtypeToNumSets;
+    subtypesToSet?: Record<string, string[]>;
     nodeLinks: Record<
       string,
       {
