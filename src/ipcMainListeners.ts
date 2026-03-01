@@ -6344,9 +6344,7 @@ export const registerIpcMainListeners = (
                 signatureHash: flowExecutionSignatureHash,
                 createdAt: Date.now(),
                 modsWithFlows: enabledModsWithFlows.map((mod) => ({ path: mod.path, name: mod.name })),
-                createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))].sort(
-                  (first, second) => first.localeCompare(second),
-                ),
+                createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))],
               };
               await saveFlowExecutionCache();
             } else {
