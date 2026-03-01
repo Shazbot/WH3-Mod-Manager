@@ -178,6 +178,9 @@ declare global {
     //skills view
     isLocalizingSubtypes: boolean;
     isShowingSkillNodeSetNames: boolean;
+    isShowingHiddenSkills: boolean;
+    isShowingHiddenModifiersInsideSkills: boolean;
+    isCheckingSkillRequirements: boolean;
     skillNodesToLevel: Record<string, number>;
     currentRank: number;
   }
@@ -204,6 +207,10 @@ declare global {
     | "packDataOverwrites"
     | "isCompatCheckingVanillaPacks"
     | "userFlowOptions"
+    | "isShowingSkillNodeSetNames"
+    | "isShowingHiddenSkills"
+    | "isShowingHiddenModifiersInsideSkills"
+    | "isCheckingSkillRequirements"
   > &
     AppStateMainProcessExtras;
 
