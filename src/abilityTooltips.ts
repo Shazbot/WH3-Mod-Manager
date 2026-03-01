@@ -99,6 +99,7 @@ type AbilityTooltipBuildParams = {
       how: string;
     }[]
   >;
+  uiUnitStatIconsByStat: Record<string, string>;
   kvDirectDamageMinUnary: number;
   kvDirectDamageLarge: number;
   abilityToAdditionalUiEffectKeys: Record<string, string[]>;
@@ -431,6 +432,8 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
           phaseStatEffect.stat,
           true,
         );
+        const statIconPath = normalizeUiPath(params.uiUnitStatIconsByStat[phaseStatEffect.stat]);
+        if (statIconPath) iconPathsToLoad.add(statIconPath);
         bonuses.push({
           key: `${phaseId}:${phaseStatEffect.stat}:${phaseStatEffect.how}`,
           label: statLabel,
@@ -438,6 +441,7 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
           isPositive:
             (phaseStatEffect.how === "mult" && phaseStatEffect.value >= 1) ||
             (phaseStatEffect.how !== "mult" && phaseStatEffect.value >= 0),
+          iconPath: statIconPath,
         });
       }
 
