@@ -1,5 +1,5 @@
-import { AmendedSchemaField } from "./packFileTypes";
-import { SkillsDataCacheCore } from "./skillsDataCache";
+import { AmendedSchemaField } from "../packFileTypes";
+import { SkillsDataCacheCore } from "./cache";
 
 export type GetTableRowDataFn = (
   packsTableData: PackViewData[],
