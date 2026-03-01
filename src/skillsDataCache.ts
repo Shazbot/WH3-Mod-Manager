@@ -160,3 +160,33 @@ export const getDefaultSkillsSubtype = (subtypesToSet: Record<string, string[]>)
 
 export const cloneSkillsDataCore = (core: SkillsDataCacheCore): SkillsDataCacheCore =>
   JSON.parse(JSON.stringify(core)) as SkillsDataCacheCore;
+
+export const createEmptySkillsDataCore = (): SkillsDataCacheCore => ({
+  subtypesToSet: {},
+  subtypeAndSets: [],
+  setToNodes: {},
+  nodeLinks: {},
+  nodeToSkill: {},
+  skillsToEffects: {},
+  skills: [],
+  effectsToEffectData: {},
+  nodeToSkillLocks: {},
+  effectToUnitAbilityEnables: {},
+  unitAbilitiesByKey: {},
+  unitSpecialAbilitiesByKey: {},
+  bombardmentsByKey: {},
+  projectilesByKey: {},
+  explosionsByKey: {},
+  vortexesByKey: {},
+  abilityToPhaseIds: {},
+  phasesById: {},
+  phaseStatEffectsByPhaseId: {},
+  uiUnitStatIconsByStat: {},
+  kvDirectDamageMinUnary: 0,
+  kvDirectDamageLarge: 0,
+  abilityToAdditionalUiEffectKeys: {},
+  additionalUiEffectsByKey: {},
+  abilityToGroupKeys: {},
+  specialAbilityGroupsByKey: {},
+  abilityToAutoDeactivateFlags: {},
+});
