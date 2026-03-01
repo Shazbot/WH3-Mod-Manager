@@ -659,8 +659,7 @@ const PresetsTab = memo(() => {
 
   const onRemoveAllFromPreset = useCallback(() => {
     if (visibleRemovableEnabledModNames.length < 1) return;
-    const shouldExitPlaceMode =
-      !!(placeMode && visibleRemovableEnabledModNames.includes(placeMode.modName));
+    const shouldExitPlaceMode = !!(placeMode && visibleRemovableEnabledModNames.includes(placeMode.modName));
     removeModNamesFromPreset(visibleRemovableEnabledModNames);
     setSelectedInPresetNames(new Set());
     if (shouldExitPlaceMode) {
@@ -847,7 +846,7 @@ const PresetsTab = memo(() => {
     : null;
 
   return (
-    <div className="max-w-[100rem] mx-auto px-4 py-4 text-slate-100 height-without-topbar-and-padding">
+    <div className="max-w-[100rem] mx-auto px-4 py-4 text-slate-100 h-full flex flex-col">
       <div className="grid grid-cols-12 gap-4 items-end">
         <div className="col-span-4">
           <div className="flex items-center gap-2">
@@ -931,8 +930,8 @@ const PresetsTab = memo(() => {
         </div>
       )}
 
-      <div className="mt-3 grid grid-cols-12 gap-4">
-        <div className="col-span-5">
+      <div className="mt-3 grid grid-cols-12 gap-4 flex-1 min-h-0">
+        <div className="col-span-5 flex flex-col min-h-0">
           <div className="mb-2 flex items-center justify-between">
             <span>{localized.inPreset || "In preset"}</span>
             <div className="flex items-center gap-2">
@@ -978,7 +977,7 @@ const PresetsTab = memo(() => {
             disabled={!!placeMode}
           />
           <div
-            className="h-[70vh] overflow-y-auto rounded border border-slate-700 bg-slate-900/40"
+            className="flex-1 min-h-0 overflow-y-auto rounded border border-slate-700 bg-slate-900/40"
             onContextMenu={(event) => {
               event.preventDefault();
               setSelectedInPresetNames(new Set());
@@ -1155,7 +1154,7 @@ const PresetsTab = memo(() => {
           </button>
         </div>
 
-        <div className="col-span-5">
+        <div className="col-span-5 flex flex-col min-h-0">
           <div className="mb-2 flex items-center justify-between">
             <span>{localized.notInPreset || "Not in preset"}</span>
             <span className="text-xs opacity-80">
@@ -1185,7 +1184,7 @@ const PresetsTab = memo(() => {
             disabled={!!placeMode}
           />
           <div
-            className="h-[70vh] overflow-y-auto rounded border border-slate-700 bg-slate-900/40"
+            className="flex-1 min-h-0 overflow-y-auto rounded border border-slate-700 bg-slate-900/40"
             onContextMenu={(event) => {
               event.preventDefault();
               setSelectedNotInPresetNames(new Set());
