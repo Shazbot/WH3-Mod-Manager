@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "Genere filas usando un esquema personalizado con rango de contador",
   "nodeEditorNodeReadTSVFromPackDescription": "Lee el archivo TSV del paquete usando un esquema personalizado",
   "visualsTab": "Imágenes",
-  "nodeEditorTab": "Editor de nodos"
+  "nodeEditorTab": "Editor de nodos",
+  "showSkillNodeSetNames": "Mostrar nombres de conjuntos de nodos de habilidades"
 }

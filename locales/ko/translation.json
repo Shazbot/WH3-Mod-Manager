@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "카운터 범위가 있는 사용자 정의 스키마를 사용하여 행 생성",
   "nodeEditorNodeReadTSVFromPackDescription": "사용자 정의 스키마를 사용하여 팩에서 TSV 파일을 읽습니다.",
   "visualsTab": "비주얼",
-  "nodeEditorTab": "노드 편집기"
+  "nodeEditorTab": "노드 편집기",
+  "showSkillNodeSetNames": "스킬 노드 세트 이름 표시"
 }

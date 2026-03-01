@@ -875,5 +875,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "Gere linhas usando esquema personalizado com intervalo de contadores",
   "nodeEditorNodeReadTSVFromPackDescription": "Lê o arquivo TSV do pacote usando esquema personalizado",
   "visualsTab": "Visuais",
-  "nodeEditorTab": "Editor de nós"
+  "nodeEditorTab": "Editor de nós",
+  "showSkillNodeSetNames": "Mostrar nomes de conjuntos de nós de habilidades"
 }

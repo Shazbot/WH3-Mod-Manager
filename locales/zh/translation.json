@@ -797,5 +797,6 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "使用具有计数器范围的自定义架构生成行",
   "nodeEditorNodeReadTSVFromPackDescription": "使用自定义模式从包中读取 TSV 文件",
   "visualsTab": "视觉效果",
-  "nodeEditorTab": "节点编辑器"
+  "nodeEditorTab": "节点编辑器",
+  "showSkillNodeSetNames": "显示技能节点集名称"
 }
