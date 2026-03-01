@@ -45,6 +45,12 @@ interface AppData {
         rechargeTime: number;
         activeTime: number;
         effectRange: number;
+        affectSelf: boolean;
+        numEffectedFriendlyUnits: number;
+        numEffectedEnemyUnits: number;
+        targetFriends: boolean;
+        targetEnemies: boolean;
+        targetSelf: boolean;
         manaCost: number;
         miscastChance: number;
         minRange: number;
@@ -95,7 +101,18 @@ interface AppData {
         maxDamagedEntities: number;
         hpChangeFrequency: number;
         duration: number;
+        fatigueChangeRatio: number;
+        affectsAllies: boolean;
+        affectsEnemies: boolean;
       }
+    >;
+    phaseStatEffectsByPhaseId: Record<
+      string,
+      {
+        stat: string;
+        value: number;
+        how: string;
+      }[]
     >;
     kvDirectDamageMinUnary: number;
     kvDirectDamageLarge: number;

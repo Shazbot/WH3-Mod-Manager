@@ -618,6 +618,7 @@ export const registerIpcMainListeners = (
       "_kv_unit_ability_scaling_rules_tables",
       "special_ability_to_special_ability_phase_junctions_tables",
       "special_ability_phases_tables",
+      "special_ability_phase_stat_effects_tables",
       "unit_abilities_to_additional_ui_effects_juncs_tables",
       "unit_abilities_additional_ui_effects_tables",
       "special_ability_groups_to_unit_abilities_junctions_tables",
@@ -968,6 +969,7 @@ export const registerIpcMainListeners = (
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : 0;
     };
+    const parseBool = (value: string | undefined) => value == "true" || value == "1";
 
     const effectToUnitAbilityEnables = {} as Record<string, AbilityEnableMapping[]>;
     getTableRowData(packsTableData, "effect_bonus_value_unit_ability_junctions_tables", (schemaFieldRow) => {
@@ -1017,6 +1019,12 @@ export const registerIpcMainListeners = (
         rechargeTime: number;
         activeTime: number;
         effectRange: number;
+        affectSelf: boolean;
+        numEffectedFriendlyUnits: number;
+        numEffectedEnemyUnits: number;
+        targetFriends: boolean;
+        targetEnemies: boolean;
+        targetSelf: boolean;
         manaCost: number;
         miscastChance: number;
         minRange: number;
@@ -1035,6 +1043,16 @@ export const registerIpcMainListeners = (
         rechargeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "recharge_time")?.resolvedKeyValue),
         activeTime: parseNumber(schemaFieldRow.find((sF) => sF.name == "active_time")?.resolvedKeyValue),
         effectRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "effect_range")?.resolvedKeyValue),
+        affectSelf: parseBool(schemaFieldRow.find((sF) => sF.name == "affect_self")?.resolvedKeyValue),
+        numEffectedFriendlyUnits: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "num_effected_friendly_units")?.resolvedKeyValue,
+        ),
+        numEffectedEnemyUnits: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "num_effected_enemy_units")?.resolvedKeyValue,
+        ),
+        targetFriends: parseBool(schemaFieldRow.find((sF) => sF.name == "target_friends")?.resolvedKeyValue),
+        targetEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "target_enemies")?.resolvedKeyValue),
+        targetSelf: parseBool(schemaFieldRow.find((sF) => sF.name == "target_self")?.resolvedKeyValue),
         manaCost: parseNumber(schemaFieldRow.find((sF) => sF.name == "mana_cost")?.resolvedKeyValue),
         miscastChance: parseNumber(schemaFieldRow.find((sF) => sF.name == "miscast_chance")?.resolvedKeyValue),
         minRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "min_range")?.resolvedKeyValue),
@@ -1143,6 +1161,9 @@ export const registerIpcMainListeners = (
         maxDamagedEntities: number;
         hpChangeFrequency: number;
         duration: number;
+        fatigueChangeRatio: number;
+        affectsAllies: boolean;
+        affectsEnemies: boolean;
       }
     >;
     getTableRowData(packsTableData, "special_ability_phases_tables", (schemaFieldRow) => {
@@ -1158,7 +1179,30 @@ export const registerIpcMainListeners = (
           schemaFieldRow.find((sF) => sF.name == "hp_change_frequency")?.resolvedKeyValue,
         ),
         duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
+        fatigueChangeRatio: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "fatigue_change_ratio")?.resolvedKeyValue,
+        ),
+        affectsAllies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_allies")?.resolvedKeyValue),
+        affectsEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_enemies")?.resolvedKeyValue),
       };
+    });
+
+    const phaseStatEffectsByPhaseId = {} as Record<string, { stat: string; value: number; how: string }[]>;
+    getTableRowData(packsTableData, "special_ability_phase_stat_effects_tables", (schemaFieldRow) => {
+      const phase = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
+      const stat = schemaFieldRow.find((sF) => sF.name == "stat")?.resolvedKeyValue;
+      const value = parseNumber(schemaFieldRow.find((sF) => sF.name == "value")?.resolvedKeyValue);
+      const how = schemaFieldRow.find((sF) => sF.name == "how")?.resolvedKeyValue;
+      if (!phase || !stat || !how) return;
+      phaseStatEffectsByPhaseId[phase] = phaseStatEffectsByPhaseId[phase] || [];
+      const existing = phaseStatEffectsByPhaseId[phase].find(
+        (iterEffect) => iterEffect.stat == stat && iterEffect.how == how,
+      );
+      if (existing) {
+        existing.value = value;
+      } else {
+        phaseStatEffectsByPhaseId[phase].push({ stat, value, how });
+      }
     });
 
     let kvDirectDamageMinUnary = 0.5;
@@ -1360,6 +1404,7 @@ export const registerIpcMainListeners = (
       vortexesByKey,
       abilityToPhaseIds,
       phasesById,
+      phaseStatEffectsByPhaseId,
       kvDirectDamageMinUnary,
       kvDirectDamageLarge,
       abilityToAdditionalUiEffectKeys,
@@ -1413,6 +1458,7 @@ export const registerIpcMainListeners = (
       vortexesByKey,
       abilityToPhaseIds,
       phasesById,
+      phaseStatEffectsByPhaseId,
       kvDirectDamageMinUnary,
       kvDirectDamageLarge,
       abilityToAdditionalUiEffectKeys,
@@ -1563,6 +1609,7 @@ export const registerIpcMainListeners = (
         vortexesByKey: cachedSkillsData.vortexesByKey,
         abilityToPhaseIds: cachedSkillsData.abilityToPhaseIds,
         phasesById: cachedSkillsData.phasesById,
+        phaseStatEffectsByPhaseId: cachedSkillsData.phaseStatEffectsByPhaseId,
         kvDirectDamageMinUnary: cachedSkillsData.kvDirectDamageMinUnary,
         kvDirectDamageLarge: cachedSkillsData.kvDirectDamageLarge,
         abilityToAdditionalUiEffectKeys: cachedSkillsData.abilityToAdditionalUiEffectKeys,
