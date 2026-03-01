@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, DragEvent, useContext, useMemo, useEffect } from "react";
+import React, { useCallback, useState, useRef, DragEvent, useMemo, useEffect } from "react";
 import {
   ReactFlow,
   Node,
@@ -21,7 +21,7 @@ import { useAppSelector, useAppDispatch } from "../hooks";
 import { DBVersion, SCHEMA_FIELD_TYPE } from "../packFileTypes";
 import { addToast } from "../appSlice";
 import { SupportedGames } from "../supportedGames";
-import localizationContext from "../localizationContext";
+import { useLocalizations } from "../localizationContext";
 
 // Create context for default table versions
 const DefaultTableVersionsContext = React.createContext<Record<string, number> | undefined>(undefined);
@@ -617,6 +617,7 @@ export type FlowOption = TextboxFlowOption | RangeSliderFlowOption | CheckboxFlo
 
 // Custom PackFiles dropdown node component
 const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const currentGame = useAppSelector((state) => state.app.currentGame);
 
   // Get base game pack name
@@ -687,7 +688,7 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
         onChange={handleDropdownChange}
         className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
       >
-        <option value="">Select a pack...</option>
+        <option value="">{localized.nodeEditorSelectPack || "Select a pack..."}</option>
         {allMods.map((mod) => (
           <option key={mod.name} value={mod.name}>
             {mod.humanName || mod.name}
@@ -703,11 +704,15 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
             onChange={handleCheckboxChange}
             className="w-4 h-4"
           />
-          <span className="text-xs text-gray-300">When inside pack use that pack</span>
+          <span className="text-xs text-gray-300">
+            {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
+          </span>
         </label>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: PackFiles</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} PackFiles
+      </div>
 
       <Handle
         type="source"
@@ -721,6 +726,7 @@ const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; id: str
 
 // Custom AllEnabledMods node component
 const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [includeBaseGame, setIncludeBaseGame] = React.useState(data.includeBaseGame !== false);
 
   // Sync state when data.includeBaseGame changes (e.g., when loading a saved graph)
@@ -744,7 +750,7 @@ const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: string }>
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <div className="text-xs text-gray-300 mb-2 p-2 bg-gray-800 rounded border border-green-600">
-        This node will use all currently enabled mods
+        {localized.nodeEditorAllEnabledModsDescription || "This node will use all currently enabled mods"}
       </div>
 
       <div className="mt-3 flex items-center gap-2">
@@ -756,11 +762,13 @@ const AllEnabledModsNode: React.FC<{ data: AllEnabledModsNodeData; id: string }>
           className="w-4 h-4 cursor-pointer"
         />
         <label htmlFor={`includeBaseGame-${id}`} className="text-xs text-gray-300 cursor-pointer">
-          Include Base Game
+          {localized.nodeEditorIncludeBaseGame || "Include Base Game"}
         </label>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: PackFiles (All Enabled Mods)</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} PackFiles ({localized.nodeEditorAllEnabledMods || "All Enabled Mods"})
+      </div>
 
       <Handle
         type="source"
@@ -777,6 +785,7 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
   data,
   id,
 }) => {
+  const localized = useLocalizations();
   // console.log("tableNames:", data.tableNames);
   const tableNames = data.tableNames || [];
   const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
@@ -805,14 +814,16 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: PackFiles</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} PackFiles
+      </div>
 
       <select
         value={selectedTable}
         onChange={handleDropdownChange}
         className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
       >
-        <option value="">Select a table...</option>
+        <option value="">{localized.nodeEditorSelectTable || "Select a table..."}</option>
         {(tableNames.length > 0 &&
           tableNames.map((tableName) => (
             <option key={tableName} value={tableName}>
@@ -825,7 +836,9 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
         )}
       </select>
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} TableSelection
+      </div>
 
       <Handle
         type="source"
@@ -839,6 +852,7 @@ const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdownNodeDat
 
 // Custom PackFiles node component with built-in textbox
 const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
   const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
 
@@ -873,7 +887,7 @@ const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder="Enter pack files configuration..."
+        placeholder={localized.nodeEditorEnterPackFilesConfiguration || "Enter pack files configuration..."}
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-blue-400"
       />
 
@@ -885,11 +899,15 @@ const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data
             onChange={handleCheckboxChange}
             className="w-4 h-4"
           />
-          <span className="text-xs text-gray-300">When inside pack use that pack</span>
+          <span className="text-xs text-gray-300">
+            {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
+          </span>
         </label>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: PackFiles</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} PackFiles
+      </div>
 
       <Handle
         type="source"
@@ -903,6 +921,7 @@ const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = ({ data
 
 // Custom TableSelection node component that accepts PackedFiles input and outputs TableSelection
 const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -927,16 +946,20 @@ const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: string }>
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: PackFiles</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} PackFiles
+      </div>
 
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder="Enter table selection criteria..."
+        placeholder={localized.nodeEditorEnterTableSelectionCriteria || "Enter table selection criteria..."}
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-purple-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} TableSelection
+      </div>
 
       <Handle
         type="source"
@@ -950,6 +973,7 @@ const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: string }>
 
 // Custom ColumnSelection node component that accepts TableSelection input and outputs ColumnSelection
 const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -974,16 +998,20 @@ const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: string 
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection
+      </div>
 
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder="Enter column selection criteria..."
+        placeholder={localized.nodeEditorEnterColumnSelectionCriteria || "Enter column selection criteria..."}
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-emerald-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">Output: ColumnSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} ColumnSelection
+      </div>
 
       <Handle
         type="source"
@@ -1000,6 +1028,7 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
   data,
   id,
 }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
@@ -1066,14 +1095,16 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection
+      </div>
 
       <select
         value={selectedColumn}
         onChange={handleDropdownChange}
         className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
       >
-        <option value="">Select a column...</option>
+        <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
         {columnNames.map((columnName) => (
           <option key={columnName} value={columnName}>
             {columnName}
@@ -1081,7 +1112,9 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
         ))}
       </select>
 
-      <div className="mt-2 text-xs text-gray-400">Output: ColumnSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} ColumnSelection
+      </div>
 
       <Handle
         type="source"
@@ -1095,6 +1128,7 @@ const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdownNodeD
 
 // Custom GroupByColumns node component
 const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [selectedColumn1, setSelectedColumn1] = useState(data.selectedColumn1 || "");
   const [selectedColumn2, setSelectedColumn2] = useState(data.selectedColumn2 || "");
@@ -1168,17 +1202,19 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection
+      </div>
 
       <div className="space-y-2">
         <div>
-          <label className="text-xs text-gray-300 block mb-1">Column 1</label>
+          <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorColumn1 || "Column 1"}</label>
           <select
             value={selectedColumn1}
             onChange={handleDropdown1Change}
             className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-fuchsia-400"
           >
-            <option value="">Select a column...</option>
+            <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
             {columnNames.map((columnName) => (
               <option key={columnName} value={columnName}>
                 {columnName}
@@ -1187,13 +1223,13 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-300 block mb-1">Column 2</label>
+          <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorColumn2 || "Column 2"}</label>
           <select
             value={selectedColumn2}
             onChange={handleDropdown2Change}
             className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-fuchsia-400"
           >
-            <option value="">Select a column...</option>
+            <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
             {columnNames.map((columnName) => (
               <option key={columnName} value={columnName}>
                 {columnName}
@@ -1211,11 +1247,13 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
             onChange={handleOnlyForMultipleChange}
             className="mr-2"
           />
-          Only For Multiple
+          {localized.nodeEditorOnlyForMultiple || "Only For Multiple"}
         </label>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: GroupedText</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} GroupedText
+      </div>
 
       <Handle
         type="source"
@@ -1229,6 +1267,7 @@ const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: string }>
 
 // Custom Filter node component that accepts TableSelection input and outputs filtered TableSelection
 const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [filters, setFilters] = useState<FilterRow[]>(
     data.filters && data.filters.length > 0
@@ -1298,7 +1337,9 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection
+      </div>
 
       <div
         className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content"
@@ -1314,27 +1355,29 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
                   onChange={(e) => handleFilterChange(index, "not", e.target.checked)}
                   className="w-3 h-3"
                 />
-                <span className="text-xs text-gray-300">NOT</span>
+                <span className="text-xs text-gray-300">{localized.nodeEditorNot || "NOT"}</span>
               </label>
               {filters.length > 1 && (
                 <button
                   onClick={() => handleRemoveFilter(index)}
                   className="ml-auto text-red-400 hover:text-red-300 text-xs"
                 >
-                  Remove
+                  {localized.remove || "Remove"}
                 </button>
               )}
             </div>
 
             <div className="mb-1">
-              <label className="text-xs text-gray-400 block mb-1">Column:</label>
+              <label className="text-xs text-gray-400 block mb-1">
+                {localized.nodeEditorColumnLabel || "Column:"}
+              </label>
               {columnNames.length > 0 ? (
                 <select
                   value={filter.column}
                   onChange={(e) => handleFilterChange(index, "column", e.target.value)}
                   className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
                 >
-                  <option value="">Select column...</option>
+                  <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                   {columnNames.map((columnName) => (
                     <option key={columnName} value={columnName}>
                       {columnName}
@@ -1346,7 +1389,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
                   type="text"
                   value={filter.column}
                   onChange={(e) => handleFilterChange(index, "column", e.target.value)}
-                  placeholder="Enter column name..."
+                  placeholder={localized.nodeEditorEnterColumnName || "Enter column name..."}
                   className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
                 />
               )}
@@ -1356,7 +1399,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
               type="text"
               value={filter.value}
               onChange={(e) => handleFilterChange(index, "value", e.target.value)}
-              placeholder="Filter value..."
+              placeholder={localized.nodeEditorFilterValue || "Filter value..."}
               className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 focus:outline-none focus:border-yellow-400"
             />
 
@@ -1366,8 +1409,8 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
                 onChange={(e) => handleFilterChange(index, "operator", e.target.value as "AND" | "OR")}
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
               >
-                <option value="AND">AND</option>
-                <option value="OR">OR</option>
+                <option value="AND">{localized.nodeEditorAnd || "AND"}</option>
+                <option value="OR">{localized.nodeEditorOr || "OR"}</option>
               </select>
             )}
           </div>
@@ -1378,12 +1421,12 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
         onClick={handleAddFilter}
         className="mt-2 w-full px-2 py-1 text-xs bg-yellow-600 hover:bg-yellow-700 text-white rounded"
       >
-        Add Filter
+        {localized.nodeEditorAddFilter || "Add Filter"}
       </button>
 
       <div className="mt-3 flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <div className="text-xs text-gray-400">Match:</div>
+          <div className="text-xs text-gray-400">{localized.nodeEditorMatchLabel || "Match:"}</div>
           <Handle
             type="source"
             position={Position.Right}
@@ -1394,7 +1437,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
           />
         </div>
         <div className="flex items-center justify-between">
-          <div className="text-xs text-gray-400">Else:</div>
+          <div className="text-xs text-gray-400">{localized.nodeEditorElseLabel || "Else:"}</div>
           <Handle
             type="source"
             position={Position.Right}
@@ -1414,6 +1457,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
   data,
   id,
 }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [selectedReferenceTable, setSelectedReferenceTable] = useState(data.selectedReferenceTable || "");
   const [referenceTableNames, setReferenceTableNames] = useState<string[]>(data.referenceTableNames || []);
@@ -1505,16 +1549,20 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection
+      </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Referenced Table</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorReferencedTable || "Referenced Table"}
+        </label>
         <select
           value={selectedReferenceTable}
           onChange={handleDropdownChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
         >
-          <option value="">Select referenced table...</option>
+          <option value="">{localized.nodeEditorSelectReferencedTable || "Select referenced table..."}</option>
           {referenceTableNames.map((tableName) => (
             <option key={tableName} value={tableName}>
               {tableName}
@@ -1531,17 +1579,19 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
             onChange={handleIncludeBaseGameChange}
             className="mr-2 w-4 h-4 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-400"
           />
-          Include base game data
+          {localized.nodeEditorIncludeBaseGameData || "Include base game data"}
         </label>
       </div>
 
       {referenceTableNames.length === 0 && data.connectedTableName && (
         <div className="text-xs text-yellow-300 mb-2 p-2 bg-gray-800 rounded">
-          No reference columns found in the input table
+          {localized.nodeEditorNoReferenceColumnsFound || "No reference columns found in the input table"}
         </div>
       )}
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection (Referenced Rows)</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} TableSelection ({localized.nodeEditorReferencedRows || "Referenced Rows"})
+      </div>
 
       <Handle
         type="source"
@@ -1558,6 +1608,7 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
   data,
   id,
 }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [selectedReverseTable, setSelectedReverseTable] = useState(data.selectedReverseTable || "");
   const [reverseTableNames, setReverseTableNames] = useState<string[]>(data.reverseTableNames || []);
@@ -1689,16 +1740,20 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection
+      </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Reverse to Table</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorReverseToTable || "Reverse to Table"}
+        </label>
         <select
           value={selectedReverseTable}
           onChange={handleDropdownChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
         >
-          <option value="">Select table to reverse to...</option>
+          <option value="">{localized.nodeEditorSelectReverseTable || "Select table to reverse to..."}</option>
           {reverseTableNames.map((tableName) => (
             <option key={tableName} value={tableName}>
               {tableName}
@@ -1715,17 +1770,19 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
             onChange={handleIncludeBaseGameChange}
             className="mr-2 w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-400"
           />
-          Include base game data
+          {localized.nodeEditorIncludeBaseGameData || "Include base game data"}
         </label>
       </div>
 
       {reverseTableNames.length === 0 && data.connectedTableName && (
         <div className="text-xs text-yellow-300 mb-2 p-2 bg-gray-800 rounded">
-          No tables reference the input table
+          {localized.nodeEditorNoReverseTablesFound || "No tables reference the input table"}
         </div>
       )}
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection (Referencing Rows)</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} TableSelection ({localized.nodeEditorReferencingRows || "Referencing Rows"})
+      </div>
 
       <Handle
         type="source"
@@ -1739,6 +1796,7 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
 
 // Custom NumericAdjustment node component that accepts ColumnSelection input and outputs ChangedColumnSelection
 const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1763,16 +1821,23 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: ColumnSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} ColumnSelection
+      </div>
 
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder="Enter formula using x as input (e.g., x + 10, x * 1.5, x^2 + 3*x - 5)..."
+        placeholder={
+          localized.nodeEditorEnterFormulaUsingX ||
+          "Enter formula using x as input (e.g., x + 10, x * 1.5, x^2 + 3*x - 5)..."
+        }
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} ChangedColumnSelection
+      </div>
 
       <Handle
         type="source"
@@ -1786,6 +1851,7 @@ const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; id: str
 
 // Custom MathMax node component that accepts ChangedColumnSelection and outputs ChangedColumnSelection
 const MathMaxNode: React.FC<{ data: MathMaxNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
 
   const handleTextChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1809,20 +1875,26 @@ const MathMaxNode: React.FC<{ data: MathMaxNodeData; id: string }> = ({ data, id
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: ChangedColumnSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} ChangedColumnSelection
+      </div>
 
       <div>
-        <label className="text-xs text-gray-300 block mb-1">Lowest Value</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorLowestValue || "Lowest Value"}
+        </label>
         <input
           type="text"
           value={textValue}
           onChange={handleTextChange}
-          placeholder="Enter value (e.g., 100)..."
+          placeholder={localized.nodeEditorEnterValueExample100 || "Enter value (e.g., 100)..."}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
         />
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} ChangedColumnSelection
+      </div>
 
       <Handle
         type="source"
@@ -1836,6 +1908,7 @@ const MathMaxNode: React.FC<{ data: MathMaxNodeData; id: string }> = ({ data, id
 
 // Custom MathCeil node component that accepts ChangedColumnSelection and outputs ChangedColumnSelection
 const MathCeilNode: React.FC<{ data: MathCeilNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   return (
     <div className="bg-gray-700 border-2 border-green-500 rounded-lg p-4 min-w-[200px]">
       <Handle
@@ -1847,11 +1920,17 @@ const MathCeilNode: React.FC<{ data: MathCeilNodeData; id: string }> = ({ data, 
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: ChangedColumnSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} ChangedColumnSelection
+      </div>
 
-      <div className="text-xs text-gray-300 italic">Applies Math.ceil() to all values</div>
+      <div className="text-xs text-gray-300 italic">
+        {localized.nodeEditorAppliesMathCeil || "Applies Math.ceil() to all values"}
+      </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} ChangedColumnSelection
+      </div>
 
       <Handle
         type="source"
@@ -1865,6 +1944,7 @@ const MathCeilNode: React.FC<{ data: MathCeilNodeData; id: string }> = ({ data, 
 
 // Custom MergeChanges node component that accepts multiple ChangedColumnSelection inputs
 const MergeChangesNode: React.FC<{ data: MergeChangesNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const inputCount = data.inputCount || 2;
 
   return (
@@ -1883,13 +1963,17 @@ const MergeChangesNode: React.FC<{ data: MergeChangesNodeData; id: string }> = (
       ))}
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: {inputCount}x ChangedColumnSelection</div>
-
-      <div className="text-xs text-gray-300 p-2 bg-gray-800 rounded">
-        Merges multiple column changes into a single output
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} {inputCount}x ChangedColumnSelection
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: ChangedColumnSelection (Combined)</div>
+      <div className="text-xs text-gray-300 p-2 bg-gray-800 rounded">
+        {localized.nodeEditorMergeChangesDescription || "Merges multiple column changes into a single output"}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} ChangedColumnSelection ({localized.nodeEditorCombined || "Combined"})
+      </div>
 
       <Handle
         type="source"
@@ -1903,6 +1987,7 @@ const MergeChangesNode: React.FC<{ data: MergeChangesNodeData; id: string }> = (
 
 // Custom SaveChanges node component that accepts ChangedColumnSelection input
 const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
   const [packName, setPackName] = useState(data.packName || "");
   const [packedFileName, setPackedFileName] = useState(data.packedFileName || "");
@@ -1949,50 +2034,62 @@ const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }> = ({ 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <div className="text-xs text-gray-400 mb-2">
-        Input: {data.inputType || "ChangedColumnSelection, Text, or TableSelection"}
+        {(localized.nodeEditorInput || "Input:")}{" "}
+        {data.inputType ||
+          localized.nodeEditorSaveChangesInputFallbackTypes ||
+          "ChangedColumnSelection, Text, or TableSelection"}
       </div>
 
       <div className="space-y-2">
         <div>
-          <label className="text-xs text-gray-300 block mb-1">Pack name (optional):</label>
+          <label className="text-xs text-gray-300 block mb-1">
+            {localized.nodeEditorPackNameOptional || "Pack name (optional):"}
+          </label>
           <input
             type="text"
             value={packName}
             onChange={handlePackNameChange}
-            placeholder="Leave blank for auto-generated name"
+            placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
             className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
           />
         </div>
 
         <div>
-          <label className="text-xs text-gray-300 block mb-1">Packed file name (optional):</label>
+          <label className="text-xs text-gray-300 block mb-1">
+            {localized.nodeEditorPackedFileNameOptional || "Packed file name (optional):"}
+          </label>
           <input
             type="text"
             value={packedFileName}
             onChange={handlePackedFileNameChange}
-            placeholder="Leave blank for auto-generated name"
+            placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
             className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
           />
         </div>
 
         <div>
-          <label className="text-xs text-gray-300 block mb-1">Additional config:</label>
+          <label className="text-xs text-gray-300 block mb-1">
+            {localized.nodeEditorAdditionalConfig || "Additional config:"}
+          </label>
           <textarea
             value={textValue}
             onChange={handleTextChange}
-            placeholder="Enter additional save configuration..."
+            placeholder={localized.nodeEditorEnterAdditionalSaveConfiguration || "Enter additional save configuration..."}
             className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-green-400"
           />
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Final save operation</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorFinalSaveOperation || "Final save operation"}
+      </div>
     </div>
   );
 };
 
 // Custom GetCounterColumn node component
 const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [selectedTable, setSelectedTable] = useState(data.selectedTable || "");
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
@@ -2092,18 +2189,22 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
         data-input-type="PackFiles"
       />
 
-      <div className="text-white font-medium text-sm mb-2">{data.label || "Get Counter Column"}</div>
+      <div className="text-white font-medium text-sm mb-2">
+        {data.label || localized.nodeEditorGetCounterColumn || "Get Counter Column"}
+      </div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: PackFiles</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} PackFiles
+      </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Table:</label>
+        <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorTableLabel || "Table:"}</label>
         <select
           value={selectedTable}
           onChange={handleTableChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
         >
-          <option value="">Select a table...</option>
+          <option value="">{localized.nodeEditorSelectTable || "Select a table..."}</option>
           {tableNames.map((tableName) => (
             <option key={tableName} value={tableName}>
               {tableName}
@@ -2113,14 +2214,16 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
       </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Numeric Column:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorNumericColumnLabel || "Numeric Column:"}
+        </label>
         <select
           value={selectedColumn}
           onChange={handleColumnChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
           disabled={!selectedTable}
         >
-          <option value="">Select a column...</option>
+          <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
           {columnNames.map((columnName) => (
             <option key={columnName} value={columnName}>
               {columnName}
@@ -2130,21 +2233,25 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
       </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">New Column Name:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorNewColumnNameLabel || "New Column Name:"}
+        </label>
         <input
           type="text"
           value={newColumnName}
           onChange={handleNewColumnNameChange}
-          placeholder="e.g., counter_value"
+          placeholder={localized.nodeEditorCounterValueExample || "e.g., counter_value"}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
         />
       </div>
 
       <div className="text-xs text-gray-300 italic my-2">
-        Collects values from selected column across all tables
+        {localized.nodeEditorCollectsValuesDescription || "Collects values from selected column across all tables"}
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} TableSelection
+      </div>
 
       <Handle
         type="source"
@@ -2158,6 +2265,7 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
 
 // Custom DumpToTSV node component that exports table data to TSV file
 const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [filename, setFilename] = useState(data.filename || "");
   const [openInWindows, setOpenInWindows] = useState(!!data.openInWindows);
 
@@ -2180,17 +2288,23 @@ const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         data-input-type="TableSelection,ChangedColumnSelection"
       />
 
-      <div className="text-white font-medium text-sm mb-2">{data.label || "Dump to TSV"}</div>
+      <div className="text-white font-medium text-sm mb-2">
+        {data.label || localized.nodeEditorDumpToTSV || "Dump to TSV"}
+      </div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection / ChangedColumnSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection / ChangedColumnSelection
+      </div>
 
       <div>
-        <label className="text-xs text-gray-300 block mb-1">Filename (optional):</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorFilenameOptional || "Filename (optional):"}
+        </label>
         <input
           type="text"
           value={filename}
           onChange={handleFilenameChange}
-          placeholder="Leave blank for auto-generated name"
+          placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
         />
       </div>
@@ -2211,17 +2325,20 @@ const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
             }}
             className="w-4 h-4"
           />
-          <span className="text-xs text-gray-300">Open file in Windows</span>
+          <span className="text-xs text-gray-300">{localized.nodeEditorOpenFileInWindows || "Open file in Windows"}</span>
         </label>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Exports to TSV for inspection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorExportsToTSVForInspection || "Exports to TSV for inspection"}
+      </div>
     </div>
   );
 };
 
 // Custom TextSurround node component that accepts Text, Text Lines, or GroupedText input and outputs the same type
 const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
   const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
     data.groupedTextSelection || "Text",
@@ -2264,19 +2381,22 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <div className="text-xs text-gray-400 mb-2">
-        Input: {data.inputType || "Text, Text Lines, or GroupedText"}
+        {(localized.nodeEditorInput || "Input:")}{" "}
+        {data.inputType || localized.nodeEditorTextInputTypeFallback || "Text, Text Lines, or GroupedText"}
       </div>
 
       {isGroupedTextInput && (
         <div className="mb-2">
-          <label className="text-xs text-gray-300 block mb-1">Use from GroupedText:</label>
+          <label className="text-xs text-gray-300 block mb-1">
+            {localized.nodeEditorUseFromGroupedText || "Use from GroupedText:"}
+          </label>
           <select
             value={groupedTextSelection}
             onChange={handleGroupedTextSelectionChange}
             className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-rose-400"
           >
-            <option value="Text">Text</option>
-            <option value="Text Lines">Text Lines</option>
+            <option value="Text">{localized.nodeEditorText || "Text"}</option>
+            <option value="Text Lines">{localized.nodeEditorTextLines || "Text Lines"}</option>
           </select>
         </div>
       )}
@@ -2284,12 +2404,19 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder="Enter surround text configuration..."
+        placeholder={localized.nodeEditorEnterSurroundTextConfiguration || "Enter surround text configuration..."}
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-rose-400"
       />
 
       <div className="mt-2 text-xs text-gray-400">
-        Output: {isGroupedTextInput ? "GroupedText" : data.outputType || "Text or Text Lines"}
+        {(localized.nodeEditorOutput || "Output:")}{" "}
+        {isGroupedTextInput
+          ? localized.nodeEditorGroupedText || "GroupedText"
+          : data.outputType === "Text Lines"
+            ? localized.nodeEditorTextLines || "Text Lines"
+            : data.outputType === "Text"
+              ? localized.nodeEditorText || "Text"
+              : data.outputType || localized.nodeEditorTextOrTextLines || "Text or Text Lines"}
       </div>
 
       <Handle
@@ -2304,6 +2431,7 @@ const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = (
 
 // Custom AppendText node component that accepts Text, Text Lines, or GroupedText input and outputs the same type
 const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [beforeText, setBeforeText] = useState(data.beforeText || "");
   const [afterText, setAfterText] = useState(data.afterText || "");
   const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
@@ -2357,47 +2485,61 @@ const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> = ({ da
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <div className="text-xs text-gray-400 mb-2">
-        Input: {data.inputType || "Text, Text Lines, or GroupedText"}
+        {(localized.nodeEditorInput || "Input:")}{" "}
+        {data.inputType || localized.nodeEditorTextInputTypeFallback || "Text, Text Lines, or GroupedText"}
       </div>
 
       {isGroupedTextInput && (
         <div className="mb-2">
-          <label className="text-xs text-gray-300 block mb-1">Use from GroupedText:</label>
+          <label className="text-xs text-gray-300 block mb-1">
+            {localized.nodeEditorUseFromGroupedText || "Use from GroupedText:"}
+          </label>
           <select
             value={groupedTextSelection}
             onChange={handleGroupedTextSelectionChange}
             className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
           >
-            <option value="Text">Text</option>
-            <option value="Text Lines">Text Lines</option>
+            <option value="Text">{localized.nodeEditorText || "Text"}</option>
+            <option value="Text Lines">{localized.nodeEditorTextLines || "Text Lines"}</option>
           </select>
         </div>
       )}
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Before Text:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorBeforeTextLabel || "Before Text:"}
+        </label>
         <input
           type="text"
           value={beforeText}
           onChange={handleBeforeTextChange}
-          placeholder="Text to add before..."
+          placeholder={localized.nodeEditorTextToAddBefore || "Text to add before..."}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
         />
       </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">After Text:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorAfterTextLabel || "After Text:"}
+        </label>
         <input
           type="text"
           value={afterText}
           onChange={handleAfterTextChange}
-          placeholder="Text to add after..."
+          placeholder={localized.nodeEditorTextToAddAfter || "Text to add after..."}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
         />
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
-        Output: {isGroupedTextInput ? "GroupedText" : data.outputType || "Text or Text Lines"}
+        {(localized.nodeEditorOutput || "Output:")}{" "}
+        {isGroupedTextInput
+          ? localized.nodeEditorGroupedText || "GroupedText"
+          : data.outputType === "Text Lines"
+            ? localized.nodeEditorTextLines || "Text Lines"
+            : data.outputType === "Text"
+              ? localized.nodeEditorText || "Text"
+              : data.outputType || localized.nodeEditorTextOrTextLines || "Text or Text Lines"}
       </div>
 
       <Handle
@@ -2412,6 +2554,7 @@ const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> = ({ da
 
 // Custom TextJoin node component that accepts Text Lines or GroupedText input and outputs Text
 const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [textValue, setTextValue] = useState(data.textValue || "");
   const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
     data.groupedTextSelection || "Text Lines",
@@ -2452,18 +2595,23 @@ const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, 
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: {data.inputType || "Text Lines or GroupedText"}</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")}{" "}
+        {data.inputType || localized.nodeEditorTextLinesOrGroupedText || "Text Lines or GroupedText"}
+      </div>
 
       {isGroupedTextInput && (
         <div className="mb-2">
-          <label className="text-xs text-gray-300 block mb-1">Use from GroupedText:</label>
+          <label className="text-xs text-gray-300 block mb-1">
+            {localized.nodeEditorUseFromGroupedText || "Use from GroupedText:"}
+          </label>
           <select
             value={groupedTextSelection}
             onChange={handleGroupedTextSelectionChange}
             className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-sky-400"
           >
-            <option value="Text">Text</option>
-            <option value="Text Lines">Text Lines</option>
+            <option value="Text">{localized.nodeEditorText || "Text"}</option>
+            <option value="Text Lines">{localized.nodeEditorTextLines || "Text Lines"}</option>
           </select>
         </div>
       )}
@@ -2471,11 +2619,13 @@ const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, 
       <textarea
         value={textValue}
         onChange={handleTextChange}
-        placeholder="Enter join configuration (separator, etc.)..."
+        placeholder={localized.nodeEditorEnterJoinConfiguration || "Enter join configuration (separator, etc.)..."}
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-sky-400"
       />
 
-      <div className="mt-2 text-xs text-gray-400">Output: Text</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorText || "Text"}
+      </div>
 
       <Handle
         type="source"
@@ -2492,6 +2642,7 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
   data,
   id,
 }) => {
+  const localized = useLocalizations();
   const [pattern, setPattern] = useState(data.pattern || "{0}: {1}");
   const [joinSeparator, setJoinSeparator] = useState(data.joinSeparator || "\\n");
 
@@ -2526,11 +2677,13 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
-      <div className="text-xs text-gray-400 mb-2">Input: GroupedText</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} {localized.nodeEditorGroupedText || "GroupedText"}
+      </div>
 
       <div className="mb-2">
         <label className="text-xs text-gray-300 block mb-1">
-          Pattern ({"{0}"} = key, {"{1}"} = values):
+          {localized.nodeEditorPatternKeyValuesLabel || 'Pattern ({0} = key, {1} = values):'}
         </label>
         <textarea
           value={pattern}
@@ -2541,7 +2694,9 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
       </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Join separator (use \n for newline):</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorJoinSeparatorUseNewlineLabel || "Join separator (use \\n for newline):"}
+        </label>
         <input
           type="text"
           value={joinSeparator}
@@ -2551,7 +2706,9 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
         />
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: Text</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorText || "Text"}
+      </div>
 
       <Handle
         type="source"
@@ -2565,6 +2722,7 @@ const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNodeData; i
 
 // Index Table Node - Creates indexed version of a table by key column(s)
 const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [indexColumns, setIndexColumns] = useState<string[]>(data.indexColumns || []);
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
@@ -2633,16 +2791,22 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} TableSelection
+      </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Index Columns (select multiple):</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorIndexColumnsSelectMultipleLabel || "Index Columns (select multiple):"}
+        </label>
         <div
           className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
           {columnNames.length === 0 ? (
-            <div className="text-xs text-gray-500 italic">Connect a table to see columns</div>
+            <div className="text-xs text-gray-500 italic">
+              {localized.nodeEditorConnectTableToSeeColumns || "Connect a table to see columns"}
+            </div>
           ) : (
             columnNames.map((columnName) => (
               <label
@@ -2662,8 +2826,13 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Selected: {indexColumns.length} column(s)</div>
-      <div className="mt-2 text-xs text-gray-400">Output: IndexedTable</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorSelectedLabel || "Selected:"} {indexColumns.length}{" "}
+        {localized.nodeEditorColumnsCountSuffix || "column(s)"}
+      </div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorIndexedTable || "IndexedTable"}
+      </div>
 
       <Handle
         type="source"
@@ -2677,6 +2846,7 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
 
 // Lookup Node - Performs lookups/joins using indexed tables
 const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
   const [indexJoinColumn, setIndexJoinColumn] = useState(
@@ -2955,23 +3125,34 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
       if (!hasValidReference) {
         if (hasTableReference) {
+          const template =
+            localized.nodeEditorWarningColumnReferencesTableButNotColumn ||
+            'Warning: Column "{{lookupColumn}}" references table "{{indexedTableName}}", but not column "{{indexJoinColumn}}". Expected reference columns: {{referencedColumns}}';
           setSchemaWarning(
-            `Warning: Column "${lookupColumn}" references table "${indexedTableName}", but not column "${indexJoinColumn}". Expected reference columns: ${referencedColumns.join(
-              ", ",
-            )}`,
+            template
+              .replace("{{lookupColumn}}", lookupColumn)
+              .replace("{{indexedTableName}}", indexedTableName)
+              .replace("{{indexJoinColumn}}", indexJoinColumn)
+              .replace("{{referencedColumns}}", referencedColumns.join(", ")),
           );
         } else {
+          const template =
+            localized.nodeEditorWarningColumnDoesNotHaveSchemaReferenceToTable ||
+            'Warning: Column "{{lookupColumn}}" does not have a schema reference to table "{{indexedTableName}}". This join may produce unexpected results.';
           setSchemaWarning(
-            `Warning: Column "${lookupColumn}" does not have a schema reference to table "${indexedTableName}". This join may produce unexpected results.`,
+            template
+              .replace("{{lookupColumn}}", lookupColumn)
+              .replace("{{indexedTableName}}", indexedTableName),
           );
         }
       } else {
         setSchemaWarning(""); // Valid reference found
       }
     } else {
-      setSchemaWarning(
-        `Warning: Column "${lookupColumn}" does not have any schema references. This join may produce unexpected results.`,
-      );
+      const template =
+        localized.nodeEditorWarningColumnDoesNotHaveAnySchemaReferences ||
+        'Warning: Column "{{lookupColumn}}" does not have any schema references. This join may produce unexpected results.';
+      setSchemaWarning(template.replace("{{lookupColumn}}", lookupColumn));
     }
   }, [
     lookupColumn,
@@ -2980,6 +3161,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     (data as any).indexedTableName,
     (data as any).connectedIndexTableName,
     data.DBNameToDBVersions,
+    localized,
   ]);
 
   const handleLookupColumnChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -3032,8 +3214,11 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
       <div className="text-xs text-gray-400 mb-2">
-        <div>Source: TableSelection</div>
-        <div>Index: {isIndexedTableInput ? "IndexedTable" : "TableSelection"}</div>
+        <div>{localized.nodeEditorSourceLabel || "Source:"} TableSelection</div>
+        <div>
+          {localized.nodeEditorIndexLabel || "Index:"}{" "}
+          {isIndexedTableInput ? localized.nodeEditorIndexedTable || "IndexedTable" : "TableSelection"}
+        </div>
       </div>
 
       {joinType !== "cross" && (
@@ -3041,13 +3226,15 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
           {isIndexedTableInput ? (
             // Single dropdown for IndexedTable input (old way)
             <div className="mb-2">
-              <label className="text-xs text-gray-300 block mb-1">Lookup Column:</label>
+              <label className="text-xs text-gray-300 block mb-1">
+                {localized.nodeEditorLookupColumnLabel || "Lookup Column:"}
+              </label>
               <select
                 value={lookupColumn}
                 onChange={handleLookupColumnChange}
                 className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
               >
-                <option value="">Select column...</option>
+                <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                 {sourceColumnNames.map((columnName) => (
                   <option key={columnName} value={columnName}>
                     {columnName}
@@ -3059,13 +3246,15 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
             // Two dropdowns for TableSelection input (new way)
             <>
               <div className="mb-2">
-                <label className="text-xs text-gray-300 block mb-1">Source Column:</label>
+                <label className="text-xs text-gray-300 block mb-1">
+                  {localized.nodeEditorSourceColumnLabel || "Source Column:"}
+                </label>
                 <select
                   value={lookupColumn}
                   onChange={handleLookupColumnChange}
                   className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
                 >
-                  <option value="">Select column...</option>
+                  <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                   {sourceColumnNames.map((columnName) => (
                     <option key={columnName} value={columnName}>
                       {columnName}
@@ -3075,13 +3264,15 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
               </div>
 
               <div className="mb-2">
-                <label className="text-xs text-gray-300 block mb-1">Index Column:</label>
+                <label className="text-xs text-gray-300 block mb-1">
+                  {localized.nodeEditorIndexColumnLabel || "Index Column:"}
+                </label>
                 <select
                   value={indexJoinColumn}
                   onChange={handleIndexJoinColumnChange}
                   className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
                 >
-                  <option value="">Select column...</option>
+                  <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                   {indexedColumnNames.map((columnName) => (
                     <option key={columnName} value={columnName}>
                       {columnName}
@@ -3101,7 +3292,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       )}
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Join Type:</label>
+        <label className="text-xs text-gray-300 block mb-1">{localized.nodeEditorJoinTypeLabel || "Join Type:"}</label>
         <div className="space-y-1">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3110,7 +3301,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
               onChange={() => handleJoinTypeChange("inner")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">Inner Join</span>
+            <span className="text-xs text-white">{localized.nodeEditorInnerJoin || "Inner Join"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3119,7 +3310,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
               onChange={() => handleJoinTypeChange("left")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">Left Join</span>
+            <span className="text-xs text-white">{localized.nodeEditorLeftJoin || "Left Join"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3128,7 +3319,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
               onChange={() => handleJoinTypeChange("nested")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">Nested (1-to-many)</span>
+            <span className="text-xs text-white">{localized.nodeEditorNestedJoin || "Nested (1-to-many)"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3137,12 +3328,19 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
               onChange={() => handleJoinTypeChange("cross")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">Cross Join (Cartesian Product)</span>
+            <span className="text-xs text-white">
+              {localized.nodeEditorCrossJoin || "Cross Join (Cartesian Product)"}
+            </span>
           </label>
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: {outputType}</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")}{" "}
+        {outputType === "NestedTableSelection"
+          ? localized.nodeEditorNestedTableSelection || "NestedTableSelection"
+          : localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
 
       <Handle
         type="source"
@@ -3156,6 +3354,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
 
 // Flatten Nested Node - Expands nested table selections into flat rows
 const FlattenNestedNode: React.FC<{ data: FlattenNestedNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   return (
     <div className="bg-gray-700 border-2 border-gray-400 rounded-lg p-4 min-w-[200px]">
       <Handle
@@ -3166,11 +3365,17 @@ const FlattenNestedNode: React.FC<{ data: FlattenNestedNodeData; id: string }> =
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: NestedTableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
+      </div>
 
-      <div className="text-xs text-gray-300 italic my-3">Expands nested arrays into separate flat rows</div>
+      <div className="text-xs text-gray-300 italic my-3">
+        {localized.nodeEditorFlattenNestedDescription || "Expands nested arrays into separate flat rows"}
+      </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
 
       <Handle
         type="source"
@@ -3184,6 +3389,7 @@ const FlattenNestedNode: React.FC<{ data: FlattenNestedNodeData; id: string }> =
 
 // Extract Table Node - Filters columns by prefix and removes prefix
 const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [tablePrefix, setTablePrefix] = useState(data.tablePrefix || "");
   const [tablePrefixes, setTablePrefixes] = useState<string[]>(data.tablePrefixes || []);
 
@@ -3241,16 +3447,20 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: TableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Extract Table:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorExtractTableLabel || "Extract Table:"}
+        </label>
         <select
           value={tablePrefix}
           onChange={handlePrefixChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
         >
-          <option value="">Select prefix...</option>
+          <option value="">{localized.nodeEditorSelectPrefix || "Select prefix..."}</option>
           {tablePrefixes.map((prefix) => (
             <option key={prefix} value={prefix}>
               {prefix}
@@ -3259,9 +3469,13 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
         </select>
       </div>
 
-      <div className="text-xs text-gray-300 italic my-2">Filters to columns with prefix and removes it</div>
+      <div className="text-xs text-gray-300 italic my-2">
+        {localized.nodeEditorExtractTableDescription || "Filters to columns with prefix and removes it"}
+      </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
 
       <Handle
         type="source"
@@ -3275,6 +3489,7 @@ const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string }> = (
 
 // Aggregate Nested Node - Performs aggregations on nested arrays
 const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [aggregateColumn, setAggregateColumn] = useState(data.aggregateColumn || "");
   const [aggregateType, setAggregateType] = useState<"min" | "max" | "sum" | "avg" | "count">(
@@ -3375,16 +3590,20 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
       />
 
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: NestedTableSelection</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
+      </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Aggregate Column:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorAggregateColumnLabel || "Aggregate Column:"}
+        </label>
         <select
           value={aggregateColumn}
           onChange={handleColumnChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
         >
-          <option value="">Select column...</option>
+          <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
           {columnNames.map((columnName) => (
             <option key={columnName} value={columnName}>
               {columnName}
@@ -3394,7 +3613,9 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
       </div>
 
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Aggregation Type:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorAggregationTypeLabel || "Aggregation Type:"}
+        </label>
         <div className="space-y-1">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3403,7 +3624,9 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
               onChange={() => handleTypeChange("min")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">MIN (Keep Row)</span>
+            <span className="text-xs text-white">
+              {localized.nodeEditorAggregationMinKeepRow || "MIN (Keep Row)"}
+            </span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3412,7 +3635,9 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
               onChange={() => handleTypeChange("max")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">MAX (Keep Row)</span>
+            <span className="text-xs text-white">
+              {localized.nodeEditorAggregationMaxKeepRow || "MAX (Keep Row)"}
+            </span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3421,7 +3646,7 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
               onChange={() => handleTypeChange("sum")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">SUM</span>
+            <span className="text-xs text-white">{localized.nodeEditorAggregationSum || "SUM"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3430,7 +3655,7 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
               onChange={() => handleTypeChange("avg")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">AVG</span>
+            <span className="text-xs text-white">{localized.nodeEditorAggregationAvg || "AVG"}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -3439,19 +3664,21 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
               onChange={() => handleTypeChange("count")}
               className="w-3 h-3"
             />
-            <span className="text-xs text-white">COUNT</span>
+            <span className="text-xs text-white">{localized.nodeEditorAggregationCount || "COUNT"}</span>
           </label>
         </div>
       </div>
 
       <div className="mb-2 border-t border-gray-600 pt-2">
-        <label className="text-xs text-gray-300 block mb-1">Filter (Optional):</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorFilterOptionalLabel || "Filter (Optional):"}
+        </label>
         <select
           value={filterColumn}
           onChange={handleFilterColumnChange}
           className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400 mb-2"
         >
-          <option value="">No filter</option>
+          <option value="">{localized.nodeEditorNoFilter || "No filter"}</option>
           {columnNames.map((columnName) => (
             <option key={columnName} value={columnName}>
               {columnName}
@@ -3478,14 +3705,16 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
               type="text"
               value={filterValue}
               onChange={handleFilterValueChange}
-              placeholder="Filter value..."
+              placeholder={localized.nodeEditorFilterValue || "Filter value..."}
               className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
             />
           </>
         )}
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: NestedTableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorNestedTableSelection || "NestedTableSelection"}
+      </div>
 
       <Handle
         type="source"
@@ -3498,6 +3727,7 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
 };
 
 const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [groupByColumns, setGroupByColumns] = useState<string[]>(data.groupByColumns || []);
   const [aggregations, setAggregations] = useState<
     Array<{
@@ -3659,17 +3889,21 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         data-input-type="TableSelection"
       />
 
-      <div className="text-sm font-bold text-white mb-3">Group By</div>
+      <div className="text-sm font-bold text-white mb-3">{localized.nodeEditorGroupByTitle || "Group By"}</div>
 
       {/* Group By Columns Section */}
       <div className="mb-3">
-        <label className="text-xs text-gray-300 block mb-1">Group By Columns:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorGroupByColumnsLabel || "Group By Columns:"}
+        </label>
         <div
           className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
           {inputColumnNames.length === 0 ? (
-            <div className="text-xs text-gray-500">No columns available</div>
+            <div className="text-xs text-gray-500">
+              {localized.nodeEditorNoColumnsAvailable || "No columns available"}
+            </div>
           ) : (
             inputColumnNames.map((columnName) => (
               <label key={columnName} className="flex items-center gap-2 cursor-pointer mb-1">
@@ -3684,18 +3918,22 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
             ))
           )}
         </div>
-        <div className="text-xs text-gray-400 mt-1">Selected: {groupByColumns.length}</div>
+        <div className="text-xs text-gray-400 mt-1">
+          {localized.nodeEditorSelectedLabel || "Selected:"} {groupByColumns.length}
+        </div>
       </div>
 
       {/* Aggregations Section */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-gray-300">Aggregations:</label>
+          <label className="text-xs text-gray-300">
+            {localized.nodeEditorAggregationsLabel || "Aggregations:"}
+          </label>
           <button
             onClick={addAggregation}
             className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded"
           >
-            + Add
+            + {localized.add || "Add"}
           </button>
         </div>
 
@@ -3706,7 +3944,9 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
           {aggregations.map((agg) => (
             <div key={agg.id} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-400">Aggregation</span>
+                <span className="text-xs text-gray-400">
+                  {localized.nodeEditorAggregationLabel || "Aggregation"}
+                </span>
                 <button
                   onClick={() => removeAggregation(agg.id)}
                   className="text-xs text-red-400 hover:text-red-300"
@@ -3720,7 +3960,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
                 onChange={(e) => updateAggregation(agg.id, { sourceColumn: e.target.value })}
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
               >
-                <option value="">Select column...</option>
+                <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                 {inputColumnNames.map((col) => (
                   <option key={col} value={col}>
                     {col}
@@ -3728,29 +3968,29 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
                 ))}
               </select>
 
-              <select
-                value={agg.operation}
-                onChange={(e) =>
-                  updateAggregation(agg.id, {
-                    operation: e.target.value as "max" | "min" | "sum" | "avg" | "count" | "first" | "last",
-                  })
-                }
-                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
-              >
-                <option value="max">MAX</option>
-                <option value="min">MIN</option>
-                <option value="sum">SUM</option>
-                <option value="avg">AVG</option>
-                <option value="count">COUNT</option>
-                <option value="first">FIRST</option>
-                <option value="last">LAST</option>
-              </select>
+                <select
+                  value={agg.operation}
+                  onChange={(e) =>
+                    updateAggregation(agg.id, {
+                      operation: e.target.value as "max" | "min" | "sum" | "avg" | "count" | "first" | "last",
+                    })
+                  }
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+                >
+                  <option value="max">{localized.nodeEditorAggregationOpMax || "MAX"}</option>
+                  <option value="min">{localized.nodeEditorAggregationOpMin || "MIN"}</option>
+                  <option value="sum">{localized.nodeEditorAggregationOpSum || "SUM"}</option>
+                  <option value="avg">{localized.nodeEditorAggregationOpAvg || "AVG"}</option>
+                  <option value="count">{localized.nodeEditorAggregationOpCount || "COUNT"}</option>
+                  <option value="first">{localized.nodeEditorAggregationOpFirst || "FIRST"}</option>
+                  <option value="last">{localized.nodeEditorAggregationOpLast || "LAST"}</option>
+                </select>
 
               <input
                 type="text"
                 value={agg.outputName}
                 onChange={(e) => updateAggregation(agg.id, { outputName: e.target.value })}
-                placeholder="Output column name..."
+                placeholder={localized.nodeEditorOutputColumnNamePlaceholder || "Output column name..."}
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
               />
 
@@ -3758,7 +3998,10 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
                 type="text"
                 value={agg.defaultValue || ""}
                 onChange={(e) => updateAggregation(agg.id, { defaultValue: e.target.value })}
-                placeholder="Default value (if no rows match)..."
+                placeholder={
+                  localized.nodeEditorDefaultValueIfNoRowsMatchPlaceholder ||
+                  "Default value (if no rows match)..."
+                }
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
               />
             </div>
@@ -3766,7 +4009,9 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+        <div className="mt-2 text-xs text-gray-400">
+          {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorTableSelection || "TableSelection"}
+        </div>
 
       <Handle
         type="source"
@@ -3779,6 +4024,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 };
 
 const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [dedupeByColumns, setDedupeByColumns] = useState<string[]>(data.dedupeByColumns || []);
   const [dedupeAgainstVanilla, setDedupeAgainstVanilla] = useState<boolean>(
     data.dedupeAgainstVanilla || false,
@@ -3898,17 +4144,21 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         data-input-type="TableSelection"
       />
 
-      <div className="text-sm font-bold text-white mb-3">Deduplicate By</div>
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorDeduplicateByTitle || "Deduplicate By"}
+      </div>
 
       {/* Group By Columns Section */}
       <div className="mb-3">
-        <label className="text-xs text-gray-300 block mb-1">Deduplicate By Columns:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorDeduplicateByColumnsLabel || "Deduplicate By Columns:"}
+        </label>
         <div
           className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
           {inputColumnNames.length === 0 ? (
-            <div className="text-xs text-gray-500">No columns available</div>
+            <div className="text-xs text-gray-500">{localized.nodeEditorNoColumnsAvailable || "No columns available"}</div>
           ) : (
             inputColumnNames.map((columnName) => (
               <label key={columnName} className="flex items-center gap-2 cursor-pointer mb-1">
@@ -3923,7 +4173,9 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
             ))
           )}
         </div>
-        <div className="text-xs text-gray-400 mt-1">Selected: {dedupeByColumns.length}</div>
+        <div className="text-xs text-gray-400 mt-1">
+          {localized.nodeEditorSelectedLabel || "Selected:"} {dedupeByColumns.length}
+        </div>
       </div>
 
       {/* Against Vanilla Data Checkbox */}
@@ -3935,14 +4187,14 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
             onChange={handleDedupeAgainstVanillaChange}
             className="mr-2 w-4 h-4 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-400"
           />
-          Against vanilla data
+          {localized.nodeEditorAgainstVanillaData || "Against vanilla data"}
         </label>
         <div className="text-xs text-gray-500 mt-1 ml-6">
-          Remove rows that exist in vanilla, keep modded rows
+          {localized.nodeEditorRemoveRowsThatExistInVanilla || "Remove rows that exist in vanilla, keep modded rows"}
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">{(localized.nodeEditorOutput || "Output:")} TableSelection</div>
 
       <Handle
         type="source"
@@ -3955,7 +4207,7 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 };
 
 const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
-  const localized: Record<string, string> = useContext(localizationContext);
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [transformations, setTransformations] = useState<ColumnTransformation[]>(data.transformations || []);
   const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
@@ -4165,17 +4417,21 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
         data-input-type="TableSelection"
       />
 
-      <div className="text-sm font-bold text-white mb-3">Generate Rows</div>
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorGenerateRowsTitle || "Generate Rows"}
+      </div>
 
       {/* Transformations Section */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-gray-300">Transformations:</label>
+          <label className="text-xs text-gray-300">
+            {localized.nodeEditorTransformationsLabel || "Transformations:"}
+          </label>
           <button
             onClick={addTransformation}
             className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
           >
-            + Add
+            + {localized.add || "Add"}
           </button>
         </div>
 
@@ -4207,7 +4463,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                           ? "text-gray-600 cursor-not-allowed"
                           : "text-blue-400 hover:text-blue-300"
                       }`}
-                      title="Move up"
+                      title={localized.nodeEditorMoveUp || "Move up"}
                     >
                       ▲
                     </button>
@@ -4219,14 +4475,14 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                           ? "text-gray-600 cursor-not-allowed"
                           : "text-blue-400 hover:text-blue-300"
                       }`}
-                      title="Move down"
+                      title={localized.nodeEditorMoveDown || "Move down"}
                     >
                       ▼
                     </button>
                     <button
                       onClick={() => removeTransformation(trans.id)}
                       className="text-xs text-red-400 hover:text-red-300"
-                      title="Remove"
+                      title={localized.remove || "Remove"}
                     >
                       ✕
                     </button>
@@ -4238,7 +4494,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
-                  <option value="">Select source column...</option>
+                  <option value="">{localized.nodeEditorSelectSourceColumn || "Select source column..."}</option>
                   {columnNames.map((col) => (
                     <option key={col} value={col}>
                       {col}
@@ -4249,7 +4505,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                     .filter((t) => t.outputColumnName && t.outputColumnName.trim() !== "")
                     .map((t) => (
                       <option key={t.outputColumnName} value={t.outputColumnName}>
-                        {t.outputColumnName} (from transformation)
+                        {t.outputColumnName} ({localized.nodeEditorFromTransformation || "from transformation"})
                       </option>
                     ))}
                 </select>
@@ -4274,23 +4530,23 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   }
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
-                  <option value="none">None (pass through)</option>
-                  <option value="prefix">Add Prefix</option>
-                  <option value="suffix">Add Suffix</option>
-                  <option value="add">Add Number (+)</option>
-                  <option value="subtract">Subtract Number (-)</option>
-                  <option value="multiply">Multiply (*)</option>
-                  <option value="divide">Divide (/)</option>
-                  <option value="counter">Counter (unique sequential)</option>
-                  <option value="counter_range">Counter (custom range)</option>
-                  <option value="filterequal">Filter Rows: Equal (skip if equal)</option>
-                  <option value="filternotequal">Filter Rows: Not Equal (skip if not equal)</option>
+                  <option value="none">{localized.nodeEditorTransformationNonePassThrough || "None (pass through)"}</option>
+                  <option value="prefix">{localized.nodeEditorTransformationAddPrefix || "Add Prefix"}</option>
+                  <option value="suffix">{localized.nodeEditorTransformationAddSuffix || "Add Suffix"}</option>
+                  <option value="add">{localized.nodeEditorTransformationAddNumber || "Add Number (+)"}</option>
+                  <option value="subtract">{localized.nodeEditorTransformationSubtractNumber || "Subtract Number (-)"}</option>
+                  <option value="multiply">{localized.nodeEditorTransformationMultiply || "Multiply (*)"}</option>
+                  <option value="divide">{localized.nodeEditorTransformationDivide || "Divide (/)"}</option>
+                  <option value="counter">{localized.nodeEditorTransformationCounterUniqueSequential || "Counter (unique sequential)"}</option>
+                  <option value="counter_range">{localized.nodeEditorTransformationCounterCustomRange || "Counter (custom range)"}</option>
+                  <option value="filterequal">{localized.nodeEditorTransformationFilterRowsEqual || "Filter Rows: Equal (skip if equal)"}</option>
+                  <option value="filternotequal">{localized.nodeEditorTransformationFilterRowsNotEqual || "Filter Rows: Not Equal (skip if not equal)"}</option>
                 </select>
 
                 {trans.transformationType === "prefix" && (
                   <input
                     type="text"
-                    placeholder="Prefix..."
+                    placeholder={localized.nodeEditorPrefixPlaceholder || "Prefix..."}
                     value={trans.prefix || ""}
                     onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -4300,7 +4556,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 {trans.transformationType === "suffix" && (
                   <input
                     type="text"
-                    placeholder="Suffix..."
+                    placeholder={localized.nodeEditorSuffixPlaceholder || "Suffix..."}
                     value={trans.suffix || ""}
                     onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -4313,7 +4569,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   trans.transformationType === "divide") && (
                   <input
                     type="number"
-                    placeholder="Number value..."
+                    placeholder={localized.nodeEditorNumberValuePlaceholder || "Number value..."}
                     value={trans.numericValue ?? ""}
                     onChange={(e) =>
                       updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
@@ -4325,7 +4581,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 {trans.transformationType === "counter" && (
                   <input
                     type="number"
-                    placeholder="Start number (default: 10000)..."
+                    placeholder={localized.nodeEditorStartNumberDefault10000Placeholder || "Start number (default: 10000)..."}
                     value={trans.startNumber ?? ""}
                     onChange={(e) =>
                       updateTransformation(trans.id, { startNumber: parseInt(e.target.value) || undefined })
@@ -4338,26 +4594,28 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   <div className="space-y-1">
                     <input
                       type="text"
-                      placeholder="Start (e.g., 1 or {{startOption}})"
+                      placeholder={localized.nodeEditorRangeStartPlaceholder || "Start (e.g., 1 or {{startOption}})"}
                       value={trans.rangeStart ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { rangeStart: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
                     <input
                       type="text"
-                      placeholder="End (e.g., 10 or {{endOption}})"
+                      placeholder={localized.nodeEditorRangeEndPlaceholder || "End (e.g., 10 or {{endOption}})"}
                       value={trans.endNumber ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { endNumber: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
                     <input
                       type="text"
-                      placeholder="Increment (e.g., 1 or {{incOption}})"
+                      placeholder={localized.nodeEditorRangeIncrementPlaceholder || "Increment (e.g., 1 or {{incOption}})"}
                       value={trans.rangeIncrement ?? "1"}
                       onChange={(e) => updateTransformation(trans.id, { rangeIncrement: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
-                    <div className="text-xs text-gray-500">Generates rows from start to end</div>
+                    <div className="text-xs text-gray-500">
+                      {localized.nodeEditorGeneratesRowsFromStartToEnd || "Generates rows from start to end"}
+                    </div>
                   </div>
                 )}
 
@@ -4365,7 +4623,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   trans.transformationType === "filternotequal") && (
                   <input
                     type="text"
-                    placeholder="Filter value..."
+                    placeholder={localized.nodeEditorFilterValue || "Filter value..."}
                     value={trans.filterValue || ""}
                     onChange={(e) => updateTransformation(trans.id, { filterValue: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -4374,7 +4632,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
                 <input
                   type="text"
-                  placeholder="Output column name..."
+                  placeholder={localized.nodeEditorOutputColumnNamePlaceholder || "Output column name..."}
                   value={trans.outputColumnName}
                   onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -4385,7 +4643,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                 >
-                  <option value="">Select target table...</option>
+                  <option value="">{localized.nodeEditorSelectTargetTable || "Select target table..."}</option>
                   {outputTables.map((table) => (
                     <option key={table.handleId} value={table.handleId}>
                       {table.name || table.handleId}
@@ -4397,14 +4655,18 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
           })}
 
           {transformations.length === 0 && (
-            <div className="text-xs text-gray-500 text-center py-2">No transformations yet</div>
+            <div className="text-xs text-gray-500 text-center py-2">
+              {localized.nodeEditorNoTransformationsYet || "No transformations yet"}
+            </div>
           )}
         </div>
       </div>
 
       {/* Output Count */}
       <div className="mb-3">
-        <label className="text-xs text-gray-300 block mb-1">Number of Outputs:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorNumberOfOutputsLabel || "Number of Outputs:"}
+        </label>
         <div className="flex gap-2">
           {[1, 2, 3, 4].map((num) => (
             <label key={num} className="flex items-center gap-1 cursor-pointer">
@@ -4422,14 +4684,18 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
       {/* Output Tables Configuration */}
       <div className="mb-3">
-        <label className="text-xs text-gray-300 block mb-2">Output Tables:</label>
+        <label className="text-xs text-gray-300 block mb-2">
+          {localized.nodeEditorOutputTablesLabel || "Output Tables:"}
+        </label>
         <div
           className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
           {outputTables.map((output, idx) => (
             <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
-              <div className="text-xs text-gray-400 mb-1">Output {idx + 1}</div>
+              <div className="text-xs text-gray-400 mb-1">
+                {(localized.nodeEditorOutputItem || "Output")} {idx + 1}
+              </div>
 
               <select
                 value={output.existingTableName}
@@ -4438,10 +4704,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 }
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               >
-                <option value="">Select table schema...</option>
+                <option value="">{localized.nodeEditorSelectTableSchema || "Select table schema..."}</option>
                 {customSchemaColumns.length > 0 && (
                   <option value="__custom_schema__" className="text-purple-400">
-                    Custom Schema (connected)
+                    {localized.nodeEditorCustomSchemaConnected || "Custom Schema (connected)"}
                   </option>
                 )}
                 {tableNames.map((tableName) => (
@@ -4478,7 +4744,9 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 );
               })()}
 
-              <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
+              <div className="text-xs text-gray-400 mb-1">
+                {localized.nodeEditorTransformedColumnsLabel || "Transformed Columns:"}
+              </div>
               <div
                 className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2 scrollable-node-content"
                 onWheel={stopWheelPropagation}
@@ -4494,12 +4762,14 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                 {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length ===
                   0 && (
                   <div className="text-xs text-gray-500 text-center py-1">
-                    No transformations for this table
+                    {localized.nodeEditorNoTransformationsForThisTable || "No transformations for this table"}
                   </div>
                 )}
               </div>
 
-              <div className="text-xs text-gray-400 mb-1">Static Values (remaining columns):</div>
+              <div className="text-xs text-gray-400 mb-1">
+                {localized.nodeEditorStaticValuesRemainingColumnsLabel || "Static Values (remaining columns):"}
+              </div>
               <div
                 className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content"
                 onWheel={stopWheelPropagation}
@@ -4511,7 +4781,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                     </span>
                     <input
                       type="text"
-                      placeholder="value"
+                      placeholder={localized.nodeEditorValuePlaceholder || "value"}
                       value={output.staticValues?.[col] || ""}
                       onChange={(e) => updateStaticValue(idx, col, e.target.value)}
                       className="flex-1 bg-gray-600 border border-gray-500 text-white text-xs rounded px-1 py-0.5"
@@ -4519,7 +4789,9 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
                   </div>
                 ))}
                 {getAvailableStaticColumns(idx).length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-1">All columns mapped</div>
+                  <div className="text-xs text-gray-500 text-center py-1">
+                    {localized.nodeEditorAllColumnsMapped || "All columns mapped"}
+                  </div>
                 )}
               </div>
             </div>
@@ -4527,7 +4799,10 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Outputs: {outputCount} TableSelections</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutputsLabel || "Outputs:")} {outputCount}{" "}
+        {localized.nodeEditorTableSelections || "TableSelections"}
+      </div>
 
       {/* Output Handles */}
       {outputTables.map((output, idx) => (
@@ -4551,6 +4826,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
 // Schema-only variant of GenerateRows - accepts only CustomSchema input
 const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [transformations, setTransformations] = useState<ColumnTransformation[]>(data.transformations || []);
   const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
   const [outputCount, setOutputCount] = useState<number>(data.outputCount || 1);
@@ -4669,26 +4945,32 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
         data-input-type="CustomSchema"
       />
 
-      <div className="text-sm font-bold text-white mb-3">Generate Rows (Schema)</div>
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorGenerateRowsSchemaTitle || "Generate Rows (Schema)"}
+      </div>
       <div className="text-xs text-gray-400 mb-2">
-        <span className="text-purple-400">●</span> Requires Custom Schema input
+        <span className="text-purple-400">●</span>{" "}
+        {localized.nodeEditorRequiresCustomSchemaInput || "Requires Custom Schema input"}
       </div>
 
       {customSchemaColumns.length === 0 && (
         <div className="text-xs text-yellow-400 mb-2 p-2 bg-yellow-900/30 rounded">
-          Connect a Custom Schema node to define columns
+          {localized.nodeEditorConnectCustomSchemaToDefineColumns ||
+            "Connect a Custom Schema node to define columns"}
         </div>
       )}
 
       {/* Transformations Section */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-gray-300">Transformations:</label>
+          <label className="text-xs text-gray-300">
+            {localized.nodeEditorTransformationsLabel || "Transformations:"}
+          </label>
           <button
             onClick={addTransformation}
             className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded"
           >
-            + Add
+            + {localized.add || "Add"}
           </button>
         </div>
 
@@ -4710,7 +4992,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                   <button
                     onClick={() => removeTransformation(trans.id)}
                     className="text-xs text-red-400 hover:text-red-300"
-                    title="Remove"
+                    title={localized.remove || "Remove"}
                   >
                     ✕
                   </button>
@@ -4725,14 +5007,20 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                   }
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
-                  <option value="counter_range">Counter (custom range)</option>
-                  <option value="none">None (use source)</option>
-                  <option value="prefix">Add Prefix</option>
-                  <option value="suffix">Add Suffix</option>
-                  <option value="add">Add Number (+)</option>
-                  <option value="subtract">Subtract Number (-)</option>
-                  <option value="multiply">Multiply (*)</option>
-                  <option value="divide">Divide (/)</option>
+                  <option value="counter_range">
+                    {localized.nodeEditorTransformationCounterCustomRange || "Counter (custom range)"}
+                  </option>
+                  <option value="none">
+                    {localized.nodeEditorTransformationNoneUseSource || "None (use source)"}
+                  </option>
+                  <option value="prefix">{localized.nodeEditorTransformationAddPrefix || "Add Prefix"}</option>
+                  <option value="suffix">{localized.nodeEditorTransformationAddSuffix || "Add Suffix"}</option>
+                  <option value="add">{localized.nodeEditorTransformationAddNumber || "Add Number (+)"}</option>
+                  <option value="subtract">
+                    {localized.nodeEditorTransformationSubtractNumber || "Subtract Number (-)"}
+                  </option>
+                  <option value="multiply">{localized.nodeEditorTransformationMultiply || "Multiply (*)"}</option>
+                  <option value="divide">{localized.nodeEditorTransformationDivide || "Divide (/)"}</option>
                 </select>
 
                 {trans.transformationType !== "counter_range" && (
@@ -4741,10 +5029,10 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                     onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                   >
-                    <option value="">Select source...</option>
+                    <option value="">{localized.nodeEditorSelectSource || "Select source..."}</option>
                     {availableSourceColumns.map((col) => (
                       <option key={col} value={col}>
-                        {col} (from transformation)
+                        {col} ({localized.nodeEditorFromTransformation || "from transformation"})
                       </option>
                     ))}
                   </select>
@@ -4753,7 +5041,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                 {trans.transformationType === "prefix" && (
                   <input
                     type="text"
-                    placeholder="Prefix..."
+                    placeholder={localized.nodeEditorPrefixPlaceholder || "Prefix..."}
                     value={trans.prefix || ""}
                     onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -4763,7 +5051,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                 {trans.transformationType === "suffix" && (
                   <input
                     type="text"
-                    placeholder="Suffix..."
+                    placeholder={localized.nodeEditorSuffixPlaceholder || "Suffix..."}
                     value={trans.suffix || ""}
                     onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -4776,7 +5064,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                   trans.transformationType === "divide") && (
                   <input
                     type="number"
-                    placeholder="Number value..."
+                    placeholder={localized.nodeEditorNumberValuePlaceholder || "Number value..."}
                     value={trans.numericValue ?? ""}
                     onChange={(e) =>
                       updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
@@ -4789,32 +5077,34 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                   <div className="space-y-1">
                     <input
                       type="text"
-                      placeholder="Start (e.g., 1 or {{startOption}})"
+                      placeholder={localized.nodeEditorRangeStartPlaceholder || "Start (e.g., 1 or {{startOption}})"}
                       value={trans.rangeStart ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { rangeStart: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
                     <input
                       type="text"
-                      placeholder="End (e.g., 10 or {{endOption}})"
+                      placeholder={localized.nodeEditorRangeEndPlaceholder || "End (e.g., 10 or {{endOption}})"}
                       value={trans.endNumber ?? ""}
                       onChange={(e) => updateTransformation(trans.id, { endNumber: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
                     <input
                       type="text"
-                      placeholder="Increment (e.g., 1 or {{incOption}})"
+                      placeholder={localized.nodeEditorRangeIncrementPlaceholder || "Increment (e.g., 1 or {{incOption}})"}
                       value={trans.rangeIncrement ?? "1"}
                       onChange={(e) => updateTransformation(trans.id, { rangeIncrement: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                     />
-                    <div className="text-xs text-gray-500">Generates rows from start to end</div>
+                    <div className="text-xs text-gray-500">
+                      {localized.nodeEditorGeneratesRowsFromStartToEnd || "Generates rows from start to end"}
+                    </div>
                   </div>
                 )}
 
                 <input
                   type="text"
-                  placeholder="Output column name..."
+                  placeholder={localized.nodeEditorOutputColumnNamePlaceholder || "Output column name..."}
                   value={trans.outputColumnName}
                   onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -4825,7 +5115,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                   onChange={(e) => updateTransformation(trans.id, { targetTableHandleId: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
                 >
-                  <option value="">Select target table...</option>
+                  <option value="">{localized.nodeEditorSelectTargetTable || "Select target table..."}</option>
                   {outputTables.map((table) => (
                     <option key={table.handleId} value={table.handleId}>
                       {table.name || table.handleId}
@@ -4837,14 +5127,18 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
           })}
 
           {transformations.length === 0 && (
-            <div className="text-xs text-gray-500 text-center py-2">No transformations yet</div>
+            <div className="text-xs text-gray-500 text-center py-2">
+              {localized.nodeEditorNoTransformationsYet || "No transformations yet"}
+            </div>
           )}
         </div>
       </div>
 
       {/* Output Count */}
       <div className="mb-3">
-        <label className="text-xs text-gray-300 block mb-1">Number of Outputs:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorNumberOfOutputsLabel || "Number of Outputs:"}
+        </label>
         <div className="flex gap-2">
           {[1, 2, 3, 4].map((num) => (
             <label key={num} className="flex items-center gap-1 cursor-pointer">
@@ -4862,16 +5156,23 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
 
       {/* Output Tables Configuration */}
       <div className="mb-3">
-        <label className="text-xs text-gray-300 block mb-2">Output Tables:</label>
+        <label className="text-xs text-gray-300 block mb-2">
+          {localized.nodeEditorOutputTablesLabel || "Output Tables:"}
+        </label>
         <div
           className="space-y-2 max-h-48 overflow-y-auto scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
           {outputTables.map((output, idx) => (
             <div key={output.handleId} className="bg-gray-800 p-2 rounded border border-gray-600">
-              <div className="text-xs text-purple-400 mb-1">Output {idx + 1} (Custom Schema)</div>
+              <div className="text-xs text-purple-400 mb-1">
+                {(localized.nodeEditorOutputItem || "Output")} {idx + 1} (
+                {localized.nodeEditorCustomSchema || "Custom Schema"})
+              </div>
 
-              <div className="text-xs text-gray-400 mb-1">Transformed Columns:</div>
+              <div className="text-xs text-gray-400 mb-1">
+                {localized.nodeEditorTransformedColumnsLabel || "Transformed Columns:"}
+              </div>
               <div
                 className="max-h-24 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 mb-2 scrollable-node-content"
                 onWheel={stopWheelPropagation}
@@ -4887,12 +5188,14 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                 {transformations.filter((trans) => trans.targetTableHandleId === output.handleId).length ===
                   0 && (
                   <div className="text-xs text-gray-500 text-center py-1">
-                    No transformations for this table
+                    {localized.nodeEditorNoTransformationsForThisTable || "No transformations for this table"}
                   </div>
                 )}
               </div>
 
-              <div className="text-xs text-gray-400 mb-1">Static Values (remaining columns):</div>
+              <div className="text-xs text-gray-400 mb-1">
+                {localized.nodeEditorStaticValuesRemainingColumnsLabel || "Static Values (remaining columns):"}
+              </div>
               <div
                 className="max-h-32 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-1 scrollable-node-content"
                 onWheel={stopWheelPropagation}
@@ -4904,7 +5207,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                     </span>
                     <input
                       type="text"
-                      placeholder="value"
+                      placeholder={localized.nodeEditorValuePlaceholder || "value"}
                       value={output.staticValues?.[col] || ""}
                       onChange={(e) => updateStaticValue(idx, col, e.target.value)}
                       className="flex-1 bg-gray-600 border border-gray-500 text-white text-xs rounded px-1 py-0.5"
@@ -4912,7 +5215,9 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
                   </div>
                 ))}
                 {getAvailableStaticColumns(idx).length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-1">All columns mapped</div>
+                  <div className="text-xs text-gray-500 text-center py-1">
+                    {localized.nodeEditorAllColumnsMapped || "All columns mapped"}
+                  </div>
                 )}
               </div>
             </div>
@@ -4920,7 +5225,10 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">Outputs: {outputCount} TableSelections</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutputsLabel || "Outputs:")} {outputCount}{" "}
+        {localized.nodeEditorTableSelections || "TableSelections"}
+      </div>
 
       {/* Output Handles */}
       {outputTables.map((output, idx) => (
@@ -4943,6 +5251,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
 };
 
 const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const defaultTableVersions = useDefaultTableVersions();
   const [transformations, setTransformations] = useState<AddColumnTransformation[]>(
     data.transformations || [],
@@ -5043,17 +5352,21 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
         data-input-type="TableSelection"
       />
 
-      <div className="text-sm font-bold text-white mb-3">Add New Column</div>
+      <div className="text-sm font-bold text-white mb-3">
+        {data.label || localized.nodeEditorNodeAddNewColumnLabel || "Add New Column"}
+      </div>
 
       {/* Transformations Section */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-gray-300">New Columns:</label>
+          <label className="text-xs text-gray-300">
+            {localized.nodeEditorNewColumnsLabel || "New Columns:"}
+          </label>
           <button
             onClick={addTransformation}
             className="text-xs bg-cyan-600 hover:bg-cyan-700 text-white px-2 py-1 rounded"
           >
-            + Add Column
+            + {localized.nodeEditorAddColumn || "Add Column"}
           </button>
         </div>
 
@@ -5084,7 +5397,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                           ? "text-gray-600 cursor-not-allowed"
                           : "text-blue-400 hover:text-blue-300"
                       }`}
-                      title="Move up"
+                      title={localized.nodeEditorMoveUp || "Move up"}
                     >
                       ▲
                     </button>
@@ -5096,14 +5409,14 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                           ? "text-gray-600 cursor-not-allowed"
                           : "text-blue-400 hover:text-blue-300"
                       }`}
-                      title="Move down"
+                      title={localized.nodeEditorMoveDown || "Move down"}
                     >
                       ▼
                     </button>
                     <button
                       onClick={() => removeTransformation(trans.id)}
                       className="text-xs text-red-400 hover:text-red-300"
-                      title="Remove"
+                      title={localized.remove || "Remove"}
                     >
                       ✕
                     </button>
@@ -5115,7 +5428,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   onChange={(e) => updateTransformation(trans.id, { sourceColumn: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
-                  <option value="">Select source column...</option>
+                  <option value="">{localized.nodeEditorSelectSourceColumn || "Select source column..."}</option>
                   {inputColumns.map((col: string) => (
                     <option key={col} value={col}>
                       {col}
@@ -5123,7 +5436,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   ))}
                   {previousTransformationColumns.map((colName) => (
                     <option key={colName} value={colName}>
-                      {colName} (from transformation)
+                      {colName} ({localized.nodeEditorFromTransformation || "from transformation"})
                     </option>
                   ))}
                 </select>
@@ -5150,29 +5463,46 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   }
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                 >
-                  <option value="none">None (pass through)</option>
-                  <option value="prefix">Add Prefix</option>
-                  <option value="suffix">Add Suffix</option>
-                  <option value="add">Add Number (+)</option>
-                  <option value="subtract">Subtract Number (-)</option>
-                  <option value="multiply">Multiply (*)</option>
-                  <option value="divide">Divide (/)</option>
-                  <option value="rename_whole">Rename (whole text with new value)</option>
+                  <option value="none">
+                    {localized.nodeEditorTransformationNonePassThrough || "None (pass through)"}
+                  </option>
+                  <option value="prefix">{localized.nodeEditorTransformationAddPrefix || "Add Prefix"}</option>
+                  <option value="suffix">{localized.nodeEditorTransformationAddSuffix || "Add Suffix"}</option>
+                  <option value="add">{localized.nodeEditorTransformationAddNumber || "Add Number (+)"}</option>
+                  <option value="subtract">
+                    {localized.nodeEditorTransformationSubtractNumber || "Subtract Number (-)"}
+                  </option>
+                  <option value="multiply">
+                    {localized.nodeEditorTransformationMultiply || "Multiply (*)"}
+                  </option>
+                  <option value="divide">{localized.nodeEditorTransformationDivide || "Divide (/)"}</option>
+                  <option value="rename_whole">
+                    {localized.nodeEditorTransformationRenameWhole || "Rename (whole text with new value)"}
+                  </option>
                   <option value="rename_substring">
-                    Rename (if substring present replace with substring)
+                    {localized.nodeEditorTransformationRenameSubstring ||
+                      "Rename (if substring present replace with substring)"}
                   </option>
                   <option value="replace_substring_whole">
-                    Replace if contains (replace whole value if substring found)
+                    {localized.nodeEditorTransformationReplaceIfContainsWhole ||
+                      "Replace if contains (replace whole value if substring found)"}
                   </option>
-                  <option value="regex_replace">Regex Replace</option>
-                  <option value="filterequal">Filter Rows: Equal (skip if equal)</option>
-                  <option value="filternotequal">Filter Rows: Not Equal (skip if not equal)</option>
+                  <option value="regex_replace">
+                    {localized.nodeEditorTransformationRegexReplace || "Regex Replace"}
+                  </option>
+                  <option value="filterequal">
+                    {localized.nodeEditorTransformationFilterRowsEqual || "Filter Rows: Equal (skip if equal)"}
+                  </option>
+                  <option value="filternotequal">
+                    {localized.nodeEditorTransformationFilterRowsNotEqual ||
+                      "Filter Rows: Not Equal (skip if not equal)"}
+                  </option>
                 </select>
 
                 {trans.transformationType === "prefix" && (
                   <input
                     type="text"
-                    placeholder="Prefix..."
+                    placeholder={localized.nodeEditorPrefixPlaceholder || "Prefix..."}
                     value={trans.prefix || ""}
                     onChange={(e) => updateTransformation(trans.id, { prefix: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5182,7 +5512,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                 {trans.transformationType === "suffix" && (
                   <input
                     type="text"
-                    placeholder="Suffix..."
+                    placeholder={localized.nodeEditorSuffixPlaceholder || "Suffix..."}
                     value={trans.suffix || ""}
                     onChange={(e) => updateTransformation(trans.id, { suffix: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5195,7 +5525,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   trans.transformationType === "divide") && (
                   <input
                     type="number"
-                    placeholder="Number value..."
+                    placeholder={localized.nodeEditorNumberValuePlaceholder || "Number value..."}
                     value={trans.numericValue ?? ""}
                     onChange={(e) =>
                       updateTransformation(trans.id, { numericValue: parseFloat(e.target.value) || 0 })
@@ -5208,14 +5538,16 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   <>
                     <input
                       type="text"
-                      placeholder="Match value (exact match)..."
+                      placeholder={
+                        localized.nodeEditorMatchValueExactPlaceholder || "Match value (exact match)..."
+                      }
                       value={trans.matchValue || ""}
                       onChange={(e) => updateTransformation(trans.id, { matchValue: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                     />
                     <input
                       type="text"
-                      placeholder="Replace with..."
+                      placeholder={localized.nodeEditorReplaceWithPlaceholder || "Replace with..."}
                       value={trans.replaceValue || ""}
                       onChange={(e) => updateTransformation(trans.id, { replaceValue: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5227,14 +5559,14 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   <>
                     <input
                       type="text"
-                      placeholder="Find substring..."
+                      placeholder={localized.nodeEditorFindSubstringPlaceholder || "Find substring..."}
                       value={trans.findSubstring || ""}
                       onChange={(e) => updateTransformation(trans.id, { findSubstring: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                     />
                     <input
                       type="text"
-                      placeholder="Replace with..."
+                      placeholder={localized.nodeEditorReplaceWithPlaceholder || "Replace with..."}
                       value={trans.replaceValue || ""}
                       onChange={(e) => updateTransformation(trans.id, { replaceValue: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5246,14 +5578,19 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   <>
                     <input
                       type="text"
-                      placeholder="If contains substring..."
+                      placeholder={
+                        localized.nodeEditorIfContainsSubstringPlaceholder || "If contains substring..."
+                      }
                       value={trans.findSubstring || ""}
                       onChange={(e) => updateTransformation(trans.id, { findSubstring: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                     />
                     <input
                       type="text"
-                      placeholder="Replace entire value with..."
+                      placeholder={
+                        localized.nodeEditorReplaceEntireValueWithPlaceholder ||
+                        "Replace entire value with..."
+                      }
                       value={trans.replaceValue || ""}
                       onChange={(e) => updateTransformation(trans.id, { replaceValue: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5265,14 +5602,19 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   <>
                     <input
                       type="text"
-                      placeholder="Regex pattern (e.g., wh_(\w+)_emp)..."
+                      placeholder={
+                        localized.nodeEditorRegexPatternPlaceholder || "Regex pattern (e.g., wh_(\\w+)_emp)..."
+                      }
                       value={trans.regexPattern || ""}
                       onChange={(e) => updateTransformation(trans.id, { regexPattern: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                     />
                     <input
                       type="text"
-                      placeholder="Replacement (supports $1, $2, etc.)..."
+                      placeholder={
+                        localized.nodeEditorRegexReplacementPlaceholder ||
+                        "Replacement (supports $1, $2, etc.)..."
+                      }
                       value={trans.regexReplacement || ""}
                       onChange={(e) => updateTransformation(trans.id, { regexReplacement: e.target.value })}
                       className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5284,7 +5626,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
                   trans.transformationType === "filternotequal") && (
                   <input
                     type="text"
-                    placeholder="Filter value..."
+                    placeholder={localized.nodeEditorFilterValue || "Filter value..."}
                     value={trans.filterValue || ""}
                     onChange={(e) => updateTransformation(trans.id, { filterValue: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
@@ -5293,7 +5635,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
 
                 <input
                   type="text"
-                  placeholder="Output column name..."
+                  placeholder={localized.nodeEditorOutputColumnNamePlaceholder || "Output column name..."}
                   value={trans.outputColumnName}
                   onChange={(e) => updateTransformation(trans.id, { outputColumnName: e.target.value })}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
@@ -5303,18 +5645,18 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
           })}
 
           {transformations.length === 0 && (
-            <div className="text-xs text-gray-500 text-center py-2">No columns yet - click Add Column</div>
+            <div className="text-xs text-gray-500 text-center py-2">
+              {localized.nodeEditorNoColumnsYetClickAddColumn || "No columns yet - click Add Column"}
+            </div>
           )}
         </div>
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
-        Output: All original columns +{" "}
-        {
-          transformations.filter((t) => !["filterequal", "filternotequal"].includes(t.transformationType))
-            .length
-        }{" "}
-        new
+        {(localized.nodeEditorOutput || "Output:")}{" "}
+        {localized.nodeEditorAllOriginalColumnsPlusNew || "All original columns +"}{" "}
+        {transformations.filter((t) => !["filterequal", "filternotequal"].includes(t.transformationType)).length}{" "}
+        {localized.nodeEditorNewLowercase || "new"}
       </div>
 
       <Handle
@@ -5353,6 +5695,7 @@ const FlowOptionsModal: React.FC<{
   onGraphStartsEnabledChange,
 }) => {
   const dispatch = useAppDispatch();
+  const localized = useLocalizations();
   const [editingOption, setEditingOption] = useState<FlowOption | null>(null);
   const [isAddingOption, setIsAddingOption] = useState(false);
   const [newOptionType, setNewOptionType] = useState<"textbox" | "range" | "checkbox">("textbox");
@@ -5393,7 +5736,13 @@ const FlowOptionsModal: React.FC<{
       dispatch(
         addToast({
           type: "warning",
-          messages: [`Option ID "${formData.id}" already exists. Please use a unique ID.`],
+          messages: [
+            (localized.nodeEditorOptionIdAlreadyExists ||
+              'Option ID "{{id}}" already exists. Please use a unique ID.').replace(
+              "{{id}}",
+              formData.id,
+            ),
+          ],
           startTime: Date.now(),
         }),
       );
@@ -5459,7 +5808,13 @@ const FlowOptionsModal: React.FC<{
         dispatch(
           addToast({
             type: "warning",
-            messages: [`Option ID "${formData.id}" already exists. Please use a unique ID.`],
+            messages: [
+              (localized.nodeEditorOptionIdAlreadyExists ||
+                'Option ID "{{id}}" already exists. Please use a unique ID.').replace(
+                "{{id}}",
+                formData.id,
+              ),
+            ],
             startTime: Date.now(),
           }),
         );
@@ -5512,6 +5867,12 @@ const FlowOptionsModal: React.FC<{
 
   if (!isOpen) return null;
 
+  const getOptionTypeLabel = (type: FlowOption["type"]) => {
+    if (type === "textbox") return localized.nodeEditorOptionTypeTextbox || "Textbox";
+    if (type === "range") return localized.nodeEditorOptionTypeRangeSlider || "Range Slider";
+    return localized.nodeEditorOptionTypeCheckbox || "Checkbox";
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div
@@ -5519,7 +5880,7 @@ const FlowOptionsModal: React.FC<{
         onWheel={stopWheelPropagation}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-white">Flow Options</h2>
+          <h2 className="text-xl font-bold text-white">{localized.nodeEditorFlowOptions || "Flow Options"}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">
             ×
           </button>
@@ -5535,9 +5896,12 @@ const FlowOptionsModal: React.FC<{
               className="w-5 h-5"
             />
             <div>
-              <span className="text-white font-semibold text-lg">User Can Disable Flow</span>
+              <span className="text-white font-semibold text-lg">
+                {localized.nodeEditorUserCanDisableFlow || "User Can Disable Flow"}
+              </span>
               <p className="text-gray-300 text-sm">
-                If enabled the user options will have a checkbox that disables or enables the whole flow.
+                {localized.nodeEditorUserCanDisableFlowDescription ||
+                  "If enabled the user options will have a checkbox that disables or enables the whole flow."}
               </p>
             </div>
           </label>
@@ -5552,7 +5916,9 @@ const FlowOptionsModal: React.FC<{
                   onChange={(e) => onGraphStartsEnabledChange(e.target.checked)}
                   className="w-4 h-4"
                 />
-                <span className="text-gray-300 text-sm">Flow starts enabled by default</span>
+                <span className="text-gray-300 text-sm">
+                  {localized.nodeEditorFlowStartsEnabledByDefault || "Flow starts enabled by default"}
+                </span>
               </label>
             </div>
           )}
@@ -5560,9 +5926,13 @@ const FlowOptionsModal: React.FC<{
 
         {/* Current Options */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-white mb-3">Current Options</h3>
+          <h3 className="text-lg font-semibold text-white mb-3">
+            {localized.nodeEditorCurrentOptions || "Current Options"}
+          </h3>
           {options.length === 0 ? (
-            <p className="text-gray-400 text-sm">No options configured yet.</p>
+            <p className="text-gray-400 text-sm">
+              {localized.nodeEditorNoOptionsConfiguredYet || "No options configured yet."}
+            </p>
           ) : (
             <div className="space-y-3">
               {options.map((option) => (
@@ -5575,7 +5945,7 @@ const FlowOptionsModal: React.FC<{
                         <p className="text-gray-300 text-sm mt-1">{option.description}</p>
                       )}
                       <span className="inline-block bg-gray-600 text-xs px-2 py-1 rounded mt-1">
-                        {option.type}
+                        {getOptionTypeLabel(option.type)}
                       </span>
                     </div>
                     <div className="flex gap-2">
@@ -5583,13 +5953,13 @@ const FlowOptionsModal: React.FC<{
                         onClick={() => handleEditOption(option)}
                         className="text-blue-400 hover:text-blue-300 text-sm"
                       >
-                        Edit
+                        {localized.edit || "Edit"}
                       </button>
                       <button
                         onClick={() => handleDeleteOption(option.id)}
                         className="text-red-400 hover:text-red-300 text-sm"
                       >
-                        Delete
+                        {localized.delete || "Delete"}
                       </button>
                     </div>
                   </div>
@@ -5628,7 +5998,11 @@ const FlowOptionsModal: React.FC<{
                         onChange={(e) => handleOptionValueChange(option.id, e.target.checked)}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm text-gray-300">{option.value ? "Checked" : "Unchecked"}</span>
+                      <span className="text-sm text-gray-300">
+                        {option.value
+                          ? localized.nodeEditorChecked || "Checked"
+                          : localized.nodeEditorUnchecked || "Unchecked"}
+                      </span>
                     </label>
                   )}
                 </div>
@@ -5641,56 +6015,69 @@ const FlowOptionsModal: React.FC<{
         {(isAddingOption || editingOption) && (
           <div className="mb-6 bg-gray-700 rounded p-4">
             <h3 className="text-lg font-semibold text-white mb-3">
-              {editingOption ? "Edit Option" : "Add New Option"}
+              {editingOption
+                ? localized.nodeEditorEditOption || "Edit Option"
+                : localized.nodeEditorAddNewOption || "Add New Option"}
             </h3>
 
             {!editingOption && (
               <div className="mb-4">
-                <label className="block text-white text-sm font-medium mb-2">Option Type</label>
+                <label className="block text-white text-sm font-medium mb-2">
+                  {localized.nodeEditorOptionType || "Option Type"}
+                </label>
                 <select
                   value={newOptionType}
                   onChange={(e) => setNewOptionType(e.target.value as "textbox" | "range" | "checkbox")}
                   className="w-full p-2 bg-gray-600 text-white rounded"
                 >
-                  <option value="textbox">Textbox</option>
-                  <option value="range">Range Slider</option>
-                  <option value="checkbox">Checkbox</option>
+                  <option value="textbox">{localized.nodeEditorOptionTypeTextbox || "Textbox"}</option>
+                  <option value="range">
+                    {localized.nodeEditorOptionTypeRangeSlider || "Range Slider"}
+                  </option>
+                  <option value="checkbox">{localized.nodeEditorOptionTypeCheckbox || "Checkbox"}</option>
                 </select>
               </div>
             )}
 
             <div className="mb-4">
               <label className="block text-white text-sm font-medium mb-2">
-                ID * <span className="text-gray-400 text-xs">(use in nodes as {`{{id}}`})</span>
+                {localized.nodeEditorIdRequired || "ID *"}{" "}
+                <span className="text-gray-400 text-xs">
+                  ({localized.nodeEditorUseInNodesAs || "use in nodes as"} {`{{id}}`})
+                </span>
               </label>
               <input
                 type="text"
                 value={formData.id}
                 onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                 className="w-full p-2 bg-gray-600 text-white rounded"
-                placeholder="e.g. damageMultiplier"
+                placeholder={localized.nodeEditorOptionIdExamplePlaceholder || "e.g. damageMultiplier"}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-white text-sm font-medium mb-2">Display Name *</label>
+                <label className="block text-white text-sm font-medium mb-2">
+                  {localized.nodeEditorDisplayNameRequired || "Display Name *"}
+                </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full p-2 bg-gray-600 text-white rounded"
-                  placeholder="Damage Multiplier"
+                  placeholder={localized.nodeEditorDisplayNameExamplePlaceholder || "Damage Multiplier"}
                 />
               </div>
               <div>
-                <label className="block text-white text-sm font-medium mb-2">Description</label>
+                <label className="block text-white text-sm font-medium mb-2">
+                  {localized.description || "Description"}
+                </label>
                 <input
                   type="text"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full p-2 bg-gray-600 text-white rounded"
-                  placeholder="Optional description"
+                  placeholder={localized.nodeEditorOptionalDescriptionPlaceholder || "Optional description"}
                 />
               </div>
             </div>
@@ -5698,7 +6085,9 @@ const FlowOptionsModal: React.FC<{
             {newOptionType === "textbox" ? (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-white text-sm font-medium mb-2">Default Value</label>
+                  <label className="block text-white text-sm font-medium mb-2">
+                    {localized.nodeEditorDefaultValue || "Default Value"}
+                  </label>
                   <input
                     type="text"
                     value={formData.value}
@@ -5707,7 +6096,9 @@ const FlowOptionsModal: React.FC<{
                   />
                 </div>
                 <div>
-                  <label className="block text-white text-sm font-medium mb-2">Placeholder</label>
+                  <label className="block text-white text-sm font-medium mb-2">
+                    {localized.nodeEditorPlaceholder || "Placeholder"}
+                  </label>
                   <input
                     type="text"
                     value={formData.placeholder}
@@ -5719,7 +6110,9 @@ const FlowOptionsModal: React.FC<{
             ) : newOptionType === "range" ? (
               <div className="grid grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-white text-sm font-medium mb-2">Min</label>
+                  <label className="block text-white text-sm font-medium mb-2">
+                    {localized.nodeEditorMin || "Min"}
+                  </label>
                   <input
                     type="number"
                     value={formData.min}
@@ -5728,7 +6121,9 @@ const FlowOptionsModal: React.FC<{
                   />
                 </div>
                 <div>
-                  <label className="block text-white text-sm font-medium mb-2">Max</label>
+                  <label className="block text-white text-sm font-medium mb-2">
+                    {localized.nodeEditorMax || "Max"}
+                  </label>
                   <input
                     type="number"
                     value={formData.max}
@@ -5737,7 +6132,9 @@ const FlowOptionsModal: React.FC<{
                   />
                 </div>
                 <div>
-                  <label className="block text-white text-sm font-medium mb-2">Step</label>
+                  <label className="block text-white text-sm font-medium mb-2">
+                    {localized.nodeEditorStep || "Step"}
+                  </label>
                   <input
                     type="number"
                     value={formData.step}
@@ -5748,7 +6145,9 @@ const FlowOptionsModal: React.FC<{
                   />
                 </div>
                 <div>
-                  <label className="block text-white text-sm font-medium mb-2">Default</label>
+                  <label className="block text-white text-sm font-medium mb-2">
+                    {localized.nodeEditorDefault || "Default"}
+                  </label>
                   <input
                     type="number"
                     value={formData.value}
@@ -5767,7 +6166,10 @@ const FlowOptionsModal: React.FC<{
                     className="w-4 h-4"
                   />
                   <span className="text-white text-sm font-medium">
-                    Default: {formData.checked ? "Checked" : "Unchecked"}
+                    {localized.nodeEditorDefaultColon || "Default:"}{" "}
+                    {formData.checked
+                      ? localized.nodeEditorChecked || "Checked"
+                      : localized.nodeEditorUnchecked || "Unchecked"}
                   </span>
                 </label>
               </div>
@@ -5778,13 +6180,14 @@ const FlowOptionsModal: React.FC<{
                 onClick={editingOption ? handleUpdateOption : handleAddOption}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
               >
-                {editingOption ? "Update" : "Add"} Option
+                {editingOption ? localized.update || "Update" : localized.add || "Add"}{" "}
+                {localized.nodeEditorOption || "Option"}
               </button>
               <button
                 onClick={resetForm}
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
               >
-                Cancel
+                {localized.cancel || "Cancel"}
               </button>
             </div>
           </div>
@@ -5796,7 +6199,7 @@ const FlowOptionsModal: React.FC<{
             onClick={() => setIsAddingOption(true)}
             className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded font-medium"
           >
-            Add New Option
+            {localized.nodeEditorAddNewOption || "Add New Option"}
           </button>
         )}
       </div>
@@ -5806,6 +6209,7 @@ const FlowOptionsModal: React.FC<{
 
 // Custom Schema node component
 const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [columns, setColumns] = useState<Array<CustomSchemaColumnWithId>>(data.schemaColumns || []);
 
   React.useEffect(() => {
@@ -5854,8 +6258,12 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
 
   return (
     <div className="bg-gray-700 border-2 border-purple-600 rounded-lg p-4 min-w-[300px] max-w-[400px]">
-      <div className="text-white font-medium text-sm mb-2">{data.label || "Custom Schema"}</div>
-      <div className="text-xs text-gray-400 mb-3">Define custom table schema</div>
+      <div className="text-white font-medium text-sm mb-2">
+        {data.label || localized.nodeEditorNodeCustomSchemaLabel || "Custom Schema"}
+      </div>
+      <div className="text-xs text-gray-400 mb-3">
+        {localized.nodeEditorNodeCustomSchemaDescription || "Define custom table schema with column names and types"}
+      </div>
 
       <div className="space-y-2 mb-3 max-h-64 overflow-y-auto scrollable-node-content">
         {columns.map((col) => (
@@ -5863,7 +6271,7 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
             <div className="flex gap-2 mb-1">
               <input
                 type="text"
-                placeholder="Column name"
+                placeholder={localized.nodeEditorColumnNamePlaceholder || "Column name"}
                 value={col.name}
                 onChange={(e) => updateColumn(col.id, "name", e.target.value)}
                 className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
@@ -5899,10 +6307,12 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
         onClick={addColumn}
         className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded font-medium"
       >
-        Add Column
+        {localized.nodeEditorAddColumn || "Add Column"}
       </button>
 
-      <div className="mt-2 text-xs text-gray-400">Output: Custom Schema</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorCustomSchema || "Custom Schema"}
+      </div>
 
       <Handle
         type="source"
@@ -5916,6 +6326,7 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
 
 // Read TSV From Pack node component
 const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [tsvFileName, setTsvFileName] = useState(data.tsvFileName || "");
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
     data.schemaColumns || [],
@@ -5958,25 +6369,36 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
         style={{ top: "70%", position: "absolute", left: -6 }}
       />
 
-      <div className="text-white font-medium text-sm mb-2">{data.label || "Read TSV From Pack"}</div>
+      <div className="text-white font-medium text-sm mb-2">
+        {data.label || localized.nodeEditorNodeReadTSVFromPackLabel || "Read TSV From Pack"}
+      </div>
       <div className="text-xs text-gray-400 mb-2">
-        <div>Schema: CustomSchema</div>
-        <div>Packs: PackFiles</div>
+        <div>
+          {localized.nodeEditorSchemaLabel || "Schema:"} {localized.nodeEditorCustomSchema || "CustomSchema"}
+        </div>
+        <div>
+          {localized.nodeEditorPacksLabel || "Packs:"} {localized.nodeEditorPackFiles || "PackFiles"}
+        </div>
       </div>
 
       <input
         type="text"
-        placeholder="Full TSV file path (e.g., my_data/data.tsv)"
+        placeholder={
+          localized.nodeEditorFullTsvFilePathPlaceholder ||
+          "Full TSV file path (e.g., my_data/data.tsv)"
+        }
         value={tsvFileName}
         onChange={handleFileNameChange}
         className="w-full p-2 mb-2 text-sm bg-gray-600 text-white border border-gray-500 rounded"
       />
 
       <div className="mb-3">
-        <label className="text-xs text-gray-400 block mb-1">Table Name (optional):</label>
+        <label className="text-xs text-gray-400 block mb-1">
+          {localized.nodeEditorTableNameOptionalLabel || "Table Name (optional):"}
+        </label>
         <input
           type="text"
-          placeholder="Auto-generated if empty"
+          placeholder={localized.nodeEditorAutoGeneratedIfEmptyPlaceholder || "Auto-generated if empty"}
           value={tableName}
           onChange={(e) => {
             const newName = e.target.value;
@@ -5993,7 +6415,12 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
 
       {schemaColumns.length > 0 && (
         <div className="mb-3">
-          <div className="text-xs text-gray-400 mb-1">Expected columns ({schemaColumns.length}):</div>
+          <div className="text-xs text-gray-400 mb-1">
+            {(localized.nodeEditorExpectedColumnsCount || "Expected columns ({{count}}):").replace(
+              "{{count}}",
+              String(schemaColumns.length),
+            )}
+          </div>
           <div className="max-h-32 overflow-y-auto bg-gray-800 rounded p-2 scrollable-node-content">
             {schemaColumns.map((col, idx) => (
               <div key={idx} className="text-xs text-gray-300">
@@ -6004,7 +6431,9 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
         </div>
       )}
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
 
       <Handle
         type="source"
@@ -6018,6 +6447,7 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
 
 // Custom Rows Input node component
 const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const [customRows, setCustomRows] = useState<Array<Record<string, string>>>(data.customRows || []);
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
     data.schemaColumns || [],
@@ -6077,14 +6507,20 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
         data-input-type="CustomSchema"
       />
 
-      <div className="text-white font-medium text-sm mb-2">{data.label || "Custom Rows Input"}</div>
-      <div className="text-xs text-gray-400 mb-2">Input: CustomSchema</div>
+      <div className="text-white font-medium text-sm mb-2">
+        {data.label || localized.nodeEditorNodeCustomRowsInputLabel || "Custom Rows Input"}
+      </div>
+      <div className="text-xs text-gray-400 mb-2">
+        {(localized.nodeEditorInput || "Input:")} {localized.nodeEditorCustomSchema || "CustomSchema"}
+      </div>
 
       <div className="mb-3">
-        <label className="text-xs text-gray-400 block mb-1">Table Name (optional):</label>
+        <label className="text-xs text-gray-400 block mb-1">
+          {localized.nodeEditorTableNameOptionalLabel || "Table Name (optional):"}
+        </label>
         <input
           type="text"
-          placeholder="Auto-generated if empty"
+          placeholder={localized.nodeEditorAutoGeneratedIfEmptyPlaceholder || "Auto-generated if empty"}
           value={tableName}
           onChange={(e) => {
             const newName = e.target.value;
@@ -6101,7 +6537,8 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
 
       {schemaColumns.length === 0 ? (
         <div className="text-xs text-gray-500 p-3 bg-gray-800 rounded mb-3">
-          Connect a Custom Schema node to define columns
+          {localized.nodeEditorConnectCustomSchemaToDefineColumns ||
+            "Connect a Custom Schema node to define columns"}
         </div>
       ) : (
         <>
@@ -6109,12 +6546,17 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
             {customRows.map((row, rowIdx) => (
               <div key={rowIdx} className="bg-gray-800 p-2 rounded mb-2">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs text-gray-400">Row {rowIdx + 1}</span>
+                  <span className="text-xs text-gray-400">
+                    {(localized.nodeEditorRowNumber || "Row {{rowNumber}}").replace(
+                      "{{rowNumber}}",
+                      String(rowIdx + 1),
+                    )}
+                  </span>
                   <button
                     onClick={() => removeRow(rowIdx)}
                     className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
                   >
-                    Remove
+                    {localized.remove || "Remove"}
                   </button>
                 </div>
                 {schemaColumns.map((col) => (
@@ -6137,12 +6579,14 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
             onClick={addRow}
             className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded font-medium"
           >
-            Add Row
+            {localized.nodeEditorAddRow || "Add Row"}
           </button>
         </>
       )}
 
-      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <div className="mt-2 text-xs text-gray-400">
+        {(localized.nodeEditorOutput || "Output:")} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
 
       <Handle
         type="source"
@@ -6155,6 +6599,7 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
 };
 
 const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
   const updateNodeInternals = useUpdateNodeInternals();
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
   const [splitValues, setSplitValues] = useState<Array<{ id: string; value: string; enabled: boolean }>>(
@@ -6285,17 +6730,21 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     >
       <Handle type="target" position={Position.Left} id="input" className="w-3 h-3" />
 
-      <div className="text-sm font-bold text-white mb-3">Multi-Filter: Split by Value</div>
+      <div className="text-sm font-bold text-white mb-3">
+        {data.label || localized.nodeEditorMultiFilterSplitByValueTitle || "Multi-Filter: Split by Value"}
+      </div>
 
       {/* Column Selector */}
       <div className="mb-3">
-        <label className="text-xs text-gray-300 block mb-1">Split Column:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorSplitColumnLabel || "Split Column:"}
+        </label>
         <select
           value={selectedColumn}
           onChange={(e) => handleColumnChange(e.target.value)}
           className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
         >
-          <option value="">Select column...</option>
+          <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
           {columnNames.map((col: string) => (
             <option key={col} value={col}>
               {col}
@@ -6306,7 +6755,9 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
       {/* Split Values List */}
       <div className="mb-2">
-        <label className="text-xs text-gray-300 block mb-1">Split Values:</label>
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorSplitValuesLabel || "Split Values:"}
+        </label>
         <div
           className="space-y-1 max-h-48 overflow-y-auto bg-gray-700 border border-gray-600 rounded p-2 scrollable-node-content"
           onWheel={stopWheelPropagation}
@@ -6334,7 +6785,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
                   type="text"
                   value={split.value}
                   onChange={(e) => updateSplitValue(split.id, { value: e.target.value })}
-                  placeholder="Value..."
+                  placeholder={localized.nodeEditorValueEllipsisPlaceholder || "Value..."}
                   className="flex-1 bg-gray-700 border border-gray-600 text-white text-xs rounded px-1 py-0.5"
                 />
                 <button
@@ -6347,7 +6798,9 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
             );
           })}
           {splitValues.length === 0 && (
-            <div className="text-xs text-gray-500 text-center py-2">No split values yet</div>
+            <div className="text-xs text-gray-500 text-center py-2">
+              {localized.nodeEditorNoSplitValuesYet || "No split values yet"}
+            </div>
           )}
         </div>
       </div>
@@ -6356,7 +6809,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
         onClick={addSplitValue}
         className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs rounded p-1"
       >
-        + Add Value
+        + {localized.nodeEditorAddValue || "Add Value"}
       </button>
 
       {/* Output Handles - positioned at node edge, aligned with split values */}
@@ -6394,224 +6847,310 @@ interface NodeTypeSection {
   nodes: { type: FlowNodeType; label: string; description: string }[];
 }
 
-const nodeTypeSections: NodeTypeSection[] = [
+interface NodeTypeSectionDefinition {
+  titleKey: string;
+  titleFallback: string;
+  nodes: { type: FlowNodeType; labelKey: string; labelFallback: string; descriptionKey: string; descriptionFallback: string }[];
+}
+
+const nodeTypeSectionDefinitions: NodeTypeSectionDefinition[] = [
   {
-    title: "Pack Files",
+    titleKey: "nodeEditorSectionPackFiles",
+    titleFallback: "Pack Files",
     nodes: [
       {
         type: "allenabledmods",
-        label: "All Enabled Mods",
-        description: "Outputs all currently enabled mods as PackFiles",
+        labelKey: "nodeEditorNodeAllEnabledModsLabel",
+        labelFallback: "All Enabled Mods",
+        descriptionKey: "nodeEditorNodeAllEnabledModsDescription",
+        descriptionFallback: "Outputs all currently enabled mods as PackFiles",
       },
       {
         type: "packfilesdropdown",
-        label: "Pack Dropdown Input",
-        description: "Node with dropdown for pack selection",
+        labelKey: "nodeEditorNodePackFilesDropdownLabel",
+        labelFallback: "Pack Dropdown Input",
+        descriptionKey: "nodeEditorNodePackFilesDropdownDescription",
+        descriptionFallback: "Node with dropdown for pack selection",
       },
       {
         type: "packedfiles",
-        label: "Pack Textbox Input",
-        description: "Node with textbox that outputs PackFiles",
+        labelKey: "nodeEditorNodePackFilesTextboxLabel",
+        labelFallback: "Pack Textbox Input",
+        descriptionKey: "nodeEditorNodePackFilesTextboxDescription",
+        descriptionFallback: "Node with textbox that outputs PackFiles",
       },
     ],
   },
   {
-    title: "Table Selection",
+    titleKey: "nodeEditorSectionTableSelection",
+    titleFallback: "Table Selection",
     nodes: [
       {
         type: "referencelookup",
-        label: "Reference Lookup",
-        description: "Lookup rows in referenced tables based on input table references",
+        labelKey: "nodeEditorNodeReferenceLookupLabel",
+        labelFallback: "Reference Lookup",
+        descriptionKey: "nodeEditorNodeReferenceLookupDescription",
+        descriptionFallback: "Lookup rows in referenced tables based on input table references",
       },
       {
         type: "reversereferencelookup",
-        label: "Reverse Reference Lookup",
-        description: "Find rows in tables that reference the input table",
+        labelKey: "nodeEditorNodeReverseReferenceLookupLabel",
+        labelFallback: "Reverse Reference Lookup",
+        descriptionKey: "nodeEditorNodeReverseReferenceLookupDescription",
+        descriptionFallback: "Find rows in tables that reference the input table",
       },
       {
         type: "tableselectiondropdown",
-        label: "Table Dropdown Input",
-        description: "Node with dropdown for table selection",
+        labelKey: "nodeEditorNodeTableDropdownLabel",
+        labelFallback: "Table Dropdown Input",
+        descriptionKey: "nodeEditorNodeTableDropdownDescription",
+        descriptionFallback: "Node with dropdown for table selection",
       },
       {
         type: "tableselection",
-        label: "Table Textbox Input",
-        description: "Accepts PackFiles input, outputs TableSelection",
+        labelKey: "nodeEditorNodeTableTextboxLabel",
+        labelFallback: "Table Textbox Input",
+        descriptionKey: "nodeEditorNodeTableTextboxDescription",
+        descriptionFallback: "Accepts PackFiles input, outputs TableSelection",
       },
     ],
   },
   {
-    title: "Table Rows Filtering",
+    titleKey: "nodeEditorSectionTableRowsFiltering",
+    titleFallback: "Table Rows Filtering",
     nodes: [
       {
         type: "deduplicate",
-        label: "Deduplicate Rows",
-        description: "Remove duplicate rows",
+        labelKey: "nodeEditorNodeDeduplicateRowsLabel",
+        labelFallback: "Deduplicate Rows",
+        descriptionKey: "nodeEditorNodeDeduplicateRowsDescription",
+        descriptionFallback: "Remove duplicate rows",
       },
       {
         type: "filter",
-        label: "Filter",
-        description: "Filter table rows with AND/OR conditions",
+        labelKey: "nodeEditorNodeFilterLabel",
+        labelFallback: "Filter",
+        descriptionKey: "nodeEditorNodeFilterDescription",
+        descriptionFallback: "Filter table rows with AND/OR conditions",
       },
       {
         type: "multifilter",
-        label: "Multi-Filter",
-        description: "Split table rows by column values into multiple outputs",
+        labelKey: "nodeEditorNodeMultiFilterLabel",
+        labelFallback: "Multi-Filter",
+        descriptionKey: "nodeEditorNodeMultiFilterDescription",
+        descriptionFallback: "Split table rows by column values into multiple outputs",
       },
     ],
   },
   {
-    title: "Column Selection",
+    titleKey: "nodeEditorSectionColumnSelection",
+    titleFallback: "Column Selection",
     nodes: [
       {
         type: "columnselectiondropdown",
-        label: "Column Dropdown Input",
-        description: "Node with dropdown for column selection",
+        labelKey: "nodeEditorNodeColumnDropdownLabel",
+        labelFallback: "Column Dropdown Input",
+        descriptionKey: "nodeEditorNodeColumnDropdownDescription",
+        descriptionFallback: "Node with dropdown for column selection",
       },
       {
         type: "columnselection",
-        label: "Column Textbox Input",
-        description: "Accepts TableSelection input, outputs ColumnSelection",
+        labelKey: "nodeEditorNodeColumnTextboxLabel",
+        labelFallback: "Column Textbox Input",
+        descriptionKey: "nodeEditorNodeColumnTextboxDescription",
+        descriptionFallback: "Accepts TableSelection input, outputs ColumnSelection",
       },
     ],
   },
   {
-    title: "Processing",
+    titleKey: "nodeEditorSectionProcessing",
+    titleFallback: "Processing",
     nodes: [
       {
         type: "numericadjustment",
-        label: "Numeric Adjustment",
-        description: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
+        labelKey: "nodeEditorNodeNumericAdjustmentLabel",
+        labelFallback: "Numeric Adjustment",
+        descriptionKey: "nodeEditorNodeNumericAdjustmentDescription",
+        descriptionFallback: "Accepts ColumnSelection input, outputs ChangedColumnSelection",
       },
       {
         type: "mathceil",
-        label: "Math Ceil",
-        description: "Accepts ChangedColumnSelection, applies Math.ceil() to round up",
+        labelKey: "nodeEditorNodeMathCeilLabel",
+        labelFallback: "Math Ceil",
+        descriptionKey: "nodeEditorNodeMathCeilDescription",
+        descriptionFallback: "Accepts ChangedColumnSelection, applies Math.ceil() to round up",
       },
       {
         type: "mathmax",
-        label: "Math Max",
-        description: "Accepts ChangedColumnSelection, applies Math.max(value, input)",
+        labelKey: "nodeEditorNodeMathMaxLabel",
+        labelFallback: "Math Max",
+        descriptionKey: "nodeEditorNodeMathMaxDescription",
+        descriptionFallback: "Accepts ChangedColumnSelection, applies Math.max(value, input)",
       },
       {
         type: "mergechanges",
-        label: "Merge Changes",
-        description: "Merges multiple ChangedColumnSelection inputs into one output",
+        labelKey: "nodeEditorNodeMergeChangesLabel",
+        labelFallback: "Merge Changes",
+        descriptionKey: "nodeEditorNodeMergeChangesDescription",
+        descriptionFallback: "Merges multiple ChangedColumnSelection inputs into one output",
       },
       {
         type: "savechanges",
-        label: "Save Changes",
-        description: "Accepts ChangedColumnSelection input and saves the changes",
+        labelKey: "nodeEditorNodeSaveChangesLabel",
+        labelFallback: "Save Changes",
+        descriptionKey: "nodeEditorNodeSaveChangesDescription",
+        descriptionFallback: "Accepts ChangedColumnSelection input and saves the changes",
       },
     ],
   },
   {
-    title: "Text",
+    titleKey: "nodeEditorSectionText",
+    titleFallback: "Text",
     nodes: [
       {
         type: "appendtext",
-        label: "Append Text",
-        description: "Accepts Text, Text Lines, or GroupedText, adds text before and after",
+        labelKey: "nodeEditorNodeAppendTextLabel",
+        labelFallback: "Append Text",
+        descriptionKey: "nodeEditorNodeAppendTextDescription",
+        descriptionFallback: "Accepts Text, Text Lines, or GroupedText, adds text before and after",
       },
       {
         type: "groupbycolumns",
-        label: "Group By Columns (For Text)",
-        description: "Accepts TableSelection, two column dropdowns, outputs GroupedText",
+        labelKey: "nodeEditorNodeGroupByColumnsForTextLabel",
+        labelFallback: "Group By Columns (For Text)",
+        descriptionKey: "nodeEditorNodeGroupByColumnsForTextDescription",
+        descriptionFallback: "Accepts TableSelection, two column dropdowns, outputs GroupedText",
       },
       {
         type: "groupedcolumnstotext",
-        label: "Grouped Columns to Text",
-        description: "Formats GroupedText using pattern and join separator",
+        labelKey: "nodeEditorNodeGroupedColumnsToTextLabel",
+        labelFallback: "Grouped Columns to Text",
+        descriptionKey: "nodeEditorNodeGroupedColumnsToTextDescription",
+        descriptionFallback: "Formats GroupedText using pattern and join separator",
       },
       {
         type: "textjoin",
-        label: "Text Join",
-        description: "Accepts Text Lines input, outputs joined Text",
+        labelKey: "nodeEditorNodeTextJoinLabel",
+        labelFallback: "Text Join",
+        descriptionKey: "nodeEditorNodeTextJoinDescription",
+        descriptionFallback: "Accepts Text Lines input, outputs joined Text",
       },
       {
         type: "textsurround",
-        label: "Text Surround",
-        description: "Accepts Text or Text Lines, outputs same type with surrounding text",
+        labelKey: "nodeEditorNodeTextSurroundLabel",
+        labelFallback: "Text Surround",
+        descriptionKey: "nodeEditorNodeTextSurroundDescription",
+        descriptionFallback: "Accepts Text or Text Lines, outputs same type with surrounding text",
       },
     ],
   },
   {
-    title: "Table Operations",
+    titleKey: "nodeEditorSectionTableOperations",
+    titleFallback: "Table Operations",
     nodes: [
       {
         type: "addnewcolumn",
-        label: "Add New Column",
-        description: "Add transformed columns while preserving all original columns",
+        labelKey: "nodeEditorNodeAddNewColumnLabel",
+        labelFallback: "Add New Column",
+        descriptionKey: "nodeEditorNodeAddNewColumnDescription",
+        descriptionFallback: "Add transformed columns while preserving all original columns",
       },
       {
         type: "aggregatenested",
-        label: "Aggregate Nested",
-        description: "Performs aggregations (min/max/sum/avg/count) on nested arrays",
+        labelKey: "nodeEditorNodeAggregateNestedLabel",
+        labelFallback: "Aggregate Nested",
+        descriptionKey: "nodeEditorNodeAggregateNestedDescription",
+        descriptionFallback: "Performs aggregations (min/max/sum/avg/count) on nested arrays",
       },
       {
         type: "dumptotsv",
-        label: "Dump to TSV",
-        description: "Exports table data to a TSV file for inspection",
+        labelKey: "nodeEditorNodeDumpToTSVLabel",
+        labelFallback: "Dump to TSV",
+        descriptionKey: "nodeEditorNodeDumpToTSVDescription",
+        descriptionFallback: "Exports table data to a TSV file for inspection",
       },
       {
         type: "extracttable",
-        label: "Extract Table",
-        description: "Filters columns by prefix and removes prefix",
+        labelKey: "nodeEditorNodeExtractTableLabel",
+        labelFallback: "Extract Table",
+        descriptionKey: "nodeEditorNodeExtractTableDescription",
+        descriptionFallback: "Filters columns by prefix and removes prefix",
       },
       {
         type: "flattennested",
-        label: "Flatten Nested",
-        description: "Expands nested table selections into flat rows",
+        labelKey: "nodeEditorNodeFlattenNestedLabel",
+        labelFallback: "Flatten Nested",
+        descriptionKey: "nodeEditorNodeFlattenNestedDescription",
+        descriptionFallback: "Expands nested table selections into flat rows",
       },
       {
         type: "generaterows",
-        label: "Generate Rows",
-        description: "Creates new table rows with transformations and multiple outputs",
+        labelKey: "nodeEditorNodeGenerateRowsLabel",
+        labelFallback: "Generate Rows",
+        descriptionKey: "nodeEditorNodeGenerateRowsDescription",
+        descriptionFallback: "Creates new table rows with transformations and multiple outputs",
       },
       {
         type: "getcountercolumn",
-        label: "Get Counter Column",
-        description: "Collects numeric column values across tables from pack files",
+        labelKey: "nodeEditorNodeGetCounterColumnLabel",
+        labelFallback: "Get Counter Column",
+        descriptionKey: "nodeEditorNodeGetCounterColumnDescription",
+        descriptionFallback: "Collects numeric column values across tables from pack files",
       },
       {
         type: "groupby",
-        label: "Group By",
-        description: "Groups rows by columns and performs aggregations (SQL-like GROUP BY)",
+        labelKey: "nodeEditorNodeGroupByLabel",
+        labelFallback: "Group By",
+        descriptionKey: "nodeEditorNodeGroupByDescription",
+        descriptionFallback: "Groups rows by columns and performs aggregations (SQL-like GROUP BY)",
       },
       {
         type: "indextable",
-        label: "Index Table",
-        description: "Creates indexed version of table by key column(s) for fast lookups",
+        labelKey: "nodeEditorNodeIndexTableLabel",
+        labelFallback: "Index Table",
+        descriptionKey: "nodeEditorNodeIndexTableDescription",
+        descriptionFallback: "Creates indexed version of table by key column(s) for fast lookups",
       },
       {
         type: "lookup",
-        label: "Lookup (Join)",
-        description: "Performs lookups/joins using indexed tables (inner/left/nested)",
+        labelKey: "nodeEditorNodeLookupJoinLabel",
+        labelFallback: "Lookup (Join)",
+        descriptionKey: "nodeEditorNodeLookupJoinDescription",
+        descriptionFallback: "Performs lookups/joins using indexed tables (inner/left/nested)",
       },
     ],
   },
   {
-    title: "Custom Tables",
+    titleKey: "nodeEditorSectionCustomTables",
+    titleFallback: "Custom Tables",
     nodes: [
       {
         type: "customrowsinput",
-        label: "Custom Rows Input",
-        description: "Manually input table rows with custom schema",
+        labelKey: "nodeEditorNodeCustomRowsInputLabel",
+        labelFallback: "Custom Rows Input",
+        descriptionKey: "nodeEditorNodeCustomRowsInputDescription",
+        descriptionFallback: "Manually input table rows with custom schema",
       },
       {
         type: "customschema",
-        label: "Custom Schema",
-        description: "Define custom table schema with column names and types",
+        labelKey: "nodeEditorNodeCustomSchemaLabel",
+        labelFallback: "Custom Schema",
+        descriptionKey: "nodeEditorNodeCustomSchemaDescription",
+        descriptionFallback: "Define custom table schema with column names and types",
       },
       {
         type: "generaterowsschema",
-        label: "Generate Rows (Schema)",
-        description: "Generate rows using custom schema with counter range",
+        labelKey: "nodeEditorNodeGenerateRowsSchemaLabel",
+        labelFallback: "Generate Rows (Schema)",
+        descriptionKey: "nodeEditorNodeGenerateRowsSchemaDescription",
+        descriptionFallback: "Generate rows using custom schema with counter range",
       },
       {
         type: "readtsvfrompack",
-        label: "Read TSV From Pack",
-        description: "Reads TSV file from pack using custom schema",
+        labelKey: "nodeEditorNodeReadTSVFromPackLabel",
+        labelFallback: "Read TSV From Pack",
+        descriptionKey: "nodeEditorNodeReadTSVFromPackDescription",
+        descriptionFallback: "Reads TSV file from pack using custom schema",
       },
     ],
   },
@@ -6961,8 +7500,20 @@ const getNodeId = () => `node_${nodeId++}`;
 const NodeSidebar: React.FC<{
   onDragStart: (event: DragEvent, nodeType: DraggableNodeData) => void;
 }> = ({ onDragStart }) => {
+  const localized = useLocalizations();
   const [filterText, setFilterText] = useState("");
   const [useCompactView, setUseCompactView] = useState(true);
+
+  const nodeTypeSections: NodeTypeSection[] = useMemo(() => {
+    return nodeTypeSectionDefinitions.map((section) => ({
+      title: (localized as any)[section.titleKey] || section.titleFallback,
+      nodes: section.nodes.map((node) => ({
+        type: node.type,
+        label: (localized as any)[node.labelKey] || node.labelFallback,
+        description: (localized as any)[node.descriptionKey] || node.descriptionFallback,
+      })),
+    }));
+  }, [localized]);
 
   // Filter nodes based on search text
   const filteredSections = nodeTypeSections
@@ -6981,13 +7532,15 @@ const NodeSidebar: React.FC<{
       className="w-64 height-without-topbar-and-padding bg-gray-800 border-r border-gray-600 p-4 overflow-y-auto scrollable-node-content"
       onWheel={stopWheelPropagation}
     >
-      <h3 className="font-bold text-lg text-white">Node Types</h3>
+      <h3 className="font-bold text-lg text-white">
+        {localized.nodeEditorNodeTypesHeader || "Node Types"}
+      </h3>
 
       {/* Sticky Filter textbox */}
       <div className="py-4 px-4 -mx-4 bg-gray-800 sticky top-0">
         <input
           type="text"
-          placeholder="Filter nodes..."
+          placeholder={localized.nodeEditorFilterNodesPlaceholder || "Filter nodes..."}
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
           className="sticky top-0 w-full p-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400 z-10"
@@ -7005,7 +7558,9 @@ const NodeSidebar: React.FC<{
             }}
             className="w-4 h-4"
           />
-          <span className="text-xs text-gray-300">Compact View</span>
+          <span className="text-xs text-gray-300">
+            {localized.nodeEditorCompactView || "Compact View"}
+          </span>
         </label>
       </div>
 
@@ -7053,7 +7608,7 @@ const collator = new Intl.Collator("en");
 
 const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: NodeEditorProps) => {
   const dispatch = useAppDispatch();
-  const localized: Record<string, string> = useContext(localizationContext);
+  const localized = useLocalizations();
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -10003,7 +10558,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         dispatch(
           addToast({
             type: "warning",
-            messages: ["Failed to load the node graph file. Please check the file format."],
+            messages: [
+              localized.nodeEditorFailedToLoadNodeGraphFile ||
+                "Failed to load the node graph file. Please check the file format.",
+            ],
             startTime: Date.now(),
           }),
         );
@@ -10017,6 +10575,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       setIsGraphEnabled,
       setGraphStartsEnabled,
       dispatch,
+      localized,
     ],
   );
 
@@ -10105,7 +10664,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         dispatch(
           addToast({
             type: "success",
-            messages: [`Flow saved successfully!`],
+            messages: [localized.nodeEditorFlowSavedSuccessfully || "Flow saved successfully!"],
             startTime: Date.now(),
           }),
         );
@@ -10114,7 +10673,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         dispatch(
           addToast({
             type: "warning",
-            messages: [`Failed to save flow: ${result?.error || "Unknown error"}`],
+            messages: [
+              `${localized.nodeEditorFailedToSaveFlowPrefix || "Failed to save flow:"} ${
+                result?.error || localized.nodeEditorUnknownError || "Unknown error"
+              }`,
+            ],
             startTime: Date.now(),
           }),
         );
@@ -10124,12 +10687,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       dispatch(
         addToast({
           type: "warning",
-          messages: [`Error saving flow: ${error instanceof Error ? error.message : "Unknown error"}`],
+          messages: [
+            `${localized.nodeEditorErrorSavingFlowPrefix || "Error saving flow:"} ${
+              error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
+            }`,
+          ],
           startTime: Date.now(),
         }),
       );
     }
-  }, [currentFile, currentPack, serializeNodeGraph, dispatch]);
+  }, [currentFile, currentPack, serializeNodeGraph, dispatch, localized]);
 
   // Node execution system
   const executeNodeGraph = useCallback(async () => {
@@ -10145,7 +10712,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         dispatch(
           addToast({
             type: "warning",
-            messages: ["No nodes found. Add nodes to the graph before executing."],
+            messages: [
+              localized.nodeEditorNoNodesFoundAddNodesBeforeExecuting ||
+                "No nodes found. Add nodes to the graph before executing.",
+            ],
             startTime: Date.now(),
           }),
         );
@@ -10186,14 +10756,21 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         .join("\n");
 
       const statusMessage = result.success
-        ? `✅ Graph execution successful!`
-        : `❌ Graph execution ${result.failureCount > 0 ? "completed with errors" : "failed"}`;
+        ? localized.nodeEditorGraphExecutionSuccessful || "✅ Graph execution successful!"
+        : result.failureCount > 0
+          ? localized.nodeEditorGraphExecutionCompletedWithErrors || "❌ Graph execution completed with errors"
+          : localized.nodeEditorGraphExecutionFailed || "❌ Graph execution failed";
+
+      const executionSummaryLabel = localized.nodeEditorExecutionSummaryLabel || "Execution Summary";
+      const nodesSucceededLabel = localized.nodeEditorNodesSucceededLabel || "nodes succeeded";
+      const checkConsoleLabel =
+        localized.nodeEditorCheckConsoleForDetailedResults || "Check console for detailed results.";
 
       dispatch(
         addToast({
           type: result.successCount === result.totalExecuted ? "success" : "warning",
           messages: [
-            `${statusMessage}\n\nExecution Summary (${result.successCount}/${result.totalExecuted} nodes succeeded):\n${summary}\n\nCheck console for detailed results.`,
+            `${statusMessage}\n\n${executionSummaryLabel} (${result.successCount}/${result.totalExecuted} ${nodesSucceededLabel}):\n${summary}\n\n${checkConsoleLabel}`,
           ],
           startTime: Date.now(),
         }),
@@ -10203,14 +10780,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       dispatch(
         addToast({
           type: "warning",
-          messages: [`Graph execution failed: ${error instanceof Error ? error.message : "Unknown error"}`],
+          messages: [
+            `${localized.nodeEditorGraphExecutionFailedPrefix || "Graph execution failed:"} ${
+              error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
+            }`,
+          ],
           startTime: Date.now(),
         }),
       );
     } finally {
       setIsExecuting(false);
     }
-  }, [nodes, edges, isExecuting, currentPack, flowOptions, dispatch]);
+  }, [nodes, edges, isExecuting, currentPack, flowOptions, dispatch, localized]);
 
   useEffect(() => {
     const loadFileContent = async () => {
@@ -10236,7 +10817,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           dispatch(
             addToast({
               type: "warning",
-              messages: [`Failed to load file: ${result?.error || "Unknown error"}`],
+              messages: [
+                `${localized.nodeEditorFailedToLoadFilePrefix || "Failed to load file:"} ${
+                  result?.error || localized.nodeEditorUnknownError || "Unknown error"
+                }`,
+              ],
               startTime: Date.now(),
             }),
           );
@@ -10246,7 +10831,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         dispatch(
           addToast({
             type: "warning",
-            messages: [`Error loading file: ${error instanceof Error ? error.message : "Unknown error"}`],
+            messages: [
+              `${localized.nodeEditorErrorLoadingFilePrefix || "Error loading file:"} ${
+                error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
+              }`,
+            ],
             startTime: Date.now(),
           }),
         );
@@ -10254,7 +10843,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     };
 
     loadFileContent();
-  }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph, dispatch]);
+  }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph, dispatch, localized]);
 
   return (
     <div className="flex explicit-height-without-topbar-and-padding">
@@ -10304,7 +10893,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
                   />
                 </svg>
-                Flow Options
+                {localized.nodeEditorFlowOptions || "Flow Options"}
               </button>
 
               {/* Save button - only shown when currentFile exists */}
@@ -10319,9 +10908,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       strokeLinejoin="round"
                       strokeWidth={2}
                       d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                  Save
+                  />
+                </svg>
+                  {localized.save || "Save"}
                 </button>
               )}
 
@@ -10352,7 +10941,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Running...
+                    {localized.nodeEditorRunning || "Running..."}
                   </>
                 ) : (
                   <>
@@ -10364,7 +10953,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
                     </svg>
-                    Run
+                    {localized.nodeEditorRun || "Run"}
                   </>
                 )}
               </button>
@@ -10400,7 +10989,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                   />
                 </svg>
-                Delete
+                {localized.delete || "Delete"}
               </button>
 
               {/* Load button */}
@@ -10416,7 +11005,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
                   />
                 </svg>
-                Load Graph
+                {localized.nodeEditorLoadGraph || "Load Graph"}
               </label>
 
               {/* Save button */}
@@ -10432,7 +11021,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
-                Save Graph
+                {localized.nodeEditorSaveGraph || "Save Graph"}
               </button>
             </div>
           </ReactFlowProvider>
