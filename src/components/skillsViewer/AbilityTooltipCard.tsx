@@ -11,6 +11,7 @@ const getIconData = (
 
 const formatNumber = (value: number | undefined, suffix = "") => {
   if (value == undefined) return "";
+  if (!Number.isFinite(value)) return "∞";
   return `${value}${suffix}`;
 };
 
@@ -168,6 +169,11 @@ const AbilityTooltipCard = ({
         {ability.affectedUnitsText && (
           <div>
             <span className="text-gray-300">Affected units:</span> {ability.affectedUnitsText}
+          </div>
+        )}
+        {ability.enabledIfText && (
+          <div>
+            <span className="text-gray-300">Enabled if:</span> {ability.enabledIfText}
           </div>
         )}
       </div>

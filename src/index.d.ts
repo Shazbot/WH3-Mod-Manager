@@ -543,6 +543,7 @@ declare global {
     directDamage?: AbilityTooltipDirectDamageData;
     bonuses: AbilityTooltipBonusData[];
     affectedUnitsText?: string;
+    enabledIfText?: string;
     additionalUiEffects: AbilityTooltipAdditionalUiEffectData[];
   }
 

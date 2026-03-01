@@ -109,6 +109,7 @@ type AbilityTooltipBuildParams = {
       iconPath: string;
     }
   >;
+  abilityToAutoDeactivateFlags: Record<string, string[]>;
   getLoc: (locId: string) => string | undefined;
 };
 
@@ -193,16 +194,58 @@ const resolveAffectedUnitsText = (
   phases: AbilityTooltipBuildParams["phasesById"],
   phaseIds: string[],
 ) => {
+  const hasExplicitTargeting =
+    ability.targetFriends ||
+    ability.targetEnemies ||
+    ability.targetSelf ||
+    ability.affectSelf ||
+    ability.numEffectedFriendlyUnits !== 0 ||
+    ability.numEffectedEnemyUnits !== 0;
   const phaseData = phaseIds.map((phaseId) => phases[phaseId]).filter((phase) => !!phase);
   const affectsAlliesFromPhase = phaseData.some((phase) => asBool(phase.affectsAllies));
   const affectsEnemiesFromPhase = phaseData.some((phase) => asBool(phase.affectsEnemies));
-  const affectsAllies = ability.targetFriends || ability.numEffectedFriendlyUnits !== 0 || affectsAlliesFromPhase;
-  const affectsEnemies = ability.targetEnemies || ability.numEffectedEnemyUnits !== 0 || affectsEnemiesFromPhase;
+  const affectsAllies =
+    ability.targetFriends ||
+    ability.numEffectedFriendlyUnits !== 0 ||
+    (!hasExplicitTargeting && affectsAlliesFromPhase);
+  const affectsEnemies =
+    ability.targetEnemies ||
+    ability.numEffectedEnemyUnits !== 0 ||
+    (!hasExplicitTargeting && affectsEnemiesFromPhase);
   if (!affectsAllies && !affectsEnemies) return undefined;
   const groupLabel = affectsAllies && affectsEnemies ? "all units" : affectsAllies ? "allies" : "enemies";
-  const count = affectsEnemies ? ability.numEffectedEnemyUnits : ability.numEffectedFriendlyUnits;
+  const count = affectsEnemies && !affectsAllies ? ability.numEffectedEnemyUnits : ability.numEffectedFriendlyUnits;
   const scopeLabel = count < 0 ? "range(all)" : `range(${count})`;
   return `Affects ${groupLabel} in ${scopeLabel}`;
+};
+
+const resolveEnabledIfText = (
+  abilityKey: string,
+  abilityToAutoDeactivateFlags: AbilityTooltipBuildParams["abilityToAutoDeactivateFlags"],
+  getLoc: AbilityTooltipBuildParams["getLoc"],
+) => {
+  const flags = abilityToAutoDeactivateFlags[abilityKey] || [];
+  if (flags.length === 0) return undefined;
+
+  const localizedFlags = Array.from(
+    new Set(
+      flags
+        .map((flag) => {
+          const altDescription = localize(
+            `special_ability_invalid_usage_flags_alt_description_${flag}`,
+            getLoc,
+            "",
+            true,
+          );
+          if (altDescription) return altDescription;
+          return localize(`special_ability_invalid_usage_flags_flag_description_${flag}`, getLoc, "", true);
+        })
+        .filter((entry) => !!entry),
+    ),
+  );
+
+  if (localizedFlags.length === 0) return undefined;
+  return localizedFlags.join(", ");
 };
 
 export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildParams) => {
@@ -254,7 +297,10 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
       range: asOptionalPositive(unitSpecialAbility.targetInterceptRange),
       cooldown: asOptionalPositive(unitSpecialAbility.rechargeTime),
       duration: asOptionalPositive(unitSpecialAbility.activeTime),
-      effectRange: asOptionalPositive(unitSpecialAbility.effectRange),
+      effectRange:
+        unitSpecialAbility.effectRange < 0
+          ? Number.POSITIVE_INFINITY
+          : asOptionalPositive(unitSpecialAbility.effectRange),
       womCost: asOptionalPositive(unitSpecialAbility.manaCost),
       miscastChance: asOptionalPositive(unitSpecialAbility.miscastChance * 100),
       minRange: asOptionalPositive(unitSpecialAbility.minRange),
@@ -392,6 +438,7 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
     }
     tooltip.bonuses = bonuses;
     tooltip.affectedUnitsText = resolveAffectedUnitsText(unitSpecialAbility, params.phasesById, phaseIds);
+    tooltip.enabledIfText = resolveEnabledIfText(abilityKey, params.abilityToAutoDeactivateFlags, params.getLoc);
 
     let minDps: number | undefined;
     let maxDps: number | undefined;

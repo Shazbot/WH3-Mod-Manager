@@ -623,6 +623,7 @@ export const registerIpcMainListeners = (
       "unit_abilities_additional_ui_effects_tables",
       "special_ability_groups_to_unit_abilities_junctions_tables",
       "special_ability_groups_tables",
+      "special_ability_to_auto_deactivate_flags_tables",
     ];
     for (const table of abilityTooltipTablesToRead) {
       for (const resolvedTable of resolveTable(table).map((resolvedTable) => `db\\${resolvedTable}\\`)) {
@@ -1235,6 +1236,17 @@ export const registerIpcMainListeners = (
       additionalUiEffectsByKey[key] = { key, sortOrder, effectState };
     });
 
+    const abilityToAutoDeactivateFlags = {} as Record<string, string[]>;
+    getTableRowData(packsTableData, "special_ability_to_auto_deactivate_flags_tables", (schemaFieldRow) => {
+      const ability = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
+      const deactivateFlag = schemaFieldRow.find((sF) => sF.name == "deactivate_flag")?.resolvedKeyValue;
+      if (!ability || !deactivateFlag) return;
+      abilityToAutoDeactivateFlags[ability] = abilityToAutoDeactivateFlags[ability] || [];
+      if (!abilityToAutoDeactivateFlags[ability].includes(deactivateFlag)) {
+        abilityToAutoDeactivateFlags[ability].push(deactivateFlag);
+      }
+    });
+
     const abilityToGroupKeys = {} as Record<string, string[]>;
     getTableRowData(
       packsTableData,
@@ -1409,6 +1421,7 @@ export const registerIpcMainListeners = (
       kvDirectDamageLarge,
       abilityToAdditionalUiEffectKeys,
       additionalUiEffectsByKey,
+      abilityToAutoDeactivateFlags,
       abilityToGroupKeys,
       specialAbilityGroupsByKey,
     };
@@ -1463,6 +1476,7 @@ export const registerIpcMainListeners = (
       kvDirectDamageLarge,
       abilityToAdditionalUiEffectKeys,
       additionalUiEffectsByKey,
+      abilityToAutoDeactivateFlags,
       abilityToGroupKeys,
       specialAbilityGroupsByKey,
       getLoc,
@@ -1614,6 +1628,7 @@ export const registerIpcMainListeners = (
         kvDirectDamageLarge: cachedSkillsData.kvDirectDamageLarge,
         abilityToAdditionalUiEffectKeys: cachedSkillsData.abilityToAdditionalUiEffectKeys,
         additionalUiEffectsByKey: cachedSkillsData.additionalUiEffectsByKey,
+        abilityToAutoDeactivateFlags: cachedSkillsData.abilityToAutoDeactivateFlags,
         abilityToGroupKeys: cachedSkillsData.abilityToGroupKeys,
         specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
         getLoc,

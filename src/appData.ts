@@ -133,6 +133,7 @@ interface AppData {
         iconPath: string;
       }
     >;
+    abilityToAutoDeactivateFlags: Record<string, string[]>;
   };
   presets: Preset[];
 
