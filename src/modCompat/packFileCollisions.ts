@@ -7,7 +7,7 @@ import * as fs from "fs";
 
 export function removeFromPackFileCollisions(
   packFileCollisions: PackFileCollision[],
-  removedPackName: string
+  removedPackName: string,
 ) {
   return packFileCollisions.filter((collision) => {
     return collision.firstPackName != removedPackName && collision.secondPackName != removedPackName;
@@ -17,14 +17,13 @@ export function removeFromPackFileCollisions(
 export function appendPackFileCollisions(
   packsData: Pack[],
   packFileCollisions: PackFileCollision[],
-  newPack: Pack
+  newPack: Pack,
 ) {
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     if (pack === newPack) continue;
     if (pack.name === newPack.name) continue;
-    if (appData.allVanillaPackNames.includes(pack.name) || appData.allVanillaPackNames.includes(newPack.name))
-      continue;
+    if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(newPack.name)) continue;
 
     findPackFileCollisionsBetweenPacks(pack, newPack, packFileCollisions);
   }
@@ -35,7 +34,7 @@ export function appendPackFileCollisions(
 export function findPackFileCollisionsBetweenPacks(
   pack: Pack,
   packTwo: Pack,
-  conflicts: PackFileCollision[]
+  conflicts: PackFileCollision[],
 ) {
   for (const packFile of pack.packedFiles) {
     if (packFile.name.endsWith(".rpfm_reserved")) continue;
@@ -63,7 +62,7 @@ export function findPackFileCollisionsBetweenPacks(
 export function findPackFileCollisionsBetweenPacksOptimized(
   pack: Pack,
   packTwo: Pack,
-  conflicts: PackFileCollision[]
+  conflicts: PackFileCollision[],
 ) {
   let i = 0,
     j = 0;
@@ -116,7 +115,7 @@ export function findPackFileCollisionsBetweenPacksOptimized(
 // TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
 export function findPackFileCollisionsAndCompareWithUnoptimizedMethod(
   packsData: Pack[],
-  onPackChecked?: OnPackChecked
+  onPackChecked?: OnPackChecked,
 ) {
   console.time("findPackFileCollisionsBetweenPacks");
   const conflicts: PackFileCollision[] = [];
@@ -126,10 +125,7 @@ export function findPackFileCollisionsAndCompareWithUnoptimizedMethod(
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (
-        appData.allVanillaPackNames.includes(pack.name) ||
-        appData.allVanillaPackNames.includes(packTwo.name)
-      )
+      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
         continue;
 
       if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");
@@ -147,8 +143,8 @@ export function findPackFileCollisionsAndCompareWithUnoptimizedMethod(
         (conflict2) =>
           conflict.fileName == conflict2.fileName &&
           conflict.firstPackName == conflict2.firstPackName &&
-          conflict.secondPackName == conflict2.secondPackName
-      )
+          conflict.secondPackName == conflict2.secondPackName,
+      ),
     );
   console.log("findPackFileCollisions are EQUAL:", areConflictsEqual);
   const diffData = diff(conflicts, conflicts2);
@@ -166,10 +162,7 @@ export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPack
       const packTwo = packsData[j];
       if (pack === packTwo) continue;
       if (pack.name === packTwo.name) continue;
-      if (
-        appData.allVanillaPackNames.includes(pack.name) ||
-        appData.allVanillaPackNames.includes(packTwo.name)
-      )
+      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
         continue;
 
       if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");

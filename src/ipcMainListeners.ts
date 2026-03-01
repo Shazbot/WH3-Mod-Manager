@@ -653,7 +653,7 @@ export const registerIpcMainListeners = (
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (!dataFolder) return;
 
-    const vanillaPacksToRead = appData.allVanillaPackNames
+    const vanillaPacksToRead = [...appData.allVanillaPackNames]
       .filter(
         (packName) =>
           packName.startsWith("local_en") ||
@@ -677,8 +677,12 @@ export const registerIpcMainListeners = (
       }
       await readModsByPath(vanillaPacksToRead, { skipParsingTables: true, readLocs: true }, true);
 
-      const vanillaPacks = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
-      const enabledModPacks = appData.packsData.filter((packData) => mods.some((mod) => mod.path == packData.path));
+      const vanillaPacks = appData.packsData.filter((packsData) =>
+        vanillaPacksToRead.includes(packsData.path),
+      );
+      const enabledModPacks = appData.packsData.filter((packData) =>
+        mods.some((mod) => mod.path == packData.path),
+      );
 
       const mergedSkillsCore = cloneSkillsDataCore(cachedVanillaSkillsCore);
       if (mods.length > 0) {
@@ -1119,7 +1123,9 @@ export const registerIpcMainListeners = (
         targetEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "target_enemies")?.resolvedKeyValue),
         targetSelf: parseBool(schemaFieldRow.find((sF) => sF.name == "target_self")?.resolvedKeyValue),
         manaCost: parseNumber(schemaFieldRow.find((sF) => sF.name == "mana_cost")?.resolvedKeyValue),
-        miscastChance: parseNumber(schemaFieldRow.find((sF) => sF.name == "miscast_chance")?.resolvedKeyValue),
+        miscastChance: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "miscast_chance")?.resolvedKeyValue,
+        ),
         minRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "min_range")?.resolvedKeyValue),
         activatedProjectile:
           schemaFieldRow.find((sF) => sF.name == "activated_projectile")?.resolvedKeyValue || undefined,
@@ -1128,11 +1134,16 @@ export const registerIpcMainListeners = (
       };
     });
 
-    const bombardmentsByKey = {} as Record<string, { key: string; numProjectiles: number; projectileType: string }>;
+    const bombardmentsByKey = {} as Record<
+      string,
+      { key: string; numProjectiles: number; projectileType: string }
+    >;
     getTableRowData(packsTableData, "projectile_bombardments_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "bombardment_key")?.resolvedKeyValue;
       const projectileType = schemaFieldRow.find((sF) => sF.name == "projectile_type")?.resolvedKeyValue;
-      const numProjectiles = parseNumber(schemaFieldRow.find((sF) => sF.name == "num_projectiles")?.resolvedKeyValue);
+      const numProjectiles = parseNumber(
+        schemaFieldRow.find((sF) => sF.name == "num_projectiles")?.resolvedKeyValue,
+      );
       if (!key || !projectileType) return;
       bombardmentsByKey[key] = {
         key,
@@ -1159,9 +1170,13 @@ export const registerIpcMainListeners = (
         key,
         damage: parseNumber(schemaFieldRow.find((sF) => sF.name == "damage")?.resolvedKeyValue),
         apDamage: parseNumber(schemaFieldRow.find((sF) => sF.name == "ap_damage")?.resolvedKeyValue),
-        projectileNumber: parseNumber(schemaFieldRow.find((sF) => sF.name == "projectile_number")?.resolvedKeyValue),
-        explosionType: schemaFieldRow.find((sF) => sF.name == "explosion_type")?.resolvedKeyValue || undefined,
-        spawnedVortex: schemaFieldRow.find((sF) => sF.name == "spawned_vortex")?.resolvedKeyValue || undefined,
+        projectileNumber: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "projectile_number")?.resolvedKeyValue,
+        ),
+        explosionType:
+          schemaFieldRow.find((sF) => sF.name == "explosion_type")?.resolvedKeyValue || undefined,
+        spawnedVortex:
+          schemaFieldRow.find((sF) => sF.name == "spawned_vortex")?.resolvedKeyValue || undefined,
       };
     });
 
@@ -1180,11 +1195,15 @@ export const registerIpcMainListeners = (
       if (!key) return;
       explosionsByKey[key] = {
         key,
-        detonationDamage: parseNumber(schemaFieldRow.find((sF) => sF.name == "detonation_damage")?.resolvedKeyValue),
+        detonationDamage: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "detonation_damage")?.resolvedKeyValue,
+        ),
         detonationDamageAp: parseNumber(
           schemaFieldRow.find((sF) => sF.name == "detonation_damage_ap")?.resolvedKeyValue,
         ),
-        detonationRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "detonation_radius")?.resolvedKeyValue),
+        detonationRadius: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "detonation_radius")?.resolvedKeyValue,
+        ),
         detonationDuration: parseNumber(
           schemaFieldRow.find((sF) => sF.name == "detonation_duration")?.resolvedKeyValue,
         ),
@@ -1214,7 +1233,9 @@ export const registerIpcMainListeners = (
         duration: parseNumber(schemaFieldRow.find((sF) => sF.name == "duration")?.resolvedKeyValue),
         goalRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "goal_radius")?.resolvedKeyValue),
         startRadius: parseNumber(schemaFieldRow.find((sF) => sF.name == "start_radius")?.resolvedKeyValue),
-        movementSpeed: parseNumber(schemaFieldRow.find((sF) => sF.name == "movement_speed")?.resolvedKeyValue),
+        movementSpeed: parseNumber(
+          schemaFieldRow.find((sF) => sF.name == "movement_speed")?.resolvedKeyValue,
+        ),
         numVortexes: parseNumber(schemaFieldRow.find((sF) => sF.name == "num_vortexes")?.resolvedKeyValue),
       };
     });
@@ -1262,7 +1283,9 @@ export const registerIpcMainListeners = (
           schemaFieldRow.find((sF) => sF.name == "fatigue_change_ratio")?.resolvedKeyValue,
         ),
         affectsAllies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_allies")?.resolvedKeyValue),
-        affectsEnemies: parseBool(schemaFieldRow.find((sF) => sF.name == "affects_enemies")?.resolvedKeyValue),
+        affectsEnemies: parseBool(
+          schemaFieldRow.find((sF) => sF.name == "affects_enemies")?.resolvedKeyValue,
+        ),
       };
     });
 
@@ -1302,17 +1325,24 @@ export const registerIpcMainListeners = (
     });
 
     const abilityToAdditionalUiEffectKeys = {} as Record<string, string[]>;
-    getTableRowData(packsTableData, "unit_abilities_to_additional_ui_effects_juncs_tables", (schemaFieldRow) => {
-      const ability = schemaFieldRow.find((sF) => sF.name == "ability")?.resolvedKeyValue;
-      const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
-      if (!ability || !effect) return;
-      abilityToAdditionalUiEffectKeys[ability] = abilityToAdditionalUiEffectKeys[ability] || [];
-      if (!abilityToAdditionalUiEffectKeys[ability].includes(effect)) {
-        abilityToAdditionalUiEffectKeys[ability].push(effect);
-      }
-    });
+    getTableRowData(
+      packsTableData,
+      "unit_abilities_to_additional_ui_effects_juncs_tables",
+      (schemaFieldRow) => {
+        const ability = schemaFieldRow.find((sF) => sF.name == "ability")?.resolvedKeyValue;
+        const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+        if (!ability || !effect) return;
+        abilityToAdditionalUiEffectKeys[ability] = abilityToAdditionalUiEffectKeys[ability] || [];
+        if (!abilityToAdditionalUiEffectKeys[ability].includes(effect)) {
+          abilityToAdditionalUiEffectKeys[ability].push(effect);
+        }
+      },
+    );
 
-    const additionalUiEffectsByKey = {} as Record<string, { key: string; sortOrder: number; effectState: string }>;
+    const additionalUiEffectsByKey = {} as Record<
+      string,
+      { key: string; sortOrder: number; effectState: string }
+    >;
     getTableRowData(packsTableData, "unit_abilities_additional_ui_effects_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const sortOrder = parseNumber(schemaFieldRow.find((sF) => sF.name == "sort_order")?.resolvedKeyValue);
@@ -1402,7 +1432,8 @@ export const registerIpcMainListeners = (
 
     const locs = getLocsFromPacks(
       appData.packsData.filter(
-        (packsData) => mods.map((mod) => mod.name).includes(packsData.name) || vanillaPacks.includes(packsData),
+        (packsData) =>
+          mods.map((mod) => mod.name).includes(packsData.name) || vanillaPacks.includes(packsData),
       ),
       getLocsTrie,
     );
@@ -1568,7 +1599,9 @@ export const registerIpcMainListeners = (
       }
       for (const pack of vanillaPacks.concat(enabledModPacks)) {
         for (const iconPath of missingAbilityIconPaths) {
-          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
+          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) =>
+            collator.compare(a.name, b),
+          );
           if (iconIndex < 0) continue;
           const iconPackedFile = pack.packedFiles[iconIndex];
           if (!iconPackedFile.buffer) continue;
@@ -1692,29 +1725,32 @@ export const registerIpcMainListeners = (
     const effectKeysForCurrentSkills = Array.from(
       new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
     );
-    const { abilityTooltipsByKey, reducedEffectToUnitAbilityEnables, iconPathsToLoad: tooltipIconPaths } =
-      buildAbilityTooltipDataForEffects({
-        effectKeys: effectKeysForCurrentSkills,
-        effectToUnitAbilityEnables: cachedSkillsData.effectToUnitAbilityEnables,
-        unitAbilitiesByKey: cachedSkillsData.unitAbilitiesByKey,
-        unitSpecialAbilitiesByKey: cachedSkillsData.unitSpecialAbilitiesByKey,
-        bombardmentsByKey: cachedSkillsData.bombardmentsByKey,
-        projectilesByKey: cachedSkillsData.projectilesByKey,
-        explosionsByKey: cachedSkillsData.explosionsByKey,
-        vortexesByKey: cachedSkillsData.vortexesByKey,
-        abilityToPhaseIds: cachedSkillsData.abilityToPhaseIds,
-        phasesById: cachedSkillsData.phasesById,
-        phaseStatEffectsByPhaseId: cachedSkillsData.phaseStatEffectsByPhaseId,
-        uiUnitStatIconsByStat: cachedSkillsData.uiUnitStatIconsByStat,
-        kvDirectDamageMinUnary: cachedSkillsData.kvDirectDamageMinUnary,
-        kvDirectDamageLarge: cachedSkillsData.kvDirectDamageLarge,
-        abilityToAdditionalUiEffectKeys: cachedSkillsData.abilityToAdditionalUiEffectKeys,
-        additionalUiEffectsByKey: cachedSkillsData.additionalUiEffectsByKey,
-        abilityToAutoDeactivateFlags: cachedSkillsData.abilityToAutoDeactivateFlags,
-        abilityToGroupKeys: cachedSkillsData.abilityToGroupKeys,
-        specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
-        getLoc,
-      });
+    const {
+      abilityTooltipsByKey,
+      reducedEffectToUnitAbilityEnables,
+      iconPathsToLoad: tooltipIconPaths,
+    } = buildAbilityTooltipDataForEffects({
+      effectKeys: effectKeysForCurrentSkills,
+      effectToUnitAbilityEnables: cachedSkillsData.effectToUnitAbilityEnables,
+      unitAbilitiesByKey: cachedSkillsData.unitAbilitiesByKey,
+      unitSpecialAbilitiesByKey: cachedSkillsData.unitSpecialAbilitiesByKey,
+      bombardmentsByKey: cachedSkillsData.bombardmentsByKey,
+      projectilesByKey: cachedSkillsData.projectilesByKey,
+      explosionsByKey: cachedSkillsData.explosionsByKey,
+      vortexesByKey: cachedSkillsData.vortexesByKey,
+      abilityToPhaseIds: cachedSkillsData.abilityToPhaseIds,
+      phasesById: cachedSkillsData.phasesById,
+      phaseStatEffectsByPhaseId: cachedSkillsData.phaseStatEffectsByPhaseId,
+      uiUnitStatIconsByStat: cachedSkillsData.uiUnitStatIconsByStat,
+      kvDirectDamageMinUnary: cachedSkillsData.kvDirectDamageMinUnary,
+      kvDirectDamageLarge: cachedSkillsData.kvDirectDamageLarge,
+      abilityToAdditionalUiEffectKeys: cachedSkillsData.abilityToAdditionalUiEffectKeys,
+      additionalUiEffectsByKey: cachedSkillsData.additionalUiEffectsByKey,
+      abilityToAutoDeactivateFlags: cachedSkillsData.abilityToAutoDeactivateFlags,
+      abilityToGroupKeys: cachedSkillsData.abilityToGroupKeys,
+      specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
+      getLoc,
+    });
     const missingTooltipIcons = tooltipIconPaths.filter((iconPath) => !cachedSkillsData.icons[iconPath]);
     if (missingTooltipIcons.length > 0) {
       const packsToRead = appData.packsData.filter((pack) =>
@@ -1725,7 +1761,9 @@ export const registerIpcMainListeners = (
       }
       for (const pack of packsToRead) {
         for (const iconPath of missingTooltipIcons) {
-          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
+          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) =>
+            collator.compare(a.name, b),
+          );
           if (iconIndex < 0) continue;
           const iconPackedFile = pack.packedFiles[iconIndex];
           if (!iconPackedFile.buffer) continue;
@@ -3147,11 +3185,8 @@ export const registerIpcMainListeners = (
       const localPackNames = [] as string[];
       const currentLanguage = appData.currentLanguage || "en";
       const preferredLocPack = `local_${currentLanguage}.pack`;
-      if (appData.allVanillaPackNames.includes(preferredLocPack)) localPackNames.push(preferredLocPack);
-      if (
-        !localPackNames.includes("local_en.pack") &&
-        appData.allVanillaPackNames.includes("local_en.pack")
-      ) {
+      if (appData.allVanillaPackNames.has(preferredLocPack)) localPackNames.push(preferredLocPack);
+      if (!localPackNames.includes("local_en.pack") && appData.allVanillaPackNames.has("local_en.pack")) {
         localPackNames.push("local_en.pack");
       }
       const localPackPaths = localPackNames.map((packName) => nodePath.join(dataFolder, packName));
@@ -3316,7 +3351,7 @@ export const registerIpcMainListeners = (
         return collator.compare(first.faction || "", second.faction || "");
       });
 
-      const vanillaVariantsPackPaths = appData.allVanillaPackNames
+      const vanillaVariantsPackPaths = [...appData.allVanillaPackNames]
         .filter((packName) => packName.toLowerCase().startsWith("variants"))
         .map((packName) => nodePath.join(dataFolder, packName))
         .filter((packPath) => fsExtra.existsSync(packPath))
@@ -3840,7 +3875,7 @@ export const registerIpcMainListeners = (
 
     await readMods(mods, false, true, true);
     await readModsByPath(
-      appData.allVanillaPackNames
+      [...appData.allVanillaPackNames]
         .filter(
           (packName) =>
             packName.startsWith("local_en") ||
