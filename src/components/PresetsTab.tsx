@@ -631,6 +631,12 @@ const PresetsTab = memo(() => {
     setSelectedNotInPresetNames(new Set());
   }, [addModNamesToPreset, selectedNotInPresetNames]);
 
+  const onAddAllToPreset = useCallback(() => {
+    if (visibleNotInPresetMods.length < 1) return;
+    addModNamesToPreset(visibleNotInPresetMods.map((mod) => mod.name));
+    setSelectedNotInPresetNames(new Set());
+  }, [addModNamesToPreset, visibleNotInPresetMods]);
+
   const onRemoveSelectedFromPreset = useCallback(() => {
     if (selectedInPresetNames.size < 1) return;
     const shouldExitPlaceMode = !!(placeMode && selectedInPresetNames.has(placeMode.modName));
@@ -640,6 +646,22 @@ const PresetsTab = memo(() => {
       setPlaceMode(undefined);
     }
   }, [placeMode, removeModNamesFromPreset, selectedInPresetNames]);
+
+  const visibleRemovableEnabledModNames = useMemo(
+    () => visibleEnabledDraftMods.map((mod) => mod.name).filter((name) => !alwaysEnabledNames.has(name)),
+    [alwaysEnabledNames, visibleEnabledDraftMods],
+  );
+
+  const onRemoveAllFromPreset = useCallback(() => {
+    if (visibleRemovableEnabledModNames.length < 1) return;
+    const shouldExitPlaceMode =
+      !!(placeMode && visibleRemovableEnabledModNames.includes(placeMode.modName));
+    removeModNamesFromPreset(visibleRemovableEnabledModNames);
+    setSelectedInPresetNames(new Set());
+    if (shouldExitPlaceMode) {
+      setPlaceMode(undefined);
+    }
+  }, [placeMode, visibleRemovableEnabledModNames, removeModNamesFromPreset]);
 
   const enableMissingDependencies = useCallback(
     (targetModName?: string) => {
@@ -820,7 +842,7 @@ const PresetsTab = memo(() => {
     : null;
 
   return (
-    <div className="max-w-[100rem] mx-auto px-4 py-4 text-slate-100">
+    <div className="max-w-[100rem] mx-auto px-4 py-4 text-slate-100 height-without-topbar-and-padding">
       <div className="grid grid-cols-12 gap-4 items-end">
         <div className="col-span-4">
           <div className="flex items-center gap-2">
@@ -1076,6 +1098,20 @@ const PresetsTab = memo(() => {
         </div>
 
         <div className="col-span-2 flex flex-col justify-center items-center gap-2">
+          <button
+            className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40"
+            onClick={() => onAddAllToPreset()}
+            disabled={visibleNotInPresetMods.length < 1 || !!placeMode}
+          >
+            {localized.addAllToPreset || "<- Add All"}
+          </button>
+          <button
+            className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40"
+            onClick={() => onRemoveAllFromPreset()}
+            disabled={visibleRemovableEnabledModNames.length < 1 || !!placeMode}
+          >
+            {localized.removeAllFromPreset || "Remove All ->"}
+          </button>
           <button
             className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm disabled:opacity-40"
             onClick={() => onAddSelectedToPreset()}
