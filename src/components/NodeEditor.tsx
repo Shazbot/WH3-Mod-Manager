@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, DragEvent, useMemo, useEffect } from "react";
+import React, { useCallback, useState, useRef, DragEvent, useContext, useMemo, useEffect } from "react";
 import {
   ReactFlow,
   Node,
@@ -21,6 +21,7 @@ import { useAppSelector, useAppDispatch } from "../hooks";
 import { DBVersion, SCHEMA_FIELD_TYPE } from "../packFileTypes";
 import { addToast } from "../appSlice";
 import { SupportedGames } from "../supportedGames";
+import localizationContext from "../localizationContext";
 
 // Create context for default table versions
 const DefaultTableVersionsContext = React.createContext<Record<string, number> | undefined>(undefined);
@@ -65,7 +66,7 @@ const stopWheelPropagation = (e: React.WheelEvent<HTMLDivElement>) => {
 const getTableVersion = (
   tableName: string,
   tableVersions: DBVersion[],
-  defaultTableVersions?: Record<string, number>
+  defaultTableVersions?: Record<string, number>,
 ): DBVersion | undefined => {
   if (!tableVersions || tableVersions.length === 0) {
     return undefined;
@@ -90,7 +91,7 @@ const getSourceNodeOutputInfo = (
   sourceNode: Node,
   sourceData: any,
   DBNameToDBVersions: Record<string, DBVersion[]> | undefined,
-  defaultTableVersions?: Record<string, number>
+  defaultTableVersions?: Record<string, number>,
 ): { tableName: string | undefined; columnNames: string[] } => {
   let tableName: string | undefined;
   let columnNames: string[] = [];
@@ -1232,7 +1233,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
   const [filters, setFilters] = useState<FilterRow[]>(
     data.filters && data.filters.length > 0
       ? data.filters
-      : [{ column: "", value: "", not: false, operator: "AND" }]
+      : [{ column: "", value: "", not: false, operator: "AND" }],
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
@@ -1277,7 +1278,7 @@ const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ data, id }
   const handleRemoveFilter = (index: number) => {
     const newFilters = filters.filter((_, i) => i !== index);
     updateFilters(
-      newFilters.length > 0 ? newFilters : [{ column: "", value: "", not: false, operator: "AND" }]
+      newFilters.length > 0 ? newFilters : [{ column: "", value: "", not: false, operator: "AND" }],
     );
   };
 
@@ -1424,7 +1425,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
     console.log(
       `ReferenceTableLookupNode ${id}: useEffect triggered, connectedTableName=${
         data.connectedTableName
-      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
+      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`,
     );
 
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -1432,7 +1433,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
       console.log(
         `ReferenceTableLookupNode ${id}: Found ${tableVersions?.length || 0} version(s) for table ${
           data.connectedTableName
-        }`
+        }`,
       );
 
       if (tableVersions && tableVersions.length > 0) {
@@ -1454,7 +1455,7 @@ const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNodeData; i
         const refTableArray = Array.from(referenceTables).sort();
         console.log(
           `ReferenceTableLookupNode ${id}: Found ${refTableArray.length} reference table(s):`,
-          refTableArray
+          refTableArray,
         );
         setReferenceTableNames(refTableArray);
 
@@ -1589,7 +1590,7 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
     console.log(
       `ReverseReferenceLookupNode ${id}: useEffect triggered, connectedTableName=${
         data.connectedTableName
-      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`
+      }, has DBNameToDBVersions=${!!data.DBNameToDBVersions}`,
     );
 
     if (data.connectedTableName && data.DBNameToDBVersions) {
@@ -1619,7 +1620,7 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
       const reverseTableArray = Array.from(reverseTables).sort();
       console.log(
         `ReverseReferenceLookupNode ${id}: Found ${reverseTableArray.length} table(s) that reference ${inputTableName}:`,
-        reverseTableArray
+        reverseTableArray,
       );
       setReverseTableNames(reverseTableArray);
 
@@ -1637,7 +1638,7 @@ const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookupNodeDat
           autoSelectedTable = reverseTableArray[0];
           setSelectedReverseTable(autoSelectedTable);
           console.log(
-            `ReverseReferenceLookupNode ${id}: Auto-selected only available table: ${autoSelectedTable}`
+            `ReverseReferenceLookupNode ${id}: Auto-selected only available table: ${autoSelectedTable}`,
           );
         }
 
@@ -2022,7 +2023,7 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
             field.field_type === "I32" ||
             field.field_type === "I64" ||
             field.field_type === "F32" ||
-            field.field_type === "F64"
+            field.field_type === "F64",
         );
         const fieldNames = numericFields.map((field) => field.name);
         setColumnNames(fieldNames);
@@ -2077,7 +2078,7 @@ const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id: strin
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
           detail: { nodeId: id, inputColumnNames },
-        })
+        }),
       );
     }
   }, [inputColumnNames, id]);
@@ -2223,7 +2224,7 @@ const DumpToTSVNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
   const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
-    data.groupedTextSelection || "Text"
+    data.groupedTextSelection || "Text",
   );
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2306,7 +2307,7 @@ const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> = ({ da
   const [beforeText, setBeforeText] = useState(data.beforeText || "");
   const [afterText, setAfterText] = useState(data.afterText || "");
   const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
-    data.groupedTextSelection || "Text"
+    data.groupedTextSelection || "Text",
   );
 
   const handleBeforeTextChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -2413,7 +2414,7 @@ const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> = ({ da
 const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({ data, id }) => {
   const [textValue, setTextValue] = useState(data.textValue || "");
   const [groupedTextSelection, setGroupedTextSelection] = useState<"Text" | "Text Lines">(
-    data.groupedTextSelection || "Text Lines"
+    data.groupedTextSelection || "Text Lines",
   );
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2584,9 +2585,10 @@ const IndexTableNode: React.FC<{ data: IndexTableNodeData; id: string }> = ({ da
         const tableFields = selectedVersion?.fields || [];
 
         // Prefer explicitly-provided columnNames (e.g. from generaterows with a specific tableVersion)
-        const fieldNames = (data.columnNames && data.columnNames.length > 0)
-          ? data.columnNames
-          : tableFields.map((field) => field.name);
+        const fieldNames =
+          data.columnNames && data.columnNames.length > 0
+            ? data.columnNames
+            : tableFields.map((field) => field.name);
         setColumnNames(fieldNames);
 
         const updateEvent = new CustomEvent("nodeDataUpdate", {
@@ -2678,11 +2680,11 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
   const defaultTableVersions = useDefaultTableVersions();
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
   const [indexJoinColumn, setIndexJoinColumn] = useState(
-    (data as any).indexJoinColumn || ((data as any).indexColumns && (data as any).indexColumns[0]) || ""
+    (data as any).indexJoinColumn || ((data as any).indexColumns && (data as any).indexColumns[0]) || "",
   );
   const [joinType, setJoinType] = useState<"inner" | "left" | "nested" | "cross">(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(
-    data.columnNames ? Array.from(new Set(data.columnNames)) : []
+    data.columnNames ? Array.from(new Set(data.columnNames)) : [],
   );
   const [sourceColumnNames, setSourceColumnNames] = useState<string[]>([]);
   const [indexedColumnNames, setIndexedColumnNames] = useState<string[]>([]);
@@ -2805,7 +2807,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       const sourcePrefix = `${data.connectedTableName}_`;
       // Get columns that don't have the source prefix (these are from the indexed table)
       const indexedColsWithPrefix = data.columnNames.filter(
-        (col: string) => !col.startsWith(sourcePrefix) && !col.startsWith("agg_")
+        (col: string) => !col.startsWith(sourcePrefix) && !col.startsWith("agg_"),
       );
 
       if (indexedColsWithPrefix.length > 0) {
@@ -2920,7 +2922,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
     const defaultVersion = getTableVersion(
       data.connectedTableName,
       sourceTableVersions,
-      defaultTableVersions
+      defaultTableVersions,
     );
     const version = defaultVersion ?? sourceTableVersions[0];
     // Find the lookup column in the source table schema
@@ -2955,12 +2957,12 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
         if (hasTableReference) {
           setSchemaWarning(
             `Warning: Column "${lookupColumn}" references table "${indexedTableName}", but not column "${indexJoinColumn}". Expected reference columns: ${referencedColumns.join(
-              ", "
-            )}`
+              ", ",
+            )}`,
           );
         } else {
           setSchemaWarning(
-            `Warning: Column "${lookupColumn}" does not have a schema reference to table "${indexedTableName}". This join may produce unexpected results.`
+            `Warning: Column "${lookupColumn}" does not have a schema reference to table "${indexedTableName}". This join may produce unexpected results.`,
           );
         }
       } else {
@@ -2968,7 +2970,7 @@ const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ data, id }
       }
     } else {
       setSchemaWarning(
-        `Warning: Column "${lookupColumn}" does not have any schema references. This join may produce unexpected results.`
+        `Warning: Column "${lookupColumn}" does not have any schema references. This join may produce unexpected results.`,
       );
     }
   }, [
@@ -3276,7 +3278,7 @@ const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: string 
   const defaultTableVersions = useDefaultTableVersions();
   const [aggregateColumn, setAggregateColumn] = useState(data.aggregateColumn || "");
   const [aggregateType, setAggregateType] = useState<"min" | "max" | "sum" | "avg" | "count">(
-    data.aggregateType || "min"
+    data.aggregateType || "min",
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [filterColumn, setFilterColumn] = useState(data.filterColumn || "");
@@ -3509,7 +3511,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     data.aggregations?.map((agg: any, idx: number) => ({
       ...agg,
       id: agg.id || `agg_${idx}`,
-    })) || []
+    })) || [],
   );
   // inputColumnNames: columns available from the connected node (for dropdowns)
   const [inputColumnNames, setInputColumnNames] = useState<string[]>([]);
@@ -3535,7 +3537,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
           data.aggregations.map((agg: any, idx: number) => ({
             ...agg,
             id: agg.id || aggregations[idx]?.id || `agg_${idx}`,
-          }))
+          })),
         );
       }
     }
@@ -3570,7 +3572,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, groupByColumns },
-      })
+      }),
     );
   }, [groupByColumns, id]);
 
@@ -3580,7 +3582,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, aggregations: aggregationsWithoutId },
-      })
+      }),
     );
   }, [aggregations, id]);
 
@@ -3594,7 +3596,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
           detail: { nodeId: id, inputColumnNames },
-        })
+        }),
       );
     }
   }, [inputColumnNames, id]);
@@ -3611,14 +3613,14 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
           detail: { nodeId: id, columnNames: outputColumnNames },
-        })
+        }),
       );
     }
   }, [groupByColumns, aggregations, id, data.columnNames]);
 
   const toggleGroupByColumn = (columnName: string) => {
     setGroupByColumns((prev) =>
-      prev.includes(columnName) ? prev.filter((c) => c !== columnName) : [...prev, columnName]
+      prev.includes(columnName) ? prev.filter((c) => c !== columnName) : [...prev, columnName],
     );
   };
 
@@ -3643,7 +3645,7 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       operation: "max" | "min" | "sum" | "avg" | "count" | "first" | "last";
       outputName: string;
       defaultValue: string;
-    }>
+    }>,
   ) => {
     setAggregations(aggregations.map((a) => (a.id === aggId ? { ...a, ...updates } : a)));
   };
@@ -3778,7 +3780,9 @@ const GroupByNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 
 const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   const [dedupeByColumns, setDedupeByColumns] = useState<string[]>(data.dedupeByColumns || []);
-  const [dedupeAgainstVanilla, setDedupeAgainstVanilla] = useState<boolean>(data.dedupeAgainstVanilla || false);
+  const [dedupeAgainstVanilla, setDedupeAgainstVanilla] = useState<boolean>(
+    data.dedupeAgainstVanilla || false,
+  );
 
   // inputColumnNames: columns available from the connected node (for dropdowns)
   const [inputColumnNames, setInputColumnNames] = useState<string[]>([]);
@@ -3828,7 +3832,7 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, dedupeByColumns },
-      })
+      }),
     );
   }, [dedupeByColumns, id]);
 
@@ -3837,7 +3841,7 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, dedupeAgainstVanilla },
-      })
+      }),
     );
   }, [dedupeAgainstVanilla, id]);
 
@@ -3851,7 +3855,7 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
           detail: { nodeId: id, inputColumnNames },
-        })
+        }),
       );
     }
   }, [inputColumnNames, id]);
@@ -3870,14 +3874,14 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
       window.dispatchEvent(
         new CustomEvent("nodeDataUpdate", {
           detail: { nodeId: id, columnNames: outputColumnNames },
-        })
+        }),
       );
     }
   }, [inputColumnNames, id, data.columnNames]);
 
   const toggleDedupeByColumn = (columnName: string) => {
     setDedupeByColumns((prev) =>
-      prev.includes(columnName) ? prev.filter((c) => c !== columnName) : [...prev, columnName]
+      prev.includes(columnName) ? prev.filter((c) => c !== columnName) : [...prev, columnName],
     );
   };
 
@@ -3951,6 +3955,7 @@ const DeduplicateNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
 };
 
 const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = ({ data, id }) => {
+  const localized: Record<string, string> = useContext(localizationContext);
   const defaultTableVersions = useDefaultTableVersions();
   const [transformations, setTransformations] = useState<ColumnTransformation[]>(data.transformations || []);
   const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
@@ -3958,7 +3963,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
   const [tableNames, setTableNames] = useState<string[]>([]);
   const [customSchemaColumns, setCustomSchemaColumns] = useState<string[]>(
-    (data as any).customSchemaColumns || []
+    (data as any).customSchemaColumns || [],
   );
 
   // Sync local state with prop changes
@@ -4016,7 +4021,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, transformations },
-      })
+      }),
     );
   }, [transformations, id]);
 
@@ -4026,7 +4031,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, outputTables, outputCount },
-      })
+      }),
     );
   }, [outputTables, outputCount, id]);
 
@@ -4117,7 +4122,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
       const transformedColumns = new Set(
         transformations
           .filter((trans) => trans.targetTableHandleId === output.handleId)
-          .map((trans) => trans.outputColumnName)
+          .map((trans) => trans.outputColumnName),
       );
 
       // Return custom schema columns that are NOT transformed
@@ -4141,7 +4146,7 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
     const transformedColumns = new Set(
       transformations
         .filter((trans) => trans.targetTableHandleId === output.handleId)
-        .map((trans) => trans.outputColumnName)
+        .map((trans) => trans.outputColumnName),
     );
 
     // Return columns that are NOT transformed (remaining columns need static values)
@@ -4428,7 +4433,9 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
 
               <select
                 value={output.existingTableName}
-                onChange={(e) => updateOutputTable(idx, { existingTableName: e.target.value, tableVersion: undefined })}
+                onChange={(e) =>
+                  updateOutputTable(idx, { existingTableName: e.target.value, tableVersion: undefined })
+                }
                 className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
               >
                 <option value="">Select table schema...</option>
@@ -4445,23 +4452,26 @@ const GenerateRowsNode: React.FC<{ data: GenerateRowsNodeData; id: string }> = (
               </select>
 
               {(() => {
-                const versions = output.existingTableName && data.DBNameToDBVersions
-                  ? data.DBNameToDBVersions[output.existingTableName]
-                  : undefined;
+                const versions =
+                  output.existingTableName && data.DBNameToDBVersions
+                    ? data.DBNameToDBVersions[output.existingTableName]
+                    : undefined;
                 if (!versions || versions.length <= 1) return null;
                 const activeVersion =
                   output.tableVersion !== undefined
                     ? output.tableVersion
-                    : (getTableVersion(output.existingTableName, versions, defaultTableVersions)?.version ?? versions[0].version);
+                    : (getTableVersion(output.existingTableName, versions, defaultTableVersions)?.version ??
+                      versions[0].version);
                 return (
                   <select
                     value={activeVersion}
                     onChange={(e) => updateOutputTable(idx, { tableVersion: Number(e.target.value) })}
-                    className="w-full bg-gray-700 border border-gray-600 text-yellow-300 text-xs rounded p-1 mb-1"
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-xs rounded p-1 mb-1"
                   >
                     {versions.map((v) => (
                       <option key={v.version} value={v.version}>
-                        v{v.version} ({v.fields?.length ?? 0} cols)
+                        {localized.version || "Version"} {v.version} ({v.fields?.length ?? 0}{" "}
+                        {localized.columns || "Columns"})
                       </option>
                     ))}
                   </select>
@@ -4545,7 +4555,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
   const [outputTables, setOutputTables] = useState<OutputTableConfig[]>(data.outputTables || []);
   const [outputCount, setOutputCount] = useState<number>(data.outputCount || 1);
   const [customSchemaColumns, setCustomSchemaColumns] = useState<string[]>(
-    (data as any).customSchemaColumns || []
+    (data as any).customSchemaColumns || [],
   );
 
   // Sync local state with prop changes
@@ -4567,7 +4577,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, transformations },
-      })
+      }),
     );
   }, [transformations, id]);
 
@@ -4576,7 +4586,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, outputTables, outputCount },
-      })
+      }),
     );
   }, [outputTables, outputCount, id]);
 
@@ -4640,7 +4650,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
     const transformedColumns = new Set(
       transformations
         .filter((trans) => trans.targetTableHandleId === output.handleId)
-        .map((trans) => trans.outputColumnName)
+        .map((trans) => trans.outputColumnName),
     );
 
     // Return custom schema columns that are NOT transformed
@@ -4935,7 +4945,7 @@ const GenerateRowsSchemaNode: React.FC<{ data: GenerateRowsNodeData; id: string 
 const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = ({ data, id }) => {
   const defaultTableVersions = useDefaultTableVersions();
   const [transformations, setTransformations] = useState<AddColumnTransformation[]>(
-    data.transformations || []
+    data.transformations || [],
   );
   const [columnNames, setColumnNames] = useState<string[]>(data.columnNames || []);
 
@@ -4978,7 +4988,7 @@ const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string }> = (
           transformations,
           columnNames: extendedColumnNames,
         },
-      })
+      }),
     );
   }, [transformations, id, (data as any).inputColumnNames]);
 
@@ -5385,7 +5395,7 @@ const FlowOptionsModal: React.FC<{
           type: "warning",
           messages: [`Option ID "${formData.id}" already exists. Please use a unique ID.`],
           startTime: Date.now(),
-        })
+        }),
       );
       return;
     }
@@ -5401,23 +5411,23 @@ const FlowOptionsModal: React.FC<{
             placeholder: formData.placeholder || undefined,
           }
         : newOptionType === "range"
-        ? {
-            id: formData.id.trim(),
-            type: "range",
-            name: formData.name,
-            description: formData.description || undefined,
-            value: Number(formData.value) || formData.min,
-            min: formData.min,
-            max: formData.max,
-            step: formData.step,
-          }
-        : {
-            id: formData.id.trim(),
-            type: "checkbox",
-            name: formData.name,
-            description: formData.description || undefined,
-            value: formData.checked,
-          };
+          ? {
+              id: formData.id.trim(),
+              type: "range",
+              name: formData.name,
+              description: formData.description || undefined,
+              value: Number(formData.value) || formData.min,
+              min: formData.min,
+              max: formData.max,
+              step: formData.step,
+            }
+          : {
+              id: formData.id.trim(),
+              type: "checkbox",
+              name: formData.name,
+              description: formData.description || undefined,
+              value: formData.checked,
+            };
 
     onOptionsChange([...options, newOption]);
     resetForm();
@@ -5451,7 +5461,7 @@ const FlowOptionsModal: React.FC<{
             type: "warning",
             messages: [`Option ID "${formData.id}" already exists. Please use a unique ID.`],
             startTime: Date.now(),
-          })
+          }),
         );
         return;
       }
@@ -5468,23 +5478,23 @@ const FlowOptionsModal: React.FC<{
             placeholder: formData.placeholder || undefined,
           }
         : editingOption.type === "range"
-        ? {
-            ...editingOption,
-            id: formData.id.trim(),
-            name: formData.name,
-            description: formData.description || undefined,
-            value: Number(formData.value) || editingOption.min,
-            min: formData.min,
-            max: formData.max,
-            step: formData.step,
-          }
-        : {
-            ...editingOption,
-            id: formData.id.trim(),
-            name: formData.name,
-            description: formData.description || undefined,
-            value: formData.checked,
-          };
+          ? {
+              ...editingOption,
+              id: formData.id.trim(),
+              name: formData.name,
+              description: formData.description || undefined,
+              value: Number(formData.value) || editingOption.min,
+              min: formData.min,
+              max: formData.max,
+              step: formData.step,
+            }
+          : {
+              ...editingOption,
+              id: formData.id.trim(),
+              name: formData.name,
+              description: formData.description || undefined,
+              value: formData.checked,
+            };
 
     onOptionsChange(options.map((opt) => (opt.id === editingOption.id ? updatedOption : opt)));
     resetForm();
@@ -5496,7 +5506,7 @@ const FlowOptionsModal: React.FC<{
 
   const handleOptionValueChange = (optionId: string, newValue: string | number | boolean) => {
     onOptionsChange(
-      options.map((opt) => (opt.id === optionId ? ({ ...opt, value: newValue } as FlowOption) : opt))
+      options.map((opt) => (opt.id === optionId ? ({ ...opt, value: newValue } as FlowOption) : opt)),
     );
   };
 
@@ -5816,7 +5826,7 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, schemaColumns: newColumns },
-      })
+      }),
     );
   };
 
@@ -5827,7 +5837,7 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, schemaColumns: newColumns },
-      })
+      }),
     );
   };
 
@@ -5838,7 +5848,7 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, schemaColumns: newColumns },
-      })
+      }),
     );
   };
 
@@ -5908,7 +5918,7 @@ const CustomSchemaNode: React.FC<{ data: any; id: string }> = ({ data, id }) => 
 const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   const [tsvFileName, setTsvFileName] = useState(data.tsvFileName || "");
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
-    data.schemaColumns || []
+    data.schemaColumns || [],
   );
   const [tableName, setTableName] = useState<string>(data.tableName || "");
 
@@ -5925,7 +5935,7 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, tsvFileName: newValue },
-      })
+      }),
     );
   };
 
@@ -5974,7 +5984,7 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
             window.dispatchEvent(
               new CustomEvent("nodeDataUpdate", {
                 detail: { nodeId: id, tableName: newName },
-              })
+              }),
             );
           }}
           className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
@@ -6010,7 +6020,7 @@ const ReadTSVFromPackNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
 const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   const [customRows, setCustomRows] = useState<Array<Record<string, string>>>(data.customRows || []);
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
-    data.schemaColumns || []
+    data.schemaColumns || [],
   );
   const [tableName, setTableName] = useState<string>(data.tableName || "");
 
@@ -6031,7 +6041,7 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, customRows: newRows },
-      })
+      }),
     );
   };
 
@@ -6042,7 +6052,7 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, customRows: newRows },
-      })
+      }),
     );
   };
 
@@ -6053,7 +6063,7 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, customRows: newRows },
-      })
+      }),
     );
   };
 
@@ -6082,7 +6092,7 @@ const CustomRowsInputNode: React.FC<{ data: any; id: string }> = ({ data, id }) 
             window.dispatchEvent(
               new CustomEvent("nodeDataUpdate", {
                 detail: { nodeId: id, tableName: newName },
-              })
+              }),
             );
           }}
           className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
@@ -6148,7 +6158,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
   const updateNodeInternals = useUpdateNodeInternals();
   const [selectedColumn, setSelectedColumn] = useState(data.selectedColumn || "");
   const [splitValues, setSplitValues] = useState<Array<{ id: string; value: string; enabled: boolean }>>(
-    data.splitValues || []
+    data.splitValues || [],
   );
   const columnNames = data.columnNames || [];
   const nodeRef = React.useRef<HTMLDivElement>(null);
@@ -6229,7 +6239,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, selectedColumn: column },
-      })
+      }),
     );
   };
 
@@ -6244,7 +6254,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, splitValues: newSplitValues },
-      })
+      }),
     );
   };
 
@@ -6254,7 +6264,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, splitValues: newSplitValues },
-      })
+      }),
     );
   };
 
@@ -6264,7 +6274,7 @@ const MultiFilterNode: React.FC<{ data: any; id: string }> = ({ data, id }) => {
     window.dispatchEvent(
       new CustomEvent("nodeDataUpdate", {
         detail: { nodeId: id, splitValues: newSplitValues },
-      })
+      }),
     );
   };
 
@@ -6612,7 +6622,7 @@ const executeGraphInBackend = async (
   nodes: Node[],
   edges: Edge[],
   currentPackName?: string,
-  flowOptions?: FlowOption[]
+  flowOptions?: FlowOption[],
 ): Promise<{
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
@@ -6676,10 +6686,10 @@ const executeGraphInBackend = async (
               if (modifiedValue.includes(placeholder)) {
                 modifiedValue = modifiedValue.replace(
                   new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-                  String(option.value)
+                  String(option.value),
                 );
                 console.log(
-                  `Node ${node.id}: Replaced ${placeholder} with "${option.value}" in ${fieldName}`
+                  `Node ${node.id}: Replaced ${placeholder} with "${option.value}" in ${fieldName}`,
                 );
                 modified = true;
               }
@@ -6693,7 +6703,14 @@ const executeGraphInBackend = async (
 
         // Handle flow option replacements in transformations array (for counter_range fields)
         if ((nodeData as any).transformations && Array.isArray((nodeData as any).transformations)) {
-          const transformationFields = ["rangeStart", "endNumber", "rangeIncrement", "prefix", "suffix", "filterValue"];
+          const transformationFields = [
+            "rangeStart",
+            "endNumber",
+            "rangeIncrement",
+            "prefix",
+            "suffix",
+            "filterValue",
+          ];
 
           (nodeData as any).transformations = (nodeData as any).transformations.map((trans: any) => {
             let transModified = false;
@@ -6709,10 +6726,10 @@ const executeGraphInBackend = async (
                   if (modifiedValue.includes(placeholder)) {
                     modifiedValue = modifiedValue.replace(
                       new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-                      String(option.value)
+                      String(option.value),
                     );
                     console.log(
-                      `Node ${node.id}: Replaced ${placeholder} with "${option.value}" in transformation.${fieldName}`
+                      `Node ${node.id}: Replaced ${placeholder} with "${option.value}" in transformation.${fieldName}`,
                     );
                     transModified = true;
                   }
@@ -6954,7 +6971,7 @@ const NodeSidebar: React.FC<{
       nodes: section.nodes.filter(
         (node) =>
           node.label.toLowerCase().includes(filterText.toLowerCase()) ||
-          node.description.toLowerCase().includes(filterText.toLowerCase())
+          node.description.toLowerCase().includes(filterText.toLowerCase()),
       ),
     }))
     .filter((section) => section.nodes.length > 0); // Only show sections that have matching nodes
@@ -7036,6 +7053,7 @@ const collator = new Intl.Collator("en");
 
 const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: NodeEditorProps) => {
   const dispatch = useAppDispatch();
+  const localized: Record<string, string> = useContext(localizationContext);
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -7043,10 +7061,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
-    undefined
+    undefined,
   );
   const [defaultTableVersions, setDefaultTableVersions] = useState<Record<string, number> | undefined>(
-    undefined
+    undefined,
   );
 
   const sortedTableNames = useMemo(() => {
@@ -7083,7 +7101,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     const updates: any[] = [];
     for (const lookupNode of lookupNodesToFix) {
       const incomingEdge = edges.find(
-        (edge) => edge.target === lookupNode.id && edge.targetHandle === "input-index"
+        (edge) => edge.target === lookupNode.id && edge.targetHandle === "input-index",
       );
 
       if (incomingEdge) {
@@ -7145,14 +7163,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             };
           }
           return node;
-        })
+        }),
       );
     }
   }, [nodes, edges, DBNameToDBVersions]);
 
   // Fix Generate Rows nodes to merge columns from all incoming connections
   React.useEffect(() => {
-    const generateRowsNodes = nodes.filter((node) => node.type === "generaterows" || node.type === "generaterowsschema");
+    const generateRowsNodes = nodes.filter(
+      (node) => node.type === "generaterows" || node.type === "generaterowsschema",
+    );
     if (generateRowsNodes.length === 0) return;
 
     const updates: { nodeId: string; columnNames: string[] }[] = [];
@@ -7216,7 +7236,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             };
           }
           return node;
-        })
+        }),
       );
     }
   }, [nodes, edges, setNodes, DBNameToDBVersions]);
@@ -7366,7 +7386,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             };
           }
           return node;
-        })
+        }),
       );
 
       // If a reference lookup node's selectedReferenceTable changed, update connected nodes
@@ -7383,7 +7403,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               const selectedVersion = getTableVersion(
                 selectedReferenceTable,
                 tableVersions,
-                defaultTableVersions
+                defaultTableVersions,
               );
               const tableFields = selectedVersion?.fields || [];
               const fieldNames = tableFields.map((field) => field.name);
@@ -7402,7 +7422,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         node.type === "generaterowsschema")
                     ) {
                       console.log(
-                        `Updating ${node.type} node ${node.id} with reference table: ${selectedReferenceTable}`
+                        `Updating ${node.type} node ${node.id} with reference table: ${selectedReferenceTable}`,
                       );
                       return {
                         ...node,
@@ -7415,7 +7435,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               });
             }
@@ -7437,7 +7457,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               const selectedVersion = getTableVersion(
                 selectedReverseTable,
                 tableVersions,
-                defaultTableVersions
+                defaultTableVersions,
               );
               const tableFields = selectedVersion?.fields || [];
               const fieldNames = tableFields.map((field) => field.name);
@@ -7457,7 +7477,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         node.type === "generaterowsschema")
                     ) {
                       console.log(
-                        `Updating ${node.type} node ${node.id} with reverse table: ${selectedReverseTable}`
+                        `Updating ${node.type} node ${node.id} with reverse table: ${selectedReverseTable}`,
                       );
                       return {
                         ...node,
@@ -7470,7 +7490,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               });
             }
@@ -7485,8 +7505,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           const connectedEdges = edges.filter((e) => e.source === nodeId);
 
           connectedEdges.forEach((edge) => {
-            const outputConfig = (outputTables as Array<{ handleId: string; existingTableName: string; tableVersion?: number }>)
-              .find((ot) => ot.handleId === edge.sourceHandle);
+            const outputConfig = (
+              outputTables as Array<{ handleId: string; existingTableName: string; tableVersion?: number }>
+            ).find((ot) => ot.handleId === edge.sourceHandle);
             if (!outputConfig?.existingTableName) return;
 
             let cols: string[] = [];
@@ -7524,7 +7545,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     };
                   }
                   return node;
-                })
+                }),
               );
             }
           });
@@ -7548,7 +7569,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 ) {
                   console.log(
                     `Updating ${node.type} node ${node.id} with custom schema columns:`,
-                    columnNames
+                    columnNames,
                   );
                   return {
                     ...node,
@@ -7560,7 +7581,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           });
         }
@@ -7605,7 +7626,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       } else if (targetNode.type === "dumptotsv" && targetNode.data) {
         // DumpToTSV accepts both TableSelection and ChangedColumnSelection
         targetInputType =
-          sourceOutputType === "ChangedColumnSelection" ? sourceOutputType : ("TableSelection" as NodeEdgeTypes);
+          sourceOutputType === "ChangedColumnSelection"
+            ? sourceOutputType
+            : ("TableSelection" as NodeEdgeTypes);
       } else if (targetNode.type === "readtsvfrompack" && targetNode.data) {
         // ReadTSVFromPack node has two inputs - need to check the target handle ID
         if (params.targetHandle === "input-schema") {
@@ -7680,7 +7703,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           } else {
             // Remove any existing edge to this target handle before adding the new one
             const filteredEdges = eds.filter(
-              (edge) => !(edge.target === params.target && edge.targetHandle === params.targetHandle)
+              (edge) => !(edge.target === params.target && edge.targetHandle === params.targetHandle),
             );
             return [...filteredEdges, newEdge];
           }
@@ -7705,7 +7728,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
         }
 
@@ -7727,7 +7750,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
         }
 
@@ -7745,7 +7768,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
         }
 
@@ -7763,7 +7786,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
         }
 
@@ -7789,7 +7812,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
         }
 
@@ -7820,8 +7843,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             cols = sourceData.customSchemaColumns || [];
           } else if (sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") {
             // generaterows has per-output table configs — resolve from the specific output handle being connected
-            const outputTables: Array<{ handleId: string; existingTableName: string; tableVersion?: number }> =
-              sourceData.outputTables || [];
+            const outputTables: Array<{
+              handleId: string;
+              existingTableName: string;
+              tableVersion?: number;
+            }> = sourceData.outputTables || [];
             const outputConfig =
               outputTables.find((ot) => ot.handleId === params.sourceHandle) ?? outputTables[0];
             if (outputConfig?.existingTableName) {
@@ -7847,7 +7873,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               sourceNode,
               sourceData,
               sourceData.DBNameToDBVersions || DBNameToDBVersions,
-              defaultTableVersions
+              defaultTableVersions,
             );
             tableName = outputInfo.tableName;
             cols = outputInfo.columnNames;
@@ -7881,7 +7907,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -7936,7 +7962,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
         }
 
@@ -7964,7 +7990,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -7992,7 +8018,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -8010,7 +8036,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode,
             sourceData,
             sourceData.DBNameToDBVersions,
-            defaultTableVersions
+            defaultTableVersions,
           );
 
           // Propagate the output table name and DBNameToDBVersions from source to target
@@ -8029,7 +8055,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -8047,7 +8073,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             sourceNode,
             sourceData,
             sourceData.DBNameToDBVersions,
-            defaultTableVersions
+            defaultTableVersions,
           );
 
           // Propagate the output table name and DBNameToDBVersions from source to target
@@ -8066,7 +8092,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -8097,7 +8123,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               }
             } else if (
@@ -8133,11 +8159,17 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 columnNames = (sourceData.schemaColumns || []).map((col: any) => col.name);
                 tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
               } else if (sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") {
-                const outputTables: Array<{ handleId: string; existingTableName: string; tableVersion?: number }> =
-                  sourceData.outputTables || [];
+                const outputTables: Array<{
+                  handleId: string;
+                  existingTableName: string;
+                  tableVersion?: number;
+                }> = sourceData.outputTables || [];
                 const outputConfig =
                   outputTables.find((ot) => ot.handleId === params.sourceHandle) ?? outputTables[0];
-                if (outputConfig?.existingTableName && outputConfig.existingTableName !== "__custom_schema__") {
+                if (
+                  outputConfig?.existingTableName &&
+                  outputConfig.existingTableName !== "__custom_schema__"
+                ) {
                   tableName = outputConfig.existingTableName;
                   const tableVersions = (sourceData.DBNameToDBVersions || DBNameToDBVersions)?.[tableName];
                   if (tableVersions && tableVersions.length > 0) {
@@ -8161,7 +8193,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   sourceNode,
                   sourceData,
                   sourceData.DBNameToDBVersions || DBNameToDBVersions,
-                  defaultTableVersions
+                  defaultTableVersions,
                 );
                 columnNames = outputInfo.columnNames;
                 tableName = outputInfo.tableName;
@@ -8185,7 +8217,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               }
             }
@@ -8223,8 +8255,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               columnNames = (sourceData.schemaColumns || []).map((col: any) => col.name);
               tableName = sourceData.tableName || `_custom_${sourceNode.id}`;
             } else if (sourceNode.type === "generaterows" || sourceNode.type === "generaterowsschema") {
-              const outputTables: Array<{ handleId: string; existingTableName: string; tableVersion?: number }> =
-                sourceData.outputTables || [];
+              const outputTables: Array<{
+                handleId: string;
+                existingTableName: string;
+                tableVersion?: number;
+              }> = sourceData.outputTables || [];
               const outputConfig =
                 outputTables.find((ot) => ot.handleId === params.sourceHandle) ?? outputTables[0];
               if (outputConfig?.existingTableName && outputConfig.existingTableName !== "__custom_schema__") {
@@ -8251,7 +8286,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 sourceNode,
                 sourceData,
                 sourceData.DBNameToDBVersions || DBNameToDBVersions,
-                defaultTableVersions
+                defaultTableVersions,
               );
               columnNames = outputInfo.columnNames;
               tableName = outputInfo.tableName;
@@ -8275,7 +8310,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     };
                   }
                   return node;
-                })
+                }),
               );
             }
           }
@@ -8303,7 +8338,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -8340,7 +8375,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -8364,10 +8399,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 const sourceTableName = sourceData.sourceTableName || "";
                 const indexedTableName = sourceData.connectedTableName || "";
                 const prefixedSourceColumns = (sourceData.sourceTableColumns || []).map(
-                  (col: string) => `${sourceTableName}_${col}`
+                  (col: string) => `${sourceTableName}_${col}`,
                 );
                 const prefixedIndexedColumns = (sourceData.columnNames || []).map(
-                  (col: string) => `${indexedTableName}_${col}`
+                  (col: string) => `${indexedTableName}_${col}`,
                 );
                 columnsToUse = [...prefixedSourceColumns, ...prefixedIndexedColumns];
               } else {
@@ -8376,7 +8411,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 const aggregateColumnName = `${aggregateColumn}_${aggregateType}`;
                 const sourceTableName = sourceData.sourceTableName || "";
                 const prefixedSourceColumns = (sourceData.sourceTableColumns || []).map(
-                  (col: string) => `${sourceTableName}_${col}`
+                  (col: string) => `${sourceTableName}_${col}`,
                 );
                 columnsToUse = [...prefixedSourceColumns, aggregateColumnName];
               }
@@ -8396,7 +8431,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -8427,8 +8462,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           const hasSchemaColumns =
             sourceNode.type === "customrowsinput" || sourceNode.type === "readtsvfrompack";
           // tableselectiondropdown uses selectedTable instead of connectedTableName
-          const isTableDropdown =
-            sourceNode.type === "tableselectiondropdown" && !!sourceData.selectedTable;
+          const isTableDropdown = sourceNode.type === "tableselectiondropdown" && !!sourceData.selectedTable;
           const isValidSource =
             (sourceData.connectedTableName &&
               (sourceData.DBNameToDBVersions ||
@@ -8462,7 +8496,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                             const selectedVersion = getTableVersion(
                               selectedTable,
                               tableVersions,
-                              defaultTableVersions
+                              defaultTableVersions,
                             );
                             const tableFields = selectedVersion?.fields || [];
                             cols = tableFields.map((field: any) => field.name);
@@ -8494,7 +8528,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     if (DBNameToDBVersions && DBNameToDBVersions[tableNameToUse]) {
                       const tableVersions = DBNameToDBVersions[tableNameToUse];
                       if (tableVersions && tableVersions.length > 0) {
-                        const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                        const selectedVersion = getTableVersion(
+                          tableNameToUse,
+                          tableVersions,
+                          defaultTableVersions,
+                        );
                         const tableFields = selectedVersion?.fields || [];
                         newSourceColumns = tableFields.map((field: any) => field.name);
                       }
@@ -8505,7 +8543,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     if (DBNameToDBVersions && DBNameToDBVersions[tableNameToUse]) {
                       const tableVersions = DBNameToDBVersions[tableNameToUse];
                       if (tableVersions && tableVersions.length > 0) {
-                        const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                        const selectedVersion = getTableVersion(
+                          tableNameToUse,
+                          tableVersions,
+                          defaultTableVersions,
+                        );
                         const tableFields = selectedVersion?.fields || [];
                         newSourceColumns = tableFields.map((field: any) => field.name);
                       }
@@ -8517,7 +8559,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     if (DBNameToDBVersions && DBNameToDBVersions[tableNameToUse]) {
                       const tableVersions = DBNameToDBVersions[tableNameToUse];
                       if (tableVersions && tableVersions.length > 0) {
-                        const selectedVersion = getTableVersion(tableNameToUse, tableVersions, defaultTableVersions);
+                        const selectedVersion = getTableVersion(
+                          tableNameToUse,
+                          tableVersions,
+                          defaultTableVersions,
+                        );
                         const tableFields = selectedVersion?.fields || [];
                         newSourceColumns = tableFields.map((field: any) => field.name);
                       }
@@ -8533,14 +8579,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       columnNames: Array.from(allSourceColumns),
                       inputColumnNames: Array.from(allSourceColumns), // Preserve input columns
                       connectedTableName: tableNameToUse,
-                      DBNameToDBVersions: hasSchemaColumns || isTableDropdown
-                        ? DBNameToDBVersions
-                        : sourceData.DBNameToDBVersions,
+                      DBNameToDBVersions:
+                        hasSchemaColumns || isTableDropdown
+                          ? DBNameToDBVersions
+                          : sourceData.DBNameToDBVersions,
                     },
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }
@@ -8567,14 +8614,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
         }
-
       }
       // If types don't match or are undefined, the connection is rejected silently
     },
-    [setEdges, DBNameToDBVersions, setNodes]
+    [setEdges, DBNameToDBVersions, setNodes],
   );
 
   const onEdgeClick = useCallback(
@@ -8614,7 +8660,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 };
               }
               return node;
-            })
+            }),
           );
 
           return newEdges;
@@ -8624,7 +8670,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         setEdges((eds) => eds.filter((e) => e.id !== edge.id));
       }
     },
-    [setEdges, setNodes]
+    [setEdges, setNodes],
   );
 
   const onDragOver = useCallback((event: DragEvent) => {
@@ -9255,7 +9301,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
       setNodes((nds) => nds.concat(newNode));
     },
-    [reactFlowInstance, setNodes, DBNameToDBVersions]
+    [reactFlowInstance, setNodes, DBNameToDBVersions],
   );
 
   const onDragStart = (event: DragEvent, nodeType: DraggableNodeData) => {
@@ -9479,7 +9525,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             console.log(
               "Setting DBNameToDBVersions with",
               Object.keys(DBNameToDBVersions || {}).length,
-              "tables"
+              "tables",
             );
             node.data.DBNameToDBVersions = DBNameToDBVersions;
             if (node.data.type === "tableselectiondropdown" || node.data.type === "getcountercolumn") {
@@ -9506,7 +9552,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           ...serializedGraph.nodes
             .map((node) => parseInt(node.id.replace("node_", ""), 10))
             .filter((id) => !isNaN(id)),
-          -1
+          -1,
         );
         nodeId = maxNodeId + 1;
 
@@ -9543,7 +9589,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   };
                 }
                 return node;
-              })
+              }),
             );
           }
         }, 0);
@@ -9602,7 +9648,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         };
                       }
                       return node;
-                    })
+                    }),
                   );
                 }
               }
@@ -9619,15 +9665,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 sourceNode.type === "filter"
                   ? (sourceNode.data as unknown as FilterNodeData)
                   : sourceNode.type === "referencelookup"
-                  ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
-                  : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
+                    ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+                    : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
               // Use helper for correct output table and columns
               const outputInfo = getSourceNodeOutputInfo(
                 sourceNode,
                 sourceData,
                 sourceData.DBNameToDBVersions,
-                defaultTableVersions
+                defaultTableVersions,
               );
 
               if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
@@ -9645,7 +9691,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               }
             }
@@ -9661,15 +9707,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 sourceNode.type === "filter"
                   ? (sourceNode.data as unknown as FilterNodeData)
                   : sourceNode.type === "referencelookup"
-                  ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
-                  : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
+                    ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+                    : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
               // Use helper for correct output table and columns
               const outputInfo = getSourceNodeOutputInfo(
                 sourceNode,
                 sourceData,
                 sourceData.DBNameToDBVersions,
-                defaultTableVersions
+                defaultTableVersions,
               );
 
               if (outputInfo.tableName && sourceData.DBNameToDBVersions) {
@@ -9687,7 +9733,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               }
             }
@@ -9708,7 +9754,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     const selectedVersion = getTableVersion(
                       sourceData.selectedReferenceTable,
                       tableVersions,
-                      defaultTableVersions
+                      defaultTableVersions,
                     );
                     const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
@@ -9728,7 +9774,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         };
                       }
                       return node;
-                    })
+                    }),
                   );
                 }
               } else if (sourceNode.type === "reversereferencelookup") {
@@ -9742,7 +9788,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     const selectedVersion = getTableVersion(
                       sourceData.selectedReverseTable,
                       tableVersions,
-                      defaultTableVersions
+                      defaultTableVersions,
                     );
                     const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
@@ -9762,7 +9808,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         };
                       }
                       return node;
-                    })
+                    }),
                   );
                 }
               }
@@ -9787,7 +9833,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               }
             }
@@ -9803,8 +9849,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 sourceNode.type === "filter"
                   ? (sourceNode.data as unknown as FilterNodeData)
                   : sourceNode.type === "referencelookup"
-                  ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
-                  : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
+                    ? (sourceNode.data as unknown as ReferenceTableLookupNodeData)
+                    : (sourceNode.data as unknown as ReverseReferenceLookupNodeData);
 
               // For reference lookup nodes, use the selected reference table instead of the input table
               let tableNameToUse = sourceData.connectedTableName;
@@ -9821,7 +9867,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     const selectedVersion = getTableVersion(
                       tableNameToUse,
                       tableVersions,
-                      defaultTableVersions
+                      defaultTableVersions,
                     );
                     const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
@@ -9850,7 +9896,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         };
                       }
                       return node;
-                    })
+                    }),
                   );
                 }
               } else if (sourceNode.type === "reversereferencelookup") {
@@ -9864,7 +9910,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     const selectedVersion = getTableVersion(
                       tableNameToUse,
                       tableVersions,
-                      defaultTableVersions
+                      defaultTableVersions,
                     );
                     const tableFields = selectedVersion?.fields || [];
                     columnNamesToUse = tableFields.map((field) => field.name);
@@ -9892,7 +9938,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                         };
                       }
                       return node;
-                    })
+                    }),
                   );
                 }
               }
@@ -9912,7 +9958,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               }
             }
@@ -9944,7 +9990,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       };
                     }
                     return node;
-                  })
+                  }),
                 );
               }
             }
@@ -9959,7 +10005,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: "warning",
             messages: ["Failed to load the node graph file. Please check the file format."],
             startTime: Date.now(),
-          })
+          }),
         );
       }
     },
@@ -9971,7 +10017,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       setIsGraphEnabled,
       setGraphStartsEnabled,
       dispatch,
-    ]
+    ],
   );
 
   const loadNodeGraphFile = useCallback(
@@ -9984,7 +10030,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
       reader.readAsText(file);
     },
-    [loadNodeGraph]
+    [loadNodeGraph],
   );
 
   const handleFileInput = useCallback(
@@ -9996,7 +10042,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       // Clear the input so the same file can be loaded again
       event.target.value = "";
     },
-    [loadNodeGraphFile]
+    [loadNodeGraphFile],
   );
 
   // Handle keyboard events for node deletion
@@ -10021,8 +10067,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             setEdges((eds) =>
               eds.filter(
                 (edge) =>
-                  !selectedNodeIds.includes(edge.source || "") && !selectedNodeIds.includes(edge.target || "")
-              )
+                  !selectedNodeIds.includes(edge.source || "") &&
+                  !selectedNodeIds.includes(edge.target || ""),
+              ),
             );
 
             console.log(`Deleted ${selectedNodes.length} nodes and their connections`);
@@ -10060,7 +10107,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: "success",
             messages: [`Flow saved successfully!`],
             startTime: Date.now(),
-          })
+          }),
         );
       } else {
         console.error("Failed to save flow:", result?.error);
@@ -10069,7 +10116,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: "warning",
             messages: [`Failed to save flow: ${result?.error || "Unknown error"}`],
             startTime: Date.now(),
-          })
+          }),
         );
       }
     } catch (error) {
@@ -10079,7 +10126,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           type: "warning",
           messages: [`Error saving flow: ${error instanceof Error ? error.message : "Unknown error"}`],
           startTime: Date.now(),
-        })
+        }),
       );
     }
   }, [currentFile, currentPack, serializeNodeGraph, dispatch]);
@@ -10100,13 +10147,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: "warning",
             messages: ["No nodes found. Add nodes to the graph before executing."],
             startTime: Date.now(),
-          })
+          }),
         );
         return;
       }
 
       // Debug: Check generaterows/generaterowsschema node data before execution
-      const generateRowsNodes = nodes.filter((n) => n.type === "generaterows" || n.type === "generaterowsschema");
+      const generateRowsNodes = nodes.filter(
+        (n) => n.type === "generaterows" || n.type === "generaterowsschema",
+      );
       generateRowsNodes.forEach((grNode) => {
         console.log(`[PRE-EXECUTION] GenerateRows node ${grNode.id} data:`);
         console.log(`  transformationsLength: ${((grNode.data as any)?.transformations || []).length}`);
@@ -10119,7 +10168,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const result = await executeGraphInBackend(nodes, edges, currentPack, flowOptions);
 
       console.log(
-        `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`
+        `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`,
       );
 
       if (result.error) {
@@ -10132,7 +10181,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           ([nodeId, nodeResult]) =>
             `${nodeId}: ${
               nodeResult.success ? "✅" : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "")
-            }`
+            }`,
         )
         .join("\n");
 
@@ -10147,7 +10196,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             `${statusMessage}\n\nExecution Summary (${result.successCount}/${result.totalExecuted} nodes succeeded):\n${summary}\n\nCheck console for detailed results.`,
           ],
           startTime: Date.now(),
-        })
+        }),
       );
     } catch (error) {
       console.error("Error during graph execution:", error);
@@ -10156,7 +10205,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           type: "warning",
           messages: [`Graph execution failed: ${error instanceof Error ? error.message : "Unknown error"}`],
           startTime: Date.now(),
-        })
+        }),
       );
     } finally {
       setIsExecuting(false);
@@ -10189,7 +10238,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               type: "warning",
               messages: [`Failed to load file: ${result?.error || "Unknown error"}`],
               startTime: Date.now(),
-            })
+            }),
           );
         }
       } catch (error) {
@@ -10199,7 +10248,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             type: "warning",
             messages: [`Error loading file: ${error instanceof Error ? error.message : "Unknown error"}`],
             startTime: Date.now(),
-          })
+          }),
         );
       }
     };
@@ -10331,8 +10380,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                       eds.filter(
                         (edge) =>
                           !selectedNodeIds.includes(edge.source || "") &&
-                          !selectedNodeIds.includes(edge.target || "")
-                      )
+                          !selectedNodeIds.includes(edge.target || ""),
+                      ),
                     );
                   }
                 }}

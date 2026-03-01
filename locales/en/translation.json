@@ -565,5 +565,7 @@
   "editNode": "Edit Node",
   "saveOnlyChanges": "Save Only Changes",
   "JSON": "JSON",
-  "level": "Level"
+  "level": "Level",
+  "version": "Version",
+  "columns": "Columns"
 }
