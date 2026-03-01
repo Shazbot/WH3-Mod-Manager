@@ -384,6 +384,7 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 }
 
 .height-without-topbar {
+  height: calc(100vh - 28px);
   max-height: calc(100vh - 28px);
 }
 
