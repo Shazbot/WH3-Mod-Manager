@@ -25,6 +25,97 @@ interface AppData {
     icons: Record<string, string>;
     effectsToEffectData: Record<string, EffectData>;
     nodeToSkillLocks: NodeToSkillLocks;
+    skillsDataPackPaths: string[];
+    effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
+    unitAbilitiesByKey: Record<
+      string,
+      {
+        key: string;
+        iconName: string;
+        type: string;
+        sourceType: string;
+        overpowerOption?: string;
+      }
+    >;
+    unitSpecialAbilitiesByKey: Record<
+      string,
+      {
+        key: string;
+        targetInterceptRange: number;
+        rechargeTime: number;
+        activeTime: number;
+        effectRange: number;
+        manaCost: number;
+        miscastChance: number;
+        minRange: number;
+        activatedProjectile?: string;
+        vortex?: string;
+      }
+    >;
+    projectilesByKey: Record<
+      string,
+      {
+        key: string;
+        damage: number;
+        apDamage: number;
+        projectileNumber: number;
+        explosionType?: string;
+        spawnedVortex?: string;
+      }
+    >;
+    explosionsByKey: Record<
+      string,
+      {
+        key: string;
+        detonationDamage: number;
+        detonationDamageAp: number;
+        detonationRadius: number;
+        detonationDuration: number;
+      }
+    >;
+    vortexesByKey: Record<
+      string,
+      {
+        key: string;
+        damage: number;
+        damageAp: number;
+        duration: number;
+        goalRadius: number;
+        startRadius: number;
+        movementSpeed: number;
+        numVortexes: number;
+      }
+    >;
+    abilityToPhaseIds: Record<string, string[]>;
+    phasesById: Record<
+      string,
+      {
+        id: string;
+        damageAmount: number;
+        maxDamagedEntities: number;
+        hpChangeFrequency: number;
+        duration: number;
+      }
+    >;
+    kvDirectDamageMinUnary: number;
+    kvDirectDamageLarge: number;
+    abilityToAdditionalUiEffectKeys: Record<string, string[]>;
+    additionalUiEffectsByKey: Record<
+      string,
+      {
+        key: string;
+        sortOrder: number;
+        effectState: string;
+      }
+    >;
+    abilityToGroupKeys: Record<string, string[]>;
+    specialAbilityGroupsByKey: Record<
+      string,
+      {
+        key: string;
+        iconPath: string;
+      }
+    >;
   };
   presets: Preset[];
 

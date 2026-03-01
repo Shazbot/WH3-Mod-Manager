@@ -240,7 +240,7 @@ export function getSkillToEffects(skills: Skill[], skillsToEffects: SkillsToEffe
 }
 
 // {{tr:xxx}} inside a loc should be replaced with a ui_text_replacements_localised_text_xxx loc keys
-function resolveTextReplacements(
+export function resolveTextReplacements(
   localizedText: string | undefined,
   getLoc: (locId: string) => string | undefined,
 ) {
@@ -253,6 +253,11 @@ function resolveTextReplacements(
     // console.log("FOUND:", replacementText);
     return replacementText || captureGroup;
   });
+}
+
+export function stripLocImgTags(localizedText: string | undefined) {
+  if (!localizedText) return localizedText;
+  return localizedText.replaceAll(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "");
 }
 
 export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: string) => string | undefined) {
@@ -276,7 +281,7 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
       }
       effect.localizedKey = resolveTextReplacements(effect.localizedKey, getLoc) || "";
 
-      effect.localizedKey = effect.localizedKey.replaceAll(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "");
+      effect.localizedKey = stripLocImgTags(effect.localizedKey) || "";
 
       if (effect.localizedKey) {
         const value = Number(effect.value);
@@ -303,7 +308,7 @@ export function getRawEffectLocalization(
   let localized = getLoc(locId);
   if (!localized) return effectKey;
   localized = resolveTextReplacements(localized, getLoc) || localized;
-  localized = localized.replaceAll(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "");
+  localized = stripLocImgTags(localized) || localized;
   return localized;
 }
 
