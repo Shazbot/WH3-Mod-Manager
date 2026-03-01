@@ -947,13 +947,6 @@ const PresetsTab = memo(() => {
               </button>
             </div>
           </div>
-          <div className="text-xs opacity-80 mb-2">
-            {localized.loadOrderLegendPinned || "Blue number = custom load order."}
-            <span className="ml-2">
-              <span className="text-orange-500 font-semibold">D</span>{" "}
-              {localized.dataModLegend || "= mod is in data folder."}
-            </span>
-          </div>
           {categories.length > 0 && (
             <select
               value={inPresetCategoryFilter ?? ""}
@@ -1113,6 +1106,13 @@ const PresetsTab = memo(() => {
                 onClick={() => applyPlacement(visibleEnabledDraftMods.length)}
               ></div>
             )}
+          </div>
+          <div className="text-xs opacity-80 mt-2">
+            {localized.loadOrderLegendPinned || "Blue number = custom load order."}
+            <span className="ml-2">
+              <span className="text-orange-500 font-semibold">D</span>{" "}
+              {localized.dataModLegend || "= mod is in data folder."}
+            </span>
           </div>
         </div>
 
