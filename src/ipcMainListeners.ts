@@ -81,6 +81,7 @@ import {
 } from "./skills";
 import {
   cloneSkillsDataCore,
+  createEmptySkillsDataCore,
   getDefaultSkillsSubtype,
   getLocsFromPacks,
   getSkillAndEffectIconPaths,
@@ -1477,13 +1478,30 @@ export const registerIpcMainListeners = (
       abilityToGroupKeys,
       specialAbilityGroupsByKey,
     };
-    if (mods.length === 0) {
-      void saveVanillaSkillsDataCoreCache({
-        dataFolder,
-        currentGame: appData.currentGame,
-        userDataPath: app.getPath("userData"),
-        skillsData: appData.skillsData,
-      });
+    if (!cachedVanillaSkillsCore) {
+      if (mods.length === 0) {
+        void saveVanillaSkillsDataCoreCache({
+          dataFolder,
+          currentGame: appData.currentGame,
+          userDataPath: app.getPath("userData"),
+          skillsData: appData.skillsData,
+        });
+      } else if (dbPackData) {
+        // Seed vanilla cache from db.pack only, even on a modded cold start.
+        const vanillaCoreForCache = createEmptySkillsDataCore();
+        applyModOverlayToSkillsDataCore(vanillaCoreForCache, [dbPackData], getTableRowData);
+        void saveVanillaSkillsDataCoreCache({
+          dataFolder,
+          currentGame: appData.currentGame,
+          userDataPath: app.getPath("userData"),
+          skillsData: {
+            ...vanillaCoreForCache,
+            locs: {},
+            icons: {},
+            skillsDataPackPaths: [],
+          },
+        });
+      }
     }
     const nodesKF = setToNodes[setKF];
 
