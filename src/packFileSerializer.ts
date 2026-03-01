@@ -1256,8 +1256,9 @@ export const executeFlowsForPack = async (
   pathTarget: string,
   userFlowOptions: UserFlowOptions,
   packName: string,
-): Promise<string[]> => {
+): Promise<{ createdPackPaths: string[]; hadErrors: boolean }> => {
   const createdPackPaths: string[] = [];
+  let hadErrors = false;
 
   try {
     console.log("Executing flows for pack:", packName);
@@ -1273,7 +1274,7 @@ export const executeFlowsForPack = async (
 
     if (flowFiles.length === 0) {
       console.log("No flow files found in pack");
-      return createdPackPaths;
+      return { createdPackPaths, hadErrors };
     }
 
     console.log(`Found ${flowFiles.length} flow files in pack`);
@@ -1431,9 +1432,11 @@ export const executeFlowsForPack = async (
           }
         } else {
           console.error(`Flow ${flowFileName} execution failed:`, result.error);
+          hadErrors = true;
         }
       } catch (error) {
         console.error(`Error executing flow ${flowFile.name}:`, error);
+        hadErrors = true;
       }
     }
 
@@ -1441,9 +1444,10 @@ export const executeFlowsForPack = async (
     console.log(`Created ${createdPackPaths.length} pack file(s):`, createdPackPaths);
   } catch (error) {
     console.error("Error in executeFlowsForPack:", error);
+    hadErrors = true;
   }
 
-  return createdPackPaths;
+  return { createdPackPaths, hadErrors };
 };
 
 export const writeCopyPack = async (
