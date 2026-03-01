@@ -185,6 +185,14 @@ declare global {
     currentRank: number;
   }
 
+  type SkillsViewOptions = Pick<
+    AppState,
+    | "isShowingSkillNodeSetNames"
+    | "isShowingHiddenSkills"
+    | "isShowingHiddenModifiersInsideSkills"
+    | "isCheckingSkillRequirements"
+  >;
+
   type AppStateToWrite = Pick<
     AppState,
     | "alwaysEnabledMods"

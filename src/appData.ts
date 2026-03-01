@@ -37,6 +37,10 @@ interface AppData {
   saveSetupDone: boolean;
   isMakeUnitsGeneralsEnabled: boolean;
   isFeaturesForModdersEnabled: boolean;
+  isShowingSkillNodeSetNames: boolean;
+  isShowingHiddenSkills: boolean;
+  isShowingHiddenModifiersInsideSkills: boolean;
+  isCheckingSkillRequirements: boolean;
   hasReadConfig: boolean;
   packsData: Pack[];
   unsavedPacksData: Record<string, PackedFile[]>;
@@ -88,6 +92,10 @@ const appData = {
   saveSetupDone: false,
   isMakeUnitsGeneralsEnabled: false,
   isFeaturesForModdersEnabled: false,
+  isShowingSkillNodeSetNames: false,
+  isShowingHiddenSkills: true,
+  isShowingHiddenModifiersInsideSkills: true,
+  isCheckingSkillRequirements: true,
   hasReadConfig: false,
   packsData: [],
   unsavedPacksData: {},
