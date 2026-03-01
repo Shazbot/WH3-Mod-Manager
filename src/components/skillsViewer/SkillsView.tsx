@@ -470,8 +470,12 @@ const SkillsView = memo(
 
     if (!isEditMode) {
       // LOG 1 (normal mode)
-      console.log("[SV] skillNodes render: isEditMode=false skills w/ group=", skills.filter(s => s.group).length,
-        "groupedSkills keys=", Object.keys(groupedSkills));
+      console.log(
+        "[SV] skillNodes render: isEditMode=false skills w/ group=",
+        skills.filter((s) => s.group).length,
+        "groupedSkills keys=",
+        Object.keys(groupedSkills),
+      );
       for (const [group, skills] of Object.entries(groupedSkills)) {
         let lowest = skills[0],
           highest = skills[0];
@@ -548,10 +552,16 @@ const SkillsView = memo(
         members.sort((a, b) => a.y - b.y);
       }
       // LOG 1 (edit mode)
-      console.log("[SV] skillNodes render: isEditMode=true skills w/ group=", skills.filter(s => s.group).length,
-        "groupedSkills keys=", Object.keys(groupedSkills),
-        "editGroups=", JSON.stringify(editGroups),
-        "editGroupMembers keys=", Object.keys(editGroupMembers));
+      console.log(
+        "[SV] skillNodes render: isEditMode=true skills w/ group=",
+        skills.filter((s) => s.group).length,
+        "groupedSkills keys=",
+        Object.keys(groupedSkills),
+        "editGroups=",
+        JSON.stringify(editGroups),
+        "editGroupMembers keys=",
+        Object.keys(editGroupMembers),
+      );
       for (const [groupId, members] of Object.entries(editGroupMembers)) {
         if (members.length < 2) continue;
         const lowest = members[0];
@@ -837,21 +847,27 @@ const SkillsView = memo(
     useEffect(() => {
       const containers = nodes.filter((n) => n.className === "reactFlowGroup");
       if (containers.length > 0) {
-        console.log("[SV] RF nodes containers:", containers.map((c) => ({
-          id: c.id,
-          w: c.width, h: c.height,
-          sw: (c.style as any)?.width, sh: (c.style as any)?.height,
-          measured: c.measured,
-        })));
+        console.log(
+          "[SV] RF nodes containers:",
+          containers.map((c) => ({
+            id: c.id,
+            w: c.width,
+            h: c.height,
+            sw: (c.style as any)?.width,
+            sh: (c.style as any)?.height,
+            measured: c.measured,
+          })),
+        );
         const children = nodes.filter((n) => n.parentId);
-        console.log("[SV] RF nodes children:", children.map((c) => ({ id: c.id, parentId: c.parentId, pos: c.position })));
+        console.log(
+          "[SV] RF nodes children:",
+          children.map((c) => ({ id: c.id, parentId: c.parentId, pos: c.position })),
+        );
       }
     }, [nodes, isEditMode, editGroups]);
 
     const [edges, setEdges, onEdgesChange] = useEdgesState<(typeof initialEdges)[0]>(
-      initialSnapshot?.edges
-        ? (deepClone(initialSnapshot.edges) as SkillEdge[])
-        : deepClone(initialEdges),
+      initialSnapshot?.edges ? (deepClone(initialSnapshot.edges) as SkillEdge[]) : deepClone(initialEdges),
     );
 
     const displayFactionOptions = (() => {
@@ -3683,14 +3699,23 @@ const SkillsView = memo(
     // ReactFlow won't refresh when things like isShowingHiddenModifiersInsideSkills change, so force it.
     // In edit mode this is guarded to avoid wiping edit state on data changes (e.g. pack load).
     useEffect(() => {
-      console.log("[SV] RF-refresh effect fired: isEditMode=", isEditMode, // LOG 4
-        "skipTransition=", skipTransitionEffect.current,
-        "isRestoring=", isRestoringSnapshot.current);
+      console.log(
+        "[SV] RF-refresh effect fired: isEditMode=",
+        isEditMode, // LOG 4
+        "skipTransition=",
+        skipTransitionEffect.current,
+        "isRestoring=",
+        isRestoringSnapshot.current,
+      );
       if (isRestoringSnapshot.current) return;
       if (isEditMode && !skipTransitionEffect.current) return; // edit mode manages its own nodes
       isFirstEditModeTransition.current = true;
-      console.log("[SV] RF-refresh: setting nodes count=", skillNodes.length,
-        "containers=", skillNodes.filter(n => (n.data as any)?.isGrouping).length); // LOG 4b
+      console.log(
+        "[SV] RF-refresh: setting nodes count=",
+        skillNodes.length,
+        "containers=",
+        skillNodes.filter((n) => (n.data as any)?.isGrouping).length,
+      ); // LOG 4b
       setNodes(deepClone(skillNodes));
       setEdges(deepClone(initialEdges));
     }, [
@@ -3943,9 +3968,12 @@ const SkillsView = memo(
             groupKeyToNodeIds[skill.group].push(skill.nodeId);
           }
 
-          console.log("[SV] isFirst: currentSkillsWithGroup=", // LOG 5
-            skillsData.currentSkills.filter(s => s.group).length,
-            "groupKeyToNodeIds=", JSON.stringify(groupKeyToNodeIds));
+          console.log(
+            "[SV] isFirst: currentSkillsWithGroup=", // LOG 5
+            skillsData.currentSkills.filter((s) => s.group).length,
+            "groupKeyToNodeIds=",
+            JSON.stringify(groupKeyToNodeIds),
+          );
 
           for (const members of Object.values(groupKeyToNodeIds)) {
             if (members.length < 2) continue;
@@ -3953,8 +3981,14 @@ const SkillsView = memo(
             for (const nodeId of members) newGroupEntries[nodeId] = groupId;
           }
 
-          console.log("[SV] isFirst: newGroupEntries=", JSON.stringify(newGroupEntries), // LOG 5b
-            "groupCounter=", groupCounter, "nextGroupId=", nextGroupId);
+          console.log(
+            "[SV] isFirst: newGroupEntries=",
+            JSON.stringify(newGroupEntries), // LOG 5b
+            "groupCounter=",
+            groupCounter,
+            "nextGroupId=",
+            nextGroupId,
+          );
 
           if (groupCounter > nextGroupId) {
             justAutoGrouped.current = true;
@@ -3974,10 +4008,16 @@ const SkillsView = memo(
 
     // Recalculate group containers and member positions from current nodes state
     useEffect(() => {
-      console.log("[SV] editGroups effect: isEditMode=", isEditMode, // LOG 6
-        "skip=", skipEditGroupsEffect.current,
-        "justAutoGrouped=", justAutoGrouped.current,
-        "editGroups keys=", Object.keys(editGroups).length);
+      console.log(
+        "[SV] editGroups effect: isEditMode=",
+        isEditMode, // LOG 6
+        "skip=",
+        skipEditGroupsEffect.current,
+        "justAutoGrouped=",
+        justAutoGrouped.current,
+        "editGroups keys=",
+        Object.keys(editGroups).length,
+      );
       if (!isEditMode) return;
       if (skipEditGroupsEffect.current) {
         skipEditGroupsEffect.current = false;
@@ -3988,252 +4028,256 @@ const SkillsView = memo(
       // new editGroups in this render, so we can use it directly instead of the functional update.
       if (justAutoGrouped.current) {
         justAutoGrouped.current = false;
-        console.log("[SV] editGroups effect: justAutoGrouped path, skillNodes containers=",
-          skillNodes.filter(n => (n.data as any)?.isGrouping).length,
-          "total=", skillNodes.length); // LOG 6b
+        console.log(
+          "[SV] editGroups effect: justAutoGrouped path, skillNodes containers=",
+          skillNodes.filter((n) => (n.data as any)?.isGrouping).length,
+          "total=",
+          skillNodes.length,
+        ); // LOG 6b
         setNodes(deepClone(skillNodes));
       } else {
         setNodes((currentNodes) => {
-        // Build group membership from current nodes + editGroups
-        const groupMembers: Record<string, typeof currentNodes> = {};
-        for (const [nodeId, groupId] of Object.entries(editGroups)) {
-          if (!groupMembers[groupId]) groupMembers[groupId] = [];
-          const skillNode = currentNodes.find((n) => n.id === nodeId && n.type === "skill");
-          if (skillNode) groupMembers[groupId].push(skillNode);
-        }
+          // Build group membership from current nodes + editGroups
+          const groupMembers: Record<string, typeof currentNodes> = {};
+          for (const [nodeId, groupId] of Object.entries(editGroups)) {
+            if (!groupMembers[groupId]) groupMembers[groupId] = [];
+            const skillNode = currentNodes.find((n) => n.id === nodeId && n.type === "skill");
+            if (skillNode) groupMembers[groupId].push(skillNode);
+          }
 
-        // Sort members by their current absolute x position (column order)
-        for (const members of Object.values(groupMembers)) {
-          members.sort((a, b) => {
-            const aAbsX = a.parentId
-              ? (currentNodes.find((n) => n.id === a.parentId)?.position.x ?? 0) + a.position.x
-              : a.position.x;
-            const bAbsX = b.parentId
-              ? (currentNodes.find((n) => n.id === b.parentId)?.position.x ?? 0) + b.position.x
-              : b.position.x;
-            return aAbsX - bAbsX;
+          // Sort members by their current absolute x position (column order)
+          for (const members of Object.values(groupMembers)) {
+            members.sort((a, b) => {
+              const aAbsX = a.parentId
+                ? (currentNodes.find((n) => n.id === a.parentId)?.position.x ?? 0) + a.position.x
+                : a.position.x;
+              const bAbsX = b.parentId
+                ? (currentNodes.find((n) => n.id === b.parentId)?.position.x ?? 0) + b.position.x
+                : b.position.x;
+              return aAbsX - bAbsX;
+            });
+          }
+
+          // Remove old group containers (both editGroup_ and original data groups)
+          // They get recreated below for groups still in editGroups
+          const activeGroupIds = new Set(Object.values(editGroups));
+          let result = currentNodes.filter((n) => {
+            if (n.className === "reactFlowGroup" && (n.data as any)?.isGrouping) {
+              const groupId = n.id.replace(/_group$/, "");
+              return activeGroupIds.has(groupId);
+            }
+            return true;
           });
-        }
 
-        // Remove old group containers (both editGroup_ and original data groups)
-        // They get recreated below for groups still in editGroups
-        const activeGroupIds = new Set(Object.values(editGroups));
-        let result = currentNodes.filter((n) => {
-          if (n.className === "reactFlowGroup" && (n.data as any)?.isGrouping) {
-            const groupId = n.id.replace(/_group$/, "");
-            return activeGroupIds.has(groupId);
-          }
-          return true;
-        });
+          // Remove parentId from nodes no longer in a valid group (< 2 members)
+          // and restore their absolute position from the old container
+          const validGroupIds = new Set(
+            Object.entries(groupMembers)
+              .filter(([, m]) => m.length >= 2)
+              .map(([gid]) => gid),
+          );
+          result = result.map((n) => {
+            if (
+              n.parentId &&
+              n.parentId.endsWith("_group") &&
+              !validGroupIds.has(n.parentId.replace(/_group$/, ""))
+            ) {
+              // Restore absolute position using the old container (from currentNodes, before removal)
+              const oldContainer = currentNodes.find((c) => c.id === n.parentId);
+              const absX = oldContainer ? oldContainer.position.x + n.position.x : n.position.x;
+              const absY = oldContainer ? oldContainer.position.y + n.position.y : n.position.y;
+              return { ...n, parentId: undefined, position: { x: absX, y: absY } };
+            }
+            return n;
+          });
 
-        // Remove parentId from nodes no longer in a valid group (< 2 members)
-        // and restore their absolute position from the old container
-        const validGroupIds = new Set(
-          Object.entries(groupMembers)
-            .filter(([, m]) => m.length >= 2)
-            .map(([gid]) => gid),
-        );
-        result = result.map((n) => {
-          if (
-            n.parentId &&
-            n.parentId.endsWith("_group") &&
-            !validGroupIds.has(n.parentId.replace(/_group$/, ""))
-          ) {
-            // Restore absolute position using the old container (from currentNodes, before removal)
-            const oldContainer = currentNodes.find((c) => c.id === n.parentId);
-            const absX = oldContainer ? oldContainer.position.x + n.position.x : n.position.x;
-            const absY = oldContainer ? oldContainer.position.y + n.position.y : n.position.y;
-            return { ...n, parentId: undefined, position: { x: absX, y: absY } };
-          }
-          return n;
-        });
+          // Create new group containers and reposition members
+          for (const [groupId, members] of Object.entries(groupMembers)) {
+            if (members.length < 2) continue;
 
-        // Create new group containers and reposition members
-        for (const [groupId, members] of Object.entries(groupMembers)) {
-          if (members.length < 2) continue;
+            const firstMember = members[0];
+            const firstAbsX = firstMember.parentId
+              ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.x ?? 0) +
+                firstMember.position.x
+              : firstMember.position.x;
+            const firstAbsY = firstMember.parentId
+              ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.y ?? 0) +
+                firstMember.position.y
+              : firstMember.position.y;
+            const row = Math.round(firstAbsY / effectiveNodeHeight);
 
-          const firstMember = members[0];
-          const firstAbsX = firstMember.parentId
-            ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.x ?? 0) +
-              firstMember.position.x
-            : firstMember.position.x;
-          const firstAbsY = firstMember.parentId
-            ? (currentNodes.find((n) => n.id === firstMember.parentId)?.position.y ?? 0) +
-              firstMember.position.y
-            : firstMember.position.y;
-          const row = Math.round(firstAbsY / effectiveNodeHeight);
-
-          const groupColor = groupIdToColor[groupId];
-          const containerNode = {
-            id: `${groupId}_group`,
-            data: {
-              label: groupId,
-              id: groupId,
-              isAbilityIcon: false,
-              imgPath: "",
-              nodeId: `${groupId}_group`,
-              skillBackground,
-              skillIconBackground,
-              skillLevelImg,
-              tooltipFrame,
-              skillLevelLitIcon,
-              skillIcon,
-              row,
-              isGrouping: true,
-              numLevels: 1,
-              description: "",
-              effects: [],
-              origIndent: "",
-              origTier: "",
-              isHiddentInUI: false,
-              isCheckingSkillRequirements,
-              unlockRank: 0,
-            },
-            position: { x: firstAbsX - 10, y: row * effectiveNodeHeight - 15 },
-            sourcePosition: Position.Right,
-            targetPosition: Position.Left,
-            parentId: undefined,
-            type: "default" as const,
-            style: {
-              backgroundColor: "transparent",
-              border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
-              boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
-              zIndex: "0",
+            const groupColor = groupIdToColor[groupId];
+            const containerNode = {
+              id: `${groupId}_group`,
+              data: {
+                label: groupId,
+                id: groupId,
+                isAbilityIcon: false,
+                imgPath: "",
+                nodeId: `${groupId}_group`,
+                skillBackground,
+                skillIconBackground,
+                skillLevelImg,
+                tooltipFrame,
+                skillLevelLitIcon,
+                skillIcon,
+                row,
+                isGrouping: true,
+                numLevels: 1,
+                description: "",
+                effects: [],
+                origIndent: "",
+                origTier: "",
+                isHiddentInUI: false,
+                isCheckingSkillRequirements,
+                unlockRank: 0,
+              },
+              position: { x: firstAbsX - 10, y: row * effectiveNodeHeight - 15 },
+              sourcePosition: Position.Right,
+              targetPosition: Position.Left,
+              parentId: undefined,
+              type: "default" as const,
+              style: {
+                backgroundColor: "transparent",
+                border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
+                boxShadow:
+                  "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
+                zIndex: "0",
+                width: members.length * nodeWidth - 15,
+                height: nodeHeight + 10,
+              },
+              className: "reactFlowGroup",
               width: members.length * nodeWidth - 15,
               height: nodeHeight + 10,
-            },
-            className: "reactFlowGroup",
-            width: members.length * nodeWidth - 15,
-            height: nodeHeight + 10,
-          };
+            };
 
-          // Add container before members (ReactFlow requires parent before children)
-          result = [containerNode as any, ...result.filter((n) => n.id !== `${groupId}_group`)];
+            // Add container before members (ReactFlow requires parent before children)
+            result = [containerNode as any, ...result.filter((n) => n.id !== `${groupId}_group`)];
 
-          // Reposition members as children of the container and set editGroupColor
-          const memberIds = new Set(members.map((m) => m.id));
-          result = result.map((n) => {
-            if (!memberIds.has(n.id)) return n;
-            const idx = members.findIndex((m) => m.id === n.id);
-            return {
-              ...n,
-              data: { ...n.data, editGroupColor: groupColor },
-              parentId: `${groupId}_group`,
-              position: { x: idx * nodeWidth + 10, y: 15 },
-            } as Nodes;
-          });
-        }
+            // Reposition members as children of the container and set editGroupColor
+            const memberIds = new Set(members.map((m) => m.id));
+            result = result.map((n) => {
+              if (!memberIds.has(n.id)) return n;
+              const idx = members.findIndex((m) => m.id === n.id);
+              return {
+                ...n,
+                data: { ...n.data, editGroupColor: groupColor },
+                parentId: `${groupId}_group`,
+                position: { x: idx * nodeWidth + 10, y: 15 },
+              } as Nodes;
+            });
+          }
 
-        // Shift standalone nodes that overlap with group containers
-        // Collect occupied columns per row from group containers
-        const groupOccupied: { row: number; startCol: number; endCol: number }[] = [];
-        for (const [groupId, members] of Object.entries(groupMembers)) {
-          if (members.length < 2) continue;
-          const container = result.find((n) => n.id === `${groupId}_group`);
-          if (!container) continue;
-          const row = Math.round((container.position.y + 15) / effectiveNodeHeight);
-          const startCol = Math.round((container.position.x + 10) / nodeWidth);
-          const endCol = startCol + members.length - 1;
-          groupOccupied.push({ row, startCol, endCol });
-        }
+          // Shift standalone nodes that overlap with group containers
+          // Collect occupied columns per row from group containers
+          const groupOccupied: { row: number; startCol: number; endCol: number }[] = [];
+          for (const [groupId, members] of Object.entries(groupMembers)) {
+            if (members.length < 2) continue;
+            const container = result.find((n) => n.id === `${groupId}_group`);
+            if (!container) continue;
+            const row = Math.round((container.position.y + 15) / effectiveNodeHeight);
+            const startCol = Math.round((container.position.x + 10) / nodeWidth);
+            const endCol = startCol + members.length - 1;
+            groupOccupied.push({ row, startCol, endCol });
+          }
 
-        // For each row, re-sequence standalone (non-grouped, non-placeholder) skill nodes
-        // so they don't overlap with group columns
-        const rowsToFix = new Set(groupOccupied.map((g) => g.row));
-        for (const row of rowsToFix) {
-          const rowGroups = groupOccupied.filter((g) => g.row === row);
+          // For each row, re-sequence standalone (non-grouped, non-placeholder) skill nodes
+          // so they don't overlap with group columns
+          const rowsToFix = new Set(groupOccupied.map((g) => g.row));
+          for (const row of rowsToFix) {
+            const rowGroups = groupOccupied.filter((g) => g.row === row);
 
-          // Get standalone skill nodes in this row
-          const standalone = result
-            .filter(
-              (n) =>
-                n.type === "skill" &&
-                !n.parentId &&
-                !(n.data as any)?.isGrouping &&
-                Math.round(n.position.y / effectiveNodeHeight) === row,
-            )
-            .sort((a, b) => a.position.x - b.position.x);
+            // Get standalone skill nodes in this row
+            const standalone = result
+              .filter(
+                (n) =>
+                  n.type === "skill" &&
+                  !n.parentId &&
+                  !(n.data as any)?.isGrouping &&
+                  Math.round(n.position.y / effectiveNodeHeight) === row,
+              )
+              .sort((a, b) => a.position.x - b.position.x);
 
-          if (standalone.length === 0) continue;
+            if (standalone.length === 0) continue;
 
-          // Build a sorted list of "items" in the row: groups (by startCol) and standalone nodes (by col)
-          // Each item is either a group (occupies N columns) or a standalone node (1 column)
-          type RowItem =
-            | { kind: "group"; groupId: string; memberCount: number; origCol: number }
-            | { kind: "node"; nodeId: string; origCol: number };
-          const items: RowItem[] = [];
-          for (const g of rowGroups) {
-            const container = result.find(
-              (n) =>
-                n.id.endsWith("_group") &&
-                Math.round((n.position.x + 10) / nodeWidth) === g.startCol &&
-                Math.round((n.position.y + 15) / effectiveNodeHeight) === row,
-            );
-            if (container) {
-              const groupId = container.id.replace("_group", "");
-              items.push({
-                kind: "group",
-                groupId,
-                memberCount: g.endCol - g.startCol + 1,
-                origCol: g.startCol,
-              });
+            // Build a sorted list of "items" in the row: groups (by startCol) and standalone nodes (by col)
+            // Each item is either a group (occupies N columns) or a standalone node (1 column)
+            type RowItem =
+              | { kind: "group"; groupId: string; memberCount: number; origCol: number }
+              | { kind: "node"; nodeId: string; origCol: number };
+            const items: RowItem[] = [];
+            for (const g of rowGroups) {
+              const container = result.find(
+                (n) =>
+                  n.id.endsWith("_group") &&
+                  Math.round((n.position.x + 10) / nodeWidth) === g.startCol &&
+                  Math.round((n.position.y + 15) / effectiveNodeHeight) === row,
+              );
+              if (container) {
+                const groupId = container.id.replace("_group", "");
+                items.push({
+                  kind: "group",
+                  groupId,
+                  memberCount: g.endCol - g.startCol + 1,
+                  origCol: g.startCol,
+                });
+              }
             }
-          }
-          for (const n of standalone) {
-            items.push({ kind: "node", nodeId: n.id, origCol: Math.round(n.position.x / nodeWidth) });
-          }
-          // Sort by original column to preserve relative order
-          items.sort((a, b) => a.origCol - b.origCol);
-
-          // Assign columns: compact items to remove data gaps
-          // unless it would overlap with a previous item, in which case it shifts right
-          let minNextCol = 0;
-          const nodeNewPositions = new Map<string, number>();
-          const groupNewPositions = new Map<string, number>();
-          for (const item of items) {
-            if (item.kind === "group") {
-              const col = minNextCol;
-              groupNewPositions.set(item.groupId, col);
-              minNextCol = col + item.memberCount;
-            } else {
-              const col = minNextCol;
-              nodeNewPositions.set(item.nodeId, col);
-              minNextCol = col + 1;
+            for (const n of standalone) {
+              items.push({ kind: "node", nodeId: n.id, origCol: Math.round(n.position.x / nodeWidth) });
             }
+            // Sort by original column to preserve relative order
+            items.sort((a, b) => a.origCol - b.origCol);
+
+            // Assign columns: compact items to remove data gaps
+            // unless it would overlap with a previous item, in which case it shifts right
+            let minNextCol = 0;
+            const nodeNewPositions = new Map<string, number>();
+            const groupNewPositions = new Map<string, number>();
+            for (const item of items) {
+              if (item.kind === "group") {
+                const col = minNextCol;
+                groupNewPositions.set(item.groupId, col);
+                minNextCol = col + item.memberCount;
+              } else {
+                const col = minNextCol;
+                nodeNewPositions.set(item.nodeId, col);
+                minNextCol = col + 1;
+              }
+            }
+
+            // Apply new positions to standalone nodes
+            const standaloneIds = new Set(standalone.map((n) => n.id));
+            result = result.map((n) => {
+              if (!standaloneIds.has(n.id)) return n;
+              const newCol = nodeNewPositions.get(n.id);
+              if (newCol === undefined) return n;
+              return { ...n, position: { x: newCol * nodeWidth, y: row * effectiveNodeHeight } };
+            });
+
+            // Apply new positions to group containers
+            result = result.map((n) => {
+              if (!n.id.endsWith("_group") || n.type !== "default") return n;
+              const gid = n.id.replace("_group", "");
+              const newCol = groupNewPositions.get(gid);
+              if (newCol === undefined) return n;
+              return { ...n, position: { ...n.position, x: newCol * nodeWidth - 10 } };
+            });
+
+            // Reposition placeholders for this row
+            result = repositionPlaceholdersRef.current(result, new Set([row]));
           }
 
-          // Apply new positions to standalone nodes
-          const standaloneIds = new Set(standalone.map((n) => n.id));
+          // Clear editGroupColor from nodes no longer in any valid group
+          const groupedNodeIds = new Set(Object.keys(editGroups));
           result = result.map((n) => {
-            if (!standaloneIds.has(n.id)) return n;
-            const newCol = nodeNewPositions.get(n.id);
-            if (newCol === undefined) return n;
-            return { ...n, position: { x: newCol * nodeWidth, y: row * effectiveNodeHeight } };
+            if (n.type === "skill" && !groupedNodeIds.has(n.id) && (n.data as any)?.editGroupColor) {
+              return { ...n, data: { ...n.data, editGroupColor: undefined } };
+            }
+            return n;
           });
 
-          // Apply new positions to group containers
-          result = result.map((n) => {
-            if (!n.id.endsWith("_group") || n.type !== "default") return n;
-            const gid = n.id.replace("_group", "");
-            const newCol = groupNewPositions.get(gid);
-            if (newCol === undefined) return n;
-            return { ...n, position: { ...n.position, x: newCol * nodeWidth - 10 } };
-          });
-
-          // Reposition placeholders for this row
-          result = repositionPlaceholdersRef.current(result, new Set([row]));
-        }
-
-        // Clear editGroupColor from nodes no longer in any valid group
-        const groupedNodeIds = new Set(Object.keys(editGroups));
-        result = result.map((n) => {
-          if (n.type === "skill" && !groupedNodeIds.has(n.id) && (n.data as any)?.editGroupColor) {
-            return { ...n, data: { ...n.data, editGroupColor: undefined } };
-          }
-          return n;
-        });
-
-        return result;
+          return result;
         }); // end setNodes functional update
       } // end else (user-initiated group change)
 
@@ -4331,9 +4375,6 @@ const SkillsView = memo(
           }
           multiSelectionKeyCode="Shift"
         >
-          <Panel position="top-center">
-            <div className="text-cyan-500 text-xl opacity-80 select-none">WORK IN PROGRESS</div>
-          </Panel>
           <Panel position="top-right">
             <div className="text-slate-200 text-xl opacity-80">{subtype}</div>
             <div className="text-slate-200 text-xl opacity-80">{`${localized.rank} ${currentRank}`}</div>
