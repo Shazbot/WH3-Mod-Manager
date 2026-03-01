@@ -612,6 +612,7 @@ export const registerIpcMainListeners = (
       "effect_bonus_value_unit_ability_junctions_tables",
       "unit_abilities_tables",
       "unit_special_abilities_tables",
+      "projectile_bombardments_tables",
       "projectiles_tables",
       "projectiles_explosions_tables",
       "battle_vortexs_tables",
@@ -1030,6 +1031,7 @@ export const registerIpcMainListeners = (
         miscastChance: number;
         minRange: number;
         activatedProjectile?: string;
+        bombardment?: string;
         vortex?: string;
       }
     >;
@@ -1059,7 +1061,21 @@ export const registerIpcMainListeners = (
         minRange: parseNumber(schemaFieldRow.find((sF) => sF.name == "min_range")?.resolvedKeyValue),
         activatedProjectile:
           schemaFieldRow.find((sF) => sF.name == "activated_projectile")?.resolvedKeyValue || undefined,
+        bombardment: schemaFieldRow.find((sF) => sF.name == "bombardment")?.resolvedKeyValue || undefined,
         vortex: schemaFieldRow.find((sF) => sF.name == "vortex")?.resolvedKeyValue || undefined,
+      };
+    });
+
+    const bombardmentsByKey = {} as Record<string, { key: string; numProjectiles: number; projectileType: string }>;
+    getTableRowData(packsTableData, "projectile_bombardments_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "bombardment_key")?.resolvedKeyValue;
+      const projectileType = schemaFieldRow.find((sF) => sF.name == "projectile_type")?.resolvedKeyValue;
+      const numProjectiles = parseNumber(schemaFieldRow.find((sF) => sF.name == "num_projectiles")?.resolvedKeyValue);
+      if (!key || !projectileType) return;
+      bombardmentsByKey[key] = {
+        key,
+        projectileType,
+        numProjectiles,
       };
     });
 
@@ -1411,6 +1427,7 @@ export const registerIpcMainListeners = (
       effectToUnitAbilityEnables,
       unitAbilitiesByKey,
       unitSpecialAbilitiesByKey,
+      bombardmentsByKey,
       projectilesByKey,
       explosionsByKey,
       vortexesByKey,
@@ -1466,6 +1483,7 @@ export const registerIpcMainListeners = (
       effectToUnitAbilityEnables,
       unitAbilitiesByKey,
       unitSpecialAbilitiesByKey,
+      bombardmentsByKey,
       projectilesByKey,
       explosionsByKey,
       vortexesByKey,
@@ -1618,6 +1636,7 @@ export const registerIpcMainListeners = (
         effectToUnitAbilityEnables: cachedSkillsData.effectToUnitAbilityEnables,
         unitAbilitiesByKey: cachedSkillsData.unitAbilitiesByKey,
         unitSpecialAbilitiesByKey: cachedSkillsData.unitSpecialAbilitiesByKey,
+        bombardmentsByKey: cachedSkillsData.bombardmentsByKey,
         projectilesByKey: cachedSkillsData.projectilesByKey,
         explosionsByKey: cachedSkillsData.explosionsByKey,
         vortexesByKey: cachedSkillsData.vortexesByKey,

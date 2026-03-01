@@ -15,6 +15,17 @@ const formatNumber = (value: number | undefined, suffix = "") => {
   return `${value}${suffix}`;
 };
 
+const getAdditionalEffectStatePresentation = (effectState: string | undefined) => {
+  const normalized = (effectState || "").toLowerCase();
+  if (normalized === "negative") {
+    return { arrow: "▼", className: "text-red-300" };
+  }
+  if (normalized === "magic") {
+    return { arrow: "⇈", className: "text-cyan-300" };
+  }
+  return { arrow: "▲", className: "text-lime-300" };
+};
+
 const AbilityTooltipCard = ({
   ability,
   icons,
@@ -49,7 +60,7 @@ const AbilityTooltipCard = ({
       {ability.projectile && (
         <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
           <div>
-            <span className="text-gray-300">Projectile Damage:</span>{" "}
+            <span className="text-gray-300">Ranged Damage:</span>{" "}
             <span>{formatNumber(ability.projectile.totalDamage)}</span>
             {ability.projectile.apPct != undefined && (
               <span className="text-gray-400"> ({ability.projectile.apPct}% AP)</span>
@@ -57,7 +68,7 @@ const AbilityTooltipCard = ({
           </div>
           {ability.projectile.explosion && (
             <div>
-              <span className="text-gray-300">Explosion Damage:</span>{" "}
+              <span className="text-gray-300">Explosive Damage:</span>{" "}
               <span>{formatNumber(ability.projectile.explosion.totalDamage)}</span>
               {ability.projectile.explosion.apPct != undefined && (
                 <span className="text-gray-400"> ({ability.projectile.explosion.apPct}% AP)</span>
@@ -66,7 +77,7 @@ const AbilityTooltipCard = ({
           )}
           {ability.projectile.numProjectiles != undefined && (
             <div>
-              <span className="text-gray-300">Projectiles:</span> {ability.projectile.numProjectiles}
+              <span className="text-gray-300">Number of projectiles:</span> {ability.projectile.numProjectiles}
             </div>
           )}
         </div>
@@ -180,11 +191,14 @@ const AbilityTooltipCard = ({
 
       {ability.additionalUiEffects.length > 0 && (
         <div className="mt-2 border-t border-red-900/60 pt-1 text-[12px]">
-          {ability.additionalUiEffects.map((additionalEffect) => (
-            <div key={additionalEffect.key} className="text-lime-300">
-              ▲ {additionalEffect.text}
-            </div>
-          ))}
+          {ability.additionalUiEffects.map((additionalEffect) => {
+            const presentation = getAdditionalEffectStatePresentation(additionalEffect.effectState);
+            return (
+              <div key={additionalEffect.key} className={presentation.className}>
+                {presentation.arrow} {additionalEffect.text}
+              </div>
+            );
+          })}
         </div>
       )}
 
