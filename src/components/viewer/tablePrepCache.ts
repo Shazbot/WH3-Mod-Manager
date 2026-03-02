@@ -2,11 +2,18 @@ import { AmendedSchemaField } from "@/src/packFileTypes";
 
 export type TableCellValue = string | number | boolean;
 
+export interface ColumnWidthHint {
+  p90Length: number;
+  maxLength: number;
+  nonEmptyCount: number;
+}
+
 export interface PreparedTableData {
   chunkedTable: AmendedSchemaField[][];
   data: TableCellValue[][];
   columnHeaders: string[];
   columns: Array<{ type: "numeric" | "checkbox" | "text" }>;
+  columnWidthHints: Array<ColumnWidthHint | undefined>;
   columnFilterOptions: string[];
   keyColumnNames: string[];
   lowerCaseColumnValues: string[][];

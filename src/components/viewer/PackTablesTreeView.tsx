@@ -18,17 +18,17 @@ type PackTablesTreeViewProps = {
   ) => void;
 };
 
-type TreeData = { name: string; children?: TreeData[] };
+	type TreeData = { name: string; children?: TreeData[] };
 
-export type PackTablesTreeViewHandle = {
-  openNewFlowDialog: () => void;
-};
+	export type PackTablesTreeViewHandle = {
+	  openNewFlowDialog: () => void;
+	};
 
-const PackTablesTreeView = React.memo(
-  React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
-    const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
-    const currentGame = useAppSelector((state) => state.app.currentGame);
-    const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
+	const PackTablesTreeView = React.memo(
+	  React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
+	    const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
+	    const currentGame = useAppSelector((state) => state.app.currentGame);
+	    const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
     const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
 
     const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
@@ -241,41 +241,51 @@ const PackTablesTreeView = React.memo(
       return tsvLines.join("\n");
     };
 
-    const selectedDBTableSelections = useMemo(() => {
-      if (!packData) return [];
-      const selectedIds = new Set(selectedNodeIds);
-      const selectedSelections = data
-        .filter((element) => selectedIds.has(element.id))
-        .map((element) => getDBSelectionForElement(element))
-        .filter((selection): selection is DBTableSelection => Boolean(selection));
+	    const selectedDBTableSelections = useMemo(() => {
+	      if (!packData) return [];
+	      if (!contextMenu && !isExportingSelection) return [];
 
-      const dedupedSelections = Array.from(
-        new Map(
-          selectedSelections.map((selection) => [
-            `${selection.packPath}|${selection.dbName}|${selection.dbSubname}`,
-            selection,
-          ]),
-        ).values(),
-      );
+	      const dedupedSelections = new Map<string, DBTableSelection>();
+	      for (const selectedId of selectedNodeIds) {
+	        const node = nodeById.get(selectedId);
+	        if (!node) continue;
+	        const selection = getDBSelectionForElement(node);
+	        if (!selection) continue;
+	        dedupedSelections.set(`${selection.packPath}|${selection.dbName}|${selection.dbSubname}`, selection);
+	      }
 
-      return dedupedSelections.filter((selection) => {
-        const packedFile = getPackedFileForDBSelection(selection);
-        return Boolean(packedFile?.schemaFields && packedFile?.tableSchema);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedNodeIds, data, packData]);
+	      return Array.from(dedupedSelections.values()).filter((selection) => {
+	        const packedFile = getPackedFileForDBSelection(selection);
+	        return Boolean(packedFile?.schemaFields && packedFile?.tableSchema);
+	      });
+	    // eslint-disable-next-line react-hooks/exhaustive-deps
+	    }, [selectedNodeIds, nodeById, packData, contextMenu, isExportingSelection]);
 
-    const getDescendantLeafIds = (element: INode): Array<string | number> => {
-      if (!element.children || element.children.length === 0) {
-        return element.id === 0 ? [] : [element.id as string | number];
-      }
+	    const getDescendantLeafIds = (element: INode): Array<string | number> => {
+	      const result: Array<string | number> = [];
+	      const stack: INode[] = [element];
 
-      return element.children.reduce<Array<string | number>>((acc, childId) => {
-        const childNode = nodeById.get(childId);
-        if (!childNode) return acc;
-        return [...acc, ...getDescendantLeafIds(childNode)];
-      }, []);
-    };
+	      while (stack.length > 0) {
+	        const currentNode = stack.pop();
+	        if (!currentNode) break;
+
+	        const children = currentNode.children;
+	        if (!children || children.length === 0) {
+	          if (currentNode.id !== 0) {
+	            result.push(currentNode.id as string | number);
+	          }
+	          continue;
+	        }
+
+	        // Keep traversal stable-ish by pushing in reverse.
+	        for (let i = children.length - 1; i >= 0; i--) {
+	          const childNode = nodeById.get(children[i]);
+	          if (childNode) stack.push(childNode);
+	        }
+	      }
+
+	      return result;
+	    };
 
     const addIdsToSelection = (idsToAdd: Array<string | number>) => {
       if (idsToAdd.length === 0) return;
@@ -300,13 +310,13 @@ const PackTablesTreeView = React.memo(
       });
     };
 
-    const onTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
-      if (lastLabelSelectionModeRef.current === "single") {
-        setSelectedNodeIds([selectionProps.element.id as string | number]);
-      } else if (lastLabelSelectionModeRef.current == null) {
-        setSelectedNodeIds([...selectionProps.treeState.selectedIds]);
-      }
-      lastLabelSelectionModeRef.current = null;
+	    const onTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
+	      if (lastLabelSelectionModeRef.current === "single") {
+	        setSelectedNodeIds([selectionProps.element.id as string | number]);
+	      } else if (lastLabelSelectionModeRef.current == null) {
+	        setSelectedNodeIds([...selectionProps.treeState.selectedIds]);
+	      }
+	      lastLabelSelectionModeRef.current = null;
 
       if (!packData) return;
 
@@ -505,16 +515,17 @@ const PackTablesTreeView = React.memo(
             level,
             handleExpand,
             handleSelect,
-          }) => {
-            const handleLabelClick = (e: React.MouseEvent<HTMLSpanElement>) => {
-              if (e.shiftKey) {
-                lastLabelSelectionModeRef.current = "shift";
-                e.preventDefault();
-                e.stopPropagation();
-                if (pendingOpenTimeoutRef.current != null) {
-                  window.clearTimeout(pendingOpenTimeoutRef.current);
-                  pendingOpenTimeoutRef.current = null;
-                }
+	          }) => {
+	            const handleLabelClick = (e: React.MouseEvent<HTMLSpanElement>) => {
+	              // Prevent click bubbling to ancestor branch wrappers; otherwise clicking a child can toggle/select its parents.
+	              e.stopPropagation();
+	              if (e.shiftKey) {
+	                lastLabelSelectionModeRef.current = "shift";
+	                e.preventDefault();
+	                if (pendingOpenTimeoutRef.current != null) {
+	                  window.clearTimeout(pendingOpenTimeoutRef.current);
+	                  pendingOpenTimeoutRef.current = null;
+	                }
 
                 const idsToSelect = isBranch
                   ? getDescendantLeafIds(element)
@@ -524,14 +535,13 @@ const PackTablesTreeView = React.memo(
                 return;
               }
 
-              if (e.ctrlKey || e.metaKey) {
-                lastLabelSelectionModeRef.current = "ctrl";
-                e.preventDefault();
-                e.stopPropagation();
-                if (pendingOpenTimeoutRef.current != null) {
-                  window.clearTimeout(pendingOpenTimeoutRef.current);
-                  pendingOpenTimeoutRef.current = null;
-                }
+	              if (e.ctrlKey || e.metaKey) {
+	                lastLabelSelectionModeRef.current = "ctrl";
+	                e.preventDefault();
+	                if (pendingOpenTimeoutRef.current != null) {
+	                  window.clearTimeout(pendingOpenTimeoutRef.current);
+	                  pendingOpenTimeoutRef.current = null;
+	                }
 
                 const idsToToggle = isBranch
                   ? getDescendantLeafIds(element)
@@ -539,20 +549,28 @@ const PackTablesTreeView = React.memo(
                 toggleIdsInSelection(idsToToggle);
                 lastLabelSelectionModeRef.current = null;
                 return;
-              }
+	              }
 
-              lastLabelSelectionModeRef.current = "single";
-              setSelectedNodeIds([element.id as string | number]);
-              handleSelect(e);
-            };
+	              lastLabelSelectionModeRef.current = "single";
+	              setSelectedNodeIds([element.id as string | number]);
+	              handleSelect(e);
+	              if (isBranch) {
+	                handleExpand(e);
+	              }
+	            };
 
-            return (
-              <div
-                {...getNodeProps({ onClick: handleExpand })}
-                style={{
-                  marginLeft: 40 * (level - 1),
-                  opacity: isDisabled ? 0.5 : 1,
-                }}
+	            return (
+	              <div
+	                {...getNodeProps({
+	                  onClick: (e) => {
+	                    e.stopPropagation();
+	                    handleExpand(e);
+	                  },
+	                })}
+	                style={{
+	                  marginLeft: 40 * (level - 1),
+	                  opacity: isDisabled ? 0.5 : 1,
+	                }}
                 className={
                   "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
                   (isSelected ? "bg-gray-700/60 " : "") +
