@@ -1,45 +1,45 @@
-import React, { useCallback, useEffect, useMemo, useRef, memo, Suspense, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, memo, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
-import "@silevis/reactgrid/styles.css";
-import "handsontable/styles/handsontable.min.css";
-import "handsontable/styles/ht-theme-main.min.css";
+import { AgGridReact } from "ag-grid-react";
+import type { CellContextMenuEvent, ColDef } from "ag-grid-community";
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { getDBPackedFilePath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, DBVersion, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { setDeepCloneTarget } from "@/src/appSlice";
 import { dataFromBackend } from "./packDataStore";
 import debounce from "just-debounce-it";
-import Handsontable from "handsontable";
-import { HotTableRef } from "@handsontable/react-wrapper";
-import { getPreparedTable, PreparedTableData, setPreparedTable, TableCellValue } from "./tablePrepCache";
+import {
+  ColumnWidthHint,
+  getPreparedTable,
+  PreparedTableData,
+  setPreparedTable,
+  TableCellValue,
+} from "./tablePrepCache";
 import { makeSelectCurrentPackData } from "./viewerSelectors";
 
-const DEEP_CLONE_LABEL = "<b>Deep clone</b>";
 const BIG_TABLE_ROW_THRESHOLD = 20000;
 const BIG_TABLE_CELL_THRESHOLD = 2000000;
-const BIG_TABLE_ROW_HEIGHT = 23;
+const BIG_TABLE_ROW_HEIGHT = 23 + 8;
+const NORMAL_TABLE_ROW_HEIGHT = 28 + 8;
 const BIG_TABLE_NUMERIC_COL_WIDTH = 96;
-const BIG_TABLE_TEXT_COL_WIDTH = 220;
 const BIG_TABLE_CHECKBOX_COL_WIDTH = 36;
 const FIXED_SIZING_ROW_THRESHOLD = 1000;
-const RENDER_ALL_ROWS_MAX_ROWS = 5000;
-const RENDER_ALL_ROWS_MAX_CELLS = 400000;
+const TABLE_PREP_CACHE_VERSION = 2;
+const TEXT_LENGTH_HISTOGRAM_BIN_SIZE = 4;
+const TEXT_LENGTH_HISTOGRAM_BIN_COUNT = 64;
+const TEXT_COLUMN_WIDTH_CHAR_PX = 7;
+const TEXT_COLUMN_WIDTH_PADDING_PX = 52;
+const TEXT_COLUMN_WIDTH_MIN_PX = 110;
+const TEXT_COLUMN_WIDTH_MAX_PX = 480;
 
-const LazyHotTable = React.lazy(async () => {
-  const [{ HotTable }, { registerAllModules }] = await Promise.all([
-    import("@handsontable/react-wrapper"),
-    import("handsontable/registry"),
-  ]);
+const AG_GRID_MODULES_KEY = "__whmmAgGridModulesRegistered";
+const globalAny = globalThis as unknown as Record<string, unknown>;
+if (!globalAny[AG_GRID_MODULES_KEY]) {
+  ModuleRegistry.registerModules([AllCommunityModule]);
+  globalAny[AG_GRID_MODULES_KEY] = true;
+}
 
-  registerAllModules();
-  return { default: HotTable };
-});
-
-const TableLoadingSpinner = () => (
-  <div className="flex items-center justify-center h-96 bg-gray-800">
-    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
-    <span className="ml-4 text-gray-300">Loading table...</span>
-  </div>
-);
+type RowData = TableCellValue[];
 
 const fieldTypeToCellType = (fieldType: SCHEMA_FIELD_TYPE): "numeric" | "checkbox" | "text" => {
   switch (fieldType) {
@@ -73,6 +73,7 @@ const buildTableCacheKey = (
   schema: DBVersion,
 ): string => {
   return [
+    TABLE_PREP_CACHE_VERSION,
     packPath,
     packedFilePath,
     packFile.file_size,
@@ -112,6 +113,11 @@ const prepareTableData = (
   const chunkedTable: AmendedSchemaField[][] = Array.from({ length: rowCount }, () => []);
   const data: TableCellValue[][] = Array.from({ length: rowCount }, () => new Array(columnCount));
   const lowerCaseColumnValues: string[][] = Array.from({ length: columnCount }, () => new Array(rowCount));
+  const textLengthHistograms: Array<number[] | undefined> = columns.map((column) =>
+    column.type === "text" ? new Array(TEXT_LENGTH_HISTOGRAM_BIN_COUNT).fill(0) : undefined,
+  );
+  const textNonEmptyCounts = new Array(columnCount).fill(0);
+  const textMaxLengths = new Array(columnCount).fill(0);
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
     for (let colIndex = 0; colIndex < columnCount; colIndex++) {
@@ -123,186 +129,338 @@ const prepareTableData = (
       const cellValue = resolveCellValue(cell);
       data[rowIndex][colIndex] = cellValue;
       lowerCaseColumnValues[colIndex][rowIndex] = String(cell.resolvedKeyValue).toLowerCase();
+
+      if (columns[colIndex]?.type !== "text") continue;
+      const valueLength = String(cellValue ?? "").length;
+      if (valueLength === 0) continue;
+
+      textNonEmptyCounts[colIndex]++;
+      if (valueLength > textMaxLengths[colIndex]) {
+        textMaxLengths[colIndex] = valueLength;
+      }
+
+      const histogram = textLengthHistograms[colIndex];
+      if (!histogram) continue;
+      const binIndex = Math.min(
+        histogram.length - 1,
+        Math.floor(valueLength / TEXT_LENGTH_HISTOGRAM_BIN_SIZE),
+      );
+      histogram[binIndex]++;
     }
   }
+
+  const columnWidthHints: Array<ColumnWidthHint | undefined> = columns.map((column, colIndex) => {
+    if (column.type !== "text") return undefined;
+
+    const nonEmptyCount = textNonEmptyCounts[colIndex];
+    const maxLength = textMaxLengths[colIndex];
+    if (nonEmptyCount === 0 || maxLength === 0) {
+      return { p90Length: 0, maxLength: 0, nonEmptyCount: 0 };
+    }
+
+    const histogram = textLengthHistograms[colIndex];
+    if (!histogram) {
+      return { p90Length: maxLength, maxLength, nonEmptyCount };
+    }
+
+    const percentileTarget = Math.ceil(nonEmptyCount * 0.9);
+    let cumulativeCount = 0;
+    let p90Length = maxLength;
+    for (let binIndex = 0; binIndex < histogram.length; binIndex++) {
+      cumulativeCount += histogram[binIndex];
+      if (cumulativeCount >= percentileTarget) {
+        p90Length = Math.min(maxLength, (binIndex + 1) * TEXT_LENGTH_HISTOGRAM_BIN_SIZE);
+        break;
+      }
+    }
+
+    return { p90Length, maxLength, nonEmptyCount };
+  });
 
   return {
     chunkedTable,
     data,
     columnHeaders,
     columns,
+    columnWidthHints,
     columnFilterOptions,
     keyColumnNames,
     lowerCaseColumnValues,
   };
 };
 
-const getSelectedCell = (hot: Handsontable): { row: number; col: number } | undefined => {
-  const selected = hot.getSelected();
-  if (!selected || selected.length !== 1) return undefined;
-
-  const [startRow, startCol, endRow, endCol] = selected[0];
-  if (startRow !== endRow || startCol !== endCol) return undefined;
-  return { row: startRow, col: startCol };
-};
-
-const getDeepCloneCell = (
-  hot: Handsontable,
-  currentSchema: DBVersion,
-  keyColumnNamesUnderscore: Set<string>,
-): { row: number; col: number; value: unknown } | undefined => {
-  const selectedCell = getSelectedCell(hot);
-  if (!selectedCell || keyColumnNamesUnderscore.size === 0) return undefined;
-
-  const { row: selectedRow, col: selectedCol } = selectedCell;
-  const selectedField = currentSchema.fields[selectedCol];
-  if (selectedField && keyColumnNamesUnderscore.has(selectedField.name)) {
-    return {
-      row: selectedRow,
-      col: selectedCol,
-      value: hot.getDataAtCell(selectedRow, selectedCol),
-    };
+const copyTextToClipboard = async (text: string): Promise<void> => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    // Fallback for environments where `navigator.clipboard` is unavailable/blocked.
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.setAttribute("readonly", "true");
+    el.style.position = "fixed";
+    el.style.top = "0";
+    el.style.left = "0";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
   }
-
-  const firstKeyColumn = currentSchema.fields.findIndex((field) => keyColumnNamesUnderscore.has(field.name));
-  if (firstKeyColumn === -1) return undefined;
-
-  return {
-    row: selectedRow,
-    col: firstKeyColumn,
-    value: hot.getDataAtCell(selectedRow, firstKeyColumn),
-  };
 };
 
-const HandsontableWrapper = memo(
+const AgGridWrapper = memo(
   ({
-    data,
+    rowData,
     columns,
     columnHeaders,
-    hotRef,
+    columnWidthHints,
     onContextMenuCallback,
     keyColumnNamesUnderscore,
     currentSchema,
-    tableHeight,
     isBigTable,
     rowCount,
-    colCount,
-    viewportColumnRenderingOffset,
-    viewportColumnRenderingThreshold,
-    renderAllRows,
   }: {
-    data: TableCellValue[][];
+    rowData: RowData[];
     columns: Array<{ type: "numeric" | "checkbox" | "text" }>;
     columnHeaders: string[];
-    hotRef: React.RefObject<HotTableRef>;
+    columnWidthHints: Array<ColumnWidthHint | undefined>;
     onContextMenuCallback: (row: number, col: number) => void;
     keyColumnNamesUnderscore: string[];
     currentSchema: DBVersion;
-    tableHeight: number;
     isBigTable: boolean;
     rowCount: number;
-    colCount: number;
-    viewportColumnRenderingOffset: number | "auto";
-    viewportColumnRenderingThreshold: number | "auto";
-    renderAllRows: boolean;
   }) => {
     const keyColumnSet = useMemo(() => new Set(keyColumnNamesUnderscore), [keyColumnNamesUnderscore]);
+    const gridRef = useRef<AgGridReact<RowData>>(null);
 
-    const bigTableColumnWidths = useCallback(
+    const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
+    const rowHeight = useFixedSizing ? BIG_TABLE_ROW_HEIGHT : NORMAL_TABLE_ROW_HEIGHT;
+
+    const firstKeyColumnIndex = useMemo(() => {
+      if (keyColumnSet.size === 0) return -1;
+      return currentSchema.fields.findIndex((field) => keyColumnSet.has(field.name));
+    }, [currentSchema.fields, keyColumnSet]);
+
+    const getTextColumnWidth = useCallback(
+      (columnIndex: number) => {
+        const headerLength = (columnHeaders[columnIndex] ?? "").length;
+        const hint = columnWidthHints[columnIndex];
+        const contentLength = hint?.p90Length ?? 0;
+        const targetLength = Math.max(headerLength, contentLength);
+        const widthPx = Math.ceil(targetLength * TEXT_COLUMN_WIDTH_CHAR_PX + TEXT_COLUMN_WIDTH_PADDING_PX);
+        return Math.max(TEXT_COLUMN_WIDTH_MIN_PX, Math.min(TEXT_COLUMN_WIDTH_MAX_PX, widthPx));
+      },
+      [columnHeaders, columnWidthHints],
+    );
+
+    const getColumnWidth = useCallback(
       (columnIndex: number) => {
         const columnType = columns[columnIndex]?.type;
         if (columnType === "checkbox") return BIG_TABLE_CHECKBOX_COL_WIDTH;
         if (columnType === "numeric") return BIG_TABLE_NUMERIC_COL_WIDTH;
-        return BIG_TABLE_TEXT_COL_WIDTH;
+        return getTextColumnWidth(columnIndex);
       },
-      [columns],
+      [columns, getTextColumnWidth],
     );
-    const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
 
-    const contextMenu = useMemo(() => {
-      return {
-        items: {
-          row_above: {},
-          row_below: {},
-          about: {
-            name() {
-              if (!hotRef.current) return DEEP_CLONE_LABEL;
-              const hot = hotRef.current.hotInstance as Handsontable;
-              if (!hot) return DEEP_CLONE_LABEL;
+    const defaultColDef = useMemo<ColDef<RowData>>(
+      () => ({
+        editable: false,
+        sortable: false,
+        resizable: true,
+        suppressHeaderMenuButton: true,
+        suppressMovable: true,
+      }),
+      [],
+    );
 
-              const deepCloneCell = getDeepCloneCell(hot, currentSchema, keyColumnSet);
-              if (!deepCloneCell) return DEEP_CLONE_LABEL;
-              return `<b>Deep clone ${deepCloneCell.value}</b>`;
-            },
-            hidden() {
-              if (!hotRef.current) return true;
-              const hot = hotRef.current.hotInstance as Handsontable;
-              if (!hot) return true;
-              return !getDeepCloneCell(hot, currentSchema, keyColumnSet);
-            },
-            callback() {
-              if (!hotRef.current) return;
-              const hot = hotRef.current.hotInstance as Handsontable;
-              if (!hot) return;
-
-              const deepCloneCell = getDeepCloneCell(hot, currentSchema, keyColumnSet);
-              if (!deepCloneCell) return;
-
-              onContextMenuCallback(
-                hot.toPhysicalRow(deepCloneCell.row),
-                hot.toPhysicalColumn(deepCloneCell.col),
-              );
-            },
-          },
+    const columnDefs = useMemo<Array<ColDef<RowData>>>(() => {
+      const defs: Array<ColDef<RowData>> = [
+        {
+          headerName: "",
+          colId: "__rowIndex",
+          width: 64,
+          resizable: false,
+          pinned: "left",
+          suppressMovable: true,
+          valueGetter: (p) => (typeof p.node?.rowIndex === "number" ? p.node.rowIndex + 1 : ""),
+          cellClass: "text-right tabular-nums",
         },
+      ];
+
+      for (let colIndex = 0; colIndex < currentSchema.fields.length; colIndex++) {
+        const field = currentSchema.fields[colIndex];
+        const colType = columns[colIndex]?.type;
+        const isKey = !!field && keyColumnSet.has(field.name);
+        const headerName = (isKey ? "🔑 " : "") + (columnHeaders[colIndex] ?? "");
+
+        const width = getColumnWidth(colIndex);
+        defs.push({
+          headerName,
+          colId: String(colIndex),
+          width:
+            useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
+          minWidth: !useFixedSizing && colType === "text" ? width : undefined,
+          flex: !useFixedSizing && colType === "text" ? 1 : undefined,
+          cellRenderer: colType === "checkbox" ? "agCheckboxCellRenderer" : undefined,
+          valueGetter: (p) => p.data?.[colIndex],
+          cellClass: colType === "numeric" ? "text-right tabular-nums" : undefined,
+        });
+      }
+
+      return defs;
+    }, [columnHeaders, columns, currentSchema.fields, getColumnWidth, keyColumnSet, useFixedSizing]);
+
+    const [menuState, setMenuState] = useState<
+      | {
+          clientX: number;
+          clientY: number;
+          row: number;
+          col: number;
+          label: string;
+        }
+      | undefined
+    >(undefined);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+      if (!menuState) return;
+
+      const onWindowMouseDown = (ev: MouseEvent) => {
+        const target = ev.target as Node | null;
+        if (target && menuRef.current && menuRef.current.contains(target)) return;
+        setMenuState(undefined);
       };
-    }, [hotRef, currentSchema, keyColumnSet, onContextMenuCallback]);
+      const onWindowKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key === "Escape") setMenuState(undefined);
+      };
+      window.addEventListener("mousedown", onWindowMouseDown);
+      window.addEventListener("keydown", onWindowKeyDown);
+      return () => {
+        window.removeEventListener("mousedown", onWindowMouseDown);
+        window.removeEventListener("keydown", onWindowKeyDown);
+      };
+    }, [menuState]);
+
+    const onCellContextMenu = useCallback(
+      (ev: CellContextMenuEvent<RowData>) => {
+        ev.event?.preventDefault();
+        ev.event?.stopPropagation();
+
+        if (keyColumnSet.size === 0) {
+          setMenuState(undefined);
+          return;
+        }
+
+        const displayedRowIndex = ev.node?.rowIndex;
+        if (typeof displayedRowIndex !== "number" || displayedRowIndex < 0) {
+          setMenuState(undefined);
+          return;
+        }
+
+        const rawColId = ev.column?.getColId() ?? "";
+        const clickedColIndex = rawColId === "__rowIndex" ? -1 : Number(rawColId);
+        const clickedField = Number.isFinite(clickedColIndex)
+          ? currentSchema.fields[clickedColIndex]
+          : undefined;
+
+        const deepCloneColIndex =
+          clickedField && keyColumnSet.has(clickedField.name) ? clickedColIndex : firstKeyColumnIndex;
+
+        if (deepCloneColIndex === -1) {
+          setMenuState(undefined);
+          return;
+        }
+
+        const deepCloneValue = ev.data?.[deepCloneColIndex];
+        const label = `Deep clone ${deepCloneValue ?? ""}`.trimEnd();
+        const mouse = ev.event as MouseEvent | undefined;
+        setMenuState({
+          clientX: mouse?.clientX ?? 0,
+          clientY: mouse?.clientY ?? 0,
+          row: displayedRowIndex,
+          col: deepCloneColIndex,
+          label,
+        });
+      },
+      [currentSchema.fields, firstKeyColumnIndex, keyColumnSet],
+    );
+
+    const onKeyDownCapture = useCallback(async (ev: React.KeyboardEvent) => {
+      const isCopy = (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "c";
+      if (!isCopy) return;
+
+      const api = gridRef.current?.api;
+      if (!api) return;
+
+      const focused = api.getFocusedCell();
+      if (!focused) return;
+
+      const rowNode = api.getDisplayedRowAtIndex(focused.rowIndex);
+      const row = rowNode?.data;
+      if (!row) return;
+
+      const colId = focused.column.getColId();
+      if (colId === "__rowIndex") return;
+      const colIndex = Number(colId);
+      if (!Number.isFinite(colIndex)) return;
+
+      const value = row[colIndex];
+      await copyTextToClipboard(value == null ? "" : String(value));
+      ev.preventDefault();
+    }, []);
 
     return (
-      <Suspense fallback={<TableLoadingSpinner />}>
-        <div
-          style={{ height: "100%", width: "100%" }}
-          onMouseDownCapture={(ev) => {
-            if (ev.button === 1) ev.stopPropagation();
-          }}
-        >
-          <LazyHotTable
-            ref={hotRef}
-            filters={false}
-            data={data}
-            rowHeaders={true}
-            colHeaders={(index) => {
-              const field = currentSchema.fields[index];
-              if (field && keyColumnSet.has(field.name)) {
-                return `🔑 ${columnHeaders[index]}`;
-              }
-              return columnHeaders[index];
+      <div
+        className="ag-theme-material-dark"
+        style={{ height: "100%", width: "100%" }}
+        onKeyDownCapture={onKeyDownCapture}
+        onMouseDownCapture={(ev) => {
+          if (ev.button === 1) ev.stopPropagation();
+        }}
+        onContextMenu={(ev) => ev.preventDefault()}
+      >
+        <AgGridReact<RowData>
+          ref={gridRef}
+          theme="legacy"
+          rowData={rowData}
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          rowHeight={rowHeight}
+          headerHeight={rowHeight}
+          animateRows={false}
+          suppressRowHoverHighlight={true}
+          onCellContextMenu={onCellContextMenu}
+        />
+
+        {menuState && (
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              left: menuState.clientX,
+              top: menuState.clientY,
+              zIndex: 9999,
+              minWidth: 200,
             }}
-            columns={columns}
-            manualColumnResize={true}
-            columnSorting={false}
-            manualColumnFreeze={true}
-            stretchH="all"
-            contextMenu={contextMenu}
-            autoRowSize={useFixedSizing ? false : undefined}
-            autoColumnSize={useFixedSizing ? false : undefined}
-            rowHeights={useFixedSizing ? BIG_TABLE_ROW_HEIGHT : undefined}
-            colWidths={useFixedSizing ? bigTableColumnWidths : undefined}
-            viewportColumnRenderingOffset={viewportColumnRenderingOffset}
-            viewportColumnRenderingThreshold={viewportColumnRenderingThreshold}
-            observeDOMVisibility={false}
-            renderAllRows={renderAllRows}
-            renderAllColumns={false}
-            dropdownMenu={false}
-            width="100%"
-            height={tableHeight}
-            licenseKey="non-commercial-and-evaluation"
-            comments={false}
-            undo={false}
-            fillHandle={false}
-          />
-        </div>
-      </Suspense>
+            className="rounded-md border border-gray-600 bg-gray-800 text-gray-100 shadow-lg overflow-hidden"
+            onMouseDownCapture={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700"
+              onClick={() => {
+                onContextMenuCallback(menuState.row, menuState.col);
+                setMenuState(undefined);
+              }}
+            >
+              {menuState.label}
+            </button>
+          </div>
+        )}
+      </div>
     );
   },
 );
@@ -315,10 +473,6 @@ const PackTablesTableView = memo(() => {
   const [keyFilter, setKeyFilter] = useState<string>("");
   const [tableFilterInput, setTableFilterInput] = useState<string>("");
   const [tableFilter, setTableFilter] = useState<string>("");
-  const [tableHeight, setTableHeight] = useState<number>(500);
-
-  const hotRef = useRef<HotTableRef>(null);
-  const [tableParentEl, setTableParentEl] = useState<HTMLDivElement | null>(null);
   const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
 
   const setTableFilterDebounced = useMemo(
@@ -334,45 +488,6 @@ const PackTablesTableView = memo(() => {
       (setTableFilterDebounced as unknown as { cancel?: () => void }).cancel?.();
     };
   }, [setTableFilterDebounced]);
-
-  useEffect(() => {
-    const tableParent = tableParentEl;
-    if (!tableParent) {
-      return;
-    }
-
-    let rafId: number | undefined;
-    const updateHeight = () => {
-      const nextHeight = tableParent.clientHeight;
-      if (!nextHeight) return;
-      setTableHeight((currentHeight) => (currentHeight === nextHeight ? currentHeight : nextHeight));
-    };
-
-    updateHeight();
-
-    if (typeof ResizeObserver === "undefined") {
-      const onResize = () => updateHeight();
-      window.addEventListener("resize", onResize);
-      return () => window.removeEventListener("resize", onResize);
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        rafId = undefined;
-        updateHeight();
-      });
-    });
-
-    resizeObserver.observe(tableParent);
-
-    return () => {
-      if (rafId != null) {
-        cancelAnimationFrame(rafId);
-      }
-      resizeObserver.disconnect();
-    };
-  }, [tableParentEl]);
 
   useEffect(() => {
     if (!startArgs.includes("-testDBClone")) return;
@@ -448,21 +563,6 @@ const PackTablesTableView = memo(() => {
   const rowCount = preparedTableData?.data.length ?? 0;
   const colCount = preparedTableData?.columnHeaders.length ?? 0;
   const isBigTable = rowCount >= BIG_TABLE_ROW_THRESHOLD || rowCount * colCount >= BIG_TABLE_CELL_THRESHOLD;
-  const shouldRenderAllRows =
-    !isBigTable &&
-    rowCount > 0 &&
-    rowCount <= RENDER_ALL_ROWS_MAX_ROWS &&
-    rowCount * colCount <= RENDER_ALL_ROWS_MAX_CELLS;
-  const nonBigTableColumnWindow = useMemo(
-    () => Math.min(colCount, Math.max(12, Math.floor(colCount * 0.45))),
-    [colCount],
-  );
-  const nonBigTableColumnThreshold = useMemo(
-    () => Math.min(colCount, Math.max(6, Math.floor(nonBigTableColumnWindow * 0.6))),
-    [colCount, nonBigTableColumnWindow],
-  );
-  const viewportColumnRenderingOffset: number | "auto" = isBigTable ? "auto" : nonBigTableColumnWindow;
-  const viewportColumnRenderingThreshold: number | "auto" = isBigTable ? "auto" : nonBigTableColumnThreshold;
 
   const filteredRowIndices = useMemo(() => {
     if (!preparedTableData) return [];
@@ -501,26 +601,17 @@ const PackTablesTableView = memo(() => {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div
-        id="packTablesTableParent"
-        ref={setTableParentEl}
-        className="ht-theme-main-dark flex-1 min-h-0 w-full overflow-hidden"
-      >
-        <HandsontableWrapper
-          data={filteredData}
+      <div id="packTablesTableParent" className="flex-1 min-h-0 w-full overflow-hidden bg-gray-900">
+        <AgGridWrapper
+          rowData={filteredData}
           columns={preparedTableData.columns}
           columnHeaders={preparedTableData.columnHeaders}
-          hotRef={hotRef}
+          columnWidthHints={preparedTableData.columnWidthHints}
           onContextMenuCallback={handleContextMenuCallback}
           keyColumnNamesUnderscore={keyColumnNamesUnderscore}
           currentSchema={currentSchema}
-          tableHeight={tableHeight}
           isBigTable={isBigTable}
           rowCount={rowCount}
-          colCount={colCount}
-          viewportColumnRenderingOffset={viewportColumnRenderingOffset}
-          viewportColumnRenderingThreshold={viewportColumnRenderingThreshold}
-          renderAllRows={shouldRenderAllRows}
         />
       </div>
       <div className="mt-3 flex gap-6 shrink-0">
