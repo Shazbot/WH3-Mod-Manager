@@ -138,6 +138,9 @@ const api = {
     ipcRenderer.on("setPackCollisions", callback),
   addToast: (callback: (event: Electron.IpcRendererEvent, toast: Toast) => void) =>
     ipcRenderer.on("addToast", callback),
+  setDBDuplicationProgress: (
+    callback: (event: Electron.IpcRendererEvent, progress: DBDuplicationProgress) => void,
+  ) => ipcRenderer.on("setDBDuplicationProgress", callback),
   setAppFolderPaths: (
     callback: (event: Electron.IpcRendererEvent, appFolderPaths: GameFolderPaths) => void,
   ) => ipcRenderer.on("setAppFolderPaths", callback),
@@ -251,7 +254,7 @@ const api = {
     defaultNodeNameToRenameValue: Record<string, string>,
     treeData: IViewerTreeNodeWithData,
     DBCloneSaveOptions: DBCloneSaveOptions,
-  ) =>
+  ): Promise<DBCloneExecutionResult> =>
     ipcRenderer.invoke(
       "executeDBDuplication",
       packPath,
@@ -262,6 +265,13 @@ const api = {
       treeData,
       DBCloneSaveOptions,
     ),
+  cancelDBDuplication: () => ipcRenderer.send("cancelDBDuplication"),
+  buildDBIndirectReferences: (
+    packPath: string,
+    selectedNode: IViewerTreeNodeWithData,
+    existingRefs: DBCell[],
+  ): Promise<IViewerTreeNodeWithData[]> =>
+    ipcRenderer.invoke("buildDBIndirectReferences", packPath, selectedNode, existingRefs),
   buildDBReferenceTree: (
     packPath: string,
     currentDBTableSelection: DBTableSelection,

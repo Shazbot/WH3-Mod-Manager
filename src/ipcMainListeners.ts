@@ -19,7 +19,7 @@ import appData, { GameFolderPaths } from "./appData";
 import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
 import { packDataStore } from "./components/viewer/packDataStore";
 import i18n from "./configs/i18next.config";
-import { buildDBReferenceTree } from "./DBClone";
+import { buildDBIndirectReferences, buildDBReferenceTree, type DBIndirectReferenceCacheContext } from "./DBClone";
 import { buildAbilityTooltipDataForEffects } from "./abilityTooltips";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
@@ -138,6 +138,18 @@ type VisualsSession = {
 };
 
 const visualsSessions = new Map<string, VisualsSession>();
+const dbDuplicationCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
+const dbIndirectReferenceCacheByWebContentsId = new Map<number, DBIndirectReferenceCacheContext>();
+
+const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContext => ({
+  packByPath: new Map<string, Pack>(),
+  tableFilesByPackAndTable: new Map<string, PackedFile[]>(),
+  rowsByPackedFile: new WeakMap<PackedFile, AmendedSchemaField[][]>(),
+  columnIndexesByPackedFile: new WeakMap<PackedFile, Map<string, number>>(),
+  reverseRefIndexByKey: new Map(),
+  reverseRefTtlMs: 5 * 60 * 1000,
+  maxReverseRefEntries: 32,
+});
 
 const normalizePackFilePath = (value: string) =>
   value.replace(/\//g, "\\").replace(/\\+/g, "\\").replace(/^\\+/, "").trim();
@@ -4815,8 +4827,18 @@ export const registerIpcMainListeners = (
     getPackData(packPath, table, true);
   });
 
+  const getLiveViewerWindow = () => {
+    if (!windows.viewerWindow) return undefined;
+    if (windows.viewerWindow.isDestroyed()) {
+      windows.viewerWindow = undefined;
+      appData.isViewerReady = false;
+      return undefined;
+    }
+    return windows.viewerWindow;
+  };
+
   const createViewerWindow = () => {
-    if (windows.viewerWindow) return;
+    if (getLiveViewerWindow()) return;
 
     const viewerWindowState = windowStateKeeper({
       file: "viewer_window.json",
@@ -4846,16 +4868,22 @@ export const registerIpcMainListeners = (
       icon: "./assets/modmanager.ico",
     });
 
-    viewerWindowState.manage(windows.viewerWindow);
+    const viewerWindow = windows.viewerWindow;
+    const viewerWebContentsId = viewerWindow.webContents.id;
+    viewerWindowState.manage(viewerWindow);
 
-    windows.viewerWindow.loadURL(VIEWER_WEBPACK_ENTRY);
+    viewerWindow.loadURL(VIEWER_WEBPACK_ENTRY);
 
-    windows.viewerWindow.on("page-title-updated", (evt) => {
+    viewerWindow.on("page-title-updated", (evt) => {
       evt.preventDefault();
     });
 
-    windows.viewerWindow.on("closed", () => {
-      windows.viewerWindow = undefined;
+    viewerWindow.on("closed", () => {
+      dbIndirectReferenceCacheByWebContentsId.delete(viewerWebContentsId);
+      dbDuplicationCancelStateByWebContentsId.delete(viewerWebContentsId);
+      if (windows.viewerWindow === viewerWindow) {
+        windows.viewerWindow = undefined;
+      }
       appData.isViewerReady = false;
     });
   };
@@ -4916,13 +4944,21 @@ export const registerIpcMainListeners = (
       }
     }
     console.log("ON requestOpenModInViewer", modPath);
-    windows.viewerWindow?.webContents.send("openModInViewer", modPath);
-    windows.viewerWindow?.setTitle(`WH3 Mod Manager v${version}: viewing ${nodePath.basename(modPath)}`);
-    getPackData(modPath);
-    if (windows.viewerWindow) {
-      windows.viewerWindow.focus();
-    } else {
+
+    let viewerWindow = getLiveViewerWindow();
+    if (!viewerWindow) {
       createViewerWindow();
+      viewerWindow = getLiveViewerWindow();
+    }
+
+    getPackData(modPath);
+
+    if (viewerWindow?.webContents && !viewerWindow.webContents.isDestroyed() && appData.isViewerReady) {
+      viewerWindow.webContents.send("openModInViewer", modPath);
+      viewerWindow.setTitle(`WH3 Mod Manager v${version}: viewing ${nodePath.basename(modPath)}`);
+      viewerWindow.focus();
+    } else if (viewerWindow) {
+      viewerWindow.focus();
     }
   });
 
@@ -5900,17 +5936,34 @@ export const registerIpcMainListeners = (
       DBCloneSaveOptions: DBCloneSaveOptions,
     ) => {
       const { executeDBDuplication } = await import("./DBClone");
-      await executeDBDuplication(
-        packPath,
-        nodesNamesToDuplicate,
-        nodeNameToRef,
-        nodeNameToRenameValue,
-        defaultNodeNameToRenameValue,
-        treeData,
-        DBCloneSaveOptions,
-      );
+      const webContentsId = event.sender.id;
+      const cancelState = { canceled: false };
+      dbDuplicationCancelStateByWebContentsId.set(webContentsId, cancelState);
+
+      try {
+        return await executeDBDuplication(
+          packPath,
+          nodesNamesToDuplicate,
+          nodeNameToRef,
+          nodeNameToRenameValue,
+          defaultNodeNameToRenameValue,
+          treeData,
+          DBCloneSaveOptions,
+          {
+            isCanceled: () => cancelState.canceled,
+            report: (progress) => event.sender.send("setDBDuplicationProgress", progress),
+          },
+        );
+      } finally {
+        dbDuplicationCancelStateByWebContentsId.delete(webContentsId);
+      }
     },
   );
+
+  ipcMain.on("cancelDBDuplication", (event) => {
+    const cancelState = dbDuplicationCancelStateByWebContentsId.get(event.sender.id);
+    if (cancelState) cancelState.canceled = true;
+  });
 
   ipcMain.on(
     "getTableReferences",
@@ -6007,6 +6060,19 @@ export const registerIpcMainListeners = (
         selectedNodesByName,
         existingTree,
       );
+    },
+  );
+
+  ipcMain.handle(
+    "buildDBIndirectReferences",
+    async (event, packPath: string, selectedNode: IViewerTreeNodeWithData, existingRefs: DBCell[]) => {
+      const webContentsId = event.sender.id;
+      let cacheContext = dbIndirectReferenceCacheByWebContentsId.get(webContentsId);
+      if (!cacheContext) {
+        cacheContext = createDBIndirectReferenceCacheContext();
+        dbIndirectReferenceCacheByWebContentsId.set(webContentsId, cacheContext);
+      }
+      return buildDBIndirectReferences(packPath, selectedNode, existingRefs, cacheContext);
     },
   );
 

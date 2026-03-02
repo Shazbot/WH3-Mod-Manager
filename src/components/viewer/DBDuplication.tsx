@@ -1,12 +1,11 @@
 import React, { memo, useEffect, useRef, useState } from "react";
-import { useAppDispatch, useAppSelector } from "@/src/hooks";
+import { useAppSelector } from "@/src/hooks";
 import { FaSquare, FaCheckSquare, FaMinusSquare, FaArrowRight } from "react-icons/fa";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
 import cx from "classnames";
 import "./DBDuplicationStyles.css";
 import { IconBaseProps } from "react-icons";
-import hash from "object-hash";
 import { chunkTableIntoRows, findNodeInTree } from "./viewerHelpers";
 import { packDataStore } from "./packDataStore";
 import { getDBPackedFilePath } from "@/src/utility/packFileHelpers";
@@ -39,10 +38,11 @@ const getAllRefsFromTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => 
     .map((node) => [node.tableName, node.columnName, node.value] as DBCell);
 };
 
+const getDBCellKey = (tableName: string, columnName: string, value: string) => `${tableName}|${columnName}|${value}`;
+
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 
 const DBDuplication = memo(() => {
-  const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const packsData = useAppSelector((state) => state.app.packsData);
   // important to reload the component
@@ -59,55 +59,96 @@ const DBDuplication = memo(() => {
   const [savePackedFileName, setSavePackedFileName] = useState<string>("");
   const [savePackFileName, setSavePackFileName] = useState<string>("");
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  const [isErrorOpen, setIsErrorOpen] = useState<boolean>(false);
+  const [duplicationError, setDuplicationError] = useState<string>("");
+  const [isSuccessOpen, setIsSuccessOpen] = useState<boolean>(false);
+  const [duplicationSuccessMessage, setDuplicationSuccessMessage] = useState<string>("");
+  const [duplicationProgress, setDuplicationProgress] = useState<DBDuplicationProgress | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const loadedIndirectNodeNames = useRef<Set<string>>(new Set());
+  const allRefsLookup = useRef<Set<string>>(new Set());
+  const allRefsList = useRef<DBCell[]>([]);
+  const isProgressSubscribed = useRef(false);
+  const pendingOperations = useRef(0);
 
   const localized = useLocalizations();
 
-  // Dispatch event to get indirect references for newly expanded node
-  const getIndirectReferences = async (
-    newDBTableSelection: DBTableSelection,
-    newSelectedNode: IViewerTreeNodeWithData,
-    treeData: IViewerTreeNodeWithData
-  ) => {
-    try {
-      if (overlayRef.current) overlayRef.current.style.visibility = "visible";
+  const beginOverlayOperation = () => {
+    pendingOperations.current += 1;
+    if (overlayRef.current) overlayRef.current.style.visibility = "visible";
+  };
 
-      const indirectRefsResult = await window.api?.buildDBReferenceTree(
+  const endOverlayOperation = () => {
+    pendingOperations.current = Math.max(0, pendingOperations.current - 1);
+    if (pendingOperations.current == 0 && overlayRef.current) overlayRef.current.style.visibility = "hidden";
+  };
+
+  useEffect(() => {
+    if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
+  }, []);
+
+  useEffect(() => {
+    if (!window.api || isProgressSubscribed.current) return;
+    isProgressSubscribed.current = true;
+
+    window.api.setDBDuplicationProgress((event, progress) => {
+      setDuplicationProgress(progress);
+      if (progress.stage == "done" || progress.stage == "error" || progress.stage == "canceled") {
+        setIsSaving(false);
+      }
+    });
+  }, []);
+
+  const resetRefsCache = () => {
+    allRefsLookup.current = new Set();
+    allRefsList.current = [];
+  };
+
+  const rebuildRefsCacheFromTree = (nextTreeData: IViewerTreeNodeWithData) => {
+    const refs = getAllRefsFromTree(nextTreeData);
+    allRefsList.current = refs;
+    allRefsLookup.current = new Set(refs.map(([tableName, columnName, value]) => getDBCellKey(tableName, columnName, value)));
+  };
+
+  const addRefToCache = (node: IViewerTreeNodeWithData) => {
+    const key = getDBCellKey(node.tableName, node.columnName, node.value);
+    if (allRefsLookup.current.has(key)) return false;
+    allRefsLookup.current.add(key);
+    allRefsList.current.push([node.tableName, node.columnName, node.value]);
+    return true;
+  };
+
+  const getIndirectReferences = async (nodeName: string, treeData: IViewerTreeNodeWithData) => {
+    if (loadedIndirectNodeNames.current.has(nodeName)) return;
+
+    const selectedNode = findNodeInTree(treeData, nodeName) as IViewerTreeNodeWithData | undefined;
+    if (!selectedNode) return;
+
+    try {
+      beginOverlayOperation();
+
+      const indirectRefsResult = await window.api?.buildDBIndirectReferences(
         packPath,
-        newDBTableSelection,
-        { row: -1, col: -1 },
-        getAllRefsFromTree(treeData),
-        [newSelectedNode], // Only get references for this specific node
-        treeData
+        selectedNode,
+        allRefsList.current,
       );
 
-      if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
+      loadedIndirectNodeNames.current.add(nodeName);
 
       if (indirectRefsResult) {
-        if (!treeData) {
-          console.log("ERROR: no treedata for indirect references");
-          return;
-        }
         console.log("Indirect references received:", indirectRefsResult);
-        // Append the references to existing tree data under the correct node
-        const targetNode = findNodeInTree(treeData, newSelectedNode.name);
-        if (targetNode && indirectRefsResult.children) {
-          if (indirectRefsResult.children.length == 0) return;
-
-          // Merge new children into existing node
-          indirectRefsResult.children[0].children.forEach((newChild) => {
-            if (!targetNode.children.some((existingChild) => existingChild.name === newChild.name)) {
-              (newChild as IViewerTreeNode).isIndirectRef = true;
-              targetNode.children.push(newChild);
+        const targetNode = findNodeInTree(treeData, nodeName) as IViewerTreeNodeWithData | undefined;
+        if (targetNode) {
+          let hasAddedAnyNode = false;
+          for (const indirectNode of indirectRefsResult) {
+            if (!targetNode.children.some((existingChild) => existingChild.name === indirectNode.name)) {
+              targetNode.children.push(indirectNode);
+              addRefToCache(indirectNode);
+              hasAddedAnyNode = true;
             }
-          });
-          setTreeData({ ...treeData }); // Trigger re-render
-
-          if (selectedNodesByName.length == 0) {
-            setSelectedNodesByName([treeData.children[0].name]);
           }
-
-          for (const newChild of indirectRefsResult.children[0].children) {
-            await getIndirectReferences(newDBTableSelection, newChild as IViewerTreeNodeWithData, treeData);
+          if (hasAddedAnyNode) {
+            setTreeData({ ...treeData });
           }
         }
       } else {
@@ -115,6 +156,8 @@ const DBDuplication = memo(() => {
       }
     } catch (error) {
       console.error("Failed to get indirect references:", error);
+    } finally {
+      endOverlayOperation();
     }
   };
 
@@ -124,6 +167,9 @@ const DBDuplication = memo(() => {
 
     const buildTree = async () => {
       try {
+        beginOverlayOperation();
+        loadedIndirectNodeNames.current = new Set();
+        resetRefsCache();
         const treeNodeResult = await window.api?.buildDBReferenceTree(
           packPath,
           {
@@ -150,19 +196,21 @@ const DBDuplication = memo(() => {
             packPath
           );
           setTreeData(treeNodeResult);
-
-          if (treeNodeResult.children.length == 0) return;
-          const rootNodeData = treeNodeResult.children[0] as IViewerTreeNodeWithData;
-          const rootNodeSelection = {
-            dbName: rootNodeData.tableName,
-            dbSubname: "",
-            packPath,
-          } as DBTableSelection;
-          // console.log("get indirect refs");
-          getIndirectReferences(rootNodeSelection, rootNodeData, treeNodeResult);
+          rebuildRefsCacheFromTree(treeNodeResult);
+          setNodeNameToRenameValue({});
+          if (treeNodeResult.children.length > 0) {
+            const rootNodeName = treeNodeResult.children[0].name;
+            setSelectedNodesByName([rootNodeName]);
+            setExpandedNodesByName([rootNodeName]);
+          } else {
+            setSelectedNodesByName([]);
+            setExpandedNodesByName([]);
+          }
         }
       } catch (error) {
         console.error("Failed to build reference tree:", error);
+      } finally {
+        endOverlayOperation();
       }
     };
 
@@ -228,12 +276,6 @@ const DBDuplication = memo(() => {
   const schema = currentSchema;
 
   const field = schema.fields[deepCloneTarget.col];
-  const folder: ITreeNode = {
-    name: field.name,
-    children: [] as ITreeNode[],
-  };
-
-  const allTreeChildren: string[] = [];
 
   console.log(
     "packDataStore:",
@@ -246,35 +288,47 @@ const DBDuplication = memo(() => {
     name: `${currentDBTableSelection.dbName} ${field.name} : ${toClone.resolvedKeyValue}`,
     children: [],
   } as ITreeNode;
-  folder.children.push(rootNode);
-  allTreeChildren.push(rootNode.name);
 
   if (!treeData) return <></>;
 
   const data = flattenTree(treeData);
-
-  const nodeNameToData = data.reduce((acc, current) => {
-    const treeNode = findNodeInTree(treeData, current.name);
-    if (treeNode) {
-      acc[current.name] = treeNode as IViewerTreeNodeWithData;
-    }
-    return acc;
-  }, {} as Record<string, IViewerTreeNodeWithData>);
+  const nodeById = new Map<INode["id"], INode>();
+  const nodeIdsByName = new Map<string, INode["id"][]>();
+  for (const node of data) {
+    nodeById.set(node.id, node);
+    const existingIds = nodeIdsByName.get(node.name) ?? [];
+    existingIds.push(node.id);
+    nodeIdsByName.set(node.name, existingIds);
+  }
+  const getFirstNodeByName = (nodeName: string) => {
+    const ids = nodeIdsByName.get(nodeName);
+    if (!ids || ids.length == 0) return undefined;
+    return nodeById.get(ids[0]);
+  };
+  const nodeNameToData = {} as Record<string, IViewerTreeNodeWithData>;
+  for (const node of getAllNodesInTree(treeData)) {
+    const currentNode = node as IViewerTreeNodeWithData;
+    nodeNameToData[currentNode.name] = currentNode;
+  }
+  const nodeNameToDataLookup = {
+    ...nodeNameToData,
+    [rootNode.name]: {
+      name: rootNode.name,
+      children: [],
+      tableName: currentDBTableSelection.dbName,
+      columnName: field.name,
+      value: toClone.resolvedKeyValue,
+    } as IViewerTreeNodeWithData,
+  };
 
   // console.log("data is", data);
   console.log("SELECTED NODES ARE", selectedNodesByName);
   console.log("EXPANDED NODES ARE", expandedNodesByName);
 
-  nodeNameToData[rootNode.name] = {
-    name: rootNode.name,
-    children: [],
-    tableName: currentDBTableSelection.dbName,
-    columnName: field.name,
-    value: toClone.resolvedKeyValue,
-  };
+  const rootNodeName = (treeData.children[0] as IViewerTreeNodeWithData | undefined)?.name ?? rootNode.name;
 
   const defaultNodeNameToRenameValue = data.reduce((acc, current) => {
-    acc[current.name] = (nodeNameToData[current.name] && nodeNameToData[current.name].value) || "";
+    acc[current.name] = (nodeNameToDataLookup[current.name] && nodeNameToDataLookup[current.name].value) || "";
     return acc;
   }, {} as Record<string, string>);
 
@@ -285,9 +339,12 @@ const DBDuplication = memo(() => {
   if (packDataStore[packPath]) console.log(packDataStore[packPath].packedFiles.map((pf) => pf.name));
 
   const getParentNodeNames = (acc: string[], node: INode) => {
-    const nodeName = data.find((iterNode) => iterNode.id == node.id)?.name;
+    const nodeName = nodeById.get(node.id)?.name;
     if (nodeName && !acc.some((iterNodeName) => iterNodeName == nodeName)) acc.push(nodeName);
-    if (node.parent) getParentNodeNames(acc, data.find((iterNode) => iterNode.id == node.parent) as INode);
+    if (node.parent) {
+      const parentNode = nodeById.get(node.parent);
+      if (parentNode) getParentNodeNames(acc, parentNode);
+    }
     return acc;
   };
 
@@ -305,7 +362,7 @@ const DBDuplication = memo(() => {
     else newselectedNodesByName.push(currentName);
 
     for (const nodeName of [...newselectedNodesByName]) {
-      const node = data.find((node) => node.name == nodeName);
+      const node = getFirstNodeByName(nodeName);
       if (node) {
         const parentNodesNames = getParentNodeNames([], node);
         for (const parentNodeName of parentNodesNames) {
@@ -318,23 +375,22 @@ const DBDuplication = memo(() => {
   };
 
   const onNodeExpanded = (nodeName: string) => {
+    if (isSaving) return;
     console.log("expanded tree node", nodeName);
     const currentName = nodeName;
-
-    const node = data.find((node) => node.name == nodeName);
-    if (!node || !node.children || node.children.length == 0) return;
 
     // const expandedByName = Array.from(props.treeState.selectedIds.values())
     //   .map((id) => data.find((node) => node.id == id)?.name)
     //   .filter((name): name is string => !!name);
 
+    const isExpanding = !expandedNodesByName.includes(currentName);
     let newExpandedNodesByName = [...expandedNodesByName];
     if (expandedNodesByName.includes(currentName))
       newExpandedNodesByName = newExpandedNodesByName.filter((name) => name != currentName);
     else newExpandedNodesByName.push(currentName);
 
     for (const nodeName of [...newExpandedNodesByName]) {
-      const node = data.find((node) => node.name == nodeName);
+      const node = getFirstNodeByName(nodeName);
       if (node) {
         const parentNodesNames = getParentNodeNames([], node);
         for (const parentNodeName of parentNodesNames) {
@@ -344,19 +400,46 @@ const DBDuplication = memo(() => {
     }
 
     setExpandedNodesByName(newExpandedNodesByName);
+    if (isExpanding) {
+      void getIndirectReferences(currentName, treeData);
+    }
+  };
+
+  const ensureNodeExpanded = (nodeName: string) => {
+    if (isSaving) return;
+    let newExpandedNodesByName = [...expandedNodesByName];
+    if (!newExpandedNodesByName.includes(nodeName)) {
+      newExpandedNodesByName.push(nodeName);
+    }
+
+    for (const expandedNodeName of [...newExpandedNodesByName]) {
+      const node = getFirstNodeByName(expandedNodeName);
+      if (node) {
+        const parentNodesNames = getParentNodeNames([], node);
+        for (const parentNodeName of parentNodesNames) {
+          if (!newExpandedNodesByName.includes(parentNodeName)) newExpandedNodesByName.push(parentNodeName);
+        }
+      }
+    }
+
+    setExpandedNodesByName(newExpandedNodesByName);
+    void getIndirectReferences(nodeName, treeData);
   };
 
   const onNodeToggled = (nodeName: string) => {
+    if (isSaving) return;
     console.log("toggled node", nodeName);
     const currentName = nodeName;
+    if (currentName == rootNodeName) return;
 
+    const isSelecting = !selectedNodesByName.includes(currentName);
     let newselectedNodesByName = [...selectedNodesByName];
-    if (selectedNodesByName.includes(currentName))
+    if (!isSelecting)
       newselectedNodesByName = newselectedNodesByName.filter((name) => name != currentName);
     else newselectedNodesByName.push(currentName);
 
     for (const nodeName of [...newselectedNodesByName]) {
-      const node = data.find((node) => node.name == nodeName);
+      const node = getFirstNodeByName(nodeName);
       if (node) {
         const parentNodesNames = getParentNodeNames([], node);
         for (const parentNodeName of parentNodesNames) {
@@ -364,38 +447,31 @@ const DBDuplication = memo(() => {
         }
       }
     }
+    if (!newselectedNodesByName.includes(rootNodeName)) {
+      newselectedNodesByName.push(rootNodeName);
+    }
 
     console.log("SELECTED NODES ARE NOW:", newselectedNodesByName);
     setSelectedNodesByName(newselectedNodesByName);
-
-    for (const newSelectedNode of newselectedNodesByName) {
-      const newNodeData = nodeNameToData[newSelectedNode];
-      const newDBTableSelection = {
-        dbName: newNodeData.tableName,
-        dbSubname: "",
-        packPath,
-      } as DBTableSelection;
-
-      console.log("find indirect refs for", newSelectedNode);
-
-      getIndirectReferences(newDBTableSelection, newNodeData, treeData);
+    if (isSelecting) {
+      ensureNodeExpanded(currentName);
     }
   };
 
-  const selectedIds = [...selectedNodesByName, rootNode.name]
-    .map((name) => data.find((node) => node.name == name)?.id)
-    .filter((id): id is number => !!id);
+  const selectedIds = selectedNodesByName
+    .flatMap((name) => nodeIdsByName.get(name) ?? [])
+    .filter((id): id is INode["id"] => id != null);
 
-  const expandedIds = [...expandedNodesByName, rootNode.name]
-    .map((name) => data.find((node) => node.name == name)?.id)
-    .filter((id): id is number => !!id);
+  const expandedIds = expandedNodesByName
+    .flatMap((name) => nodeIdsByName.get(name) ?? [])
+    .filter((id): id is INode["id"] => id != null);
 
   console.log("expandedIds:", expandedIds);
 
   const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>, nodeName: string) => {
+    if (isSaving) return;
     console.log("textbox change:", e.target.value, nodeName);
-    nodeNameToRenameValue[nodeName] = e.target.value;
-    setNodeNameToRenameValue(structuredClone(nodeNameToRenameValue));
+    setNodeNameToRenameValue((prev) => ({ ...prev, [nodeName]: e.target.value }));
     e.stopPropagation();
     e.preventDefault();
   };
@@ -413,6 +489,7 @@ const DBDuplication = memo(() => {
 
   const needsWarningBorder = (nodeName: string) => {
     if (!selectedNodesByName.includes(nodeName)) return false;
+    if (nodeNameToDataLookup[nodeName]?.isIndirectRef) return false;
 
     return (
       !nodeNameToRenameValue[nodeName] ||
@@ -421,20 +498,57 @@ const DBDuplication = memo(() => {
   };
 
   const isSavingPossible = () => {
-    return true;
-    // const selecedNodesWithRootNode = [...selectedNodesByName, rootNode.name];
+    const selectedDirectNodes = selectedNodesByName.filter(
+      (nodeName) => nodeNameToDataLookup[nodeName] && !nodeNameToDataLookup[nodeName].isIndirectRef
+    );
 
-    for (const node of selectedNodesByName) {
-      console.log("node is", node, nodeNameToData[node], nodeNameToRenameValue[node]);
+    if (selectedDirectNodes.length < 1) return false;
+
+    for (const nodeName of selectedDirectNodes) {
+      const newValue =
+        nodeNameToRenameValue[nodeName] != null
+          ? nodeNameToRenameValue[nodeName]
+          : defaultNodeNameToRenameValue[nodeName];
+
+      if (!newValue || newValue.trim() == "") return false;
+      if (newValue == defaultNodeNameToRenameValue[nodeName]) return false;
     }
 
-    return !selectedNodesByName.some(
-      (nodeName) =>
-        !nodeNameToRenameValue[nodeName] ||
-        nodeNameToRenameValue[nodeName] == defaultNodeNameToRenameValue[nodeName] ||
-        nodeNameToRenameValue[nodeName] == ""
-    );
+    return true;
   };
+
+  const getProgressLabel = (progress: DBDuplicationProgress | null) => {
+    if (!progress) return "Working...";
+    const stageToLabel = {
+      validating: "Validating",
+      discovering_indirect: "Discovering indirect refs",
+      cloning: "Cloning rows",
+      localizing: "Generating localization",
+      writing: "Writing pack",
+      done: "Done",
+      error: "Error",
+      canceled: "Canceled",
+    } as Record<DBDuplicationStage, string>;
+
+    const stageLabel = stageToLabel[progress.stage] ?? progress.stage;
+    const progressRatio =
+      progress.current != null && progress.total != null && progress.total > 0
+        ? ` (${progress.current}/${progress.total})`
+        : "";
+    const message = progress.message ? ` - ${progress.message}` : "";
+    return `${stageLabel}${progressRatio}${message}`;
+  };
+
+  const onCancelDuplication = () => {
+    if (!isSaving) return;
+    window.api?.cancelDBDuplication();
+    setDuplicationProgress({
+      stage: "canceled",
+      message: "Cancel requested",
+    });
+  };
+
+  const overlayStatusText = isSaving ? getProgressLabel(duplicationProgress) : "Loading references...";
 
   const onSave = async () => {
     console.log("SAVING");
@@ -446,19 +560,46 @@ const DBDuplication = memo(() => {
       return;
     }
 
-    if (overlayRef.current) overlayRef.current.style.visibility = "visible";
+    const selectedNodeNames = selectedNodesByName.includes(rootNodeName)
+      ? selectedNodesByName
+      : [rootNodeName, ...selectedNodesByName];
 
-    await window.api?.executeDBDuplication(
-      packData.packPath,
-      selectedNodesByName,
-      nodeNameToData,
-      nodeNameToRenameValue,
-      defaultNodeNameToRenameValue,
-      treeData,
-      { isAppendSave, savePackedFileName, savePackFileName }
-    );
+    try {
+      beginOverlayOperation();
+      setIsSaving(true);
+      setDuplicationError("");
+      setIsErrorOpen(false);
+      setDuplicationSuccessMessage("");
+      setIsSuccessOpen(false);
+      setDuplicationProgress({
+        stage: "validating",
+        message: "Starting clone",
+      });
+      const result = await window.api?.executeDBDuplication(
+        packData.packPath,
+        selectedNodeNames,
+        nodeNameToDataLookup,
+        nodeNameToRenameValue,
+        defaultNodeNameToRenameValue,
+        treeData,
+        { isAppendSave, savePackedFileName, savePackFileName }
+      );
 
-    if (overlayRef.current) overlayRef.current.style.visibility = "hidden";
+      if (!result?.ok) {
+        console.error("executeDBDuplication failed:", result?.error ?? "Unknown error");
+        setDuplicationError(result?.error ?? "Unknown duplication error");
+        setIsErrorOpen(true);
+      } else {
+        console.log("executeDBDuplication success, output:", result.outputPackPath);
+        setDuplicationSuccessMessage(
+          result.outputPackPath ? `Created pack:\n${result.outputPackPath}` : "Clone completed successfully."
+        );
+        setIsSuccessOpen(true);
+      }
+    } finally {
+      setIsSaving(false);
+      endOverlayOperation();
+    }
 
     // dispatch(setDeepCloneTarget(undefined));
 
@@ -518,8 +659,8 @@ const DBDuplication = memo(() => {
                 refences the main_units table but the main_units table doesn't reference it.
               </p>
               <p>
-                Non-direct refences are always included in the clone if the parent in the tree is being
-                selected for cloning.
+                Non-direct refences are selectable. When you select one, we load its closure so you can choose
+                which additional non-direct references to include.
               </p>
               <p>
                 With "Append Existing Pack" enabled we will append an existing pack file instead of creating a
@@ -538,13 +679,56 @@ const DBDuplication = memo(() => {
           </Modal.Body>
         </Modal>
       )}
+      {isErrorOpen && (
+        <Modal
+          show={isErrorOpen}
+          onClose={() => setIsErrorOpen(false)}
+          size="lg"
+          position="top-center"
+          explicitClasses={["mt-8", "modalDontOverflowWindowHeight"]}
+        >
+          <Modal.Header>
+            <span>DB Clone Error</span>
+          </Modal.Header>
+          <Modal.Body>
+            <p>{duplicationError || "Unknown duplication error"}</p>
+          </Modal.Body>
+        </Modal>
+      )}
+      {isSuccessOpen && (
+        <Modal
+          show={isSuccessOpen}
+          onClose={() => setIsSuccessOpen(false)}
+          size="lg"
+          position="top-center"
+          explicitClasses={["mt-8", "modalDontOverflowWindowHeight"]}
+        >
+          <Modal.Header>
+            <span>DB Clone Complete</span>
+          </Modal.Header>
+          <Modal.Body>
+            <p className="whitespace-pre-wrap">{duplicationSuccessMessage || "Clone completed successfully."}</p>
+          </Modal.Body>
+        </Modal>
+      )}
       <MemoizedFloatingOverlay
         ref={overlayRef}
         className={`absolute h-full w-full z-50 dark flex justify-center bg-black opacity-25`}
         id="DBDuplicationOverlay"
       >
-        <div className="scale-[4] self-center">
-          <Spinner color="purple" size="xl" className="" />
+        <div className="self-center text-center flex flex-col items-center gap-4 bg-gray-900/80 px-6 py-5 rounded-xl">
+          <div className="scale-[2] self-center">
+            <Spinner color="purple" size="xl" className="" />
+          </div>
+          <div className="text-white text-sm max-w-[520px]">{overlayStatusText}</div>
+          {isSaving && duplicationProgress?.stage != "writing" && (
+            <button
+              className="bg-red-700 border-red-500 border-2 hover:bg-red-800 text-white font-medium text-sm px-4 rounded h-8"
+              onClick={() => onCancelDuplication()}
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </MemoizedFloatingOverlay>
 
@@ -552,12 +736,12 @@ const DBDuplication = memo(() => {
         <div>
           <button
             className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 w-24 m-auto ${
-              (!isSavingPossible() &&
+              ((!isSavingPossible() || isSaving) &&
                 "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
               ""
             }`}
             onClick={async () => await onSave()}
-            disabled={!isSavingPossible()}
+            disabled={!isSavingPossible() || isSaving}
           >
             <div>
               <span>{"Save"}</span>
@@ -569,6 +753,7 @@ const DBDuplication = memo(() => {
             type="checkbox"
             id="enable-closed-on-play"
             checked={isAppendSave}
+            disabled={isSaving}
             onChange={() => setIsAppendSave(!isAppendSave)}
           ></input>
           <label className="ml-2" htmlFor="enable-closed-on-play">
@@ -579,16 +764,22 @@ const DBDuplication = memo(() => {
           <input
             defaultValue={savePackedFileName}
             placeholder={"(Optional) Name for new tables"}
+            disabled={isSaving}
             onChange={(e) => setSavePackedFileName(e.target.value)}
-            className="bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
+              isSaving ? "opacity-60 cursor-not-allowed" : ""
+            }`}
           />
         </div>
         <div>
           <input
             defaultValue={savePackFileName}
             placeholder={"(Optional) Name for new pack"}
+            disabled={isSaving}
             onChange={(e) => setSavePackFileName(e.target.value)}
-            className="bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
+              isSaving ? "opacity-60 cursor-not-allowed" : ""
+            }`}
           />
         </div>
         <div className="text-center">
@@ -604,15 +795,9 @@ const DBDuplication = memo(() => {
       <div>Cloning {toClone.resolvedKeyValue}</div>
       <div className="checkbox dark:text-gray-300">
         <TreeView
-          key={
-            hash(folder) +
-            hash(selectedNodesByName) +
-            hash(expandedNodesByName) +
-            hash(expandedIds) +
-            hash(selectedIds)
-          }
           data={data}
           aria-label="Checkbox tree"
+          multiSelect
           onSelect={(props) => onTreeSelect(props)}
           selectedIds={selectedIds}
           expandedIds={expandedIds}
@@ -640,11 +825,7 @@ const DBDuplication = memo(() => {
               >
                 {isBranch && <ArrowIcon isOpen={isExpanded} />}
                 <CheckBoxIcon
-                  className={`checkbox-icon scale-125 ${!isBranch && "!ml-[26px]"} ${
-                    nodeNameToData[element.name].isIndirectRef &&
-                    nodeNameToData[element.name].children.length == 0 &&
-                    "collapse"
-                  }`}
+                  className={`checkbox-icon scale-125 ${!isBranch && "!ml-[26px]"}`}
                   onClick={(e) => {
                     // handleSelect(e);
                     onNodeToggled(element.name);
@@ -653,11 +834,11 @@ const DBDuplication = memo(() => {
                   variant={isHalfSelected ? "some" : isSelected ? "all" : "none"}
                 />
                 <span
-                  className={`name ${nodeNameToData[element.name].isIndirectRef ? "text-amber-500" : ""}`}
+                  className={`name ${nodeNameToDataLookup[element.name].isIndirectRef ? "text-amber-500" : ""}`}
                 >
                   {element.name}
                 </span>
-                {!nodeNameToData[element.name].isIndirectRef && (
+                {!nodeNameToDataLookup[element.name].isIndirectRef && (
                   <span className="flex items-center">
                     <span className="text-slate-100 ml-4">
                       <FaArrowRight></FaArrowRight>
@@ -668,8 +849,9 @@ const DBDuplication = memo(() => {
                         onBlur={(e) => onFocusChange(e, element)}
                         id="filterInput"
                         type="text"
+                        disabled={isSaving}
                         onChange={(e) => onFilterChange(e, element.name)}
-                        defaultValue={
+                        value={
                           nodeNameToRenameValue[element.name] ?? defaultNodeNameToRenameValue[element.name]
                         }
                         className={`ml-4 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 ${
