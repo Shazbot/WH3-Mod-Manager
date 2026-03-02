@@ -839,6 +839,29 @@ declare global {
     savePackFileName: string;
   }
 
+  interface DBCloneExecutionResult {
+    ok: boolean;
+    outputPackPath?: string;
+    error?: string;
+  }
+
+  type DBDuplicationStage =
+    | "validating"
+    | "discovering_indirect"
+    | "cloning"
+    | "localizing"
+    | "writing"
+    | "done"
+    | "error"
+    | "canceled";
+
+  interface DBDuplicationProgress {
+    stage: DBDuplicationStage;
+    current?: number;
+    total?: number;
+    message?: string;
+  }
+
   type NodeEdgeTypes =
     | "PackFiles"
     | "DBData"
