@@ -2742,6 +2742,164 @@ export const registerIpcMainListeners = (
     }
   };
 
+  const getPackSignatureCached = async (
+    packPath: string,
+    cache?: PackHeaderCache,
+  ): Promise<{ size: number; mtimeMs: number } | null> => {
+    const headerCache = cache || (await loadPackHeaderCache());
+    const cachedEntry = headerCache[packPath];
+    if (cachedEntry) {
+      return { size: cachedEntry.size, mtimeMs: cachedEntry.lastChangedLocal };
+    }
+
+    try {
+      const stat = await fs.promises.stat(packPath);
+      return { size: stat.size, mtimeMs: stat.mtimeMs };
+    } catch (error) {
+      console.error(`Failed to stat pack for signature: ${packPath}`, error);
+      return null;
+    }
+  };
+
+  const getCompatVanillaPackPaths = (dataFolder: string): string[] => {
+    return [...appData.allVanillaPackNames]
+      .filter(
+        (packName) =>
+          packName.startsWith("local_en") ||
+          (!packName.startsWith("audio_") && !packName.startsWith("local_")),
+      )
+      .map((packName) => nodePath.join(dataFolder, packName))
+      .toSorted((first, second) => first.localeCompare(second));
+  };
+
+  const getCompatVanillaTableToPackPaths = (
+    vanillaPackPaths: string[],
+  ): Record<string, string[]> => {
+    const vanillaPackPathsSet = new Set(vanillaPackPaths);
+    const tableToPackPaths: Record<string, string[]> = {};
+
+    for (const pack of appData.vanillaPacks) {
+      if (!vanillaPackPathsSet.has(pack.path)) continue;
+      for (const packedFile of pack.packedFiles) {
+        const tableNameMatch = packedFile.name.match(matchTableNamePart);
+        if (!tableNameMatch) continue;
+        const tableName = tableNameMatch[1];
+        tableToPackPaths[tableName] = tableToPackPaths[tableName] || [];
+        if (!tableToPackPaths[tableName].includes(pack.path)) {
+          tableToPackPaths[tableName].push(pack.path);
+        }
+      }
+    }
+
+    return tableToPackPaths;
+  };
+
+  const collectReferencedVanillaTablesForCompat = (mods: Mod[]): string[] => {
+    const tablesAndDBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
+    const modPaths = new Set(mods.map((mod) => mod.path));
+    const referencedVanillaTables = new Set<string>();
+
+    for (const pack of appData.packsData) {
+      if (!modPaths.has(pack.path)) continue;
+      for (const packedFile of pack.packedFiles) {
+        if (!packedFile.schemaFields) continue;
+        const tableNameMatch = packedFile.name.match(matchTableNamePart);
+        if (!tableNameMatch) continue;
+        const tableName = tableNameMatch[1];
+        const dbVersion = getDBVersion(packedFile);
+        if (!dbVersion) continue;
+        const tableFieldRefs = tablesAndDBFieldsThatReference[tableName];
+        if (!tableFieldRefs) continue;
+
+        for (const dbField of dbVersion.fields) {
+          const tableRef = tableFieldRefs[dbField.name];
+          if (!tableRef) continue;
+          const targetDBFileName = tableRef[0];
+          if (appData.vanillaPacksDBFileNames.includes(targetDBFileName)) {
+            referencedVanillaTables.add(targetDBFileName);
+          }
+        }
+      }
+    }
+
+    return [...referencedVanillaTables].toSorted((first, second) => collator.compare(first, second));
+  };
+
+  const getLazyCompatVanillaReadPlan = (mods: Mod[], vanillaPackPaths: string[]) => {
+    const tableToPackPaths = getCompatVanillaTableToPackPaths(vanillaPackPaths);
+    const referencedVanillaTables = collectReferencedVanillaTablesForCompat(mods);
+    const packPathsToRead = new Set<string>();
+    const tablesToRead: string[] = [];
+
+    for (const tableName of referencedVanillaTables) {
+      const packPaths = tableToPackPaths[tableName];
+      if (!packPaths || packPaths.length == 0) continue;
+      tablesToRead.push(`db\\${tableName}\\`);
+      for (const packPath of packPaths) {
+        packPathsToRead.add(packPath);
+      }
+    }
+
+    return {
+      packPaths: [...packPathsToRead].toSorted((first, second) => first.localeCompare(second)),
+      tablesToRead,
+    };
+  };
+
+  const COMPAT_CHECK_CACHE_VERSION = 1;
+  interface CompatCheckCacheEntry {
+    signatureHash: string;
+    createdAt: number;
+    packCollisions: PackCollisions;
+  }
+  let compatCheckCache: CompatCheckCacheEntry | null = null;
+
+  const buildCompatCheckSignature = async (
+    mods: Mod[],
+    vanillaPackPaths: string[],
+  ): Promise<string | null> => {
+    const headerCache = await loadPackHeaderCache();
+
+    const modSignatureData: Array<{
+      path: string;
+      name: string;
+      loadOrder: number | null;
+      size: number;
+      mtimeMs: number;
+    }> = [];
+    const modsByPath = [...mods].toSorted((first, second) => first.path.localeCompare(second.path));
+    for (const mod of modsByPath) {
+      const packSig = await getPackSignatureCached(mod.path, headerCache);
+      if (!packSig) return null;
+      modSignatureData.push({
+        path: mod.path,
+        name: mod.name,
+        loadOrder: mod.loadOrder ?? null,
+        size: packSig.size,
+        mtimeMs: packSig.mtimeMs,
+      });
+    }
+
+    const vanillaSignatureData: Array<{ path: string; size: number; mtimeMs: number }> = [];
+    for (const vanillaPackPath of vanillaPackPaths) {
+      const packSig = await getPackSignatureCached(vanillaPackPath, headerCache);
+      if (!packSig) continue;
+      vanillaSignatureData.push({
+        path: vanillaPackPath,
+        size: packSig.size,
+        mtimeMs: packSig.mtimeMs,
+      });
+    }
+
+    return hash({
+      cacheVersion: COMPAT_CHECK_CACHE_VERSION,
+      game: appData.currentGame,
+      isCompatCheckingVanillaPacks: appData.isCompatCheckingVanillaPacks,
+      mods: modSignatureData,
+      vanillaPacks: vanillaSignatureData,
+    });
+  };
+
   const buildFlowExecutionSignature = async (
     sortedEnabledMods: Mod[],
     startGameOptions: StartGameOptions,
@@ -4027,22 +4185,33 @@ export const registerIpcMainListeners = (
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (!dataFolder) return;
 
+    const vanillaPackPaths = getCompatVanillaPackPaths(dataFolder);
+    const compatSignature = await buildCompatCheckSignature(mods, vanillaPackPaths);
+    if (compatSignature && compatCheckCache?.signatureHash === compatSignature) {
+      console.log("getCompatData: cache hit, sending cached collisions");
+      mainWindow?.webContents.send("setPackCollisions", compatCheckCache.packCollisions);
+      return;
+    }
+
     await readMods(mods, false, true, true);
     await readModsByPath(
-      [...appData.allVanillaPackNames]
-        .filter(
-          (packName) =>
-            packName.startsWith("local_en") ||
-            (!packName.startsWith("audio_") && !packName.startsWith("local_")),
-        )
-        .map((packName) => nodePath.join(dataFolder, packName)),
-      { readScripts: appData.isCompatCheckingVanillaPacks },
+      vanillaPackPaths,
+      { skipParsingTables: true, readScripts: appData.isCompatCheckingVanillaPacks },
       true,
     );
 
-    mainWindow?.webContents.send(
-      "setPackCollisions",
-      getCompatData(appData.packsData, (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
+    const lazyVanillaReadPlan = getLazyCompatVanillaReadPlan(mods, vanillaPackPaths);
+    if (lazyVanillaReadPlan.packPaths.length > 0 && lazyVanillaReadPlan.tablesToRead.length > 0) {
+      await readModsByPath(
+        lazyVanillaReadPlan.packPaths,
+        { skipParsingTables: false, tablesToRead: lazyVanillaReadPlan.tablesToRead },
+        true,
+      );
+    }
+
+    const packCollisions = getCompatData(
+      appData.packsData,
+      (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
         mainWindow?.webContents.send("setPackCollisionsCheckProgress", {
           currentIndex,
           maxIndex,
@@ -4050,8 +4219,17 @@ export const registerIpcMainListeners = (
           secondPackName,
           type,
         } as PackCollisionsCheckProgressData);
-      }),
+      },
     );
+    if (compatSignature) {
+      compatCheckCache = {
+        signatureHash: compatSignature,
+        createdAt: Date.now(),
+        packCollisions,
+      };
+    }
+
+    mainWindow?.webContents.send("setPackCollisions", packCollisions);
     emptyAllCompatDataCollections();
   });
 

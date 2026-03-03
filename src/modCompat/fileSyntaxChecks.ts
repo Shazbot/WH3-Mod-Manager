@@ -72,9 +72,9 @@ export function appendScriptToFileChecksRegistry(pack: Pack, packFile: PackedFil
       if (
         packFileAnalysisErrors[pack.name][packFile.name].find(
           (existingError) =>
-            existingError.msg == existingError.msg &&
-            existingError.packName == existingError.packName &&
-            existingError.packFileName == existingError.packFileName
+            existingError.msg == error.msg &&
+            existingError.packName == error.packName &&
+            existingError.packFileName == error.packFileName
         )
       )
         return;
@@ -162,9 +162,11 @@ export function appendToFileChecksRegistry(pack: Pack, packFile: PackedFile) {
   if (
     packFileAnalysisErrors[pack.name][packFileName].find(
       (existingError) =>
-        existingError.msg == existingError.msg &&
-        existingError.packName == existingError.packName &&
-        existingError.packFileName == existingError.packFileName
+        existingError.msg == error.msg &&
+        existingError.packName == error.packName &&
+        existingError.packFileName == error.packFileName &&
+        existingError.lineNum == error.lineNum &&
+        existingError.colNum == error.colNum
     )
   )
     return;
