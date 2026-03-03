@@ -1,7 +1,7 @@
 import { diff } from "deep-object-diff";
 import appData from "../appData";
 import { getDBVersionByTableName, resolveKeyValue, chunkSchemaIntoRows } from "../packFileSerializer";
-import { Pack, PackTableReferences, PackName, DBRefOrigin, DBField } from "../packFileTypes";
+import { Pack, PackTableReferences, PackName, DBRefOrigin, DBField, DBFileName } from "../packFileTypes";
 import { gameToReferences, gameToDBFieldsThatReference, DBNameToDBVersions } from "../schema";
 import optionalNontextFields from "../../schema/optional_nontext_fields.json";
 import additionalFieldKeysOrig from "../../schema/additional_field_keys.json"; // startpos and other keys that the game is tolerant of not existing
@@ -25,12 +25,13 @@ export const refSorting = (a: DBRefOrigin, b: DBRefOrigin): number => {
   const d = a.originFieldName.localeCompare(b.originFieldName);
   if (d !== 0) return d;
   const g = a.originDBFileName.localeCompare(b.originDBFileName);
-  if (g !== 0) return d;
+  if (g !== 0) return g;
   return a.originFileSuffix.localeCompare(b.originFileSuffix);
 };
 
 export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecked?: OnPackChecked) {
   const packsTableReferences: Record<string, PackTableReferences> = {};
+  const allOwnKeys: Record<DBFileName, Record<string, string[]>> = {};
   console.time("findPackTableReferencesOptimized");
   const tablesToReferenceFieldNames = gameToReferences[appData.currentGame];
   const tablesAndDBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
@@ -42,9 +43,11 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
     packsTableReferences[pack.name] = packTableReferences;
 
     for (const packFile of pack.packedFiles) {
+      let wasTextAnalyzed = false;
       if (packFile.name.endsWith(".lua") && packFile.text) {
         appendToAddListenerRegistry(pack, packFile.name, packFile.text);
         appendScriptToFileChecksRegistry(pack, packFile);
+        wasTextAnalyzed = true;
       }
 
       if (
@@ -55,7 +58,9 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
         packFile.text
       ) {
         appendToFileChecksRegistry(pack, packFile);
+        wasTextAnalyzed = true;
       }
+      if (wasTextAnalyzed) packFile.text = undefined;
 
       if (!packFile.schemaFields) {
         continue;
@@ -95,14 +100,21 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
                 chunkedSchemaIntoRows[i][j].fields
               );
 
-              if (
-                resolvedKeyValue != "" &&
-                !binarySearchIncludes(packTableReferences.ownKeys[dbName][dbField.name], resolvedKeyValue)
-              )
-                packTableReferences.ownKeys[dbName][dbField.name] = insertIntoPresortedArray(
-                  packTableReferences.ownKeys[dbName][dbField.name],
-                  resolvedKeyValue
-                );
+              if (resolvedKeyValue != "") {
+                if (!binarySearchIncludes(packTableReferences.ownKeys[dbName][dbField.name], resolvedKeyValue))
+                  packTableReferences.ownKeys[dbName][dbField.name] = insertIntoPresortedArray(
+                    packTableReferences.ownKeys[dbName][dbField.name],
+                    resolvedKeyValue
+                  );
+
+                allOwnKeys[dbName] = allOwnKeys[dbName] || {};
+                allOwnKeys[dbName][dbField.name] = allOwnKeys[dbName][dbField.name] || [];
+                if (!binarySearchIncludes(allOwnKeys[dbName][dbField.name], resolvedKeyValue))
+                  allOwnKeys[dbName][dbField.name] = insertIntoPresortedArray(
+                    allOwnKeys[dbName][dbField.name],
+                    resolvedKeyValue
+                  );
+              }
             }
 
             if (
@@ -216,28 +228,10 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
         if (!binarySearchIncludes(appData.vanillaPacksDBFileNames, dbFileNameToSearch)) continue;
 
         for (const refKey of refKeys) {
-          let foundRef = false;
-          for (const packTableReferenceForRefSearch of Object.values(packsTableReferences)) {
-            foundRef =
-              packTableReferenceForRefSearch.ownKeys[dbFileNameToSearch] &&
-              binarySearchIncludes(
-                packTableReferenceForRefSearch.ownKeys[dbFileNameToSearch][dbFieldNameToSearch],
-                refKey
-              );
-
-            if (foundRef) {
-              // console.log(
-              //   "FOUND",
-              //   packName,
-              //   dbFileName,
-              //   refKey,
-              //   "IN",
-              //   dbFileNameToSearch,
-              //   dbFieldNameToSearch
-              // );
-              break;
-            }
-          }
+          const foundRef =
+            !!allOwnKeys[dbFileNameToSearch] &&
+            !!allOwnKeys[dbFileNameToSearch][dbFieldNameToSearch] &&
+            binarySearchIncludes(allOwnKeys[dbFileNameToSearch][dbFieldNameToSearch], refKey);
           if (!foundRef) {
             // console.log(
             //   `DIDN'T FIND ${refKey} IN ${dbFileNameToSearch} ${dbFieldNameToSearch}, source is ${dbFieldName} from ${dbFileName}`

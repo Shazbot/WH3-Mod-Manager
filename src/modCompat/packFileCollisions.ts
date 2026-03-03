@@ -128,7 +128,7 @@ export function findPackFileCollisionsAndCompareWithUnoptimizedMethod(
       if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
         continue;
 
-      if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");
+      if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "Files");
       findPackFileCollisionsBetweenPacks(pack, packTwo, conflicts);
     }
   }
@@ -165,7 +165,7 @@ export function findPackFileCollisions(packsData: Pack[], onPackChecked?: OnPack
       if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
         continue;
 
-      if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "TableKeys");
+      if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, packTwo.name, "Files");
       findPackFileCollisionsBetweenPacksOptimized(pack, packTwo, conflicts);
     }
   }

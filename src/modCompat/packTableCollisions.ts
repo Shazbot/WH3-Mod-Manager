@@ -348,7 +348,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
   const packTableCollisions: PackTableCollision[] = [];
 
   console.time("findPackTableCollisionsBetweenPacksOptimized");
-  if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
+  if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "TableKeys");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     for (let j = i + 1; j < packsData.length; j++) {
@@ -360,7 +360,7 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
 
       findPackTableCollisionsBetweenPacksOptimized(pack, packTwo, packTableCollisions);
     }
-    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "Files");
+    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "TableKeys");
   }
   console.timeEnd("findPackTableCollisionsBetweenPacksOptimized");
 
@@ -374,7 +374,7 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
 ) {
   const packTableCollisions: PackTableCollision[] = [];
   console.time("findPackTableCollisions1");
-  if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "Files");
+  if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "TableKeys");
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
     for (let j = i + 1; j < packsData.length; j++) {
@@ -386,7 +386,7 @@ export function findPackTableCollisionsAndCompareWithUnoptimizedMethod(
 
       findPackTableCollisionsBetweenPacks(pack, packTwo, packTableCollisions);
     }
-    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "Files");
+    if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "TableKeys");
   }
   console.timeEnd("findPackTableCollisions1");
 

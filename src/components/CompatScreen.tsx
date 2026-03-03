@@ -26,8 +26,6 @@ import { IoPeople } from "react-icons/io5";
 import { BsPersonVcard } from "react-icons/bs";
 import { LuPaintbrush2 } from "react-icons/lu";
 
-let cachedIsCompatOpen = false;
-
 const baseNameOfFile = /.*\\/;
 const matchTablePartOfFileName = /.*?\\(.*?)\\.*?/;
 
@@ -51,9 +49,10 @@ const CompatScreen = memo(() => {
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(true);
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
   const [selectedModFilter, setSelectedModFilter] = React.useState("");
+  const wasCompatOpenRef = React.useRef(false);
 
   useEffect(() => {
-    if (!cachedIsCompatOpen && isCompatOpen) {
+    if (!wasCompatOpenRef.current && isCompatOpen) {
       console.log(
         "Compat Panel is opened, getCompatData called with useEnabledModsOnly:",
         useEnabledModsOnly
@@ -64,7 +63,7 @@ const CompatScreen = memo(() => {
         window.api?.getCompatData(mods);
       }
     }
-    if (cachedIsCompatOpen && !isCompatOpen) {
+    if (wasCompatOpenRef.current && !isCompatOpen) {
       console.log("Compat Panel is closed, getting rid of compat data");
       dispatch(
         setPackCollisions({
@@ -78,36 +77,39 @@ const CompatScreen = memo(() => {
         })
       );
     }
-    cachedIsCompatOpen = isCompatOpen;
-  });
+    wasCompatOpenRef.current = isCompatOpen;
+  }, [dispatch, enabledMods, isCompatOpen, mods, useEnabledModsOnly]);
 
-  if (
-    lastPackCollisionCheckProgressIndex == -1 &&
-    lastPackCollisionCheckProgressIndex != packCollisionsCheckProgress.currentIndex &&
-    packCollisionsCheckProgress.currentIndex != packCollisionsCheckProgress.maxIndex
-  ) {
-    console.log(
-      "in CompatScreen, first if",
-      lastPackCollisionCheckProgressIndex,
-      packCollisionsCheckProgress.currentIndex,
-      packCollisionsCheckProgress.maxIndex
-    );
-    setLastPackCollisionCheckProgressIndex(packCollisionsCheckProgress.currentIndex);
-    setIsSpinnerClosed(false);
-  }
-  if (
-    lastPackCollisionCheckProgressIndex != -1 &&
-    packCollisionsCheckProgress.currentIndex == packCollisionsCheckProgress.maxIndex
-  ) {
-    console.log(
-      "in CompatScreen, second if",
-      lastPackCollisionCheckProgressIndex,
-      packCollisionsCheckProgress.currentIndex,
-      packCollisionsCheckProgress.maxIndex
-    );
-    setIsSpinnerClosed(true);
-    setLastPackCollisionCheckProgressIndex(-1);
-  }
+  useEffect(() => {
+    if (!isCompatOpen) {
+      setIsSpinnerClosed(true);
+      setLastPackCollisionCheckProgressIndex(-1);
+      return;
+    }
+
+    if (
+      lastPackCollisionCheckProgressIndex == -1 &&
+      lastPackCollisionCheckProgressIndex != packCollisionsCheckProgress.currentIndex &&
+      packCollisionsCheckProgress.currentIndex != packCollisionsCheckProgress.maxIndex
+    ) {
+      setLastPackCollisionCheckProgressIndex(packCollisionsCheckProgress.currentIndex);
+      setIsSpinnerClosed(false);
+      return;
+    }
+
+    if (
+      lastPackCollisionCheckProgressIndex != -1 &&
+      packCollisionsCheckProgress.currentIndex == packCollisionsCheckProgress.maxIndex
+    ) {
+      setIsSpinnerClosed(true);
+      setLastPackCollisionCheckProgressIndex(-1);
+    }
+  }, [
+    isCompatOpen,
+    lastPackCollisionCheckProgressIndex,
+    packCollisionsCheckProgress.currentIndex,
+    packCollisionsCheckProgress.maxIndex,
+  ]);
 
   const localized = useLocalizations();
   const compatHelpTwo = ((localized.compatHelpTwo ?? "").includes("STAR_ICON") &&
@@ -285,7 +287,7 @@ const CompatScreen = memo(() => {
             enabledMods.find((iterMod) => iterMod.name == scriptListenerCollision.secondPackName) ||
             vanillaPackNames.includes(scriptListenerCollision.secondPackName);
           if (!mod) {
-            groupedScriptListenerCollisions[packName].filter(
+            groupedScriptListenerCollisions[packName] = groupedScriptListenerCollisions[packName].filter(
               (collision) => collision != scriptListenerCollision
             );
           }
@@ -343,6 +345,17 @@ const CompatScreen = memo(() => {
     setUseEnabledModsOnly(!useEnabledModsOnly);
   }, [useEnabledModsOnly, mods]);
 
+  const progressPercent =
+    packCollisionsCheckProgress.maxIndex > 0
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            (packCollisionsCheckProgress.currentIndex / packCollisionsCheckProgress.maxIndex) * 100
+          )
+        )
+      : 0;
+
   return (
     <div>
       <div className="text-center mt-4">
@@ -396,11 +409,11 @@ const CompatScreen = memo(() => {
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        id="compat-enabled-mod-only"
+                        id="compat-enabled-mod-only-files"
                         checked={useEnabledModsOnly}
                         onChange={() => toggleUseEnabledModsOnly()}
                       ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only-files">
                         {localized.enabledModsOnly}
                       </label>
                     </div>
@@ -524,11 +537,11 @@ const CompatScreen = memo(() => {
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        id="compat-enabled-mod-only"
+                        id="compat-enabled-mod-only-tables"
                         checked={useEnabledModsOnly}
                         onChange={() => toggleUseEnabledModsOnly()}
                       ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only-tables">
                         {localized.enabledModsOnly}
                       </label>
                     </div>
@@ -683,11 +696,11 @@ const CompatScreen = memo(() => {
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        id="compat-enabled-mod-only"
+                        id="compat-enabled-mod-only-missing-keys"
                         checked={useEnabledModsOnly}
                         onChange={() => toggleUseEnabledModsOnly()}
                       ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only-missing-keys">
                         {localized.enabledModsOnly}
                       </label>
                     </div>
@@ -832,11 +845,11 @@ const CompatScreen = memo(() => {
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        id="compat-enabled-mod-only"
+                        id="compat-enabled-mod-only-duplicate-keys"
                         checked={useEnabledModsOnly}
                         onChange={() => toggleUseEnabledModsOnly()}
                       ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only-duplicate-keys">
                         {localized.enabledModsOnly}
                       </label>
                     </div>
@@ -1087,11 +1100,11 @@ const CompatScreen = memo(() => {
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        id="compat-enabled-mod-only"
+                        id="compat-enabled-mod-only-duplicate-listeners"
                         checked={useEnabledModsOnly}
                         onChange={() => toggleUseEnabledModsOnly()}
                       ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only-duplicate-listeners">
                         {localized.enabledModsOnly}
                       </label>
                     </div>
@@ -1232,11 +1245,11 @@ const CompatScreen = memo(() => {
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        id="compat-enabled-mod-only"
+                        id="compat-enabled-mod-only-file-errors"
                         checked={useEnabledModsOnly}
                         onChange={() => toggleUseEnabledModsOnly()}
                       ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only-file-errors">
                         {localized.enabledModsOnly}
                       </label>
                     </div>
@@ -1348,11 +1361,11 @@ const CompatScreen = memo(() => {
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        id="compat-enabled-mod-only"
+                        id="compat-enabled-mod-only-missing-files"
                         checked={useEnabledModsOnly}
                         onChange={() => toggleUseEnabledModsOnly()}
                       ></input>
-                      <label className="ml-2" htmlFor="compat-enabled-mod-only">
+                      <label className="ml-2" htmlFor="compat-enabled-mod-only-missing-files">
                         {localized.enabledModsOnly}
                       </label>
                     </div>
@@ -1523,9 +1536,7 @@ const CompatScreen = memo(() => {
             <div
               className="h-5 bg-blue-600 rounded-full dark:bg-blue-500"
               style={{
-                width: `${
-                  (packCollisionsCheckProgress.currentIndex / packCollisionsCheckProgress.maxIndex) * 100
-                }%`,
+                width: `${progressPercent}%`,
               }}
             ></div>
           </div>
