@@ -680,6 +680,186 @@ declare global {
     keyPrefix?: string;
   }
 
+  interface TechnologyNodeSetSummary {
+    key: string;
+    campaignKey?: string;
+    factionKey?: string;
+    culture?: string;
+    subculture?: string;
+    technologyCategory?: string;
+    localizedName?: string;
+    tooltipString?: string;
+  }
+
+  interface TechEffect {
+    effectKey: string;
+    localizedKey: string;
+    value?: string;
+    icon?: string;
+    iconData?: string;
+  }
+
+  interface TechnologyCatalogEntry {
+    key: string;
+    localizedName: string;
+    researchPointsRequired: number;
+    buildingLevel?: string;
+    shortDescription?: string;
+    longDescription?: string;
+    iconPath?: string;
+    iconData?: string;
+    isHidden: boolean;
+    effects: TechEffect[];
+  }
+
+  interface TechnologyNodeData {
+    nodeKey: string;
+    technologyKey: string;
+    setKey: string;
+    tier: number;
+    indent: number;
+    requiredParents: number;
+    campaignKey?: string;
+    factionKey?: string;
+    pixelOffsetX: number;
+    pixelOffsetY: number;
+    researchPointsRequired: number;
+    optionalUiGroup?: string;
+    localizedName: string;
+    shortDescription?: string;
+    longDescription?: string;
+    iconPath?: string;
+    iconData?: string;
+    isHidden: boolean;
+    buildingLevel?: string;
+    effects?: TechEffect[];
+  }
+
+  interface TechnologyLinkData {
+    parentKey: string;
+    childKey: string;
+    parentLinkPosition: number;
+    childLinkPosition: number;
+    parentLinkPositionOffset: number;
+    childLinkPositionOffset: number;
+    initialDescentTiers: number;
+  }
+
+  interface TechnologyUiTabData {
+    key: string;
+    sortOrder: number;
+    tierOffset: number;
+    localizedName?: string;
+    tooltipString?: string;
+  }
+
+  interface TechnologyUiGroupData {
+    key: string;
+    colourRed: number;
+    colourGreen: number;
+    colourBlue: number;
+    colourHex: string;
+    optionalBackgroundImage?: string;
+    optionalDisplayName?: string;
+    optionalDisplayDescription?: string;
+  }
+
+  interface TechnologyUiGroupBoundsData {
+    groupKey: string;
+    topLeftNode: string;
+    bottomRightNode: string;
+    optionalTopRightNode?: string;
+    optionalBottomLeftNode?: string;
+  }
+
+  interface TechnologyTreePayload {
+    set: TechnologyNodeSetSummary;
+    nodes: TechnologyNodeData[];
+    links: TechnologyLinkData[];
+    uiTabs: TechnologyUiTabData[];
+    uiTabToNodes: Record<string, string[]>;
+    uiGroups: TechnologyUiGroupData[];
+    uiGroupBounds: TechnologyUiGroupBoundsData[];
+    allTechnologies: TechnologyCatalogEntry[];
+    allEffects: TechEffect[];
+  }
+
+  interface SaveTechnologyPackPayload {
+    setKey: string;
+    packName: string;
+    packDirectory: string;
+    tableNameOverride?: string;
+    nodes: {
+      nodeKey: string;
+      technologyKey: string;
+      setKey: string;
+      tier: number;
+      indent: number;
+      requiredParents: number;
+      pixelOffsetX: number;
+      pixelOffsetY: number;
+      optionalUiGroup?: string;
+      researchPointsRequired: number;
+      buildingLevel?: string;
+      displayName: string;
+      shortDescription?: string;
+      longDescription?: string;
+      isHidden: boolean;
+      effects?: TechEffect[];
+    }[];
+    links: TechnologyLinkData[];
+  }
+
+  interface SaveTechnologyChangesPayload {
+    setKey: string;
+    packName: string;
+    packDirectory: string;
+    tableNameOverride?: string;
+    changedNodes: {
+      nodeKey: string;
+      tier: number;
+      indent: number;
+    }[];
+    changedLinks: TechnologyLinkData[];
+    hiddenTechnologies: {
+      technologyKey: string;
+      isHidden: boolean;
+    }[];
+    newNodes?: {
+      nodeKey: string;
+      technologyKey: string;
+      displayName: string;
+      tier: number;
+      indent: number;
+      setKey: string;
+      requiredParents: number;
+      researchPointsRequired: number;
+      isHidden: boolean;
+      pixelOffsetX: number;
+      pixelOffsetY: number;
+      buildingLevel?: string;
+      shortDescription?: string;
+      longDescription?: string;
+      effects?: TechEffect[];
+    }[];
+    deletedNodeKeys?: string[];
+    deletedLinkKeys?: string[];
+    editedNodes?: {
+      nodeKey: string;
+      technologyKey?: string;
+      displayName?: string;
+      requiredParents?: number;
+      researchPointsRequired?: number;
+      isHidden?: boolean;
+      pixelOffsetX?: number;
+      pixelOffsetY?: number;
+      buildingLevel?: string;
+      shortDescription?: string;
+      longDescription?: string;
+      effects?: TechEffect[];
+    }[];
+  }
+
   type SkillAndLevel = [string, number];
   type NodeToSkillLocks = Record<string, SkillAndLevel[]>;
 
@@ -689,6 +869,7 @@ declare global {
     | "categories"
     | "visuals"
     | "twui"
+    | "techTrees"
     | "nodeEditor"
     | "presets";
 

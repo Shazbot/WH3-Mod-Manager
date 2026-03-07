@@ -174,13 +174,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         >
           {unlockedAbilityTooltips.length > 0 && (
             <div className="space-y-2">
-              {unlockedAbilityTooltips.map((ability) => {
+              {unlockedAbilityTooltips.map((ability, i) => {
                 const compareAbility = unlockedAbilityTooltips.find(
                   (iterAbility) => iterAbility.overpowerOption === ability.key,
                 );
                 return (
                   <AbilityTooltipCard
-                    key={ability.key}
+                    key={ability.key + i}
                     ability={ability}
                     compareAbility={compareAbility}
                     icons={skillsData.icons}
