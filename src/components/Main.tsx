@@ -7,6 +7,7 @@ import ModTagPicker from "./ModTagPicker";
 import NodeEditor from "./NodeEditor";
 import VisualsTab from "./VisualsTab";
 import PresetsTab from "./PresetsTab";
+import TechTreesTab from "./techTrees/TechTreesTab";
 import { gameToPackWithDBTablesName } from "../supportedGames";
 
 type MainProps = {
@@ -31,6 +32,7 @@ const Main = (props: MainProps) => {
       {(currentTab == "nodeEditor" && (
         <NodeEditor currentFile={currentFlowFileSelection} currentPack={currentPack}></NodeEditor>
       )) ||
+        (currentTab == "techTrees" && isFeaturesForModdersEnabled && <TechTreesTab />) ||
         (currentTab == "visuals" && isFeaturesForModdersEnabled && <VisualsTab />) ||
         (currentTab == "presets" && <PresetsTab />) ||
         (currentTab == "categories" && <Categories></Categories>) || (

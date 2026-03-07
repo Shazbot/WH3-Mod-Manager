@@ -4,7 +4,7 @@ import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
 import { FaProjectDiagram } from "react-icons/fa";
-import { BsCollection, BsPersonVcard } from "react-icons/bs";
+import { BsCollection, BsDiagram3, BsPersonVcard } from "react-icons/bs";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -19,8 +19,8 @@ const LeftSidebar = memo(() => {
   const showVisualsTab = isFeaturesForModdersEnabled && isDev;
   const tabIndexToTabType: MainWindowTab[] = isFeaturesForModdersEnabled
     ? showVisualsTab
-      ? ["mods", "enabledMods", "categories", "presets", "visuals", "nodeEditor"]
-      : ["mods", "enabledMods", "categories", "presets", "nodeEditor"]
+      ? ["mods", "enabledMods", "categories", "presets", "visuals", "techTrees", "nodeEditor"]
+      : ["mods", "enabledMods", "categories", "presets", "techTrees", "nodeEditor"]
     : ["mods", "enabledMods", "categories", "presets"];
 
   const onTabSelected = (index: number) => {
@@ -109,10 +109,21 @@ const LeftSidebar = memo(() => {
           {isFeaturesForModdersEnabled && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
+                <BsDiagram3 size="1.3rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.techTreesTab || "Tech Trees"}</span>
+                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                  {showVisualsTab ? "Ctrl+6" : "Ctrl+5"}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {isFeaturesForModdersEnabled && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
                 <FaProjectDiagram size="1.5rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.nodeEditorTab || "Node Editor"}</span>
                 <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
-                  {showVisualsTab ? "Ctrl+6" : "Ctrl+5"}
+                  {showVisualsTab ? "Ctrl+7" : "Ctrl+6"}
                 </span>
               </div>
             </Tab>

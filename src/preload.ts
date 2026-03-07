@@ -208,6 +208,18 @@ const api = {
   createNewSkillTree: (subtype: string) => ipcRenderer.send("createNewSkillTree", subtype),
   saveSkillsPack: (data: any) => ipcRenderer.invoke("saveSkillsPack", data),
   saveSkillsChanges: (data: any) => ipcRenderer.invoke("saveSkillsChanges", data),
+  getTechnologyNodeSets: (): Promise<TechnologyNodeSetSummary[]> =>
+    ipcRenderer.invoke("getTechnologyNodeSets"),
+  getTechnologyTree: (setKey: string): Promise<TechnologyTreePayload | undefined> =>
+    ipcRenderer.invoke("getTechnologyTree", setKey),
+  saveTechnologyPack: (
+    payload: SaveTechnologyPackPayload,
+  ): Promise<{ success: boolean; packName?: string; packPath?: string; error?: string }> =>
+    ipcRenderer.invoke("saveTechnologyPack", payload),
+  saveTechnologyChanges: (
+    payload: SaveTechnologyChangesPayload,
+  ): Promise<{ success: boolean; packName?: string; packPath?: string; error?: string }> =>
+    ipcRenderer.invoke("saveTechnologyChanges", payload),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) =>
     ipcRenderer.send("searchInsidePacks", searchTerm, mods),
   setPackSearchResults: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>

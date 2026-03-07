@@ -272,26 +272,7 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
 
     // console.log("translate:", titleLocId, skill.localizedTitle);
     for (const effect of skill.effects) {
-      const effectDescriptionKey = `effects_description_${effect.effectKey}`;
-      // console.log("translated:", effectDescriptionKey, getLoc(effectDescriptionKey));
-      effect.localizedKey = getLoc(effectDescriptionKey);
-      if (!effect.localizedKey) {
-        effect.localizedKey = effect.effectKey;
-        continue;
-      }
-      effect.localizedKey = resolveTextReplacements(effect.localizedKey, getLoc) || "";
-
-      effect.localizedKey = stripLocImgTags(effect.localizedKey) || "";
-
-      if (effect.localizedKey) {
-        const value = Number(effect.value);
-        effect.localizedKey = effect.localizedKey.replace("%n%", `${value.toString()}%`);
-        effect.localizedKey = effect.localizedKey.replace("%n", `${value.toString()}`);
-        effect.localizedKey = effect.localizedKey.replace(
-          "%+n",
-          `${(value > 0 && "+") || ""}${value.toString()}`,
-        );
-      }
+      effect.localizedKey = formatEffectLocalization(effect.effectKey, effect.value, getLoc);
       // const effectData = effectsToEffectData[effect.effectKey];
       // if (effectData && effectData.icon) {
       //   effect.icon = effectData.icon;
@@ -309,6 +290,23 @@ export function getRawEffectLocalization(
   if (!localized) return effectKey;
   localized = resolveTextReplacements(localized, getLoc) || localized;
   localized = stripLocImgTags(localized) || localized;
+  return localized;
+}
+
+export function formatEffectLocalization(
+  effectKey: string,
+  effectValue: string | number | undefined,
+  getLoc: (locId: string) => string | undefined,
+): string {
+  let localized = getRawEffectLocalization(effectKey, getLoc);
+  if (effectValue == null || `${effectValue}`.trim() === "") return localized;
+
+  const value = Number(effectValue);
+  if (Number.isNaN(value)) return localized;
+
+  localized = localized.replace("%n%", `${value.toString()}%`);
+  localized = localized.replace("%n", `${value.toString()}`);
+  localized = localized.replace("%+n", `${(value > 0 && "+") || ""}${value.toString()}`);
   return localized;
 }
 
