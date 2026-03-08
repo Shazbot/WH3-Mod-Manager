@@ -73,13 +73,13 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     return getSkillNodeSetKey(metadata);
   };
 
-  const onTreeSelect = (props: ITreeViewOnSelectProps) => {
+  const onTreeSelect = (treeProps: ITreeViewOnSelectProps) => {
     console.log("SkillsTreeView onTreeSelect");
     // console.log(props);
-    if (props.isSelected) {
-      const parentLeaf = data.find((leaf) => leaf.id == props.element.parent);
+    if (treeProps.isSelected) {
+      const parentLeaf = data.find((leaf) => leaf.id == treeProps.element.parent);
       if (parentLeaf) {
-        const metadata = props.element.metadata as TreeMetadata;
+        const metadata = treeProps.element.metadata as TreeMetadata;
         console.log(`SENT GET PACK DATA`, metadata);
         props.onSelect?.(metadata.subtype, metadata.subtypeIndex);
         if (!props.onSelect) {

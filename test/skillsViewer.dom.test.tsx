@@ -129,11 +129,14 @@ const renderViewer = (skillsData = createSkillsData("alpha")) => {
 };
 
 describe("SkillsViewer", () => {
+  let getSkillsForSubtypeMock: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    getSkillsForSubtypeMock = vi.fn();
     window.api = {
       ...window.api,
-      getSkillsForSubtype: vi.fn(),
+      getSkillsForSubtype: getSkillsForSubtypeMock,
     } as NonNullable<Window["api"]>;
   });
 
@@ -172,8 +175,8 @@ describe("SkillsViewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
     fireEvent.click(screen.getByRole("button", { name: "open-gamma" }));
 
-    expect(window.api.getSkillsForSubtype).toHaveBeenNthCalledWith(1, "beta", 0);
-    expect(window.api.getSkillsForSubtype).toHaveBeenNthCalledWith(2, "gamma", 0);
+    expect(getSkillsForSubtypeMock).toHaveBeenNthCalledWith(1, "beta", 0);
+    expect(getSkillsForSubtypeMock).toHaveBeenNthCalledWith(2, "gamma", 0);
 
     act(() => {
       store.dispatch(setSkillsData(createSkillsData("beta")));
