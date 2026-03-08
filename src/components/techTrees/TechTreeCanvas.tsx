@@ -168,6 +168,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     displayName: string;
     requiredParents: number;
     researchPointsRequired: number;
+    campaignKey?: string;
+    factionKey?: string;
     isHidden: boolean;
     pixelOffsetX: number;
     pixelOffsetY: number;
@@ -259,17 +261,43 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     return byKey;
   }, [technologyTree?.allTechnologies]);
 
+  const effectiveTechnologyNodes = useMemo(() => {
+    if (!technologyTree) return [] as TechnologyNodeData[];
+
+    const nodes = technologyTree.nodes
+      .filter((node) => !deletedNodeKeys.has(node.nodeKey))
+      .map((node) => (editedNodes[node.nodeKey] ? { ...node, ...editedNodes[node.nodeKey] } : node));
+
+    for (const addedNode of addedNodes) {
+      if (deletedNodeKeys.has(addedNode.nodeKey)) continue;
+      nodes.push(addedNode);
+    }
+
+    return nodes;
+  }, [technologyTree, deletedNodeKeys, editedNodes, addedNodes]);
+
   const baseVisibleNodeSet = useMemo(() => {
     if (!technologyTree) return new Set<string>();
-    if (selectedUiTab === "all") return new Set(technologyTree.nodes.map((node) => node.nodeKey));
-    return new Set(technologyTree.uiTabToNodes[selectedUiTab] || []);
-  }, [technologyTree, selectedUiTab]);
+    const visibleNodeKeys =
+      selectedUiTab === "all"
+        ? technologyTree.nodes.map((node) => node.nodeKey)
+        : technologyTree.uiTabToNodes[selectedUiTab] || [];
+
+    const visibleNodeKeySet = new Set(visibleNodeKeys.filter((nodeKey) => !deletedNodeKeys.has(nodeKey)));
+    for (const addedNode of addedNodes) {
+      if (!deletedNodeKeys.has(addedNode.nodeKey)) {
+        visibleNodeKeySet.add(addedNode.nodeKey);
+      }
+    }
+    return visibleNodeKeySet;
+  }, [technologyTree, selectedUiTab, deletedNodeKeys, addedNodes]);
 
   const availableScopeOptions = useMemo(
     () =>
       Array.from(
         new Map(
-          (technologyTree?.nodes || [])
+          effectiveTechnologyNodes
+            .filter((node) => baseVisibleNodeSet.has(node.nodeKey))
             .flatMap((node) => [
               node.factionKey ? [`faction:${node.factionKey}`, `Faction: ${node.factionKey}`] : null,
               node.campaignKey ? [`campaign:${node.campaignKey}`, `Campaign: ${node.campaignKey}`] : null,
@@ -279,12 +307,12 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       )
         .map(([value, label]) => ({ value, label }))
         .sort((first, second) => collator.compare(first.label, second.label)),
-    [technologyTree?.nodes],
+    [effectiveTechnologyNodes, baseVisibleNodeSet],
   );
 
   const hasBaseNodesOnly = useMemo(
-    () => hasBaseNodesOnlyNodes(technologyTree?.nodes || [], baseVisibleNodeSet),
-    [baseVisibleNodeSet, technologyTree?.nodes],
+    () => hasBaseNodesOnlyNodes(effectiveTechnologyNodes, baseVisibleNodeSet),
+    [baseVisibleNodeSet, effectiveTechnologyNodes],
   );
 
   useEffect(() => {
@@ -301,7 +329,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   const scopedVisibleNodeSet = useMemo(() => {
     if (!technologyTree) return new Set<string>();
     const selectedNodeKeys = new Set<string>();
-    for (const node of technologyTree.nodes) {
+    for (const node of effectiveTechnologyNodes) {
       if (!baseVisibleNodeSet.has(node.nodeKey)) continue;
       const nodeScopeValues = getTechnologyNodeScopeValues(node);
       if (nodeScopeValues.length < 1 || (selectedScopeKey && nodeScopeValues.includes(selectedScopeKey))) {
@@ -309,7 +337,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       }
     }
     return selectedNodeKeys;
-  }, [baseVisibleNodeSet, selectedScopeKey, technologyTree]);
+  }, [baseVisibleNodeSet, selectedScopeKey, technologyTree, effectiveTechnologyNodes]);
 
   const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
   const unlockedNodeKeySet = useMemo(() => new Set(unlockedNodeKeys), [unlockedNodeKeys]);
@@ -560,6 +588,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
 
     // Include manually added nodes
     for (const addedNode of addedNodes) {
+      if (!scopedVisibleNodeSet.has(addedNode.nodeKey)) continue;
       if (deletedNodeKeys.has(addedNode.nodeKey)) continue;
       const hiddenOverride = hiddenOverrides[addedNode.technologyKey];
       const isHiddenNow = hiddenOverride === undefined ? !!addedNode.isHidden : hiddenOverride;
@@ -983,6 +1012,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         tier: addNodeTarget.tier,
         indent: addNodeTarget.indent,
         requiredParents: modalData.requiredParents,
+        campaignKey: modalData.campaignKey || undefined,
+        factionKey: modalData.factionKey || undefined,
         pixelOffsetX: modalData.pixelOffsetX,
         pixelOffsetY: modalData.pixelOffsetY,
         researchPointsRequired: modalData.researchPointsRequired,
@@ -1017,6 +1048,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                   localizedName: changes.displayName,
                   requiredParents: changes.requiredParents,
                   researchPointsRequired: changes.researchPointsRequired,
+                  campaignKey: changes.campaignKey || undefined,
+                  factionKey: changes.factionKey || undefined,
                   isHidden: changes.isHidden,
                   pixelOffsetX: changes.pixelOffsetX,
                   pixelOffsetY: changes.pixelOffsetY,
@@ -1038,6 +1071,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
             localizedName: changes.displayName,
             requiredParents: changes.requiredParents,
             researchPointsRequired: changes.researchPointsRequired,
+            campaignKey: changes.campaignKey,
+            factionKey: changes.factionKey,
             isHidden: changes.isHidden,
             pixelOffsetX: changes.pixelOffsetX,
             pixelOffsetY: changes.pixelOffsetY,
@@ -1250,6 +1285,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         setKey: node.setKey,
         requiredParents: node.requiredParents,
         researchPointsRequired: node.researchPointsRequired,
+        campaignKey: node.campaignKey,
+        factionKey: node.factionKey,
         isHidden: !!node.isHidden,
         pixelOffsetX: node.pixelOffsetX || 0,
         pixelOffsetY: node.pixelOffsetY || 0,
@@ -1269,6 +1306,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       displayName: changes.localizedName,
       requiredParents: changes.requiredParents,
       researchPointsRequired: changes.researchPointsRequired,
+      campaignKey: changes.campaignKey,
+      factionKey: changes.factionKey,
       isHidden: changes.isHidden,
       pixelOffsetX: changes.pixelOffsetX,
       pixelOffsetY: changes.pixelOffsetY,
@@ -1326,6 +1365,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         tier: positionOverride?.tier ?? node.tier,
         indent: positionOverride?.indent ?? node.indent,
         requiredParents: edits?.requiredParents ?? node.requiredParents ?? 0,
+        campaignKey: edits?.campaignKey ?? node.campaignKey,
+        factionKey: edits?.factionKey ?? node.factionKey,
         pixelOffsetX: edits?.pixelOffsetX ?? node.pixelOffsetX ?? 0,
         pixelOffsetY: edits?.pixelOffsetY ?? node.pixelOffsetY ?? 0,
         optionalUiGroup: node.optionalUiGroup,
@@ -1350,6 +1391,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         tier: positionOverride?.tier ?? node.tier,
         indent: positionOverride?.indent ?? node.indent,
         requiredParents: node.requiredParents,
+        campaignKey: node.campaignKey,
+        factionKey: node.factionKey,
         pixelOffsetX: node.pixelOffsetX || 0,
         pixelOffsetY: node.pixelOffsetY || 0,
         optionalUiGroup: node.optionalUiGroup,
@@ -1979,6 +2022,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                           displayName: effectiveNode.localizedName || effectiveNode.technologyKey,
                           requiredParents: effectiveNode.requiredParents || 0,
                           researchPointsRequired: effectiveNode.researchPointsRequired,
+                          campaignKey: effectiveNode.campaignKey,
+                          factionKey: effectiveNode.factionKey,
                           isHidden:
                             hiddenOverrides[effectiveNode.technologyKey] === undefined
                               ? !!effectiveNode.isHidden

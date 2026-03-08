@@ -9,6 +9,8 @@ export type TechNodeFormData = {
   displayName: string;
   requiredParents: number;
   researchPointsRequired: number;
+  campaignKey?: string;
+  factionKey?: string;
   isHidden: boolean;
   pixelOffsetX: number;
   pixelOffsetY: number;
@@ -92,6 +94,8 @@ const AddTechNodeModal = ({
   const [displayName, setDisplayName] = useState(existingNode?.displayName ?? "");
   const [requiredParents, setRequiredParents] = useState(existingNode?.requiredParents ?? 0);
   const [researchPointsRequired, setResearchPointsRequired] = useState(existingNode?.researchPointsRequired ?? 0);
+  const [campaignKey, setCampaignKey] = useState(existingNode?.campaignKey ?? "");
+  const [factionKey, setFactionKey] = useState(existingNode?.factionKey ?? "");
   const [isHidden, setIsHidden] = useState(existingNode?.isHidden ?? false);
   const [pixelOffsetX, setPixelOffsetX] = useState(existingNode?.pixelOffsetX ?? 0);
   const [pixelOffsetY, setPixelOffsetY] = useState(existingNode?.pixelOffsetY ?? 0);
@@ -146,6 +150,8 @@ const AddTechNodeModal = ({
       displayName: displayName.trim(),
       requiredParents,
       researchPointsRequired,
+      campaignKey: campaignKey.trim(),
+      factionKey: factionKey.trim(),
       isHidden,
       pixelOffsetX,
       pixelOffsetY,
@@ -331,6 +337,29 @@ const AddTechNodeModal = ({
             />
             <span>Initially hidden (`technologies_tables.is_hidden`)</span>
           </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs space-y-1">
+              <span className="text-gray-400">Campaign Key</span>
+              <input
+                type="text"
+                value={campaignKey}
+                onChange={(event) => setCampaignKey(event.target.value)}
+                className={inputClass}
+                placeholder="Optional campaign key"
+              />
+            </label>
+            <label className="block text-xs space-y-1">
+              <span className="text-gray-400">Faction Key</span>
+              <input
+                type="text"
+                value={factionKey}
+                onChange={(event) => setFactionKey(event.target.value)}
+                className={inputClass}
+                placeholder="Optional faction key"
+              />
+            </label>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs space-y-1">
