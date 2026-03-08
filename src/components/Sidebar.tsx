@@ -53,7 +53,6 @@ const Sidebar = memo(() => {
   );
 
   const [isEditPresetsPanelOpen, setIsEditPresetsPanelOpen] = useState<boolean>(false);
-  const [isUpdateCheckDone, setIsUpdateCheckDone] = useState<boolean>(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
   const [downloadURL, setDownloadURL] = useState<string>("");
   const [releaseNotesURL, setReleaseNotesURL] = useState<string>("");
@@ -73,6 +72,8 @@ const Sidebar = memo(() => {
 
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
   const continueDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
+  const isShiftDownRef = useRef(false);
+  const isControlDownRef = useRef(false);
 
   const terminateGameClicked = () => {
     window.api?.terminateGame();
@@ -213,17 +214,14 @@ const Sidebar = memo(() => {
     console.log(name);
   };
 
-  let isShiftDown = false;
-  let isControlDown = false;
-
   const onChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
     if (!newValue) return;
     console.log(`label: ${newValue.label}, value: ${newValue.value}, action: ${actionMeta.action}`);
     if (actionMeta.action !== "select-option") return;
 
     let selectOperation = "unary" as SelectOperation;
-    if (isControlDown) selectOperation = "subtraction" as SelectOperation;
-    else if (isShiftDown) selectOperation = "addition" as SelectOperation;
+    if (isControlDownRef.current) selectOperation = "subtraction" as SelectOperation;
+    else if (isShiftDownRef.current) selectOperation = "addition" as SelectOperation;
 
     dispatch(selectPreset([newValue.value, selectOperation]));
   };
@@ -282,10 +280,7 @@ const Sidebar = memo(() => {
     }
   };
   useEffect(() => {
-    if (!isUpdateCheckDone) {
-      setIsUpdateCheckDone(true);
-      getUpdateData();
-    }
+    getUpdateData();
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "f") {
@@ -293,13 +288,13 @@ const Sidebar = memo(() => {
         filterInput?.focus();
       }
 
-      if (e.key === "Shift") isShiftDown = true;
-      if (e.key === "Control") isControlDown = true;
+      if (e.key === "Shift") isShiftDownRef.current = true;
+      if (e.key === "Control") isControlDownRef.current = true;
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Shift") isShiftDown = false;
-      if (e.key === "Control") isControlDown = false;
+      if (e.key === "Shift") isShiftDownRef.current = false;
+      if (e.key === "Control") isControlDownRef.current = false;
     };
 
     document.addEventListener("keydown", onKeyDown);
@@ -309,7 +304,7 @@ const Sidebar = memo(() => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
     };
-  });
+  }, []);
 
   const enabledMods = mods.filter(
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
