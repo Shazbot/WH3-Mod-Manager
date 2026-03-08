@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2021", "DOM"],
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src/index.d.ts", "test/**/*.ts", "test/**/*.tsx", "vitest.config.mts"],
+  "exclude": ["node_modules", "out", ".webpack"]
+}

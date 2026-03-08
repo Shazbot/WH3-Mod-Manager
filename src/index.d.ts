@@ -1,4 +1,4 @@
-import { PackedFile, PackCollisions } from "./packFileTypes";
+import { AmendedSchemaField, NewPackedFile, Pack, PackedFile, PackCollisions } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
@@ -330,6 +330,15 @@ declare global {
     filesToRead?: string[];
     skipSorting?: boolean;
     readFlows?: boolean;
+  }
+
+  interface FlowExecutionContext {
+    readPackCache: Map<string, Promise<Pack>>;
+    tableFilesByPackAndTable: Map<string, PackedFile[]>;
+    rowsByPackedFile: WeakMap<PackedFile, AmendedSchemaField[][]>;
+    columnIndexesByPackedFile: WeakMap<PackedFile, Map<string, number>>;
+    outputPackByPath: Map<string, NewPackedFile[]>;
+    isDebug: boolean;
   }
 
   interface UserFlowOptionValues {
@@ -1100,6 +1109,8 @@ declare global {
     nodeType: string;
     textValue: string;
     inputData: any;
+    config?: unknown;
+    executionContext?: FlowExecutionContext;
   }
 
   interface NodeExecutionResult {

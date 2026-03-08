@@ -1,12 +1,13 @@
+import type { SerializedConnection, SerializedNode } from "./nodeGraph/types";
+import { FlowExecutionContext, flowExecutionDebugLog } from "./flowExecutionSupport";
 import { executeNodeAction, resetCounterTracking } from "./nodeExecutor";
-import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
-
 interface NodeGraphExecutionRequest {
   nodes: SerializedNode[];
   connections: SerializedConnection[];
-  resetCounters?: boolean; // Optional flag to control counter reset (defaults to true)
+  nodeConfigs?: Record<string, unknown>;
+  executionContext?: FlowExecutionContext;
+  resetCounters?: boolean;
 }
-
 interface NodeGraphExecutionResult {
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
@@ -15,46 +16,331 @@ interface NodeGraphExecutionResult {
   failureCount: number;
   error?: string;
 }
-
 interface NodeExecutionResult {
   success: boolean;
   data?: any;
-  elseData?: any; // For filter node's "else" output handle
-  multiOutputs?: Record<string, any>; // For multi-output nodes like generaterows and multifilter
+  elseData?: any;
+  multiOutputs?: Record<string, any>;
   error?: string;
 }
-
-export const executeNodeGraph = async (
-  request: NodeGraphExecutionRequest
-): Promise<NodeGraphExecutionResult> => {
-  const { nodes, connections, resetCounters = true } = request;
-
+const isMultiOutputNodeType = (nodeType?: string): boolean =>
+  nodeType === "generaterows" || nodeType === "generaterowsschema" || nodeType === "multifilter";
+const serializeNodeConfigForExecution = (node: SerializedNode): string => {
+  if (node.type === "packfilesdropdown") {
+    return node.data.selectedPack || "";
+  }
+  if (node.type === "tableselectiondropdown") {
+    return node.data.selectedTable || "";
+  }
+  if (node.type === "columnselectiondropdown") {
+    return node.data.selectedColumn || "";
+  }
+  if (node.type === "groupbycolumns") {
+    return JSON.stringify({
+      column1: node.data.selectedColumn1 || "",
+      column2: node.data.selectedColumn2 || "",
+      onlyForMultiple: node.data.onlyForMultiple || false,
+    });
+  }
+  if (node.type === "filter") {
+    return JSON.stringify({
+      filters: (node.data as any).filters || [],
+    });
+  }
+  if (node.type === "multifilter") {
+    return JSON.stringify({
+      selectedColumn: (node.data as any).selectedColumn || "",
+      splitValues: (node.data as any).splitValues || [],
+    });
+  }
+  if (node.type === "referencelookup") {
+    return JSON.stringify({
+      selectedReferenceTable: (node.data as any).selectedReferenceTable || "",
+      includeBaseGame: (node.data as any).includeBaseGame !== false,
+    });
+  }
+  if (node.type === "reversereferencelookup") {
+    return JSON.stringify({
+      selectedReverseTable: (node.data as any).selectedReverseTable || "",
+      includeBaseGame: (node.data as any).includeBaseGame !== false,
+    });
+  }
+  if (node.type === "groupedcolumnstotext") {
+    return JSON.stringify({
+      pattern: (node.data as any).pattern || "{0}: {1}",
+      joinSeparator: (node.data as any).joinSeparator || "\\n",
+    });
+  }
+  if (node.type === "savechanges") {
+    return JSON.stringify({
+      packName: (node.data as any).packName || "",
+      packedFileName: (node.data as any).packedFileName || "",
+      additionalConfig: node.data.textValue || "",
+      flowExecutionId: (node.data as any).flowExecutionId || "",
+    });
+  }
+  if (node.type === "textsurround") {
+    return JSON.stringify({
+      surroundText: node.data.textValue || "",
+      groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
+    });
+  }
+  if (node.type === "appendtext") {
+    return JSON.stringify({
+      beforeText: (node.data as any).beforeText || "",
+      afterText: (node.data as any).afterText || "",
+      groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
+    });
+  }
+  if (node.type === "allenabledmods") {
+    return JSON.stringify({
+      includeBaseGame: (node.data as any).includeBaseGame !== false,
+    });
+  }
+  if (node.type === "indextable") {
+    return JSON.stringify({
+      indexColumns: (node.data as any).indexColumns || [],
+    });
+  }
+  if (node.type === "lookup") {
+    return JSON.stringify({
+      lookupColumn: (node.data as any).lookupColumn || "",
+      joinType: (node.data as any).joinType || "inner",
+      indexColumns: (node.data as any).indexColumns || [],
+      indexJoinColumn: (node.data as any).indexJoinColumn || "",
+    });
+  }
+  if (node.type === "extracttable") {
+    return JSON.stringify({
+      tablePrefix: (node.data as any).tablePrefix || "",
+    });
+  }
+  if (node.type === "aggregatenested") {
+    return JSON.stringify({
+      aggregateColumn: (node.data as any).aggregateColumn || "",
+      aggregateType: (node.data as any).aggregateType || "min",
+      filterColumn: (node.data as any).filterColumn || "",
+      filterOperator: (node.data as any).filterOperator || "equals",
+      filterValue: (node.data as any).filterValue || "",
+    });
+  }
+  if (node.type === "generaterows" || node.type === "generaterowsschema") {
+    return JSON.stringify({
+      transformations: (node.data as any).transformations || [],
+      outputTables: (node.data as any).outputTables || [],
+      DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
+      customSchemaData: (node.data as any).customSchemaData || null,
+    });
+  }
+  if (node.type === "addnewcolumn") {
+    return JSON.stringify({
+      transformations: (node.data as any).transformations || [],
+      DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
+    });
+  }
+  if (node.type === "groupby") {
+    return JSON.stringify({
+      groupByColumns: (node.data as any).groupByColumns || [],
+      aggregations: (node.data as any).aggregations || [],
+    });
+  }
+  if (node.type === "deduplicate") {
+    return JSON.stringify({
+      dedupeByColumns: (node.data as any).dedupeByColumns || [],
+      dedupeAgainstVanilla: (node.data as any).dedupeAgainstVanilla || false,
+    });
+  }
+  if (node.type === "dumptotsv") {
+    return JSON.stringify({
+      filename: (node.data as any).filename || "",
+      openInWindows: (node.data as any).openInWindows ?? false,
+    });
+  }
+  if (node.type === "getcountercolumn") {
+    return JSON.stringify({
+      selectedTable: (node.data as any).selectedTable || "",
+      selectedColumn: (node.data as any).selectedColumn || "",
+      newColumnName: (node.data as any).newColumnName || "",
+    });
+  }
+  if (node.type === "customschema") {
+    return JSON.stringify({
+      schemaColumns: (node.data as any).schemaColumns || [],
+    });
+  }
+  if (node.type === "readtsvfrompack") {
+    return JSON.stringify({
+      tsvFileName: (node.data as any).tsvFileName || "",
+    });
+  }
+  if (node.type === "customrowsinput") {
+    return JSON.stringify({
+      customRows: (node.data as any).customRows || [],
+    });
+  }
+  return node.data.textValue || "";
+};
+const extractConnectionData = (
+  connection: SerializedConnection,
+  executionResults: Map<string, NodeExecutionResult>,
+  nodeMap: Map<string, SerializedNode>,
+) => {
+  const sourceResult = executionResults.get(connection.sourceId);
+  if (!sourceResult) return null;
+  if (connection.sourceHandle === "else" && sourceResult.elseData) {
+    return sourceResult.elseData;
+  }
+  const sourceNode = nodeMap.get(connection.sourceId);
+  if (
+    isMultiOutputNodeType(sourceNode?.type) &&
+    connection.sourceHandle &&
+    sourceResult.data &&
+    typeof sourceResult.data === "object" &&
+    !Array.isArray(sourceResult.data)
+  ) {
+    return (sourceResult.data as Record<string, any>)[connection.sourceHandle] ?? null;
+  }
+  return sourceResult.data ?? null;
+};
+const mergeTableSelectionInputs = (
+  targetIncomingConnections: SerializedConnection[],
+  executionResults: Map<string, NodeExecutionResult>,
+  nodeMap: Map<string, SerializedNode>,
+) => {
+  const mergedSourceFiles: any[] = [];
+  const allTables: any[] = [];
+  for (const connection of targetIncomingConnections) {
+    const sourceData = extractConnectionData(connection, executionResults, nodeMap);
+    if (sourceData?.type !== "TableSelection") continue;
+    if (sourceData.tables) {
+      allTables.push(...sourceData.tables);
+    }
+    if (sourceData.sourceFiles) {
+      mergedSourceFiles.push(...sourceData.sourceFiles);
+    }
+  }
+  if (allTables.length === 0) {
+    return null;
+  }
+  return {
+    type: "TableSelection",
+    tables: allTables,
+    sourceFiles: mergedSourceFiles,
+    tableCount: allTables.length,
+  };
+};
+const buildInputDataForTarget = (
+  targetNode: SerializedNode,
+  targetIncomingConnections: SerializedConnection[],
+  executionResults: Map<string, NodeExecutionResult>,
+  nodeMap: Map<string, SerializedNode>,
+) => {
+  if (
+    targetNode.type === "mergechanges" ||
+    targetNode.type === "numericadjustment" ||
+    targetNode.type === "mathmax" ||
+    targetNode.type === "mathceil"
+  ) {
+    const allInputs = targetIncomingConnections
+      .map((connection) => extractConnectionData(connection, executionResults, nodeMap))
+      .filter((data) => data !== null && data !== undefined);
+    return allInputs.length > 0 ? allInputs : null;
+  }
+  if (targetNode.type === "savechanges") {
+    const allTables: any[] = [];
+    const allSourceFiles: any[] = [];
+    let changedColumnSelectionData = null;
+    let textData = null;
+    for (const connection of targetIncomingConnections) {
+      const inputData = extractConnectionData(connection, executionResults, nodeMap);
+      if (inputData?.type === "Text" && !textData) {
+        textData = inputData;
+      } else if (inputData?.type === "TableSelection") {
+        if (inputData.tables) {
+          allTables.push(...inputData.tables);
+        }
+        if (inputData.sourceFiles) {
+          allSourceFiles.push(...inputData.sourceFiles);
+        }
+      } else if (inputData?.type === "ChangedColumnSelection" && !changedColumnSelectionData) {
+        changedColumnSelectionData = inputData;
+      }
+    }
+    if (textData) return textData;
+    if (changedColumnSelectionData) return changedColumnSelectionData;
+    if (allTables.length > 0) {
+      return {
+        type: "TableSelection",
+        tables: allTables,
+        sourceFiles: allSourceFiles,
+        tableCount: allTables.length,
+      };
+    }
+    return null;
+  }
+  if (targetNode.type === "lookup") {
+    const sourceConnection = targetIncomingConnections.find((connection) => connection.targetHandle === "input-source");
+    const indexConnection = targetIncomingConnections.find((connection) => connection.targetHandle === "input-index");
+    if (!sourceConnection || !indexConnection) {
+      return null;
+    }
+    return [
+      extractConnectionData(sourceConnection, executionResults, nodeMap),
+      extractConnectionData(indexConnection, executionResults, nodeMap),
+    ];
+  }
+  if (targetNode.type === "readtsvfrompack") {
+    const schemaConnection = targetIncomingConnections.find((connection) => connection.targetHandle === "input-schema");
+    const packsConnection = targetIncomingConnections.find((connection) => connection.targetHandle === "input-packs");
+    if (!schemaConnection) {
+      return null;
+    }
+    return [
+      extractConnectionData(schemaConnection, executionResults, nodeMap),
+      packsConnection ? extractConnectionData(packsConnection, executionResults, nodeMap) : null,
+    ];
+  }
+  if (
+    (targetNode.type === "generaterows" ||
+      targetNode.type === "generaterowsschema" ||
+      targetNode.type === "dumptotsv") &&
+    targetIncomingConnections.length > 1
+  ) {
+    return mergeTableSelectionInputs(targetIncomingConnections, executionResults, nodeMap);
+  }
+  if (targetIncomingConnections.length === 0) {
+    return null;
+  }
+  return extractConnectionData(targetIncomingConnections[targetIncomingConnections.length - 1], executionResults, nodeMap);
+};
+export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Promise<NodeGraphExecutionResult> => {
+  const { nodes, connections, nodeConfigs, executionContext, resetCounters = true } = request;
   const startTime = performance.now();
-  console.log("Starting node graph execution in backend...");
-  console.log(`Graph contains ${nodes.length} nodes and ${connections.length} connections`);
-
-  // Reset counter tracking at the start of each flow execution (unless explicitly disabled)
+  console.log(`Starting node graph execution: ${nodes.length} nodes, ${connections.length} connections`);
   if (resetCounters) {
     resetCounterTracking();
   }
-
   try {
-    // Build execution graph
     const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-    const edgeMap = new Map<string, string[]>();
-
-    // Build adjacency list for connections
-    connections.forEach((connection) => {
-      if (!edgeMap.has(connection.sourceId)) {
-        edgeMap.set(connection.sourceId, []);
+    const outgoingConnectionsBySource = new Map<string, SerializedConnection[]>();
+    const incomingConnectionsByTarget = new Map<string, SerializedConnection[]>();
+    const incomingEdges = new Set<string>();
+    for (const connection of connections) {
+      const outgoingConnections = outgoingConnectionsBySource.get(connection.sourceId);
+      if (outgoingConnections) {
+        outgoingConnections.push(connection);
+      } else {
+        outgoingConnectionsBySource.set(connection.sourceId, [connection]);
       }
-      edgeMap.get(connection.sourceId)?.push(connection.targetId);
-    });
-
-    // Find starting nodes (nodes with no incoming edges)
-    const incomingEdges = new Set(connections.map((conn) => conn.targetId));
+      const incomingConnections = incomingConnectionsByTarget.get(connection.targetId);
+      if (incomingConnections) {
+        incomingConnections.push(connection);
+      } else {
+        incomingConnectionsByTarget.set(connection.targetId, [connection]);
+      }
+      incomingEdges.add(connection.targetId);
+    }
     const startingNodes = nodes.filter((node) => !incomingEdges.has(node.id));
-
     if (startingNodes.length === 0) {
       return {
         success: false,
@@ -65,603 +351,74 @@ export const executeNodeGraph = async (
         error: "No starting nodes found in the graph",
       };
     }
-
-    console.log(
-      `Found ${startingNodes.length} starting nodes:`,
-      startingNodes.map((n) => n.id)
+    flowExecutionDebugLog(
+      executionContext,
+      `Graph starting nodes: ${startingNodes.map((node) => `${node.id}(${node.type})`).join(", ")}`,
     );
-
-    // Execute nodes in topological order using BFS
     const executionResults = new Map<string, NodeExecutionResult>();
-    const executionQueue = [...startingNodes.map((node) => ({ node, inputData: null }))];
     const executed = new Set<string>();
-
-    while (executionQueue.length > 0) {
-      const { node, inputData } = executionQueue.shift()!;
-
-      if (executed.has(node.id)) continue;
-
+    const executionQueue = startingNodes.map((node) => ({ node, inputData: null as any }));
+    let queueIndex = 0;
+    while (queueIndex < executionQueue.length) {
+      const { node, inputData } = executionQueue[queueIndex++];
+      if (executed.has(node.id)) {
+        continue;
+      }
       try {
-        console.log(`Executing node: ${node.id} (${node.type})`);
-
-        // Log node data, but exclude verbose DBNameToDBVersions if present
-        if ((node.data as any)?.DBNameToDBVersions) {
-          const { DBNameToDBVersions, ...dataWithoutDB } = node.data as any;
-          console.log(
-            `Node data (DBNameToDBVersions excluded, ${
-              Object.keys(DBNameToDBVersions || {}).length
-            } tables):`,
-            dataWithoutDB
-          );
-        } else {
-          console.log(`Node data:`, node.data);
-        }
-
-        // Execute the node using existing backend executor
-        let textValueToUse = "";
-        if (node.type === "packfilesdropdown") {
-          textValueToUse = node.data.selectedPack || "";
-        } else if (node.type === "tableselectiondropdown") {
-          textValueToUse = node.data.selectedTable || "";
-        } else if (node.type === "columnselectiondropdown") {
-          textValueToUse = node.data.selectedColumn || "";
-        } else if (node.type === "groupbycolumns") {
-          textValueToUse = JSON.stringify({
-            column1: node.data.selectedColumn1 || "",
-            column2: node.data.selectedColumn2 || "",
-            onlyForMultiple: node.data.onlyForMultiple || false,
-          });
-        } else if (node.type === "filter") {
-          textValueToUse = JSON.stringify({
-            filters: (node.data as any).filters || [],
-          });
-        } else if (node.type === "multifilter") {
-          textValueToUse = JSON.stringify({
-            selectedColumn: (node.data as any).selectedColumn || "",
-            splitValues: (node.data as any).splitValues || [],
-          });
-        } else if (node.type === "referencelookup") {
-          console.log(
-            `Reference lookup node ${node.id} data:`,
-            JSON.stringify({ ...node.data, DBNameToDBVersions: "not logging this" }, null, 2)
-          );
-          textValueToUse = JSON.stringify({
-            selectedReferenceTable: (node.data as any).selectedReferenceTable || "",
-            includeBaseGame: (node.data as any).includeBaseGame !== false,
-          });
-          console.log(`Reference lookup node ${node.id} textValueToUse:`, textValueToUse);
-        } else if (node.type === "reversereferencelookup") {
-          console.log(
-            `Reverse reference lookup node ${node.id} data:`,
-            JSON.stringify({ ...node.data, DBNameToDBVersions: "not logging this" }, null, 2)
-          );
-          textValueToUse = JSON.stringify({
-            selectedReverseTable: (node.data as any).selectedReverseTable || "",
-            includeBaseGame: (node.data as any).includeBaseGame !== false,
-          });
-          console.log(`Reverse reference lookup node ${node.id} textValueToUse:`, textValueToUse);
-        } else if (node.type === "groupedcolumnstotext") {
-          textValueToUse = JSON.stringify({
-            pattern: (node.data as any).pattern || "{0}: {1}",
-            joinSeparator: (node.data as any).joinSeparator || "\\n",
-          });
-        } else if (node.type === "savechanges") {
-          textValueToUse = JSON.stringify({
-            packName: (node.data as any).packName || "",
-            packedFileName: (node.data as any).packedFileName || "",
-            additionalConfig: node.data.textValue || "",
-            flowExecutionId: (node.data as any).flowExecutionId || "",
-          });
-        } else if (node.type === "textsurround") {
-          textValueToUse = JSON.stringify({
-            surroundText: node.data.textValue || "",
-            groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
-          });
-        } else if (node.type === "appendtext") {
-          textValueToUse = JSON.stringify({
-            beforeText: (node.data as any).beforeText || "",
-            afterText: (node.data as any).afterText || "",
-            groupedTextSelection: (node.data as any).groupedTextSelection || "Text",
-          });
-        } else if (node.type === "allenabledmods") {
-          textValueToUse = JSON.stringify({
-            includeBaseGame: (node.data as any).includeBaseGame !== false,
-          });
-        } else if (node.type === "indextable") {
-          textValueToUse = JSON.stringify({
-            indexColumns: (node.data as any).indexColumns || [],
-          });
-        } else if (node.type === "lookup") {
-          textValueToUse = JSON.stringify({
-            lookupColumn: (node.data as any).lookupColumn || "",
-            joinType: (node.data as any).joinType || "inner",
-            indexColumns: (node.data as any).indexColumns || [],
-            indexJoinColumn: (node.data as any).indexJoinColumn || "",
-          });
-        } else if (node.type === "extracttable") {
-          textValueToUse = JSON.stringify({
-            tablePrefix: (node.data as any).tablePrefix || "",
-          });
-        } else if (node.type === "aggregatenested") {
-          textValueToUse = JSON.stringify({
-            aggregateColumn: (node.data as any).aggregateColumn || "",
-            aggregateType: (node.data as any).aggregateType || "min",
-            filterColumn: (node.data as any).filterColumn || "",
-            filterOperator: (node.data as any).filterOperator || "equals",
-            filterValue: (node.data as any).filterValue || "",
-          });
-        } else if (node.type === "generaterows" || node.type === "generaterowsschema") {
-          console.log(
-            `Generate Rows serialization - node.data.transformations:`,
-            (node.data as any).transformations
-          );
-          console.log(
-            `Generate Rows serialization - node.data.outputTables:`,
-            (node.data as any).outputTables
-          );
-          console.log(
-            `Generate Rows serialization - has DBNameToDBVersions:`,
-            !!(node.data as any).DBNameToDBVersions
-          );
-          console.log(
-            `Generate Rows serialization - customSchemaData:`,
-            (node.data as any).customSchemaData
-          );
-          textValueToUse = JSON.stringify({
-            transformations: (node.data as any).transformations || [],
-            outputTables: (node.data as any).outputTables || [],
-            DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
-            customSchemaData: (node.data as any).customSchemaData || null,
-          });
-          console.log(`Generate Rows serialization - textValueToUse length:`, textValueToUse.length);
-        } else if (node.type === "addnewcolumn") {
-          textValueToUse = JSON.stringify({
-            transformations: (node.data as any).transformations || [],
-            DBNameToDBVersions: (node.data as any).DBNameToDBVersions || {},
-          });
-        } else if (node.type === "groupby") {
-          console.log(
-            `Group By serialization - node.data.groupByColumns:`,
-            (node.data as any).groupByColumns
-          );
-          console.log(`Group By serialization - node.data.aggregations:`, (node.data as any).aggregations);
-          textValueToUse = JSON.stringify({
-            groupByColumns: (node.data as any).groupByColumns || [],
-            aggregations: (node.data as any).aggregations || [],
-          });
-          console.log(`Group By serialization - textValueToUse:`, textValueToUse);
-        } else if (node.type === "deduplicate") {
-          console.log(
-            `Deduplicate serialization - node.data.dedupeByColumns:`,
-            (node.data as any).dedupeByColumns
-          );
-          textValueToUse = JSON.stringify({
-            dedupeByColumns: (node.data as any).dedupeByColumns || [],
-            dedupeAgainstVanilla: (node.data as any).dedupeAgainstVanilla || false,
-          });
-          console.log(`Deduplicate serialization - textValueToUse:`, textValueToUse);
-        } else if (node.type === "dumptotsv") {
-          textValueToUse = JSON.stringify({
-            filename: (node.data as any).filename || "",
-            openInWindows: (node.data as any).openInWindows ?? false,
-          });
-        } else if (node.type === "getcountercolumn") {
-          textValueToUse = JSON.stringify({
-            selectedTable: (node.data as any).selectedTable || "",
-            selectedColumn: (node.data as any).selectedColumn || "",
-            newColumnName: (node.data as any).newColumnName || "",
-          });
-        } else if (node.type === "customschema") {
-          textValueToUse = JSON.stringify({
-            schemaColumns: (node.data as any).schemaColumns || [],
-          });
-        } else if (node.type === "readtsvfrompack") {
-          textValueToUse = JSON.stringify({
-            tsvFileName: (node.data as any).tsvFileName || "",
-          });
-        } else if (node.type === "customrowsinput") {
-          textValueToUse = JSON.stringify({
-            customRows: (node.data as any).customRows || [],
-          });
-        } else {
-          textValueToUse = node.data.textValue || "";
-        }
-
+        flowExecutionDebugLog(executionContext, `Executing node ${node.id} (${node.type})`);
+        const config = nodeConfigs?.[node.id];
+        const textValue =
+          config === undefined ? serializeNodeConfigForExecution(node) : typeof config === "string" ? config : "";
         const result = await executeNodeAction({
           nodeId: node.id,
           nodeType: node.type,
-          textValue: textValueToUse,
-          inputData: inputData,
+          textValue,
+          inputData,
+          config,
+          executionContext,
         });
-
         executionResults.set(node.id, result);
         executed.add(node.id);
-
-        if (result.success) {
-          console.log(`Node ${node.id} executed successfully`);
-
-          // Queue connected nodes for execution
-          const connectedNodeIds = edgeMap.get(node.id) || [];
-          for (const targetNodeId of connectedNodeIds) {
-            const targetNode = nodeMap.get(targetNodeId);
-            if (targetNode && !executed.has(targetNodeId)) {
-              // Check if all dependencies of the target node are completed
-              const targetIncomingConnections = connections.filter((conn) => conn.targetId === targetNodeId);
-              const allDependenciesCompleted = targetIncomingConnections.every(
-                (conn) => executed.has(conn.sourceId) && executionResults.get(conn.sourceId)?.success
-              );
-
-              if (allDependenciesCompleted) {
-                // For merge changes node and numeric/math nodes, collect all dependency data into an array
-                let inputDataForTarget;
-                if (
-                  targetNode.type === "mergechanges" ||
-                  targetNode.type === "numericadjustment" ||
-                  targetNode.type === "mathmax" ||
-                  targetNode.type === "mathceil"
-                ) {
-                  // Collect all inputs from all incoming connections
-                  const allInputs = targetIncomingConnections
-                    .map((conn) => {
-                      const sourceResult = executionResults.get(conn.sourceId);
-                      const sourceNode = nodeMap.get(conn.sourceId);
-                      // Check if sourceHandle is "else" and use elseData if available
-                      if (conn.sourceHandle === "else" && sourceResult?.elseData) {
-                        return sourceResult.elseData;
-                      }
-                      // Check if source is generaterows or multifilter with multi-output
-                      if (
-                        (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
-                        conn.sourceHandle &&
-                        sourceResult?.data &&
-                        typeof sourceResult.data === "object" &&
-                        !Array.isArray(sourceResult.data)
-                      ) {
-                        // Extract specific output by handle ID from data field
-                        return (sourceResult.data as any)[conn.sourceHandle];
-                      }
-                      return sourceResult?.data;
-                    })
-                    .filter((data) => data !== null && data !== undefined);
-                  inputDataForTarget = allInputs.length > 0 ? allInputs : null;
-                } else if (targetNode.type === "savechanges") {
-                  // Save changes node should collect all inputs
-                  // Priority: Text > ChangedColumnSelection > TableSelection
-                  const allTables: any[] = [];
-                  const allSourceFiles: any[] = [];
-                  let changedColumnSelectionData = null;
-                  let textData = null;
-
-                  for (const conn of targetIncomingConnections) {
-                    const sourceResult = executionResults.get(conn.sourceId);
-                    const sourceNode = nodeMap.get(conn.sourceId);
-                    let inputData = null;
-
-                    // Check if sourceHandle is "else" and use elseData if available
-                    if (conn.sourceHandle === "else" && sourceResult?.elseData) {
-                      inputData = sourceResult.elseData;
-                    }
-                    // Check if source is generaterows or multifilter with multi-output
-                    else if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
-                      conn.sourceHandle &&
-                      sourceResult?.data &&
-                      typeof sourceResult.data === "object" &&
-                      !Array.isArray(sourceResult.data)
-                    ) {
-                      // Extract specific output by handle ID from data field
-                      inputData = (sourceResult.data as any)[conn.sourceHandle];
-                      console.log(
-                        `Save Changes: Using output "${conn.sourceHandle}" from ${sourceNode.type} node ${conn.sourceId}`
-                      );
-                    } else {
-                      inputData = sourceResult?.data;
-                    }
-
-                    // Handle Text data
-                    if (inputData && inputData.type === "Text") {
-                      if (!textData) {
-                        textData = inputData;
-                      }
-                    }
-                    // Collect tables from TableSelection data
-                    else if (inputData && inputData.type === "TableSelection") {
-                      if (inputData.tables) {
-                        allTables.push(...inputData.tables);
-                      }
-                      if (inputData.sourceFiles) {
-                        allSourceFiles.push(...inputData.sourceFiles);
-                      }
-                    }
-                    // Handle ChangedColumnSelection data
-                    else if (inputData && inputData.type === "ChangedColumnSelection") {
-                      if (!changedColumnSelectionData) {
-                        changedColumnSelectionData = inputData;
-                      }
-                    }
-                  }
-
-                  // Priority: Text > ChangedColumnSelection > TableSelection > null
-                  if (textData) {
-                    inputDataForTarget = textData;
-                    console.log(`Save Changes: Using Text input`);
-                  } else if (changedColumnSelectionData) {
-                    inputDataForTarget = changedColumnSelectionData;
-                    console.log(`Save Changes: Using ChangedColumnSelection input`);
-                  } else if (allTables.length > 0) {
-                    inputDataForTarget = {
-                      type: "TableSelection",
-                      tables: allTables,
-                      sourceFiles: allSourceFiles,
-                      tableCount: allTables.length,
-                    };
-                    console.log(
-                      `Save Changes: Merged ${allTables.length} tables from ${targetIncomingConnections.length} input(s)`
-                    );
-                  } else {
-                    inputDataForTarget = null;
-                  }
-                } else if (targetNode.type === "lookup") {
-                  // Lookup node has two inputs: source and indexed table
-                  // Need to collect them in specific order based on targetHandle
-                  const sourceConnection = targetIncomingConnections.find(
-                    (conn) => conn.targetHandle === "input-source"
-                  );
-                  const indexConnection = targetIncomingConnections.find(
-                    (conn) => conn.targetHandle === "input-index"
-                  );
-
-                  if (sourceConnection && indexConnection) {
-                    const sourceResult = executionResults.get(sourceConnection.sourceId);
-                    const indexResult = executionResults.get(indexConnection.sourceId);
-
-                    // Extract source data, handling multi-output nodes
-                    let sourceData = sourceResult?.data;
-                    const sourceNode = nodeMap.get(sourceConnection.sourceId);
-                    if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
-                      sourceConnection.sourceHandle &&
-                      sourceResult?.data &&
-                      typeof sourceResult.data === "object" &&
-                      !Array.isArray(sourceResult.data)
-                    ) {
-                      sourceData = (sourceResult.data as any)[sourceConnection.sourceHandle];
-                    }
-
-                    // Extract index data, handling multi-output nodes
-                    let indexData = indexResult?.data;
-                    const indexSourceNode = nodeMap.get(indexConnection.sourceId);
-                    if (
-                      (indexSourceNode?.type === "generaterows" || indexSourceNode?.type === "generaterowsschema" || indexSourceNode?.type === "multifilter") &&
-                      indexConnection.sourceHandle &&
-                      indexResult?.data &&
-                      typeof indexResult.data === "object" &&
-                      !Array.isArray(indexResult.data)
-                    ) {
-                      indexData = (indexResult.data as any)[indexConnection.sourceHandle];
-                    }
-
-                    inputDataForTarget = [sourceData, indexData];
-                  } else {
-                    inputDataForTarget = null;
-                  }
-                } else if (targetNode.type === "readtsvfrompack") {
-                  // ReadTSVFromPack node has two inputs: schema and pack files
-                  // Need to collect them in specific order based on targetHandle
-                  const schemaConnection = targetIncomingConnections.find(
-                    (conn) => conn.targetHandle === "input-schema"
-                  );
-                  const packsConnection = targetIncomingConnections.find(
-                    (conn) => conn.targetHandle === "input-packs"
-                  );
-
-                  if (schemaConnection && packsConnection) {
-                    const schemaResult = executionResults.get(schemaConnection.sourceId);
-                    const packsResult = executionResults.get(packsConnection.sourceId);
-                    inputDataForTarget = [schemaResult?.data, packsResult?.data];
-                  } else if (schemaConnection) {
-                    // Schema only - use null for packs (will fall back to all enabled mods)
-                    const schemaResult = executionResults.get(schemaConnection.sourceId);
-                    inputDataForTarget = [schemaResult?.data, null];
-                  } else {
-                    inputDataForTarget = null;
-                  }
-                } else if ((targetNode.type === "generaterows" || targetNode.type === "generaterowsschema") && targetIncomingConnections.length > 1) {
-                  // Generate Rows with multiple inputs: merge all TableSelection inputs
-                  const mergedSourceFiles: any[] = [];
-                  const allTables: any[] = [];
-
-                  // Collect data from all inputs
-                  for (const conn of targetIncomingConnections) {
-                    const sourceNode = nodeMap.get(conn.sourceId);
-                    const sourceResult = executionResults.get(conn.sourceId);
-
-                    let sourceData = null;
-
-                    // For multi-output nodes (generaterows, multifilter), extract specific output
-                    if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
-                      conn.sourceHandle &&
-                      sourceResult?.data &&
-                      typeof sourceResult.data === "object" &&
-                      !Array.isArray(sourceResult.data)
-                    ) {
-                      sourceData = (sourceResult.data as any)[conn.sourceHandle];
-                    } else {
-                      sourceData = sourceResult?.data;
-                    }
-
-                    if (sourceData?.type === "TableSelection") {
-                      // Collect tables from this input
-                      if (sourceData.tables) {
-                        allTables.push(...sourceData.tables);
-                      }
-
-                      // Collect source files from this input
-                      if (sourceData.sourceFiles) {
-                        mergedSourceFiles.push(...sourceData.sourceFiles);
-                      }
-                    }
-                  }
-
-                  if (allTables.length > 0) {
-                    inputDataForTarget = {
-                      type: "TableSelection",
-                      tables: allTables,
-                      sourceFiles: mergedSourceFiles,
-                      tableCount: allTables.length,
-                    };
-
-                    console.log(
-                      `Generate Rows: Merged ${allTables.length} tables from ${targetIncomingConnections.length} inputs`
-                    );
-                  } else {
-                    inputDataForTarget = null;
-                  }
-                } else if (targetNode.type === "dumptotsv" && targetIncomingConnections.length > 1) {
-                  // Dump to TSV with multiple inputs: merge all TableSelection inputs
-                  const mergedSourceFiles: any[] = [];
-                  const allTables: any[] = [];
-
-                  // Collect data from all inputs
-                  for (const conn of targetIncomingConnections) {
-                    const sourceNode = nodeMap.get(conn.sourceId);
-                    const sourceResult = executionResults.get(conn.sourceId);
-
-                    let sourceData = null;
-
-                    // For multi-output nodes (generaterows, multifilter), extract specific output
-                    if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
-                      conn.sourceHandle &&
-                      sourceResult?.data &&
-                      typeof sourceResult.data === "object" &&
-                      !Array.isArray(sourceResult.data)
-                    ) {
-                      sourceData = (sourceResult.data as any)[conn.sourceHandle];
-                    } else {
-                      sourceData = sourceResult?.data;
-                    }
-
-                    if (sourceData?.type === "TableSelection") {
-                      // Collect tables from this input
-                      if (sourceData.tables) {
-                        allTables.push(...sourceData.tables);
-                      }
-
-                      // Collect source files from this input
-                      if (sourceData.sourceFiles) {
-                        mergedSourceFiles.push(...sourceData.sourceFiles);
-                      }
-                    }
-                  }
-
-                  if (allTables.length > 0) {
-                    inputDataForTarget = {
-                      type: "TableSelection",
-                      tables: allTables,
-                      sourceFiles: mergedSourceFiles,
-                      tableCount: allTables.length,
-                    };
-
-                    console.log(
-                      `Dump to TSV: Merged ${allTables.length} tables from ${targetIncomingConnections.length} inputs`
-                    );
-                  } else {
-                    inputDataForTarget = null;
-                  }
-                } else {
-                  // Get input data from the most recent dependency
-                  if (targetIncomingConnections.length > 0) {
-                    const lastConnection = targetIncomingConnections[targetIncomingConnections.length - 1];
-                    const sourceResult = executionResults.get(lastConnection.sourceId);
-                    const sourceNode = nodeMap.get(lastConnection.sourceId);
-
-                    // Check if sourceHandle is "else" and use elseData if available (Filter node)
-                    if (lastConnection.sourceHandle === "else" && sourceResult?.elseData) {
-                      inputDataForTarget = sourceResult.elseData;
-                    }
-                    // Check if source is generaterows or multifilter with multi-output
-                    else if (
-                      (sourceNode?.type === "generaterows" || sourceNode?.type === "generaterowsschema" || sourceNode?.type === "multifilter") &&
-                      lastConnection.sourceHandle &&
-                      sourceResult?.data &&
-                      typeof sourceResult.data === "object" &&
-                      !Array.isArray(sourceResult.data)
-                    ) {
-                      // Extract specific output by handle ID from data field
-                      const outputData = (sourceResult.data as any)[lastConnection.sourceHandle];
-                      inputDataForTarget = outputData || null;
-                      console.log(
-                        `Using output "${lastConnection.sourceHandle}" from ${sourceNode.type} node ${lastConnection.sourceId}`
-                      );
-                      console.log(
-                        `Available handles in ${sourceNode.type} output:`,
-                        Object.keys(sourceResult.data)
-                      );
-                      console.log(`Extracted outputData:`, outputData);
-                      console.log(`Output data type:`, outputData?.type);
-                    } else {
-                      inputDataForTarget = sourceResult?.data;
-                    }
-                  } else {
-                    inputDataForTarget = null;
-                  }
-                }
-
-                executionQueue.push({
-                  node: targetNode,
-                  inputData: inputDataForTarget,
-                });
-              }
-            }
+        if (!result.success) {
+          console.error(`Node ${node.id} (${node.type}) execution failed:`, result.error);
+          continue;
+        }
+        const outgoingConnections = outgoingConnectionsBySource.get(node.id) || [];
+        for (const connection of outgoingConnections) {
+          const targetNode = nodeMap.get(connection.targetId);
+          if (!targetNode || executed.has(targetNode.id)) {
+            continue;
           }
-        } else {
-          console.error(`Node ${node.id} execution failed:`, result.error);
+          const targetIncomingConnections = incomingConnectionsByTarget.get(targetNode.id) || [];
+          const allDependenciesCompleted = targetIncomingConnections.every(
+            (incomingConnection) =>
+              executed.has(incomingConnection.sourceId) && executionResults.get(incomingConnection.sourceId)?.success,
+          );
+          if (!allDependenciesCompleted) {
+            continue;
+          }
+          executionQueue.push({
+            node: targetNode,
+            inputData: buildInputDataForTarget(targetNode, targetIncomingConnections, executionResults, nodeMap),
+          });
         }
       } catch (error) {
         console.error(`Error executing node ${node.id}:`, error);
-        const errorResult = {
+        executionResults.set(node.id, {
           success: false,
           error: error instanceof Error ? error.message : "Unknown error",
-        };
-        executionResults.set(node.id, errorResult);
+        });
         executed.add(node.id);
       }
     }
-
-    // Calculate summary statistics
-    const successCount = Array.from(executionResults.values()).filter((r) => r.success).length;
+    const successCount = Array.from(executionResults.values()).filter((result) => result.success).length;
     const failureCount = executionResults.size - successCount;
-
-    // Log detailed execution results
-    const summary = Array.from(executionResults.entries())
-      .map(
-        ([nodeId, nodeResult]) =>
-          `${nodeId}(${nodeMap.get(nodeId)?.type}): ${nodeResult.success ? "✅" : "❌"}${
-            nodeResult.error ? ` (${nodeResult.error})` : ""
-          }`
-      )
-      .join("\n");
-
-    const statusMessage =
-      successCount === executionResults.size
-        ? `✅ Graph execution successful!`
-        : failureCount > 0
-        ? `❌ Graph execution completed with errors`
-        : `❌ Graph execution failed`;
-
     const elapsedTime = performance.now() - startTime;
-    console.log("\n" + "=".repeat(80));
-    console.log(`BACKEND: ${statusMessage}`);
-    console.log(`Execution Summary: ${successCount}/${executionResults.size} nodes succeeded`);
-    console.log(`Total execution time: ${elapsedTime.toFixed(2)}ms`);
-    console.log("-".repeat(80));
-    console.log(summary);
-    console.log("=".repeat(80) + "\n");
-
+    console.log(
+      `Node graph execution finished in ${elapsedTime.toFixed(2)}ms: ${successCount}/${executionResults.size} nodes succeeded`,
+    );
     return {
-      success: successCount > 0, // Consider successful if at least one node succeeded
+      success: successCount > 0,
       executionResults,
       totalExecuted: executionResults.size,
       successCount,
