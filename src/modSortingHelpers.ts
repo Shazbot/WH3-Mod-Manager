@@ -1,19 +1,35 @@
 const collator = new Intl.Collator("en");
 
 export function sortByNameAndLoadOrder(mods: Mod[]) {
-  const newMods = getModsSortedByName(mods);
-  [...newMods]
+  const sortedMods = getModsSortedByName(mods);
+  const orderedMods = sortedMods
     .filter((mod) => mod.loadOrder != null)
-    .sort((modF, modS) => (modF.loadOrder as number) - (modS.loadOrder as number))
-    .map((mod) => {
-      // console.log(`mod ${mod.name} has order ${mod.loadOrder}`);
-      newMods.splice(newMods.indexOf(mod), 1);
-      // newMods.splice(mod.loadOrder, 0, mod);
-      return mod;
-    })
-    .forEach((mod) => {
-      newMods.splice(mod.loadOrder as number, 0, mod);
-    });
+    .sort((modF, modS) => (modF.loadOrder as number) - (modS.loadOrder as number));
+
+  if (orderedMods.length === 0) return sortedMods;
+
+  const orderedModSet = new Set(orderedMods);
+  const unorderedMods = sortedMods.filter((mod) => !orderedModSet.has(mod));
+  const newMods: Mod[] = [];
+  let unorderedIndex = 0;
+  let orderedIndex = 0;
+
+  while (newMods.length < sortedMods.length) {
+    while (orderedIndex < orderedMods.length && (orderedMods[orderedIndex].loadOrder as number) <= newMods.length) {
+      newMods.push(orderedMods[orderedIndex]);
+      orderedIndex++;
+    }
+
+    if (unorderedIndex < unorderedMods.length) {
+      newMods.push(unorderedMods[unorderedIndex]);
+      unorderedIndex++;
+      continue;
+    }
+
+    newMods.push(orderedMods[orderedIndex]);
+    orderedIndex++;
+  }
+
   return newMods;
 }
 
@@ -31,8 +47,11 @@ export function sortAsInPreset(mods: Mod[], modsInPreset: Mod[]) {
 }
 
 export function getModsSortedByOrder(mods: Mod[], orderedMods: Mod[]) {
+  const orderedModIndices = new Map(orderedMods.map((mod, index) => [mod, index]));
   return [...mods].sort(
-    (firstMod, secondMod) => orderedMods.indexOf(firstMod) - orderedMods.indexOf(secondMod)
+    (firstMod, secondMod) =>
+      (orderedModIndices.get(firstMod) ?? Number.MAX_SAFE_INTEGER) -
+      (orderedModIndices.get(secondMod) ?? Number.MAX_SAFE_INTEGER)
   );
 }
 
