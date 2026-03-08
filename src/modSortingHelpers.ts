@@ -153,20 +153,28 @@ export function getModsSortedBySubbedTime(mods: Mod[]) {
 }
 
 export function getFilteredMods(mods: Mod[], filter: string, doAuthorFiltering: boolean) {
-  if (filter.startsWith("/") && filter.endsWith("/")) {
-    const regexFilter = new RegExp(filter.slice(1, filter.length - 1), "i");
-    return mods.filter(
+  const filterBySubstring = (needle: string) =>
+    mods.filter(
       (mod) =>
-        regexFilter.test(mod.name.replace(".pack", "")) ||
-        (mod.humanName && regexFilter.test(mod.humanName)) ||
-        (doAuthorFiltering && regexFilter.test(mod.author))
+        mod.name.replace(".pack", "").toLowerCase().includes(needle) ||
+        (mod.humanName && mod.humanName.toLowerCase().includes(needle)) ||
+        (doAuthorFiltering && mod.author.toLowerCase().includes(needle))
     );
+
+  if (filter.startsWith("/") && filter.endsWith("/")) {
+    const regexPattern = filter.slice(1, filter.length - 1);
+    try {
+      const regexFilter = new RegExp(regexPattern, "i");
+      return mods.filter(
+        (mod) =>
+          regexFilter.test(mod.name.replace(".pack", "")) ||
+          (mod.humanName && regexFilter.test(mod.humanName)) ||
+          (doAuthorFiltering && regexFilter.test(mod.author))
+      );
+    } catch {
+      return filterBySubstring(regexPattern.toLowerCase());
+    }
   }
 
-  return mods.filter(
-    (mod) =>
-      mod.name.replace(".pack", "").toLowerCase().includes(filter) ||
-      (mod.humanName && mod.humanName.toLowerCase().includes(filter)) ||
-      (doAuthorFiltering && mod.author.toLowerCase().includes(filter))
-  );
+  return filterBySubstring(filter);
 }
