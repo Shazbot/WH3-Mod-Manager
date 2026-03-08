@@ -112,12 +112,12 @@ const ModRows = memo((props: ModRowsProps) => {
 
   if (isDev) {
     // duplicates happen when we hot-reload in dev
-    const modsWithoutDuplicates: Mod[] = [];
-    mods.forEach((mod) => {
-      if (!modsWithoutDuplicates.find((modNoDupes) => modNoDupes.name == mod.name))
-        modsWithoutDuplicates.push(mod);
+    const seenModNames = new Set<string>();
+    mods = mods.filter((mod) => {
+      if (seenModNames.has(mod.name)) return false;
+      seenModNames.add(mod.name);
+      return true;
     });
-    mods = modsWithoutDuplicates;
   }
 
   const unfilteredMods = mods;
@@ -162,6 +162,7 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const onDragEnd = useCallback(() => {
     const draggedModId = draggedModIdRef.current;
+    currentDragTargetRef.current = undefined;
     let oldTop = -1;
     const originalElement = draggedModId !== "" ? document.getElementById(draggedModId) : null;
     if (originalElement && originalElement.children[1]) {
