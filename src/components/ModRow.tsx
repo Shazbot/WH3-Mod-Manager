@@ -30,7 +30,6 @@ type ModRowProps = {
   onCustomizeModRightClick: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
   onFlowOptionsClicked: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
   onRemoveModOrder: (mod: Mod) => void;
-  loadOrder: number;
   isEnabledInMergedMod: boolean;
   isAlwaysEnabled: boolean;
   sortingType: SortingType;
@@ -74,7 +73,6 @@ const ModRow = memo(
     onRemoveModOrder,
     isAlwaysEnabled,
     isEnabledInMergedMod,
-    loadOrder,
     isLast,
     sortingType,
     currentTab,
