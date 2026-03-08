@@ -50,6 +50,7 @@ export const stopWheelPropagation = (e: React.WheelEvent<HTMLDivElement>) => {
     return;
   }
 
+  // Let the scrollable element handle its own wheel scrolling while keeping
+  // the event from bubbling up to the graph canvas.
   e.stopPropagation();
-  e.preventDefault();
 };
