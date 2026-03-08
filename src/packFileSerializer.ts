@@ -1274,7 +1274,10 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
     case "readtsvfrompack":
       return { tsvFileName: (node.data as any).tsvFileName || "" };
     case "customrowsinput":
-      return { customRows: (node.data as any).customRows || [] };
+      return {
+        customRows: (node.data as any).customRows || [],
+        tableName: (node.data as any).tableName || "",
+      };
     default:
       return node.data.textValue;
   }
