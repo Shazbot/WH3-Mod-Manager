@@ -60,7 +60,6 @@ const Sidebar = memo(() => {
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
   const [isWaitingForRelaunch, setIsWaitingForRelaunch] = useState<boolean>(false);
   const [isWaitingForContinueRelaunch, setIsWaitingForContinueRelaunch] = useState<boolean>(false);
-  const [previousIsWH3Running, setPreviousIsWH3Running] = useState<boolean>(isWH3Running);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -72,6 +71,8 @@ const Sidebar = memo(() => {
 
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
   const continueDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
+  const updateNotificationTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
+  const previousIsWH3RunningRef = useRef(isWH3Running);
   const isShiftDownRef = useRef(false);
   const isControlDownRef = useRef(false);
 
@@ -79,7 +80,7 @@ const Sidebar = memo(() => {
     window.api?.terminateGame();
   };
 
-  const playGameClicked = (forcedDelayTime?: number) => {
+  const playGameClicked = useCallback((forcedDelayTime?: number) => {
     console.log("playGameClicked: play game clicked");
 
     if (isWaitingForContinueRelaunch) return;
@@ -126,9 +127,24 @@ const Sidebar = memo(() => {
       packDataOverwrites,
       userFlowOptions,
     });
-  };
+  }, [
+    areModsInOrder,
+    dispatch,
+    isAutoStartCustomBattleEnabled,
+    isClosedOnPlay,
+    isMakeUnitsGeneralsEnabled,
+    isScriptLoggingEnabled,
+    isSkipIntroMoviesEnabled,
+    isWaitingForContinueRelaunch,
+    isWaitingForRelaunch,
+    isWH3Running,
+    mods,
+    packDataOverwrites,
+    removedModsData,
+    userFlowOptions,
+  ]);
 
-  const onContinueGameClicked = (forcedDelayTime?: number) => {
+  const onContinueGameClicked = useCallback((forcedDelayTime?: number) => {
     if (isWaitingForRelaunch) return;
 
     if (isWH3Running) {
@@ -184,21 +200,22 @@ const Sidebar = memo(() => {
       },
       saves[0]?.name
     );
-  };
-
-  if (previousIsWH3Running != isWH3Running) {
-    setPreviousIsWH3Running(isWH3Running);
-    if (isWaitingForRelaunch && !isWH3Running) {
-      console.log("calling PLAYGAMECLICKED", previousIsWH3Running, isWH3Running, isWaitingForRelaunch);
-      setIsWaitingForRelaunch(false);
-      playGameClicked(1500);
-    }
-    if (isWaitingForContinueRelaunch && !isWH3Running) {
-      console.log("calling PLAYGAMECLICKED", previousIsWH3Running, isWH3Running, isWaitingForRelaunch);
-      setIsWaitingForContinueRelaunch(false);
-      onContinueGameClicked(1500);
-    }
-  }
+  }, [
+    areModsInOrder,
+    isAutoStartCustomBattleEnabled,
+    isClosedOnPlay,
+    isMakeUnitsGeneralsEnabled,
+    isScriptLoggingEnabled,
+    isSkipIntroMoviesEnabled,
+    isWaitingForContinueRelaunch,
+    isWaitingForRelaunch,
+    isWH3Running,
+    mods,
+    packDataOverwrites,
+    removedModsData,
+    saves,
+    userFlowOptions,
+  ]);
 
   const presets = useAppSelector((state) => state.app.presets);
   const options: OptionType[] = useMemo(
@@ -271,8 +288,12 @@ const Sidebar = memo(() => {
           setReleaseNotesURL(appUpdateData.releaseNotesURL);
         }
 
-        setTimeout(() => {
+        if (updateNotificationTimeoutId.current) {
+          clearTimeout(updateNotificationTimeoutId.current);
+        }
+        updateNotificationTimeoutId.current = setTimeout(() => {
           setIsUpdateAvailable(false);
+          updateNotificationTimeoutId.current = undefined;
         }, 15000);
       }
     } catch (err) {
@@ -305,6 +326,47 @@ const Sidebar = memo(() => {
       document.removeEventListener("keyup", onKeyUp);
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (playDelayTimeoutId.current) {
+        clearTimeout(playDelayTimeoutId.current);
+      }
+      if (continueDelayTimeoutId.current) {
+        clearTimeout(continueDelayTimeoutId.current);
+      }
+      if (updateNotificationTimeoutId.current) {
+        clearTimeout(updateNotificationTimeoutId.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (previousIsWH3RunningRef.current !== isWH3Running) {
+      if (isWaitingForRelaunch && !isWH3Running) {
+        console.log(
+          "calling PLAYGAMECLICKED",
+          previousIsWH3RunningRef.current,
+          isWH3Running,
+          isWaitingForRelaunch,
+        );
+        setIsWaitingForRelaunch(false);
+        playGameClicked(1500);
+      }
+      if (isWaitingForContinueRelaunch && !isWH3Running) {
+        console.log(
+          "calling PLAYGAMECLICKED",
+          previousIsWH3RunningRef.current,
+          isWH3Running,
+          isWaitingForRelaunch,
+        );
+        setIsWaitingForContinueRelaunch(false);
+        onContinueGameClicked(1500);
+      }
+    }
+
+    previousIsWH3RunningRef.current = isWH3Running;
+  }, [isWH3Running, isWaitingForRelaunch, isWaitingForContinueRelaunch, onContinueGameClicked, playGameClicked]);
 
   const enabledMods = mods.filter(
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
