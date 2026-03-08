@@ -1,6 +1,6 @@
 import Creatable from "react-select/creatable";
 import Select, { ActionMeta, SingleValue } from "react-select";
-import React, { memo, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
   addPreset,
@@ -46,8 +46,11 @@ const Sidebar = memo(() => {
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const removedModsData = useAppSelector((state) => state.app.removedModsData);
 
-  const saves = [...useAppSelector((state) => state.app.saves)];
-  saves.sort((first, second) => second.lastChanged - first.lastChanged);
+  const savesState = useAppSelector((state) => state.app.saves);
+  const saves = useMemo(
+    () => [...savesState].sort((first, second) => second.lastChanged - first.lastChanged),
+    [savesState],
+  );
 
   const [isEditPresetsPanelOpen, setIsEditPresetsPanelOpen] = useState<boolean>(false);
   const [isUpdateCheckDone, setIsUpdateCheckDone] = useState<boolean>(false);
@@ -196,15 +199,14 @@ const Sidebar = memo(() => {
     }
   }
 
-  const options: OptionType[] = useAppSelector((state) =>
-    state.app.presets.map((preset) => {
-      return { value: preset.name, label: preset.name };
-    })
+  const presets = useAppSelector((state) => state.app.presets);
+  const options: OptionType[] = useMemo(
+    () =>
+      presets
+        .map((preset) => ({ value: preset.name, label: preset.name }))
+        .sort((firstOption, secondOption) => firstOption.label.localeCompare(secondOption.label)),
+    [presets],
   );
-
-  options.sort((firstOption, secondOption) => {
-    return firstOption.label.localeCompare(secondOption.label);
-  });
 
   const newPresetMade = (name: string) => {
     dispatch(addPreset({ name: name, mods: mods }));
