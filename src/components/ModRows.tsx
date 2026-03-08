@@ -39,6 +39,9 @@ import { MeasuredCellParent } from "react-virtualized/dist/es/CellMeasurer";
 import { GridCoreProps } from "react-virtualized/dist/es/Grid";
 import hash from "object-hash";
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const defaultModThumbnailSrc = require("../assets/modThumbnail.png");
+
 const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
   const dataPackNames = new Set(mods.filter((mod) => mod.isInData).map((mod) => mod.name));
 
@@ -46,6 +49,19 @@ const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
 };
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
+const domParser = new DOMParser();
+
+const getGhostClass = (isAuthorEnabled: boolean, areThumbnailsEnabled: boolean) => {
+  if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-8";
+  if (isAuthorEnabled) return "grid-column-7";
+  if (areThumbnailsEnabled) return "grid-column-7";
+  return "grid-column-6";
+};
+
+const decodeHtml = (encoded: string) => {
+  const doc = domParser.parseFromString(encoded, "text/html");
+  return doc.documentElement.textContent ?? "";
+};
 
 type ModRowsProps = {
   scrollElement: RefObject<HTMLDivElement>;
@@ -61,6 +77,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const sortingType = useAppSelector((state) => state.app.modRowsSortingType);
   const customizableMods = useAppSelector((state) => state.app.customizableMods);
+  const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
   const isDev = useAppSelector((state) => state.app.isDev);
 
@@ -470,6 +487,10 @@ const ModRows = memo((props: ModRowsProps) => {
     if (areThumbnailsEnabled) return "grid-mods-thumbs";
     return "grid-mods";
   }, [isAuthorEnabled, areThumbnailsEnabled]);
+  const ghostClass = useMemo(
+    () => getGhostClass(isAuthorEnabled, areThumbnailsEnabled),
+    [areThumbnailsEnabled, isAuthorEnabled]
+  );
 
   useEffect(() => {
     const customizableTables = [
@@ -500,8 +521,16 @@ const ModRows = memo((props: ModRowsProps) => {
         mod,
         isAlwaysEnabled: alwaysEnabledModNames.has(mod.name),
         isEnabledInMergedMod: mergedModPaths.has(mod.path),
+        decodedHumanName: decodeHtml(decodeHtml(mod.humanName) ?? ""),
+        decodedAuthor: decodeHtml(decodeHtml(mod.author) ?? ""),
+        hasDbCustomization: Boolean(customizableMods[mod.path]?.some((file) => file.startsWith("db\\"))),
+        hasFlowCustomization: Boolean(
+          customizableMods[mod.path]?.some((file) => file.startsWith("whmmflows\\"))
+        ),
+        hasPackDataOverwrite: Boolean(packDataOverwrites[mod.path]),
+        thumbnailSrc: (isDev || mod.imgPath === "") ? defaultModThumbnailSrc : mod.imgPath,
       })),
-    [alwaysEnabledModNames, mergedModPaths, visibleMods]
+    [alwaysEnabledModNames, customizableMods, isDev, mergedModPaths, packDataOverwrites, visibleMods]
   );
 
   const onDropWithVisibleMods = useCallback(() => {
@@ -569,6 +598,15 @@ const ModRows = memo((props: ModRowsProps) => {
               isLast: rowData.length == index + 1,
               isAlwaysEnabled: row.isAlwaysEnabled,
               isEnabledInMergedMod: row.isEnabledInMergedMod,
+              areThumbnailsEnabled,
+              isAuthorEnabled,
+              ghostClass,
+              thumbnailSrc: row.thumbnailSrc,
+              decodedHumanName: row.decodedHumanName,
+              decodedAuthor: row.decodedAuthor,
+              hasDbCustomization: row.hasDbCustomization,
+              hasFlowCustomization: row.hasFlowCustomization,
+              hasPackDataOverwrite: row.hasPackDataOverwrite,
               registerChild,
             }}
           ></ModRow>
@@ -776,7 +814,21 @@ const ModRows = memo((props: ModRowsProps) => {
             </WindowScroller>
           )}
           {currentTab == "enabledMods" &&
-            rowData.map(({ mod, isAlwaysEnabled, isEnabledInMergedMod }, i) => (
+            rowData.map(
+              (
+                {
+                  mod,
+                  isAlwaysEnabled,
+                  isEnabledInMergedMod,
+                  thumbnailSrc,
+                  decodedHumanName,
+                  decodedAuthor,
+                  hasDbCustomization,
+                  hasFlowCustomization,
+                  hasPackDataOverwrite,
+                },
+                i
+              ) => (
               <ModRow
                 key={mod.path}
                 {...{
@@ -802,8 +854,17 @@ const ModRows = memo((props: ModRowsProps) => {
                   isLast: rowData.length == i + 1,
                   isAlwaysEnabled,
                   isEnabledInMergedMod,
+                  areThumbnailsEnabled,
+                  isAuthorEnabled,
+                  ghostClass,
+                  thumbnailSrc,
+                  decodedHumanName,
+                  decodedAuthor,
+                  hasDbCustomization,
+                  hasFlowCustomization,
+                  hasPackDataOverwrite,
                   style: {},
-                  gridClass,
+                  gridClass: "row",
                   registerChild: emptyFunc,
                 }}
               ></ModRow>
