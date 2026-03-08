@@ -6453,9 +6453,10 @@ async function executeCustomRowsInputNode(
 
   // Parse configuration from textValue
   let customRows: Array<Record<string, string>> = [];
+  let tableName = "";
   const schemaColumns = (inputData.schemaColumns || []) as CustomSchemaColumn[];
 
-  const parsed = getNodeConfig<{ customRows?: Array<Record<string, string>> }>(config, textValue);
+  const parsed = getNodeConfig<{ customRows?: Array<Record<string, string>>; tableName?: string }>(config, textValue);
   if (!parsed) {
     return {
       success: false,
@@ -6463,6 +6464,7 @@ async function executeCustomRowsInputNode(
     };
   }
   customRows = parsed.customRows || [];
+  tableName = parsed.tableName || "";
 
   if (schemaColumns.length === 0) {
     console.log(`CustomRowsInput Node ${nodeId}: No schema columns - returning empty output`);
@@ -6493,6 +6495,9 @@ async function executeCustomRowsInputNode(
   console.log(
     `CustomRowsInput Node ${nodeId}: Creating table with ${customRows.length} rows and ${schemaColumns.length} columns`,
   );
+
+  const resolvedTableName = tableName.trim() || `_custom_${nodeId}`;
+  const packedTableName = resolvedTableName.startsWith("db\\") ? resolvedTableName : `db\\${resolvedTableName}`;
 
   // Create the output table schema from the schema columns
   const outputTableSchema: DBVersion = {
@@ -6528,7 +6533,7 @@ async function executeCustomRowsInputNode(
 
   // Create a synthetic PackedFile with the custom rows
   const syntheticTable: PackedFile = {
-    name: `db\\_custom_${nodeId}`,
+    name: packedTableName,
     schemaFields: schemaFields,
     tableSchema: outputTableSchema,
     file_size: 0,
@@ -6537,8 +6542,8 @@ async function executeCustomRowsInputNode(
 
   const resultTables: DBTablesNodeTable[] = [
     {
-      name: `_custom_${nodeId}`,
-      fileName: `db\\_custom_${nodeId}`,
+      name: packedTableName,
+      fileName: packedTableName,
       sourceFile: undefined as any,
       table: syntheticTable,
     },

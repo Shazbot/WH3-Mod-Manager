@@ -176,6 +176,7 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
   if (node.type === "customrowsinput") {
     return JSON.stringify({
       customRows: (node.data as any).customRows || [],
+      tableName: (node.data as any).tableName || "",
     });
   }
   return node.data.textValue || "";
