@@ -20,6 +20,11 @@ import TechGroupNode from "./TechGroupNode";
 import AddTechNodeModal, { TechNodeFormData } from "./AddTechNodeModal";
 import TechTreeLinkEdge from "./TechTreeLinkEdge";
 import { buildTechTreeLinkGeometry } from "./techTreeLinkGeometry";
+import {
+  getTechnologyNodeScopeValues,
+  hasBaseNodesOnlyNodes,
+  resolveTechTreeScopeSelection,
+} from "./techTreeScope";
 
 const NODE_WIDTH = 325;
 const NODE_HEIGHT = 140;
@@ -277,21 +282,28 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     [technologyTree?.nodes],
   );
 
+  const hasBaseNodesOnly = useMemo(
+    () => hasBaseNodesOnlyNodes(technologyTree?.nodes || [], baseVisibleNodeSet),
+    [baseVisibleNodeSet, technologyTree?.nodes],
+  );
+
   useEffect(() => {
-    if (!selectedScopeKey) return;
-    if (availableScopeOptions.some((option) => option.value === selectedScopeKey)) return;
-    setSelectedScopeKey("");
-  }, [availableScopeOptions, selectedScopeKey]);
+    const nextSelectedScopeKey = resolveTechTreeScopeSelection({
+      selectedScopeKey,
+      availableScopeKeys: availableScopeOptions.map((option) => option.value),
+      hasBaseNodesOnly,
+    });
+    if (nextSelectedScopeKey !== selectedScopeKey) {
+      setSelectedScopeKey(nextSelectedScopeKey);
+    }
+  }, [availableScopeOptions, hasBaseNodesOnly, selectedScopeKey]);
 
   const scopedVisibleNodeSet = useMemo(() => {
     if (!technologyTree) return new Set<string>();
     const selectedNodeKeys = new Set<string>();
     for (const node of technologyTree.nodes) {
       if (!baseVisibleNodeSet.has(node.nodeKey)) continue;
-      const nodeScopeValues = [
-        node.factionKey ? `faction:${node.factionKey}` : "",
-        node.campaignKey ? `campaign:${node.campaignKey}` : "",
-      ].filter(Boolean);
+      const nodeScopeValues = getTechnologyNodeScopeValues(node);
       if (nodeScopeValues.length < 1 || (selectedScopeKey && nodeScopeValues.includes(selectedScopeKey))) {
         selectedNodeKeys.add(node.nodeKey);
       }
@@ -1551,7 +1563,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
             onChange={(event) => setSelectedScopeKey(event.target.value)}
             disabled={!technologyTree}
           >
-            <option value="">Base nodes only</option>
+            {hasBaseNodesOnly && <option value="">Base nodes only</option>}
             {availableScopeOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
