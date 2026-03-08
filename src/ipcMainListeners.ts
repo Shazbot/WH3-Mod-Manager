@@ -5135,6 +5135,8 @@ export const registerIpcMainListeners = (
           tier: node.tier.toString(),
           indent: node.indent.toString(),
           required_parents: node.requiredParents.toString(),
+          campaign_key: node.campaignKey || "",
+          faction_key: node.factionKey || "",
           pixel_offset_x: node.pixelOffsetX.toString(),
           pixel_offset_y: node.pixelOffsetY.toString(),
           research_points_required: node.researchPointsRequired.toString(),
@@ -5328,6 +5330,12 @@ export const registerIpcMainListeners = (
             if (editedNode.requiredParents !== undefined) {
               updatedRow.required_parents = editedNode.requiredParents.toString();
             }
+            if (editedNode.campaignKey !== undefined) {
+              updatedRow.campaign_key = editedNode.campaignKey;
+            }
+            if (editedNode.factionKey !== undefined) {
+              updatedRow.faction_key = editedNode.factionKey;
+            }
             if (editedNode.pixelOffsetX !== undefined) {
               updatedRow.pixel_offset_x = editedNode.pixelOffsetX.toString();
             }
@@ -5456,6 +5464,8 @@ export const registerIpcMainListeners = (
             tier: newNode.tier.toString(),
             indent: newNode.indent.toString(),
             required_parents: newNode.requiredParents.toString(),
+            campaign_key: newNode.campaignKey || "",
+            faction_key: newNode.factionKey || "",
             pixel_offset_x: newNode.pixelOffsetX.toString(),
             pixel_offset_y: newNode.pixelOffsetY.toString(),
             research_points_required: newNode.researchPointsRequired.toString(),

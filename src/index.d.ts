@@ -806,6 +806,8 @@ declare global {
       tier: number;
       indent: number;
       requiredParents: number;
+      campaignKey?: string;
+      factionKey?: string;
       pixelOffsetX: number;
       pixelOffsetY: number;
       optionalUiGroup?: string;
@@ -844,6 +846,8 @@ declare global {
       setKey: string;
       requiredParents: number;
       researchPointsRequired: number;
+      campaignKey?: string;
+      factionKey?: string;
       isHidden: boolean;
       pixelOffsetX: number;
       pixelOffsetY: number;
@@ -860,6 +864,8 @@ declare global {
       displayName?: string;
       requiredParents?: number;
       researchPointsRequired?: number;
+      campaignKey?: string;
+      factionKey?: string;
       isHidden?: boolean;
       pixelOffsetX?: number;
       pixelOffsetY?: number;
