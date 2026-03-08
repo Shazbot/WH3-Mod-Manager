@@ -7,6 +7,7 @@ import "@silevis/reactgrid/styles.css";
 
 type SkillsTreeViewProps = {
   tableFilter: string;
+  onSelect?: (subtype: string, subtypeIndex: number) => void;
   onDoubleClick?: (subtype: string, subtypeIndex: number) => void;
 };
 
@@ -80,7 +81,10 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
       if (parentLeaf) {
         const metadata = props.element.metadata as TreeMetadata;
         console.log(`SENT GET PACK DATA`, metadata);
-        window.api?.getSkillsForSubtype(metadata.subtype, metadata.subtypeIndex);
+        props.onSelect?.(metadata.subtype, metadata.subtypeIndex);
+        if (!props.onSelect) {
+          window.api?.getSkillsForSubtype(metadata.subtype, metadata.subtypeIndex);
+        }
         // dispatch(
         //   selectDBTable({
         //     packPath: packData.packPath,
