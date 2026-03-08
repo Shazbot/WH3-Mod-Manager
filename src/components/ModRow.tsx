@@ -1,7 +1,6 @@
 import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { CSSProperties, memo, useCallback, useContext, useMemo } from "react";
-import { useAppSelector } from "../hooks";
+import React, { CSSProperties, memo, useContext, useMemo } from "react";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
 import { formatDistanceToNow } from "date-fns";
@@ -32,18 +31,21 @@ type ModRowProps = {
   onRemoveModOrder: (mod: Mod) => void;
   isEnabledInMergedMod: boolean;
   isAlwaysEnabled: boolean;
+  areThumbnailsEnabled: boolean;
+  isAuthorEnabled: boolean;
+  ghostClass: string;
+  thumbnailSrc: string;
+  decodedHumanName: string;
+  decodedAuthor: string;
+  hasDbCustomization: boolean;
+  hasFlowCustomization: boolean;
+  hasPackDataOverwrite: boolean;
   sortingType: SortingType;
   currentTab: MainWindowTab;
   isLast: boolean;
   style: CSSProperties;
   gridClass: string;
   registerChild: CellMeasurerChildProps["registerChild"];
-};
-
-const domParser = new DOMParser();
-const decodeHTML = (encoded: string) => {
-  const doc = domParser.parseFromString(encoded, "text/html");
-  return doc.documentElement.textContent;
 };
 
 const formatLastChanged = (lastChanged: number) => {
@@ -73,6 +75,15 @@ const ModRow = memo(
     onRemoveModOrder,
     isAlwaysEnabled,
     isEnabledInMergedMod,
+    areThumbnailsEnabled,
+    isAuthorEnabled,
+    ghostClass,
+    thumbnailSrc,
+    decodedHumanName,
+    decodedAuthor,
+    hasDbCustomization,
+    hasFlowCustomization,
+    hasPackDataOverwrite,
     isLast,
     sortingType,
     currentTab,
@@ -82,19 +93,6 @@ const ModRow = memo(
     gridClass,
     registerChild,
   }: ModRowProps) => {
-    const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
-    const isDev = useAppSelector((state) => state.app.isDev);
-    const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
-    const customizableMods = useAppSelector((state) => state.app.customizableMods);
-    const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
-
-    const getGhostClass = useCallback(() => {
-      if (isAuthorEnabled && areThumbnailsEnabled) return "grid-column-8";
-      if (isAuthorEnabled) return "grid-column-7";
-      if (areThumbnailsEnabled) return "grid-column-7";
-      return "grid-column-6";
-    }, [isAuthorEnabled, areThumbnailsEnabled]);
-
     // const [translated, setTranslated] = useState<Record<string, string>>({});
     const localization: Record<string, string> = useContext(localizationContext);
 
@@ -120,17 +118,6 @@ const ModRow = memo(
         "",
       [sortingType, mod.lastChanged, mod.lastChangedLocal, mod.subbedTime]
     );
-    const decodedHumanName = useMemo(() => decodeHTML(decodeHTML(mod.humanName) ?? ""), [mod.humanName]);
-    const decodedAuthor = useMemo(() => decodeHTML(decodeHTML(mod.author) ?? ""), [mod.author]);
-    const customizationFiles = customizableMods[mod.path];
-    const hasDbCustomization = useMemo(
-      () => Boolean(customizationFiles?.some((file) => file.startsWith("db\\"))),
-      [customizationFiles]
-    );
-    const hasFlowCustomization = useMemo(
-      () => Boolean(customizationFiles?.some((file) => file.startsWith("whmmflows\\"))),
-      [customizationFiles]
-    );
 
     return (
       <div
@@ -148,7 +135,7 @@ const ModRow = memo(
         style={style}
         ref={registerChild}
       >
-        <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
+        <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + ghostClass}></div>
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
           {mod.loadOrder == undefined && <span>{index + 1}</span>}
           {mod.loadOrder != undefined && (
@@ -211,10 +198,7 @@ const ModRow = memo(
         >
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
             {areThumbnailsEnabled && (
-              <img
-                className="max-w-[6rem] aspect-square"
-                src={((isDev || mod.imgPath === "") && require("../assets/modThumbnail.png")) || mod.imgPath}
-              ></img>
+              <img className="max-w-[6rem] aspect-square" src={thumbnailSrc}></img>
             )}
           </label>
         </div>
@@ -333,21 +317,21 @@ const ModRow = memo(
                 }}
                 onContextMenu={(e) => onCustomizeModRightClick(e, mod)}
                 className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
-                color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
+                color={(hasPackDataOverwrite && "#1c64f2") || "white"}
               />
-            )}
+          )}
           {hasFlowCustomization && (
-              <Icons.SettingsKnobs
-                onClick={(e) => {
-                  onFlowOptionsClicked(e, mod);
-                }}
-                className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
-                color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
-              />
-            )}
+            <Icons.SettingsKnobs
+              onClick={(e) => {
+                onFlowOptionsClicked(e, mod);
+              }}
+              className="bigger-gear-icon cursor-pointer transition-all duration-200 hover:opacity-70 hover:scale-110"
+              color={(hasPackDataOverwrite && "#1c64f2") || "white"}
+            />
+          )}
         </div>
         {isLast && (
-          <div onDrop={(e) => onDrop(e, true)} className={"drop-ghost h-10 hidden " + getGhostClass()}></div>
+          <div onDrop={(e) => onDrop(e, true)} className={"drop-ghost h-10 hidden " + ghostClass}></div>
         )}
       </div>
     );
