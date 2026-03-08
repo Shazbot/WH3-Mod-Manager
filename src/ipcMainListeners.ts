@@ -16,7 +16,7 @@ import * as nodePath from "path";
 import { version } from "react";
 import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
 import appData, { GameFolderPaths } from "./appData";
-import { SerializedNode, SerializedConnection } from "./components/NodeEditor";
+import type { SerializedNode, SerializedConnection } from "./nodeGraph/types";
 import { packDataStore } from "./components/viewer/packDataStore";
 import i18n from "./configs/i18next.config";
 import { buildDBIndirectReferences, buildDBReferenceTree, type DBIndirectReferenceCacheContext } from "./DBClone";
@@ -112,24 +112,19 @@ import Trie from "./utility/trie";
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
-
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
-
 declare const SKILLS_WEBPACK_ENTRY: string;
 declare const SKILLS_PRELOAD_WEBPACK_ENTRY: string;
-
 let contentWatcher: chokidar.FSWatcher | undefined;
 let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
-
 export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
   skillsWindow: undefined as BrowserWindow | undefined,
 };
-
 type VisualsSession = {
   sessionId: string;
   enabledModPaths: string[];
@@ -137,11 +132,9 @@ type VisualsSession = {
   fileSearchPackPaths: string[];
   createdAt: number;
 };
-
 const visualsSessions = new Map<string, VisualsSession>();
 const dbDuplicationCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
 const dbIndirectReferenceCacheByWebContentsId = new Map<number, DBIndirectReferenceCacheContext>();
-
 const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContext => ({
   packByPath: new Map<string, Pack>(),
   tableFilesByPackAndTable: new Map<string, PackedFile[]>(),
@@ -151,20 +144,15 @@ const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContex
   reverseRefTtlMs: 5 * 60 * 1000,
   maxReverseRefEntries: 32,
 });
-
 const normalizePackFilePath = (value: string) =>
   value.replace(/\//g, "\\").replace(/\\+/g, "\\").replace(/^\\+/, "").trim();
-
 const normalizePackFilePathKey = (value: string) => normalizePackFilePath(value).toLowerCase();
-
 const toVariantMeshDefinitionPath = (value: string) => {
   let path = normalizePackFilePath(value);
   if (!path) return path;
-
   if (!path.toLowerCase().endsWith(".variantmeshdefinition")) {
     path = `${path}.variantmeshdefinition`;
   }
-
   const lower = path.toLowerCase();
   if (!lower.startsWith("variantmeshes\\")) {
     path = `variantmeshes\\variantmeshdefinitions\\${path}`;
@@ -172,48 +160,37 @@ const toVariantMeshDefinitionPath = (value: string) => {
     const baseName = nodePath.basename(path);
     path = `variantmeshes\\variantmeshdefinitions\\${baseName}`;
   }
-
   return normalizePackFilePath(path);
 };
-
 const decodePackedFileText = (packedFile: PackedFile) => {
   if (packedFile.text != null) return packedFile.text;
   if (!packedFile.buffer) return undefined;
-
   const buffer = packedFile.buffer;
   if (buffer.length >= 2 && buffer.subarray(0, 2).toString("hex") === "fffe") {
     return buffer.subarray(2).toString("utf16le");
   }
-
   if (buffer.length >= 3 && buffer.subarray(0, 3).toString("hex") === "efbbbf") {
     return buffer.subarray(3).toString("utf8");
   }
-
   return buffer.toString("utf8");
 };
-
 const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
   const normalizedTarget = normalizePackFilePathKey(fileName);
-
   const exactIndex = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) =>
     collator.compare(a.name, b),
   );
   if (exactIndex >= 0) return pack.packedFiles[exactIndex];
-
   return pack.packedFiles.find(
     (packedFile) => normalizePackFilePathKey(packedFile.name) === normalizedTarget,
   );
 };
-
 const getOrLoadPackFromAppData = async (packPath: string) => {
   let pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
   if (pack) return pack;
-
   const newPack = await readPack(packPath, { skipParsingTables: true });
   appendPacksData(newPack);
   return appData.packsData.find((existingPack) => existingPack.path === packPath);
 };
-
 const resolveVisualsFileInSession = async (
   session: VisualsSession,
   fileName: string,
@@ -221,7 +198,6 @@ const resolveVisualsFileInSession = async (
 ) => {
   let requestedPath = normalizePackFilePath(fileName);
   if (!requestedPath) return undefined;
-
   if (options?.variantMeshDefinitionFallback) {
     const lowerRequested = requestedPath.toLowerCase();
     const looksExplicitPath = lowerRequested.includes("\\") || lowerRequested.startsWith("variantmeshes");
@@ -233,9 +209,7 @@ const resolveVisualsFileInSession = async (
       requestedPath = toVariantMeshDefinitionPath(requestedPath);
     }
   }
-
   if (!requestedPath) return undefined;
-
   const preferredPackPath = options?.preferredPackPath;
   const searchPackPaths = [...session.fileSearchPackPaths].toReversed();
   const prioritizedPackPaths =
@@ -245,10 +219,8 @@ const resolveVisualsFileInSession = async (
   for (const packPath of prioritizedPackPaths) {
     const pack = await getOrLoadPackFromAppData(packPath);
     if (!pack) continue;
-
     const matchedFile = findPackedFileCaseInsensitive(pack, requestedPath);
     if (!matchedFile) continue;
-
     return {
       requestedPath,
       pack,
@@ -256,26 +228,21 @@ const resolveVisualsFileInSession = async (
       fileName: matchedFile.name,
     };
   }
-
   return {
     requestedPath,
   };
 };
-
 const sendAssetEditorOpenRequest = async (args: {
   packPathOnDisk: string;
   path: string;
   openInExistingKitbashTab: boolean;
 }) => {
   const pipePath = "\\\\.\\pipe\\TheAssetEditor.Ipc";
-
   return new Promise<{ ok?: boolean; error?: string; normalizedPath?: string }>((resolve, reject) => {
     const socket = net.connect(pipePath);
     socket.setEncoding("utf8");
-
     let buffer = "";
     let settled = false;
-
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
@@ -287,13 +254,10 @@ const sendAssetEditorOpenRequest = async (args: {
         socket.destroy();
       }
     };
-
     const timeout = setTimeout(() => {
       finish(() => reject(new Error(`Timed out connecting to AssetEditor IPC pipe ${pipePath}`)));
     }, 3500);
-
     const clear = () => clearTimeout(timeout);
-
     socket.on("connect", () => {
       const request = {
         action: "open",
@@ -302,16 +266,13 @@ const sendAssetEditorOpenRequest = async (args: {
         openInExistingKitbashTab: args.openInExistingKitbashTab,
         packPathOnDisk: args.packPathOnDisk,
       };
-
       socket.write(`${JSON.stringify(request)}\n`);
     });
-
     socket.on("data", (chunk: string) => {
       if (settled) return;
       buffer += chunk;
       const newlineIndex = buffer.indexOf("\n");
       if (newlineIndex === -1) return;
-
       const line = buffer.slice(0, newlineIndex).trim();
       finish(() => {
         clear();
@@ -332,14 +293,12 @@ const sendAssetEditorOpenRequest = async (args: {
         }
       });
     });
-
     socket.on("error", (error) => {
       finish(() => {
         clear();
         reject(new Error(`Failed to connect to ${pipePath}: ${error.message}`));
       });
     });
-
     socket.on("close", () => {
       if (settled) return;
       finish(() => {
@@ -349,7 +308,6 @@ const sendAssetEditorOpenRequest = async (args: {
     });
   });
 };
-
 const appendCollisions = async (newPack: Pack) => {
   while (!appData.compatData) {
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -367,17 +325,14 @@ const appendCollisions = async (newPack: Pack) => {
     );
   }
 };
-
 const matchVanillaDBFiles = /^db\\.*\\data__/;
 const appendPacksData = (newPack: Pack, mod?: Mod) => {
   const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
   console.log("appendPacksData: appending", newPack.name);
   console.log("appendPacksData: is existingPack:", !!existingPack);
-
   if (!existingPack) {
     appData.packsData.push(newPack);
     windows.mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
-
     const overwrittenFileNames = newPack.packedFiles
       .map((packedFile) => packedFile.name)
       .filter(
@@ -399,7 +354,6 @@ const appendPacksData = (newPack: Pack, mod?: Mod) => {
         appData.overwrittenDataPackedFiles,
       );
     }
-
     const outdatedPackFiles = new Set<string>();
     if (appData.currentGame == "wh3" && mod && (mod.lastChangedLocal || mod.lastChanged)) {
       const lastChanged = mod.lastChanged || mod.lastChangedLocal;
@@ -459,23 +413,18 @@ const appendPacksData = (newPack: Pack, mod?: Mod) => {
       });
   }
 };
-
 export const getLocsTrie = (pack: Pack) => {
   console.log("getLocsTrie:", pack.name);
-
   const trie = new Trie<string>("_");
   const locPFs = Object.values(pack.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
-
   const packViewData = getPackViewData(pack, undefined, true);
   if (!packViewData) {
     console.log("getLocsTrie: packViewData INVALID");
     return;
   }
-
   for (const packedFile of locPFs) {
     const data = getPackTableData(packedFile.name, packViewData);
     if (!data) continue;
-
     // console.log("loc data for:", pack.name, data);
     for (const rows of Object.values(data)) {
       for (const row of rows) {
@@ -485,34 +434,25 @@ export const getLocsTrie = (pack: Pack) => {
       }
     }
   }
-
   return trie;
 };
-
 const matchDBFileRegex = /^db\\(.*?)\\/;
 const gameToDefaultTableVersions = {} as Record<SupportedGames, Record<string, number>>;
-
 export const getDefaultTableVersions = async () => {
   const cachedGameToDefaultTableVersions = gameToDefaultTableVersions[appData.currentGame];
   if (cachedGameToDefaultTableVersions) return cachedGameToDefaultTableVersions;
-
   const dbPackName = gameToPackWithDBTablesName[appData.currentGame];
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
   if (!dataFolder) return;
-
   const dbPackPath = nodePath.join(dataFolder, dbPackName);
-
   let pack = appData.packsData.find((packData) => packData.path == dbPackPath);
   if (!pack || (pack && pack.packedFiles.length == 0)) {
     pack = await readPack(dbPackPath, { skipParsingTables: true });
   }
-
   if (!pack) return;
-
   const dataPackData = await readPack(dbPackPath, {
     tablesToRead: pack.packedFiles.filter((pf) => pf.name.startsWith("db\\")).map((pf) => pf.name),
   });
-
   const tableNameToVersion = {} as Record<string, number>;
   for (const packedFile of dataPackData.packedFiles.filter((pf) => pf.name.startsWith("db\\"))) {
     const dbNameMatch = packedFile.name.match(matchDBFileRegex);
@@ -524,12 +464,9 @@ export const getDefaultTableVersions = async () => {
       }
     }
   }
-
   gameToDefaultTableVersions[appData.currentGame] = tableNameToVersion;
-
   return tableNameToVersion;
 };
-
 export const readModsByPath = async (
   modPaths: string[],
   packReadingOptions: PackReadingOptions,
@@ -547,7 +484,6 @@ export const readModsByPath = async (
       if (!appData.currentlyReadingModPaths.some((path) => path == modPath)) {
         break;
       }
-
       await new Promise((resolve) => setTimeout(resolve, 125));
     }
     if (appData.currentlyReadingModPaths.some((path) => path == modPath)) {
@@ -566,7 +502,6 @@ export const readModsByPath = async (
     if (!skipCollisionCheck) {
       appendCollisions(newPack);
     }
-
     newPacks.push(newPack);
   }
   if (!skipCollisionCheck) {
@@ -575,10 +510,8 @@ export const readModsByPath = async (
       packTableCollisions: appData.compatData.packTableCollisions,
     } as PackCollisions);
   }
-
   return newPacks;
 };
-
 export const registerIpcMainListeners = (
   mainWindow: Electron.CrossProcessExports.BrowserWindow,
   isDev: boolean,
@@ -587,13 +520,11 @@ export const registerIpcMainListeners = (
     mainWindow?.webContents.send("handleLog", msg);
     console.log(msg);
   };
-
   const tempModDatas: ModData[] = [];
   const sendModData = debounce(() => {
     mainWindow?.webContents.send("setModData", [...tempModDatas]);
     tempModDatas.splice(0, tempModDatas.length);
   }, 200);
-
   const getSkillsData = async (mods: Mod[]) => {
     console.log(
       "getSkillsData:",
@@ -602,28 +533,24 @@ export const registerIpcMainListeners = (
     const tablesToRead = resolveTable("character_skill_node_set_items_tables").map(
       (table) => `db\\${table}\\`,
     );
-
     const effectTablesToRead = resolveTable("character_skill_level_to_effects_junctions_tables").map(
       (table) => `db\\${table}\\`,
     );
     for (const effectTable of effectTablesToRead) {
       if (!tablesToRead.includes(effectTable)) tablesToRead.push(effectTable);
     }
-
     const nodeLinksTablesToRead = resolveTable("character_skill_node_links_tables").map(
       (table) => `db\\${table}\\`,
     );
     for (const nodeLinksTable of nodeLinksTablesToRead) {
       if (!tablesToRead.includes(nodeLinksTable)) tablesToRead.push(nodeLinksTable);
     }
-
     const skillLocksTablesToRead = resolveTable("character_skill_nodes_skill_locks_tables").map(
       (table) => `db\\${table}\\`,
     );
     for (const skillLocksTable of skillLocksTablesToRead) {
       if (!tablesToRead.includes(skillLocksTable)) tablesToRead.push(skillLocksTable);
     }
-
     const effectBonusValueIdsUnitSetsTablesToRead = resolveTable(
       "effect_bonus_value_ids_unit_sets_tables",
     ).map((table) => `db\\${table}\\`);
@@ -631,7 +558,6 @@ export const registerIpcMainListeners = (
       if (!tablesToRead.includes(effectBonusValueIdsUnitSetsTable))
         tablesToRead.push(effectBonusValueIdsUnitSetsTable);
     }
-
     const abilityTooltipTablesToRead = [
       "effect_bonus_value_unit_ability_junctions_tables",
       "unit_abilities_tables",
@@ -656,16 +582,13 @@ export const registerIpcMainListeners = (
         if (!tablesToRead.includes(resolvedTable)) tablesToRead.push(resolvedTable);
       }
     }
-
     // const effectsTablesToRead = resolveTable("effects_tables").map((table) => `db\\${table}\\`);
     // for (const effectsTable of effectsTablesToRead) {
     //   if (!tablesToRead.includes(effectsTable)) tablesToRead.push(effectsTable);
     // }
-
     console.log("RESOLVED tablesToRead:", tablesToRead);
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (!dataFolder) return;
-
     const vanillaPacksToRead = [...appData.allVanillaPackNames]
       .filter(
         (packName) =>
@@ -680,7 +603,6 @@ export const registerIpcMainListeners = (
             !packName.startsWith("terrain")),
       )
       .map((packName) => nodePath.join(dataFolder, packName));
-
     const cachedVanillaSkillsCore = await getVanillaSkillsDataCoreFromCache({
       dataFolder,
       currentGame: appData.currentGame,
@@ -692,14 +614,12 @@ export const registerIpcMainListeners = (
         await readMods(mods, false, true, false, true, tablesToRead);
       }
       await readModsByPath(vanillaPacksToRead, { skipParsingTables: true, readLocs: true }, true);
-
       const vanillaPacks = appData.packsData.filter((packsData) =>
         vanillaPacksToRead.includes(packsData.path),
       );
       const enabledModPacks = appData.packsData.filter((packData) =>
         mods.some((mod) => mod.path == packData.path),
       );
-
       const mergedSkillsCore = cloneSkillsDataCore(cachedVanillaSkillsCore);
       if (mods.length > 0) {
         const sortedMods = sortByNameAndLoadOrder(mods);
@@ -711,7 +631,6 @@ export const registerIpcMainListeners = (
         }
         applyModOverlayToSkillsDataCore(mergedSkillsCore, orderedModPacksTableData, getTableRowData);
       }
-
       const locs = getLocsFromPacks(vanillaPacks.concat(enabledModPacks), getLocsTrie);
       const skillIconPaths = getSkillAndEffectIconPaths(
         mergedSkillsCore.skills,
@@ -719,29 +638,24 @@ export const registerIpcMainListeners = (
         mergedSkillsCore.effectsToEffectData,
       );
       const icons = await loadIconsFromPacks(vanillaPacks.concat(enabledModPacks), skillIconPaths);
-
       appData.skillsData = {
         ...mergedSkillsCore,
         locs,
         icons,
         skillsDataPackPaths: vanillaPacks.concat(enabledModPacks).map((pack) => pack.path),
       };
-
       const defaultSubtype = getDefaultSkillsSubtype(mergedSkillsCore.subtypesToSet);
       if (defaultSubtype) {
         await getSkillsForSubtype(defaultSubtype, 0);
       }
       return;
     }
-
     await readMods(mods, false, true, false, true, tablesToRead);
-
     await readModsByPath(
       vanillaPacksToRead,
       { skipParsingTables: false, readLocs: true, tablesToRead },
       true,
     );
-
     const unsortedPacksTableData = getPacksTableData(
       appData.packsData.filter(
         (pack) => pack.name == "db.pack" || mods.some((mod) => mod.path === pack.path),
@@ -750,21 +664,16 @@ export const registerIpcMainListeners = (
       true,
     );
     if (!unsortedPacksTableData) return;
-
     const packsTableData = [] as PackViewData[];
-
     // sort the mods by load priority
     const sortedMods = sortByNameAndLoadOrder(mods);
     const dbPackData = unsortedPacksTableData.find((ptd) => ptd.packName == "db.pack");
     if (dbPackData) packsTableData.push(dbPackData);
-
     for (const mod of sortedMods.toReversed()) {
       const packTableData = unsortedPacksTableData.find((ptd) => ptd.packPath == mod.path);
       if (packTableData) packsTableData.push(packTableData);
     }
-
     assert(unsortedPacksTableData.length == packsTableData.length);
-
     const effects: EffectData[] = [];
     getTableRowData(packsTableData, "effects_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
@@ -784,12 +693,10 @@ export const registerIpcMainListeners = (
         } else effects.push(newEffect);
       }
     });
-
     const effectsToEffectData: Record<string, EffectData> = {};
     for (const effectData of effects) {
       effectsToEffectData[effectData.key] = effectData;
     }
-
     const effectBonusValueIdsUnitSets: { bonusValueId: string; effect: string; unitSet: string }[] = [];
     getTableRowData(packsTableData, "effect_bonus_value_ids_unit_sets_tables", (schemaFieldRow) => {
       const bonusValueId = schemaFieldRow.find((sF) => sF.name == "bonus_value_id")?.resolvedKeyValue;
@@ -802,13 +709,11 @@ export const registerIpcMainListeners = (
           unitSet,
         });
     });
-
     const effectToEffectBonusValueIdsUnitSetsData: Record<string, (typeof effectBonusValueIdsUnitSets)[0]> =
       {};
     for (const effectBonusValueIdsUnitSet of effectBonusValueIdsUnitSets) {
       effectToEffectBonusValueIdsUnitSetsData[effectBonusValueIdsUnitSet.effect] = effectBonusValueIdsUnitSet;
     }
-
     const subtypeAndSets: {
       key: string;
       agentSubtype: string;
@@ -845,19 +750,16 @@ export const registerIpcMainListeners = (
         } else subtypeAndSets.push(newSubtypeAndSets);
       }
     });
-
     const subtypesToSet: Record<string, string[]> = {};
     for (const { key, agentSubtype } of subtypeAndSets) {
       subtypesToSet[agentSubtype] = subtypesToSet[agentSubtype] || [];
       if (!subtypesToSet[agentSubtype].includes(key)) subtypesToSet[agentSubtype].push(key);
     }
-
     const setAndNodes: { set: string; node: string; modDisabled: string }[] = [];
     getTableRowData(packsTableData, "character_skill_node_set_items_tables", (schemaFieldRow) => {
       const set = schemaFieldRow.find((sF) => sF.name == "set")?.resolvedKeyValue;
       const node = schemaFieldRow.find((sF) => sF.name == "item")?.resolvedKeyValue;
       const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
-
       if (set && node && modDisabled != undefined)
         setAndNodes.push({
           set,
@@ -865,14 +767,12 @@ export const registerIpcMainListeners = (
           modDisabled,
         });
     });
-
     const setToNodes: Record<string, string[]> = {};
     for (const setAndNode of setAndNodes) {
       const set = setAndNode.set;
       if (!setToNodes[set]) setToNodes[set] = [];
       if (!setToNodes[set].includes(setAndNode.node)) setToNodes[set].push(setAndNode.node);
     }
-
     // set to node table can also be used to disable nodes for a set
     const setToNodesDisables: Record<string, string[]> = {};
     for (const setAndNode of setAndNodes) {
@@ -881,10 +781,8 @@ export const registerIpcMainListeners = (
       if (!setToNodesDisables[set]) setToNodesDisables[set] = [];
       if (!setToNodesDisables[set].includes(setAndNode.node)) setToNodesDisables[set].push(setAndNode.node);
     }
-
     // console.log("setToNodesDisables:", setToNodesDisables);
     // console.log("setToNodes KF:", setToNodes["wh_main_skill_node_set_emp_karl_franz"]);
-
     const nodeLinks: NodeLinks = {};
     getTableRowData(packsTableData, "character_skill_node_links_tables", (schemaFieldRow) => {
       const child_key = schemaFieldRow.find((sF) => sF.name == "child_key")?.resolvedKeyValue;
@@ -896,7 +794,6 @@ export const registerIpcMainListeners = (
       const child_link_position = schemaFieldRow.find(
         (sF) => sF.name == "child_link_position",
       )?.resolvedKeyValue;
-
       if (
         child_key != undefined &&
         parent_key != undefined &&
@@ -914,7 +811,6 @@ export const registerIpcMainListeners = (
         });
       }
     });
-
     const nodeAndSkills: NodeSkill[] = [];
     getTableRowData(packsTableData, "character_skill_nodes_tables", (schemaFieldRow) => {
       const node = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
@@ -956,12 +852,10 @@ export const registerIpcMainListeners = (
         } else nodeAndSkills.push(newNodeAndSkill);
       }
     });
-
     const nodeToSkill: Record<string, (typeof nodeAndSkills)[0]> = {};
     for (const nodeAndSkill of nodeAndSkills) {
       nodeToSkill[nodeAndSkill.node] = nodeAndSkill;
     }
-
     const skills: SkillAndIcons = [];
     getTableRowData(packsTableData, "character_skills_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
@@ -980,13 +874,11 @@ export const registerIpcMainListeners = (
         } else skills.push(newSkill);
       }
     });
-
     const nodeToSkillLocks = {} as NodeToSkillLocks;
     getTableRowData(packsTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
       const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
       const skillNode = schemaFieldRow.find((sF) => sF.name == "character_skill_node")?.resolvedKeyValue;
       const level = schemaFieldRow.find((sF) => sF.name == "level")?.resolvedKeyValue;
-
       if (skill != undefined && skillNode != undefined && level != undefined) {
         nodeToSkillLocks[skillNode] = nodeToSkillLocks[skillNode] || [];
         const levelAsNumber = Number(level);
@@ -999,7 +891,6 @@ export const registerIpcMainListeners = (
         }
       }
     });
-
     const skillsAndEffects: Effect[] = [];
     getTableRowData(packsTableData, "character_skill_level_to_effects_junctions_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
@@ -1007,7 +898,6 @@ export const registerIpcMainListeners = (
       const level = schemaFieldRow.find((sF) => sF.name == "level")?.resolvedKeyValue;
       const value = schemaFieldRow.find((sF) => sF.name == "value")?.resolvedKeyValue;
       const effectKey = schemaFieldRow.find((sF) => sF.name == "effect_key")?.resolvedKeyValue;
-
       if (
         key != undefined &&
         effectScope != undefined &&
@@ -1030,14 +920,12 @@ export const registerIpcMainListeners = (
         });
       }
     });
-
     const skillsToEffects: Record<string, (typeof skillsAndEffects)[0][]> = {};
     for (const skillAndEffect of skillsAndEffects) {
       const key = skillAndEffect.key;
       if (!skillsToEffects[key]) skillsToEffects[key] = [];
       skillsToEffects[key].push(skillAndEffect);
     }
-
     for (const skill of Object.keys(skillsToEffects)) {
       let maxLevel = 1;
       const effects = skillsToEffects[skill];
@@ -1047,14 +935,12 @@ export const registerIpcMainListeners = (
       const skillInSkills = skills.find((skillIter) => skillIter.key == skill);
       if (skillInSkills) skillInSkills.maxLevel = maxLevel;
     }
-
     const parseNumber = (value: string | undefined) => {
       if (value == undefined || value === "") return 0;
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : 0;
     };
     const parseBool = (value: string | undefined) => value == "true" || value == "1";
-
     const effectToUnitAbilityEnables = {} as Record<string, AbilityEnableMapping[]>;
     getTableRowData(packsTableData, "effect_bonus_value_unit_ability_junctions_tables", (schemaFieldRow) => {
       const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
@@ -1074,7 +960,6 @@ export const registerIpcMainListeners = (
         });
       }
     });
-
     const unitAbilitiesByKey = {} as Record<
       string,
       { key: string; iconName: string; type: string; sourceType: string; overpowerOption?: string }
@@ -1094,7 +979,6 @@ export const registerIpcMainListeners = (
         overpowerOption: overpowerOption || undefined,
       };
     });
-
     const unitSpecialAbilitiesByKey = {} as Record<
       string,
       {
@@ -1149,7 +1033,6 @@ export const registerIpcMainListeners = (
         vortex: schemaFieldRow.find((sF) => sF.name == "vortex")?.resolvedKeyValue || undefined,
       };
     });
-
     const bombardmentsByKey = {} as Record<
       string,
       { key: string; numProjectiles: number; projectileType: string }
@@ -1167,7 +1050,6 @@ export const registerIpcMainListeners = (
         numProjectiles,
       };
     });
-
     const projectilesByKey = {} as Record<
       string,
       {
@@ -1195,7 +1077,6 @@ export const registerIpcMainListeners = (
           schemaFieldRow.find((sF) => sF.name == "spawned_vortex")?.resolvedKeyValue || undefined,
       };
     });
-
     const explosionsByKey = {} as Record<
       string,
       {
@@ -1225,7 +1106,6 @@ export const registerIpcMainListeners = (
         ),
       };
     });
-
     const vortexesByKey = {} as Record<
       string,
       {
@@ -1255,7 +1135,6 @@ export const registerIpcMainListeners = (
         numVortexes: parseNumber(schemaFieldRow.find((sF) => sF.name == "num_vortexes")?.resolvedKeyValue),
       };
     });
-
     const abilityToPhaseIds = {} as Record<string, string[]>;
     getTableRowData(
       packsTableData,
@@ -1268,7 +1147,6 @@ export const registerIpcMainListeners = (
         if (!abilityToPhaseIds[abilityKey].includes(phaseId)) abilityToPhaseIds[abilityKey].push(phaseId);
       },
     );
-
     const phasesById = {} as Record<
       string,
       {
@@ -1304,7 +1182,6 @@ export const registerIpcMainListeners = (
         ),
       };
     });
-
     const phaseStatEffectsByPhaseId = {} as Record<string, { stat: string; value: number; how: string }[]>;
     getTableRowData(packsTableData, "special_ability_phase_stat_effects_tables", (schemaFieldRow) => {
       const phase = schemaFieldRow.find((sF) => sF.name == "phase")?.resolvedKeyValue;
@@ -1322,7 +1199,6 @@ export const registerIpcMainListeners = (
         phaseStatEffectsByPhaseId[phase].push({ stat, value, how });
       }
     });
-
     const uiUnitStatIconsByStat = {} as Record<string, string>;
     getTableRowData(packsTableData, "ui_unit_stats_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
@@ -1330,7 +1206,6 @@ export const registerIpcMainListeners = (
       if (!key || !icon) return;
       uiUnitStatIconsByStat[key] = icon;
     });
-
     let kvDirectDamageMinUnary = 0.5;
     let kvDirectDamageLarge = 0.75;
     getTableRowData(packsTableData, "_kv_unit_ability_scaling_rules_tables", (schemaFieldRow) => {
@@ -1339,7 +1214,6 @@ export const registerIpcMainListeners = (
       if (key == "direct_damage_damage_scale_min_unary") kvDirectDamageMinUnary = value;
       if (key == "direct_damage_large") kvDirectDamageLarge = value;
     });
-
     const abilityToAdditionalUiEffectKeys = {} as Record<string, string[]>;
     getTableRowData(
       packsTableData,
@@ -1354,7 +1228,6 @@ export const registerIpcMainListeners = (
         }
       },
     );
-
     const additionalUiEffectsByKey = {} as Record<
       string,
       { key: string; sortOrder: number; effectState: string }
@@ -1367,7 +1240,6 @@ export const registerIpcMainListeners = (
       if (!key) return;
       additionalUiEffectsByKey[key] = { key, sortOrder, effectState };
     });
-
     const abilityToAutoDeactivateFlags = {} as Record<string, string[]>;
     getTableRowData(packsTableData, "special_ability_to_auto_deactivate_flags_tables", (schemaFieldRow) => {
       const ability = schemaFieldRow.find((sF) => sF.name == "special_ability")?.resolvedKeyValue;
@@ -1378,7 +1250,6 @@ export const registerIpcMainListeners = (
         abilityToAutoDeactivateFlags[ability].push(deactivateFlag);
       }
     });
-
     const abilityToGroupKeys = {} as Record<string, string[]>;
     getTableRowData(
       packsTableData,
@@ -1391,7 +1262,6 @@ export const registerIpcMainListeners = (
         if (!abilityToGroupKeys[ability].includes(group)) abilityToGroupKeys[ability].push(group);
       },
     );
-
     const specialAbilityGroupsByKey = {} as Record<string, { key: string; iconPath: string }>;
     getTableRowData(packsTableData, "special_ability_groups_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;
@@ -1402,7 +1272,6 @@ export const registerIpcMainListeners = (
         iconPath,
       };
     });
-
     // const set = subtypeToSet["wh_main_emp_karl_franz"];
     // const nodes = setToNodes[set];
     // for (const node of nodes) {
@@ -1414,9 +1283,7 @@ export const registerIpcMainListeners = (
     //     console.log("effect", effect);
     //   }
     // }
-
     const skillIconPaths = getSkillAndEffectIconPaths(skills, skillsToEffects, effectsToEffectData);
-
     // const readList1 = appData.packsData.filter((packsData) =>
     //   mods.map((mod) => mod.name).includes(packsData.name)
     // );
@@ -1429,13 +1296,11 @@ export const registerIpcMainListeners = (
     //   "readList2:",
     //   readList2.map((mod) => mod.name)
     // );
-
     const enabledModPacks = appData.packsData.filter((packsData) =>
       mods.map((mod) => mod.name).includes(packsData.name),
     );
     // for (const pack of enabledModPacks)
     //   await readFromExistingPack(pack, { filesToRead: skillIconPaths, skipParsingTables: true });
-
     console.log("vanillaPacksToRead", vanillaPacksToRead);
     console.log(
       "vanillaPacksToRead ARE:",
@@ -1445,7 +1310,6 @@ export const registerIpcMainListeners = (
     );
     const vanillaPacks = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
     const icons = await loadIconsFromPacks(vanillaPacks.concat(enabledModPacks), skillIconPaths);
-
     const locs = getLocsFromPacks(
       appData.packsData.filter(
         (packsData) =>
@@ -1453,12 +1317,10 @@ export const registerIpcMainListeners = (
       ),
       getLocsTrie,
     );
-
     const packNameToLocEntries: Record<string, Record<string, string>> = {};
     for (const packName of Object.keys(locs)) {
       packNameToLocEntries[packName] = locs[packName].getEntries();
     }
-
     // fs.writeFileSync("dumps/iconPaths.json", JSON.stringify(skillIconPaths));
     // fs.writeFileSync("dumps/locs.json", JSON.stringify(packNameToLocEntries));
     // fs.writeFileSync("dumps/packsTableData.json", JSON.stringify(packsTableData));
@@ -1467,7 +1329,6 @@ export const registerIpcMainListeners = (
     // fs.writeFileSync("dumps/nodeAndSkills.json", JSON.stringify(nodeAndSkills));
     // fs.writeFileSync("dumps/skills.json", JSON.stringify(skills));
     // fs.writeFileSync("dumps/skillsAndEffects.json", JSON.stringify(skillsAndEffects));
-
     // fs.writeFileSync("dumps/subtypeAndSets.json", JSON.stringify(subtypeAndSets));
     // fs.writeFileSync("dumps/subtypeToSet.json", JSON.stringify(subtypesToSet));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
@@ -1479,18 +1340,15 @@ export const registerIpcMainListeners = (
     //   "dumps/effectToEffectBonusValueIdsUnitSetsData.json",
     //   JSON.stringify(effectToEffectBonusValueIdsUnitSetsData)
     // );
-
     for (const [set, setToNodesToDisable] of Object.entries(setToNodesDisables)) {
       const nodes = setToNodes[set];
       const lenBefore = nodes.length;
       setToNodes[set] = setToNodes[set].filter((node) => !setToNodesToDisable.includes(node));
       const lenAfter = setToNodes[set].length;
-
       if (lenBefore != lenAfter) {
         console.log("from set", set, "removed", lenBefore - lenAfter, "elements");
       }
     }
-
     const setKF = subtypesToSet["wh_main_emp_karl_franz"][0];
     const skillsDataPackPaths = vanillaPacks.concat(enabledModPacks).map((pack) => pack.path);
     appData.skillsData = {
@@ -1551,34 +1409,26 @@ export const registerIpcMainListeners = (
       }
     }
     const nodesKF = setToNodes[setKF];
-
     // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
     // fs.writeFileSync("dumps/nodeLinks.json", JSON.stringify(nodeLinks));
     // fs.writeFileSync("dumps/nodesKF.json", JSON.stringify(nodesKF));
-
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
-
     // fs.writeFileSync("dumps/nodesToParents.json", JSON.stringify(nodesToParents));
-
     const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
-
     // const nodeToSkillsKF = nodesKF.reduce((acc, current) => {
     //   acc[current] = nodeToSkill[current];
     //   return acc;
     // }, {} as Record<string, (typeof nodeAndSkills)[0]>);
     // fs.writeFileSync("dumps/kfSkills.json", JSON.stringify(kfSkills));
     // fs.writeFileSync("dumps/nodeToSkillsKF.json", JSON.stringify(nodeToSkillsKF));
-
     const getLoc = (locId: string) => {
       for (const locsInPack of Object.values(locs)) {
         const localized = locsInPack.get(locId);
         if (localized) return localized;
       }
     };
-
     appendLocalizationsToSkills(kfSkills, getLoc);
-
     const effectKeysForCurrentSkills = Array.from(
       new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
     );
@@ -1625,7 +1475,6 @@ export const registerIpcMainListeners = (
         }
       }
     }
-
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
       (acc, curr) => {
@@ -1634,9 +1483,7 @@ export const registerIpcMainListeners = (
       },
       {} as Record<string, number>,
     );
-
     const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
-
     const characterEffectKeys = new Set<string>();
     for (const effect of skillsAndEffects) {
       if (effect.effectScope.startsWith("character_")) {
@@ -1651,7 +1498,6 @@ export const registerIpcMainListeners = (
         icon: ed.icon,
         priority: ed.priority,
       }));
-
     const allSkillIcons = Object.keys(icons)
       .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
       .sort()
@@ -1659,7 +1505,6 @@ export const registerIpcMainListeners = (
         path: iconPath,
         name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
       }));
-
     const allSkills = skills.map((skill) => {
       const effects = (skillsToEffects[skill.key] || []).map((e) => ({
         effectKey: e.effectKey,
@@ -1679,7 +1524,6 @@ export const registerIpcMainListeners = (
         effects,
       };
     });
-
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
@@ -1706,12 +1550,10 @@ export const registerIpcMainListeners = (
         {} as Record<string, string>,
       ),
     };
-
     if (appData.queuedSkillsData) {
       sendQueuedDataToSkills();
     }
   };
-
   const getSkillsForSubtype = async (subtype: string, subtypeIndex: number) => {
     console.log("getSkillsForSubtype:", subtype);
     const cachedSkillsData = appData.skillsData;
@@ -1719,25 +1561,20 @@ export const registerIpcMainListeners = (
       getSkillsData(appData.enabledMods);
       return;
     }
-
     const setKF = cachedSkillsData.subtypesToSet[subtype];
     console.log("sets for subtype:", setKF);
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
-
     const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet, nodeToSkillLocks } =
       cachedSkillsData;
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
     const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
-
     const getLoc = (locId: string) => {
       for (const locsInPack of Object.values(locs)) {
         const localized = locsInPack.get(locId);
         if (localized) return localized;
       }
     };
-
     appendLocalizationsToSkills(kfSkills, getLoc);
-
     const effectKeysForCurrentSkills = Array.from(
       new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
     );
@@ -1787,7 +1624,6 @@ export const registerIpcMainListeners = (
         }
       }
     }
-
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
       (acc, curr) => {
@@ -1796,9 +1632,7 @@ export const registerIpcMainListeners = (
       },
       {} as Record<string, number>,
     );
-
     const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
-
     const characterEffectKeys = new Set<string>();
     for (const effects of Object.values(cachedSkillsData.skillsToEffects)) {
       for (const effect of effects) {
@@ -1815,7 +1649,6 @@ export const registerIpcMainListeners = (
         icon: ed.icon,
         priority: ed.priority,
       }));
-
     const allSkills = cachedSkillsData.skills.map((skill) => {
       const effects = (cachedSkillsData.skillsToEffects[skill.key] || []).map((e) => ({
         effectKey: e.effectKey,
@@ -1835,7 +1668,6 @@ export const registerIpcMainListeners = (
         effects,
       };
     });
-
     const allSkillIcons = Object.keys(cachedSkillsData.icons)
       .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
       .sort()
@@ -1843,7 +1675,6 @@ export const registerIpcMainListeners = (
         path: iconPath,
         name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
       }));
-
     appData.queuedSkillsData = {
       // subtypeToSkills: { [subtype]: kfSkills },
       currentSubtype: subtype,
@@ -1870,12 +1701,10 @@ export const registerIpcMainListeners = (
         {} as Record<string, string>,
       ),
     };
-
     if (appData.queuedSkillsData) {
       sendQueuedDataToSkills();
     }
   };
-
   const getTableRowData = (
     packsTableData: PackViewData[],
     tableName: string,
@@ -1897,7 +1726,6 @@ export const registerIpcMainListeners = (
       }
     });
   };
-
   type CachedTechnologyData = {
     setsByKey: Record<string, TechnologyNodeSetSummary>;
     nodesByKey: Record<
@@ -1939,31 +1767,25 @@ export const registerIpcMainListeners = (
     technologyToEffects: Record<string, { effectKey: string; value?: string }[]>;
     effectsForTech: Record<string, { icon?: string }>;
   };
-
   let cachedTechnologyData: CachedTechnologyData | undefined;
   let cachedTechnologyDataKey: string | undefined;
-
   const getSchemaFieldValue = (schemaFieldRow: AmendedSchemaField[], fieldName: string) =>
     schemaFieldRow.find((sF) => sF.name == fieldName)?.resolvedKeyValue;
-
   const parseOptionalString = (value: unknown) => {
     if (value == null) return undefined;
     const asString = `${value}`.trim();
     return asString === "" ? undefined : asString;
   };
-
   const parseOptionalNumber = (value: unknown, fallback = 0) => {
     if (value == null || `${value}`.trim() === "") return fallback;
     const parsed = Number.parseInt(`${value}`, 10);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
-
   const parseOptionalFloat = (value: unknown, fallback = 0) => {
     if (value == null || `${value}`.trim() === "") return fallback;
     const parsed = Number.parseFloat(`${value}`);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
-
   const parseOptionalBool = (value: unknown, fallback = false) => {
     if (value == null) return fallback;
     const asString = `${value}`.trim().toLowerCase();
@@ -1971,7 +1793,6 @@ export const registerIpcMainListeners = (
     if (asString === "false" || asString === "0") return false;
     return fallback;
   };
-
   const schemaRowToRecord = (schemaFieldRow: AmendedSchemaField[]) => {
     const rowRecord: Record<string, string> = {};
     for (const schemaField of schemaFieldRow) {
@@ -1988,13 +1809,11 @@ export const registerIpcMainListeners = (
     }
     return rowRecord;
   };
-
   const getTechnologyIconPath = (iconName: string | undefined) => {
     if (!iconName || iconName.trim() === "") return undefined;
     const withoutExtension = iconName.replace(/\.(png|jpg|jpeg)$/i, "");
     return `ui\\campaign ui\\technologies\\${withoutExtension}.png`;
   };
-
   const normalizeTechnologyBuildingLevel = (buildingLevel: string | undefined) => {
     if (
       buildingLevel === "wh_main_human_port_ruin" ||
@@ -2004,14 +1823,12 @@ export const registerIpcMainListeners = (
     }
     return buildingLevel;
   };
-
   const getLocById = (locs: Record<string, Trie<string>>, locId: string) => {
     for (const locsInPack of Object.values(locs)) {
       const localized = locsInPack.get(locId);
       if (localized) return localized;
     }
   };
-
   const getTechnologyDataCacheKey = () =>
     hash({
       game: appData.currentGame,
@@ -2023,11 +1840,9 @@ export const registerIpcMainListeners = (
         lastChangedLocal: mod.lastChangedLocal,
       })),
     });
-
   const buildTechnologyData = async (): Promise<CachedTechnologyData | undefined> => {
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (!dataFolder) return undefined;
-
     const technologyTablesToRead = [
       "technology_node_sets_tables",
       "technology_nodes_tables",
@@ -2040,7 +1855,6 @@ export const registerIpcMainListeners = (
       "effects_tables",
       "technology_effects_junction_tables",
     ];
-
     const tablesToRead: string[] = [];
     for (const tableName of technologyTablesToRead) {
       for (const resolvedTable of resolveTable(tableName)) {
@@ -2048,12 +1862,10 @@ export const registerIpcMainListeners = (
         if (!tablesToRead.includes(resolvedPath)) tablesToRead.push(resolvedPath);
       }
     }
-
     const enabledMods = [...appData.enabledMods];
     if (enabledMods.length > 0) {
       await readMods(enabledMods, false, true, false, true, tablesToRead);
     }
-
     const vanillaPacksToRead = [...appData.allVanillaPackNames]
       .filter(
         (packName) =>
@@ -2065,13 +1877,11 @@ export const registerIpcMainListeners = (
             !packName.startsWith("terrain")),
       )
       .map((packName) => nodePath.join(dataFolder, packName));
-
     await readModsByPath(
       vanillaPacksToRead,
       { skipParsingTables: false, readLocs: true, tablesToRead },
       true,
     );
-
     const vanillaPackPathSet = new Set(vanillaPacksToRead);
     const vanillaPacks = appData.packsData.filter((packData) => vanillaPackPathSet.has(packData.path));
     const packsByPath = new Map(appData.packsData.map((packData) => [packData.path, packData]));
@@ -2079,10 +1889,8 @@ export const registerIpcMainListeners = (
     const orderedModPacks = orderedEnabledMods
       .map((mod) => packsByPath.get(mod.path))
       .filter((pack): pack is Pack => !!pack);
-
     const orderedPacks = vanillaPacks.concat(orderedModPacks);
     const packsTableData = getPacksTableData(orderedPacks, tablesToRead, true) || [];
-
     const setsByKey: CachedTechnologyData["setsByKey"] = {};
     const nodesByKey: CachedTechnologyData["nodesByKey"] = {};
     const linksByKey: CachedTechnologyData["linksByKey"] = {};
@@ -2091,15 +1899,12 @@ export const registerIpcMainListeners = (
     const uiGroupsByKey: CachedTechnologyData["uiGroupsByKey"] = {};
     const uiGroupBoundsByKey: Record<string, TechnologyUiGroupBoundsData> = {};
     const technologiesByKey: CachedTechnologyData["technologiesByKey"] = {};
-
     const nodeRowsByKey: CachedTechnologyData["nodeRowsByKey"] = {};
     const linkRowsByKey: CachedTechnologyData["linkRowsByKey"] = {};
     const technologyRowsByKey: CachedTechnologyData["technologyRowsByKey"] = {};
-
     getTableRowData(packsTableData, "technology_node_sets_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       if (!key) return;
-
       setsByKey[key] = {
         key,
         campaignKey: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "campaign_key")),
@@ -2114,13 +1919,11 @@ export const registerIpcMainListeners = (
         tooltipString: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tooltip_string")),
       };
     });
-
     getTableRowData(packsTableData, "technology_nodes_tables", (schemaFieldRow) => {
       const nodeKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       const technologyKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "technology_key"));
       const setKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "technology_node_set"));
       if (!nodeKey || !technologyKey || !setKey) return;
-
       nodesByKey[nodeKey] = {
         nodeKey,
         technologyKey,
@@ -2139,12 +1942,10 @@ export const registerIpcMainListeners = (
       };
       nodeRowsByKey[nodeKey] = schemaRowToRecord(schemaFieldRow);
     });
-
     getTableRowData(packsTableData, "technology_node_links_tables", (schemaFieldRow) => {
       const parentKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "parent_key"));
       const childKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "child_key"));
       if (!parentKey || !childKey) return;
-
       const linkKey = `${parentKey}|${childKey}`;
       linksByKey[linkKey] = {
         parentKey,
@@ -2166,11 +1967,9 @@ export const registerIpcMainListeners = (
       };
       linkRowsByKey[linkKey] = schemaRowToRecord(schemaFieldRow);
     });
-
     getTableRowData(packsTableData, "technology_ui_tabs_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       if (!key) return;
-
       uiTabsByKey[key] = {
         key,
         sortOrder: parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "sort_order")),
@@ -2182,20 +1981,16 @@ export const registerIpcMainListeners = (
         tooltipString: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tooltip_string")),
       };
     });
-
     getTableRowData(packsTableData, "technology_ui_tabs_to_technology_nodes_junctions_tables", (schemaFieldRow) => {
       const tab = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tab"));
       const node = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "node"));
       if (!tab || !node) return;
-
       if (!uiTabToNodes[tab]) uiTabToNodes[tab] = [];
       if (!uiTabToNodes[tab].includes(node)) uiTabToNodes[tab].push(node);
     });
-
     getTableRowData(packsTableData, "technology_ui_groups_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       if (!key) return;
-
       const explicitHex = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "colour_hex"));
       const red = parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "colour_red"), 0);
       const green = parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "colour_green"), 0);
@@ -2206,7 +2001,6 @@ export const registerIpcMainListeners = (
           .map((component) => Math.max(0, Math.min(255, component)).toString(16).padStart(2, "0"))
           .join("")
           .toUpperCase();
-
       uiGroupsByKey[key] = {
         key,
         colourRed: red,
@@ -2225,7 +2019,6 @@ export const registerIpcMainListeners = (
         ),
       };
     });
-
     getTableRowData(
       packsTableData,
       "technology_ui_groups_to_technology_nodes_junctions_tables",
@@ -2234,7 +2027,6 @@ export const registerIpcMainListeners = (
         const topLeftNode = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "top_left_node"));
         const bottomRightNode = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "bottom_right_node"));
         if (!groupKey || !topLeftNode || !bottomRightNode) return;
-
         uiGroupBoundsByKey[groupKey] = {
           groupKey,
           topLeftNode,
@@ -2248,11 +2040,9 @@ export const registerIpcMainListeners = (
         };
       },
     );
-
     getTableRowData(packsTableData, "technologies_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       if (!key) return;
-
       const iconName = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "icon_name"));
       technologiesByKey[key] = {
         key,
@@ -2264,14 +2054,12 @@ export const registerIpcMainListeners = (
       };
       technologyRowsByKey[key] = schemaRowToRecord(schemaFieldRow);
     });
-
     const effectsForTech: Record<string, { icon?: string }> = {};
     getTableRowData(packsTableData, "effects_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect"));
       const icon = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "icon"));
       if (key) effectsForTech[key] = { icon };
     });
-
     const technologyToEffectsByKey: Record<string, Record<string, { effectKey: string; value?: string }>> = {};
     getTableRowData(
       packsTableData,
@@ -2290,7 +2078,6 @@ export const registerIpcMainListeners = (
     const technologyToEffects: Record<string, { effectKey: string; value?: string }[]> = Object.fromEntries(
       Object.entries(technologyToEffectsByKey).map(([techKey, effectsByKey]) => [techKey, Object.values(effectsByKey)]),
     );
-
     const techIconPaths = Array.from(
       new Set(
         Object.values(technologiesByKey)
@@ -2308,10 +2095,8 @@ export const registerIpcMainListeners = (
       ).values(),
     );
     const iconPaths = [...techIconPaths, ...effectIconPaths];
-
     const locs = getLocsFromPacks(orderedPacks, getLocsTrie);
     const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
-
     return {
       setsByKey,
       nodesByKey,
@@ -2330,16 +2115,13 @@ export const registerIpcMainListeners = (
       effectsForTech,
     };
   };
-
   const ensureTechnologyData = async () => {
     const cacheKey = getTechnologyDataCacheKey();
     if (cachedTechnologyData && cachedTechnologyDataKey == cacheKey) return cachedTechnologyData;
-
     cachedTechnologyData = await buildTechnologyData();
     cachedTechnologyDataKey = cacheKey;
     return cachedTechnologyData;
   };
-
   const setCurrentGame = async (newGame: SupportedGames) => {
     try {
       if (!appData.gamesToGameFolderPaths[newGame]) {
@@ -2348,7 +2130,6 @@ export const registerIpcMainListeners = (
       const dataFolder = appData.gamesToGameFolderPaths[newGame].dataFolder;
       const contentFolder = appData.gamesToGameFolderPaths[newGame].contentFolder;
       const gamePath = appData.gamesToGameFolderPaths[newGame].gamePath;
-
       if (!gamePath || !contentFolder || !dataFolder) {
         await getFolderPaths(log, newGame);
         if (appData.gamesToGameFolderPaths[newGame].contentFolder) {
@@ -2381,7 +2162,6 @@ export const registerIpcMainListeners = (
       }
     }
   };
-
   const refreshModsIfFoldersValid = async (requestedGame: SupportedGames | undefined) => {
     const game = requestedGame || appData.currentGame;
     // const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
@@ -2391,7 +2171,6 @@ export const registerIpcMainListeners = (
     //   console.log(contentFolder, gamePath, dataFolder);
     //   getAllMods();
     // }
-
     await setCurrentGame(game);
     if (appData.gamesToGameFolderPaths[game].contentFolder) {
       const currentPreset = appData.gameToCurrentPreset[game];
@@ -2400,7 +2179,6 @@ export const registerIpcMainListeners = (
       mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
     }
   };
-
   const setLastGameUpdateTimeUsingAppManifest = async () => {
     try {
       const timeOfLastGameUpdate = await getLastUpdated();
@@ -2411,11 +2189,9 @@ export const registerIpcMainListeners = (
       console.log(e);
     }
   };
-
   const fetchGameUpdates = async () => {
     try {
       if (appData.currentGame != "wh3") return await setLastGameUpdateTimeUsingAppManifest();
-
       const res = await fetch(
         `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`,
       );
@@ -2427,7 +2203,6 @@ export const registerIpcMainListeners = (
       appData.gameUpdates = gameUpdates;
       console.log("gameUpdates", gameUpdates);
       gameUpdates.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
-
       if (gameUpdates[0]) {
         mainWindow?.webContents.send("setDataModLastChangedLocal", parseInt(gameUpdates[0].timestamp) * 1000);
       }
@@ -2435,11 +2210,9 @@ export const registerIpcMainListeners = (
       console.log(e);
     }
   };
-
   const removeMod = async (mainWindow: BrowserWindow, modPath: string) => {
     mainWindow?.webContents.send("removeMod", modPath);
   };
-
   const getMod = async (mainWindow: BrowserWindow, modPath: string) => {
     let mod: Mod | undefined;
     try {
@@ -2454,10 +2227,8 @@ export const registerIpcMainListeners = (
     } catch (e) {
       console.log(e);
     }
-
     return mod;
   };
-
   const removePackFromCollisions = (packPath: string) => {
     if (appData.compatData) {
       appData.compatData.packTableCollisions = removeFromPackTableCollisions(
@@ -2470,12 +2241,10 @@ export const registerIpcMainListeners = (
       );
     }
   };
-
   const onNewPackFound = async (path: string, fromWatcher = false) => {
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD ADDED: " + path);
     console.log("MOD ADDED: " + path);
-
     const mod = await getMod(mainWindow, path);
     if (mod) {
       mainWindow?.webContents.send("addMod", mod);
@@ -2487,7 +2256,6 @@ export const registerIpcMainListeners = (
           startTime: Date.now(),
         } as Toast);
       }
-
       if (appData.modsToResubscribeTo.some((iterMod) => iterMod.name == mod.name)) {
         appData.modsToResubscribeTo = appData.modsToResubscribeTo.filter(
           (iterMod) => iterMod.name != mod.name,
@@ -2501,14 +2269,11 @@ export const registerIpcMainListeners = (
   const onPackDeleted = async (path: string, isDeletedFromContent = false) => {
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
-
     console.log("MOD REMOVED: " + path);
     await removeMod(mainWindow, path);
-
     if (appData.packsData && appData.packsData.some((pack) => pack.path == path)) {
       appData.packsData = appData.packsData.filter((pack) => pack.path != path);
     }
-
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (isDeletedFromContent && dataFolder) {
       try {
@@ -2521,12 +2286,9 @@ export const registerIpcMainListeners = (
         console.log(e);
       }
     }
-
     removePackFromCollisions(path);
   };
-
   const matchTableNamePart = /^db\\(.*?)\\data__/;
-
   const getAllMods = async () => {
     const timeStartedFetchingSubbedIds = Date.now();
     try {
@@ -2543,7 +2305,6 @@ export const registerIpcMainListeners = (
     } catch (e) {
       console.log(e);
     }
-
     try {
       let mods = await getMods(log);
       while (Date.now() - timeStartedFetchingSubbedIds < 5000 && appData.subscribedModIds.length == 0) {
@@ -2558,7 +2319,6 @@ export const registerIpcMainListeners = (
       }
       console.log("after subscription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
-
       const packHeadersToSend: PackHeaderData[] = [];
       await Promise.all(
         mods.map(async (mod) => {
@@ -2579,7 +2339,6 @@ export const registerIpcMainListeners = (
       );
       mainWindow?.webContents.send("setPackHeaderData", packHeadersToSend);
       await savePackHeaderCache();
-
       if (!appData.saveSetupDone) {
         appData.saveSetupDone = true;
         getSaveFiles()
@@ -2589,7 +2348,6 @@ export const registerIpcMainListeners = (
           })
           .catch();
       }
-
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
       if (dataFolder) {
         for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
@@ -2621,13 +2379,11 @@ export const registerIpcMainListeners = (
             } catch {
               // pack doesn't exist, skip
             }
-
             const cacheEntry = vanillaStat && vanillaCache[dataPackPath];
             const cacheHit =
               cacheEntry &&
               cacheEntry.size === vanillaStat!.size &&
               cacheEntry.lastChangedLocal === vanillaStat!.mtimeMs;
-
             let packedFileNames: string[];
             if (cacheHit) {
               console.log("VANILLA PACK CACHE HIT:", dataPackPath);
@@ -2659,7 +2415,6 @@ export const registerIpcMainListeners = (
                 packedFileNames = [];
               }
             }
-
             if (cacheHit) {
               // Reconstruct a minimal Pack for vanillaPacks and appendPacksData from cached file names
               const reconstructedPack: Pack = {
@@ -2676,13 +2431,11 @@ export const registerIpcMainListeners = (
                 appendPacksData(reconstructedPack);
               }
             }
-
             const vanillaDBFileNames = packedFileNames
               .map((name) => name.match(matchTableNamePart))
               .filter((matchResult) => matchResult)
               // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
               .map((matchResult) => matchResult![1]);
-
             if (vanillaDBFileNames.length > 0) {
               appData.vanillaPacksDBFileNames = Array.from(
                 new Set([...appData.vanillaPacksDBFileNames, ...vanillaDBFileNames]).values(),
@@ -2691,10 +2444,8 @@ export const registerIpcMainListeners = (
           }
         }
         appData.vanillaPacksDBFileNames.sort((a, b) => collator.compare(a, b));
-
         await fetchGameUpdates();
       }
-
       try {
         fork(
           nodePath.join(__dirname, "sub.js"),
@@ -2717,7 +2468,6 @@ export const registerIpcMainListeners = (
     } catch (err) {
       console.log(err);
     }
-
     await contentWatcher?.close();
     contentWatcher = undefined;
     await dataWatcher?.close();
@@ -2726,12 +2476,10 @@ export const registerIpcMainListeners = (
     downloadsWatcher = undefined;
     await mergedWatcher?.close();
     mergedWatcher = undefined;
-
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
     if (!contentFolder || !dataFolder || !gamePath) return;
-
     if (!contentWatcher) {
       const sanitizedContentFolder = contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
       console.log("content folder:", contentFolder);
@@ -2804,13 +2552,11 @@ export const registerIpcMainListeners = (
     if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
       exec(`mkdir "${mergedDirPath}"`);
-
       while (!fsExtra.existsSync(mergedDirPath)) {
         await new Promise((resolve) => {
           setTimeout(resolve, 100);
         });
       }
-
       // await fsExtra.ensureDir(nodePath.join(gamePath, "/merged/"));
       const sanitizedGamePath = gamePath.replaceAll("\\", "/").replaceAll("//", "/");
       mergedWatcher = chokidar
@@ -2836,7 +2582,6 @@ export const registerIpcMainListeners = (
         });
     }
   };
-
   const readConfig = async (): Promise<AppStateToRead> => {
     try {
       const appState = await readAppConfig();
@@ -2844,7 +2589,6 @@ export const registerIpcMainListeners = (
         fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {}); // forces steam workshop to download mods
         setStartingAppState(appState);
       }
-
       // appFolderPaths is deprecated in the config since we moved from only supporting wh3, this is migration code
       if (appState.appFolderPaths) {
         if (appState.appFolderPaths.contentFolder && !fs.existsSync(appState.appFolderPaths.contentFolder)) {
@@ -2852,12 +2596,10 @@ export const registerIpcMainListeners = (
         } else {
           appData.gamesToGameFolderPaths["wh3"].contentFolder = appState.appFolderPaths.contentFolder;
         }
-
         if (appState.appFolderPaths.gamePath && !fs.existsSync(appState.appFolderPaths.gamePath)) {
           appState.appFolderPaths.gamePath = "";
         } else {
           appData.gamesToGameFolderPaths["wh3"].gamePath = appState.appFolderPaths.gamePath;
-
           if (appState.appFolderPaths.gamePath)
             appData.gamesToGameFolderPaths["wh3"].dataFolder = nodePath.join(
               appState.appFolderPaths.gamePath,
@@ -2865,13 +2607,10 @@ export const registerIpcMainListeners = (
             );
         }
       }
-
       if (appState.gameFolderPaths) {
         appData.gamesToGameFolderPaths = appState.gameFolderPaths;
-
         if (appState.currentGame) {
           const gameFolderPaths = appData.gamesToGameFolderPaths[appState.currentGame];
-
           if (gameFolderPaths.contentFolder && !fs.existsSync(gameFolderPaths.contentFolder)) {
             gameFolderPaths.contentFolder = "";
           }
@@ -2880,14 +2619,12 @@ export const registerIpcMainListeners = (
           }
         }
       }
-
       if (appState.currentGame) {
         appData.currentGame = appState.currentGame;
         initializeAllSchemaForGame(appData.currentGame);
       } else {
         appState.currentGame = appData.currentGame;
       }
-
       if (appState.gameToCurrentPreset) {
         appData.gameToCurrentPreset = appState.gameToCurrentPreset;
       } else {
@@ -2898,7 +2635,6 @@ export const registerIpcMainListeners = (
       } else {
         appState.gameToPresets = appData.gameToPresets;
       }
-
       // presets and currentPreset is also deprecated and now in gameToPresets and gameToCurrentPreset, migration code
       if (appState.currentPreset) {
         appData.gameToCurrentPreset["wh3"] = appState.currentPreset;
@@ -2910,7 +2646,6 @@ export const registerIpcMainListeners = (
       } else {
         appState.presets = appData.gameToPresets[appState.currentGame];
       }
-
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
       appData.isShowingSkillNodeSetNames =
@@ -2920,16 +2655,13 @@ export const registerIpcMainListeners = (
         appState.isShowingHiddenModifiersInsideSkills ?? appData.isShowingHiddenModifiersInsideSkills;
       appData.isCheckingSkillRequirements =
         appState.isCheckingSkillRequirements ?? appData.isCheckingSkillRequirements;
-
       return appState;
     } finally {
       appData.hasReadConfig = true;
     }
   };
-
   ipcMain.on("getAllModData", (event, ids: string[]) => {
     // if (isDev) return;
-
     fetchModData(
       ids.filter((id) => id !== ""),
       (modData) => {
@@ -2942,7 +2674,6 @@ export const registerIpcMainListeners = (
       },
     );
   });
-
   // Cache management for getCustomizableMods
   // This cache stores which tables each pack contains to avoid expensive file scanning
   // Cache entries are invalidated when pack size or lastChangedLocal changes
@@ -2951,14 +2682,10 @@ export const registerIpcMainListeners = (
     lastChangedLocal: number;
     customizableTables: string[]; // Tables found in this pack (e.g., ["db\\abilities\\", "whmmflows\\"])
   }
-
   type CustomizableModsCache = Record<string, CustomizableModsCacheEntry>; // packPath -> cache entry
-
   const CACHE_FILE_NAME = "customizable-mods-cache.json";
-
   // In-memory cache - loaded once and kept in memory
   let customizableModsCache: CustomizableModsCache | null = null;
-
   /**
    * Loads the customizable mods cache from disk into memory (only called once)
    * @returns Cache object, or empty object if cache doesn't exist or is invalid
@@ -2967,7 +2694,6 @@ export const registerIpcMainListeners = (
     if (customizableModsCache !== null) {
       return customizableModsCache;
     }
-
     try {
       const cacheFilePath = nodePath.join(app.getPath("userData"), CACHE_FILE_NAME);
       const data = await fs.promises.readFile(cacheFilePath, "utf8");
@@ -2980,7 +2706,6 @@ export const registerIpcMainListeners = (
       return customizableModsCache;
     }
   };
-
   /**
    * Saves the customizable mods cache to disk
    * @param cache Cache object to save
@@ -2993,7 +2718,6 @@ export const registerIpcMainListeners = (
       console.error("Failed to save customizable mods cache:", err);
     }
   };
-
   // Cache for pack header data (isMovie, dependencyPacks) keyed by pack path
   // Entries are invalidated when the file's size or mtime changes
   interface PackHeaderCacheEntry {
@@ -3002,12 +2726,9 @@ export const registerIpcMainListeners = (
     isMovie: boolean;
     dependencyPacks: string[];
   }
-
   type PackHeaderCache = Record<string, PackHeaderCacheEntry>;
-
   const PACK_HEADER_CACHE_FILE = "pack-headers-cache.bin";
   let packHeaderCache: PackHeaderCache | null = null;
-
   const loadPackHeaderCache = async (): Promise<PackHeaderCache> => {
     if (packHeaderCache !== null) return packHeaderCache;
     try {
@@ -3021,7 +2742,6 @@ export const registerIpcMainListeners = (
       return packHeaderCache;
     }
   };
-
   const savePackHeaderCache = async (): Promise<void> => {
     if (!packHeaderCache) return;
     try {
@@ -3033,7 +2753,6 @@ export const registerIpcMainListeners = (
       console.error("Failed to save pack header cache:", err);
     }
   };
-
   const readPackHeaderCached = async (path: string): Promise<PackHeaderData> => {
     const cache = await loadPackHeaderCache();
     let stat: { size: number; mtimeMs: number } | null = null;
@@ -3059,7 +2778,6 @@ export const registerIpcMainListeners = (
     }
     return data;
   };
-
   // Cache for vanilla pack file name lists, keyed by pack path.
   // Allows skipping readPack() on startup when the pack hasn't changed.
   interface VanillaPackFilesCacheEntry {
@@ -3067,12 +2785,9 @@ export const registerIpcMainListeners = (
     lastChangedLocal: number;
     packedFileNames: string[];
   }
-
   type VanillaPackFilesCache = Record<string, VanillaPackFilesCacheEntry>;
-
   const VANILLA_PACK_FILES_CACHE_FILE = "vanilla-pack-files-cache.bin";
   let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
-
   const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache> => {
     if (vanillaPackFilesCache !== null) return vanillaPackFilesCache;
     try {
@@ -3086,7 +2801,6 @@ export const registerIpcMainListeners = (
       return vanillaPackFilesCache;
     }
   };
-
   const saveVanillaPackFilesCache = async (): Promise<void> => {
     if (!vanillaPackFilesCache) return;
     try {
@@ -3098,23 +2812,19 @@ export const registerIpcMainListeners = (
       console.error("Failed to save vanilla pack files cache:", err);
     }
   };
-
   interface FlowExecutionCacheEntry {
     signatureHash: string;
     createdAt: number;
     modsWithFlows: Array<{ path: string; name: string }>;
     createdFlowPackFileNames: string[];
   }
-
   interface FlowExecutionCache {
     version: number;
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
-
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
   const FLOW_EXECUTION_CACHE_VERSION = 1;
   let flowExecutionCache: FlowExecutionCache | null = null;
-
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
     try {
@@ -3138,7 +2848,6 @@ export const registerIpcMainListeners = (
       return flowExecutionCache;
     }
   };
-
   const saveFlowExecutionCache = async (): Promise<void> => {
     if (!flowExecutionCache) return;
     try {
@@ -3150,7 +2859,6 @@ export const registerIpcMainListeners = (
       console.error("Failed to save flow execution cache:", err);
     }
   };
-
   const sortKeysDeep = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map((entry) => sortKeysDeep(entry));
     if (value && typeof value === "object") {
@@ -3165,7 +2873,6 @@ export const registerIpcMainListeners = (
     }
     return value;
   };
-
   const getModStatForFlowSignature = async (
     mod: Mod,
     cache: PackHeaderCache,
@@ -3173,12 +2880,10 @@ export const registerIpcMainListeners = (
     if (typeof mod.size === "number" && typeof mod.lastChangedLocal === "number") {
       return { size: mod.size, mtimeMs: mod.lastChangedLocal };
     }
-
     const cachedEntry = cache[mod.path];
     if (cachedEntry) {
       return { size: cachedEntry.size, mtimeMs: cachedEntry.lastChangedLocal };
     }
-
     try {
       const stat = await fs.promises.stat(mod.path);
       return { size: stat.size, mtimeMs: stat.mtimeMs };
@@ -3187,7 +2892,6 @@ export const registerIpcMainListeners = (
       return null;
     }
   };
-
   const getPackSignatureCached = async (
     packPath: string,
     cache?: PackHeaderCache,
@@ -3197,7 +2901,6 @@ export const registerIpcMainListeners = (
     if (cachedEntry) {
       return { size: cachedEntry.size, mtimeMs: cachedEntry.lastChangedLocal };
     }
-
     try {
       const stat = await fs.promises.stat(packPath);
       return { size: stat.size, mtimeMs: stat.mtimeMs };
@@ -3206,7 +2909,6 @@ export const registerIpcMainListeners = (
       return null;
     }
   };
-
   const getCompatVanillaPackPaths = (dataFolder: string): string[] => {
     return [...appData.allVanillaPackNames]
       .filter(
@@ -3217,13 +2919,11 @@ export const registerIpcMainListeners = (
       .map((packName) => nodePath.join(dataFolder, packName))
       .toSorted((first, second) => first.localeCompare(second));
   };
-
   const getCompatVanillaTableToPackPaths = (
     vanillaPackPaths: string[],
   ): Record<string, string[]> => {
     const vanillaPackPathsSet = new Set(vanillaPackPaths);
     const tableToPackPaths: Record<string, string[]> = {};
-
     for (const pack of appData.vanillaPacks) {
       if (!vanillaPackPathsSet.has(pack.path)) continue;
       for (const packedFile of pack.packedFiles) {
@@ -3236,15 +2936,12 @@ export const registerIpcMainListeners = (
         }
       }
     }
-
     return tableToPackPaths;
   };
-
   const collectReferencedVanillaTablesForCompat = (mods: Mod[]): string[] => {
     const tablesAndDBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
     const modPaths = new Set(mods.map((mod) => mod.path));
     const referencedVanillaTables = new Set<string>();
-
     for (const pack of appData.packsData) {
       if (!modPaths.has(pack.path)) continue;
       for (const packedFile of pack.packedFiles) {
@@ -3256,7 +2953,6 @@ export const registerIpcMainListeners = (
         if (!dbVersion) continue;
         const tableFieldRefs = tablesAndDBFieldsThatReference[tableName];
         if (!tableFieldRefs) continue;
-
         for (const dbField of dbVersion.fields) {
           const tableRef = tableFieldRefs[dbField.name];
           if (!tableRef) continue;
@@ -3267,16 +2963,13 @@ export const registerIpcMainListeners = (
         }
       }
     }
-
     return [...referencedVanillaTables].toSorted((first, second) => collator.compare(first, second));
   };
-
   const getLazyCompatVanillaReadPlan = (mods: Mod[], vanillaPackPaths: string[]) => {
     const tableToPackPaths = getCompatVanillaTableToPackPaths(vanillaPackPaths);
     const referencedVanillaTables = collectReferencedVanillaTablesForCompat(mods);
     const packPathsToRead = new Set<string>();
     const tablesToRead: string[] = [];
-
     for (const tableName of referencedVanillaTables) {
       const packPaths = tableToPackPaths[tableName];
       if (!packPaths || packPaths.length == 0) continue;
@@ -3285,13 +2978,11 @@ export const registerIpcMainListeners = (
         packPathsToRead.add(packPath);
       }
     }
-
     return {
       packPaths: [...packPathsToRead].toSorted((first, second) => first.localeCompare(second)),
       tablesToRead,
     };
   };
-
   const COMPAT_CHECK_CACHE_VERSION = 1;
   interface CompatCheckCacheEntry {
     signatureHash: string;
@@ -3299,13 +2990,11 @@ export const registerIpcMainListeners = (
     packCollisions: PackCollisions;
   }
   let compatCheckCache: CompatCheckCacheEntry | null = null;
-
   const buildCompatCheckSignature = async (
     mods: Mod[],
     vanillaPackPaths: string[],
   ): Promise<string | null> => {
     const headerCache = await loadPackHeaderCache();
-
     const modSignatureData: Array<{
       path: string;
       name: string;
@@ -3325,7 +3014,6 @@ export const registerIpcMainListeners = (
         mtimeMs: packSig.mtimeMs,
       });
     }
-
     const vanillaSignatureData: Array<{ path: string; size: number; mtimeMs: number }> = [];
     for (const vanillaPackPath of vanillaPackPaths) {
       const packSig = await getPackSignatureCached(vanillaPackPath, headerCache);
@@ -3336,7 +3024,6 @@ export const registerIpcMainListeners = (
         mtimeMs: packSig.mtimeMs,
       });
     }
-
     return hash({
       cacheVersion: COMPAT_CHECK_CACHE_VERSION,
       game: appData.currentGame,
@@ -3345,14 +3032,12 @@ export const registerIpcMainListeners = (
       vanillaPacks: vanillaSignatureData,
     });
   };
-
   const buildFlowExecutionSignature = async (
     sortedEnabledMods: Mod[],
     startGameOptions: StartGameOptions,
     dataFolderPath: string,
   ): Promise<string | null> => {
     const headerCache = await loadPackHeaderCache();
-
     const enabledModsSignatureData: Array<{
       path: string;
       name: string;
@@ -3372,7 +3057,6 @@ export const registerIpcMainListeners = (
       });
     }
     enabledModsSignatureData.sort((first, second) => first.path.localeCompare(second.path));
-
     const vanillaPacksSignatureData: Array<{ path: string; size: number; mtimeMs: number }> = [];
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
       const vanillaPackPath = nodePath.join(dataFolderPath, vanillaPackData.name);
@@ -3385,7 +3069,6 @@ export const registerIpcMainListeners = (
       }
     }
     vanillaPacksSignatureData.sort((first, second) => first.path.localeCompare(second.path));
-
     const signaturePayload = {
       cacheVersion: FLOW_EXECUTION_CACHE_VERSION,
       game: appData.currentGame,
@@ -3395,29 +3078,23 @@ export const registerIpcMainListeners = (
       userFlowOptions: sortKeysDeep(startGameOptions.userFlowOptions ?? {}),
       packDataOverwrites: sortKeysDeep(startGameOptions.packDataOverwrites ?? {}),
     };
-
     return hash(signaturePayload);
   };
-
   ipcMain.on(
     "getCustomizableMods",
     async (event, modPaths: string[], tables: string[], customizableModsHash: string) => {
       // Load cache
       const cache = await loadCustomizableModsCache();
       const customizableMods = {} as Record<string, string[]>;
-
       for (const modPath of modPaths) {
         if (!appData.packMetaData[modPath]) {
           const stats = await fsExtra.stat(modPath);
           appData.packMetaData[modPath] = { size: stats.size, lastChangedLocal: stats.mtimeMs };
         }
       }
-
       if (modPaths.length == 0) return;
       // console.log("getCustomizableMods:", modPaths);
-
       modPaths.sort((firstPath, secondPath) => firstPath.localeCompare(secondPath));
-
       const newPaths = [] as string[];
       if (appData.lastGetCustomizableMods) {
         for (let i = 0, j = 0; i < modPaths.length + appData.lastGetCustomizableMods.length; ) {
@@ -3430,9 +3107,7 @@ export const registerIpcMainListeners = (
           }
           const firstMod = modPaths[i];
           const secondMod = appData.lastGetCustomizableMods[j];
-
           const comparison = firstMod.localeCompare(secondMod);
-
           // console.log("comparing", firstMod, secondMod, comparison);
           if (comparison == 0) {
             i++;
@@ -3444,7 +3119,6 @@ export const registerIpcMainListeners = (
             j++;
           }
         }
-
         // console.log("old getCustomizableMods paths:", modPaths);
         // console.log("new getCustomizableMods paths:", newPaths);
         if (newPaths.length == 0) {
@@ -3454,16 +3128,12 @@ export const registerIpcMainListeners = (
       } else {
         newPaths.push(...modPaths);
       }
-
       const pathToPack = {} as Record<string, Pack>;
-
       const modPathsFromCache = [] as string[];
       const modPathsRead = [] as string[];
-
       for (const modPath of modPaths) {
         const cacheEntry = cache[modPath];
         const packMetaData = appData.packMetaData[modPath];
-
         // console.log(
         //   "COMPARING:",
         //   cacheEntry,
@@ -3471,7 +3141,6 @@ export const registerIpcMainListeners = (
         //   cacheEntry.size === packMetaData.size &&
         //     cacheEntry.lastChangedLocal === packMetaData.lastChangedLocal
         // );
-
         if (
           cacheEntry &&
           packMetaData &&
@@ -3482,7 +3151,6 @@ export const registerIpcMainListeners = (
           modPathsFromCache.push(modPath);
           continue;
         }
-
         const pack = appData.packsData.find((pack) => pack.path == modPath);
         if (pack) {
           pathToPack[modPath] = pack;
@@ -3492,40 +3160,32 @@ export const registerIpcMainListeners = (
           if (pack[0]) pathToPack[modPath] = pack[0];
         }
       }
-
       console.log("getCustomizableMods modPathsFromCache:", modPathsFromCache);
       console.log("getCustomizableMods modPathsRead:", modPathsRead);
-
       const newPacks = Object.entries(pathToPack)
         .filter(([path]) => {
           return newPaths.includes(path);
         })
         .map(([, pack]) => pack);
       // const packs = appData.packsData.filter((pack) => newPaths.includes(pack.path));
-
       // if (newPacks.length != newPaths.length) {
       //   console.log("Some of the mods not yet read for getCustomizableMods.");
       //   console.log("newPacks:", newPacks);
       //   console.log("newPaths:", newPaths);
       //   return;
       // }
-
       const pathsWithPackedFiles = [];
       for (const path of modPaths) {
         const pack = pathToPack[path];
         if (pack && pack.packedFiles.length > 0) pathsWithPackedFiles.push(path);
       }
       appData.lastGetCustomizableMods = pathsWithPackedFiles;
-
       const tablesForMatching = tables.map((table) => `db\\${table}\\`);
       tablesForMatching.push("whmmflows\\");
-
       let cacheModified = false;
-
       for (const currentPack of newPacks) {
         const cacheEntry = cache[currentPack.path];
         let foundTables: string[] | undefined;
-
         // Check if cache is valid for this pack
         if (
           cacheEntry &&
@@ -3539,7 +3199,6 @@ export const registerIpcMainListeners = (
           foundTables = tablesForMatching.filter((tableForMatching) =>
             currentPack.packedFiles.some((packedFile) => packedFile.name.startsWith(tableForMatching)),
           );
-
           cache[currentPack.path] = {
             size: currentPack.size,
             lastChangedLocal: currentPack.lastChangedLocal,
@@ -3547,21 +3206,17 @@ export const registerIpcMainListeners = (
           };
           cacheModified = true;
         }
-
         if (foundTables.length > 0) {
           customizableMods[currentPack.path] = foundTables;
         }
       }
-
       // Save cache if modified
       if (cacheModified) {
         await saveCustomizableModsCache(cache);
       }
-
       for (const [packPath, tables] of Object.entries(customizableMods)) {
         appData.customizableMods[packPath] = tables;
       }
-
       if (hash(appData.customizableMods) == customizableModsHash) {
         console.log("customizableModsHash is the same as customizableMods, don't send it");
       } else {
@@ -3569,15 +3224,12 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.on("getPacksInSave", async (event, saveName: string) => {
     mainWindow?.webContents.send("packsInSave", await getPacksInSave(saveName));
   });
-
   ipcMain.handle("getListOfPacksInSave", async (event, saveName: string) => {
     return getPacksInSave(saveName);
   });
-
   ipcMain.handle("getPackFilesList", async (event, packPath: string) => {
     try {
       const pack = await readPack(packPath, { skipParsingTables: true });
@@ -3587,7 +3239,6 @@ export const registerIpcMainListeners = (
       throw error;
     }
   });
-
   ipcMain.handle(
     "renamePackedFiles",
     async (
@@ -3608,7 +3259,6 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle(
     "executeNode",
     async (
@@ -3624,10 +3274,8 @@ export const registerIpcMainListeners = (
         console.log(
           `Executing node ${nodeExecutionRequest.nodeId} (${nodeExecutionRequest.nodeType}) in backend`,
         );
-
         // Import node execution functions
         const { executeNodeAction } = await import("./nodeExecutor");
-
         const result = await executeNodeAction(nodeExecutionRequest);
         return result;
       } catch (error) {
@@ -3639,7 +3287,6 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle(
     "executeNodeGraph",
     async (
@@ -3660,7 +3307,6 @@ export const registerIpcMainListeners = (
         console.log(
           `Executing node graph with ${graphExecutionRequest.nodes.length} nodes and ${graphExecutionRequest.connections.length} connections`,
         );
-
         // Debug: Check generaterows nodes in the IPC request
         graphExecutionRequest.nodes.forEach((node) => {
           if (node.type === "generaterows") {
@@ -3672,21 +3318,16 @@ export const registerIpcMainListeners = (
             console.log(`  has DBNameToDBVersions: ${!!(node.data as any).DBNameToDBVersions}`);
           }
         });
-
         console.log("graphExecutionRequest summary:", {
           nodeCount: graphExecutionRequest.nodes.length,
           connectionCount: graphExecutionRequest.connections.length,
           nodeTypes: graphExecutionRequest.nodes.map((n) => ({ id: n.id, type: n.type })),
         });
-
         // Import graph execution function
         const { executeNodeGraph } = await import("./nodeGraphExecutor");
-
         const result = await executeNodeGraph(graphExecutionRequest);
-
         // Convert Map to Array for serialization
         const serializedExecutionResults = Array.from(result.executionResults.entries());
-
         return {
           ...result,
           executionResults: serializedExecutionResults,
@@ -3704,7 +3345,6 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle("saveNodeFlow", async (event, flowName: string, flowData: string, packPath: string) => {
     try {
       console.log("saveNodeFlow:", flowName);
@@ -3713,28 +3353,22 @@ export const registerIpcMainListeners = (
         unsavedFiles = [];
         appData.unsavedPacksData[packPath] = unsavedFiles;
       }
-
       if (!flowName.startsWith("whmmflows\\")) flowName = `whmmflows\\${flowName}`;
-
       const buffer = Buffer.from(flowData);
-
       const newFile = {
         name: flowName,
         file_size: buffer.length,
         start_pos: -1,
         text: flowData,
       } as PackedFile;
-
       const existingFileIndex = unsavedFiles.findIndex((file) => file.name == flowName);
       if (existingFileIndex != -1) {
         unsavedFiles.splice(existingFileIndex, 1, newFile);
       } else {
         unsavedFiles.push(newFile);
       }
-
       mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
       windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
-
       return { success: true, filePath: flowName };
     } catch (error) {
       console.error("Error saving node flow:", error);
@@ -3744,11 +3378,9 @@ export const registerIpcMainListeners = (
       };
     }
   });
-
   ipcMain.handle("savePackWithUnsavedFiles", async (event, packPath: string) => {
     try {
       console.log("savePackWithUnsavedFiles:", packPath);
-
       // Memory packs must use "Save As" since they don't have a disk location
       if (packPath.startsWith("memory://")) {
         return {
@@ -3756,7 +3388,6 @@ export const registerIpcMainListeners = (
           error: "Memory packs must use 'Save As' to specify a save location",
         };
       }
-
       const unsavedFiles = appData.unsavedPacksData[packPath];
       if (!unsavedFiles || unsavedFiles.length === 0) {
         return {
@@ -3764,10 +3395,8 @@ export const registerIpcMainListeners = (
           error: "No unsaved files found for this pack",
         };
       }
-
       // Read the original pack
       const pack = await readPack(packPath, { skipParsingTables: true });
-
       // Convert unsaved files to format for writePack (similar to DBClone.ts)
       const filesToSave = unsavedFiles.map((file) => {
         const buffer = file.buffer || Buffer.from(file.text || "");
@@ -3777,16 +3406,13 @@ export const registerIpcMainListeners = (
           file_size: buffer.length,
         };
       });
-
       // Sort files by name (as done in DBClone.ts)
       const sortedFilesToSave = filesToSave.toSorted((firstPf, secondPf) => {
         return firstPf.name.localeCompare(secondPf.name);
       });
-
       // Try to replace the existing pack
       let savePath = packPath;
       let replacedOriginal = true;
-
       try {
         // Write the pack with unsaved files appended/overwritten
         await writePack(sortedFilesToSave, savePath, pack, true);
@@ -3799,18 +3425,15 @@ export const registerIpcMainListeners = (
           const packName = nodePath.basename(packPath, ".pack");
           savePath = nodePath.join(packDir, `${packName}_modified.pack`);
           replacedOriginal = false;
-
           await writePack(sortedFilesToSave, savePath, pack, true);
           console.log(`Pack saved to: ${savePath}`);
         } else {
           throw error;
         }
       }
-
       // Clear unsaved files for this pack
       delete appData.unsavedPacksData[packPath];
       windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
-
       return {
         success: true,
         savedPath: savePath,
@@ -3826,13 +3449,11 @@ export const registerIpcMainListeners = (
       };
     }
   });
-
   ipcMain.handle(
     "savePackAsWithUnsavedFiles",
     async (event, packPath: string, newPackName: string, newPackDirectory: string) => {
       try {
         console.log("savePackAsWithUnsavedFiles:", packPath, newPackName, newPackDirectory);
-
         const unsavedFiles = appData.unsavedPacksData[packPath];
         if (!unsavedFiles || unsavedFiles.length === 0) {
           return {
@@ -3840,12 +3461,10 @@ export const registerIpcMainListeners = (
             error: "No unsaved files found for this pack",
           };
         }
-
         // Check if this is a memory pack (created with "New Pack" button)
         const isMemoryPack = packPath.startsWith("memory://");
         let pack;
         let useFastAppendMode = true;
-
         if (isMemoryPack) {
           // For memory packs, we don't have a source pack to clone, so don't use fast append mode
           useFastAppendMode = false;
@@ -3854,7 +3473,6 @@ export const registerIpcMainListeners = (
           // For disk packs, read the original pack
           pack = await readPack(packPath, { skipParsingTables: true });
         }
-
         // Convert unsaved files to format for writePack (similar to DBClone.ts)
         const filesToSave = unsavedFiles.map((file) => {
           const buffer = file.buffer || Buffer.from(file.text || "");
@@ -3864,15 +3482,12 @@ export const registerIpcMainListeners = (
             file_size: buffer.length,
           };
         });
-
         // Sort files by name (as done in DBClone.ts)
         const sortedFilesToSave = filesToSave.toSorted((firstPf, secondPf) => {
           return firstPf.name.localeCompare(secondPf.name);
         });
-
         // Create new pack path with user-provided name and directory
         const savePath = nodePath.join(newPackDirectory, `${newPackName}.pack`);
-
         // Check if file already exists
         if (fsExtra.existsSync(savePath)) {
           return {
@@ -3880,17 +3495,13 @@ export const registerIpcMainListeners = (
             error: `Pack file already exists at: ${savePath}`,
           };
         }
-
         // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
         // For memory packs, don't use fast append mode since there's no source pack
         await writePack(sortedFilesToSave, savePath, pack, useFastAppendMode);
-
         console.log(`Pack saved to: ${savePath}`);
-
         // Clear unsaved files for this pack
         delete appData.unsavedPacksData[packPath];
         windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
-
         return { success: true, savedPath: savePath };
       } catch (error) {
         console.error("Error saving pack as with unsaved files:", error);
@@ -3901,14 +3512,12 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle("getVisualsUnitsData", async (event, enabledMods: Mod[]) => {
     try {
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
       if (!dataFolder) {
         return { success: false, error: "Data folder is not configured for the current game" };
       }
-
       const enabledModPaths = enabledMods.map((mod) => mod.path);
       const modPathToLabel = new Map<string, string>();
       for (const mod of enabledMods) {
@@ -3929,17 +3538,13 @@ export const registerIpcMainListeners = (
             .map((tableName) => `db\\${tableName}\\`),
         ),
       );
-
       const sortedEnabledMods = sortByNameAndLoadOrder(enabledMods);
       const dbPriorityMods = sortedEnabledMods.toReversed();
-
       const dbPackName = gameToPackWithDBTablesName[appData.currentGame] || "db.pack";
       const dbPackPath = nodePath.join(dataFolder, dbPackName);
       const dataPackPath = nodePath.join(dataFolder, "data.pack");
-
       await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true);
       await readModsByPath(enabledModPaths, { skipParsingTables: false, readLocs: true, tablesToRead }, true);
-
       const localPackNames = [] as string[];
       const currentLanguage = appData.currentLanguage || "en";
       const preferredLocPack = `local_${currentLanguage}.pack`;
@@ -3951,11 +3556,9 @@ export const registerIpcMainListeners = (
       if (localPackPaths.length > 0) {
         await readModsByPath(localPackPaths, { skipParsingTables: true, readLocs: true }, true);
       }
-
       if (fsExtra.existsSync(dataPackPath)) {
         await readModsByPath([dataPackPath], { skipParsingTables: true }, true);
       }
-
       const packsForTables = appData.packsData.filter(
         (pack) => pack.path === dbPackPath || enabledModPaths.includes(pack.path),
       );
@@ -3963,7 +3566,6 @@ export const registerIpcMainListeners = (
       if (!unsortedPacksTableData) {
         return { success: false, error: "Failed to build table data for visuals tab" };
       }
-
       const orderedPacksTableData = [] as PackViewData[];
       const dbPackTableData = unsortedPacksTableData.find((pack) => pack.packPath === dbPackPath);
       if (dbPackTableData) orderedPacksTableData.push(dbPackTableData);
@@ -3971,7 +3573,6 @@ export const registerIpcMainListeners = (
         const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
         if (ptd) orderedPacksTableData.push(ptd);
       }
-
       const getTableRowDataWithPackPath = (
         packsTableData: PackViewData[],
         tableName: string,
@@ -3993,19 +3594,16 @@ export const registerIpcMainListeners = (
           }
         });
       };
-
       const variantsByName = new Map<string, string>();
       const unitToVariantRows = new Map<string, { faction: string; variantName: string }[]>();
       const landUnitKeys = new Set<string>();
       const unitKeyToOriginPackPath = new Map<string, string>();
-
       const packsTableDataForOrigin = [] as PackViewData[];
       for (const mod of dbPriorityMods) {
         const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
         if (ptd) packsTableDataForOrigin.push(ptd);
       }
       if (dbPackTableData) packsTableDataForOrigin.push(dbPackTableData);
-
       getTableRowData(orderedPacksTableData, "variants_tables", (schemaFieldRow) => {
         const variantName = schemaFieldRow.find((field) => field.name == "variant_name")?.resolvedKeyValue;
         const variantFilename = schemaFieldRow.find(
@@ -4015,13 +3613,11 @@ export const registerIpcMainListeners = (
           variantsByName.set(variantName, variantFilename || "");
         }
       });
-
       getTableRowData(orderedPacksTableData, "unit_variants_tables", (schemaFieldRow) => {
         const unitKey = schemaFieldRow.find((field) => field.name == "unit")?.resolvedKeyValue;
         const variantName = schemaFieldRow.find((field) => field.name == "variant")?.resolvedKeyValue;
         const faction = schemaFieldRow.find((field) => field.name == "faction")?.resolvedKeyValue || "";
         if (!unitKey) return;
-
         const rows = unitToVariantRows.get(unitKey) || [];
         const existingIndex = rows.findIndex((row) => row.faction === faction);
         const nextRow = { faction, variantName: variantName || "" };
@@ -4029,12 +3625,10 @@ export const registerIpcMainListeners = (
         else rows.push(nextRow);
         unitToVariantRows.set(unitKey, rows);
       });
-
       getTableRowData(orderedPacksTableData, "land_units_tables", (schemaFieldRow) => {
         const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
         if (unitKey) landUnitKeys.add(unitKey);
       });
-
       getTableRowDataWithPackPath(
         packsTableDataForOrigin,
         "land_units_tables",
@@ -4045,11 +3639,9 @@ export const registerIpcMainListeners = (
           unitKeyToOriginPackPath.set(unitKey, packPath);
         },
       );
-
       const locPacksInPriority = [...localPackPaths, ...dbPriorityMods.map((mod) => mod.path)]
         .map((packPath) => appData.packsData.find((pack) => pack.path === packPath))
         .filter((pack): pack is Pack => !!pack);
-
       const localizedNames = new Map<string, string>();
       for (const pack of locPacksInPriority) {
         const trie = getLocsTrie(pack);
@@ -4058,7 +3650,6 @@ export const registerIpcMainListeners = (
           localizedNames.set(key, value);
         }
       }
-
       const visualsUnits = [] as {
         unitKey: string;
         faction: string;
@@ -4068,7 +3659,6 @@ export const registerIpcMainListeners = (
         originPackPath: string;
         originLabel: string;
       }[];
-
       for (const unitKey of landUnitKeys) {
         const rows = unitToVariantRows.get(unitKey);
         const localizedName = localizedNames.get(`land_units_onscreen_name_${unitKey}`) || unitKey;
@@ -4077,12 +3667,10 @@ export const registerIpcMainListeners = (
           originPackPath === dbPackPath
             ? "Vanilla"
             : modPathToLabel.get(originPackPath) || nodePath.basename(originPackPath);
-
         if (!rows || rows.length === 0) {
           visualsUnits.push({ unitKey, faction: "", localizedName, originPackPath, originLabel });
           continue;
         }
-
         for (const row of rows) {
           const variantFilename = row.variantName ? variantsByName.get(row.variantName) : undefined;
           const variantMeshPath =
@@ -4100,7 +3688,6 @@ export const registerIpcMainListeners = (
           });
         }
       }
-
       visualsUnits.sort((first, second) => {
         const nameDiff = collator.compare(first.localizedName, second.localizedName);
         if (nameDiff !== 0) return nameDiff;
@@ -4108,13 +3695,11 @@ export const registerIpcMainListeners = (
         if (keyDiff !== 0) return keyDiff;
         return collator.compare(first.faction || "", second.faction || "");
       });
-
       const vanillaVariantsPackPaths = [...appData.allVanillaPackNames]
         .filter((packName) => packName.toLowerCase().startsWith("variants"))
         .map((packName) => nodePath.join(dataFolder, packName))
         .filter((packPath) => fsExtra.existsSync(packPath))
         .toSorted((first, second) => collator.compare(nodePath.basename(first), nodePath.basename(second)));
-
       // Keep this in low->high priority order so later packs override earlier ones in search aggregation.
       const fileSearchPackPaths = [
         ...vanillaVariantsPackPaths,
@@ -4126,7 +3711,6 @@ export const registerIpcMainListeners = (
         language: appData.currentLanguage || "en",
         enabledModPaths: [...enabledModPaths].sort(),
       })}`;
-
       visualsSessions.set(sessionId, {
         sessionId,
         enabledModPaths,
@@ -4134,7 +3718,6 @@ export const registerIpcMainListeners = (
         fileSearchPackPaths,
         createdAt: Date.now(),
       });
-
       return {
         success: true,
         sessionId,
@@ -4148,12 +3731,10 @@ export const registerIpcMainListeners = (
       };
     }
   });
-
   ipcMain.handle("readVariantMeshDefinition", async (event, sessionId: string, fileName: string) => {
     try {
       const session = visualsSessions.get(sessionId);
       if (!session) return { success: false, error: "Visuals session expired or missing" };
-
       const resolved = await resolveVisualsFileInSession(session, fileName, {
         variantMeshDefinitionFallback: true,
       });
@@ -4164,7 +3745,6 @@ export const registerIpcMainListeners = (
           error: `File not found in enabled mods or vanilla visuals packs (variants*.pack/data.pack): ${resolved.requestedPath}`,
         };
       }
-
       await readFromExistingPack(resolved.pack, {
         filesToRead: [resolved.fileName],
         skipParsingTables: true,
@@ -4175,7 +3755,6 @@ export const registerIpcMainListeners = (
         if (text == null) {
           return { success: false, error: `Unable to decode ${resolved.fileName}` };
         }
-
         return {
           success: true,
           text,
@@ -4194,20 +3773,17 @@ export const registerIpcMainListeners = (
       };
     }
   });
-
   ipcMain.handle(
     "searchVisualsFiles",
     async (event, sessionId: string, query: string, offset = 0, limit = 200) => {
       try {
         const session = visualsSessions.get(sessionId);
         if (!session) return { success: false, error: "Visuals session expired or missing" };
-
         const normalizedQuery = normalizePackFilePathKey(query || "");
         const uniqueResults = new Map<
           string,
           { path: string; ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" }
         >();
-
         for (const packPath of session.fileSearchPackPaths) {
           let pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
           if (!pack) {
@@ -4216,7 +3792,6 @@ export const registerIpcMainListeners = (
             pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
           }
           if (!pack) continue;
-
           for (const packedFile of pack.packedFiles) {
             const normalizedName = normalizePackFilePathKey(packedFile.name);
             let ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | undefined;
@@ -4225,17 +3800,14 @@ export const registerIpcMainListeners = (
             else if (normalizedName.endsWith(".rigid_model_v2")) ext = "rigid_model_v2";
             if (!ext) continue;
             if (normalizedQuery && !normalizedName.includes(normalizedQuery)) continue;
-
             uniqueResults.set(normalizedName, { path: packedFile.name, ext });
           }
         }
-
         const allResults = Array.from(uniqueResults.values()).sort((first, second) =>
           collator.compare(first.path, second.path),
         );
         const safeOffset = Math.max(0, offset || 0);
         const safeLimit = Math.max(1, Math.min(1000, limit || 200));
-
         return {
           success: true,
           total: allResults.length,
@@ -4250,7 +3822,6 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle(
     "openInAssetEditor",
     async (
@@ -4269,7 +3840,6 @@ export const registerIpcMainListeners = (
         if (process.platform !== "win32") {
           return { success: false, error: "AssetEditor IPC is supported only on Windows." };
         }
-
         const resolved = await resolveVisualsFileInSession(session, packInternalPath, {
           variantMeshDefinitionFallback: true,
           preferredPackPath,
@@ -4281,13 +3851,11 @@ export const registerIpcMainListeners = (
             error: `File not found in enabled mods or vanilla visuals packs (variants*.pack/data.pack): ${resolved.requestedPath}`,
           };
         }
-
         const response = await sendAssetEditorOpenRequest({
           path: resolved.fileName,
           packPathOnDisk: resolved.packPath,
           openInExistingKitbashTab: mode === "existing",
         });
-
         if (!response.ok) {
           return {
             success: false,
@@ -4299,7 +3867,6 @@ export const registerIpcMainListeners = (
             response,
           };
         }
-
         return {
           success: true,
           resolved: {
@@ -4317,14 +3884,11 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle("readFileFromPack", async (event, packPath: string, fileName: string) => {
     try {
       console.log("readFileFromPack:", packPath, fileName);
-
       // Read the pack with the specific file
       const pack = await readPack(packPath, { filesToRead: [fileName] });
-
       // Find the file
       const file = pack.packedFiles.find((pf) => pf.name === fileName);
       if (!file) {
@@ -4333,7 +3897,6 @@ export const registerIpcMainListeners = (
           error: `File "${fileName}" not found in pack`,
         };
       }
-
       // Convert buffer to text
       let text: string;
       if (file.text) {
@@ -4346,7 +3909,6 @@ export const registerIpcMainListeners = (
           error: "File has no readable content",
         };
       }
-
       return { success: true, text };
     } catch (error) {
       console.error("Error reading file from pack:", error);
@@ -4356,29 +3918,22 @@ export const registerIpcMainListeners = (
       };
     }
   });
-
   ipcMain.handle("getFlowFilesFromPack", async (event, packPath: string) => {
     try {
       console.log("getFlowFilesFromPack:", packPath);
-
       // Check if there are unsaved flow files for this pack
       const unsavedFiles = appData.unsavedPacksData[packPath] || [];
       const unsavedFlowFiles = unsavedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
-
       // Read the pack to get flow files
       const pack = await readPack(packPath, { skipParsingTables: true, readFlows: true });
-
       // Find all flow files in the pack
       const packFlowFiles = pack.packedFiles.filter((pf) => pf.name.startsWith("whmmflows\\"));
-
       // Combine pack files with unsaved files (unsaved takes priority)
       const flowFiles: { name: string; content: string }[] = [];
-
       // Add pack flow files
       for (const file of packFlowFiles) {
         // Skip if there's an unsaved version
         if (unsavedFlowFiles.some((uf) => uf.name === file.name)) continue;
-
         let text: string;
         if (file.text) {
           text = file.text;
@@ -4388,10 +3943,8 @@ export const registerIpcMainListeners = (
           console.log("CANNOT GET TEXT FOR FLOW FILE");
           continue;
         }
-
         flowFiles.push({ name: file.name, content: text });
       }
-
       // Add unsaved flow files
       for (const file of unsavedFlowFiles) {
         let text: string;
@@ -4402,10 +3955,8 @@ export const registerIpcMainListeners = (
         } else {
           continue;
         }
-
         flowFiles.push({ name: file.name, content: text });
       }
-
       return { success: true, flowFiles };
     } catch (error) {
       console.error("Error getting flow files from pack:", error);
@@ -4415,18 +3966,15 @@ export const registerIpcMainListeners = (
       };
     }
   });
-
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {
       try {
         const appState = await readConfig();
         mainWindow?.webContents.send("fromAppConfig", appState);
-
         console.log("appState.currentLanguage:", appState.currentLanguage);
         if (appState.currentLanguage) {
           const languageInConfig = appState.currentLanguage || "en";
-
           if (i18n.language != languageInConfig || appData.currentLanguage != languageInConfig) {
             appData.currentLanguage = languageInConfig;
             i18n.changeLanguage(languageInConfig).then(() => {
@@ -4439,7 +3987,6 @@ export const registerIpcMainListeners = (
         if (err instanceof Error) console.log(err.message);
         doesConfigExist = false;
       }
-
       const gamesToCheck = doesConfigExist ? [appData.currentGame] : supportedGames;
       for (const game of gamesToCheck) {
         console.log(`checking game: ${game}`);
@@ -4455,17 +4002,13 @@ export const registerIpcMainListeners = (
           break;
         }
       }
-
       getAllMods().then(async () => {
         try {
           if (doesConfigExist) return;
-
           const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
           if (!gamePath) return;
-
           const usedModsFilePath = nodePath.join(gamePath, "used_mods.txt");
           const usedModsData = await fs.promises.readFile(usedModsFilePath, "utf8");
-
           const modsToEnable: string[] = [];
           for (const line of usedModsData.split("\n")) {
             const match = line.match(/mod\s+"([^"]+)";/);
@@ -4473,7 +4016,6 @@ export const registerIpcMainListeners = (
               modsToEnable.push(match[1]);
             }
           }
-
           console.log("config doesn't exist, enabling mods from used_mods.txt:", modsToEnable);
           mainWindow?.webContents.send("enableModsByName", modsToEnable);
         } catch (e) {}
@@ -4491,13 +4033,11 @@ export const registerIpcMainListeners = (
       }
       mainWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
     }
-
     console.log(
       "NUM MODS IN APPDATA",
       appData.currentGame,
       appData.gameToCurrentPreset[appData.currentGame]?.mods.length,
     );
-
     // for testing, automatically opens db.pack
     if (appData.startArgs.includes("-testDBClone")) {
       if (appData.gamesToGameFolderPaths[appData.currentGame].dataFolder)
@@ -4509,14 +4049,12 @@ export const registerIpcMainListeners = (
         );
     }
   });
-
   ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {
     try {
       if (!mainWindow) return;
       const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
         properties: ["openDirectory", "showHiddenFiles"],
       });
-
       if (!dialogReturnValue.canceled) {
         const contentFolderPath = dialogReturnValue.filePaths[0];
         const game = requestedGame || appData.currentGame;
@@ -4528,23 +4066,19 @@ export const registerIpcMainListeners = (
       console.log(e);
     }
   });
-
   ipcMain.on("selectWarhammer3Folder", async (event, requestedGame: SupportedGames | undefined) => {
     try {
       if (!mainWindow) return;
       const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
         properties: ["openDirectory", "showHiddenFiles"],
       });
-
       if (!dialogReturnValue.canceled) {
         const wh3FolderPath = dialogReturnValue.filePaths[0];
         const game = requestedGame || appData.currentGame;
         appData.gamesToGameFolderPaths[game].gamePath = wh3FolderPath;
         appData.gamesToGameFolderPaths[game].dataFolder = nodePath.join(wh3FolderPath, "/data/");
         mainWindow?.webContents.send("setWarhammer3Folder", wh3FolderPath);
-
         if (appData.gamesToGameFolderPaths[game].gamePath == undefined) return;
-
         const calculatedContentPath = nodePath.join(
           appData.gamesToGameFolderPaths[game].gamePath as string,
           "..",
@@ -4557,20 +4091,17 @@ export const registerIpcMainListeners = (
           appData.gamesToGameFolderPaths[game].contentFolder = calculatedContentPath;
           mainWindow?.webContents.send("setContentFolder", calculatedContentPath);
         }
-
         // shogun 2 doesn't use the content folder, puts subscribed to mods directly into data
         if (requestedGame == "shogun2") {
           appData.gamesToGameFolderPaths[game].contentFolder = wh3FolderPath;
           mainWindow?.webContents.send("setContentFolder", wh3FolderPath);
         }
-
         refreshModsIfFoldersValid(requestedGame);
       }
     } catch (e) {
       console.log(e);
     }
   });
-
   ipcMain.handle("getSteamCollectionName", async (event, steamCollectionURL: string) => {
     try {
       console.log("getting steamCollectionURL name:", steamCollectionURL);
@@ -4582,28 +4113,23 @@ export const registerIpcMainListeners = (
     } catch (e) {
       console.log(e);
     }
-
     return "";
   });
-
   ipcMain.handle(
     "translate",
     async (event, translationId: string, options?: Record<string, string | number>) => {
       if (i18n.language != appData.currentLanguage) {
         await i18n.changeLanguage(appData.currentLanguage);
       }
-
       return i18n.t(translationId, options);
     },
   );
-
   ipcMain.handle(
     "translateAll",
     async (event, translationIdsWithOptions: Record<string, Record<string, string | number>>) => {
       if (i18n.language != appData.currentLanguage) {
         await i18n.changeLanguage(appData.currentLanguage);
       }
-
       const translated: Record<string, string> = {};
       for (const id of Object.keys(translationIdsWithOptions)) {
         translated[id] = i18n.t(id, translationIdsWithOptions[id]);
@@ -4611,26 +4137,21 @@ export const registerIpcMainListeners = (
       return translated;
     },
   );
-
   ipcMain.handle("translateAllStatic", async (event, translationIds: Record<string, string | number>) => {
     console.log("translateAllStatic handler, language is", i18n.language);
-
     if (i18n.language != appData.currentLanguage) {
       await i18n.changeLanguage(appData.currentLanguage);
     }
-
     const translated: Record<string, string> = {};
     for (const id of Object.keys(translationIds)) {
       translated[id] = i18n.t(id);
     }
     return translated;
   });
-
   ipcMain.on("getCompatData", async (event, mods: Mod[]) => {
     console.log("SET PACK COLLISIONS");
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (!dataFolder) return;
-
     const vanillaPackPaths = getCompatVanillaPackPaths(dataFolder);
     const compatSignature = await buildCompatCheckSignature(mods, vanillaPackPaths);
     if (compatSignature && compatCheckCache?.signatureHash === compatSignature) {
@@ -4638,14 +4159,12 @@ export const registerIpcMainListeners = (
       mainWindow?.webContents.send("setPackCollisions", compatCheckCache.packCollisions);
       return;
     }
-
     await readMods(mods, false, true, true);
     await readModsByPath(
       vanillaPackPaths,
       { skipParsingTables: true, readScripts: appData.isCompatCheckingVanillaPacks },
       true,
     );
-
     const lazyVanillaReadPlan = getLazyCompatVanillaReadPlan(mods, vanillaPackPaths);
     if (lazyVanillaReadPlan.packPaths.length > 0 && lazyVanillaReadPlan.tablesToRead.length > 0) {
       await readModsByPath(
@@ -4654,7 +4173,6 @@ export const registerIpcMainListeners = (
         true,
       );
     }
-
     const packCollisions = getCompatData(
       appData.packsData,
       (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
@@ -4674,11 +4192,9 @@ export const registerIpcMainListeners = (
         packCollisions,
       };
     }
-
     mainWindow?.webContents.send("setPackCollisions", packCollisions);
     emptyAllCompatDataCollections();
   });
-
   ipcMain.on("copyToData", async (event, modPathsToCopy?: string[]) => {
     if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) return;
     console.log("copyToData: modPathsToCopy:", modPathsToCopy);
@@ -4696,7 +4212,6 @@ export const registerIpcMainListeners = (
           mod.name
         }`,
       );
-
       if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) throw new Error("game path not set");
       return fs.copyFileSync(
         mod.path,
@@ -4707,11 +4222,9 @@ export const registerIpcMainListeners = (
         ),
       );
     });
-
     await Promise.allSettled(copyPromises);
     // getAllMods();
   });
-
   ipcMain.on("copyToDataAsSymbolicLink", async (event, modPathsToCopy?: string[]) => {
     console.log("copyToDataAsSymbolicLink modPathsToCopy:", modPathsToCopy);
     const mods = await getMods(log);
@@ -4721,7 +4234,6 @@ export const registerIpcMainListeners = (
         modPathsToCopy.some((modPathToCopy) => modPathToCopy == mod.path),
       );
     }
-
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
     if (!gamePath) return;
     const pathsOfNewSymLinks = withoutDataMods.map((mod) =>
@@ -4732,20 +4244,16 @@ export const registerIpcMainListeners = (
         "handleLog",
         `CREATING SYMLINK of ${mod.path} to ${gamePath}\\data\\${mod.name}`,
       );
-
       if (!gamePath) throw new Error("game path not set");
       return fsExtra.symlink(mod.path, nodePath.join(gamePath, "/data/", mod.name));
     });
-
     await Promise.allSettled(copyPromises);
-
     // should be tracked automatically by the data watcher, but chokidar can choke on symlinks here
     for (const pathsOfNewSymLink of pathsOfNewSymLinks) {
       onNewPackFound(pathsOfNewSymLink);
     }
     // getAllMods();
   });
-
   ipcMain.on("cleanData", async () => {
     const mods = await getMods(log);
     mods.forEach((mod) => {
@@ -4757,15 +4265,11 @@ export const registerIpcMainListeners = (
         !mod.isInModding &&
         mods.find((modSecond) => !modSecond.isInData && !modSecond.isInData && modSecond.name === mod.name),
     );
-
     const deletePromises = modsInBothPlaces.map((mod) => {
       mainWindow?.webContents.send("handleLog", `DELETING ${mod.path}`);
-
       return fs.unlinkSync(mod.path);
     });
-
     await Promise.allSettled(deletePromises);
-
     // Clear whmm_overwrites directory
     try {
       const gamePath = appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
@@ -4784,26 +4288,21 @@ export const registerIpcMainListeners = (
     }
     // getAllMods();
   });
-
   ipcMain.on("cleanSymbolicLinksInData", async () => {
     const mods = await getMods(log);
     const symLinksToDelete = mods.filter((mod) => mod.isInData && mod.isSymbolicLink);
     console.log("symLinksToDelete", symLinksToDelete);
     const deletePromises = symLinksToDelete.map((mod) => {
       mainWindow?.webContents.send("handleLog", `DELETING SYMLINK ${mod.path}`);
-
       return fs.unlinkSync(mod.path);
     });
-
     await Promise.allSettled(deletePromises);
-
     // should be tracked automatically by the data watcher, but chokidar can choke on symlinks here
     for (const deletedSymLink of symLinksToDelete) {
       onPackDeleted(deletedSymLink.path);
     }
     // getAllMods();
   });
-
   ipcMain.on("saveConfig", (event, data: AppState) => {
     console.log("saveConfig");
     const enabledMods = data.currentPreset.mods.filter(
@@ -4828,20 +4327,15 @@ export const registerIpcMainListeners = (
     //   data.currentGame,
     //   data.currentPreset.mods[0].name
     // );
-
     writeAppConfig(data);
   });
-
   ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
     getSkillsForSubtype(subtype, subtypeIndex);
   });
-
   ipcMain.on("createNewSkillTree", async (event, subtype: string) => {
     const cachedSkillsData = appData.skillsData;
     if (!cachedSkillsData) return;
-
     const newSetKey = `new_skill_set_${subtype}_${Date.now()}`;
-
     // Copy agent type/subtype data from the existing set
     const originalSet = cachedSkillsData.subtypeAndSets.find((s) => s.agentSubtype === subtype);
     cachedSkillsData.subtypeAndSets.push({
@@ -4854,28 +4348,23 @@ export const registerIpcMainListeners = (
       forArmy: originalSet?.forArmy || "false",
       forNavy: originalSet?.forNavy || "false",
     });
-
     if (!cachedSkillsData.subtypesToSet[subtype]) {
       cachedSkillsData.subtypesToSet[subtype] = [];
     }
     cachedSkillsData.subtypesToSet[subtype].push(newSetKey);
     cachedSkillsData.setToNodes[newSetKey] = [];
-
     const newSubtypeIndex = cachedSkillsData.subtypesToSet[subtype].length - 1;
     getSkillsForSubtype(subtype, newSubtypeIndex);
   });
-
   ipcMain.handle("saveSkillsPack", async (event, data: SaveSkillsPackPayload) => {
     try {
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       if (!dataFolder) return { success: false, error: "Data folder not found" };
-
       const ts = Date.now().toString();
       const { subtype, nodes, edges, packName, packDirectory, cloneAllSkills, tableNameOverride, keyPrefix } =
         data;
       const kp = keyPrefix || "custom";
       const tn = tableNameOverride || `custom_${ts}`;
-
       // Build key mappings: old nodeId → new node key, index-based new skill key
       const nodeIdToNewNodeKey: Record<string, string> = {};
       const nodeIdToNewSkillKey: Record<string, string> = {};
@@ -4893,7 +4382,6 @@ export const registerIpcMainListeners = (
       }
       const customNodes = cloneAllSkills ? nodes : nodes.filter((n) => !n.existingSkillKey);
       const newSetKey = keyPrefix ? `${kp}_skill_set_${subtype}` : `custom_skill_set_${subtype}_${ts}`;
-
       const buildRowFromSchema = (
         dbFields: DBField[],
         values: Record<string, string | boolean>,
@@ -4903,7 +4391,6 @@ export const registerIpcMainListeners = (
           return field.default_value ?? "";
         });
       };
-
       const buildDBFileBuffer = async (
         version: number,
         rows: (string | boolean)[][],
@@ -4930,7 +4417,6 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-
       const buildLocFileBuffer = async (rows: (string | boolean)[][]): Promise<Buffer> => {
         const parts: Buffer[] = [];
         parts.push(Buffer.from([0xff, 0xfe])); // BOM
@@ -4948,15 +4434,12 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-
       const getLatestSchema = (tableName: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableName];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableName}`);
         return versions[0]; // sorted by version desc
       };
-
       const packFiles: NewPackedFile[] = [];
-
       // 1. character_skill_node_sets_tables — one row
       {
         const tableName = "character_skill_node_sets_tables";
@@ -4977,7 +4460,6 @@ export const registerIpcMainListeners = (
         const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
         packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
       }
-
       // 2. character_skills_tables — one row per custom node (existing skills already exist)
       {
         const tableName = "character_skills_tables";
@@ -4994,7 +4476,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 3. character_skill_nodes_tables — one row per node
       {
         const tableName = "character_skill_nodes_tables";
@@ -5014,7 +4495,6 @@ export const registerIpcMainListeners = (
         const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
         packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
       }
-
       // 4. character_skill_node_set_items_tables — one row per node
       {
         const tableName = "character_skill_node_set_items_tables";
@@ -5029,7 +4509,6 @@ export const registerIpcMainListeners = (
         const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
         packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
       }
-
       // 5. character_skill_node_links_tables — one row per edge
       if (edges.length > 0) {
         const tableName = "character_skill_node_links_tables";
@@ -5050,7 +4529,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 6. character_skill_level_to_effects_junctions_tables — one row per effect per custom skill (existing skills already have effects)
       {
         const tableName = "character_skill_level_to_effects_junctions_tables";
@@ -5075,7 +4553,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 7. character_skill_nodes_skill_locks_tables — one row per skill lock
       if (data.skillLocks && data.skillLocks.length > 0) {
         const tableName = "character_skill_nodes_skill_locks_tables";
@@ -5093,13 +4570,11 @@ export const registerIpcMainListeners = (
               level: lock.requiredLevel.toString(),
             }),
           );
-
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 8. Loc file — name and description for each custom skill
       {
         const rows: (string | boolean)[][] = [];
@@ -5113,7 +4588,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `text\\db\\${tn}.loc`, file_size: buffer.length, buffer });
         }
       }
-
       const finalPackName = packName.endsWith(".pack") ? packName : `${packName}.pack`;
       const packPath = nodePath.join(packDirectory || dataFolder, finalPackName);
       console.log(
@@ -5122,7 +4596,6 @@ export const registerIpcMainListeners = (
       for (const pf of packFiles) {
         console.log(`  ${pf.name}: ${pf.file_size} bytes`);
       }
-
       await writePack(packFiles, packPath);
       console.log("Skills pack written successfully");
       return { success: true, packPath, packName: finalPackName };
@@ -5131,12 +4604,10 @@ export const registerIpcMainListeners = (
       return { success: false, error: err.message || String(err) };
     }
   });
-
   ipcMain.handle("saveSkillsChanges", async (event, data: SaveSkillsChangesPayload) => {
     try {
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       if (!dataFolder) return { success: false, error: "Data folder not found" };
-
       const ts = Date.now().toString();
       const {
         subtype,
@@ -5153,14 +4624,12 @@ export const registerIpcMainListeners = (
       } = data;
       const tn = tableNameOverride || `changes_${ts}`;
       const kp = keyPrefix || "custom";
-
       // Get original set key
       const subtypeSets = appData.skillsData?.subtypesToSet?.[subtype];
       if (!subtypeSets || !subtypeSets[subtypeIndex]) {
         return { success: false, error: `No skill set found for ${subtype} index ${subtypeIndex}` };
       }
       const originalSetKey = subtypeSets[subtypeIndex];
-
       const buildRowFromSchema = (
         dbFields: DBField[],
         values: Record<string, string | boolean>,
@@ -5170,7 +4639,6 @@ export const registerIpcMainListeners = (
           return field.default_value ?? "";
         });
       };
-
       const buildDBFileBuffer = async (
         version: number,
         rows: (string | boolean)[][],
@@ -5192,7 +4660,6 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-
       const buildLocFileBuffer = async (rows: (string | boolean)[][]): Promise<Buffer> => {
         const parts: Buffer[] = [];
         parts.push(Buffer.from([0xff, 0xfe]));
@@ -5210,21 +4677,17 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-
       const getLatestSchema = (tableName: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableName];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableName}`);
         return versions[0];
       };
-
       const packFiles: NewPackedFile[] = [];
-
       // 1. character_skill_nodes_tables — override nodes (same key) + replacement/new nodes (new keys)
       {
         const tableName = "character_skill_nodes_tables";
         const schema = getLatestSchema(tableName);
         const rows: (string | boolean)[][] = [];
-
         for (const node of overrideNodes) {
           rows.push(
             buildRowFromSchema(schema.fields, {
@@ -5239,7 +4702,6 @@ export const registerIpcMainListeners = (
             }),
           );
         }
-
         for (const node of replacedNodes) {
           rows.push(
             buildRowFromSchema(schema.fields, {
@@ -5254,7 +4716,6 @@ export const registerIpcMainListeners = (
             }),
           );
         }
-
         for (const node of newNodes) {
           rows.push(
             buildRowFromSchema(schema.fields, {
@@ -5269,19 +4730,16 @@ export const registerIpcMainListeners = (
             }),
           );
         }
-
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 2. character_skill_node_set_items_tables — disable replaced/deleted originals, add replacement/new nodes
       {
         const tableName = "character_skill_node_set_items_tables";
         const schema = getLatestSchema(tableName);
         const rows: (string | boolean)[][] = [];
-
         // Disable original nodes that are being replaced
         for (const node of replacedNodes) {
           rows.push(
@@ -5292,7 +4750,6 @@ export const registerIpcMainListeners = (
             }),
           );
         }
-
         // Disable deleted nodes
         for (const nodeKey of deletedNodeKeys) {
           rows.push(
@@ -5303,7 +4760,6 @@ export const registerIpcMainListeners = (
             }),
           );
         }
-
         // Add replacement nodes to set
         for (const node of replacedNodes) {
           rows.push(
@@ -5314,7 +4770,6 @@ export const registerIpcMainListeners = (
             }),
           );
         }
-
         // Add new nodes to set
         for (const node of newNodes) {
           rows.push(
@@ -5325,13 +4780,11 @@ export const registerIpcMainListeners = (
             }),
           );
         }
-
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 3. character_skill_node_links_tables — edges for replaced/new nodes
       if (edges.length > 0) {
         const tableName = "character_skill_node_links_tables";
@@ -5350,7 +4803,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 4. character_skills_tables — only for new nodes with custom skills (not reusing existing skills)
       const customSkillNodes = newNodes.filter((n) => n.newSkillKey.startsWith(`${kp}_skill_`));
       if (customSkillNodes.length > 0) {
@@ -5368,7 +4820,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 5. character_skill_level_to_effects_junctions_tables — effects for new custom skills
       {
         const tableName = "character_skill_level_to_effects_junctions_tables";
@@ -5392,7 +4843,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 6. character_skill_nodes_skill_locks_tables
       if (data.skillLocks && data.skillLocks.length > 0) {
         const tableName = "character_skill_nodes_skill_locks_tables";
@@ -5409,7 +4859,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\${tableName}\\${tn}`, file_size: buffer.length, buffer });
         }
       }
-
       // 7. Loc file — name and description for new custom skills
       {
         const rows: (string | boolean)[][] = [];
@@ -5422,18 +4871,15 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `text\\db\\${tn}.loc`, file_size: buffer.length, buffer });
         }
       }
-
       if (packFiles.length === 0) {
         return { success: false, error: "No changes detected" };
       }
-
       const finalPackName = packName.endsWith(".pack") ? packName : `${packName}.pack`;
       const packPath = nodePath.join(packDirectory || dataFolder, finalPackName);
       console.log(`Writing changes pack to ${packPath} with ${packFiles.length} tables`);
       for (const pf of packFiles) {
         console.log(`  ${pf.name}: ${pf.file_size} bytes`);
       }
-
       await writePack(packFiles, packPath);
       console.log("Changes pack written successfully");
       return { success: true, packPath, packName: finalPackName };
@@ -5442,7 +4888,6 @@ export const registerIpcMainListeners = (
       return { success: false, error: err.message || String(err) };
     }
   });
-
   ipcMain.handle("getTechnologyNodeSets", async () => {
     const technologyData = await ensureTechnologyData();
     if (!technologyData) return [];
@@ -5453,17 +4898,13 @@ export const registerIpcMainListeners = (
       ),
     );
   });
-
   ipcMain.handle("getTechnologyTree", async (event, setKey: string) => {
     const technologyData = await ensureTechnologyData();
     if (!technologyData) return undefined;
-
     const technologySet = technologyData.setsByKey[setKey];
     if (!technologySet) return undefined;
-
     const nodesInSet = Object.values(technologyData.nodesByKey).filter((node) => node.setKey == setKey);
     const nodeSet = new Set(nodesInSet.map((node) => node.nodeKey));
-
     const getLoc = (locId: string) => getLocById(technologyData.locs, locId);
     const mapEffectsForTechnology = (technologyKey: string): TechEffect[] => {
       const rawEffects = technologyData.technologyToEffects[technologyKey] || [];
@@ -5479,11 +4920,9 @@ export const registerIpcMainListeners = (
         };
       });
     };
-
     const nodes: TechnologyNodeData[] = nodesInSet.map((node) => {
       const technology = technologyData.technologiesByKey[node.technologyKey];
       const iconPath = getTechnologyIconPath(technology?.iconName);
-
       return {
         nodeKey: node.nodeKey,
         technologyKey: node.technologyKey,
@@ -5512,7 +4951,6 @@ export const registerIpcMainListeners = (
         effects: mapEffectsForTechnology(node.technologyKey),
       };
     });
-
     const allTechnologies: TechnologyCatalogEntry[] = Object.values(technologyData.technologiesByKey)
       .map((technology) => {
         const iconPath = getTechnologyIconPath(technology.iconName);
@@ -5533,7 +4971,6 @@ export const registerIpcMainListeners = (
       .sort((firstTechnology, secondTechnology) =>
         collator.compare(firstTechnology.localizedName || firstTechnology.key, secondTechnology.localizedName || secondTechnology.key),
       );
-
     const allEffectKeys = new Set<string>([
       ...Object.keys(technologyData.effectsForTech),
       ...Object.values(technologyData.technologyToEffects)
@@ -5554,11 +4991,9 @@ export const registerIpcMainListeners = (
       .sort((firstEffect, secondEffect) =>
         collator.compare(firstEffect.localizedKey || firstEffect.effectKey, secondEffect.localizedKey || secondEffect.effectKey),
       );
-
     const links = Object.values(technologyData.linksByKey).filter(
       (link) => nodeSet.has(link.parentKey) && nodeSet.has(link.childKey),
     );
-
     const uiTabToNodes: Record<string, string[]> = {};
     const uiTabs = Object.values(technologyData.uiTabsByKey)
       .filter((uiTab) => {
@@ -5579,7 +5014,6 @@ export const registerIpcMainListeners = (
           uiTab.tooltipString ||
           getLocById(technologyData.locs, `technology_ui_tabs_tooltip_string_${uiTab.key}`),
       }));
-
     const relevantGroupKeys = new Set(
       nodesInSet
         .map((node) => node.optionalUiGroup)
@@ -5590,7 +5024,6 @@ export const registerIpcMainListeners = (
         relevantGroupKeys.add(bounds.groupKey);
       }
     }
-
     const uiGroups = Object.values(technologyData.uiGroupsByKey)
       .filter((uiGroup) => relevantGroupKeys.has(uiGroup.key))
       .map((uiGroup) => ({
@@ -5605,12 +5038,10 @@ export const registerIpcMainListeners = (
             `technology_ui_groups_optional_display_desctiption_${uiGroup.key}`,
           ),
       }));
-
     const uiGroupBounds = technologyData.uiGroupBounds.filter((bounds) => {
       if (!relevantGroupKeys.has(bounds.groupKey)) return false;
       return nodeSet.has(bounds.topLeftNode) && nodeSet.has(bounds.bottomRightNode);
     });
-
     return {
       set: technologySet,
       nodes,
@@ -5623,21 +5054,16 @@ export const registerIpcMainListeners = (
       allEffects,
     } as TechnologyTreePayload;
   });
-
   ipcMain.handle("saveTechnologyPack", async (event, data: SaveTechnologyPackPayload) => {
     try {
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       if (!dataFolder) return { success: false, error: "Data folder not found" };
-
       const technologyData = await ensureTechnologyData();
       if (!technologyData) return { success: false, error: "Technology data could not be loaded" };
-
       if (!data.packName?.trim()) return { success: false, error: "Pack name is required" };
-
       const tableName = data.tableNameOverride?.trim() || `technology_tree_${Date.now().toString()}`;
       const finalPackName = data.packName.endsWith(".pack") ? data.packName : `${data.packName}.pack`;
       const packPath = nodePath.join(data.packDirectory || dataFolder, finalPackName);
-
       const buildRowFromSchema = (
         dbFields: DBField[],
         values: Record<string, string | boolean>,
@@ -5647,7 +5073,6 @@ export const registerIpcMainListeners = (
           return field.default_value ?? "";
         });
       };
-
       const buildDBFileBuffer = async (
         version: number,
         rows: (string | boolean)[][],
@@ -5669,7 +5094,6 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-
       const buildLocFileBuffer = async (rows: (string | boolean)[][]): Promise<Buffer> => {
         const parts: Buffer[] = [];
         parts.push(Buffer.from([0xff, 0xfe]));
@@ -5687,13 +5111,11 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-
       const getLatestSchema = (tableNameToResolve: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableNameToResolve];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableNameToResolve}`);
         return versions[0];
       };
-
       const packFiles: NewPackedFile[] = [];
       const dedupedNodesByNodeKey = new Map<string, SaveTechnologyPackPayload["nodes"][number]>();
       for (const node of data.nodes) {
@@ -5702,7 +5124,6 @@ export const registerIpcMainListeners = (
       }
       const finalNodes = [...dedupedNodesByNodeKey.values()];
       if (finalNodes.length < 1) return { success: false, error: "No technology nodes provided" };
-
       const nodeSchema = getLatestSchema("technology_nodes_tables");
       const nodeRows = finalNodes.map((node) =>
         buildRowFromSchema(nodeSchema.fields, {
@@ -5723,7 +5144,6 @@ export const registerIpcMainListeners = (
         const buffer = await buildDBFileBuffer(nodeSchema.version, nodeRows, nodeSchema.fields);
         packFiles.push({ name: `db\\technology_nodes_tables\\${tableName}`, file_size: buffer.length, buffer });
       }
-
       const finalNodeKeySet = new Set(finalNodes.map((node) => node.nodeKey));
       const dedupedLinksByKey = new Map<string, TechnologyLinkData>();
       for (const link of data.links) {
@@ -5747,7 +5167,6 @@ export const registerIpcMainListeners = (
         const buffer = await buildDBFileBuffer(linkSchema.version, linkRows, linkSchema.fields);
         packFiles.push({ name: `db\\technology_node_links_tables\\${tableName}`, file_size: buffer.length, buffer });
       }
-
       const nodesByTechnologyKey = new Map<string, SaveTechnologyPackPayload["nodes"][number]>();
       for (const node of finalNodes) {
         if (!nodesByTechnologyKey.has(node.technologyKey)) {
@@ -5768,7 +5187,6 @@ export const registerIpcMainListeners = (
         const buffer = await buildDBFileBuffer(techSchema.version, techRows, techSchema.fields);
         packFiles.push({ name: `db\\technologies_tables\\${tableName}`, file_size: buffer.length, buffer });
       }
-
       const techEffectsSchema = getLatestSchema("technology_effects_junction_tables");
       const techEffectsRows: (string | boolean)[][] = [];
       const seenTechnologyEffects = new Set<string>();
@@ -5796,7 +5214,6 @@ export const registerIpcMainListeners = (
           buffer,
         });
       }
-
       const locRowsByKey: Record<string, string> = {};
       for (const [technologyKey, node] of nodesByTechnologyKey.entries()) {
         locRowsByKey[`technologies_onscreen_name_${technologyKey}`] = node.displayName || technologyKey;
@@ -5814,9 +5231,7 @@ export const registerIpcMainListeners = (
         const buffer = await buildLocFileBuffer(locRows);
         packFiles.push({ name: `text\\db\\${tableName}.loc`, file_size: buffer.length, buffer });
       }
-
       if (packFiles.length < 1) return { success: false, error: "No technology data to save" };
-
       await writePack(packFiles, packPath);
       cachedTechnologyData = undefined;
       cachedTechnologyDataKey = undefined;
@@ -5826,19 +5241,15 @@ export const registerIpcMainListeners = (
       return { success: false, error: error?.message || String(error) };
     }
   });
-
   ipcMain.handle("saveTechnologyChanges", async (event, data: SaveTechnologyChangesPayload) => {
     try {
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       if (!dataFolder) return { success: false, error: "Data folder not found" };
-
       const technologyData = await ensureTechnologyData();
       if (!technologyData) return { success: false, error: "Technology data could not be loaded" };
-
       const tableName = data.tableNameOverride?.trim() || `technology_changes_${Date.now().toString()}`;
       const finalPackName = data.packName.endsWith(".pack") ? data.packName : `${data.packName}.pack`;
       const packPath = nodePath.join(data.packDirectory || dataFolder, finalPackName);
-
       const buildRowFromSchema = (
         dbFields: DBField[],
         values: Record<string, string | boolean>,
@@ -5848,7 +5259,6 @@ export const registerIpcMainListeners = (
           return field.default_value ?? "";
         });
       };
-
       const buildDBFileBuffer = async (
         version: number,
         rows: (string | boolean)[][],
@@ -5870,22 +5280,18 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-
       const getLatestSchema = (tableNameToResolve: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableNameToResolve];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableNameToResolve}`);
         return versions[0];
       };
-
       const packFiles: NewPackedFile[] = [];
-
       const hasNodeDeletions = data.deletedNodeKeys && data.deletedNodeKeys.length > 0;
       const hasNodeEdits = data.editedNodes && data.editedNodes.length > 0;
       if (data.changedNodes.length > 0 || hasNodeDeletions || hasNodeEdits) {
         const schema = getLatestSchema("technology_nodes_tables");
         const deletedNodeSet = new Set(data.deletedNodeKeys || []);
         const dedupedRowsByNodeKey: Record<string, Record<string, string | boolean>> = {};
-
         if (hasNodeDeletions) {
           // Write complete replacement: all original nodes minus deleted ones
           for (const [nodeKey, originalRow] of Object.entries(technologyData.nodeRowsByKey)) {
@@ -5893,7 +5299,6 @@ export const registerIpcMainListeners = (
             dedupedRowsByNodeKey[nodeKey] = { ...originalRow };
           }
         }
-
         for (const changedNode of data.changedNodes) {
           if (deletedNodeSet.has(changedNode.nodeKey)) continue;
           const originalNodeRow = technologyData.nodeRowsByKey[changedNode.nodeKey];
@@ -5905,7 +5310,6 @@ export const registerIpcMainListeners = (
             indent: changedNode.indent.toString(),
           };
         }
-
         // Apply property edits
         if (data.editedNodes) {
           for (const editedNode of data.editedNodes) {
@@ -5931,14 +5335,12 @@ export const registerIpcMainListeners = (
             dedupedRowsByNodeKey[editedNode.nodeKey] = updatedRow;
           }
         }
-
         const rows = Object.values(dedupedRowsByNodeKey).map((row) => buildRowFromSchema(schema.fields, row));
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
           packFiles.push({ name: `db\\technology_nodes_tables\\${tableName}`, file_size: buffer.length, buffer });
         }
       }
-
       // Handle edited nodes in technologies_tables (for display name, building level, etc.)
       if (hasNodeEdits && data.editedNodes) {
         const techSchema = getLatestSchema("technologies_tables");
@@ -5980,13 +5382,11 @@ export const registerIpcMainListeners = (
           }
         }
       }
-
       const hasLinkDeletions = data.deletedLinkKeys && data.deletedLinkKeys.length > 0;
       if (data.changedLinks.length > 0 || hasLinkDeletions) {
         const schema = getLatestSchema("technology_node_links_tables");
         const deletedLinkSet = new Set(data.deletedLinkKeys || []);
         const dedupedRowsByLinkKey: Record<string, Record<string, string | boolean>> = {};
-
         if (hasLinkDeletions) {
           // Write complete replacement: all original links minus deleted ones
           for (const [linkKey, originalRow] of Object.entries(technologyData.linkRowsByKey)) {
@@ -5994,7 +5394,6 @@ export const registerIpcMainListeners = (
             dedupedRowsByLinkKey[linkKey] = { ...originalRow };
           }
         }
-
         for (const changedLink of data.changedLinks) {
           const linkKey = `${changedLink.parentKey}|${changedLink.childKey}`;
           if (deletedLinkSet.has(linkKey)) continue;
@@ -6020,7 +5419,6 @@ export const registerIpcMainListeners = (
           });
         }
       }
-
       if (data.hiddenTechnologies.length > 0) {
         const schema = getLatestSchema("technologies_tables");
         const dedupedRowsByTechnologyKey: Record<string, Record<string, string | boolean>> = {};
@@ -6044,7 +5442,6 @@ export const registerIpcMainListeners = (
           packFiles.push({ name: `db\\technologies_tables\\${tableName}`, file_size: buffer.length, buffer });
         }
       }
-
       if (data.newNodes && data.newNodes.length > 0) {
         // Write new entries to technology_nodes_tables
         const nodeSchema = getLatestSchema("technology_nodes_tables");
@@ -6082,7 +5479,6 @@ export const registerIpcMainListeners = (
             });
           }
         }
-
         // Write new entries to technologies_tables
         const techSchema = getLatestSchema("technologies_tables");
         const newTechRowsByKey = new Map<string, (string | boolean)[]>();
@@ -6119,7 +5515,6 @@ export const registerIpcMainListeners = (
           }
         }
       }
-
       const techEffectsSchema = getLatestSchema("technology_effects_junction_tables");
       const techEffectsRows: (string | boolean)[][] = [];
       const seenTechnologyEffects = new Set<string>();
@@ -6140,14 +5535,12 @@ export const registerIpcMainListeners = (
           );
         }
       };
-
       if (data.newNodes) {
         for (const newNode of data.newNodes) {
           if (technologyData.technologyRowsByKey[newNode.technologyKey]) continue;
           pushTechnologyEffects(newNode.technologyKey, newNode.effects);
         }
       }
-
       if (data.editedNodes) {
         for (const editedNode of data.editedNodes) {
           const nodeRow = technologyData.nodeRowsByKey[editedNode.nodeKey];
@@ -6157,7 +5550,6 @@ export const registerIpcMainListeners = (
           pushTechnologyEffects(technologyKey, editedNode.effects);
         }
       }
-
       if (techEffectsRows.length > 0) {
         const buffer = await buildDBFileBuffer(techEffectsSchema.version, techEffectsRows, techEffectsSchema.fields);
         packFiles.push({
@@ -6166,7 +5558,6 @@ export const registerIpcMainListeners = (
           buffer,
         });
       }
-
       // Write loc entries for new and edited node names/descriptions
       const locRows: (string | boolean)[][] = [];
       if (data.newNodes) {
@@ -6221,9 +5612,7 @@ export const registerIpcMainListeners = (
         const buffer = await buildLocFileBuffer(locRows);
         packFiles.push({ name: `text\\db\\${tableName}.loc`, file_size: buffer.length, buffer });
       }
-
       if (packFiles.length < 1) return { success: false, error: "No technology changes detected" };
-
       await writePack(packFiles, packPath);
       cachedTechnologyData = undefined;
       cachedTechnologyDataKey = undefined;
@@ -6233,15 +5622,12 @@ export const registerIpcMainListeners = (
       return { success: false, error: error?.message || String(error) };
     }
   });
-
   ipcMain.on("getPackData", async (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table);
   });
-
   ipcMain.on("getPackDataWithLocs", async (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table, true);
   });
-
   const getLiveViewerWindow = () => {
     if (!windows.viewerWindow) return undefined;
     if (windows.viewerWindow.isDestroyed()) {
@@ -6251,16 +5637,13 @@ export const registerIpcMainListeners = (
     }
     return windows.viewerWindow;
   };
-
   const createViewerWindow = () => {
     if (getLiveViewerWindow()) return;
-
     const viewerWindowState = windowStateKeeper({
       file: "viewer_window.json",
       defaultWidth: 1280,
       defaultHeight: 900,
     });
-
     windows.viewerWindow = new BrowserWindow({
       x: viewerWindowState.x,
       y: viewerWindowState.y,
@@ -6282,17 +5665,13 @@ export const registerIpcMainListeners = (
       title: "WH3 Mod Manager Mod Viewer",
       icon: "./assets/modmanager.ico",
     });
-
     const viewerWindow = windows.viewerWindow;
     const viewerWebContentsId = viewerWindow.webContents.id;
     viewerWindowState.manage(viewerWindow);
-
     viewerWindow.loadURL(VIEWER_WEBPACK_ENTRY);
-
     viewerWindow.on("page-title-updated", (evt) => {
       evt.preventDefault();
     });
-
     viewerWindow.on("closed", () => {
       dbIndirectReferenceCacheByWebContentsId.delete(viewerWebContentsId);
       dbDuplicationCancelStateByWebContentsId.delete(viewerWebContentsId);
@@ -6302,16 +5681,13 @@ export const registerIpcMainListeners = (
       appData.isViewerReady = false;
     });
   };
-
   const createSkillsWindow = () => {
     if (windows.skillsWindow) return;
-
     const skillsWindowState = windowStateKeeper({
       file: "skills_window.json",
       defaultWidth: 1280,
       defaultHeight: 900,
     });
-
     windows.skillsWindow = new BrowserWindow({
       x: skillsWindowState.x,
       y: skillsWindowState.y,
@@ -6333,21 +5709,16 @@ export const registerIpcMainListeners = (
       title: "WH3 Mod Manager Mod Viewer",
       icon: "./assets/modmanager.ico",
     });
-
     skillsWindowState.manage(windows.skillsWindow);
-
     windows.skillsWindow.loadURL(SKILLS_WEBPACK_ENTRY);
-
     windows.skillsWindow.on("page-title-updated", (evt) => {
       evt.preventDefault();
     });
-
     windows.skillsWindow.on("closed", () => {
       windows.skillsWindow = undefined;
       appData.areSkillsReady = false;
     });
   };
-
   ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
       const baseVanillaPackName = vanillaPackData.name;
@@ -6359,15 +5730,12 @@ export const registerIpcMainListeners = (
       }
     }
     console.log("ON requestOpenModInViewer", modPath);
-
     let viewerWindow = getLiveViewerWindow();
     if (!viewerWindow) {
       createViewerWindow();
       viewerWindow = getLiveViewerWindow();
     }
-
     getPackData(modPath);
-
     if (viewerWindow?.webContents && !viewerWindow.webContents.isDestroyed() && appData.isViewerReady) {
       viewerWindow.webContents.send("openModInViewer", modPath);
       viewerWindow.setTitle(`WH3 Mod Manager v${version}: viewing ${nodePath.basename(modPath)}`);
@@ -6376,7 +5744,6 @@ export const registerIpcMainListeners = (
       viewerWindow.focus();
     }
   });
-
   ipcMain.on("requestOpenSkillsWindow", (event, mods: Mod[]) => {
     console.log("ON requestOpenSkillsWindow");
     appData.enabledMods = mods.filter((mod) => mod.isEnabled);
@@ -6387,16 +5754,13 @@ export const registerIpcMainListeners = (
       createSkillsWindow();
     }
   });
-
   ipcMain.on("setSkillsViewOptions", (event, skillsViewOptions: SkillsViewOptions) => {
     appData.isShowingSkillNodeSetNames = skillsViewOptions.isShowingSkillNodeSetNames;
     appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
     appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
     appData.isCheckingSkillRequirements = skillsViewOptions.isCheckingSkillRequirements;
-
     windows.mainWindow?.webContents.send("setSkillsViewOptions", skillsViewOptions);
   });
-
   ipcMain.on("requestLanguageChange", async (event, language: string) => {
     console.log("requestLanguageChange:", language);
     await i18n.changeLanguage(language);
@@ -6405,15 +5769,12 @@ export const registerIpcMainListeners = (
     windows.skillsWindow?.webContents.send("setCurrentLanguage", language);
     windows.viewerWindow?.webContents.send("setCurrentLanguage", language);
   });
-
   ipcMain.on("requestGameChange", async (event, game: SupportedGames, appState: AppState) => {
     // console.log("game before change is", appData.currentGame, "to", game);
-
     console.log(`Requesting game change to ${game}`);
     console.log(`Current game is ${appState.currentGame}`);
     appData.gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
     appData.gameToPresets[appState.currentGame] = appState.presets;
-
     await setCurrentGame(game);
     if (appData.gamesToGameFolderPaths[game].contentFolder) {
       const currentPreset = appData.gameToCurrentPreset[game];
@@ -6423,7 +5784,6 @@ export const registerIpcMainListeners = (
       mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
     }
   });
-
   const terminateCurrentGame = () => {
     const name = gameToProcessName[appData.currentGame];
     try {
@@ -6445,15 +5805,12 @@ export const registerIpcMainListeners = (
       console.error("killWrapper error:", e);
     }
   };
-
   ipcMain.on("terminateGame", () => {
     terminateCurrentGame();
   });
-
   const dbTableToString = (dbTable: DBTable) => {
     return `db\\${dbTable.dbName}\\${dbTable.dbSubname}`;
   };
-
   const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
     console.log(`getPackData ${packPath}`);
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
@@ -6475,7 +5832,6 @@ export const registerIpcMainListeners = (
       }
     }
     console.log("CURRENTLY READING:", appData.currentlyReadingModPaths);
-
     console.log("before join", dataFolder, packPath);
     if (!packPath.includes("\\")) {
       // if we provided pack name instead of pack path as argument
@@ -6489,11 +5845,9 @@ export const registerIpcMainListeners = (
       packPath = nodePath.join(dataFolder as string, packPath);
     }
     const packData = appData.packsData.find((pack) => pack.path === packPath);
-
     // console.log("packsdata is", appData.packsData);
     // console.log("to read:", packPath);
     // console.log("found packs for reading:", packData);
-
     console.log(
       "getPackData:",
       appData.currentlyReadingModPaths.every((path) => path != packPath),
@@ -6526,7 +5880,6 @@ export const registerIpcMainListeners = (
         console.log("APPENDING packsData", packPath);
         appendPacksData(newPack);
       }
-
       const toSend = [getPackViewData(newPack, table, getLocs)];
       mainWindow?.webContents.send("setPacksData", toSend);
       windows.viewerWindow?.webContents.send("setPacksData", toSend);
@@ -6543,10 +5896,8 @@ export const registerIpcMainListeners = (
         return;
       }
       const packData = appData.packsData.find((pack) => pack.path === packPath);
-
       if (packData) {
         const toSend = [getPackViewData(packData, table, getLocs)];
-
         mainWindow?.webContents.send("setPacksData", toSend);
         windows.viewerWindow?.webContents.send("setPacksData", toSend);
         if (!appData.isViewerReady) {
@@ -6556,7 +5907,6 @@ export const registerIpcMainListeners = (
       }
     }
   };
-
   const readMods = async (
     mods: Mod[],
     skipParsingTables = true,
@@ -6596,7 +5946,6 @@ export const registerIpcMainListeners = (
         }
       }
     }
-
     if (!skipCollisionCheck) {
       mainWindow?.webContents.send("setPackCollisions", {
         packFileCollisions: appData.compatData.packFileCollisions,
@@ -6604,7 +5953,6 @@ export const registerIpcMainListeners = (
       } as PackCollisions);
     }
   };
-
   let lastReadModsReceived = [];
   ipcMain.on(
     "readMods",
@@ -6630,10 +5978,8 @@ export const registerIpcMainListeners = (
           }
           return;
         }
-
         modsToRead = modsNotInCustomizableCache;
       }
-
       if (lastReadModsReceived.length != mods.length) {
         console.log(
           "READ MODS RECEIVED",
@@ -6644,14 +5990,12 @@ export const registerIpcMainListeners = (
       readMods(modsToRead, skipCollisionCheck, skipCollisionCheck);
     },
   );
-
   const sendQueuedDataToViewer = async () => {
     if (!appData.isViewerReady) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       sendQueuedDataToViewer();
       return;
     }
-
     console.log("SENDING QUEUED DATA TO VIEWER");
     windows.viewerWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
     windows.viewerWindow?.webContents.send("setPacksData", appData.queuedViewerData);
@@ -6663,41 +6007,33 @@ export const registerIpcMainListeners = (
     windows.viewerWindow?.focus();
     appData.queuedViewerData = [];
   };
-
   ipcMain.on("viewerIsReady", async () => {
     console.log("VIEWER IS NOW READY");
     appData.isViewerReady = true;
-
     await initializeAllSchemaForGame(appData.currentGame);
-
     console.log("viewerIsReady appData.currentGame", appData.currentGame);
-
     if (isDev) {
       setTimeout(() => {
         windows.viewerWindow?.webContents.openDevTools({ mode: "right" });
       }, 1000);
     }
-
     windows.viewerWindow?.webContents.send(
       "setDBNameToDBVersions",
       DBNameToDBVersions[appData.currentGame],
       gameToDBFieldsThatReference[appData.currentGame],
       gameToReferences[appData.currentGame],
     );
-
     windows.viewerWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.viewerWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
     windows.viewerWindow?.webContents.send(
       "setIsFeaturesForModdersEnabled",
       appData.isFeaturesForModdersEnabled,
     );
-
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
     }
   });
-
   const sendQueuedDataToSkills = async () => {
     if (!appData.queuedSkillsData) {
       console.log("sendQueuedDataToSkills called but queuedSkillsData not ready");
@@ -6708,7 +6044,6 @@ export const registerIpcMainListeners = (
       sendQueuedDataToSkills();
       return;
     }
-
     console.log("SENDING QUEUED DATA TO SKILLS");
     // windows.skillsWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
     windows.skillsWindow?.webContents.send("setSkillsData", appData.queuedSkillsData);
@@ -6719,17 +6054,14 @@ export const registerIpcMainListeners = (
     windows.skillsWindow?.focus();
     appData.queuedSkillsData = undefined;
   };
-
   ipcMain.on("skillsAreReady", () => {
     console.log("SKILLS ARE NOW READY");
     appData.areSkillsReady = true;
-
     if (isDev) {
       setTimeout(() => {
         windows.skillsWindow?.webContents.openDevTools({ mode: "right" });
       }, 1000);
     }
-
     windows.skillsWindow?.webContents.send("setStartArgs", appData.startArgs);
     windows.skillsWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
     windows.skillsWindow?.webContents.send(
@@ -6742,24 +6074,20 @@ export const registerIpcMainListeners = (
       isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
       isCheckingSkillRequirements: appData.isCheckingSkillRequirements,
     } as SkillsViewOptions);
-
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {
       sendQueuedDataToSkills();
     }
   });
-
   ipcMain.on("openFolderInExplorer", (event, path: string) => {
     shell.showItemInFolder(path);
   });
-
   const openInSteam = (url: string) => {
     exec(`start steam://openurl/${url}`);
   };
   ipcMain.on("openInSteam", (event, url: string) => {
     openInSteam(url);
   });
-
   ipcMain.on("openPack", (event, path: string) => {
     shell.openPath(path);
   });
@@ -6768,10 +6096,8 @@ export const registerIpcMainListeners = (
   });
   ipcMain.on("copyModToData", (event, path: string) => {
     const baseName = nodePath.basename(path);
-
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (!dataFolder) return;
-
     const destPath = nodePath.join(dataFolder, baseName);
     fs.copyFileSync(path, destPath);
   });
@@ -6796,7 +6122,6 @@ export const registerIpcMainListeners = (
   };
   ipcMain.on("uploadMod", async (event, mod: Mod) => {
     if (!checkIsModThumbnailValid(mod.imgPath)) return;
-
     const child = fork(
       nodePath.join(__dirname, "sub.js"),
       [gameToSteamId[appData.currentGame], "upload"],
@@ -6827,7 +6152,6 @@ export const registerIpcMainListeners = (
               messages: ["loc:failedUploadingMod"],
               startTime: Date.now(),
             } as Toast);
-
             break;
         }
       }
@@ -6842,15 +6166,11 @@ export const registerIpcMainListeners = (
   ) => {
     const uploadFolderName = workshopId;
     const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_uploads_" + uploadFolderName);
-
     if (!checkIsModThumbnailValid(mod.imgPath)) return;
-
     await fs.rmSync(uploadFolderPath, { recursive: true, force: true });
     await fs.mkdirSync(uploadFolderPath, { recursive: true });
-
     await fs.linkSync(mod.path, nodePath.join(uploadFolderPath, mod.name));
     await fs.linkSync(mod.imgPath, nodePath.join(uploadFolderPath, nodePath.basename(mod.imgPath)));
-
     const args = [
       gameToSteamId[appData.currentGame],
       "update",
@@ -6943,22 +6263,18 @@ export const registerIpcMainListeners = (
           format(new Date(), "dd-MM-yyyy-HH-mm") +
           nodePath.parse(mod.name).ext,
       );
-
       await fs.mkdirSync(backupFolderPath, { recursive: true });
       await fs.copyFileSync(mod.path, backupFilePath);
       await addFakeUpdate(mod.path, uploadFilePath);
-
       const command = `cd /d "${nodePath.dirname(mod.path)}" && del "${nodePath.basename(
         mod.path,
       )}" && move /y "whmm_backups\\${nodePath.basename(uploadFilePath)}" "${nodePath.basename(mod.path)}"`;
       console.log(command);
-
       exec(command);
     } catch (e) {
       console.log(e);
     }
   });
-
   ipcMain.on("makePackBackup", async (event, mod: Mod) => {
     try {
       const uploadFolderPath = nodePath.join(nodePath.dirname(mod.path), "whmm_backups");
@@ -7007,7 +6323,6 @@ export const registerIpcMainListeners = (
           presetName,
           isPresetLoadOrdered,
         } as ImportSteamCollection);
-
         console.log(modIds);
       } catch (e) {
         console.log(e);
@@ -7046,7 +6361,6 @@ export const registerIpcMainListeners = (
           appData.waitForModIds.push(id);
         }
       }
-
       fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "download", modIds.join(";")],
@@ -7058,7 +6372,6 @@ export const registerIpcMainListeners = (
   });
   const resubscribeToMods = async (modIds: string[]) => {
     await subscribeToMods(modIds);
-
     await new Promise((resolve) => setTimeout(resolve, 3000));
     try {
       const child = fork(
@@ -7092,7 +6405,6 @@ export const registerIpcMainListeners = (
         ],
         startTime: Date.now(),
       } as Toast);
-
       const child = fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "unsubscribe", mod.workshopId],
@@ -7130,7 +6442,6 @@ export const registerIpcMainListeners = (
       child.on("message", async () => {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         console.log("unsubscribe finished, deleting file:", mod.path);
-
         // why do we need to unsubscribe twice? who knows, but otherwise Steam unsubs AND happily downloads the mod into content after we unsub the first time
         fork(
           nodePath.join(__dirname, "sub.js"),
@@ -7152,17 +6463,14 @@ export const registerIpcMainListeners = (
       console.log(e);
     }
   });
-
   const subscribeToMods = async (ids: string[]) => {
     fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "sub", ids.join(";")], {});
     await new Promise((resolve) => setTimeout(resolve, 1000));
-
     for (const id of ids) {
       if (!appData.waitForModIds.includes(id)) {
         appData.waitForModIds.push(id);
       }
     }
-
     for (const modId of ids) {
       fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "download", modId], {});
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -7172,33 +6480,27 @@ export const registerIpcMainListeners = (
     // await new Promise((resolve) => setTimeout(resolve, 500));
     mainWindow?.webContents.send("subscribedToMods", ids);
   };
-
   ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
     await subscribeToMods(ids);
   });
-
   ipcMain.on("exportModsToClipboard", async (event, mods: Mod[]) => {
     const sortedMods = sortByNameAndLoadOrder(mods);
     const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
-
     const exportedMods = enabledMods
       .filter((mod) => !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId)))
       .map((mod) => mod.workshopId + (mod.loadOrder != null ? `;${mod.loadOrder}` : ""))
       .join("|");
     clipboard.writeText(exportedMods);
   });
-
   ipcMain.on("exportModNamesToClipboard", async (event, mods: Mod[]) => {
     const sortedMods = sortByNameAndLoadOrder(mods);
     const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
-
     const exportedMods = enabledMods
       .filter((mod) => mod.humanName != "")
       .map((mod) => mod.humanName)
       .join("\n");
     clipboard.writeText(exportedMods);
   });
-
   ipcMain.on("createSteamCollection", async (event, mods: Mod[]) => {
     const workshopIDs = mods.map((mod) => mod.workshopId);
     const scriptWithIDs = steamCollectionScript.replace(
@@ -7207,7 +6509,6 @@ export const registerIpcMainListeners = (
     );
     clipboard.writeText(scriptWithIDs);
   });
-
   const appendToSearchInsidePacks = (
     mods: Mod[],
     modsIndex: number,
@@ -7219,12 +6520,9 @@ export const registerIpcMainListeners = (
       mainWindow?.webContents.send("setPackSearchResults", Array.from(new Set([...packNamesAll])));
       return;
     }
-
     const slicedMods = mods.slice(modsIndex * 10, modsIndex * 10 + 10);
     const modsArray = slicedMods.map((mod) => `'${mod.path.replaceAll("'", "''")}'`).join(",");
-
     console.log("modsArray is", modsArray, "i is", modsIndex, searchTerm, "num mods is", slicedMods.length);
-
     exec(
       `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
       (error, stdout, stderr) => {
@@ -7233,17 +6531,13 @@ export const registerIpcMainListeners = (
           mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
           return;
         }
-
         console.log("stdout:", stdout);
         console.log("stderr:", stderr);
-
         const packNames = stdout
           .split("\n")
           .map((line) => line.split(".pack:")[0])
           .filter((packName) => packName != "");
-
         console.log("packNames:", packNames);
-
         // Then search again for unicode text.
         exec(
           `powershell.exe -Command "$strarry = @(${modsArray}); Select-String -Encoding unicode -Path $strarry -Pattern '${searchTerm}' | Select-Object -Unique -ExpandProperty Filename"`,
@@ -7253,31 +6547,24 @@ export const registerIpcMainListeners = (
               mainWindow?.webContents.send("setPackSearchResults", ["error:", error]);
               return;
             }
-
             const packNamesUnicodeSearch = stdout
               .split("\n")
               .map((line) => line.split(".pack:")[0])
               .filter((packName) => packName != "");
-
             console.log("packNames unicode:", packNames, packNamesUnicodeSearch);
-
             packNamesAll = packNamesAll.concat(packNames);
             packNamesAll = packNamesAll.concat(packNamesUnicodeSearch);
-
             appendToSearchInsidePacks(mods, modsIndex + 1, packNamesAll, searchTerm);
           },
         );
       },
     );
   };
-
   ipcMain.on("searchInsidePacks", async (event, searchTerm: string, mods: Mod[]) => {
     const packNamesAll = [] as string[];
-
     console.log("search inside mods:", searchTerm, "num mods:", mods.length);
     appendToSearchInsidePacks(mods, 0, packNamesAll, searchTerm);
   });
-
   const readTablesFromMods = async (mods: Mod[], tablesToRead: string[]) => {
     for (const mod of mods) {
       const existingPack = appData.packsData.find((pack) => pack.path == mod.path);
@@ -7306,7 +6593,6 @@ export const registerIpcMainListeners = (
           console.log("don't need to read tables for", existingPack.name, tablesToRead, "are parsed");
           continue;
         }
-
         console.log("reading from existing pack");
         newPack = await readFromExistingPack(existingPack, {
           tablesToRead,
@@ -7320,24 +6606,19 @@ export const registerIpcMainListeners = (
       appendPacksData(newPack, mod);
     }
   };
-
   const getDBsForGameStartOptions = async (mods: Mod[], startGameOptions: StartGameOptions) => {
     const tablesToRead: string[] = [];
     if (startGameOptions.isMakeUnitsGeneralsEnabled) {
       tablesToRead.push("db\\units_custom_battle_permissions_tables\\");
     }
-
     if (tablesToRead.length == 0) return;
-
     mainWindow?.webContents.send("addToast", {
       type: "info",
       messages: ["loc:processingMods"],
       startTime: Date.now(),
     } as Toast);
-
     await readTablesFromMods(mods, tablesToRead);
   };
-
   ipcMain.handle(
     "executeDBDuplication",
     async (
@@ -7354,7 +6635,6 @@ export const registerIpcMainListeners = (
       const webContentsId = event.sender.id;
       const cancelState = { canceled: false };
       dbDuplicationCancelStateByWebContentsId.set(webContentsId, cancelState);
-
       try {
         return await executeDBDuplication(
           packPath,
@@ -7374,29 +6654,24 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.on("cancelDBDuplication", (event) => {
     const cancelState = dbDuplicationCancelStateByWebContentsId.get(event.sender.id);
     if (cancelState) cancelState.canceled = true;
   });
-
   ipcMain.on(
     "getTableReferences",
     async (event, packPath: string, tableReferenceRequests: TableReferenceRequest[], withPack: boolean) => {
       console.log("ON getTableReferences, with pack:", withPack);
       console.log("to read:", tableReferenceRequests);
-
       const newPack = await readPack(packPath, {
         tablesToRead: tableReferenceRequests.map(
           (req) => (req.tableName.startsWith("db") && req.tableName) || `db\\${req.tableName}`,
         ),
       });
-
       // console.log(
       //   "after getting refs1",
       //   newPack.packedFiles.filter((packedFile) => packedFile.schemaFields).map((pf) => pf.name)
       // );
-
       if (!packDataStore[packPath]) {
         packDataStore[packPath] = newPack;
       } else {
@@ -7412,13 +6687,11 @@ export const registerIpcMainListeners = (
             }
             existingPack.packedFiles.push(newPackedFile);
           });
-
         // console.log(
         //   "after getting refs2",
         //   newPack.packedFiles.filter((packedFile) => packedFile.schemaFields).map((pf) => pf.name)
         // );
       }
-
       packDataStore[packPath].packedFiles
         .filter((pF) => pF.schemaFields)
         .forEach((pF) => {
@@ -7426,13 +6699,11 @@ export const registerIpcMainListeners = (
           if (!dbVersion) {
             return;
           }
-
           if (pF.schemaFields) {
             pF.schemaFields = amendSchemaField(pF.schemaFields, dbVersion);
             pF.tableSchema = dbVersion;
           }
         });
-
       // console.log("packDataStore in INDEX", packDataStore);
       if (withPack)
         windows.viewerWindow?.webContents.send(
@@ -7455,7 +6726,6 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle(
     "buildDBReferenceTree",
     async (
@@ -7477,7 +6747,6 @@ export const registerIpcMainListeners = (
       );
     },
   );
-
   ipcMain.handle(
     "buildDBIndirectReferences",
     async (event, packPath: string, selectedNode: IViewerTreeNodeWithData, existingRefs: DBCell[]) => {
@@ -7490,15 +6759,12 @@ export const registerIpcMainListeners = (
       return buildDBIndirectReferences(packPath, selectedNode, existingRefs, cacheContext);
     },
   );
-
   ipcMain.handle("getDBNameToDBVersions", async (event) => {
     return DBNameToDBVersions[appData.currentGame];
   });
-
   ipcMain.handle("getDefaultTableVersions", async (event) => {
     return await getDefaultTableVersions();
   });
-
   ipcMain.on(
     "startGame",
     async (
@@ -7515,7 +6781,6 @@ export const registerIpcMainListeners = (
       try {
         // getSkillsData(mods.filter((mod) => mod.isEnabled));
         // return;
-
         for (const supportedGameOption of supportedGameOptions) {
           if (!gameToSupportedGameOptions[appData.currentGame].includes(supportedGameOption)) {
             const startGameOption = supportedGameOptionToStartGameOption[supportedGameOption];
@@ -7523,18 +6788,14 @@ export const registerIpcMainListeners = (
             startGameOptions[startGameOption] = false;
           }
         }
-
         const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
         const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
         if (!gamePath) return;
         if (!dataFolder) return;
-
         const appDataPath = app.getPath("userData");
         const myModsPath = nodePath.join(gamePath, "my_mods.txt");
         const usedModsPath = nodePath.join(gamePath, "used_mods.txt");
-
         const sortedMods = sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled));
-
         const linuxBit = process.platform === "linux" ? "Z:" : "";
         const vanillaPacks = [];
         for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
@@ -7559,7 +6820,6 @@ export const registerIpcMainListeners = (
           };
           vanillaPacks.push(dataMod);
         }
-
         let extraEnabledMods = "";
         if (
           startGameOptions.isMakeUnitsGeneralsEnabled ||
@@ -7569,19 +6829,15 @@ export const registerIpcMainListeners = (
         ) {
           log("making temp dir");
           await fs.mkdirSync(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
-
           log("getting start game dbs");
           await getDBsForGameStartOptions(sortedMods.concat(vanillaPacks), startGameOptions);
-
           console.log("before start:");
           for (const pack of appData.packsData) {
             console.log(pack.name, pack.readTables);
           }
-
           const tempPackName = "!!!!out.pack";
           const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
           log("writing start game pack");
-
           let failedWriting = true;
           for (let i = 0; i < 10; i++) {
             try {
@@ -7608,7 +6864,6 @@ export const registerIpcMainListeners = (
               }
             }
           }
-
           if (!failedWriting) {
             log("done writing temp pack");
             extraEnabledMods =
@@ -7618,16 +6873,13 @@ export const registerIpcMainListeners = (
             log("gave up trying to write temp pack");
           }
         }
-
         const modPathsInsideMergedMods = sortedMods
           .filter((mod) => mod.mergedModsData)
           .map((mod) => (mod.mergedModsData as MergedModsData[]).map((mod) => mod.path))
           .flatMap((paths) => paths);
-
         let enabledModsWithoutMergedInMods = sortedMods.filter(
           (mod) => !modPathsInsideMergedMods.some((path) => path == mod.path),
         );
-
         const enabledModsWithOverwrites = enabledModsWithoutMergedInMods.filter(
           (iterMod) => startGameOptions.packDataOverwrites[iterMod.path],
         );
@@ -7635,33 +6887,27 @@ export const registerIpcMainListeners = (
           (iterMod) => !startGameOptions.packDataOverwrites[iterMod.path],
         );
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
-
         if (enabledModsWithOverwrites.length > 0) {
           const overwritesDirPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "/whmm_overwrites/",
           );
-
           if (!fsExtra.existsSync(overwritesDirPath)) {
             exec(`mkdir "${overwritesDirPath}"`);
             await new Promise((resolve) => {
               setTimeout(resolve, 100);
             });
           }
-
           extraEnabledMods += `\nadd_working_directory "${linuxBit + overwritesDirPath}";`;
-
           for (const pack of enabledModsWithOverwrites) {
             await createOverwritePack(
               pack.path,
               nodePath.join(overwritesDirPath, pack.name),
               startGameOptions.packDataOverwrites[pack.path],
             );
-
             extraEnabledMods += `\nmod "${pack.name}";`;
           }
         }
-
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
         const whmmFlowsPath = nodePath.join(gamePath as string, "whmm_flows");
         const flowExecutionSignatureHash = await buildFlowExecutionSignature(
@@ -7669,12 +6915,10 @@ export const registerIpcMainListeners = (
           startGameOptions,
           dataFolder,
         );
-
         let shouldExecuteFlows = true;
         let enabledModsWithFlows: Mod[] = [];
         let createdFlowPacks: string[] = [];
         let flowExecutionHadErrors = false;
-
         if (flowExecutionSignatureHash) {
           const flowCache = await loadFlowExecutionCache();
           const cachedEntry = flowCache.byGame[appData.currentGame];
@@ -7721,7 +6965,6 @@ export const registerIpcMainListeners = (
             "Flow execution cache unavailable: failed to build signature, executing flows normally.",
           );
         }
-
         if (shouldExecuteFlows) {
           for (const packPath of sortedMods.map((mod) => mod.path)) {
             const pack = appData.packsData.find((packData) => packData.path == packPath);
@@ -7729,7 +6972,6 @@ export const registerIpcMainListeners = (
               await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
             }
           }
-
           for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
             const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
             if (mod) {
@@ -7741,16 +6983,13 @@ export const registerIpcMainListeners = (
               }
             }
           }
-
           // Execute flows for enabled mods
           enabledModsWithFlows = sortedMods.filter((iterMod) => {
             const pack = appData.packsData.find((packData) => packData.path == iterMod.path);
             return pack && pack.packedFiles.some((file) => file.name.startsWith("whmmflows\\"));
           });
-
           if (enabledModsWithFlows.length > 0) {
             console.log(`Found ${enabledModsWithFlows.length} mods with flows to execute`);
-
             // Clear whmm_flows directory
             try {
               if (fsExtra.existsSync(whmmFlowsPath)) {
@@ -7766,24 +7005,20 @@ export const registerIpcMainListeners = (
                 `Error clearing whmm_flows: ${error instanceof Error ? error.message : "Unknown error"}`,
               );
             }
-
             // Create whmm_flows directory
             if (!fsExtra.existsSync(whmmFlowsPath)) {
               fsExtra.mkdirSync(whmmFlowsPath, { recursive: true });
             }
-
             // Get the overwrite directory path if it exists
             const mergedDirPath = nodePath.join(
               appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
               "/whmm_overwrites/",
             );
-
             mainWindow?.webContents.send("addToast", {
               type: "info",
               messages: ["Processing flows..."],
               startTime: Date.now(),
             } as Toast);
-
             // Reset counter tracking once at the start of game launch
             // This ensures counters are maintained across all flows in all packs
             const { resetCounterTracking } = await import("./nodeExecutor");
@@ -7791,14 +7026,15 @@ export const registerIpcMainListeners = (
             console.log(
               "Reset counter tracking for game launch - counters will be maintained across all flows",
             );
-
             for (const pack of enabledModsWithFlows) {
               // Check if this pack has overwrites - if so, use the overwritten pack
               const hasOverwrites = enabledModsWithOverwrites.some(
                 (overwritePack) => overwritePack.path === pack.path,
               );
               const packPathToUse = hasOverwrites ? nodePath.join(mergedDirPath, pack.name) : pack.path;
-
+              const sourcePackForFlowExecution = hasOverwrites
+                ? undefined
+                : appData.packsData.find((packData) => packData.path === pack.path);
               console.log(
                 `Executing flows for pack: ${pack.name} (using ${hasOverwrites ? "overwritten" : "original"} pack)`,
               );
@@ -7807,13 +7043,13 @@ export const registerIpcMainListeners = (
                 "", // No target path needed
                 startGameOptions.userFlowOptions,
                 pack.name,
+                sourcePackForFlowExecution,
               );
               createdFlowPacks.push(...createdPackPaths);
               flowExecutionHadErrors = flowExecutionHadErrors || hadErrors;
             }
             console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
           }
-
           if (flowExecutionSignatureHash) {
             const flowCache = await loadFlowExecutionCache();
             if (enabledModsWithFlows.length === 0) {
@@ -7839,7 +7075,6 @@ export const registerIpcMainListeners = (
             }
           }
         }
-
         // Add flow packs to the mod list
         if (createdFlowPacks.length > 0) {
           extraEnabledMods += `\nadd_working_directory "${linuxBit + whmmFlowsPath}";`;
@@ -7849,7 +7084,6 @@ export const registerIpcMainListeners = (
             console.log(`Added flow pack to mod list: ${packFileName}`);
           }
         }
-
         const text =
           enabledModsWithoutMergedInMods
             .filter((mod) => !mod.isInModding)
@@ -7863,7 +7097,6 @@ export const registerIpcMainListeners = (
             .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
             .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
             .join("\n") + extraEnabledMods;
-
         try {
           enabledModsWithoutMergedInMods
             .filter((mod) => mod.isInModding)
@@ -7892,7 +7125,6 @@ export const registerIpcMainListeners = (
           console.error(e);
           return;
         }
-
         let fileNameWithModList = "used_mods.txt";
         try {
           const encoding = appData.currentGame == "shogun2" ? "utf16le" : "utf8";
@@ -7903,11 +7135,9 @@ export const registerIpcMainListeners = (
           fileNameWithModList = "my_mods.txt";
           await fs.writeFileSync(myModsPath, text);
         }
-
         let batData = `start /d "${appData.gamesToGameFolderPaths[appData.currentGame].gamePath}" ${
           gameToProcessName[appData.currentGame]
         }`;
-
         if (process.platform === "linux") {
           if (!appData.gamesToGameFolderPaths[appData.currentGame].gamePath) {
             // should throw an error here?
@@ -7920,15 +7150,12 @@ export const registerIpcMainListeners = (
           );
           batData = `protontricks-launch --cwd-app --appid ${gameToSteamId[appData.currentGame]} "${gamePath}"`;
         }
-
         console.log("batData so far:", batData);
-
         if (saveName) {
           batData += ` game_startup_mode campaign_load "${saveName}" ;`;
         }
         // file with the list of mods for the game to use, used_mods.txt or my_mods.txt
         batData += ` ${fileNameWithModList};`;
-
         // Create steam_appid.txt for Attila
         if (
           appData.currentGame === "attila" ||
@@ -7946,14 +7173,11 @@ export const registerIpcMainListeners = (
             console.error("Failed to create steam_appid.txt:", e);
           }
         }
-
         mainWindow?.webContents.send("handleLog", "starting game:");
         mainWindow?.webContents.send("handleLog", batData);
-
         exec(batData, (error) => {
           console.error(error);
         });
-
         appData.compatData = {
           packTableCollisions: [],
           packFileCollisions: [],
@@ -7965,12 +7189,10 @@ export const registerIpcMainListeners = (
         };
         appData.packsData = [];
         appData.queuedSkillsData = undefined;
-
         if (startGameOptions.isClosedOnPlay) {
           await new Promise((resolve) => {
             setTimeout(resolve, 5000);
           });
-
           app.exit();
         }
       } catch (e) {
@@ -7978,13 +7200,11 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle("selectDirectory", async () => {
     try {
       const result = await dialog.showOpenDialog(mainWindow || new BrowserWindow(), {
         properties: ["openDirectory"],
       });
-
       if (!result.canceled && result.filePaths.length > 0) {
         return result.filePaths[0];
       }
@@ -7994,7 +7214,6 @@ export const registerIpcMainListeners = (
       return undefined;
     }
   });
-
   ipcMain.handle(
     "writeTextFilesToDirectory",
     async (
@@ -8009,16 +7228,13 @@ export const registerIpcMainListeners = (
         if (!Array.isArray(files) || files.length === 0) {
           return { success: false, error: "No files to write" };
         }
-
         const resolvedBaseDirectory = nodePath.resolve(baseDirectory);
         const writtenFiles: string[] = [];
-
         for (const file of files) {
           const normalizedRelativePath = file.relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
           if (normalizedRelativePath.includes("..")) {
             return { success: false, error: `Invalid relative path: ${file.relativePath}` };
           }
-
           const outputPath = nodePath.resolve(resolvedBaseDirectory, normalizedRelativePath);
           const baseWithSep = resolvedBaseDirectory.endsWith(nodePath.sep)
             ? resolvedBaseDirectory
@@ -8026,12 +7242,10 @@ export const registerIpcMainListeners = (
           if (outputPath !== resolvedBaseDirectory && !outputPath.startsWith(baseWithSep)) {
             return { success: false, error: `Invalid output path: ${file.relativePath}` };
           }
-
           await fsExtra.ensureDir(nodePath.dirname(outputPath));
           await fs.promises.writeFile(outputPath, file.content, "utf8");
           writtenFiles.push(outputPath);
         }
-
         return { success: true, writtenFiles };
       } catch (error) {
         console.error("Error writing text files to directory:", error);
@@ -8042,13 +7256,10 @@ export const registerIpcMainListeners = (
       }
     },
   );
-
   ipcMain.handle("createNewPack", async (event, packName: string, packDirectory: string) => {
     try {
       console.log("createNewPack:", packName, packDirectory);
-
       const savePath = nodePath.join(packDirectory, `${packName}.pack`);
-
       // Check if file already exists
       if (fsExtra.existsSync(savePath)) {
         return {
@@ -8056,13 +7267,10 @@ export const registerIpcMainListeners = (
           error: `Pack file already exists at: ${savePath}`,
         };
       }
-
       // Create an empty pack file
       const { writePack } = await import("./packFileSerializer");
       await writePack([], savePath);
-
       console.log(`Pack created at: ${savePath}`);
-
       return { success: true, packPath: savePath };
     } catch (error) {
       console.error("Error creating pack:", error);
@@ -8072,7 +7280,6 @@ export const registerIpcMainListeners = (
       };
     }
   });
-
   ipcMain.on("syncIsFeaturesForModdersEnabled", (event, isFeaturesForModdersEnabled: boolean) => {
     console.log("syncIsFeaturesForModdersEnabled:", isFeaturesForModdersEnabled);
     // Send to viewer window

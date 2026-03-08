@@ -14,7 +14,7 @@ export interface AmendedSchemaField extends SchemaField {
 export interface NewPackedFile {
   name: string;
   schemaFields?: SchemaField[];
-  file_size: number;
+  file_size?: number;
   version?: number;
   tableSchema?: DBVersion;
   buffer?: Buffer;
