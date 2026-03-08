@@ -1814,6 +1814,10 @@ export const registerIpcMainListeners = (
     const withoutExtension = iconName.replace(/\.(png|jpg|jpeg)$/i, "");
     return `ui\\campaign ui\\technologies\\${withoutExtension}.png`;
   };
+  const getTechnologyIconNameFromPath = (iconPath: string | undefined) => {
+    if (!iconPath || iconPath.trim() === "") return "";
+    return iconPath.trim().replace(/^.*[\\\/]/, "");
+  };
   const normalizeTechnologyBuildingLevel = (buildingLevel: string | undefined) => {
     if (
       buildingLevel === "wh_main_human_port_ruin" ||
@@ -2086,6 +2090,17 @@ export const registerIpcMainListeners = (
           .filter((iconPath): iconPath is string => !!iconPath),
       ).values(),
     );
+    const allTechnologyIconPaths = Array.from(
+      new Set(
+        orderedPacks
+          .flatMap((pack) => pack.packedFiles.map((packedFile) => packedFile.name))
+          .filter(
+            (iconPath) =>
+              iconPath.toLowerCase().startsWith("ui\\campaign ui\\technologies\\") &&
+              /\.(png|jpg|jpeg)$/i.test(iconPath),
+          ),
+      ).values(),
+    );
     const effectIconPaths = Array.from(
       new Set(
         Object.values(technologyToEffects)
@@ -2095,7 +2110,7 @@ export const registerIpcMainListeners = (
           .map((icon) => `ui\\campaign ui\\effect_bundles\\${icon}`),
       ).values(),
     );
-    const iconPaths = [...techIconPaths, ...effectIconPaths];
+    const iconPaths = Array.from(new Set([...techIconPaths, ...allTechnologyIconPaths, ...effectIconPaths]).values());
     const locs = getLocsFromPacks(orderedPacks, getLocsTrie);
     const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
     return {
@@ -4972,6 +4987,14 @@ export const registerIpcMainListeners = (
       .sort((firstTechnology, secondTechnology) =>
         collator.compare(firstTechnology.localizedName || firstTechnology.key, secondTechnology.localizedName || secondTechnology.key),
       );
+    const allTechnologyIcons: TechnologyIconEntry[] = Object.entries(technologyData.icons)
+      .filter(([iconPath]) => iconPath.toLowerCase().startsWith("ui\\campaign ui\\technologies\\"))
+      .map(([path, iconData]) => ({
+        path,
+        name: path.replace("ui\\campaign ui\\technologies\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
+        iconData,
+      }))
+      .sort((firstIcon, secondIcon) => collator.compare(firstIcon.name, secondIcon.name));
     const allEffectKeys = new Set<string>([
       ...Object.keys(technologyData.effectsForTech),
       ...Object.values(technologyData.technologyToEffects)
@@ -5052,6 +5075,7 @@ export const registerIpcMainListeners = (
       uiGroups,
       uiGroupBounds,
       allTechnologies,
+      allTechnologyIcons,
       allEffects,
     } as TechnologyTreePayload;
   });
@@ -5183,6 +5207,7 @@ export const registerIpcMainListeners = (
           ...(technologyData.technologyRowsByKey[technologyKey] || {}),
           key: technologyKey,
           research_points_required: node.researchPointsRequired.toString(),
+          icon_name: getTechnologyIconNameFromPath(node.iconPath),
           is_hidden: node.isHidden ? "true" : "false",
           building_level: node.buildingLevel || "",
         }),
@@ -5370,6 +5395,9 @@ export const registerIpcMainListeners = (
           if (editedNode.isHidden !== undefined) {
             updatedRow.is_hidden = editedNode.isHidden ? "true" : "false";
           }
+          if (editedNode.iconPath !== undefined) {
+            updatedRow.icon_name = getTechnologyIconNameFromPath(editedNode.iconPath);
+          }
           if (editedNode.buildingLevel !== undefined) {
             updatedRow.building_level = editedNode.buildingLevel;
           }
@@ -5503,6 +5531,7 @@ export const registerIpcMainListeners = (
             buildRowFromSchema(techSchema.fields, {
               key: newNode.technologyKey,
               research_points_required: newNode.researchPointsRequired.toString(),
+              icon_name: getTechnologyIconNameFromPath(newNode.iconPath),
               is_hidden: newNode.isHidden ? "true" : "false",
               building_level: newNode.buildingLevel || "",
             }),

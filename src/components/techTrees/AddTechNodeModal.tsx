@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
+import { Modal } from "../../flowbite/components/Modal/index";
 import selectStyle from "../../styles/selectStyle";
 
 export type TechNodeFormData = {
@@ -17,6 +18,7 @@ export type TechNodeFormData = {
   buildingLevel?: string;
   shortDescription?: string;
   longDescription?: string;
+  iconPath?: string;
   effects: TechEffect[];
   iconData?: string;
 };
@@ -27,6 +29,7 @@ type AddTechNodeModalProps = {
   onAdd: (node: TechNodeFormData) => void;
   onClose: () => void;
   allTechnologies: TechnologyCatalogEntry[];
+  allTechnologyIcons: TechnologyIconEntry[];
   allEffects: TechEffect[];
   existingNode?: Omit<TechNodeFormData, "technologyMode"> & { nodeKey: string };
   onEdit?: (nodeKey: string, changes: TechNodeFormData) => void;
@@ -44,6 +47,12 @@ type EffectOption = {
   effect: TechEffect;
 };
 
+type TechnologyIconOption = {
+  value: string;
+  label: string;
+  iconData: string;
+};
+
 const inputClass = "w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-100";
 
 const AddTechNodeModal = ({
@@ -52,6 +61,7 @@ const AddTechNodeModal = ({
   onAdd,
   onClose,
   allTechnologies,
+  allTechnologyIcons,
   allEffects,
   existingNode,
   onEdit,
@@ -71,6 +81,15 @@ const AddTechNodeModal = ({
         technology,
       })),
     [allTechnologies],
+  );
+  const technologyIconOptions = useMemo<TechnologyIconOption[]>(
+    () =>
+      allTechnologyIcons.map((icon) => ({
+        value: icon.path,
+        label: icon.name,
+        iconData: icon.iconData,
+      })),
+    [allTechnologyIcons],
   );
   const effectOptions = useMemo<EffectOption[]>(
     () =>
@@ -102,6 +121,18 @@ const AddTechNodeModal = ({
   const [buildingLevel, setBuildingLevel] = useState(existingNode?.buildingLevel ?? "");
   const [shortDescription, setShortDescription] = useState(existingNode?.shortDescription ?? "");
   const [longDescription, setLongDescription] = useState(existingNode?.longDescription ?? "");
+  const [selectedIcon, setSelectedIcon] = useState<TechnologyIconOption | null>(() => {
+    if (!existingNode?.iconPath) return null;
+    const matched = technologyIconOptions.find((option) => option.value === existingNode.iconPath);
+    if (matched) return matched;
+    return {
+      value: existingNode.iconPath,
+      label: existingNode.iconPath.replace("ui\\campaign ui\\technologies\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
+      iconData: existingNode.iconData || "",
+    };
+  });
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+  const [iconSearch, setIconSearch] = useState("");
   const [selectedEffects, setSelectedEffects] = useState<EffectOption[]>(() => {
     const existingEffects = existingNode?.effects || [];
     return existingEffects
@@ -119,6 +150,11 @@ const AddTechNodeModal = ({
 
   const customTechnologyKeyTrimmed = customTechnologyKey.trim();
   const customKeyExists = existingTechnologyKeys.has(customTechnologyKeyTrimmed);
+  const filteredIcons = useMemo(() => {
+    if (!iconSearch.trim()) return technologyIconOptions;
+    const normalizedSearch = iconSearch.toLowerCase();
+    return technologyIconOptions.filter((option) => option.label.toLowerCase().includes(normalizedSearch));
+  }, [iconSearch, technologyIconOptions]);
 
   const handleExistingTechnologyChange = (option: TechnologyOption | null) => {
     setSelectedTechnology(option);
@@ -131,6 +167,16 @@ const AddTechNodeModal = ({
     setBuildingLevel(option.technology.buildingLevel || "");
     setShortDescription(option.technology.shortDescription || "");
     setLongDescription(option.technology.longDescription || "");
+    if (option.technology.iconPath) {
+      const matchedIcon = technologyIconOptions.find((icon) => icon.value === option.technology.iconPath);
+      setSelectedIcon(
+        matchedIcon || {
+          value: option.technology.iconPath,
+          label: option.technology.iconPath.replace("ui\\campaign ui\\technologies\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
+          iconData: option.technology.iconData || "",
+        },
+      );
+    }
   };
 
   const handleSubmit = () => {
@@ -142,7 +188,8 @@ const AddTechNodeModal = ({
       technologyMode === "existing"
         ? selectedTechnology?.technology.effects || []
         : selectedEffects.map((option) => option.effect);
-    const iconData = technologyMode === "existing" ? selectedTechnology?.technology.iconData : undefined;
+    const iconData = technologyMode === "existing" ? selectedTechnology?.technology.iconData : selectedIcon?.iconData;
+    const iconPath = technologyMode === "existing" ? selectedTechnology?.technology.iconPath : selectedIcon?.value;
 
     const formData: TechNodeFormData = {
       technologyMode,
@@ -158,6 +205,7 @@ const AddTechNodeModal = ({
       buildingLevel: buildingLevel.trim() || undefined,
       shortDescription: shortDescription.trim() || undefined,
       longDescription: longDescription.trim() || undefined,
+      iconPath,
       effects,
       iconData,
     };
@@ -174,11 +222,12 @@ const AddTechNodeModal = ({
     !displayName.trim();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="bg-gray-900 border border-gray-700 rounded-lg p-5 w-[760px] max-w-[95vw] max-h-[90vh] overflow-y-auto space-y-4 shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+        <div
+          className="bg-gray-900 border border-gray-700 rounded-lg p-5 w-[760px] max-w-[95vw] max-h-[90vh] overflow-y-auto space-y-4 shadow-xl"
+          onClick={(event) => event.stopPropagation()}
+        >
         <div className="text-sm font-bold border-b border-gray-700 pb-2">
           {isEditing ? "Edit Technology Node" : `Add Technology Node — Tier ${tier}, Row ${indent}`}
         </div>
@@ -290,6 +339,39 @@ const AddTechNodeModal = ({
                 </div>
               )}
             />
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Icon</label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <WindowedSelect
+                    options={technologyIconOptions}
+                    value={selectedIcon}
+                    // @ts-expect-error react-select type mismatch in current setup
+                    onChange={(newValue: TechnologyIconOption | null) => setSelectedIcon(newValue)}
+                    styles={selectStyle}
+                    placeholder="Select icon..."
+                    isClearable
+                    filterOption={createFilter({ ignoreAccents: false })}
+                    // @ts-ignore
+                    formatOptionLabel={(option: TechnologyIconOption) => (
+                      <div className="flex items-center gap-2">
+                        {option.iconData && (
+                          <img className="h-10 w-10 object-contain" src={`data:image/png;base64,${option.iconData}`} alt="" />
+                        )}
+                        <span>{option.label}</span>
+                      </div>
+                    )}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="px-4 py-2 text-white bg-gray-700 hover:bg-gray-600 rounded text-sm whitespace-nowrap"
+                  onClick={() => setIsIconPickerOpen(true)}
+                >
+                  Browse Icons...
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -431,8 +513,61 @@ const AddTechNodeModal = ({
             {isEditing ? "Save Changes" : "Add Node"}
           </button>
         </div>
+        </div>
       </div>
-    </div>
+      <Modal
+        show={isIconPickerOpen}
+        onClose={() => setIsIconPickerOpen(false)}
+        size="5xl"
+        explicitClasses={["max-w-[90vw]", "first-child-div-second-child-div-flex-grow", "first-child-div-flex-col", "!h-[90vh]"]}
+      >
+        <Modal.Header>Select Icon</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-4">
+            <input
+              type="text"
+              value={iconSearch}
+              onChange={(event) => setIconSearch(event.target.value)}
+              placeholder="Search icons..."
+              className={inputClass}
+            />
+            <div className="grid grid-cols-6 gap-3 overflow-y-auto p-2">
+              {filteredIcons.map((option) => (
+                <div
+                  key={option.value}
+                  onClick={() => {
+                    setSelectedIcon(option);
+                    setIsIconPickerOpen(false);
+                  }}
+                  className={`cursor-pointer p-3 rounded border-2 transition-colors ${
+                    selectedIcon?.value === option.value
+                      ? "border-blue-500 bg-gray-700"
+                      : "border-gray-600 hover:bg-gray-700 hover:border-gray-500"
+                  }`}
+                >
+                  <img src={`data:image/png;base64,${option.iconData}`} className="w-20 h-20 object-contain mx-auto" alt={option.label} />
+                  <div className="text-xs text-center mt-2 text-gray-300 truncate" title={option.label}>
+                    {option.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {filteredIcons.length === 0 && <div className="text-center text-gray-400 py-8">No icons found</div>}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <div className="flex gap-2 justify-end w-full">
+            <button
+              type="button"
+              onClick={() => setIsIconPickerOpen(false)}
+              className="px-4 py-2 text-gray-300 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </Modal.Footer>
+      </Modal>
+    </>
   );
 };
 

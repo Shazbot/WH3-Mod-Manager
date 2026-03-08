@@ -721,6 +721,12 @@ declare global {
     effects: TechEffect[];
   }
 
+  interface TechnologyIconEntry {
+    path: string;
+    name: string;
+    iconData: string;
+  }
+
   interface TechnologyNodeData {
     nodeKey: string;
     technologyKey: string;
@@ -791,6 +797,7 @@ declare global {
     uiGroups: TechnologyUiGroupData[];
     uiGroupBounds: TechnologyUiGroupBoundsData[];
     allTechnologies: TechnologyCatalogEntry[];
+    allTechnologyIcons: TechnologyIconEntry[];
     allEffects: TechEffect[];
   }
 
@@ -816,6 +823,7 @@ declare global {
       displayName: string;
       shortDescription?: string;
       longDescription?: string;
+      iconPath?: string;
       isHidden: boolean;
       effects?: TechEffect[];
     }[];
@@ -854,6 +862,7 @@ declare global {
       buildingLevel?: string;
       shortDescription?: string;
       longDescription?: string;
+      iconPath?: string;
       effects?: TechEffect[];
     }[];
     deletedNodeKeys?: string[];
@@ -872,6 +881,7 @@ declare global {
       buildingLevel?: string;
       shortDescription?: string;
       longDescription?: string;
+      iconPath?: string;
       effects?: TechEffect[];
     }[];
   }
