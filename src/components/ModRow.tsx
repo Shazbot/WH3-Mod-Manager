@@ -120,6 +120,17 @@ const ModRow = memo(
         "",
       [sortingType, mod.lastChanged, mod.lastChangedLocal, mod.subbedTime]
     );
+    const decodedHumanName = useMemo(() => decodeHTML(decodeHTML(mod.humanName) ?? ""), [mod.humanName]);
+    const decodedAuthor = useMemo(() => decodeHTML(decodeHTML(mod.author) ?? ""), [mod.author]);
+    const customizationFiles = customizableMods[mod.path];
+    const hasDbCustomization = useMemo(
+      () => Boolean(customizationFiles?.some((file) => file.startsWith("db\\"))),
+      [customizationFiles]
+    );
+    const hasFlowCustomization = useMemo(
+      () => Boolean(customizationFiles?.some((file) => file.startsWith("whmmflows\\"))),
+      [customizationFiles]
+    );
 
     return (
       <div
@@ -291,7 +302,7 @@ const ModRow = memo(
         </div>
         <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
-            {decodeHTML(decodeHTML(mod.humanName) ?? "")}
+            {decodedHumanName}
           </label>
         </div>
         <div
@@ -299,7 +310,7 @@ const ModRow = memo(
           className={"flex place-items-center grid-area-autohide " + (isAuthorEnabled ? "" : "hidden")}
         >
           <label className="cursor-pointer" htmlFor={mod.workshopId + "enabled"}>
-            <span className="break-all">{decodeHTML(decodeHTML(mod.author) ?? "")}</span>
+            <span className="break-all">{decodedAuthor}</span>
           </label>
         </div>
         <div
@@ -315,8 +326,7 @@ const ModRow = memo(
           </label>
         </div>
         <div className="flex place-items-center justify-center gap-2">
-          {customizableMods[mod.path] &&
-            customizableMods[mod.path].some((file) => file.startsWith("db\\")) && (
+          {hasDbCustomization && (
               <Icons.Gear
                 onClick={(e) => {
                   onCustomizeModClicked(e, mod);
@@ -326,8 +336,7 @@ const ModRow = memo(
                 color={(packDataOverwrites[mod.path] && "#1c64f2") || "white"}
               />
             )}
-          {customizableMods[mod.path] &&
-            customizableMods[mod.path].some((file) => file.startsWith("whmmflows\\")) && (
+          {hasFlowCustomization && (
               <Icons.SettingsKnobs
                 onClick={(e) => {
                   onFlowOptionsClicked(e, mod);

@@ -39,90 +39,10 @@ import { MeasuredCellParent } from "react-virtualized/dist/es/CellMeasurer";
 import { GridCoreProps } from "react-virtualized/dist/es/Grid";
 import hash from "object-hash";
 
-let currentDragTarget: Element;
-let idOfDragged = "";
-
-const getVisibleMods = (mods: Mod[], hiddenMods: Mod[]) => {
+const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
   const dataPackNames = new Set(mods.filter((mod) => mod.isInData).map((mod) => mod.name));
-  const hiddenModNames = new Set(hiddenMods.map((mod) => mod.name));
 
   return mods.filter((mod) => (mod.isInData || !dataPackNames.has(mod.name)) && !hiddenModNames.has(mod.name));
-};
-
-const onDragEnd = () => {
-  console.log("onDragEnd");
-
-  // console.log("on drag end height", rowsParentRef.current?.clientHeight);
-  // console.log("on drag end height", rowsParentRef.current?.getBoundingClientRect());
-  // console.log("on drag end height", rowsParentRef.current?.scrollTop);
-  console.log("on drag end SCR 1", document.scrollingElement?.scrollTop);
-
-  // const ghost = document.getElementById("drop-ghost");
-  // if (ghost && ghost.parentElement) {
-  //   ghost.parentElement.removeChild(ghost);
-  // }
-
-  // console.log("idOfDragged");
-  console.log(idOfDragged);
-  // console.log("111");
-  let oldTop = -1;
-  const originalElement = (idOfDragged != "" && document.getElementById(idOfDragged)) || null;
-  // // console.log("orig", !!originalElement, !!originalElement?.parentElement);
-  // // if (!originalElement || !originalElement.parentElement) return;
-  // const oldTop = originalElement?.getBoundingClientRect().top;
-  // console.log(originalElement?.getBoundingClientRect(), oldTop);
-  // console.log(originalElement?.offsetTop);
-  if (originalElement && originalElement.children[1]) {
-    console.log("first child rect", originalElement?.children[1].getBoundingClientRect());
-
-    oldTop = originalElement.children[1].getBoundingClientRect().top;
-  }
-
-  [...document.getElementsByClassName("row-bg-color-manually")].forEach((element) => {
-    element.classList.remove("row-bg-color-manually");
-  });
-
-  const body = document.getElementById("body");
-  if (body) body.classList.remove("disable-row-hover");
-  // e.stopPropagation();
-
-  setTimeout(() => {
-    const modsGrid = document.getElementById("modsGrid");
-    if (modsGrid) {
-      const ghosts = modsGrid.getElementsByClassName("drop-ghost");
-      for (const ghost of ghosts) {
-        if (!ghost.classList.contains("hidden")) {
-          //     console.log("found one");
-          //     console.log(e?.clientY);
-          //     console.log(ghost.getBoundingClientRect());
-          ghost.classList.add("hidden");
-        }
-      }
-    }
-
-    setTimeout(() => {
-      const originalElement = (idOfDragged != "" && document.getElementById(idOfDragged)) || null;
-      // // console.log("orig", !!originalElement, !!originalElement?.parentElement);
-      // // if (!originalElement || !originalElement.parentElement) return;
-      // const oldTop = originalElement?.getBoundingClientRect().top;
-      // console.log(originalElement?.getBoundingClientRect(), oldTop);
-      // console.log(originalElement?.offsetTop);
-      if (oldTop != -1 && originalElement && originalElement.children[1]) {
-        console.log("first child rect AFTER", originalElement?.children[1].getBoundingClientRect());
-        const newTop = originalElement.children[1].getBoundingClientRect().top;
-
-        document.getElementById("mod-rows-scroll")?.scrollBy(0, newTop - oldTop);
-      }
-
-      // console.log("on drag end SCR 2", document.scrollingElement?.scrollTop);
-      // const newTop = originalElement?.getBoundingClientRect().top;
-      // console.log("oldtop", oldTop, "newtop", newTop);
-      // if (oldTop && newTop) {
-      //   window.scrollBy(0, newTop - oldTop);
-      //   console.log("scrolled by", newTop - oldTop);
-      // }
-    }, 50);
-  }, 100);
 };
 
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
@@ -157,21 +77,35 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const rowsParentRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<List>(null);
+  const currentDragTargetRef = useRef<Element>();
+  const draggedModIdRef = useRef("");
 
-  let presetMods = useAppSelector((state) => state.app.currentPreset.mods);
-  const enabledMods = presetMods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
+  const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const hiddenModNames = useMemo(() => new Set(hiddenMods.map((mod) => mod.name)), [hiddenMods]);
+  const alwaysEnabledModNames = useMemo(
+    () => new Set(alwaysEnabledMods.map((mod) => mod.name)),
+    [alwaysEnabledMods]
   );
-  if (currentTab == "enabledMods") {
-    presetMods = enabledMods;
-  }
+  const enabledMods = useMemo(
+    () =>
+      currentPresetMods.filter((iterMod) => iterMod.isEnabled || alwaysEnabledModNames.has(iterMod.name)),
+    [alwaysEnabledModNames, currentPresetMods]
+  );
+  const presetMods = currentTab == "enabledMods" ? enabledMods : currentPresetMods;
   const enabledMergeMods = enabledMods.filter((mod) => mod.mergedModsData);
+  const mergedModPaths = useMemo(() => {
+    const paths = new Set<string>();
+    enabledMergeMods.forEach((mergeMod) => {
+      (mergeMod.mergedModsData as MergedModsData[]).forEach((mergeModData) => {
+        paths.add(mergeModData.path);
+      });
+    });
+    return paths;
+  }, [enabledMergeMods]);
 
-  const modsToOrder = presetMods.filter((iterMod) => {
-    const isHidden = hiddenMods.find((mod) => mod.name === iterMod.name);
-    const isAlwaysEnabled = alwaysEnabledMods.find((mod) => iterMod.name === mod.name);
-    return !isHidden || (isHidden && isAlwaysEnabled);
-  });
+  const modsToOrder = presetMods.filter(
+    (iterMod) => !hiddenModNames.has(iterMod.name) || alwaysEnabledModNames.has(iterMod.name)
+  );
   const orderedMods = sortByNameAndLoadOrder(modsToOrder);
 
   let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
@@ -226,82 +160,61 @@ const ModRows = memo((props: ModRowsProps) => {
     dispatch(resetModLoadOrderAll());
   }, [dispatch]);
 
-  const afterDrop = useCallback((originalId: string, droppedOnId: string) => {
-    // console.log(`----DROPPED----`);
-    // console.log(`dragged id with ${originalId}`);
-    // console.log(`DROPPED ONTO ${droppedOnId}`);
-
-    const droppedOnElement = document.getElementById(droppedOnId);
-    if (!droppedOnElement || !droppedOnElement.parentElement) return;
-
-    const index =
-      [...droppedOnElement.parentElement.children]
-        .filter((ele) => ele.id !== "drop-ghost")
-        .indexOf(droppedOnElement) - 8;
-
-    const originalElement = document.getElementById(originalId);
-    if (!originalElement || !originalElement.parentElement) return;
-    const originalElementindex =
-      [...originalElement.parentElement.children]
-        .filter((ele) => ele.id !== "drop-ghost")
-        .indexOf(originalElement) - 8;
-
-    let loadOrder: number | null = null;
-
-    let prevElement: HTMLDivElement = droppedOnElement.previousElementSibling as HTMLDivElement;
-    if (prevElement.id === "drop-ghost") prevElement = prevElement.previousElementSibling as HTMLDivElement;
-    const prevElementOnLoadOrder = prevElement.dataset.loadOrder;
-
-    if (prevElementOnLoadOrder != null && prevElement.id !== originalId) {
-      loadOrder = Number(prevElementOnLoadOrder) + ((originalElementindex >= index && 1) || 0);
-
-      console.log("PREV ELEMENT LOAD ORDER!");
-      console.log("ORIG Y:", originalElementindex);
-      console.log("droppedOnElementY Y:", index);
-      console.log("OFFSET IS", (originalElementindex >= index && 1) || 0);
-      console.log("PREV ELEMENT DROPPED load order is: " + prevElementOnLoadOrder);
-      console.log("NEW LOAD ORDER IS", loadOrder);
+  const onDragEnd = useCallback(() => {
+    const draggedModId = draggedModIdRef.current;
+    let oldTop = -1;
+    const originalElement = draggedModId !== "" ? document.getElementById(draggedModId) : null;
+    if (originalElement && originalElement.children[1]) {
+      oldTop = originalElement.children[1].getBoundingClientRect().top;
     }
 
-    const droppedOnLoadOrder = droppedOnElement.dataset.loadOrder;
+    [...document.getElementsByClassName("row-bg-color-manually")].forEach((element) => {
+      element.classList.remove("row-bg-color-manually");
+    });
 
-    if (
-      loadOrder == null &&
-      droppedOnLoadOrder != null &&
-      (prevElement.id !== originalId || Number(droppedOnLoadOrder) !== Number(prevElementOnLoadOrder) + 1)
-    ) {
-      console.log("NEXT ELEMENT LOAD ORDER!");
-      console.log("DROPPED ON LOAD ORDER IS", droppedOnLoadOrder);
-      console.log("ORIG Y:", originalElementindex);
-      console.log("droppedOnElementY Y:", index);
-      loadOrder = Number(droppedOnLoadOrder) + ((originalElementindex < index && -1) || 0);
-      console.log("NEW LOAD ORDER IS", loadOrder);
-      console.log("OFFSET IS", (originalElementindex < index && -1) || 0);
-    }
+    const body = document.getElementById("body");
+    if (body) body.classList.remove("disable-row-hover");
 
-    if (loadOrder == null) {
-      loadOrder = index > originalElementindex ? index : index + 1;
-    }
+    setTimeout(() => {
+      const modsGrid = document.getElementById("modsGrid");
+      if (modsGrid) {
+        const ghosts = modsGrid.getElementsByClassName("drop-ghost");
+        for (const ghost of ghosts) {
+          if (!ghost.classList.contains("hidden")) {
+            ghost.classList.add("hidden");
+          }
+        }
+      }
 
-    // dispatch(setModLoadOrder({ modName: originalId, loadOrder, originalOrder: originalElementindex + 1 }));
+      setTimeout(() => {
+        const draggedElement = draggedModId !== "" ? document.getElementById(draggedModId) : null;
+        if (oldTop != -1 && draggedElement && draggedElement.children[1]) {
+          const newTop = draggedElement.children[1].getBoundingClientRect().top;
+          document.getElementById("mod-rows-scroll")?.scrollBy(0, newTop - oldTop);
+        }
+        draggedModIdRef.current = "";
+      }, 50);
+    }, 100);
   }, []);
 
   const onDragStart = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     console.log("DRAG START");
     const t = e.target as HTMLDivElement;
+    const draggedModId = t.id.replace("drag-icon-", "");
 
     e.dataTransfer.effectAllowed = "move";
     // console.log(`setting data ${t.id}`);
-    e.dataTransfer.setData("text/plain", t.id.replace("drag-icon-", ""));
+    e.dataTransfer.setData("text/plain", draggedModId);
+    draggedModIdRef.current = draggedModId;
 
     console.log("idOfDragged");
-    console.log(t.id.replace("drag-icon-", ""));
+    console.log(draggedModId);
     console.log("111");
     console.log(rowsParentRef.current?.clientHeight);
     console.log(rowsParentRef.current?.scrollTop);
     console.log(rowsParentRef.current?.getBoundingClientRect());
     console.log("docu scroll", document.scrollingElement?.scrollTop);
-    const originalElement = (idOfDragged != "" && document.getElementById("rowsParent")) || null;
+    const originalElement = document.getElementById("rowsParent");
     // console.log("orig", !!originalElement, !!originalElement?.parentElement);
     // if (!originalElement || !originalElement.parentElement) return;
     console.log(originalElement?.getBoundingClientRect());
@@ -311,7 +224,7 @@ const ModRows = memo((props: ModRowsProps) => {
     if (body) body.classList.add("disable-row-hover");
 
     // console.log(t.id.replace("drag-icon-", ""));
-    const row = document.getElementById(t.id.replace("drag-icon-", ""));
+    const row = document.getElementById(draggedModId);
     row?.classList.add("row-bg-color-manually");
 
     // const elTop = t.offsetTop;
@@ -343,7 +256,7 @@ const ModRows = memo((props: ModRowsProps) => {
       if (e.dataTransfer.types.length > 1) return;
       const t = e.currentTarget as HTMLDivElement;
 
-      if (currentDragTarget && t === currentDragTarget.parentElement) return;
+      if (currentDragTargetRef.current && t === currentDragTargetRef.current.parentElement) return;
 
       if (!document.getElementById("drop-ghost")) {
         //   // ghost.parentElement.removeChild(ghost);
@@ -372,7 +285,7 @@ const ModRows = memo((props: ModRowsProps) => {
       }
 
       // console.log("DRAG ENTER");
-      currentDragTarget = t.children[0];
+      currentDragTargetRef.current = t.children[0];
 
       e.stopPropagation();
     },
@@ -398,7 +311,7 @@ const ModRows = memo((props: ModRowsProps) => {
         // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
         const droppedId = e.dataTransfer.getData("text/plain");
         if (droppedId === "") return;
-        idOfDragged = droppedId;
+        draggedModIdRef.current = droppedId;
 
         console.log("in ondrop droppedID", droppedId);
 
@@ -429,7 +342,6 @@ const ModRows = memo((props: ModRowsProps) => {
                 setAfterMod,
               } as ModLoadOrderRelativeTo)
             );
-            afterDrop(droppedId, modNameRelativeTo);
           }
           return;
         }
@@ -451,7 +363,7 @@ const ModRows = memo((props: ModRowsProps) => {
       // onDragEnd();
       // e.stopPropagation();
     };
-  }, [afterDrop, dispatch]);
+  }, [dispatch]);
 
   const onDrag = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
@@ -551,7 +463,7 @@ const ModRows = memo((props: ModRowsProps) => {
     }, 1);
   }, []);
 
-  const getGridClass = useCallback(() => {
+  const gridClass = useMemo(() => {
     if (isAuthorEnabled && areThumbnailsEnabled) return "grid-mods-thumbs-author";
     if (isAuthorEnabled) return "grid-mods-author";
     if (areThumbnailsEnabled) return "grid-mods-thumbs";
@@ -574,11 +486,21 @@ const ModRows = memo((props: ModRowsProps) => {
     );
   }, [enabledMods, customizableMods]);
 
-  const visibleMods = useMemo(() => getVisibleMods(mods, hiddenMods), [mods, hiddenMods]);
+  const visibleMods = useMemo(() => getVisibleMods(mods, hiddenModNames), [hiddenModNames, mods]);
 
   const unfilteredVisibleMods = useMemo(
-    () => getVisibleMods(unfilteredMods, hiddenMods),
-    [hiddenMods, unfilteredMods]
+    () => getVisibleMods(unfilteredMods, hiddenModNames),
+    [hiddenModNames, unfilteredMods]
+  );
+
+  const rowData = useMemo(
+    () =>
+      visibleMods.map((mod) => ({
+        mod,
+        isAlwaysEnabled: alwaysEnabledModNames.has(mod.name),
+        isEnabledInMergedMod: mergedModPaths.has(mod.path),
+      })),
+    [alwaysEnabledModNames, mergedModPaths, visibleMods]
   );
 
   const onDropWithVisibleMods = useCallback(() => {
@@ -615,8 +537,8 @@ const ModRows = memo((props: ModRowsProps) => {
     key: string;
     style: CSSProperties;
   }) => {
-    const mod = visibleMods[index];
-    return mod ? (
+    const row = rowData[index];
+    return row ? (
       <CellMeasurer cache={cache} index={index} key={key} parent={parent}>
         {({ registerChild }) => (
           <ModRow
@@ -624,8 +546,8 @@ const ModRows = memo((props: ModRowsProps) => {
             {...{
               style,
               index,
-              gridClass: getGridClass(),
-              mod,
+              gridClass,
+              mod: row.mod,
               onRowHoverStart,
               onRowHoverEnd,
               onDrop: isCurrentTabEnabledMods ? onDropMemoized : emptyFunc,
@@ -643,13 +565,9 @@ const ModRows = memo((props: ModRowsProps) => {
               onRemoveModOrder,
               sortingType,
               currentTab,
-              isLast: visibleMods.length == index + 1,
-              isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
-              isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
-                (mergeMod.mergedModsData as MergedModsData[]).some(
-                  (mergeModData) => mergeModData.path == mod.path
-                )
-              ),
+              isLast: rowData.length == index + 1,
+              isAlwaysEnabled: row.isAlwaysEnabled,
+              isEnabledInMergedMod: row.isEnabledInMergedMod,
               registerChild,
             }}
           ></ModRow>
@@ -663,7 +581,7 @@ const ModRows = memo((props: ModRowsProps) => {
   return (
     <>
       <div
-        onDragEnd={() => onDragEnd()}
+        onDragEnd={onDragEnd}
         className={`dark:text-slate-100 ` + (areThumbnailsEnabled ? "text-lg" : "")}
         id="rowsParent"
         ref={rowsParentRef}
@@ -693,7 +611,7 @@ const ModRows = memo((props: ModRowsProps) => {
           />
         )}
 
-        <div className={"grid pt-1.5 parent " + getGridClass()} id="modsGrid">
+        <div className={"grid pt-1.5 parent " + gridClass} id="modsGrid">
           <div
             id="sortHeader"
             className="flex place-items-center w-full justify-center z-[11] mod-row-header rounded-tl-xl"
@@ -857,7 +775,7 @@ const ModRows = memo((props: ModRowsProps) => {
             </WindowScroller>
           )}
           {currentTab == "enabledMods" &&
-            visibleMods.map((mod, i) => (
+            rowData.map(({ mod, isAlwaysEnabled, isEnabledInMergedMod }, i) => (
               <ModRow
                 key={mod.path}
                 {...{
@@ -880,16 +798,11 @@ const ModRows = memo((props: ModRowsProps) => {
                   onRemoveModOrder,
                   sortingType,
                   currentTab,
-                  isLast: visibleMods.length == i + 1,
-                  isAlwaysEnabled: alwaysEnabledMods.some((iterMod) => iterMod.name === mod.name),
-                  isEnabledInMergedMod: enabledMergeMods.some((mergeMod) =>
-                    (mergeMod.mergedModsData as MergedModsData[]).some(
-                      (mergeModData) => mergeModData.path == mod.path
-                    )
-                  ),
-                  loadOrder: orderedMods.indexOf(mod) + 1,
+                  isLast: rowData.length == i + 1,
+                  isAlwaysEnabled,
+                  isEnabledInMergedMod,
                   style: {},
-                  gridClass: "row",
+                  gridClass,
                   registerChild: emptyFunc,
                 }}
               ></ModRow>
