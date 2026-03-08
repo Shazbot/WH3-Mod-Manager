@@ -1964,6 +1964,7 @@ export const registerIpcMainListeners = (
           getSchemaFieldValue(schemaFieldRow, "initial_descent_tiers"),
           0,
         ),
+        visibleInUi: parseOptionalBool(getSchemaFieldValue(schemaFieldRow, "visible_in_ui"), true),
       };
       linkRowsByKey[linkKey] = schemaRowToRecord(schemaFieldRow);
     });
@@ -5161,6 +5162,7 @@ export const registerIpcMainListeners = (
           parent_link_position_offset: link.parentLinkPositionOffset.toString(),
           child_link_position_offset: link.childLinkPositionOffset.toString(),
           initial_descent_tiers: link.initialDescentTiers.toString(),
+          visible_in_ui: link.visibleInUi ? "1" : "0",
         }),
       );
       if (linkRows.length > 0) {
@@ -5407,6 +5409,7 @@ export const registerIpcMainListeners = (
             parent_link_position_offset: changedLink.parentLinkPositionOffset.toString(),
             child_link_position_offset: changedLink.childLinkPositionOffset.toString(),
             initial_descent_tiers: changedLink.initialDescentTiers.toString(),
+            visible_in_ui: changedLink.visibleInUi ? "1" : "0",
           };
         }
         const rows = Object.values(dedupedRowsByLinkKey).map((row) => buildRowFromSchema(schema.fields, row));
