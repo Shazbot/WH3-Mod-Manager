@@ -752,6 +752,7 @@ declare global {
     parentLinkPositionOffset: number;
     childLinkPositionOffset: number;
     initialDescentTiers: number;
+    visibleInUi: boolean;
   }
 
   interface TechnologyUiTabData {

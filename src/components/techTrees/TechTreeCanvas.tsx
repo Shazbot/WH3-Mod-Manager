@@ -3,8 +3,8 @@ import {
   addEdge,
   Background,
   Connection,
-  Controls,
   Edge,
+  EdgeTypes,
   MarkerType,
   Node,
   NodeTypes,
@@ -18,6 +18,8 @@ import { Modal } from "../../flowbite/components/Modal/index";
 import TechNode from "./TechNode";
 import TechGroupNode from "./TechGroupNode";
 import AddTechNodeModal, { TechNodeFormData } from "./AddTechNodeModal";
+import TechTreeLinkEdge from "./TechTreeLinkEdge";
+import { buildTechTreeLinkGeometry } from "./techTreeLinkGeometry";
 
 const NODE_WIDTH = 325;
 const NODE_HEIGHT = 140;
@@ -62,6 +64,11 @@ const handleIdToCompass = (handleId: string | null | undefined, fallback: number
 const areStringArraysEqual = (first: string[], second: string[]) =>
   first.length === second.length && first.every((value, index) => value === second[index]);
 
+const formatLinkOffsetLabel = (offset: number) => {
+  if (!Number.isFinite(offset) || offset === 0) return "0";
+  return `${offset > 0 ? "+" : ""}${offset}`;
+};
+
 type TechClipboardEntry = {
   technologyKey: string;
   localizedName: string;
@@ -89,6 +96,20 @@ type TechEditSnapshot = {
   deletedNodeKeys: string[];
   editedNodes: Record<string, Partial<TechnologyNodeData>>;
 };
+
+type TechContextMenu =
+  | {
+      x: number;
+      y: number;
+      targetType: "techNode" | "techPlaceholder";
+      nodeId: string;
+    }
+  | {
+      x: number;
+      y: number;
+      targetType: "techEdge";
+      edgeId: string;
+    };
 
 const menuItemClass = "w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 cursor-pointer";
 type TechSaveMode = "whole" | "changes";
@@ -125,15 +146,15 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   const [deletedNodeKeys, setDeletedNodeKeys] = useState<Set<string>>(new Set());
   const [deletedLinks, setDeletedLinks] = useState<Set<string>>(new Set());
   const [editedNodes, setEditedNodes] = useState<Record<string, Partial<TechnologyNodeData>>>({});
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    nodeId: string;
-    nodeType: string;
-  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<TechContextMenu | null>(null);
   const [isRequirementsMode, setIsRequirementsMode] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [unlockedNodeKeys, setUnlockedNodeKeys] = useState<Set<string>>(new Set());
+  const [editLinkTarget, setEditLinkTarget] = useState<{
+    linkKey: string;
+    parentOffset: string;
+    childOffset: string;
+  } | null>(null);
   const [editNodeTarget, setEditNodeTarget] = useState<{
     nodeKey: string;
     tier: number;
@@ -168,6 +189,14 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     [],
   );
 
+  const edgeTypes = useMemo(
+    () =>
+      ({
+        techTreeLink: TechTreeLinkEdge,
+      }) as EdgeTypes,
+    [],
+  );
+
   useEffect(() => {
     const loadTree = async () => {
       if (!setKey) return;
@@ -186,6 +215,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         setDeletedLinks(new Set());
         setEditedNodes({});
         setContextMenu(null);
+        setEditLinkTarget(null);
         setIsRequirementsMode(false);
         setUnlockedNodeKeys(new Set());
         setIsCheckingRequirements(false);
@@ -434,6 +464,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       {
         x: number;
         y: number;
+        width: number;
+        height: number;
         requiredParents: number;
       }
     >();
@@ -480,6 +512,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       visibleNodeLayoutByKey.set(technologyNode.nodeKey, {
         x: nodeX,
         y: nodeY,
+        width: TECH_NODE_RENDER_WIDTH,
+        height: TECH_NODE_RENDER_HEIGHT,
         requiredParents: effectiveNode.requiredParents || 0,
       });
       visibleNodes.push({
@@ -543,6 +577,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       visibleNodeLayoutByKey.set(addedNode.nodeKey, {
         x: nodeX,
         y: nodeY,
+        width: TECH_NODE_RENDER_WIDTH,
+        height: TECH_NODE_RENDER_HEIGHT,
         requiredParents: addedNode.requiredParents || 0,
       });
       visibleNodes.push({
@@ -577,6 +613,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
 
     const visibleLinks = [...allEdgesMap.entries()].filter(([linkKey, link]) => {
       if (deletedLinks.has(linkKey)) return false;
+      if (!isRequirementsMode && !link.visibleInUi) return false;
       return visibleNodeKeySet.has(link.parentKey) && visibleNodeKeySet.has(link.childKey);
     });
     const displayedRequiredParentLinkByChild = new Map<string, string>();
@@ -659,6 +696,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         return "#f59e0b";
       })();
       const childLayout = visibleNodeLayoutByKey.get(link.childKey);
+      const parentLayout = visibleNodeLayoutByKey.get(link.parentKey);
+      if (!childLayout || !parentLayout) continue;
       const requiredParents = childLayout?.requiredParents || 0;
       const unlockedParentCount =
         requiredParents > 0
@@ -673,25 +712,43 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       ) {
         continue;
       }
+      const geometry = buildTechTreeLinkGeometry({
+        sourceRect: parentLayout,
+        targetRect: childLayout,
+        rawSourceCompass: link.parentLinkPosition,
+        rawTargetCompass: link.childLinkPosition,
+        rawSourceOffset: link.parentLinkPositionOffset,
+        rawTargetOffset: link.childLinkPositionOffset,
+      });
+      const hasOffsetLabel =
+        isRequirementsMode &&
+        (link.parentLinkPositionOffset !== 0 || link.childLinkPositionOffset !== 0);
       visibleEdges.push({
         id: `tech-link-${linkKey}`,
         source: link.parentKey,
         target: link.childKey,
-        sourceHandle: compassToHandleId(link.parentLinkPosition, "source"),
-        targetHandle: compassToHandleId(link.childLinkPosition, "target"),
-        type: "smoothstep",
-        label:
-          !isRequirementsMode && requiredParents > 0
-            ? `(${unlockedParentCount}/${requiredParents})`
-            : undefined,
-        labelStyle:
-          !isRequirementsMode && requiredParents > 0 ? { fill: "#f3f4f6", fontSize: 12 } : undefined,
-        labelBgPadding: !isRequirementsMode && requiredParents > 0 ? [6, 2] : undefined,
-        labelBgBorderRadius: !isRequirementsMode && requiredParents > 0 ? 6 : undefined,
-        labelBgStyle:
-          !isRequirementsMode && requiredParents > 0 ? { fill: "#111827", opacity: 0.95 } : undefined,
+        sourceHandle: compassToHandleId(geometry.sourceCompass, "source"),
+        targetHandle: compassToHandleId(geometry.targetCompass, "target"),
+        type: "techTreeLink",
+        data: {
+          path: geometry.path,
+          labelX: geometry.labelX,
+          labelY: geometry.labelY,
+          labelText: hasOffsetLabel
+            ? `P:${formatLinkOffsetLabel(link.parentLinkPositionOffset)} C:${formatLinkOffsetLabel(
+                link.childLinkPositionOffset,
+              )}`
+            : !isRequirementsMode && requiredParents > 0
+              ? `(${unlockedParentCount}/${requiredParents})`
+              : undefined,
+        },
         markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor },
-        style: { stroke: edgeColor, strokeWidth: 3, opacity: 0.9 },
+        style: {
+          stroke: edgeColor,
+          strokeWidth: 3,
+          opacity: 0.9,
+          strokeDasharray: !link.visibleInUi && isRequirementsMode ? "8 5" : undefined,
+        },
       });
     }
 
@@ -1000,6 +1057,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         parentLinkPositionOffset: 0,
         childLinkPositionOffset: 0,
         initialDescentTiers: 0,
+        visibleInUi: true,
       };
       const linkKey = `${link.parentKey}|${link.childKey}`;
       setChangedLinks((prev) => ({ ...prev, [linkKey]: link }));
@@ -1009,6 +1067,12 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   );
 
   // Context menu handlers
+  const getLinkKeyFromEdge = useCallback(
+    (edge: Pick<Edge, "id" | "source" | "target">) =>
+      edge.id.startsWith("tech-link-") ? edge.id.replace("tech-link-", "") : `${edge.source}|${edge.target}`,
+    [],
+  );
+
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       if (!isEditMode) return;
@@ -1019,19 +1083,69 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
             x: event.clientX,
             y: event.clientY,
             nodeId: node.id,
-            nodeType: "techPlaceholder",
+            targetType: "techPlaceholder",
           });
         }
         return;
       }
       if (node.type !== "techNode") return;
       event.preventDefault();
-      setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id, nodeType: "techNode" });
+      setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id, targetType: "techNode" });
     },
     [isEditMode],
   );
 
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      if (!isEditMode) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        targetType: "techEdge",
+        edgeId: getLinkKeyFromEdge(edge),
+      });
+    },
+    [getLinkKeyFromEdge, isEditMode],
+  );
+
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const updateChangedLink = useCallback(
+    (linkKey: string, updater: (link: TechnologyLinkData) => TechnologyLinkData) => {
+      const existingLink = allEdgesMap.get(linkKey);
+      if (!existingLink) return;
+      setChangedLinks((prev) => {
+        const currentLink = prev[linkKey] || existingLink;
+        return { ...prev, [linkKey]: updater(currentLink) };
+      });
+    },
+    [allEdgesMap],
+  );
+
+  const openLinkOffsetEditor = useCallback(
+    (linkKey: string) => {
+      const link = allEdgesMap.get(linkKey);
+      if (!link) return;
+      setEditLinkTarget({
+        linkKey,
+        parentOffset: link.parentLinkPositionOffset.toString(),
+        childOffset: link.childLinkPositionOffset.toString(),
+      });
+      closeContextMenu();
+    },
+    [allEdgesMap, closeContextMenu],
+  );
+
+  const toggleLinkVisibility = useCallback(
+    (linkKey: string, visibleInUi: boolean) => {
+      captureHistory();
+      updateChangedLink(linkKey, (link) => ({ ...link, visibleInUi }));
+      closeContextMenu();
+    },
+    [captureHistory, closeContextMenu, updateChangedLink],
+  );
 
   const onPaneClick = useCallback(() => {
     setContextMenu(null);
@@ -1057,9 +1171,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       if (!isEditMode) return;
       event.preventDefault();
       event.stopPropagation();
-      const linkKey = edge.id.startsWith("tech-link-")
-        ? edge.id.replace("tech-link-", "")
-        : `${edge.source}|${edge.target}`;
+      const linkKey = getLinkKeyFromEdge(edge);
       captureHistory();
       setDeletedLinks((prev) => new Set([...prev, linkKey]));
       setChangedLinks((prev) => {
@@ -1069,8 +1181,26 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       });
       setEdges((prevEdges) => prevEdges.filter((existingEdge) => existingEdge.id !== edge.id));
     },
-    [captureHistory, isEditMode, setEdges],
+    [captureHistory, getLinkKeyFromEdge, isEditMode, setEdges],
   );
+
+  const saveEditedLinkOffsets = useCallback(() => {
+    if (!editLinkTarget) return;
+    const parentOffset = Number.parseFloat(editLinkTarget.parentOffset);
+    const childOffset = Number.parseFloat(editLinkTarget.childOffset);
+    if (!Number.isFinite(parentOffset) || !Number.isFinite(childOffset)) {
+      setStatusMessage("Link offsets must be valid numbers.");
+      return;
+    }
+
+    captureHistory();
+    updateChangedLink(editLinkTarget.linkKey, (link) => ({
+      ...link,
+      parentLinkPositionOffset: parentOffset,
+      childLinkPositionOffset: childOffset,
+    }));
+    setEditLinkTarget(null);
+  }, [captureHistory, editLinkTarget, updateChangedLink]);
 
   // Context menu: Escape to close
   useEffect(() => {
@@ -1266,6 +1396,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     setDeletedNodeKeys(new Set());
     setDeletedLinks(new Set());
     setEditedNodes({});
+    setEditLinkTarget(null);
     historyPast.current = [];
     historyFuture.current = [];
     setHistorySize({ past: 0, future: 0 });
@@ -1470,6 +1601,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
               if (!checked) {
                 setIsRequirementsMode(false);
                 setContextMenu(null);
+                setEditLinkTarget(null);
                 setIsSaveModalOpen(false);
               }
             }}
@@ -1556,10 +1688,12 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onSelectionChange={onSelectionChange}
           onEdgeClick={onEdgeClick}
+          onEdgeContextMenu={isEditMode ? onEdgeContextMenu : undefined}
           onConnect={onConnect}
           onNodeDragStop={onNodeDragStop}
           onNodeClick={isEditMode && !isRequirementsMode ? onNodeClick : undefined}
@@ -1684,35 +1818,111 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           allEffects={technologyTree?.allEffects || []}
         />
       )}
+      <Modal onClose={() => setEditLinkTarget(null)} show={!!editLinkTarget} size="sm" position="center">
+        <Modal.Header>Edit Link Offsets</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2" htmlFor="tech-link-parent-offset">
+                Parent offset
+              </label>
+              <input
+                id="tech-link-parent-offset"
+                type="number"
+                step="0.1"
+                value={editLinkTarget?.parentOffset || ""}
+                onChange={(event) =>
+                  setEditLinkTarget((prev) =>
+                    prev ? { ...prev, parentOffset: event.target.value } : prev,
+                  )
+                }
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2" htmlFor="tech-link-child-offset">
+                Child offset
+              </label>
+              <input
+                id="tech-link-child-offset"
+                type="number"
+                step="0.1"
+                value={editLinkTarget?.childOffset || ""}
+                onChange={(event) =>
+                  setEditLinkTarget((prev) =>
+                    prev ? { ...prev, childOffset: event.target.value } : prev,
+                  )
+                }
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <p className="text-xs text-gray-400">
+              `0` stays centered, `1` moves to the far right or bottom edge, `-1` moves to the far left or top edge.
+            </p>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            type="button"
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200"
+            onClick={() => setEditLinkTarget(null)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200"
+            onClick={() =>
+              setEditLinkTarget((prev) =>
+                prev ? { ...prev, parentOffset: "0", childOffset: "0" } : prev,
+              )
+            }
+          >
+            Reset to 0
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
+            onClick={saveEditedLinkOffsets}
+          >
+            Save
+          </button>
+        </Modal.Footer>
+      </Modal>
       {/* Context Menu */}
       {contextMenu &&
         (() => {
           const targetNodeData = (() => {
-            if (contextMenu.nodeType !== "techNode") return null;
+            if (contextMenu.targetType !== "techNode") return null;
             const baseNode = technologyTree?.nodes.find((n) => n.nodeKey === contextMenu.nodeId);
             const addedNode = addedNodes.find((n) => n.nodeKey === contextMenu.nodeId);
             return baseNode || addedNode || null;
           })();
+          const targetLink =
+            contextMenu.targetType === "techEdge" ? allEdgesMap.get(contextMenu.edgeId) || null : null;
 
           const selectedNodeIds = nodes
-            .filter((n) => n.selected && n.type === "techNode" && n.id !== contextMenu.nodeId)
+            .filter((n) => n.selected && n.type === "techNode" && n.id !== ("nodeId" in contextMenu ? contextMenu.nodeId : ""))
             .map((n) => n.id);
-          const isTargetSelected = nodes.some((n) => n.id === contextMenu.nodeId && n.selected);
+          const isTargetSelected =
+            "nodeId" in contextMenu && nodes.some((n) => n.id === contextMenu.nodeId && n.selected);
           const allSelectedIds =
             isTargetSelected && selectedNodeIds.length > 0
               ? [contextMenu.nodeId, ...selectedNodeIds]
-              : [contextMenu.nodeId];
-          const deleteCount = contextMenu.nodeType === "techNode" ? allSelectedIds.length : 0;
+              : "nodeId" in contextMenu
+                ? [contextMenu.nodeId]
+                : [];
+          const deleteCount = contextMenu.targetType === "techNode" ? allSelectedIds.length : 0;
 
           // Count connections for the right-clicked node
           const inputCount =
-            contextMenu.nodeType === "techNode"
+            contextMenu.targetType === "techNode"
               ? [...allEdgesMap.entries()].filter(
                   ([key, link]) => link.childKey === contextMenu.nodeId && !deletedLinks.has(key),
                 ).length
               : 0;
           const outputCount =
-            contextMenu.nodeType === "techNode"
+            contextMenu.targetType === "techNode"
               ? [...allEdgesMap.entries()].filter(
                   ([key, link]) => link.parentKey === contextMenu.nodeId && !deletedLinks.has(key),
                 ).length
@@ -1732,7 +1942,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                 className="fixed z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[200px]"
                 style={{ left: contextMenu.x, top: contextMenu.y }}
               >
-                {contextMenu.nodeType === "techNode" && targetNodeData && (
+                {contextMenu.targetType === "techNode" && targetNodeData && (
                   <>
                     <button
                       className={menuItemClass}
@@ -1900,7 +2110,32 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                     </button>
                   </>
                 )}
-                {contextMenu.nodeType === "techPlaceholder" && techClipboard.length > 0 && (
+                {contextMenu.targetType === "techEdge" && targetLink && (
+                  <>
+                    <button
+                      className={menuItemClass}
+                      onClick={() =>
+                        openLinkOffsetEditor(
+                          `${targetLink.parentKey}|${targetLink.childKey}`,
+                        )
+                      }
+                    >
+                      Adjust Link Offsets...
+                    </button>
+                    <button
+                      className={menuItemClass}
+                      onClick={() =>
+                        toggleLinkVisibility(
+                          `${targetLink.parentKey}|${targetLink.childKey}`,
+                          !targetLink.visibleInUi,
+                        )
+                      }
+                    >
+                      {targetLink.visibleInUi ? "Hide Connection" : "Show Connection"}
+                    </button>
+                  </>
+                )}
+                {contextMenu.targetType === "techPlaceholder" && techClipboard.length > 0 && (
                   <button
                     className={menuItemClass}
                     onClick={() => {

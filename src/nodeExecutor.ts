@@ -3438,71 +3438,111 @@ async function executeLookupNode(
     // Already indexed, use as-is
     indexedData = rightInputData;
   } else if (rightInputData.type === "TableSelection") {
-    // Need to index it first - use indexJoinColumn if specified, otherwise indexColumns, otherwise lookupColumn
-    const columnsToIndex = indexJoinColumn
-      ? [indexJoinColumn]
-      : indexColumns.length > 0
-        ? indexColumns
-        : [lookupColumn];
+    if (joinType === "cross") {
+      const allRightRows: AmendedSchemaField[][] = [];
+      let rightTable = rightInputData.tables[0];
 
-    hotPathLog(executionContext, `Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`);
+      for (const table of rightInputData.tables) {
+        if (!table.table.schemaFields || !table.table.tableSchema) {
+          console.warn(`Lookup Node ${nodeId}: Skipping index table without schema data`);
+          continue;
+        }
 
-    const indexMap = new Map<string, AmendedSchemaField[][]>();
-    let rightTable = rightInputData.tables[0];
-    let indexedRowCount = 0;
-    for (const table of rightInputData.tables) {
-      if (!table.table.schemaFields || !table.table.tableSchema) {
-        console.warn(`Lookup Node ${nodeId}: Skipping table without schema data`);
-        continue;
+        const rows = getRowsForPackedFile(table.table, executionContext);
+        if (!rightTable) {
+          rightTable = table;
+        }
+        allRightRows.push(...rows);
       }
 
-      const rows = getRowsForPackedFile(table.table, executionContext);
-      const indexColumnsWithPositions = columnsToIndex.map((columnName) => ({
-        columnName,
-        index: getColumnIndexForPackedFile(table.table, columnName, executionContext),
-      }));
-      const missingColumns = indexColumnsWithPositions.filter(({ index }) => index === -1).map(({ columnName }) => columnName);
-      if (missingColumns.length > 0) {
-        console.warn(
-          `Lookup Node ${nodeId}: Skipping index table ${table.name} because column(s) are missing: ${missingColumns.join(", ")}`,
-        );
-        continue;
+      if (!rightTable) {
+        return { success: false, error: "No tables in index data" };
       }
 
-      indexedRowCount += rows.length;
-      if (!rightTable) rightTable = table;
+      hotPathLog(
+        executionContext,
+        `Lookup Node ${nodeId}: Collected ${allRightRows.length} rows from ${rightInputData.tables.length} pack files for cross join`,
+      );
 
-      for (const row of rows) {
-        const keyParts: string[] = [];
-        for (const { index } of indexColumnsWithPositions) {
-          const cell = row[index];
-          if (!cell) {
-            continue;
+      indexedData = {
+        type: "IndexedTable",
+        indexMap: new Map<string, AmendedSchemaField[][]>([["__cross_join__", allRightRows]]),
+        sourceTable: rightTable,
+        tableName: rightTable.name,
+      };
+    } else {
+      // Need to index it first - use indexJoinColumn if specified, otherwise indexColumns, otherwise lookupColumn
+      const columnsToIndex = indexJoinColumn
+        ? [indexJoinColumn]
+        : indexColumns.length > 0
+          ? indexColumns
+          : [lookupColumn];
+
+      hotPathLog(executionContext, `Lookup Node ${nodeId}: Auto-indexing second input by [${columnsToIndex.join(", ")}]`);
+
+      const indexMap = new Map<string, AmendedSchemaField[][]>();
+      let rightTable = rightInputData.tables[0];
+      let indexedRowCount = 0;
+      for (const table of rightInputData.tables) {
+        if (!table.table.schemaFields || !table.table.tableSchema) {
+          console.warn(`Lookup Node ${nodeId}: Skipping table without schema data`);
+          continue;
+        }
+
+        const rows = getRowsForPackedFile(table.table, executionContext);
+        const indexColumnsWithPositions = columnsToIndex.map((columnName) => ({
+          columnName,
+          index: getColumnIndexForPackedFile(table.table, columnName, executionContext),
+        }));
+        const missingColumns = indexColumnsWithPositions
+          .filter(({ index }) => index === -1)
+          .map(({ columnName }) => columnName);
+        if (missingColumns.length > 0) {
+          console.warn(
+            `Lookup Node ${nodeId}: Skipping index table ${table.name} because column(s) are missing: ${missingColumns.join(", ")}`,
+          );
+          continue;
+        }
+
+        indexedRowCount += rows.length;
+        if (!rightTable) rightTable = table;
+
+        for (const row of rows) {
+          const keyParts: string[] = [];
+          for (const { index } of indexColumnsWithPositions) {
+            const cell = row[index];
+            if (!cell) {
+              continue;
+            }
+            keyParts.push(String(cell.resolvedKeyValue || ""));
           }
-          keyParts.push(String(cell.resolvedKeyValue || ""));
-        }
 
-        const key = keyParts.join("||");
-        if (!indexMap.has(key)) {
-          indexMap.set(key, []);
+          const key = keyParts.join("||");
+          if (!indexMap.has(key)) {
+            indexMap.set(key, []);
+          }
+          indexMap.get(key)!.push(row);
         }
-        indexMap.get(key)!.push(row);
       }
+
+      if (!rightTable) {
+        return { success: false, error: "No tables in index data" };
+      }
+
+      hotPathLog(
+        executionContext,
+        `Lookup Node ${nodeId}: Indexing ${indexedRowCount} rows from ${rightInputData.tables.length} pack files`,
+      );
+
+      hotPathLog(executionContext, `Lookup Node ${nodeId}: Created index with ${indexMap.size} unique key(s)`);
+
+      indexedData = {
+        type: "IndexedTable",
+        indexMap,
+        sourceTable: rightTable,
+        tableName: rightTable.name,
+      };
     }
-
-    hotPathLog(
-      executionContext,
-      `Lookup Node ${nodeId}: Indexing ${indexedRowCount} rows from ${rightInputData.tables.length} pack files`,
-    );
-
-    hotPathLog(executionContext, `Lookup Node ${nodeId}: Created index with ${indexMap.size} unique key(s)`);
-
-    indexedData = {
-      type: "IndexedTable",
-      indexMap,
-      sourceTable: rightTable,
-      tableName: rightTable.name,
-    };
   } else {
     return { success: false, error: "Invalid index input: Expected IndexedTable or TableSelection data" };
   }

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
-import selectStyle from "@/src/styles/selectStyle";
+import selectStyle from "../../styles/selectStyle";
 
 export type TechNodeFormData = {
   technologyMode: "existing" | "custom";
