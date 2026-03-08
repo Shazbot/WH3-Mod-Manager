@@ -23,6 +23,7 @@ import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
 import { getDefaultTableVersions } from "./ipcMainListeners";
 import { FlowExecutionContext, buildReadPackCacheKey, flowExecutionDebugLog } from "./flowExecutionSupport";
+import { getSchemaForGame } from "./schema";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
 // Map structure: sourceColumnId -> Set of used numbers
@@ -5227,7 +5228,11 @@ async function executeGenerateRowsNode(
       );
     } else {
       // Look up existing table schema from DBNameToDBVersions
-      const versions = config.DBNameToDBVersions?.[outputConfig.existingTableName];
+      const schemaByTable =
+        config.DBNameToDBVersions && Object.keys(config.DBNameToDBVersions).length > 0
+          ? config.DBNameToDBVersions
+          : await getSchemaForGame(appData.currentGame);
+      const versions = schemaByTable?.[outputConfig.existingTableName];
       if (!versions || versions.length === 0) {
         return {
           success: false,
