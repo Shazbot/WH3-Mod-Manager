@@ -176,6 +176,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     buildingLevel?: string;
     shortDescription?: string;
     longDescription?: string;
+    iconPath?: string;
     iconData?: string;
     effects: TechEffect[];
   } | null>(null);
@@ -1020,6 +1021,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         localizedName: modalData.displayName,
         shortDescription: modalData.shortDescription,
         longDescription: modalData.longDescription,
+        iconPath: modalData.iconPath || allTechnologiesByKey[modalData.technologyKey]?.iconPath,
         isHidden: modalData.isHidden,
         buildingLevel: modalData.buildingLevel,
         effects: modalData.effects,
@@ -1056,6 +1058,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                   buildingLevel: changes.buildingLevel,
                   shortDescription: changes.shortDescription,
                   longDescription: changes.longDescription,
+                  iconPath: changes.iconPath || allTechnologiesByKey[changes.technologyKey]?.iconPath,
                   effects: changes.effects,
                   iconData: changes.iconData || allTechnologiesByKey[changes.technologyKey]?.iconData,
                 }
@@ -1079,6 +1082,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
             buildingLevel: changes.buildingLevel,
             shortDescription: changes.shortDescription,
             longDescription: changes.longDescription,
+            iconPath: changes.iconPath || allTechnologiesByKey[changes.technologyKey]?.iconPath,
             effects: changes.effects,
             iconData: changes.iconData || allTechnologiesByKey[changes.technologyKey]?.iconData,
           },
@@ -1293,6 +1297,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         buildingLevel: node.buildingLevel,
         shortDescription: node.shortDescription,
         longDescription: node.longDescription,
+        iconPath: node.iconPath,
         effects: node.effects || [],
       }));
 
@@ -1314,6 +1319,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       buildingLevel: changes.buildingLevel,
       shortDescription: changes.shortDescription,
       longDescription: changes.longDescription,
+      iconPath: changes.iconPath,
       effects: changes.effects || [],
     }));
 
@@ -1375,6 +1381,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         displayName: edits?.localizedName ?? (node.localizedName || node.technologyKey),
         shortDescription: edits?.shortDescription ?? node.shortDescription,
         longDescription: edits?.longDescription ?? node.longDescription,
+        iconPath: edits?.iconPath ?? node.iconPath,
         isHidden: !!isHiddenNow,
         effects: edits?.effects ?? node.effects ?? [],
       });
@@ -1401,6 +1408,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         displayName: node.localizedName || node.technologyKey,
         shortDescription: node.shortDescription,
         longDescription: node.longDescription,
+        iconPath: node.iconPath,
         isHidden: !!(hiddenOverride ?? false),
         effects: node.effects || [],
       });
@@ -1858,6 +1866,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           onAdd={onAddNode}
           onClose={() => setAddNodeTarget(null)}
           allTechnologies={technologyTree?.allTechnologies || []}
+          allTechnologyIcons={technologyTree?.allTechnologyIcons || []}
           allEffects={technologyTree?.allEffects || []}
         />
       )}
@@ -1870,6 +1879,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           existingNode={editNodeTarget}
           onEdit={onEditNode}
           allTechnologies={technologyTree?.allTechnologies || []}
+          allTechnologyIcons={technologyTree?.allTechnologyIcons || []}
           allEffects={technologyTree?.allEffects || []}
         />
       )}
@@ -2033,6 +2043,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                           buildingLevel: effectiveNode.buildingLevel,
                           shortDescription: effectiveNode.shortDescription,
                           longDescription: effectiveNode.longDescription,
+                          iconPath: effectiveNode.iconPath,
                           iconData: effectiveNode.iconData,
                           effects: effectiveNode.effects || [],
                         });

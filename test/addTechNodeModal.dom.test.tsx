@@ -15,6 +15,13 @@ describe("AddTechNodeModal", () => {
         onAdd={onAdd}
         onClose={() => undefined}
         allTechnologies={[]}
+        allTechnologyIcons={[
+          {
+            path: "ui\\campaign ui\\technologies\\test_icon.png",
+            name: "test_icon",
+            iconData: "ZmFrZQ==",
+          },
+        ]}
         allEffects={[]}
       />,
     );
@@ -23,6 +30,8 @@ describe("AddTechNodeModal", () => {
     fireEvent.change(screen.getByLabelText("Display Name *"), { target: { value: "Test Tech" } });
     fireEvent.change(screen.getByLabelText("Campaign Key"), { target: { value: "main_warhammer" } });
     fireEvent.change(screen.getByLabelText("Faction Key"), { target: { value: "wh_main_emp_empire" } });
+    fireEvent.click(screen.getByRole("button", { name: "Browse Icons..." }));
+    fireEvent.click(screen.getByTitle("test_icon"));
 
     fireEvent.click(screen.getByRole("button", { name: "Add Node" }));
 
@@ -32,6 +41,8 @@ describe("AddTechNodeModal", () => {
         displayName: "Test Tech",
         campaignKey: "main_warhammer",
         factionKey: "wh_main_emp_empire",
+        iconPath: "ui\\campaign ui\\technologies\\test_icon.png",
+        iconData: "ZmFrZQ==",
       }),
     );
   });
@@ -46,6 +57,7 @@ describe("AddTechNodeModal", () => {
         onAdd={() => undefined}
         onClose={() => undefined}
         allTechnologies={[]}
+        allTechnologyIcons={[]}
         allEffects={[]}
         existingNode={{
           nodeKey: "node_1",
@@ -58,6 +70,7 @@ describe("AddTechNodeModal", () => {
           isHidden: false,
           pixelOffsetX: 0,
           pixelOffsetY: 0,
+          iconPath: "ui\\campaign ui\\technologies\\old_icon.png",
           effects: [],
         }}
         onEdit={onEdit}
