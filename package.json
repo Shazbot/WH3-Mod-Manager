@@ -124,6 +124,7 @@
     "@storybook/addon-styling-webpack": "1.0.1",
     "@storybook/addon-themes": "^8.4.5",
     "@storybook/addon-webpack5-compiler-swc": "1.0.5",
+    "@rollup/rollup-linux-x64-gnu": "4.59.0",
     "@storybook/react": "^8.4.5",
     "@storybook/react-webpack5": "8.4.5",
     "@storybook/test": "8.4.5",
