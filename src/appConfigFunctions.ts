@@ -33,6 +33,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
     isChangingGameProcessPriority: appState.isChangingGameProcessPriority,
     isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,
+    moddersPrefix: appState.moddersPrefix,
     isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
     isClosedOnPlay: appState.isClosedOnPlay,
     isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,

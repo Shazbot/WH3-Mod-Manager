@@ -12,6 +12,7 @@ import {
   setCurrentGameNaive,
   setCurrentLanguage,
   setIsFeaturesForModdersEnabled,
+  setModdersPrefix,
   setPacksData,
   setReferencesHash,
   setStartArgs,
@@ -37,6 +38,10 @@ window.api?.setCurrentLanguage((event, language: string) => {
 
 window.api?.setIsFeaturesForModdersEnabled((event, isFeaturesForModdersEnabled) => {
   store.dispatch(setIsFeaturesForModdersEnabled(isFeaturesForModdersEnabled));
+});
+
+window.api?.setModdersPrefix((event, moddersPrefix) => {
+  store.dispatch(setModdersPrefix(moddersPrefix));
 });
 
 window.api?.setCurrentGameNaive((event, game) => {

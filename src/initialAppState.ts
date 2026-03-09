@@ -28,6 +28,7 @@ const initialState = {
   isAutoStartCustomBattleEnabled: false,
   isChangingGameProcessPriority: false,
   isFeaturesForModdersEnabled: false,
+  moddersPrefix: "",
   isCompatCheckingVanillaPacks: false,
   allMods: [],
   packsData: {},

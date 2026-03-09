@@ -127,6 +127,7 @@ declare global {
     isAutoStartCustomBattleEnabled: boolean;
     isChangingGameProcessPriority: boolean;
     isFeaturesForModdersEnabled: boolean;
+    moddersPrefix: string;
     allMods: Mod[];
     packsData: Record<string, PackViewData>;
     unsavedPacksData: Record<string, PackedFile[]>;
@@ -206,6 +207,7 @@ declare global {
     | "isAutoStartCustomBattleEnabled"
     | "isChangingGameProcessPriority"
     | "isFeaturesForModdersEnabled"
+    | "moddersPrefix"
     | "isClosedOnPlay"
     | "categories"
     | "categoryColors"

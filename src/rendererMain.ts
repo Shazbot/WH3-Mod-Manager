@@ -28,6 +28,7 @@ import {
   setIsCheckingSkillRequirements,
   setIsDev,
   setIsFeaturesForModdersEnabled,
+  setModdersPrefix,
   setIsShowingHiddenModifiersInsideSkills,
   setIsShowingHiddenSkills,
   setIsShowingSkillNodeSetNames,
@@ -81,6 +82,10 @@ window.api?.setIsWH3Running((event, isWH3Running) => {
 
 window.api?.setIsFeaturesForModdersEnabled((event, isFeaturesForModdersEnabled) => {
   store.dispatch(setIsFeaturesForModdersEnabled(isFeaturesForModdersEnabled));
+});
+
+window.api?.setModdersPrefix((event, moddersPrefix) => {
+  store.dispatch(setModdersPrefix(moddersPrefix));
 });
 
 window.api?.addToast((event, toast) => {

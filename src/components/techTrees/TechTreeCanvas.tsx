@@ -15,6 +15,7 @@ import {
 import { Dropdown } from "flowbite-react";
 import "@xyflow/react/dist/style.css";
 import { Modal } from "../../flowbite/components/Modal/index";
+import { useAppSelector } from "../../hooks";
 import TechNode from "./TechNode";
 import TechGroupNode from "./TechGroupNode";
 import AddTechNodeModal, { TechNodeFormData } from "./AddTechNodeModal";
@@ -124,6 +125,7 @@ type TechTreeCanvasProps = {
 };
 
 const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
+  const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [technologyTree, setTechnologyTree] = useState<TechnologyTreePayload | undefined>(undefined);
   const [selectedUiTab, setSelectedUiTab] = useState("all");
@@ -1005,7 +1007,8 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     (modalData: TechNodeFormData) => {
       if (!addNodeTarget || !technologyTree) return;
       captureHistory();
-      const generatedNodeKey = `custom_node_${modalData.technologyKey}_${Date.now().toString()}`;
+      const keyPrefix = moddersPrefix.trim() || "custom";
+      const generatedNodeKey = `${keyPrefix}_node_${modalData.technologyKey}_${Date.now().toString()}`;
       const newNode: TechnologyNodeData = {
         nodeKey: generatedNodeKey,
         technologyKey: modalData.technologyKey,
@@ -1033,7 +1036,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       }
       setAddNodeTarget(null);
     },
-    [addNodeTarget, technologyTree, captureHistory, allTechnologiesByKey],
+    [addNodeTarget, technologyTree, captureHistory, allTechnologiesByKey, moddersPrefix],
   );
 
   const onEditNode = useCallback(
@@ -2214,9 +2217,10 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                       }
                       const baseTier = Number(match[1]) + currentTierOffset;
                       const baseIndent = Number(match[2]);
+                      const keyPrefix = moddersPrefix.trim() || "custom";
                       captureHistory();
                       const newNodes: TechnologyNodeData[] = techClipboard.map((entry) => ({
-                        nodeKey: `custom_node_${entry.technologyKey}_${Date.now()}`,
+                        nodeKey: `${keyPrefix}_node_${entry.technologyKey}_${Date.now()}`,
                         technologyKey: `${entry.technologyKey}_copy_${Date.now()}`,
                         setKey: technologyTree.set.key,
                         tier: baseTier + entry.relTier,
