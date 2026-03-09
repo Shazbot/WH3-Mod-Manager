@@ -9,6 +9,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron"
 import windowStateKeeper from "electron-window-state";
 import * as fs from "fs";
 import * as fsExtra from "fs-extra";
+import { createHash } from "node:crypto";
 import * as net from "node:net";
 import debounce from "just-debounce-it";
 import fetch from "node-fetch";
@@ -117,6 +118,18 @@ declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
 declare const SKILLS_WEBPACK_ENTRY: string;
 declare const SKILLS_PRELOAD_WEBPACK_ENTRY: string;
 const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
+const appendScopedTechNodeHash = (nodeKey: string, campaignKey?: string, factionKey?: string) => {
+  const scopeSource = `${campaignKey || ""}${factionKey || ""}`.trim();
+  if (!scopeSource) return nodeKey;
+  const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
+  return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
+};
+const appendScopedSkillNodeHash = (nodeKey: string, factionKey?: string, subculture?: string) => {
+  const scopeSource = `${factionKey || ""}${subculture || ""}`.trim();
+  if (!scopeSource) return nodeKey;
+  const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
+  return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
+};
 const buildDefaultSkillSetSuffix = (subtype: string) => `skill_set_${subtype}`;
 const resolveSkillGenerationTemplate = (
   template: string,
@@ -4438,15 +4451,16 @@ export const registerIpcMainListeners = (
       const nodeIdToNewNodeKey: Record<string, string> = {};
       const nodeIdToNewSkillKey: Record<string, string> = {};
       for (let i = 0; i < nodes.length; i++) {
-        nodeIdToNewNodeKey[nodes[i].nodeId] = resolveSkillGenerationTemplate(
-          nodeKeyTemplate?.trim() || "${prefix}_skill_node_${row}_${column}",
-          {
+        nodeIdToNewNodeKey[nodes[i].nodeId] = appendScopedSkillNodeHash(
+          resolveSkillGenerationTemplate(nodeKeyTemplate?.trim() || "${prefix}_skill_node_${row}_${column}", {
             prefix: kp,
             setSuffix,
             timestamp: ts,
             row: nodes[i].row.toString(),
             column: nodes[i].column.toString(),
-          },
+          }),
+          nodes[i].faction,
+          nodes[i].subculture,
         );
         if (!cloneAllSkills && nodes[i].existingSkillKey) {
           nodeIdToNewSkillKey[nodes[i].nodeId] = nodes[i].existingSkillKey!;
@@ -5274,11 +5288,21 @@ export const registerIpcMainListeners = (
           row: sourceNode.indent.toString(),
           column: sourceNode.tier.toString(),
         };
+        const generatedNodeKey = resolveGenerationTemplate(nodeKeyTemplate, templateVariables);
+        const generatedTechnologyKey = resolveGenerationTemplate(technologyKeyTemplate, templateVariables);
         const finalNode = {
           ...sourceNode,
-          nodeKey: resolveGenerationTemplate(nodeKeyTemplate, templateVariables),
+          nodeKey: appendScopedTechNodeHash(
+            generatedNodeKey,
+            sourceNode.campaignKey,
+            sourceNode.factionKey,
+          ),
           technologyKey: shouldCloneTechnologies
-            ? resolveGenerationTemplate(technologyKeyTemplate, templateVariables)
+            ? appendScopedTechNodeHash(
+                generatedTechnologyKey,
+                sourceNode.campaignKey,
+                sourceNode.factionKey,
+              )
             : sourceNode.technologyKey,
           setKey: targetSetKey,
         };

@@ -10,6 +10,7 @@ import React, {
   useState,
 } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
+import { createHash } from "crypto";
 import {
   setIsCheckingSkillRequirements,
   setIsShowingHiddenModifiersInsideSkills,
@@ -46,6 +47,12 @@ const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/
 const defaultSkillTableNameTemplate = "${prefix}_${setSuffix}_${timestamp}";
 const defaultSkillNodeKeyTemplate = "${prefix}_skill_node_${row}_${column}";
 const defaultCharacterSkillKeyTemplate = "${prefix}_skill_${row}_${column}";
+const appendScopedSkillNodeHash = (nodeKey: string, factionKey?: string, subculture?: string) => {
+  const scopeSource = `${factionKey || ""}${subculture || ""}`.trim();
+  if (!scopeSource) return nodeKey;
+  const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
+  return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
+};
 const buildDefaultSkillSetSuffix = (subtype: string) => `skill_set_${subtype}`;
 const resolveSkillGenerationTemplate = (
   template: string,
@@ -2965,14 +2972,18 @@ const SkillsView = memo(
         const setSuffix = buildDefaultSkillSetSuffix(subtype);
         const nodeKeyTemplate = customKeyPrefix.trim() || defaultSkillNodeKeyTemplate;
         const skillKeyTemplate = customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate;
-        const makeNodeKey = (row: number, col: number) =>
-          resolveSkillGenerationTemplate(nodeKeyTemplate, {
-            prefix,
-            setSuffix,
-            timestamp: ts,
-            row: row.toString(),
-            column: col.toString(),
-          });
+        const makeNodeKey = (row: number, col: number, faction?: string, subculture?: string) =>
+          appendScopedSkillNodeHash(
+            resolveSkillGenerationTemplate(nodeKeyTemplate, {
+              prefix,
+              setSuffix,
+              timestamp: ts,
+              row: row.toString(),
+              column: col.toString(),
+            }),
+            faction,
+            subculture,
+          );
         const makeSkillKey = (row: number, col: number) =>
           resolveSkillGenerationTemplate(skillKeyTemplate, {
             prefix,
@@ -3120,7 +3131,7 @@ const SkillsView = memo(
             const origSkill = origNodeMap.get(origNodeId);
             if (!origSkill) {
               // Node has existingSkillKey but isn't in original data — newly added node reusing an existing skill
-              const newNodeKey = makeNodeKey(currentRow, currentCol);
+              const newNodeKey = makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
               nodeKeyMap.set(n.id, newNodeKey);
               newNodes.push({
                 newNodeKey,
@@ -3153,7 +3164,7 @@ const SkillsView = memo(
 
             if (edgesChanged) {
               // Connections changed — need replacement
-              const newKey = makeNodeKey(currentRow, currentCol);
+              const newKey = makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
               nodeKeyMap.set(origNodeId, newKey);
               replacedNodes.push({
                 originalNodeKey: origNodeId,
@@ -3194,7 +3205,7 @@ const SkillsView = memo(
             }
           } else {
             // New node (pasted/added)
-            const newNodeKey = makeNodeKey(currentRow, currentCol);
+            const newNodeKey = makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
             const newSkillKey = makeSkillKey(currentRow, currentCol);
             nodeKeyMap.set(n.id, newNodeKey);
             newNodes.push({
