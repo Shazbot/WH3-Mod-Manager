@@ -355,6 +355,7 @@ const SkillsView = memo(
 
     const currentRank = useAppSelector((state) => state.app.currentRank);
     const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+    const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
 
     const resolveSkillIcon = (imgPath?: string): string => {
       if (!imgPath) return skillIcon;
@@ -2928,6 +2929,7 @@ const SkillsView = memo(
       effectiveNodeHeight,
       customTableName,
       customKeyPrefix,
+      moddersPrefix,
     ]);
 
     const handleSaveChangesConfirm = useCallback(async () => {
@@ -2935,7 +2937,7 @@ const SkillsView = memo(
       setIsSavePackProcessing(true);
       try {
         const ts = Date.now().toString();
-        const kp = customKeyPrefix.trim();
+        const kp = customKeyPrefix.trim() || moddersPrefix.trim();
         const makeNodeKey = (row: number, col: number) =>
           kp ? `${kp}_node_${row}_${col}` : `custom_node_${ts}_${row}_${col}`;
         const makeSkillKey = (row: number, col: number) =>
@@ -3253,6 +3255,7 @@ const SkillsView = memo(
       effectiveNodeHeight,
       customTableName,
       customKeyPrefix,
+      moddersPrefix,
     ]);
 
     const handleResetConfirm = useCallback(() => {
@@ -4780,7 +4783,7 @@ const SkillsView = memo(
                   type="text"
                   value={customKeyPrefix}
                   onChange={(e) => setCustomKeyPrefix(e.target.value)}
-                  placeholder="Leave empty for default (custom)"
+                  placeholder={`Leave empty for default (${moddersPrefix.trim() || "custom"})`}
                   disabled={isSavePackProcessing}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
                 />

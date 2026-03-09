@@ -2664,6 +2664,7 @@ export const registerIpcMainListeners = (
       }
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
+      appData.moddersPrefix = appState.moddersPrefix || "";
       appData.isShowingSkillNodeSetNames =
         appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
@@ -4379,25 +4380,29 @@ export const registerIpcMainListeners = (
       const ts = Date.now().toString();
       const { subtype, nodes, edges, packName, packDirectory, cloneAllSkills, tableNameOverride, keyPrefix } =
         data;
-      const kp = keyPrefix || "custom";
-      const tn = tableNameOverride || `custom_${ts}`;
+      const defaultModdersPrefix = appData.moddersPrefix.trim();
+      const resolvedKeyPrefix = keyPrefix?.trim() || defaultModdersPrefix;
+      const kp = resolvedKeyPrefix || "custom";
+      const tn = tableNameOverride?.trim() || `${kp}_${ts}`;
       // Build key mappings: old nodeId → new node key, index-based new skill key
       const nodeIdToNewNodeKey: Record<string, string> = {};
       const nodeIdToNewSkillKey: Record<string, string> = {};
       for (let i = 0; i < nodes.length; i++) {
-        nodeIdToNewNodeKey[nodes[i].nodeId] = keyPrefix
+        nodeIdToNewNodeKey[nodes[i].nodeId] = resolvedKeyPrefix
           ? `${kp}_node_${nodes[i].row}_${nodes[i].column}`
           : `custom_node_${ts}_${nodes[i].row}_${nodes[i].column}`;
         if (!cloneAllSkills && nodes[i].existingSkillKey) {
           nodeIdToNewSkillKey[nodes[i].nodeId] = nodes[i].existingSkillKey!;
         } else {
-          nodeIdToNewSkillKey[nodes[i].nodeId] = keyPrefix
+          nodeIdToNewSkillKey[nodes[i].nodeId] = resolvedKeyPrefix
             ? `${kp}_skill_${nodes[i].row}_${nodes[i].column}`
             : `custom_skill_${ts}_${nodes[i].row}_${nodes[i].column}`;
         }
       }
       const customNodes = cloneAllSkills ? nodes : nodes.filter((n) => !n.existingSkillKey);
-      const newSetKey = keyPrefix ? `${kp}_skill_set_${subtype}` : `custom_skill_set_${subtype}_${ts}`;
+      const newSetKey = resolvedKeyPrefix
+        ? `${kp}_skill_set_${subtype}`
+        : `custom_skill_set_${subtype}_${ts}`;
       const buildRowFromSchema = (
         dbFields: DBField[],
         values: Record<string, string | boolean>,
@@ -4638,8 +4643,10 @@ export const registerIpcMainListeners = (
         tableNameOverride,
         keyPrefix,
       } = data;
-      const tn = tableNameOverride || `changes_${ts}`;
-      const kp = keyPrefix || "custom";
+      const defaultModdersPrefix = appData.moddersPrefix.trim();
+      const resolvedKeyPrefix = keyPrefix?.trim() || defaultModdersPrefix;
+      const kp = resolvedKeyPrefix || "custom";
+      const tn = tableNameOverride?.trim() || (resolvedKeyPrefix ? `${kp}_changes_${ts}` : `changes_${ts}`);
       // Get original set key
       const subtypeSets = appData.skillsData?.subtypesToSet?.[subtype];
       if (!subtypeSets || !subtypeSets[subtypeIndex]) {
@@ -5086,7 +5093,12 @@ export const registerIpcMainListeners = (
       const technologyData = await ensureTechnologyData();
       if (!technologyData) return { success: false, error: "Technology data could not be loaded" };
       if (!data.packName?.trim()) return { success: false, error: "Pack name is required" };
-      const tableName = data.tableNameOverride?.trim() || `technology_tree_${Date.now().toString()}`;
+      const defaultModdersPrefix = appData.moddersPrefix.trim();
+      const tableName =
+        data.tableNameOverride?.trim() ||
+        (defaultModdersPrefix
+          ? `${defaultModdersPrefix}_technology_tree_${Date.now().toString()}`
+          : `technology_tree_${Date.now().toString()}`);
       const finalPackName = data.packName.endsWith(".pack") ? data.packName : `${data.packName}.pack`;
       const packPath = nodePath.join(data.packDirectory || dataFolder, finalPackName);
       const buildRowFromSchema = (
@@ -5276,7 +5288,12 @@ export const registerIpcMainListeners = (
       if (!dataFolder) return { success: false, error: "Data folder not found" };
       const technologyData = await ensureTechnologyData();
       if (!technologyData) return { success: false, error: "Technology data could not be loaded" };
-      const tableName = data.tableNameOverride?.trim() || `technology_changes_${Date.now().toString()}`;
+      const defaultModdersPrefix = appData.moddersPrefix.trim();
+      const tableName =
+        data.tableNameOverride?.trim() ||
+        (defaultModdersPrefix
+          ? `${defaultModdersPrefix}_technology_changes_${Date.now().toString()}`
+          : `technology_changes_${Date.now().toString()}`);
       const finalPackName = data.packName.endsWith(".pack") ? data.packName : `${data.packName}.pack`;
       const packPath = nodePath.join(data.packDirectory || dataFolder, finalPackName);
       const buildRowFromSchema = (
@@ -6071,6 +6088,7 @@ export const registerIpcMainListeners = (
       "setIsFeaturesForModdersEnabled",
       appData.isFeaturesForModdersEnabled,
     );
+    windows.viewerWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
@@ -6110,6 +6128,7 @@ export const registerIpcMainListeners = (
       "setIsFeaturesForModdersEnabled",
       appData.isFeaturesForModdersEnabled,
     );
+    windows.skillsWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
     windows.skillsWindow?.webContents.send("setSkillsViewOptions", {
       isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
       isShowingHiddenSkills: appData.isShowingHiddenSkills,
@@ -7324,8 +7343,14 @@ export const registerIpcMainListeners = (
   });
   ipcMain.on("syncIsFeaturesForModdersEnabled", (event, isFeaturesForModdersEnabled: boolean) => {
     console.log("syncIsFeaturesForModdersEnabled:", isFeaturesForModdersEnabled);
+    appData.isFeaturesForModdersEnabled = isFeaturesForModdersEnabled;
     // Send to viewer window
     windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
     windows.skillsWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
+  });
+  ipcMain.on("syncModdersPrefix", (event, moddersPrefix: string) => {
+    appData.moddersPrefix = moddersPrefix;
+    windows.viewerWindow?.webContents.send("setModdersPrefix", moddersPrefix);
+    windows.skillsWindow?.webContents.send("setModdersPrefix", moddersPrefix);
   });
 };

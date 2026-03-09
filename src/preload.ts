@@ -480,9 +480,12 @@ const api = {
 
   syncIsFeaturesForModdersEnabled: (isFeaturesForModdersEnabled: boolean) =>
     ipcRenderer.send("syncIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled),
+  syncModdersPrefix: (moddersPrefix: string) => ipcRenderer.send("syncModdersPrefix", moddersPrefix),
 
   setIsFeaturesForModdersEnabled: (callback: (event: any, isFeaturesForModdersEnabled: boolean) => void) =>
     ipcRenderer.on("setIsFeaturesForModdersEnabled", callback),
+  setModdersPrefix: (callback: (event: any, moddersPrefix: string) => void) =>
+    ipcRenderer.on("setModdersPrefix", callback),
 };
 
 export type api = typeof api;

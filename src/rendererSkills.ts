@@ -10,6 +10,7 @@ import {
   setIsShowingHiddenModifiersInsideSkills,
   setIsShowingHiddenSkills,
   setIsShowingSkillNodeSetNames,
+  setModdersPrefix,
   setSkillsData,
   setStartArgs,
 } from "./appSlice";
@@ -39,6 +40,10 @@ window.api?.setCurrentLanguage((event, language: string) => {
 
 window.api?.setIsFeaturesForModdersEnabled((event, isFeaturesForModdersEnabled) => {
   store.dispatch(setIsFeaturesForModdersEnabled(isFeaturesForModdersEnabled));
+});
+
+window.api?.setModdersPrefix((event, moddersPrefix) => {
+  store.dispatch(setModdersPrefix(moddersPrefix));
 });
 
 window.api?.setSkillsData((event, skillsData: SkillsData) => {

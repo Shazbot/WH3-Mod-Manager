@@ -156,6 +156,7 @@ interface AppData {
   saveSetupDone: boolean;
   isMakeUnitsGeneralsEnabled: boolean;
   isFeaturesForModdersEnabled: boolean;
+  moddersPrefix: string;
   isShowingSkillNodeSetNames: boolean;
   isShowingHiddenSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
@@ -211,6 +212,7 @@ const appData = {
   saveSetupDone: false,
   isMakeUnitsGeneralsEnabled: false,
   isFeaturesForModdersEnabled: false,
+  moddersPrefix: "",
   isShowingSkillNodeSetNames: false,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,
