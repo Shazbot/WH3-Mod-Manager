@@ -633,8 +633,10 @@ declare global {
     packName: string;
     packDirectory: string;
     cloneAllSkills: boolean;
-    tableNameOverride?: string;
-    keyPrefix?: string;
+    generationTimestamp?: string;
+    tableNameTemplate?: string;
+    nodeKeyTemplate?: string;
+    skillKeyTemplate?: string;
   }
 
   interface SaveSkillsChangesPayload {
@@ -662,6 +664,7 @@ declare global {
     newNodes: {
       newNodeKey: string;
       newSkillKey: string;
+      shouldCreateCharacterSkill: boolean;
       tier: number;
       indent: number;
       faction: string;
@@ -687,8 +690,10 @@ declare global {
     }[];
     packName: string;
     packDirectory: string;
-    tableNameOverride?: string;
-    keyPrefix?: string;
+    generationTimestamp?: string;
+    tableNameTemplate?: string;
+    nodeKeyTemplate?: string;
+    skillKeyTemplate?: string;
   }
 
   interface TechnologyNodeSetSummary {
@@ -808,6 +813,10 @@ declare global {
     packName: string;
     packDirectory: string;
     tableNameOverride?: string;
+    technologyNodeSetOverride?: string;
+    cloneTechnologies?: boolean;
+    nodeKeyTemplate?: string;
+    technologyKeyTemplate?: string;
     nodes: {
       nodeKey: string;
       technologyKey: string;
@@ -830,6 +839,8 @@ declare global {
       effects?: TechEffect[];
     }[];
     links: TechnologyLinkData[];
+    uiTabToNodes: Record<string, string[]>;
+    uiGroupBounds: TechnologyUiGroupBoundsData[];
   }
 
   interface SaveTechnologyChangesPayload {

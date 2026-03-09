@@ -28,6 +28,7 @@ type AddTechNodeModalProps = {
   indent: number;
   onAdd: (node: TechNodeFormData) => void;
   onClose: () => void;
+  defaultCustomTechnologyKey?: string;
   allTechnologies: TechnologyCatalogEntry[];
   allTechnologyIcons: TechnologyIconEntry[];
   allEffects: TechEffect[];
@@ -60,6 +61,7 @@ const AddTechNodeModal = ({
   indent,
   onAdd,
   onClose,
+  defaultCustomTechnologyKey,
   allTechnologies,
   allTechnologyIcons,
   allEffects,
@@ -108,7 +110,7 @@ const AddTechNodeModal = ({
     return matched || null;
   });
   const [customTechnologyKey, setCustomTechnologyKey] = useState(
-    inferredMode === "custom" ? (existingNode?.technologyKey ?? "") : "",
+    inferredMode === "custom" ? (existingNode?.technologyKey ?? defaultCustomTechnologyKey ?? "") : "",
   );
   const [displayName, setDisplayName] = useState(existingNode?.displayName ?? "");
   const [requiredParents, setRequiredParents] = useState(existingNode?.requiredParents ?? 0);
@@ -310,7 +312,7 @@ const AddTechNodeModal = ({
                 value={customTechnologyKey}
                 onChange={(event) => setCustomTechnologyKey(event.target.value)}
                 className={inputClass}
-                placeholder="e.g. wh3_dlc25_tech_cth_industry_01"
+                placeholder={defaultCustomTechnologyKey || "e.g. wh3_dlc25_tech_cth_industry_01"}
                 autoFocus
               />
             </label>
