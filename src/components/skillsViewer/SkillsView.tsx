@@ -42,6 +42,25 @@ import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
 
 const edgeType = "straight";
+const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
+const defaultSkillTableNameTemplate = "${prefix}_${setSuffix}_${timestamp}";
+const defaultSkillNodeKeyTemplate = "${prefix}_skill_node_${row}_${column}";
+const defaultCharacterSkillKeyTemplate = "${prefix}_skill_${row}_${column}";
+const buildDefaultSkillSetSuffix = (subtype: string) => `skill_set_${subtype}`;
+const resolveSkillGenerationTemplate = (
+  template: string,
+  variables: { prefix: string; setSuffix: string; timestamp: string; row: string; column: string },
+) =>
+  template
+    .replaceAll("${prefix}", variables.prefix)
+    .replaceAll("${xxx}", variables.prefix)
+    .replaceAll("${setSuffix}", variables.setSuffix)
+    .replaceAll("${yyy}", variables.setSuffix)
+    .replaceAll("${timestamp}", variables.timestamp)
+    .replaceAll("${row}", variables.row)
+    .replaceAll("${r}", variables.row)
+    .replaceAll("${column}", variables.column)
+    .replaceAll("${c}", variables.column);
 
 type ClipboardEntry = {
   label: string;
@@ -321,8 +340,9 @@ const SkillsView = memo(
     const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(
       null,
     );
-    const [customTableName, setCustomTableName] = useState("");
-    const [customKeyPrefix, setCustomKeyPrefix] = useState("");
+    const [customTableName, setCustomTableName] = useState(defaultSkillTableNameTemplate);
+    const [customKeyPrefix, setCustomKeyPrefix] = useState(defaultSkillNodeKeyTemplate);
+    const [customSkillKeyTemplate, setCustomSkillKeyTemplate] = useState(defaultCharacterSkillKeyTemplate);
     const isRestoringSnapshot = useRef(!!initialSnapshot);
     const skipEditGroupsEffect = useRef(!!initialSnapshot);
     const skipSubtypeReset = useRef(!!initialSnapshot);
@@ -2799,6 +2819,7 @@ const SkillsView = memo(
       if (!savePackName.trim()) return;
       setIsSavePackProcessing(true);
       try {
+        const ts = Date.now().toString();
         const skillNodes = nodes.filter((n) => n.type === "skill");
 
         // Build edges with linkType, reversing group container retargeting back to individual nodes
@@ -2885,8 +2906,10 @@ const SkillsView = memo(
           packName: savePackName.trim(),
           packDirectory: savePackDirectory || "",
           cloneAllSkills: savePackCloneAll,
-          tableNameOverride: customTableName.trim() || undefined,
-          keyPrefix: customKeyPrefix.trim() || undefined,
+          generationTimestamp: ts,
+          tableNameTemplate: customTableName.trim() || defaultSkillTableNameTemplate,
+          nodeKeyTemplate: customKeyPrefix.trim() || defaultSkillNodeKeyTemplate,
+          skillKeyTemplate: customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate,
         };
 
         // Add skill locks data
@@ -2929,6 +2952,7 @@ const SkillsView = memo(
       effectiveNodeHeight,
       customTableName,
       customKeyPrefix,
+      customSkillKeyTemplate,
       moddersPrefix,
     ]);
 
@@ -2937,11 +2961,26 @@ const SkillsView = memo(
       setIsSavePackProcessing(true);
       try {
         const ts = Date.now().toString();
-        const kp = customKeyPrefix.trim() || moddersPrefix.trim();
+        const prefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
+        const setSuffix = buildDefaultSkillSetSuffix(subtype);
+        const nodeKeyTemplate = customKeyPrefix.trim() || defaultSkillNodeKeyTemplate;
+        const skillKeyTemplate = customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate;
         const makeNodeKey = (row: number, col: number) =>
-          kp ? `${kp}_node_${row}_${col}` : `custom_node_${ts}_${row}_${col}`;
+          resolveSkillGenerationTemplate(nodeKeyTemplate, {
+            prefix,
+            setSuffix,
+            timestamp: ts,
+            row: row.toString(),
+            column: col.toString(),
+          });
         const makeSkillKey = (row: number, col: number) =>
-          kp ? `${kp}_skill_${row}_${col}` : `custom_skill_${ts}_${row}_${col}`;
+          resolveSkillGenerationTemplate(skillKeyTemplate, {
+            prefix,
+            setSuffix,
+            timestamp: ts,
+            row: row.toString(),
+            column: col.toString(),
+          });
         const skillNodes = nodes.filter((n) => n.type === "skill");
 
         // Build group expansion maps (same as handleSavePackConfirm)
@@ -3086,6 +3125,7 @@ const SkillsView = memo(
               newNodes.push({
                 newNodeKey,
                 newSkillKey: data.existingSkillKey,
+                shouldCreateCharacterSkill: false,
                 tier: currentCol,
                 indent: currentRow,
                 faction: data.faction || "",
@@ -3160,6 +3200,7 @@ const SkillsView = memo(
             newNodes.push({
               newNodeKey,
               newSkillKey,
+              shouldCreateCharacterSkill: true,
               tier: currentCol,
               indent: currentRow,
               faction: data.faction || "",
@@ -3224,8 +3265,10 @@ const SkillsView = memo(
           skillLocks: skillLocksArray,
           packName: savePackName.trim(),
           packDirectory: savePackDirectory || "",
-          tableNameOverride: customTableName.trim() || undefined,
-          keyPrefix: customKeyPrefix.trim() || undefined,
+          generationTimestamp: ts,
+          tableNameTemplate: customTableName.trim() || defaultSkillTableNameTemplate,
+          nodeKeyTemplate: nodeKeyTemplate,
+          skillKeyTemplate: skillKeyTemplate,
         };
 
         console.log("Save Changes payload:", payload);
@@ -3255,6 +3298,7 @@ const SkillsView = memo(
       effectiveNodeHeight,
       customTableName,
       customKeyPrefix,
+      customSkillKeyTemplate,
       moddersPrefix,
     ]);
 
@@ -4617,8 +4661,9 @@ const SkillsView = memo(
                               setSavePackDirectory(undefined);
                               setSavePackCloneAll(false);
                               setSaveChangesMode(false);
-                              setCustomTableName("");
-                              setCustomKeyPrefix("");
+                              setCustomTableName(defaultSkillTableNameTemplate);
+                              setCustomKeyPrefix(defaultSkillNodeKeyTemplate);
+                              setCustomSkillKeyTemplate(defaultCharacterSkillKeyTemplate);
                               setIsSavePackModalOpen(true);
                             }}
                           >
@@ -4633,8 +4678,9 @@ const SkillsView = memo(
                               setSavePackName(`skill_changes_${subtype}_${ts}`);
                               setSavePackDirectory(undefined);
                               setSavePackCloneAll(false);
-                              setCustomTableName("");
-                              setCustomKeyPrefix("");
+                              setCustomTableName(defaultSkillTableNameTemplate);
+                              setCustomKeyPrefix(defaultSkillNodeKeyTemplate);
+                              setCustomSkillKeyTemplate(defaultCharacterSkillKeyTemplate);
                               setIsSavePackModalOpen(true);
                               setSaveChangesMode(true);
                             }}
@@ -4766,30 +4812,46 @@ const SkillsView = memo(
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Table Name (optional)</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Table Name Template</label>
                 <input
                   type="text"
                   value={customTableName}
                   onChange={(e) => setCustomTableName(e.target.value)}
-                  placeholder="Leave empty for default"
-                  disabled={isSavePackProcessing}
-                  className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
-                />
-                <p className="text-xs text-gray-400 mt-1">Overrides table file names in the pack</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Key Prefix (optional)</label>
-                <input
-                  type="text"
-                  value={customKeyPrefix}
-                  onChange={(e) => setCustomKeyPrefix(e.target.value)}
-                  placeholder={`Leave empty for default (${moddersPrefix.trim() || "custom"})`}
+                  placeholder={defaultSkillTableNameTemplate}
                   disabled={isSavePackProcessing}
                   className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Prefix for generated keys (e.g. "xxx" → xxx_node_4_0 instead of custom_node_1234_4_0)
+                  Tokens: ${"{prefix}"}, ${"{setSuffix}"}, ${"{timestamp}"}
                 </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Character Skill Node Key Template
+                </label>
+                <input
+                  type="text"
+                  value={customKeyPrefix}
+                  onChange={(e) => setCustomKeyPrefix(e.target.value)}
+                  placeholder={defaultSkillNodeKeyTemplate}
+                  disabled={isSavePackProcessing}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-400 mt-1">Tokens: ${"{prefix}"}, ${"{row}"}, ${"{column}"}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Character Skill Key Template
+                </label>
+                <input
+                  type="text"
+                  value={customSkillKeyTemplate}
+                  onChange={(e) => setCustomSkillKeyTemplate(e.target.value)}
+                  placeholder={defaultCharacterSkillKeyTemplate}
+                  disabled={isSavePackProcessing}
+                  className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-400 mt-1">Tokens: ${"{prefix}"}, ${"{row}"}, ${"{column}"}</p>
               </div>
               {!saveChangesMode && (
                 <div>

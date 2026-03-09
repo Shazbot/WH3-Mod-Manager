@@ -119,6 +119,25 @@ type TechContextMenu =
 
 const menuItemClass = "w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 cursor-pointer";
 type TechSaveMode = "whole" | "changes";
+const defaultTechNodeKeyTemplate = "${prefix}_tech_node_${nodeSet}_${row}_${column}";
+const defaultTechnologyKeyTemplate = "${prefix}_tech_${nodeSet}_${row}_${column}";
+const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
+const defaultTechTableNameTemplate = "${prefix}_${nodeSet}_${timestamp}";
+
+const resolveTechGenerationTemplate = (
+  template: string,
+  variables: { prefix: string; nodeSet: string; row: string; column: string; timestamp?: string },
+) =>
+  template
+    .replaceAll("${prefix}", variables.prefix)
+    .replaceAll("${xxx}", variables.prefix)
+    .replaceAll("${nodeSet}", variables.nodeSet)
+    .replaceAll("${yyy}", variables.nodeSet)
+    .replaceAll("${timestamp}", variables.timestamp ?? "")
+    .replaceAll("${row}", variables.row)
+    .replaceAll("${r}", variables.row)
+    .replaceAll("${column}", variables.column)
+    .replaceAll("${c}", variables.column);
 
 type TechTreeCanvasProps = {
   setKey: string;
@@ -136,7 +155,11 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   const [isCheckingRequirements, setIsCheckingRequirements] = useState(false);
   const [savePackName, setSavePackName] = useState(`technology_changes_${Date.now().toString()}`);
   const [savePackDirectory, setSavePackDirectory] = useState<string | undefined>(undefined);
-  const [tableNameOverride, setTableNameOverride] = useState("");
+  const [tableNameOverride, setTableNameOverride] = useState(defaultTechTableNameTemplate);
+  const [technologyNodeSetOverride, setTechnologyNodeSetOverride] = useState("");
+  const [cloneTechnologies, setCloneTechnologies] = useState(false);
+  const [nodeKeyTemplate, setNodeKeyTemplate] = useState(defaultTechNodeKeyTemplate);
+  const [technologyKeyTemplate, setTechnologyKeyTemplate] = useState(defaultTechnologyKeyTemplate);
   const [saveMode, setSaveMode] = useState<TechSaveMode>("changes");
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | undefined>(undefined);
@@ -1007,7 +1030,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     (modalData: TechNodeFormData) => {
       if (!addNodeTarget || !technologyTree) return;
       captureHistory();
-      const keyPrefix = moddersPrefix.trim() || "custom";
+      const keyPrefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
       const generatedNodeKey = `${keyPrefix}_node_${modalData.technologyKey}_${Date.now().toString()}`;
       const newNode: TechnologyNodeData = {
         nodeKey: generatedNodeKey,
@@ -1437,8 +1460,14 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       packName: savePackName.trim(),
       packDirectory: savePackDirectory || "",
       tableNameOverride: tableNameOverride.trim() || undefined,
+      technologyNodeSetOverride: technologyNodeSetOverride.trim() || undefined,
+      cloneTechnologies,
+      nodeKeyTemplate: nodeKeyTemplate.trim() || defaultTechNodeKeyTemplate,
+      technologyKeyTemplate: technologyKeyTemplate.trim() || defaultTechnologyKeyTemplate,
       nodes: [...finalNodesByKey.values()],
       links: finalLinks,
+      uiTabToNodes: technologyTree.uiTabToNodes,
+      uiGroupBounds: technologyTree.uiGroupBounds,
     };
   }, [
     addedNodes,
@@ -1448,10 +1477,14 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     deletedNodeKeys,
     editedNodes,
     hiddenOverrides,
+    cloneTechnologies,
     savePackDirectory,
     savePackName,
     tableNameOverride,
+    technologyKeyTemplate,
     technologyTree,
+    technologyNodeSetOverride,
+    nodeKeyTemplate,
   ]);
 
   const resetStateAfterSave = useCallback(() => {
@@ -1572,7 +1605,11 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           : `technology_changes_${timestamp}`,
       );
       setSavePackDirectory(undefined);
-      setTableNameOverride("");
+      setTableNameOverride(defaultTechTableNameTemplate);
+      setTechnologyNodeSetOverride("");
+      setCloneTechnologies(false);
+      setNodeKeyTemplate(defaultTechNodeKeyTemplate);
+      setTechnologyKeyTemplate(defaultTechnologyKeyTemplate);
       setIsSaveModalOpen(true);
     },
     [technologyTree],
@@ -1826,12 +1863,73 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                 type="text"
                 value={tableNameOverride}
                 onChange={(e) => setTableNameOverride(e.target.value)}
-                placeholder="Leave empty for default"
                 disabled={isSaving}
                 className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
               />
-              <p className="text-xs text-gray-400 mt-1">Overrides table file names in the pack</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Available tokens: {"${prefix}"}, {"${nodeSet}"}, {"${timestamp}"}
+              </p>
             </div>
+            {saveMode === "whole" && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Technology Node Set (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={technologyNodeSetOverride}
+                    onChange={(e) => setTechnologyNodeSetOverride(e.target.value)}
+                    placeholder="Leave empty to keep the existing node set"
+                    disabled={isSaving}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    If set, the whole tree is cloned into this node set and node keys are regenerated.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={cloneTechnologies}
+                    onChange={(e) => setCloneTechnologies(e.target.checked)}
+                    disabled={isSaving}
+                  />
+                  <span>Clone existing technologies</span>
+                </label>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Technology Node Key Template
+                  </label>
+                  <input
+                    type="text"
+                    value={nodeKeyTemplate}
+                    onChange={(e) => setNodeKeyTemplate(e.target.value)}
+                    disabled={isSaving}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400 font-mono"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Tokens: ${"{prefix}"}, ${"{nodeSet}"}, ${"{row}"}, ${"{column}"}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Technology Key Template
+                  </label>
+                  <input
+                    type="text"
+                    value={technologyKeyTemplate}
+                    onChange={(e) => setTechnologyKeyTemplate(e.target.value)}
+                    disabled={isSaving}
+                    className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400 font-mono"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Used when cloning technologies. Tokens: ${"{prefix}"}, ${"{nodeSet}"}, ${"{row}"},{" "}
+                    ${"{column}"}
+                  </p>
+                </div>
+              </>
+            )}
             {saveMode === "changes" ? (
               <p className="text-sm text-gray-400">
                 Only changed, moved, added, or deleted nodes and links will be included in the output pack.
@@ -1868,6 +1966,12 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           indent={addNodeTarget.indent}
           onAdd={onAddNode}
           onClose={() => setAddNodeTarget(null)}
+          defaultCustomTechnologyKey={resolveTechGenerationTemplate(technologyKeyTemplate, {
+            prefix: normalizeGeneratedPrefix(moddersPrefix) || "custom",
+            nodeSet: technologyTree?.set.key || "",
+            row: addNodeTarget.indent.toString(),
+            column: addNodeTarget.tier.toString(),
+          })}
           allTechnologies={technologyTree?.allTechnologies || []}
           allTechnologyIcons={technologyTree?.allTechnologyIcons || []}
           allEffects={technologyTree?.allEffects || []}
@@ -2217,7 +2321,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                       }
                       const baseTier = Number(match[1]) + currentTierOffset;
                       const baseIndent = Number(match[2]);
-                      const keyPrefix = moddersPrefix.trim() || "custom";
+                      const keyPrefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
                       captureHistory();
                       const newNodes: TechnologyNodeData[] = techClipboard.map((entry) => ({
                         nodeKey: `${keyPrefix}_node_${entry.technologyKey}_${Date.now()}`,
