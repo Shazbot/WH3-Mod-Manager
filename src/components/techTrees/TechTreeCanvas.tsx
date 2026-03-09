@@ -8,6 +8,7 @@ import {
   MarkerType,
   Node,
   NodeTypes,
+  Panel,
   ReactFlow,
   useEdgesState,
   useNodesState,
@@ -162,7 +163,9 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   const [technologyKeyTemplate, setTechnologyKeyTemplate] = useState(defaultTechnologyKeyTemplate);
   const [saveMode, setSaveMode] = useState<TechSaveMode>("changes");
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | undefined>(undefined);
+  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [changedNodePositions, setChangedNodePositions] = useState<
     Record<string, { tier: number; indent: number }>
@@ -253,7 +256,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         setUnlockedNodeKeys(new Set());
         setIsCheckingRequirements(false);
         setIsSaveModalOpen(false);
-        setStatusMessage(undefined);
+        setNotification(null);
         historyPast.current = [];
         historyFuture.current = [];
         setHistorySize({ past: 0, future: 0 });
@@ -263,6 +266,12 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     };
     loadTree();
   }, [setKey]);
+
+  useEffect(() => {
+    if (!notification) return;
+    const timer = setTimeout(() => setNotification(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notification]);
 
   const originalHiddenByTechnologyKey = useMemo(() => {
     const output: Record<string, boolean> = {};
@@ -1266,7 +1275,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     const parentOffset = Number.parseFloat(editLinkTarget.parentOffset);
     const childOffset = Number.parseFloat(editLinkTarget.childOffset);
     if (!Number.isFinite(parentOffset) || !Number.isFinite(childOffset)) {
-      setStatusMessage("Link offsets must be valid numbers.");
+      setNotification({ message: "Link offsets must be valid numbers.", type: "error" });
       return;
     }
 
@@ -1505,7 +1514,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   const saveTechnologyChanges = useCallback(async () => {
     if (!technologyTree) return;
     if (!savePackName.trim()) {
-      setStatusMessage("Pack name is required.");
+      setNotification({ message: "Pack name is required.", type: "error" });
       return;
     }
 
@@ -1521,7 +1530,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     } = buildChangesPayload();
 
     if (!hasChanges) {
-      setStatusMessage("No changes to save.");
+      setNotification({ message: "No changes to save.", type: "error" });
       return;
     }
 
@@ -1542,11 +1551,11 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       });
 
       if (!result?.success) {
-        setStatusMessage(`Failed to save: ${result?.error || "Unknown error"}`);
+        setNotification({ message: `Failed to save: ${result?.error || "Unknown error"}`, type: "error" });
         return;
       }
 
-      setStatusMessage(`Saved ${result.packName} to ${result.packPath}`);
+      setNotification({ message: `Saved ${result.packName} to ${result.packPath}`, type: "success" });
       const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
       if (refreshedTree) setTechnologyTree(refreshedTree);
       resetStateAfterSave();
@@ -1566,13 +1575,13 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   const saveWholeTechnologyTree = useCallback(async () => {
     if (!technologyTree) return;
     if (!savePackName.trim()) {
-      setStatusMessage("Pack name is required.");
+      setNotification({ message: "Pack name is required.", type: "error" });
       return;
     }
 
     const payload = buildWholeTreePayload();
     if (!payload || payload.nodes.length < 1) {
-      setStatusMessage("No technology nodes to save.");
+      setNotification({ message: "No technology nodes to save.", type: "error" });
       return;
     }
 
@@ -1580,11 +1589,11 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     try {
       const result = await window.api?.saveTechnologyPack(payload);
       if (!result?.success) {
-        setStatusMessage(`Failed to save: ${result?.error || "Unknown error"}`);
+        setNotification({ message: `Failed to save: ${result?.error || "Unknown error"}`, type: "error" });
         return;
       }
 
-      setStatusMessage(`Saved ${result.packName} to ${result.packPath}`);
+      setNotification({ message: `Saved ${result.packName} to ${result.packPath}`, type: "success" });
       const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
       if (refreshedTree) setTechnologyTree(refreshedTree);
       resetStateAfterSave();
@@ -1767,19 +1776,6 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           </>
         )}
       </div>
-      {/* Status message */}
-      {statusMessage && (
-        <div className="flex items-center justify-between px-3 py-1 bg-gray-800/60 border-b border-gray-700 text-xs text-gray-400 shrink-0">
-          <span>{statusMessage}</span>
-          <button
-            type="button"
-            className="ml-2 opacity-60 hover:opacity-100"
-            onClick={() => setStatusMessage(undefined)}
-          >
-            ×
-          </button>
-        </div>
-      )}
       {/* ReactFlow canvas */}
       <div className={`relative flex-1 ${isEditMode ? "" : "hideReactFlowHandles"}`}>
         {isLoadingTree && (
@@ -1816,6 +1812,18 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           proOptions={{ hideAttribution: true }}
         >
           <Background color="#374151" gap={24} />
+          {notification && (
+            <Panel position="bottom-center">
+              <div
+                className={`px-6 py-3 rounded-lg text-white text-sm shadow-lg cursor-pointer ${
+                  notification.type === "success" ? "bg-green-700" : "bg-red-700"
+                }`}
+                onClick={() => setNotification(null)}
+              >
+                {notification.message}
+              </div>
+            </Panel>
+          )}
         </ReactFlow>
       </div>
       <Modal onClose={() => setIsSaveModalOpen(false)} show={isSaveModalOpen} size="md" position="center">
