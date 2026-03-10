@@ -193,6 +193,10 @@ const run = async () => {
       await sleep(80);
     }
 
+    if (uniqueTexts.length > 0 && translatedCount % 25 !== 0) {
+      console.log(`[${lang}] translated ${translatedCount}/${uniqueTexts.length}...`);
+    }
+
     for (const key of missingKeys) {
       const sourceValue = en[key];
       if (typeof sourceValue === "string") {
