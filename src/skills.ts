@@ -1,4 +1,5 @@
 import groupBy from "object.groupby";
+
 export type NodeSkill = {
   node: string;
   skill: string;
