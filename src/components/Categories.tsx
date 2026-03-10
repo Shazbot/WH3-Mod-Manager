@@ -1,7 +1,15 @@
 import Creatable from "react-select/creatable";
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact, type CustomCellRendererProps, type CustomHeaderProps } from "ag-grid-react";
-import { AllCommunityModule, ModuleRegistry, type CellClickedEvent, type CellContextMenuEvent, type ColDef, type RowSelectionOptions } from "ag-grid-community";
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type CellClickedEvent,
+  type CellContextMenuEvent,
+  type ColDef,
+  type ColumnResizedEvent,
+  type RowSelectionOptions,
+} from "ag-grid-community";
 import { FloatingOverlay } from "@floating-ui/react";
 import debounce from "just-debounce-it";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
@@ -277,6 +285,7 @@ const Categories = memo(() => {
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
   const [isEditCategoriesModalOpen, setIsEditCategoriesModalOpen] = useState(false);
   const [enabledSortMode, setEnabledSortMode] = useState<EnabledSortMode>("none");
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
   const [categoryFilterInput, setCategoryFilterInput] = useState("");
   const [nameFilterInput, setNameFilterInput] = useState("");
@@ -760,13 +769,52 @@ const Categories = memo(() => {
     [],
   );
 
+  const resolveColumnSizing = useCallback(
+    (colId: string, defaults: Pick<ColDef<CategoriesGridRow>, "width" | "minWidth" | "maxWidth" | "flex">) => {
+      const resizedWidth = columnWidths[colId];
+      if (resizedWidth == null) return defaults;
+
+      return {
+        width: resizedWidth,
+        minWidth: defaults.minWidth,
+        maxWidth: defaults.maxWidth,
+        flex: undefined,
+      } as const;
+    },
+    [columnWidths],
+  );
+
   const columnDefs = useMemo<Array<ColDef<CategoriesGridRow>>>(() => {
+    const categorySizing = resolveColumnSizing("category", {
+      width: undefined,
+      minWidth: 180,
+      maxWidth: undefined,
+      flex: 1.1,
+    });
+    const enabledSizing = resolveColumnSizing("isEnabled", {
+      width: 118,
+      minWidth: 118,
+      maxWidth: undefined,
+      flex: undefined,
+    });
+    const nameSizing = resolveColumnSizing("humanName", {
+      width: undefined,
+      minWidth: 260,
+      maxWidth: undefined,
+      flex: 1.8,
+    });
+    const categoriesSizing = resolveColumnSizing("categories", {
+      width: undefined,
+      minWidth: 320,
+      maxWidth: undefined,
+      flex: 2.2,
+    });
+
     return [
       {
         headerName: localized.category,
         colId: "category",
-        minWidth: 180,
-        flex: 1.1,
+        ...categorySizing,
         cellRenderer: (params: CustomCellRendererProps<CategoriesGridRow>) => {
           const row = params.data;
           if (!row) return null;
@@ -803,9 +851,7 @@ const Categories = memo(() => {
       {
         headerName: localized.enabled,
         colId: "isEnabled",
-        width: 118,
-        minWidth: 118,
-        maxWidth: 118,
+        ...enabledSizing,
         headerComponent: EnabledHeader,
         headerComponentParams: {
           sortMode: enabledSortMode,
@@ -838,16 +884,14 @@ const Categories = memo(() => {
       {
         headerName: localized.name,
         colId: "humanName",
-        minWidth: 260,
-        flex: 1.8,
+        ...nameSizing,
         valueGetter: (params) => (params.data && !isCategoryRow(params.data) ? params.data.humanName : ""),
         cellClass: (params) => (params.data && isCategoryRow(params.data) ? "font-semibold" : undefined),
       },
       {
         headerName: localized.categories,
         colId: "categories",
-        minWidth: 320,
-        flex: 2.2,
+        ...categoriesSizing,
         cellRenderer: (params: CustomCellRendererProps<CategoriesGridRow>) => {
           const row = params.data;
           if (!row || isCategoryRow(row) || row.categories.length === 0) return null;
@@ -885,8 +929,32 @@ const Categories = memo(() => {
     localized.name,
     localized.removeBadge,
     modByPath,
+    resolveColumnSizing,
     toggleCategoryVisibility,
   ]);
+
+  const onColumnResized = useCallback((event: ColumnResizedEvent<CategoriesGridRow>) => {
+    if (!event.finished) return;
+    if (event.source !== "uiColumnResized") return;
+
+    const resizedColumns = (event.columns ?? (event.column ? [event.column] : [])).filter(Boolean);
+    if (resizedColumns.length === 0) return;
+
+    setColumnWidths((currentWidths) => {
+      let hasChanges = false;
+      const nextWidths = { ...currentWidths };
+
+      for (const column of resizedColumns) {
+        const colId = column.getColId();
+        const actualWidth = column.getActualWidth();
+        if (nextWidths[colId] === actualWidth) continue;
+        nextWidths[colId] = actualWidth;
+        hasChanges = true;
+      }
+
+      return hasChanges ? nextWidths : currentWidths;
+    });
+  }, []);
 
   const collapseOrExpandAllCategories = useCallback(() => {
     setHiddenCategories((currentHiddenCategories) =>
@@ -1136,6 +1204,7 @@ const Categories = memo(() => {
             resetRowDataOnUpdate={true}
             onCellClicked={onCellClicked}
             onCellContextMenu={onCellContextMenu}
+            onColumnResized={onColumnResized}
             getRowStyle={(params) =>
               params.data && isCategoryRow(params.data) ? { backgroundColor: "oklch(38.1% 0.176 304.987 / .5)" } : undefined
             }
