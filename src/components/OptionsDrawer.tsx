@@ -92,7 +92,6 @@ const OptionsDrawer = memo(() => {
   const currentMods = useAppSelector((state) => state.app.currentPreset.mods);
 
   const localized = useLocalizations();
-  const localizedFallbacks = localized as Record<string, string>;
 
   const enabledModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -135,9 +134,9 @@ const OptionsDrawer = memo(() => {
   const [areOptionsOpen, setAreOptionsOpen] = useState(false);
 
   const treeDisplayModeOptions: { value: TreeDisplayMode; label: string }[] = [
-    { value: "off", label: localizedFallbacks.off || "Off" },
-    { value: "tab", label: localizedFallbacks.tab || "Tab" },
-    { value: "window", label: localizedFallbacks.window || "Window" },
+    { value: "off", label: localized.off || "Off" },
+    { value: "tab", label: localized.tab || "Tab" },
+    { value: "window", label: localized.window || "Window" },
   ];
 
   const forceDownloadMods = useCallback((contentModsWorshopIds: string[]) => {
@@ -744,15 +743,15 @@ const OptionsDrawer = memo(() => {
 
             <div className="mt-4 max-w-md">
               <div className="block text-sm font-medium text-gray-900 dark:text-gray-100">
-                {localizedFallbacks.treeDisplayModes || "Tree Display"}
+                {localized.treeDisplayModes || "Tree Display"}
               </div>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                {localizedFallbacks.treeDisplayModesDescription ||
+                {localized.treeDisplayModesDescription ||
                   "Choose whether Skill Trees and Tech Trees appear as tabs, standalone windows, or not at all."}
               </p>
               <div className="mt-3 grid gap-3">
                 <label className="block text-sm text-gray-900 dark:text-gray-100" htmlFor="skillTreesDisplayMode">
-                  {localized.skillsViewer || "Skill Trees"}
+                  {localized.skillTrees || "Skill Trees"}
                 </label>
                 <FormSelect
                   id="skillTreesDisplayMode"
