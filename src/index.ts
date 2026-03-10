@@ -71,6 +71,20 @@ if (!gotTheLock) {
   }
 
   let checkWH3RunningInterval: NodeJS.Timer;
+  let isAppQuitting = false;
+
+  const terminateForExternalUpdate = () => {
+    isAppQuitting = true;
+    if (windows.viewerWindow && !windows.viewerWindow.isDestroyed()) windows.viewerWindow.destroy();
+    if (windows.skillsWindow && !windows.skillsWindow.isDestroyed()) windows.skillsWindow.destroy();
+    if (windows.mainWindow && !windows.mainWindow.isDestroyed()) windows.mainWindow.destroy();
+
+    // Skip the normal Electron quit flow here. The update helper already took over
+    // and a hard exit is more reliable than waiting on app shutdown hooks/handles.
+    setTimeout(() => {
+      process.exit(0);
+    }, 250);
+  };
 
   const createWindow = (): void => {
     i18n.on("loaded", async () => {
@@ -176,8 +190,9 @@ if (!gotTheLock) {
     });
 
     windows.mainWindow.on("closed", () => {
-      if (windows.viewerWindow) windows.viewerWindow.close();
-      if (windows.skillsWindow) windows.skillsWindow.close();
+      if (isAppQuitting) return;
+      if (windows.viewerWindow && !windows.viewerWindow.isDestroyed()) windows.viewerWindow.close();
+      if (windows.skillsWindow && !windows.skillsWindow.isDestroyed()) windows.skillsWindow.close();
     });
 
     const waitForModDownloads = async () => {
@@ -339,7 +354,7 @@ if (!gotTheLock) {
               exit /b 1
           )
           echo Update complete! Starting application...
-          powershell "start \"${nodePath.join(appDir, appExeName)}\""
+          start "" "${nodePath.join(appDir, appExeName)}"
           echo Cleaning up...
           timeout /t 2 /nobreak >nul
           rd /s /q "${tempDir}"
@@ -365,8 +380,7 @@ if (!gotTheLock) {
             windowsHide: true,
           });
           subprocess.unref();
-          // exec(`"${updateScript}"`, { detached: true });
-          app.quit();
+          terminateForExternalUpdate();
         } else {
           // Cleanup if user cancels
           fs.rmSync(tempDir, { recursive: true, force: true });
@@ -484,6 +498,10 @@ if (!gotTheLock) {
     if (process.platform !== "darwin") {
       app.quit();
     }
+  });
+
+  app.on("before-quit", () => {
+    isAppQuitting = true;
   });
 
   app.on("activate", () => {

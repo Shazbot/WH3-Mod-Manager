@@ -7,6 +7,16 @@ interface PerformanceMetric {
   duration?: number;
 }
 
+interface ChromiumPerformanceMemory {
+  jsHeapSizeLimit: number;
+  totalJSHeapSize: number;
+  usedJSHeapSize: number;
+}
+
+type ChromiumPerformance = Performance & {
+  memory?: ChromiumPerformanceMemory;
+};
+
 class PerformanceMonitor {
   private metrics: Map<string, PerformanceMetric> = new Map();
   private appStartTime: number;
@@ -64,9 +74,9 @@ class PerformanceMonitor {
 
   // Memory usage tracking
   getMemoryUsage(): any {
-    if ("memory" in performance) {
-      // @ts-ignore - performance.memory exists in Chrome
-      return performance.memory;
+    const chromiumPerformance = performance as ChromiumPerformance;
+    if (chromiumPerformance.memory) {
+      return chromiumPerformance.memory;
     }
     return null;
   }

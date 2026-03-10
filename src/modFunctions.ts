@@ -258,7 +258,9 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
       thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".jpg"));
       await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
       doesThumbnailExist = true;
-    } catch {}
+    } catch {
+      // Ignore missing JPG thumbnails; the PNG fallback is handled above.
+    }
   }
 
   let mergedModsData = null;

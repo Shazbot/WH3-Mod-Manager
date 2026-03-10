@@ -717,7 +717,7 @@ async function executeTableSelectionDropdownNode(
 
       for (const table of matchingTables) {
         // Limit to 300 rows for easier testing
-        let limitedTable = table;
+        const limitedTable = table;
         // if (table.tableSchema && table.schemaFields) {
         //   const rows = chunkSchemaIntoRows(table.schemaFields, table.tableSchema) as AmendedSchemaField[][];
 
@@ -1319,7 +1319,7 @@ async function executeReferenceLookupNode(
   const includeBaseGame = parsed.includeBaseGame !== false;
 
   // Build source files list, potentially including base game
-  let sourceFiles = [...(inputData.sourceFiles || [])];
+  const sourceFiles = [...(inputData.sourceFiles || [])];
 
   if (includeBaseGame) {
     const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
@@ -1561,7 +1561,7 @@ async function executeReverseReferenceLookupNode(
   const includeBaseGame = parsed.includeBaseGame !== false;
 
   // Build source files list, potentially including base game
-  let sourceFiles = [...(inputData.sourceFiles || [])];
+  const sourceFiles = [...(inputData.sourceFiles || [])];
 
   if (includeBaseGame) {
     const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
@@ -3321,7 +3321,7 @@ async function executeIndexTableNode(
   }
 
   const allRows: AmendedSchemaField[][] = [];
-  let sourceTable = inputData.tables[0]; // Keep first for metadata
+  const sourceTable = inputData.tables[0]; // Keep first for metadata
 
   for (const table of inputData.tables) {
     if (!table.table.schemaFields || !table.table.tableSchema) {
@@ -3557,7 +3557,7 @@ async function executeLookupNode(
 
   const allSourceRows: AmendedSchemaField[][] = [];
   const sourceRowsWithLookupIndex: Array<{ row: AmendedSchemaField[]; lookupColumnIndex: number }> = [];
-  let sourceTable = sourceData.tables[0]; // Keep first for metadata
+  const sourceTable = sourceData.tables[0]; // Keep first for metadata
 
   for (const table of sourceData.tables) {
     if (!table.table.schemaFields || !table.table.tableSchema) {
@@ -4327,7 +4327,7 @@ async function executeGroupByNode(
           aggregateValue = cell ? cell.resolvedKeyValue : "";
         } else {
           // max, min, sum, avg - need numeric values
-          let values: number[] = [];
+          const values: number[] = [];
 
           for (const row of groupRows) {
             const cell = row.find((c: AmendedSchemaField) => c.name === agg.sourceColumn);
@@ -5588,12 +5588,13 @@ async function executeAddNewColumnNode(
           outputValue = parseFloat(String(outputValue)) * (transformation.numericValue || 1);
           break;
 
-        case "divide":
+        case "divide": {
           const divisor = transformation.numericValue || 1;
           outputValue = divisor !== 0 ? parseFloat(String(outputValue)) / divisor : 0;
           break;
+        }
 
-        case "rename_whole":
+        case "rename_whole": {
           const strValue = String(outputValue);
           const matchValue = transformation.matchValue || "";
           if (strValue === matchValue) {
@@ -5601,16 +5602,18 @@ async function executeAddNewColumnNode(
           }
           // Otherwise keep original value
           break;
+        }
 
-        case "rename_substring":
+        case "rename_substring": {
           const findStr = transformation.findSubstring || "";
           const replaceStr = transformation.replaceValue || "";
           if (findStr) {
             outputValue = String(outputValue).replace(new RegExp(escapeRegex(findStr), "g"), replaceStr);
           }
           break;
+        }
 
-        case "replace_substring_whole":
+        case "replace_substring_whole": {
           const searchSubstr = transformation.findSubstring || "";
           const wholeReplacement = transformation.replaceValue || "";
           if (searchSubstr && String(outputValue).includes(searchSubstr)) {
@@ -5618,6 +5621,7 @@ async function executeAddNewColumnNode(
           }
           // Otherwise keep original value
           break;
+        }
 
         case "regex_replace":
           try {

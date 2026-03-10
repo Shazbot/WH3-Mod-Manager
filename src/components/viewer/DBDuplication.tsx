@@ -407,7 +407,7 @@ const DBDuplication = memo(() => {
 
   const ensureNodeExpanded = (nodeName: string) => {
     if (isSaving) return;
-    let newExpandedNodesByName = [...expandedNodesByName];
+    const newExpandedNodesByName = [...expandedNodesByName];
     if (!newExpandedNodesByName.includes(nodeName)) {
       newExpandedNodesByName.push(nodeName);
     }

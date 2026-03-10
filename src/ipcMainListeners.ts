@@ -114,6 +114,7 @@ import Trie from "./utility/trie";
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
+
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
 declare const SKILLS_WEBPACK_ENTRY: string;
@@ -220,7 +221,7 @@ const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
   );
 };
 const getOrLoadPackFromAppData = async (packPath: string) => {
-  let pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
+  const pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
   if (pack) return pack;
   const newPack = await readPack(packPath, { skipParsingTables: true });
   appendPacksData(newPack);
@@ -1858,7 +1859,7 @@ export const registerIpcMainListeners = (
     if (!iconPath || iconPath.trim() === "") return "";
     return iconPath
       .trim()
-      .replace(/^.*[\\\/]/, "")
+      .replace(/^.*[\\/]/, "")
       .replace(/\.(png|jpg|jpeg)$/i, "");
   };
   const getTechnologyBuildingLevelForWrite = (
@@ -4123,7 +4124,9 @@ export const registerIpcMainListeners = (
           }
           console.log("config doesn't exist, enabling mods from used_mods.txt:", modsToEnable);
           mainWindow?.webContents.send("enableModsByName", modsToEnable);
-        } catch (e) {}
+        } catch {
+          // Ignore a missing used_mods fallback file.
+        }
       });
     } finally {
       const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;

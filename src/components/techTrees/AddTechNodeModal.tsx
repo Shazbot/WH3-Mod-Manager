@@ -279,7 +279,7 @@ const AddTechNodeModal = ({
               isClearable
               filterOption={createFilter({ ignoreAccents: false })}
               placeholder="Search technologies..."
-              // @ts-ignore
+              // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
               formatOptionLabel={(option: TechnologyOption) => (
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -352,7 +352,7 @@ const AddTechNodeModal = ({
               styles={selectStyle}
               filterOption={createFilter({ ignoreAccents: false })}
               placeholder="Search effects..."
-              // @ts-ignore
+              // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
               formatOptionLabel={(option: EffectOption) => (
                 <div className="flex items-center gap-2">
                   {option.effect.iconData && (
@@ -407,7 +407,7 @@ const AddTechNodeModal = ({
                     placeholder="Select icon..."
                     isClearable
                     filterOption={createFilter({ ignoreAccents: false })}
-                    // @ts-ignore
+                    // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                     formatOptionLabel={(option: TechnologyIconOption) => (
                       <div className="flex items-center gap-2">
                         {option.iconData && (
