@@ -3,9 +3,9 @@ import { AmendedSchemaField } from "@/src/packFileTypes";
 export type TableCellValue = string | number | boolean;
 
 export interface ColumnWidthHint {
-  p90Length: number;
   maxLength: number;
   nonEmptyCount: number;
+  widestValue: string;
 }
 
 export interface PreparedTableData {

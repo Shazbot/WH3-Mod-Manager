@@ -24,13 +24,12 @@ const NORMAL_TABLE_ROW_HEIGHT = 28 + 8;
 const BIG_TABLE_NUMERIC_COL_WIDTH = 96;
 const BIG_TABLE_CHECKBOX_COL_WIDTH = 36;
 const FIXED_SIZING_ROW_THRESHOLD = 1000;
-const TABLE_PREP_CACHE_VERSION = 2;
-const TEXT_LENGTH_HISTOGRAM_BIN_SIZE = 4;
-const TEXT_LENGTH_HISTOGRAM_BIN_COUNT = 64;
+const TABLE_PREP_CACHE_VERSION = 3;
 const TEXT_COLUMN_WIDTH_CHAR_PX = 7;
 const TEXT_COLUMN_WIDTH_PADDING_PX = 52;
 const TEXT_COLUMN_WIDTH_MIN_PX = 110;
-const TEXT_COLUMN_WIDTH_MAX_PX = 480;
+const GRID_CELL_FONT = "400 14px Roboto, Arial, sans-serif";
+const GRID_HEADER_FONT = "500 14px Roboto, Arial, sans-serif";
 
 const AG_GRID_MODULES_KEY = "__whmmAgGridModulesRegistered";
 const globalAny = globalThis as unknown as Record<string, unknown>;
@@ -40,6 +39,26 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
 }
 
 type RowData = TableCellValue[];
+
+let textMeasureContext: CanvasRenderingContext2D | undefined;
+
+const measureTextWidth = (text: string, font: string): number => {
+  if (text.length === 0) return 0;
+  if (typeof document === "undefined") {
+    return Math.ceil(text.length * TEXT_COLUMN_WIDTH_CHAR_PX);
+  }
+
+  if (!textMeasureContext) {
+    textMeasureContext = document.createElement("canvas").getContext("2d") ?? undefined;
+  }
+
+  if (!textMeasureContext) {
+    return Math.ceil(text.length * TEXT_COLUMN_WIDTH_CHAR_PX);
+  }
+
+  textMeasureContext.font = font;
+  return Math.ceil(textMeasureContext.measureText(text).width);
+};
 
 const fieldTypeToCellType = (fieldType: SCHEMA_FIELD_TYPE): "numeric" | "checkbox" | "text" => {
   switch (fieldType) {
@@ -113,11 +132,9 @@ const prepareTableData = (
   const chunkedTable: AmendedSchemaField[][] = Array.from({ length: rowCount }, () => []);
   const data: TableCellValue[][] = Array.from({ length: rowCount }, () => new Array(columnCount));
   const lowerCaseColumnValues: string[][] = Array.from({ length: columnCount }, () => new Array(rowCount));
-  const textLengthHistograms: Array<number[] | undefined> = columns.map((column) =>
-    column.type === "text" ? new Array(TEXT_LENGTH_HISTOGRAM_BIN_COUNT).fill(0) : undefined,
-  );
   const textNonEmptyCounts = new Array(columnCount).fill(0);
   const textMaxLengths = new Array(columnCount).fill(0);
+  const textWidestValues = new Array<string>(columnCount).fill("");
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
     for (let colIndex = 0; colIndex < columnCount; colIndex++) {
@@ -137,15 +154,8 @@ const prepareTableData = (
       textNonEmptyCounts[colIndex]++;
       if (valueLength > textMaxLengths[colIndex]) {
         textMaxLengths[colIndex] = valueLength;
+        textWidestValues[colIndex] = String(cellValue ?? "");
       }
-
-      const histogram = textLengthHistograms[colIndex];
-      if (!histogram) continue;
-      const binIndex = Math.min(
-        histogram.length - 1,
-        Math.floor(valueLength / TEXT_LENGTH_HISTOGRAM_BIN_SIZE),
-      );
-      histogram[binIndex]++;
     }
   }
 
@@ -155,26 +165,10 @@ const prepareTableData = (
     const nonEmptyCount = textNonEmptyCounts[colIndex];
     const maxLength = textMaxLengths[colIndex];
     if (nonEmptyCount === 0 || maxLength === 0) {
-      return { p90Length: 0, maxLength: 0, nonEmptyCount: 0 };
+      return { maxLength: 0, nonEmptyCount: 0, widestValue: "" };
     }
 
-    const histogram = textLengthHistograms[colIndex];
-    if (!histogram) {
-      return { p90Length: maxLength, maxLength, nonEmptyCount };
-    }
-
-    const percentileTarget = Math.ceil(nonEmptyCount * 0.9);
-    let cumulativeCount = 0;
-    let p90Length = maxLength;
-    for (let binIndex = 0; binIndex < histogram.length; binIndex++) {
-      cumulativeCount += histogram[binIndex];
-      if (cumulativeCount >= percentileTarget) {
-        p90Length = Math.min(maxLength, (binIndex + 1) * TEXT_LENGTH_HISTOGRAM_BIN_SIZE);
-        break;
-      }
-    }
-
-    return { p90Length, maxLength, nonEmptyCount };
+    return { maxLength, nonEmptyCount, widestValue: textWidestValues[colIndex] ?? "" };
   });
 
   return {
@@ -245,12 +239,14 @@ const AgGridWrapper = memo(
 
     const getTextColumnWidth = useCallback(
       (columnIndex: number) => {
-        const headerLength = (columnHeaders[columnIndex] ?? "").length;
+        const headerText = columnHeaders[columnIndex] ?? "";
         const hint = columnWidthHints[columnIndex];
-        const contentLength = hint?.p90Length ?? 0;
-        const targetLength = Math.max(headerLength, contentLength);
-        const widthPx = Math.ceil(targetLength * TEXT_COLUMN_WIDTH_CHAR_PX + TEXT_COLUMN_WIDTH_PADDING_PX);
-        return Math.max(TEXT_COLUMN_WIDTH_MIN_PX, Math.min(TEXT_COLUMN_WIDTH_MAX_PX, widthPx));
+        const widestValue = hint?.widestValue ?? "";
+        const headerWidth = measureTextWidth(headerText, GRID_HEADER_FONT);
+        const contentWidth = measureTextWidth(widestValue, GRID_CELL_FONT);
+        const targetWidth = Math.max(headerWidth, contentWidth);
+        const widthPx = Math.ceil(targetWidth + TEXT_COLUMN_WIDTH_PADDING_PX);
+        return Math.max(TEXT_COLUMN_WIDTH_MIN_PX, widthPx);
       },
       [columnHeaders, columnWidthHints],
     );
@@ -268,10 +264,13 @@ const AgGridWrapper = memo(
     const defaultColDef = useMemo<ColDef<RowData>>(
       () => ({
         editable: false,
-        sortable: false,
+        sortable: true,
+        filter: true,
         resizable: true,
         suppressHeaderMenuButton: true,
         suppressMovable: true,
+        // autoHeaderHeight: true,
+        // wrapHeaderText: true,
       }),
       [],
     );
@@ -300,8 +299,7 @@ const AgGridWrapper = memo(
         defs.push({
           headerName,
           colId: String(colIndex),
-          width:
-            useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
+          width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
           minWidth: !useFixedSizing && colType === "text" ? width : undefined,
           flex: !useFixedSizing && colType === "text" ? 1 : undefined,
           cellRenderer: colType === "checkbox" ? "agCheckboxCellRenderer" : undefined,
