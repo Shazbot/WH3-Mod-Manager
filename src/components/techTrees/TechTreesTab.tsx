@@ -1,7 +1,8 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { Resizable } from "re-resizable";
+import { Modal } from "../../flowbite/components/Modal/index";
 import TechTreeCanvas from "./TechTreeCanvas";
 
 let nextTabId = 1;
@@ -10,14 +11,19 @@ type TechTab = {
   id: string;
   setKey: string;
   label: string;
+  isBlank?: boolean;
+  templateSetKey?: string;
 };
 
 const TechTreesTab = memo(() => {
+  const pendingSingleClickTimeoutRef = useRef<number | null>(null);
   const [isLoadingSets, setIsLoadingSets] = useState(false);
   const [nodeSets, setNodeSets] = useState<TechnologyNodeSetSummary[]>([]);
   const [setFilter, setSetFilter] = useState("");
   const [tabs, setTabs] = useState<TechTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [isNewNodeSetModalOpen, setIsNewNodeSetModalOpen] = useState(false);
+  const [newNodeSetName, setNewNodeSetName] = useState("");
 
   useEffect(() => {
     const loadNodeSets = async () => {
@@ -50,6 +56,15 @@ const TechTreesTab = memo(() => {
     return () => document.removeEventListener("keydown", onKeyDown);
   });
 
+  useEffect(
+    () => () => {
+      if (pendingSingleClickTimeoutRef.current !== null) {
+        window.clearTimeout(pendingSingleClickTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
   const filteredNodeSets = useMemo(() => {
     const normalizedFilter = setFilter.trim().toLowerCase();
     if (!normalizedFilter) return nodeSets;
@@ -69,7 +84,13 @@ const TechTreesTab = memo(() => {
         setTabs((prev) =>
           prev.map((tab) =>
             tab.id === activeTabId
-              ? { ...tab, setKey: nodeSet.key, label: nodeSet.localizedName || nodeSet.key }
+              ? {
+                  ...tab,
+                  setKey: nodeSet.key,
+                  label: nodeSet.localizedName || nodeSet.key,
+                  isBlank: false,
+                  templateSetKey: undefined,
+                }
               : tab,
           ),
         );
@@ -83,6 +104,67 @@ const TechTreesTab = memo(() => {
     setTabs((prev) => [...prev, { id, setKey: nodeSet.key, label: nodeSet.localizedName || nodeSet.key }]);
     setActiveTabId(id);
   }, []);
+
+  const queueOpenSetInActiveTab = useCallback(
+    (nodeSet: TechnologyNodeSetSummary) => {
+      if (pendingSingleClickTimeoutRef.current !== null) {
+        window.clearTimeout(pendingSingleClickTimeoutRef.current);
+      }
+      pendingSingleClickTimeoutRef.current = window.setTimeout(() => {
+        openSetInActiveTab(nodeSet);
+        pendingSingleClickTimeoutRef.current = null;
+      }, 220);
+    },
+    [openSetInActiveTab],
+  );
+
+  const handleNodeSetDoubleClick = useCallback(
+    (nodeSet: TechnologyNodeSetSummary) => {
+      if (pendingSingleClickTimeoutRef.current !== null) {
+        window.clearTimeout(pendingSingleClickTimeoutRef.current);
+        pendingSingleClickTimeoutRef.current = null;
+      }
+      openSetInNewTab(nodeSet);
+    },
+    [openSetInNewTab],
+  );
+
+  const createBlankTreeInNewTab = useCallback((nodeSetName: string) => {
+    const templateSetKey = tabs.find((tab) => tab.id === activeTabId && !tab.isBlank)?.setKey || nodeSets[0]?.key;
+    if (!templateSetKey) return;
+    const id = `tab_${nextTabId++}`;
+    setTabs((prev) => [
+      ...prev,
+      {
+        id,
+        setKey: nodeSetName,
+        label: nodeSetName,
+        isBlank: true,
+        templateSetKey,
+      },
+    ]);
+    setActiveTabId(id);
+  }, [activeTabId, nodeSets, tabs]);
+
+  const openNewNodeSetModal = useCallback(() => {
+    setNewNodeSetName("");
+    setIsNewNodeSetModalOpen(true);
+  }, []);
+
+  const trimmedNewNodeSetName = newNodeSetName.trim();
+  const newNodeSetNameExists = useMemo(
+    () =>
+      trimmedNewNodeSetName !== "" &&
+      (nodeSets.some((nodeSet) => nodeSet.key === trimmedNewNodeSetName) ||
+        tabs.some((tab) => tab.isBlank && tab.setKey === trimmedNewNodeSetName)),
+    [nodeSets, tabs, trimmedNewNodeSetName],
+  );
+
+  const confirmCreateNewNodeSet = useCallback(() => {
+    if (!trimmedNewNodeSetName || newNodeSetNameExists) return;
+    createBlankTreeInNewTab(trimmedNewNodeSetName);
+    setIsNewNodeSetModalOpen(false);
+  }, [createBlankTreeInNewTab, newNodeSetNameExists, trimmedNewNodeSetName]);
 
   const closeTab = useCallback(
     (tabId: string) => {
@@ -112,7 +194,17 @@ const TechTreesTab = memo(() => {
         enable={{ right: true, left: false, top: false, bottom: false, topLeft: false, topRight: false, bottomLeft: false, bottomRight: false }}
       >
         <div className="h-full border-r border-gray-700 p-3 overflow-hidden flex flex-col">
-          <div className="text-sm font-semibold mb-2">Technology Node Sets</div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Technology Node Sets</div>
+            <button
+              type="button"
+              onClick={openNewNodeSetModal}
+              disabled={isLoadingSets || nodeSets.length < 1}
+              className="rounded bg-blue-700 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              New
+            </button>
+          </div>
           <input
             id="techTreeSetFilter"
             type="text"
@@ -128,8 +220,8 @@ const TechTreesTab = memo(() => {
                 <button
                   type="button"
                   key={nodeSet.key}
-                  onClick={() => openSetInActiveTab(nodeSet)}
-                  onDoubleClick={() => openSetInNewTab(nodeSet)}
+                  onClick={() => queueOpenSetInActiveTab(nodeSet)}
+                  onDoubleClick={() => handleNodeSetDoubleClick(nodeSet)}
                   className={`w-full text-left px-2 py-1.5 rounded border ${
                     activeSetKey === nodeSet.key
                       ? "bg-blue-900/50 border-blue-500"
@@ -202,11 +294,11 @@ const TechTreesTab = memo(() => {
               key={tab.id}
               className="absolute inset-0"
               style={{
-                visibility: tab.id === activeTabId ? "visible" : "hidden",
+                display: tab.id === activeTabId ? "block" : "none",
                 pointerEvents: tab.id === activeTabId ? "auto" : "none",
               }}
             >
-              <TechTreeCanvas setKey={tab.setKey} />
+              <TechTreeCanvas setKey={tab.setKey} isBlank={!!tab.isBlank} templateSetKey={tab.templateSetKey} />
             </div>
           ))}
           {tabs.length === 0 && !isLoadingSets && (
@@ -216,6 +308,50 @@ const TechTreesTab = memo(() => {
           )}
         </div>
       </div>
+      <Modal onClose={() => setIsNewNodeSetModalOpen(false)} show={isNewNodeSetModalOpen} size="md" position="center">
+        <Modal.Header>New Technology Node Set</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-300">
+              Node Set Name
+              <input
+                type="text"
+                value={newNodeSetName}
+                onChange={(event) => setNewNodeSetName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    confirmCreateNewNodeSet();
+                  }
+                }}
+                className="mt-2 w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                placeholder="Enter new technology node set key"
+                autoFocus
+              />
+            </label>
+            {newNodeSetNameExists && (
+              <p className="text-sm text-red-400">That technology node set already exists.</p>
+            )}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            type="button"
+            onClick={() => setIsNewNodeSetModalOpen(false)}
+            className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={confirmCreateNewNodeSet}
+            disabled={!trimmedNewNodeSetName || newNodeSetNameExists}
+            className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Create
+          </button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 });

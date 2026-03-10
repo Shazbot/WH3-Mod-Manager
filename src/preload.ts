@@ -214,11 +214,11 @@ const api = {
     ipcRenderer.invoke("getTechnologyTree", setKey),
   saveTechnologyPack: (
     payload: SaveTechnologyPackPayload,
-  ): Promise<{ success: boolean; packName?: string; packPath?: string; error?: string }> =>
+  ): Promise<{ success: boolean; packName?: string; packPath?: string; warning?: string; error?: string }> =>
     ipcRenderer.invoke("saveTechnologyPack", payload),
   saveTechnologyChanges: (
     payload: SaveTechnologyChangesPayload,
-  ): Promise<{ success: boolean; packName?: string; packPath?: string; error?: string }> =>
+  ): Promise<{ success: boolean; packName?: string; packPath?: string; warning?: string; error?: string }> =>
     ipcRenderer.invoke("saveTechnologyChanges", payload),
   searchInsidePacks: (searchTerm: string, mods: Mod[]) =>
     ipcRenderer.send("searchInsidePacks", searchTerm, mods),

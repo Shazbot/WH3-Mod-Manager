@@ -9,7 +9,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron"
 import windowStateKeeper from "electron-window-state";
 import * as fs from "fs";
 import * as fsExtra from "fs-extra";
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import * as net from "node:net";
 import debounce from "just-debounce-it";
 import fetch from "node-fetch";
@@ -79,6 +79,7 @@ import {
   getSkills,
   NodeLinks,
   NodeSkill,
+  resolveTextReplacements,
   SkillAndIcons,
 } from "./skills";
 import {
@@ -124,8 +125,13 @@ const appendScopedTechNodeHash = (nodeKey: string, campaignKey?: string, faction
   const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
   return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
 };
-const appendScopedSkillNodeHash = (nodeKey: string, factionKey?: string, subculture?: string) => {
-  const scopeSource = `${factionKey || ""}${subculture || ""}`.trim();
+const appendScopedSkillNodeHash = (
+  nodeKey: string,
+  campaignKey?: string,
+  factionKey?: string,
+  subculture?: string,
+) => {
+  const scopeSource = `${campaignKey || ""}${factionKey || ""}${subculture || ""}`.trim();
   if (!scopeSource) return nodeKey;
   const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
   return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
@@ -1559,6 +1565,7 @@ export const registerIpcMainListeners = (
       currentSubtypeIndex: 0,
       subtypeToNumSets,
       subtypesToSet,
+      subtypeAndSets,
       currentSkills: kfSkills,
       nodeLinks,
       nodeRequirements,
@@ -1711,6 +1718,7 @@ export const registerIpcMainListeners = (
       currentSkills: kfSkills,
       subtypeToNumSets,
       subtypesToSet,
+      subtypeAndSets: cachedSkillsData.subtypeAndSets,
       nodeLinks,
       nodeRequirements,
       nodeToSkillLocks,
@@ -1792,6 +1800,8 @@ export const registerIpcMainListeners = (
     nodeRowsByKey: Record<string, Record<string, string>>;
     linkRowsByKey: Record<string, Record<string, string>>;
     technologyRowsByKey: Record<string, Record<string, string>>;
+    technologyEffectRowsByKey: Record<string, Record<string, Record<string, string>>>;
+    technologyEffectScopesByKey: Record<string, string>;
     locs: Record<string, Trie<string>>;
     icons: Record<string, string>;
     technologyToEffects: Record<string, { effectKey: string; value?: string }[]>;
@@ -1857,8 +1867,26 @@ export const registerIpcMainListeners = (
   ) => {
     const explicitBuildingLevel = (buildingLevel || "").trim();
     if (explicitBuildingLevel !== "") return explicitBuildingLevel;
-    const originalBuildingLevel = (originalTechnologyRow?.building_level || "").trim();
-    return originalBuildingLevel || "wh_main_chs_port_ruin";
+    if (originalTechnologyRow && "building_level" in originalTechnologyRow) {
+      return originalTechnologyRow.building_level || "";
+    }
+    return "wh_main_chs_port_ruin";
+  };
+  const buildUsedTechnologyUniqueIndexes = (technologyRowsByKey: Record<string, Record<string, string>>) => {
+    const usedIndexes = new Set<string>();
+    for (const technologyRow of Object.values(technologyRowsByKey)) {
+      const uniqueIndex = (technologyRow.unique_index || "").trim();
+      if (uniqueIndex !== "") usedIndexes.add(uniqueIndex);
+    }
+    return usedIndexes;
+  };
+  const allocateTechnologyUniqueIndex = (usedIndexes: Set<string>) => {
+    let nextUniqueIndex = "";
+    do {
+      nextUniqueIndex = randomInt(1, 0x7fffffff).toString();
+    } while (usedIndexes.has(nextUniqueIndex));
+    usedIndexes.add(nextUniqueIndex);
+    return nextUniqueIndex;
   };
   const normalizeTechnologyBuildingLevel = (buildingLevel: string | undefined) => {
     if (
@@ -1949,6 +1977,7 @@ export const registerIpcMainListeners = (
     const nodeRowsByKey: CachedTechnologyData["nodeRowsByKey"] = {};
     const linkRowsByKey: CachedTechnologyData["linkRowsByKey"] = {};
     const technologyRowsByKey: CachedTechnologyData["technologyRowsByKey"] = {};
+    const technologyEffectRowsByKey: CachedTechnologyData["technologyEffectRowsByKey"] = {};
     getTableRowData(packsTableData, "technology_node_sets_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       if (!key) return;
@@ -2110,6 +2139,7 @@ export const registerIpcMainListeners = (
       if (key) effectsForTech[key] = { icon };
     });
     const technologyToEffectsByKey: Record<string, Record<string, { effectKey: string; value?: string }>> = {};
+    const technologyEffectScopesByKey: Record<string, string> = {};
     getTableRowData(
       packsTableData,
       "technology_effects_junction_tables",
@@ -2117,11 +2147,17 @@ export const registerIpcMainListeners = (
         const techKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "technology"));
         const effectKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect"));
         if (!techKey || !effectKey) return;
+        const effectScope = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect_scope"));
         if (!technologyToEffectsByKey[techKey]) technologyToEffectsByKey[techKey] = {};
         technologyToEffectsByKey[techKey][effectKey] = {
           effectKey,
           value: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "value")),
         };
+        if (effectScope && !technologyEffectScopesByKey[effectKey]) {
+          technologyEffectScopesByKey[effectKey] = effectScope;
+        }
+        if (!technologyEffectRowsByKey[techKey]) technologyEffectRowsByKey[techKey] = {};
+        technologyEffectRowsByKey[techKey][effectKey] = schemaRowToRecord(schemaFieldRow);
       },
     );
     const technologyToEffects: Record<string, { effectKey: string; value?: string }[]> = Object.fromEntries(
@@ -2170,6 +2206,8 @@ export const registerIpcMainListeners = (
       nodeRowsByKey,
       linkRowsByKey,
       technologyRowsByKey,
+      technologyEffectRowsByKey,
+      technologyEffectScopesByKey,
       locs,
       icons,
       technologyToEffects,
@@ -3712,6 +3750,11 @@ export const registerIpcMainListeners = (
           localizedNames.set(key, value);
         }
       }
+      const getLocalizedName = (locId: string) => localizedNames.get(locId);
+      const resolveVisualsLoc = (locId: string) => {
+        const localized = getLocalizedName(locId);
+        return resolveTextReplacements(localized, getLocalizedName) || localized;
+      };
       const visualsUnits = [] as {
         unitKey: string;
         faction: string;
@@ -3723,7 +3766,7 @@ export const registerIpcMainListeners = (
       }[];
       for (const unitKey of landUnitKeys) {
         const rows = unitToVariantRows.get(unitKey);
-        const localizedName = localizedNames.get(`land_units_onscreen_name_${unitKey}`) || unitKey;
+        const localizedName = resolveVisualsLoc(`land_units_onscreen_name_${unitKey}`) || unitKey;
         const originPackPath = unitKeyToOriginPackPath.get(unitKey) || dbPackPath;
         const originLabel =
           originPackPath === dbPackPath
@@ -4425,6 +4468,7 @@ export const registerIpcMainListeners = (
       const ts = data.generationTimestamp || Date.now().toString();
       const {
         subtype,
+        subtypeIndex,
         nodes,
         edges,
         packName,
@@ -4437,6 +4481,9 @@ export const registerIpcMainListeners = (
       const defaultModdersPrefix = normalizeGeneratedPrefix(appData.moddersPrefix);
       const kp = defaultModdersPrefix || "custom";
       const setSuffix = buildDefaultSkillSetSuffix(subtype);
+      const currentSetKey = appData.skillsData?.subtypesToSet?.[subtype]?.[subtypeIndex];
+      const currentSetCampaignKey =
+        appData.skillsData?.subtypeAndSets?.find((set) => set.key === currentSetKey)?.campaignKey || "";
       const tn = resolveSkillGenerationTemplate(
         tableNameTemplate?.trim() || "${prefix}_${setSuffix}_${timestamp}",
         {
@@ -4459,21 +4506,24 @@ export const registerIpcMainListeners = (
             row: nodes[i].row.toString(),
             column: nodes[i].column.toString(),
           }),
+          currentSetCampaignKey,
           nodes[i].faction,
           nodes[i].subculture,
         );
         if (!cloneAllSkills && nodes[i].existingSkillKey) {
           nodeIdToNewSkillKey[nodes[i].nodeId] = nodes[i].existingSkillKey!;
         } else {
-          nodeIdToNewSkillKey[nodes[i].nodeId] = resolveSkillGenerationTemplate(
-            skillKeyTemplate?.trim() || "${prefix}_skill_${row}_${column}",
-            {
+          nodeIdToNewSkillKey[nodes[i].nodeId] = appendScopedSkillNodeHash(
+            resolveSkillGenerationTemplate(skillKeyTemplate?.trim() || "${prefix}_skill_${row}_${column}", {
               prefix: kp,
               setSuffix,
               timestamp: ts,
               row: nodes[i].row.toString(),
               column: nodes[i].column.toString(),
-            },
+            }),
+            currentSetCampaignKey,
+            nodes[i].faction,
+            nodes[i].subculture,
           );
         }
       }
@@ -4531,16 +4581,18 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-      const getLatestSchema = (tableName: string) => {
+      const defaultTableVersions = await getDefaultTableVersions();
+      const getPreferredSchema = (tableName: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableName];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableName}`);
-        return versions[0]; // sorted by version desc
+        const defaultVersion = defaultTableVersions?.[tableName];
+        return versions.find((version) => version.version === defaultVersion) || versions[0];
       };
       const packFiles: NewPackedFile[] = [];
       // 1. character_skill_node_sets_tables — one row
       {
         const tableName = "character_skill_node_sets_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const originalSet = appData.skillsData?.subtypeAndSets?.find((s) => s.agentSubtype === subtype);
         const rows = [
           buildRowFromSchema(schema.fields, {
@@ -4560,7 +4612,7 @@ export const registerIpcMainListeners = (
       // 2. character_skills_tables — one row per custom node (existing skills already exist)
       {
         const tableName = "character_skills_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = customNodes.map((node, i) =>
           buildRowFromSchema(schema.fields, {
             key: nodeIdToNewSkillKey[node.nodeId],
@@ -4576,7 +4628,7 @@ export const registerIpcMainListeners = (
       // 3. character_skill_nodes_tables — one row per node
       {
         const tableName = "character_skill_nodes_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = nodes.map((node, i) =>
           buildRowFromSchema(schema.fields, {
             key: nodeIdToNewNodeKey[node.nodeId],
@@ -4595,7 +4647,7 @@ export const registerIpcMainListeners = (
       // 4. character_skill_node_set_items_tables — one row per node
       {
         const tableName = "character_skill_node_set_items_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = nodes.map((node) =>
           buildRowFromSchema(schema.fields, {
             set: newSetKey,
@@ -4609,7 +4661,7 @@ export const registerIpcMainListeners = (
       // 5. character_skill_node_links_tables — one row per edge
       if (edges.length > 0) {
         const tableName = "character_skill_node_links_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = edges
           .filter((e) => nodeIdToNewNodeKey[e.source] && nodeIdToNewNodeKey[e.target])
           .map((edge) =>
@@ -4629,7 +4681,7 @@ export const registerIpcMainListeners = (
       // 6. character_skill_level_to_effects_junctions_tables — one row per effect per custom skill (existing skills already have effects)
       {
         const tableName = "character_skill_level_to_effects_junctions_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows: (string | boolean)[][] = [];
         for (const node of customNodes) {
           const skillKey = nodeIdToNewSkillKey[node.nodeId];
@@ -4653,7 +4705,7 @@ export const registerIpcMainListeners = (
       // 7. character_skill_nodes_skill_locks_tables — one row per skill lock
       if (data.skillLocks && data.skillLocks.length > 0) {
         const tableName = "character_skill_nodes_skill_locks_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = data.skillLocks
           .filter((lock) => nodes.some((n) => n.nodeId === lock.lockedNodeId))
           .map((lock) => {
@@ -4783,16 +4835,18 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-      const getLatestSchema = (tableName: string) => {
+      const defaultTableVersions = await getDefaultTableVersions();
+      const getPreferredSchema = (tableName: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableName];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableName}`);
-        return versions[0];
+        const defaultVersion = defaultTableVersions?.[tableName];
+        return versions.find((version) => version.version === defaultVersion) || versions[0];
       };
       const packFiles: NewPackedFile[] = [];
       // 1. character_skill_nodes_tables — override nodes (same key) + replacement/new nodes (new keys)
       {
         const tableName = "character_skill_nodes_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows: (string | boolean)[][] = [];
         for (const node of overrideNodes) {
           rows.push(
@@ -4844,7 +4898,7 @@ export const registerIpcMainListeners = (
       // 2. character_skill_node_set_items_tables — disable replaced/deleted originals, add replacement/new nodes
       {
         const tableName = "character_skill_node_set_items_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows: (string | boolean)[][] = [];
         // Disable original nodes that are being replaced
         for (const node of replacedNodes) {
@@ -4894,7 +4948,7 @@ export const registerIpcMainListeners = (
       // 3. character_skill_node_links_tables — edges for replaced/new nodes
       if (edges.length > 0) {
         const tableName = "character_skill_node_links_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = edges.map((edge) =>
           buildRowFromSchema(schema.fields, {
             parent_key: edge.parentKey,
@@ -4913,7 +4967,7 @@ export const registerIpcMainListeners = (
       const customSkillNodes = newNodes.filter((n) => n.shouldCreateCharacterSkill);
       if (customSkillNodes.length > 0) {
         const tableName = "character_skills_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = customSkillNodes.map((node) =>
           buildRowFromSchema(schema.fields, {
             key: node.newSkillKey,
@@ -4929,7 +4983,7 @@ export const registerIpcMainListeners = (
       // 5. character_skill_level_to_effects_junctions_tables — effects for new custom skills
       {
         const tableName = "character_skill_level_to_effects_junctions_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows: (string | boolean)[][] = [];
         for (const node of customSkillNodes) {
           for (const effect of node.effects) {
@@ -4952,7 +5006,7 @@ export const registerIpcMainListeners = (
       // 6. character_skill_nodes_skill_locks_tables
       if (data.skillLocks && data.skillLocks.length > 0) {
         const tableName = "character_skill_nodes_skill_locks_tables";
-        const schema = getLatestSchema(tableName);
+        const schema = getPreferredSchema(tableName);
         const rows = data.skillLocks.map((lock) =>
           buildRowFromSchema(schema.fields, {
             character_skill: lock.lockingSkillKey,
@@ -5012,6 +5066,10 @@ export const registerIpcMainListeners = (
     const nodesInSet = Object.values(technologyData.nodesByKey).filter((node) => node.setKey == setKey);
     const nodeSet = new Set(nodesInSet.map((node) => node.nodeKey));
     const getLoc = (locId: string) => getLocById(technologyData.locs, locId);
+    const resolveTechnologyLoc = (locId: string) => {
+      const localized = getLoc(locId);
+      return resolveTextReplacements(localized, getLoc) || localized;
+    };
     const mapEffectsForTechnology = (technologyKey: string): TechEffect[] => {
       const rawEffects = technologyData.technologyToEffects[technologyKey] || [];
       return rawEffects.map((effect) => {
@@ -5042,14 +5100,9 @@ export const registerIpcMainListeners = (
         pixelOffsetY: node.pixelOffsetY,
         researchPointsRequired: node.researchPointsRequired,
         optionalUiGroup: node.optionalUiGroup,
-        localizedName:
-          getLocById(technologyData.locs, `technologies_onscreen_name_${node.technologyKey}`) ||
-          node.technologyKey,
-        shortDescription: getLocById(
-          technologyData.locs,
-          `technologies_short_description_${node.technologyKey}`,
-        ),
-        longDescription: getLocById(technologyData.locs, `technologies_long_description_${node.technologyKey}`),
+        localizedName: resolveTechnologyLoc(`technologies_onscreen_name_${node.technologyKey}`) || node.technologyKey,
+        shortDescription: resolveTechnologyLoc(`technologies_short_description_${node.technologyKey}`),
+        longDescription: resolveTechnologyLoc(`technologies_long_description_${node.technologyKey}`),
         iconPath,
         iconData: iconPath ? technologyData.icons[iconPath] : undefined,
         isHidden: technology?.isHidden || false,
@@ -5063,11 +5116,11 @@ export const registerIpcMainListeners = (
         const technologyRow = technologyData.technologyRowsByKey[technology.key] || {};
         return {
           key: technology.key,
-          localizedName: getLocById(technologyData.locs, `technologies_onscreen_name_${technology.key}`) || technology.key,
+          localizedName: resolveTechnologyLoc(`technologies_onscreen_name_${technology.key}`) || technology.key,
           researchPointsRequired: parseOptionalNumber(technologyRow.research_points_required, 0),
           buildingLevel: technology.buildingLevel,
-          shortDescription: getLocById(technologyData.locs, `technologies_short_description_${technology.key}`),
-          longDescription: getLocById(technologyData.locs, `technologies_long_description_${technology.key}`),
+          shortDescription: resolveTechnologyLoc(`technologies_short_description_${technology.key}`),
+          longDescription: resolveTechnologyLoc(`technologies_long_description_${technology.key}`),
           iconPath,
           iconData: iconPath ? technologyData.icons[iconPath] : undefined,
           isHidden: technology.isHidden,
@@ -5202,8 +5255,12 @@ export const registerIpcMainListeners = (
             timestamp: generationTimestamp,
           })
         : data.setKey;
+      if (!targetSetKey.trim()) return { success: false, error: "Technology node set is required" };
       const shouldCloneNodeSet = targetSetKey !== data.setKey;
+      const sourceSetExists = !!technologyData.setsByKey[data.setKey];
+      const shouldWriteNodeSet = shouldCloneNodeSet || !sourceSetExists;
       const shouldCloneTechnologies = !!data.cloneTechnologies;
+      const usedTechnologyUniqueIndexes = buildUsedTechnologyUniqueIndexes(technologyData.technologyRowsByKey);
       const finalPackName = data.packName.endsWith(".pack") ? data.packName : `${data.packName}.pack`;
       const packPath = nodePath.join(data.packDirectory || dataFolder, finalPackName);
       const nodeKeyTemplate = data.nodeKeyTemplate?.trim() || "${prefix}_tech_node_${nodeSet}_${row}_${column}";
@@ -5256,10 +5313,12 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-      const getLatestSchema = (tableNameToResolve: string) => {
+      const defaultTableVersions = await getDefaultTableVersions();
+      const getPreferredSchema = (tableNameToResolve: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableNameToResolve];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableNameToResolve}`);
-        return versions[0];
+        const defaultVersion = defaultTableVersions?.[tableNameToResolve];
+        return versions.find((version) => version.version === defaultVersion) || versions[0];
       };
       const tableName = resolveGenerationTemplate(
         data.tableNameOverride?.trim() || "${prefix}_${nodeSet}_${timestamp}",
@@ -5335,9 +5394,25 @@ export const registerIpcMainListeners = (
       const shouldWriteNodeMappings =
         shouldCloneNodeSet ||
         remappedNodes.some(({ sourceNode, finalNode }) => sourceNode.nodeKey !== finalNode.nodeKey);
+      const referencedUiGroupKeys = new Set(
+        finalNodes
+          .map((node) => node.optionalUiGroup)
+          .filter((groupKey): groupKey is string => !!groupKey && groupKey.trim() !== ""),
+      );
+      if (shouldWriteNodeMappings) {
+        for (const bounds of data.uiGroupBounds || []) {
+          referencedUiGroupKeys.add(bounds.groupKey);
+        }
+      }
+      const uiGroupKeyRemap = new Map<string, string>();
+      [...referencedUiGroupKeys]
+        .sort((left, right) => collator.compare(left, right))
+        .forEach((groupKey, index) => {
+          uiGroupKeyRemap.set(groupKey, `${generationPrefix}_${targetSetKey}_${index + 1}`);
+        });
 
-      if (shouldCloneNodeSet) {
-        const setSchema = getLatestSchema("technology_node_sets_tables");
+      if (shouldWriteNodeSet) {
+        const setSchema = getPreferredSchema("technology_node_sets_tables");
         const originalSetRow = technologyData.setRowsByKey[data.setKey] || {};
         const originalSet = technologyData.setsByKey[data.setKey];
         const setRows = [
@@ -5358,7 +5433,7 @@ export const registerIpcMainListeners = (
         packFiles.push({ name: `db\\technology_node_sets_tables\\${tableName}`, file_size: buffer.length, buffer });
       }
 
-      const nodeSchema = getLatestSchema("technology_nodes_tables");
+      const nodeSchema = getPreferredSchema("technology_nodes_tables");
       const nodeRows = remappedNodes.map(({ sourceNode, finalNode }) =>
         buildRowFromSchema(nodeSchema.fields, {
           ...(technologyData.nodeRowsByKey[sourceNode.nodeKey] || {}),
@@ -5373,16 +5448,40 @@ export const registerIpcMainListeners = (
           pixel_offset_x: finalNode.pixelOffsetX.toString(),
           pixel_offset_y: finalNode.pixelOffsetY.toString(),
           research_points_required: finalNode.researchPointsRequired.toString(),
-          optional_ui_group: finalNode.optionalUiGroup || "",
+          optional_ui_group: finalNode.optionalUiGroup ? (uiGroupKeyRemap.get(finalNode.optionalUiGroup) ?? "") : "",
         }),
       );
       if (nodeRows.length > 0) {
         const buffer = await buildDBFileBuffer(nodeSchema.version, nodeRows, nodeSchema.fields);
         packFiles.push({ name: `db\\technology_nodes_tables\\${tableName}`, file_size: buffer.length, buffer });
       }
+      if (referencedUiGroupKeys.size > 0) {
+        const uiGroupsSchema = getPreferredSchema("technology_ui_groups_tables");
+        const uiGroupRows = [...referencedUiGroupKeys]
+          .map((groupKey) => {
+            const group = technologyData.uiGroupsByKey[groupKey];
+            if (!group) return undefined;
+            return buildRowFromSchema(uiGroupsSchema.fields, {
+              key: uiGroupKeyRemap.get(group.key) || group.key,
+              colour_red: group.colourRed.toString(),
+              colour_green: group.colourGreen.toString(),
+              colour_blue: group.colourBlue.toString(),
+              colour_hex: group.colourHex,
+              optional_background_image: group.optionalBackgroundImage || "",
+              optional_display_name: group.optionalDisplayName || "",
+              optional_display_desctiption: group.optionalDisplayDescription || "",
+              optional_display_description: group.optionalDisplayDescription || "",
+            });
+          })
+          .filter((row): row is (string | boolean)[] => !!row);
+        if (uiGroupRows.length > 0) {
+          const buffer = await buildDBFileBuffer(uiGroupsSchema.version, uiGroupRows, uiGroupsSchema.fields);
+          packFiles.push({ name: `db\\technology_ui_groups_tables\\${tableName}`, file_size: buffer.length, buffer });
+        }
+      }
 
       if (shouldWriteNodeMappings) {
-        const uiTabsToNodesSchema = getLatestSchema("technology_ui_tabs_to_technology_nodes_junctions_tables");
+        const uiTabsToNodesSchema = getPreferredSchema("technology_ui_tabs_to_technology_nodes_junctions_tables");
         const uiTabsToNodesRows = Object.entries(data.uiTabToNodes || {}).flatMap(([tab, nodeKeys]) =>
           nodeKeys
             .map((nodeKey) => nodeKeyRemap.get(nodeKey))
@@ -5407,14 +5506,14 @@ export const registerIpcMainListeners = (
           });
         }
 
-        const uiGroupBoundsSchema = getLatestSchema("technology_ui_groups_to_technology_nodes_junctions_tables");
+        const uiGroupBoundsSchema = getPreferredSchema("technology_ui_groups_to_technology_nodes_junctions_tables");
         const uiGroupBoundsRows = (data.uiGroupBounds || []).flatMap((bounds) => {
           const topLeftNode = nodeKeyRemap.get(bounds.topLeftNode);
           const bottomRightNode = nodeKeyRemap.get(bounds.bottomRightNode);
           if (!topLeftNode || !bottomRightNode) return [];
           return [
             buildRowFromSchema(uiGroupBoundsSchema.fields, {
-              tech_ui_group: bounds.groupKey,
+              tech_ui_group: uiGroupKeyRemap.get(bounds.groupKey) || bounds.groupKey,
               top_left_node: topLeftNode,
               bottom_right_node: bottomRightNode,
               optional_top_right_node: bounds.optionalTopRightNode
@@ -5455,7 +5554,7 @@ export const registerIpcMainListeners = (
           },
         });
       }
-      const linkSchema = getLatestSchema("technology_node_links_tables");
+      const linkSchema = getPreferredSchema("technology_node_links_tables");
       const linkRows = [...dedupedLinksByKey.values()].map(({ sourceLinkKey, link }) =>
         buildRowFromSchema(linkSchema.fields, {
           ...(technologyData.linkRowsByKey[sourceLinkKey] || {}),
@@ -5487,6 +5586,11 @@ export const registerIpcMainListeners = (
         }
       }
       const normalizeComparableString = (value: string | undefined) => (value || "").trim();
+      const normalizeComparableNumber = (value: string | undefined) => parseOptionalNumber(value, 0).toString();
+      const normalizeComparableBool = (value: string | undefined) =>
+        parseOptionalBool(value, false) ? "true" : "false";
+      const normalizeComparableIconName = (value: string | undefined) =>
+        normalizeComparableString(value).replace(/\.(png|jpg|jpeg)$/i, "").toLowerCase();
       const buildEffectsSignature = (effects: { effectKey?: string; value?: string }[] | undefined) =>
         JSON.stringify(
           (effects || [])
@@ -5501,26 +5605,59 @@ export const registerIpcMainListeners = (
                 : left.effectKey.localeCompare(right.effectKey),
             ),
         );
+      const getLoc = (locId: string) => getLocById(technologyData.locs, locId);
+      const resolveTechnologyLoc = (locId: string) => {
+        const localized = getLoc(locId);
+        return resolveTextReplacements(localized, getLoc) || localized;
+      };
       const getOriginalTechnologyDisplayName = (technologyKey: string) =>
-        getLocById(technologyData.locs, `technologies_onscreen_name_${technologyKey}`) || technologyKey;
+        resolveTechnologyLoc(`technologies_onscreen_name_${technologyKey}`) || technologyKey;
       const getOriginalTechnologyShortDescription = (technologyKey: string) =>
-        getLocById(technologyData.locs, `technologies_short_description_${technologyKey}`) || "";
+        resolveTechnologyLoc(`technologies_short_description_${technologyKey}`) || "";
       const getOriginalTechnologyLongDescription = (technologyKey: string) =>
-        getLocById(technologyData.locs, `technologies_long_description_${technologyKey}`) || "";
+        resolveTechnologyLoc(`technologies_long_description_${technologyKey}`) || "";
+      const techSchema = getPreferredSchema("technologies_tables");
+      const technologyFieldNames = new Set(techSchema.fields.map((field) => field.name));
       const technologyEntries = [...nodesByTechnologyKey.entries()].map(
         ([technologyKey, { finalNode, sourceTechnologyKey }]) => {
-          const originalTechnology = technologyData.technologiesByKey[sourceTechnologyKey];
           const originalTechnologyRow = technologyData.technologyRowsByKey[sourceTechnologyKey];
+          const nextTechnologyRow = {
+            key: technologyKey,
+            research_points_required: finalNode.researchPointsRequired.toString(),
+            icon_name: getTechnologyIconNameFromPath(finalNode.iconPath),
+            is_hidden: finalNode.isHidden ? "true" : "false",
+            building_level: getTechnologyBuildingLevelForWrite(finalNode.buildingLevel, originalTechnologyRow),
+          };
+          const rowDifferences = {
+            missingOriginalRow: !originalTechnologyRow,
+            key:
+              technologyFieldNames.has("key") &&
+              normalizeComparableString(originalTechnologyRow?.key) !==
+              normalizeComparableString(nextTechnologyRow.key),
+            research_points_required:
+              technologyFieldNames.has("research_points_required") &&
+              normalizeComparableNumber(originalTechnologyRow?.research_points_required) !==
+              normalizeComparableNumber(nextTechnologyRow.research_points_required),
+            icon_name:
+              technologyFieldNames.has("icon_name") &&
+              normalizeComparableIconName(originalTechnologyRow?.icon_name) !==
+              normalizeComparableIconName(nextTechnologyRow.icon_name),
+            is_hidden:
+              technologyFieldNames.has("is_hidden") &&
+              normalizeComparableBool(originalTechnologyRow?.is_hidden) !==
+              normalizeComparableBool(nextTechnologyRow.is_hidden),
+            building_level:
+              technologyFieldNames.has("building_level") &&
+              normalizeComparableString(originalTechnologyRow?.building_level) !==
+              normalizeComparableString(nextTechnologyRow.building_level),
+          };
           const basicDataChanged =
-            !originalTechnologyRow ||
-            technologyKey !== sourceTechnologyKey ||
-            parseOptionalNumber(originalTechnologyRow.research_points_required) !==
-              finalNode.researchPointsRequired ||
-            normalizeComparableString(getTechnologyIconPath(originalTechnology?.iconName)).toLowerCase() !==
-              normalizeComparableString(finalNode.iconPath).toLowerCase() ||
-            !!originalTechnology?.isHidden !== !!finalNode.isHidden ||
-            normalizeComparableString(originalTechnology?.buildingLevel) !==
-              normalizeComparableString(finalNode.buildingLevel);
+            rowDifferences.missingOriginalRow ||
+            rowDifferences.key ||
+            rowDifferences.research_points_required ||
+            rowDifferences.icon_name ||
+            rowDifferences.is_hidden ||
+            rowDifferences.building_level;
           const locChanged =
             technologyKey !== sourceTechnologyKey ||
             normalizeComparableString(getOriginalTechnologyDisplayName(sourceTechnologyKey)) !==
@@ -5537,36 +5674,41 @@ export const registerIpcMainListeners = (
             technologyKey,
             sourceTechnologyKey,
             finalNode,
+            rowDifferences,
             shouldWriteTechnologyRow: shouldCloneTechnologies || basicDataChanged,
             shouldWriteEffects: shouldCloneTechnologies || effectsChanged || basicDataChanged,
             shouldWriteLoc: shouldCloneTechnologies || locChanged,
           };
         },
       );
-      const techSchema = getLatestSchema("technologies_tables");
       const techRows = technologyEntries
         .filter(({ shouldWriteTechnologyRow }) => shouldWriteTechnologyRow)
-        .map(({ technologyKey, sourceTechnologyKey, finalNode }) =>
-          buildRowFromSchema(techSchema.fields, {
-            ...(technologyData.technologyRowsByKey[sourceTechnologyKey] || {}),
+        .map(({ technologyKey, sourceTechnologyKey, finalNode }) => {
+          const originalTechnologyRow = technologyData.technologyRowsByKey[sourceTechnologyKey];
+          const isBrandNewTechnology = !originalTechnologyRow;
+          const shouldAllocateNewUniqueIndex = shouldCloneTechnologies || isBrandNewTechnology;
+          return buildRowFromSchema(techSchema.fields, {
+            ...(originalTechnologyRow || {}),
             key: technologyKey,
             research_points_required: finalNode.researchPointsRequired.toString(),
             icon_name: getTechnologyIconNameFromPath(finalNode.iconPath),
             is_hidden: finalNode.isHidden ? "true" : "false",
-            building_level: getTechnologyBuildingLevelForWrite(
-              finalNode.buildingLevel,
-              technologyData.technologyRowsByKey[sourceTechnologyKey],
-            ),
-          }),
-        );
+            building_level: getTechnologyBuildingLevelForWrite(finalNode.buildingLevel, originalTechnologyRow),
+            unique_index: shouldAllocateNewUniqueIndex
+              ? allocateTechnologyUniqueIndex(usedTechnologyUniqueIndexes)
+              : (originalTechnologyRow.unique_index || ""),
+            is_military: isBrandNewTechnology ? "true" : originalTechnologyRow.is_military,
+          });
+        });
       if (techRows.length > 0) {
         const buffer = await buildDBFileBuffer(techSchema.version, techRows, techSchema.fields);
         packFiles.push({ name: `db\\technologies_tables\\${tableName}`, file_size: buffer.length, buffer });
       }
-      const techEffectsSchema = getLatestSchema("technology_effects_junction_tables");
+      const techEffectsSchema = getPreferredSchema("technology_effects_junction_tables");
       const techEffectsRows: (string | boolean)[][] = [];
       const seenTechnologyEffects = new Set<string>();
-      for (const { technologyKey, finalNode, shouldWriteEffects } of technologyEntries) {
+      let defaultTechnologyEffectScopeFallbackCount = 0;
+      for (const { technologyKey, sourceTechnologyKey, finalNode, shouldWriteEffects } of technologyEntries) {
         if (!shouldWriteEffects) continue;
         for (const effect of finalNode.effects || []) {
           const effectKey = `${effect.effectKey || ""}`.trim();
@@ -5574,10 +5716,19 @@ export const registerIpcMainListeners = (
           const rowKey = `${technologyKey}|${effectKey}`;
           if (seenTechnologyEffects.has(rowKey)) continue;
           seenTechnologyEffects.add(rowKey);
+          const resolvedEffectScope =
+            technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey]?.effect_scope ||
+            technologyData.technologyEffectScopesByKey[effectKey] ||
+            "default";
+          if (resolvedEffectScope === "default") {
+            defaultTechnologyEffectScopeFallbackCount += 1;
+          }
           techEffectsRows.push(
             buildRowFromSchema(techEffectsSchema.fields, {
+              ...(technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey] || {}),
               technology: technologyKey,
               effect: effectKey,
+              effect_scope: resolvedEffectScope,
               value: effect.value || "",
             }),
           );
@@ -5603,6 +5754,10 @@ export const registerIpcMainListeners = (
           locRowsByKey[`technologies_long_description_${technologyKey}`] = finalNode.longDescription;
         }
       }
+      for (const remappedGroupKey of uiGroupKeyRemap.values()) {
+        locRowsByKey[`technology_ui_groups_optional_display_name_${remappedGroupKey}`] = "";
+        locRowsByKey[`technology_ui_groups_optional_display_desctiption_${remappedGroupKey}`] = "";
+      }
       const locRows = Object.entries(locRowsByKey).map(
         ([key, text]) => [key, text, false] as (string | boolean)[],
       );
@@ -5614,7 +5769,15 @@ export const registerIpcMainListeners = (
       await writePack(packFiles, packPath);
       cachedTechnologyData = undefined;
       cachedTechnologyDataKey = undefined;
-      return { success: true, packPath, packName: finalPackName };
+      return {
+        success: true,
+        packPath,
+        packName: finalPackName,
+        warning:
+          defaultTechnologyEffectScopeFallbackCount > 0
+            ? `${defaultTechnologyEffectScopeFallbackCount} technology effect row${defaultTechnologyEffectScopeFallbackCount === 1 ? "" : "s"} used fallback effect_scope 'default'.`
+            : undefined,
+      };
     } catch (error: any) {
       console.error("Failed to save technology tree:", error);
       return { success: false, error: error?.message || String(error) };
@@ -5626,6 +5789,7 @@ export const registerIpcMainListeners = (
       if (!dataFolder) return { success: false, error: "Data folder not found" };
       const technologyData = await ensureTechnologyData();
       if (!technologyData) return { success: false, error: "Technology data could not be loaded" };
+      const usedTechnologyUniqueIndexes = buildUsedTechnologyUniqueIndexes(technologyData.technologyRowsByKey);
       const defaultModdersPrefix = normalizeGeneratedPrefix(appData.moddersPrefix);
       const generationTimestamp = Date.now().toString();
       const resolveGenerationTemplate = (
@@ -5684,16 +5848,18 @@ export const registerIpcMainListeners = (
         }
         return Buffer.concat(parts);
       };
-      const getLatestSchema = (tableNameToResolve: string) => {
+      const defaultTableVersions = await getDefaultTableVersions();
+      const getPreferredSchema = (tableNameToResolve: string) => {
         const versions = DBNameToDBVersions[appData.currentGame][tableNameToResolve];
         if (!versions || versions.length === 0) throw new Error(`No schema found for ${tableNameToResolve}`);
-        return versions[0];
+        const defaultVersion = defaultTableVersions?.[tableNameToResolve];
+        return versions.find((version) => version.version === defaultVersion) || versions[0];
       };
       const packFiles: NewPackedFile[] = [];
       const hasNodeDeletions = data.deletedNodeKeys && data.deletedNodeKeys.length > 0;
       const hasNodeEdits = data.editedNodes && data.editedNodes.length > 0;
       if (data.changedNodes.length > 0 || hasNodeDeletions || hasNodeEdits) {
-        const schema = getLatestSchema("technology_nodes_tables");
+        const schema = getPreferredSchema("technology_nodes_tables");
         const deletedNodeSet = new Set(data.deletedNodeKeys || []);
         const dedupedRowsByNodeKey: Record<string, Record<string, string | boolean>> = {};
         if (hasNodeDeletions) {
@@ -5753,15 +5919,19 @@ export const registerIpcMainListeners = (
       }
       // Handle edited nodes in technologies_tables (for display name, building level, etc.)
       if (hasNodeEdits && data.editedNodes) {
-        const techSchema = getLatestSchema("technologies_tables");
+        const techSchema = getPreferredSchema("technologies_tables");
         const dedupedRows: Record<string, Record<string, string | boolean>> = {};
         for (const editedNode of data.editedNodes) {
           const nodeRow = technologyData.nodeRowsByKey[editedNode.nodeKey];
           const technologyKey = (editedNode.technologyKey || (nodeRow?.technology_key as string) || "").trim();
           if (!technologyKey) continue;
-          const originalTechRow = technologyData.technologyRowsByKey[technologyKey] || {};
+          const originalTechRow = technologyData.technologyRowsByKey[technologyKey];
+          const sourceTechnologyKey = (nodeRow?.technology_key as string) || "";
+          const sourceTechRowForClone = technologyData.technologyRowsByKey[sourceTechnologyKey];
+          const baseTechRow = originalTechRow || sourceTechRowForClone || {};
+          const isBrandNewTechnology = !originalTechRow;
           const updatedRow: Record<string, string | boolean> = {
-            ...originalTechRow,
+            ...baseTechRow,
             key: technologyKey,
           };
           if (editedNode.researchPointsRequired !== undefined) {
@@ -5776,8 +5946,12 @@ export const registerIpcMainListeners = (
           if (editedNode.buildingLevel !== undefined) {
             updatedRow.building_level = getTechnologyBuildingLevelForWrite(
               editedNode.buildingLevel,
-              originalTechRow,
+              originalTechRow || sourceTechRowForClone,
             );
+          }
+          if (isBrandNewTechnology) {
+            updatedRow.unique_index = allocateTechnologyUniqueIndex(usedTechnologyUniqueIndexes);
+            updatedRow.is_military = updatedRow.is_military ?? "true";
           }
           dedupedRows[technologyKey] = updatedRow;
         }
@@ -5800,7 +5974,7 @@ export const registerIpcMainListeners = (
       }
       const hasLinkDeletions = data.deletedLinkKeys && data.deletedLinkKeys.length > 0;
       if (data.changedLinks.length > 0 || hasLinkDeletions) {
-        const schema = getLatestSchema("technology_node_links_tables");
+        const schema = getPreferredSchema("technology_node_links_tables");
         const deletedLinkSet = new Set(data.deletedLinkKeys || []);
         const dedupedRowsByLinkKey: Record<string, Record<string, string | boolean>> = {};
         if (hasLinkDeletions) {
@@ -5837,7 +6011,7 @@ export const registerIpcMainListeners = (
         }
       }
       if (data.hiddenTechnologies.length > 0) {
-        const schema = getLatestSchema("technologies_tables");
+        const schema = getPreferredSchema("technologies_tables");
         const dedupedRowsByTechnologyKey: Record<string, Record<string, string | boolean>> = {};
         for (const hiddenTechnology of data.hiddenTechnologies) {
           const originalRow = technologyData.technologyRowsByKey[hiddenTechnology.technologyKey];
@@ -5861,7 +6035,7 @@ export const registerIpcMainListeners = (
       }
       if (data.newNodes && data.newNodes.length > 0) {
         // Write new entries to technology_nodes_tables
-        const nodeSchema = getLatestSchema("technology_nodes_tables");
+        const nodeSchema = getPreferredSchema("technology_nodes_tables");
         const newNodeRows = data.newNodes.map((newNode) =>
           buildRowFromSchema(nodeSchema.fields, {
             key: newNode.nodeKey,
@@ -5899,7 +6073,7 @@ export const registerIpcMainListeners = (
           }
         }
         // Write new entries to technologies_tables
-        const techSchema = getLatestSchema("technologies_tables");
+        const techSchema = getPreferredSchema("technologies_tables");
         const newTechRowsByKey = new Map<string, (string | boolean)[]>();
         for (const newNode of data.newNodes) {
           if (technologyData.technologyRowsByKey[newNode.technologyKey]) continue;
@@ -5912,6 +6086,8 @@ export const registerIpcMainListeners = (
               icon_name: getTechnologyIconNameFromPath(newNode.iconPath),
               is_hidden: newNode.isHidden ? "true" : "false",
               building_level: getTechnologyBuildingLevelForWrite(newNode.buildingLevel),
+              unique_index: allocateTechnologyUniqueIndex(usedTechnologyUniqueIndexes),
+              is_military: "true",
             }),
           );
         }
@@ -5935,10 +6111,15 @@ export const registerIpcMainListeners = (
           }
         }
       }
-      const techEffectsSchema = getLatestSchema("technology_effects_junction_tables");
+      const techEffectsSchema = getPreferredSchema("technology_effects_junction_tables");
       const techEffectsRows: (string | boolean)[][] = [];
       const seenTechnologyEffects = new Set<string>();
-      const pushTechnologyEffects = (technologyKey: string, effects: TechEffect[] | undefined) => {
+      let defaultTechnologyEffectScopeFallbackCount = 0;
+      const pushTechnologyEffects = (
+        technologyKey: string,
+        effects: TechEffect[] | undefined,
+        sourceTechnologyKey?: string,
+      ) => {
         if (!effects || effects.length < 1) return;
         for (const effect of effects) {
           const effectKey = `${effect.effectKey || ""}`.trim();
@@ -5946,10 +6127,23 @@ export const registerIpcMainListeners = (
           const rowKey = `${technologyKey}|${effectKey}`;
           if (seenTechnologyEffects.has(rowKey)) continue;
           seenTechnologyEffects.add(rowKey);
+          const resolvedEffectScope =
+            (sourceTechnologyKey
+              ? technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey]?.effect_scope
+              : undefined) ||
+            technologyData.technologyEffectScopesByKey[effectKey] ||
+            "default";
+          if (resolvedEffectScope === "default") {
+            defaultTechnologyEffectScopeFallbackCount += 1;
+          }
           techEffectsRows.push(
             buildRowFromSchema(techEffectsSchema.fields, {
+              ...(sourceTechnologyKey
+                ? (technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey] || {})
+                : {}),
               technology: technologyKey,
               effect: effectKey,
+              effect_scope: resolvedEffectScope,
               value: effect.value || "",
             }),
           );
@@ -5967,7 +6161,7 @@ export const registerIpcMainListeners = (
           const technologyKey = (editedNode.technologyKey || (nodeRow?.technology_key as string) || "").trim();
           if (!technologyKey) continue;
           if (technologyData.technologyRowsByKey[technologyKey]) continue;
-          pushTechnologyEffects(technologyKey, editedNode.effects);
+          pushTechnologyEffects(technologyKey, editedNode.effects, nodeRow?.technology_key as string | undefined);
         }
       }
       if (techEffectsRows.length > 0) {
@@ -6036,7 +6230,15 @@ export const registerIpcMainListeners = (
       await writePack(packFiles, packPath);
       cachedTechnologyData = undefined;
       cachedTechnologyDataKey = undefined;
-      return { success: true, packPath, packName: finalPackName };
+      return {
+        success: true,
+        packPath,
+        packName: finalPackName,
+        warning:
+          defaultTechnologyEffectScopeFallbackCount > 0
+            ? `${defaultTechnologyEffectScopeFallbackCount} technology effect row${defaultTechnologyEffectScopeFallbackCount === 1 ? "" : "s"} used fallback effect_scope 'default'.`
+            : undefined,
+      };
     } catch (error: any) {
       console.error("Failed to save technology changes:", error);
       return { success: false, error: error?.message || String(error) };
