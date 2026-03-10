@@ -158,9 +158,11 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
   globalAny[AG_GRID_MODULES_KEY] = true;
 }
 
-const isCategoryRow = (row: CategoriesGridRow | undefined | null): row is CategoryGridRow => row?.kind === "category";
+const isCategoryRow = (row: CategoriesGridRow | undefined | null): row is CategoryGridRow =>
+  row?.kind === "category";
 
-const normalizeModLabel = (mod: Mod) => (mod.humanName !== "" ? mod.humanName : mod.name.replace(".pack", ""));
+const normalizeModLabel = (mod: Mod) =>
+  mod.humanName !== "" ? mod.humanName : mod.name.replace(".pack", "");
 
 const buildCategoryRowId = (category: string) => `category:${category}`;
 const buildModRowId = (category: string, path: string) => `mod:${category}:${path}`;
@@ -195,7 +197,17 @@ const computeContextMenuPosition = (params: {
 };
 
 const Badge = memo(
-  ({ text, color, onRemove, removeLabel }: { text: string; color?: string; onRemove: () => void; removeLabel: string }) => {
+  ({
+    text,
+    color,
+    onRemove,
+    removeLabel,
+  }: {
+    text: string;
+    color?: string;
+    onRemove: () => void;
+    removeLabel: string;
+  }) => {
     const colorClasses = COLOR_CLASS_MAP[color || "blue"] || COLOR_CLASS_MAP.blue;
 
     return (
@@ -247,7 +259,7 @@ const EnabledHeader = memo(
       sortMode === "enabledFirst"
         ? "Enabled mods are shown first in each category. Click to switch to enabled-last sorting."
         : sortMode === "enabledLast"
-        ? "Enabled mods are shown last in each category. Click to clear enabled sorting."
+          ? "Enabled mods are shown last in each category. Click to clear enabled sorting."
           : "No enabled sorting. Click to show enabled mods first in each category.";
     const suffix = sortMode === "enabledFirst" ? " ↓" : sortMode === "enabledLast" ? " ↑" : "";
 
@@ -332,7 +344,10 @@ const Categories = memo(() => {
     };
   }, [setNewCategoriesFilter, setNewCategoryFilter, setNewNameFilter]);
 
-  const modByPath = useMemo(() => new Map<string, Mod>((mods as Mod[]).map((mod) => [mod.path, mod])), [mods]);
+  const modByPath = useMemo(
+    () => new Map<string, Mod>((mods as Mod[]).map((mod) => [mod.path, mod])),
+    [mods],
+  );
 
   const getSelectedMods = useCallback((): Mod[] => {
     const api = gridRef.current?.api;
@@ -377,8 +392,7 @@ const Categories = memo(() => {
         if (selectedMods.length >= maxMods) {
           const totalSelectedModCount = api
             .getSelectedNodes()
-            .filter((selectedNode) => selectedNode.data && !isCategoryRow(selectedNode.data))
-            .length;
+            .filter((selectedNode) => selectedNode.data && !isCategoryRow(selectedNode.data)).length;
           return { mods: selectedMods, isTruncated: totalSelectedModCount > maxMods };
         }
       }
@@ -435,7 +449,10 @@ const Categories = memo(() => {
   }, [dispatch, getSelectedMods, isContextMenuOpen]);
 
   const groupedCategories = useMemo<CategoryGroup[]>(() => {
-    const rowsByCategory = new Map<string, { category: string; mods: Mod[]; total: number; enabled: number }>();
+    const rowsByCategory = new Map<
+      string,
+      { category: string; mods: Mod[]; total: number; enabled: number }
+    >();
 
     for (const mod of getModsSortedByHumanNameAndName(mods) as Mod[]) {
       let modCategories = mod.categories ?? ["Uncategorized"];
@@ -497,7 +514,9 @@ const Categories = memo(() => {
         .filter((category) => category !== "");
 
       data = data.filter((categoryGroup) =>
-        filterCategories.some((filterCategory) => categoryGroup.category.toLowerCase().includes(filterCategory)),
+        filterCategories.some((filterCategory) =>
+          categoryGroup.category.toLowerCase().includes(filterCategory),
+        ),
       );
     }
 
@@ -770,7 +789,10 @@ const Categories = memo(() => {
   );
 
   const resolveColumnSizing = useCallback(
-    (colId: string, defaults: Pick<ColDef<CategoriesGridRow>, "width" | "minWidth" | "maxWidth" | "flex">) => {
+    (
+      colId: string,
+      defaults: Pick<ColDef<CategoriesGridRow>, "width" | "minWidth" | "maxWidth" | "flex">,
+    ) => {
       const resizedWidth = columnWidths[colId];
       if (resizedWidth == null) return defaults;
 
@@ -789,11 +811,11 @@ const Categories = memo(() => {
       width: undefined,
       minWidth: 180,
       maxWidth: undefined,
-      flex: 1.1,
+      flex: 1,
     });
     const enabledSizing = resolveColumnSizing("isEnabled", {
-      width: 118,
-      minWidth: 118,
+      width: 90,
+      minWidth: 90,
       maxWidth: undefined,
       flex: undefined,
     });
@@ -1206,13 +1228,18 @@ const Categories = memo(() => {
             onCellContextMenu={onCellContextMenu}
             onColumnResized={onColumnResized}
             getRowStyle={(params) =>
-              params.data && isCategoryRow(params.data) ? { backgroundColor: "oklch(38.1% 0.176 304.987 / .5)" } : undefined
+              params.data && isCategoryRow(params.data)
+                ? { backgroundColor: "oklch(38.1% 0.176 304.987 / .5)" }
+                : undefined
             }
           />
         </div>
       </div>
 
-      <EditCategoriesModal isOpen={isEditCategoriesModalOpen} onClose={() => setIsEditCategoriesModalOpen(false)} />
+      <EditCategoriesModal
+        isOpen={isEditCategoriesModalOpen}
+        onClose={() => setIsEditCategoriesModalOpen(false)}
+      />
     </>
   );
 });
