@@ -205,9 +205,17 @@ const OptionsDrawer = memo(() => {
     [enabledMods]
   );
 
-  const bisectModList = useCallback((isModSelectionRandom = false) => {
-    dispatch(createBisectedModListPresets(isModSelectionRandom));
-  }, []);
+  const bisectModList = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement, MouseEvent>, isModSelectionRandom = false) => {
+      dispatch(
+        createBisectedModListPresets({
+          isRandom: isModSelectionRandom,
+          ignoreDependencies: e.shiftKey,
+        })
+      );
+    },
+    [dispatch]
+  );
 
   const copyToDataAsSymbolicLink = useCallback(
     (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
@@ -756,7 +764,7 @@ const OptionsDrawer = memo(() => {
             <div className="flex mt-2 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-                onClick={() => bisectModList()}
+                onClick={(e) => bisectModList(e)}
               >
                 <span className="uppercase">{localized.bisectModList}</span>
               </button>
@@ -767,7 +775,7 @@ const OptionsDrawer = memo(() => {
             <div className="flex mt-2 mb-4 w-full">
               <button
                 className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
-                onClick={() => bisectModList(true)}
+                onClick={(e) => bisectModList(e, true)}
               >
                 <span className="uppercase">{localized.bisectModListRandomly}</span>
               </button>

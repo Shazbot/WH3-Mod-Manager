@@ -20,6 +20,8 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
       orderedIndex++;
     }
 
+    if (newMods.length >= sortedMods.length) break;
+
     if (unorderedIndex < unorderedMods.length) {
       newMods.push(unorderedMods[unorderedIndex]);
       unorderedIndex++;

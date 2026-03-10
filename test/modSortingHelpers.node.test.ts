@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getFilteredMods } from "../src/modSortingHelpers";
+import { getFilteredMods, sortByNameAndLoadOrder } from "../src/modSortingHelpers";
 
 const createMod = (overrides: Partial<Mod>): Mod =>
   ({
@@ -28,5 +28,19 @@ describe("getFilteredMods", () => {
 
     expect(() => getFilteredMods(mods, "/alpha(/", false)).not.toThrow();
     expect(getFilteredMods(mods, "/alpha(/", false).map((mod) => mod.name)).toEqual(["alpha.pack"]);
+  });
+
+  it("keeps ordered mods without appending undefined entries", () => {
+    const mods = [
+      createMod({ name: "alpha.pack", loadOrder: 0 }),
+      createMod({ name: "beta.pack", loadOrder: 1 }),
+      createMod({ name: "gamma.pack", loadOrder: 2 }),
+    ];
+
+    expect(sortByNameAndLoadOrder(mods).map((mod) => mod.name)).toEqual([
+      "alpha.pack",
+      "beta.pack",
+      "gamma.pack",
+    ]);
   });
 });
