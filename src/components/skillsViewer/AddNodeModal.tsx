@@ -288,14 +288,13 @@ const AddNodeModal = memo(
                       filterOption={createFilter({ ignoreAccents: false, matchFrom: "start" })}
                       options={skillOptions}
                       value={selectedSkill}
-                      // @ts-expect-error
+                      // @ts-expect-error react-select value type does not match the windowed select wrapper.
                       onChange={(newValue: SkillOption | null) => handleSkillSelect(newValue)}
                       styles={selectStyle}
                       placeholder={localized.searchSkills || "Search skills..."}
                       isClearable
-                      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                      // @ts-ignore
-                      formatOptionLabel={(option: SkillOption) => (
+                          // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
+                          formatOptionLabel={(option: SkillOption) => (
                         <>
                           <div className="font-medium">{option.label}</div>
                           <div className="text-gray-300 mt-1">
@@ -379,14 +378,13 @@ const AddNodeModal = memo(
                         <WindowedSelect
                           options={iconOptions}
                           value={selectedIcon}
-                          // @ts-expect-error
+                          // @ts-expect-error react-select value type does not match the windowed select wrapper.
                           onChange={(newValue: IconOption | null) => setSelectedIcon(newValue)}
                           styles={selectStyle}
                           placeholder={localized.selectIcon || "Select icon..."}
                           isClearable
                           filterOption={createFilter({ ignoreAccents: false })}
-                          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                          // @ts-ignore
+                          // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                           formatOptionLabel={(option: IconOption) => (
                             <div className="flex items-center gap-2">
                               {skillsData?.icons[option.value] && (

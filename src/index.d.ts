@@ -3,6 +3,7 @@ import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
 import { string } from "ts-pattern/dist/patterns";
+
 export {};
 
 declare global {
@@ -607,9 +608,6 @@ declare global {
     }[];
     allSkillIcons: { path: string; name: string }[];
   }
-
-  Record<string, [string, string][]>;
-
   interface SaveSkillsPackPayload {
     subtype: string;
     subtypeIndex: number;

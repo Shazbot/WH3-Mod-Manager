@@ -202,7 +202,7 @@ tooltipFrame = require("../../assets/skills//tooltip_frame.png");
 skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 
 const nodeWidth = 300;
-let nodeHeight = 100;
+const nodeHeight = 100;
 const biggerNodeHeight = 120;
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
@@ -413,17 +413,12 @@ const SkillsView = memo(
       return skillsData.icons[battlePath] || skillIcon;
     };
 
-    let skills = skillsData.currentSkills;
+    let skills = skillsData.currentSkills ?? [];
+    const hasSkills = !!skillsData.currentSkills;
     const subtype = skillsData.currentSubtype;
     const currentSkillSetKey = skillsData.subtypesToSet?.[skillsData.currentSubtype]?.[skillsData.currentSubtypeIndex];
     const currentSkillSetCampaignKey =
       skillsData.subtypeAndSets?.find((set) => set.key === currentSkillSetKey)?.campaignKey || "";
-
-    // return <></>;
-    if (!skills) {
-      console.log("SkillsView: no skills");
-      return <></>;
-    }
 
     // Compute unique faction/subculture filter options
     const factionFilterOptions: { label: string; value: string }[] = [];
@@ -1124,7 +1119,7 @@ const SkillsView = memo(
     // Helper: remove placeholders in affected rows and regenerate them based on current skill positions
     const repositionPlaceholders = useCallback(
       (currentNodes: Nodes[], affectedRows: Set<number>) => {
-        let result = currentNodes.filter(
+        const result = currentNodes.filter(
           (n) =>
             !(
               n.type === "addPlaceholder" && affectedRows.has(Math.round(n.position.y / effectiveNodeHeight))
@@ -3875,7 +3870,7 @@ const SkillsView = memo(
         const oldHeight = editModeNodeHeight;
 
         setNodes((currentNodes) => {
-          let result = currentNodes
+          const result = currentNodes
             // Remove placeholder nodes
             .filter((n) => n.type !== "addPlaceholder")
             .map((n) => {
@@ -4595,7 +4590,11 @@ const SkillsView = memo(
                         isRequirementsMode ? "bg-amber-600 text-white" : "hover:bg-gray-700"
                       }`}
                       onClick={() => {
-                        isRequirementsMode ? exitRequirementsMode() : enterRequirementsMode();
+                        if (isRequirementsMode) {
+                          exitRequirementsMode();
+                        } else {
+                          enterRequirementsMode();
+                        }
                       }}
                     >
                       {isRequirementsMode
@@ -4607,7 +4606,11 @@ const SkillsView = memo(
                         isSkillLocksMode ? "bg-red-600 text-white" : "hover:bg-gray-700"
                       }`}
                       onClick={() => {
-                        isSkillLocksMode ? exitSkillLocksMode() : enterSkillLocksMode();
+                        if (isSkillLocksMode) {
+                          exitSkillLocksMode();
+                        } else {
+                          enterSkillLocksMode();
+                        }
                       }}
                     >
                       {isSkillLocksMode
@@ -4989,7 +4992,12 @@ const SkillsView = memo(
                   })()
                 : Math.round(editingNode.position.x / nodeWidth)
               : undefined;
-            return (
+    if (!hasSkills) {
+      console.log("SkillsView: no skills");
+      return <></>;
+    }
+
+    return (
               <AddNodeModal
                 isOpen={isAddNodeModalOpen}
                 onClose={() => {

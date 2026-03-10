@@ -163,7 +163,7 @@ export const prepareGraphForExecution = ({
   const flowExecutionId = new Date().toISOString().slice(0, 19).replace(/:/g, "-").replace("T", "_");
 
   const preparedNodes = nodes.map((node) => {
-    let nodeData = { ...node.data } as Record<string, unknown>;
+    const nodeData = { ...node.data } as Record<string, unknown>;
     let modified = false;
     const currentData = getSerializableNodeData(node);
 
