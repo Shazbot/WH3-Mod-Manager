@@ -48,6 +48,8 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isShowingHiddenSkills: appState.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
     isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
+    skillTreesDisplayMode: appState.skillTreesDisplayMode,
+    technologyTreesDisplayMode: appState.technologyTreesDisplayMode,
     // from appData
     gameFolderPaths: appData.gamesToGameFolderPaths,
     gameToCurrentPreset,

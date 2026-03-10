@@ -8,6 +8,7 @@ import NodeEditor from "./NodeEditor";
 import VisualsTab from "./VisualsTab";
 import PresetsTab from "./PresetsTab";
 import TechTreesTab from "./techTrees/TechTreesTab";
+import SkillsTab from "./skillsViewer/SkillsTab";
 import { gameToPackWithDBTablesName } from "../supportedGames";
 
 type MainProps = {
@@ -20,6 +21,7 @@ const Main = (props: MainProps) => {
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const isTechnologyTreesSupported = currentGame === "wh3";
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =
@@ -32,7 +34,8 @@ const Main = (props: MainProps) => {
       {(currentTab == "nodeEditor" && (
         <NodeEditor currentFile={currentFlowFileSelection} currentPack={currentPack}></NodeEditor>
       )) ||
-        (currentTab == "techTrees" && isFeaturesForModdersEnabled && <TechTreesTab />) ||
+        (currentTab == "skills" && <SkillsTab />) ||
+        (currentTab == "techTrees" && isTechnologyTreesSupported && <TechTreesTab />) ||
         (currentTab == "visuals" && isFeaturesForModdersEnabled && <VisualsTab />) ||
         (currentTab == "presets" && <PresetsTab />) ||
         (currentTab == "categories" && <Categories></Categories>) || (

@@ -18,12 +18,14 @@ import {
   createBisectedModListPresets,
   toggleIsCompatCheckingVanillaPacks,
   setIsPackSearcherOpen,
+  setSkillTreesDisplayMode,
+  setTechnologyTreesDisplayMode,
 } from "../appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import selectStyle from "../styles/selectStyle";
 import { Tooltip } from "flowbite-react";
-import { Modal } from "../flowbite";
+import { Modal, Select as FormSelect } from "../flowbite";
 import ShareMods from "./ShareMods";
 import { useSelector } from "react-redux";
 import { createSelector } from "@reduxjs/toolkit";
@@ -79,6 +81,8 @@ const OptionsDrawer = memo(() => {
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
+  const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
+  const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
   const isDev = useAppSelector((state) => state.app.isDev);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const dataModsToEnableByName = useAppSelector((state) => state.app.dataModsToEnableByName);
@@ -88,6 +92,7 @@ const OptionsDrawer = memo(() => {
   const currentMods = useAppSelector((state) => state.app.currentPreset.mods);
 
   const localized = useLocalizations();
+  const localizedFallbacks = localized as Record<string, string>;
 
   const enabledModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
@@ -128,6 +133,12 @@ const OptionsDrawer = memo(() => {
   );
 
   const [areOptionsOpen, setAreOptionsOpen] = useState(false);
+
+  const treeDisplayModeOptions: { value: TreeDisplayMode; label: string }[] = [
+    { value: "off", label: localizedFallbacks.off || "Off" },
+    { value: "tab", label: localizedFallbacks.tab || "Tab" },
+    { value: "window", label: localizedFallbacks.window || "Window" },
+  ];
 
   const forceDownloadMods = useCallback((contentModsWorshopIds: string[]) => {
     window.api?.forceDownloadMods(contentModsWorshopIds);
@@ -730,6 +741,53 @@ const OptionsDrawer = memo(() => {
                 )}
               </>
             )}
+
+            <div className="mt-4 max-w-md">
+              <div className="block text-sm font-medium text-gray-900 dark:text-gray-100">
+                {localizedFallbacks.treeDisplayModes || "Tree Display"}
+              </div>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                {localizedFallbacks.treeDisplayModesDescription ||
+                  "Choose whether Skill Trees and Tech Trees appear as tabs, standalone windows, or not at all."}
+              </p>
+              <div className="mt-3 grid gap-3">
+                <label className="block text-sm text-gray-900 dark:text-gray-100" htmlFor="skillTreesDisplayMode">
+                  {localized.skillsViewer || "Skill Trees"}
+                </label>
+                <FormSelect
+                  id="skillTreesDisplayMode"
+                  value={skillTreesDisplayMode}
+                  onChange={(event) =>
+                    dispatch(setSkillTreesDisplayMode(event.target.value as TreeDisplayMode))
+                  }
+                >
+                  {treeDisplayModeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </FormSelect>
+                <label
+                  className="block text-sm text-gray-900 dark:text-gray-100"
+                  htmlFor="technologyTreesDisplayMode"
+                >
+                  {localized.techTreesTab || "Tech Trees"}
+                </label>
+                <FormSelect
+                  id="technologyTreesDisplayMode"
+                  value={technologyTreesDisplayMode}
+                  onChange={(event) =>
+                    dispatch(setTechnologyTreesDisplayMode(event.target.value as TreeDisplayMode))
+                  }
+                >
+                  {treeDisplayModeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </FormSelect>
+              </div>
+            </div>
 
             <h6 className="mt-10">{localized.compatCheckVanillaPacks}</h6>
             <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">

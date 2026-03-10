@@ -85,6 +85,8 @@ const initialState = {
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,
   isCheckingSkillRequirements: true,
+  skillTreesDisplayMode: "window",
+  technologyTreesDisplayMode: "window",
   currentLocalization: {},
   userFlowOptions: {},
 

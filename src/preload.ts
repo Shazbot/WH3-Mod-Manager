@@ -74,8 +74,11 @@ const api = {
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
   viewerIsReady: () => ipcRenderer.send("viewerIsReady"),
   skillsAreReady: () => ipcRenderer.send("skillsAreReady"),
+  techTreesAreReady: () => ipcRenderer.send("techTreesAreReady"),
   requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
   requestOpenSkillsWindow: (mods: Mod[]) => ipcRenderer.send("requestOpenSkillsWindow", mods),
+  requestSkillsData: (mods: Mod[]) => ipcRenderer.send("requestSkillsData", mods),
+  requestOpenTechTreesWindow: () => ipcRenderer.send("requestOpenTechTreesWindow"),
   setSkillsViewOptions: (skillsViewOptions: SkillsViewOptions) =>
     ipcRenderer.send("setSkillsViewOptions", skillsViewOptions),
   openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
@@ -481,6 +484,10 @@ const api = {
   syncIsFeaturesForModdersEnabled: (isFeaturesForModdersEnabled: boolean) =>
     ipcRenderer.send("syncIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled),
   syncModdersPrefix: (moddersPrefix: string) => ipcRenderer.send("syncModdersPrefix", moddersPrefix),
+  syncTreeDisplayModes: (treeDisplayModes: {
+    skillTreesDisplayMode: TreeDisplayMode;
+    technologyTreesDisplayMode: TreeDisplayMode;
+  }) => ipcRenderer.send("syncTreeDisplayModes", treeDisplayModes),
 
   setIsFeaturesForModdersEnabled: (callback: (event: any, isFeaturesForModdersEnabled: boolean) => void) =>
     ipcRenderer.on("setIsFeaturesForModdersEnabled", callback),

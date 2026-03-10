@@ -4,6 +4,7 @@ import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { Resizable } from "re-resizable";
 import { Modal } from "../../flowbite/components/Modal/index";
 import TechTreeCanvas from "./TechTreeCanvas";
+import { useAppSelector } from "../../hooks";
 
 let nextTabId = 1;
 
@@ -16,6 +17,7 @@ type TechTab = {
 };
 
 const TechTreesTab = memo(() => {
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const pendingSingleClickTimeoutRef = useRef<number | null>(null);
   const [isLoadingSets, setIsLoadingSets] = useState(false);
   const [nodeSets, setNodeSets] = useState<TechnologyNodeSetSummary[]>([]);
@@ -199,7 +201,7 @@ const TechTreesTab = memo(() => {
             <button
               type="button"
               onClick={openNewNodeSetModal}
-              disabled={isLoadingSets || nodeSets.length < 1}
+              disabled={!isFeaturesForModdersEnabled || isLoadingSets || nodeSets.length < 1}
               className="rounded bg-blue-700 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               New

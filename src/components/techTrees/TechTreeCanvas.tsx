@@ -187,6 +187,8 @@ const buildBlankTechnologyTree = (
 
 const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTreeCanvasProps) => {
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const canEditTechnologyTrees = isFeaturesForModdersEnabled;
   const isBlankTree = isBlank;
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [technologyTree, setTechnologyTree] = useState<TechnologyTreePayload | undefined>(undefined);
@@ -289,7 +291,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
         }
         setSelectedUiTab("all");
         setSelectedScopeKey("");
-        setIsEditMode(isBlankTree);
+        setIsEditMode(isBlankTree && canEditTechnologyTrees);
         setChangedNodePositions({});
         setChangedLinks({});
         setHiddenOverrides({});
@@ -313,7 +315,18 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
       }
     };
     loadTree();
-  }, [isBlankTree, setKey, templateSetKey]);
+  }, [canEditTechnologyTrees, isBlankTree, setKey, templateSetKey]);
+
+  useEffect(() => {
+    if (canEditTechnologyTrees) return;
+    setIsEditMode(false);
+    setIsRequirementsMode(false);
+    setContextMenu(null);
+    setAddNodeTarget(null);
+    setEditNodeTarget(null);
+    setEditLinkTarget(null);
+    setIsSaveModalOpen(false);
+  }, [canEditTechnologyTrees]);
 
   useEffect(() => {
     if (!notification) return;
@@ -1805,23 +1818,27 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             </label>
           </Dropdown.Item>
         </Dropdown>
-        <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={isEditMode}
-            onChange={(event) => {
-              const checked = event.target.checked;
-              setIsEditMode(checked);
-              if (!checked) {
-                setIsRequirementsMode(false);
-                setContextMenu(null);
-                setEditLinkTarget(null);
-                setIsSaveModalOpen(false);
-              }
-            }}
-          />
-          Edit mode
-        </label>
+        {canEditTechnologyTrees ? (
+          <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isEditMode}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setIsEditMode(checked);
+                if (!checked) {
+                  setIsRequirementsMode(false);
+                  setContextMenu(null);
+                  setEditLinkTarget(null);
+                  setIsSaveModalOpen(false);
+                }
+              }}
+            />
+            Edit mode
+          </label>
+        ) : (
+          <span className="text-xs text-gray-400 select-none">View only</span>
+        )}
         {isEditMode && (
           <>
             <button

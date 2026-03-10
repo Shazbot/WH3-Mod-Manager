@@ -119,6 +119,8 @@ declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
 declare const SKILLS_WEBPACK_ENTRY: string;
 declare const SKILLS_PRELOAD_WEBPACK_ENTRY: string;
+declare const TECH_TREES_WEBPACK_ENTRY: string;
+declare const TECH_TREES_PRELOAD_WEBPACK_ENTRY: string;
 const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
 const appendScopedTechNodeHash = (nodeKey: string, campaignKey?: string, factionKey?: string) => {
   const scopeSource = `${campaignKey || ""}${factionKey || ""}`.trim();
@@ -160,6 +162,7 @@ export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
   skillsWindow: undefined as BrowserWindow | undefined,
+  techTreesWindow: undefined as BrowserWindow | undefined,
 };
 type VisualsSession = {
   sessionId: string;
@@ -1588,7 +1591,10 @@ export const registerIpcMainListeners = (
       ),
     };
     if (appData.queuedSkillsData) {
-      sendQueuedDataToSkills();
+      pushSkillsDataToMainWindow();
+      if (windows.skillsWindow) {
+        sendQueuedDataToSkills();
+      }
     }
   };
   const getSkillsForSubtype = async (subtype: string, subtypeIndex: number) => {
@@ -1740,7 +1746,10 @@ export const registerIpcMainListeners = (
       ),
     };
     if (appData.queuedSkillsData) {
-      sendQueuedDataToSkills();
+      pushSkillsDataToMainWindow();
+      if (windows.skillsWindow) {
+        sendQueuedDataToSkills();
+      }
     }
   };
   const getTableRowData = (
@@ -2756,6 +2765,9 @@ export const registerIpcMainListeners = (
         appState.isShowingHiddenModifiersInsideSkills ?? appData.isShowingHiddenModifiersInsideSkills;
       appData.isCheckingSkillRequirements =
         appState.isCheckingSkillRequirements ?? appData.isCheckingSkillRequirements;
+      appData.skillTreesDisplayMode = appState.skillTreesDisplayMode ?? appData.skillTreesDisplayMode;
+      appData.technologyTreesDisplayMode =
+        appState.technologyTreesDisplayMode ?? appData.technologyTreesDisplayMode;
       return appState;
     } finally {
       appData.hasReadConfig = true;
@@ -4420,6 +4432,8 @@ export const registerIpcMainListeners = (
     appData.allMods = data.allMods;
     appData.isCompatCheckingVanillaPacks = data.isCompatCheckingVanillaPacks;
     appData.isChangingGameProcessPriority = data.isChangingGameProcessPriority;
+    appData.skillTreesDisplayMode = data.skillTreesDisplayMode;
+    appData.technologyTreesDisplayMode = data.technologyTreesDisplayMode;
     const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
       enabledMods.find((mod) => mod.name === iterMod.name),
     );
@@ -6344,6 +6358,43 @@ export const registerIpcMainListeners = (
       appData.areSkillsReady = false;
     });
   };
+  const createTechTreesWindow = () => {
+    if (windows.techTreesWindow) return;
+    const techTreesWindowState = windowStateKeeper({
+      file: "tech_trees_window.json",
+      defaultWidth: 1280,
+      defaultHeight: 900,
+    });
+    windows.techTreesWindow = new BrowserWindow({
+      x: techTreesWindowState.x,
+      y: techTreesWindowState.y,
+      width: techTreesWindowState.width,
+      height: techTreesWindowState.height,
+      autoHideMenuBar: true,
+      titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: "#374151",
+        symbolColor: "#9ca3af",
+        height: 28,
+      },
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        preload: TECH_TREES_PRELOAD_WEBPACK_ENTRY,
+        spellcheck: false,
+      },
+      title: "WH3 Mod Manager Tech Trees",
+      icon: "./assets/modmanager.ico",
+    });
+    techTreesWindowState.manage(windows.techTreesWindow);
+    windows.techTreesWindow.loadURL(TECH_TREES_WEBPACK_ENTRY);
+    windows.techTreesWindow.on("page-title-updated", (evt) => {
+      evt.preventDefault();
+    });
+    windows.techTreesWindow.on("closed", () => {
+      windows.techTreesWindow = undefined;
+    });
+  };
   ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
       const baseVanillaPackName = vanillaPackData.name;
@@ -6379,12 +6430,27 @@ export const registerIpcMainListeners = (
       createSkillsWindow();
     }
   });
+  ipcMain.on("requestSkillsData", (event, mods: Mod[]) => {
+    console.log("ON requestSkillsData");
+    appData.enabledMods = mods.filter((mod) => mod.isEnabled);
+    getSkillsData(mods.filter((mod) => mod.isEnabled));
+  });
+  ipcMain.on("requestOpenTechTreesWindow", () => {
+    console.log("ON requestOpenTechTreesWindow");
+    if (appData.currentGame !== "wh3") return;
+    if (windows.techTreesWindow) {
+      windows.techTreesWindow.focus();
+    } else {
+      createTechTreesWindow();
+    }
+  });
   ipcMain.on("setSkillsViewOptions", (event, skillsViewOptions: SkillsViewOptions) => {
     appData.isShowingSkillNodeSetNames = skillsViewOptions.isShowingSkillNodeSetNames;
     appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
     appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
     appData.isCheckingSkillRequirements = skillsViewOptions.isCheckingSkillRequirements;
     windows.mainWindow?.webContents.send("setSkillsViewOptions", skillsViewOptions);
+    windows.skillsWindow?.webContents.send("setSkillsViewOptions", skillsViewOptions);
   });
   ipcMain.on("requestLanguageChange", async (event, language: string) => {
     console.log("requestLanguageChange:", language);
@@ -6393,6 +6459,7 @@ export const registerIpcMainListeners = (
     windows.mainWindow?.webContents.send("setCurrentLanguage", language);
     windows.skillsWindow?.webContents.send("setCurrentLanguage", language);
     windows.viewerWindow?.webContents.send("setCurrentLanguage", language);
+    windows.techTreesWindow?.webContents.send("setCurrentLanguage", language);
   });
   ipcMain.on("requestGameChange", async (event, game: SupportedGames, appState: AppState) => {
     // console.log("game before change is", appData.currentGame, "to", game);
@@ -6680,6 +6747,10 @@ export const registerIpcMainListeners = (
     windows.skillsWindow?.focus();
     appData.queuedSkillsData = undefined;
   };
+  const pushSkillsDataToMainWindow = () => {
+    if (!appData.queuedSkillsData) return;
+    windows.mainWindow?.webContents.send("setSkillsData", appData.queuedSkillsData);
+  };
   ipcMain.on("skillsAreReady", () => {
     console.log("SKILLS ARE NOW READY");
     appData.areSkillsReady = true;
@@ -6705,6 +6776,21 @@ export const registerIpcMainListeners = (
     if (appData.queuedSkillsData) {
       sendQueuedDataToSkills();
     }
+  });
+  ipcMain.on("techTreesAreReady", () => {
+    console.log("TECH TREES ARE NOW READY");
+    if (isDev) {
+      setTimeout(() => {
+        windows.techTreesWindow?.webContents.openDevTools({ mode: "right" });
+      }, 1000);
+    }
+    windows.techTreesWindow?.webContents.send("setStartArgs", appData.startArgs);
+    windows.techTreesWindow?.webContents.send("setCurrentLanguage", appData.currentLanguage);
+    windows.techTreesWindow?.webContents.send(
+      "setIsFeaturesForModdersEnabled",
+      appData.isFeaturesForModdersEnabled,
+    );
+    windows.techTreesWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
   });
   ipcMain.on("openFolderInExplorer", (event, path: string) => {
     shell.showItemInFolder(path);
@@ -7913,10 +7999,32 @@ export const registerIpcMainListeners = (
     // Send to viewer window
     windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
     windows.skillsWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
+    windows.techTreesWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
   });
   ipcMain.on("syncModdersPrefix", (event, moddersPrefix: string) => {
     appData.moddersPrefix = moddersPrefix;
     windows.viewerWindow?.webContents.send("setModdersPrefix", moddersPrefix);
     windows.skillsWindow?.webContents.send("setModdersPrefix", moddersPrefix);
+    windows.techTreesWindow?.webContents.send("setModdersPrefix", moddersPrefix);
   });
+  ipcMain.on(
+    "syncTreeDisplayModes",
+    (
+      event,
+      treeDisplayModes: {
+        skillTreesDisplayMode: TreeDisplayMode;
+        technologyTreesDisplayMode: TreeDisplayMode;
+      },
+    ) => {
+      appData.skillTreesDisplayMode = treeDisplayModes.skillTreesDisplayMode;
+      appData.technologyTreesDisplayMode = treeDisplayModes.technologyTreesDisplayMode;
+
+      if (treeDisplayModes.skillTreesDisplayMode !== "window" && windows.skillsWindow) {
+        windows.skillsWindow.close();
+      }
+      if (treeDisplayModes.technologyTreesDisplayMode !== "window" && windows.techTreesWindow) {
+        windows.techTreesWindow.close();
+      }
+    },
+  );
 };

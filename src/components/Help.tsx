@@ -1,7 +1,7 @@
 import { Modal } from "../flowbite";
 import React, { memo, useContext } from "react";
 import localizationContext from "../localizationContext";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../components/ui/accordion";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setIsHelpOpen } from "../appSlice";
 

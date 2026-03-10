@@ -17,6 +17,34 @@ import { SupportedGames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
 
+const isMainWindowTabAvailable = (state: AppState, tab: MainWindowTab) => {
+  switch (tab) {
+    case "mods":
+    case "enabledMods":
+    case "categories":
+    case "presets":
+      return true;
+    case "skills":
+      return state.currentGame === "wh3" && state.skillTreesDisplayMode === "tab";
+    case "visuals":
+      return state.isFeaturesForModdersEnabled && state.isDev;
+    case "techTrees":
+      return state.currentGame === "wh3" && state.technologyTreesDisplayMode === "tab";
+    case "nodeEditor":
+      return state.isFeaturesForModdersEnabled;
+    case "twui":
+      return false;
+    default:
+      return false;
+  }
+};
+
+const ensureValidCurrentTab = (state: AppState) => {
+  if (!isMainWindowTabAvailable(state, state.currentTab)) {
+    state.currentTab = "mods";
+  }
+};
+
 const addCategoryByPayload = (state: AppState, payload: AddCategoryPayload) => {
   const { mods, category } = payload;
 
@@ -974,6 +1002,9 @@ const appSlice = createSlice({
         fromConfigAppState.isShowingHiddenModifiersInsideSkills ?? state.isShowingHiddenModifiersInsideSkills;
       state.isCheckingSkillRequirements =
         fromConfigAppState.isCheckingSkillRequirements ?? state.isCheckingSkillRequirements;
+      state.skillTreesDisplayMode = fromConfigAppState.skillTreesDisplayMode ?? state.skillTreesDisplayMode;
+      state.technologyTreesDisplayMode =
+        fromConfigAppState.technologyTreesDisplayMode ?? state.technologyTreesDisplayMode;
 
       const categoriesFromMods = new Set(state.currentPreset.mods.map((mod) => mod.categories ?? []).flat());
       if (fromConfigAppState.categories) {
@@ -996,6 +1027,8 @@ const appSlice = createSlice({
         if (fromConfigAppState.appFolderPaths.contentFolder)
           state.appFolderPaths.gamePath = fromConfigAppState.appFolderPaths.contentFolder;
       }
+
+      ensureValidCurrentTab(state);
     },
     addPreset: (state: AppState, action: PayloadAction<Preset>) => {
       const newPreset = action.payload;
@@ -1415,7 +1448,7 @@ const appSlice = createSlice({
     },
     setCurrentTab: (state: AppState, action: PayloadAction<MainWindowTab>) => {
       const tabType = action.payload;
-      state.currentTab = tabType;
+      state.currentTab = isMainWindowTabAvailable(state, tabType) ? tabType : "mods";
     },
     setDataModsToEnableByName: (state: AppState, action: PayloadAction<string[]>) => {
       state.dataModsToEnableByName = action.payload;
@@ -1508,6 +1541,14 @@ const appSlice = createSlice({
     },
     setIsCheckingSkillRequirements: (state: AppState, action: PayloadAction<boolean>) => {
       state.isCheckingSkillRequirements = action.payload;
+    },
+    setSkillTreesDisplayMode: (state: AppState, action: PayloadAction<TreeDisplayMode>) => {
+      state.skillTreesDisplayMode = action.payload;
+      ensureValidCurrentTab(state);
+    },
+    setTechnologyTreesDisplayMode: (state: AppState, action: PayloadAction<TreeDisplayMode>) => {
+      state.technologyTreesDisplayMode = action.payload;
+      ensureValidCurrentTab(state);
     },
     setSkillNodeLevel: (state: AppState, action: PayloadAction<{ skillNodeId: string; level: number }>) => {
       state.skillNodesToLevel[action.payload.skillNodeId] = action.payload.level;
@@ -1640,6 +1681,8 @@ export const {
   setIsShowingHiddenSkills,
   setIsShowingHiddenModifiersInsideSkills,
   setIsCheckingSkillRequirements,
+  setSkillTreesDisplayMode,
+  setTechnologyTreesDisplayMode,
   setUserFlowOptions,
 
   // for DB viewer

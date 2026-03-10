@@ -48,6 +48,7 @@ import {
   setPacksData,
   setPacksDataRead,
   setSaves,
+  setSkillsData,
   setStartArgs,
   setUnsavedPacksData,
   setWarhammer3Folder,
@@ -106,30 +107,97 @@ window.api?.enableModsByName((event, packNames: string[]) => {
   store.dispatch(enableModsByName(packNames));
 });
 
+window.api?.setSkillsData((event, skillsData: SkillsData) => {
+  store.dispatch(setSkillsData(skillsData));
+});
+
 const saveConfig = (appState: AppState) => {
   window.api?.saveConfig(appState);
   const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
   // don't do it if all are enabled, i.e. when user is resetting the enabled column
-  if (enabledMods.length != appState.currentPreset.mods.length) {
-    window.api?.readMods(enabledMods, true, true, hash(appState.customizableMods));
+  const customizableModsHash = hash(appState.customizableMods);
+  const readModsSignature = hash({
+    currentGame: appState.currentGame,
+    enabledModPaths: enabledMods.map((mod) => mod.path),
+    customizableModsHash,
+  });
+
+  if (enabledMods.length != appState.currentPreset.mods.length && lastReadModsSignature !== readModsSignature) {
+    lastReadModsSignature = readModsSignature;
+    window.api?.readMods(enabledMods, true, true, customizableModsHash);
   }
 };
 
 const saveConfigDebounced = debounce((appState: AppState) => {
   saveConfig(appState);
 }, 200);
+let lastReadModsSignature: string | undefined;
+
+let lastSentTreeDisplayModes:
+  | {
+      skillTreesDisplayMode: TreeDisplayMode;
+      technologyTreesDisplayMode: TreeDisplayMode;
+    }
+  | undefined;
+let hasReceivedSkillsViewOptions = false;
+let lastSentSkillsViewOptions: SkillsViewOptions | undefined;
+
+const syncTreeDisplayModes = (appState: AppState) => {
+  const nextTreeDisplayModes = {
+    skillTreesDisplayMode: appState.skillTreesDisplayMode,
+    technologyTreesDisplayMode: appState.technologyTreesDisplayMode,
+  };
+
+  if (
+    lastSentTreeDisplayModes?.skillTreesDisplayMode === nextTreeDisplayModes.skillTreesDisplayMode &&
+    lastSentTreeDisplayModes?.technologyTreesDisplayMode === nextTreeDisplayModes.technologyTreesDisplayMode
+  ) {
+    return;
+  }
+
+  lastSentTreeDisplayModes = nextTreeDisplayModes;
+  window.api?.syncTreeDisplayModes(nextTreeDisplayModes);
+};
+
+const syncSkillsViewOptions = (appState: AppState) => {
+  if (!hasReceivedSkillsViewOptions) return;
+
+  const nextSkillsViewOptions: SkillsViewOptions = {
+    isShowingSkillNodeSetNames: appState.isShowingSkillNodeSetNames,
+    isShowingHiddenSkills: appState.isShowingHiddenSkills,
+    isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
+    isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
+  };
+
+  if (
+    lastSentSkillsViewOptions?.isShowingSkillNodeSetNames === nextSkillsViewOptions.isShowingSkillNodeSetNames &&
+    lastSentSkillsViewOptions?.isShowingHiddenSkills === nextSkillsViewOptions.isShowingHiddenSkills &&
+    lastSentSkillsViewOptions?.isShowingHiddenModifiersInsideSkills ===
+      nextSkillsViewOptions.isShowingHiddenModifiersInsideSkills &&
+    lastSentSkillsViewOptions?.isCheckingSkillRequirements === nextSkillsViewOptions.isCheckingSkillRequirements
+  ) {
+    return;
+  }
+
+  lastSentSkillsViewOptions = nextSkillsViewOptions;
+  window.api?.setSkillsViewOptions(nextSkillsViewOptions);
+};
 
 let isSubscribedToStoreChanges = false;
 const subscribeToStoreChanges = () => {
   if (isSubscribedToStoreChanges) return;
   isSubscribedToStoreChanges = true;
   store.subscribe(() => {
-    saveConfigDebounced(store.getState().app);
+    const appState = store.getState().app;
+    saveConfigDebounced(appState);
+    syncTreeDisplayModes(appState);
+    syncSkillsViewOptions(appState);
   });
 };
 
 window.api?.fromAppConfig((event, appState: AppStateToRead) => {
   store.dispatch(setFromConfig(appState));
+  syncTreeDisplayModes(store.getState().app);
   subscribeToStoreChanges();
 });
 
@@ -146,6 +214,7 @@ window.api?.failedReadingConfig(() => {
     store.dispatch(setIsOnboardingToRun(true));
   }
   store.dispatch(setHasConfigBeenRead(true));
+  syncTreeDisplayModes(store.getState().app);
   subscribeToStoreChanges();
 });
 
@@ -243,6 +312,8 @@ window.api?.setCurrentLanguage((event, language: string) => {
 });
 
 window.api?.onSkillsViewOptions((event, skillsViewOptions: SkillsViewOptions) => {
+  hasReceivedSkillsViewOptions = true;
+  lastSentSkillsViewOptions = skillsViewOptions;
   store.dispatch(setIsShowingSkillNodeSetNames(skillsViewOptions.isShowingSkillNodeSetNames));
   store.dispatch(setIsShowingHiddenSkills(skillsViewOptions.isShowingHiddenSkills));
   store.dispatch(
