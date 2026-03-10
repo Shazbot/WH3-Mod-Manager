@@ -7,6 +7,7 @@
     "noImplicitAny": true,
     "sourceMap": true,
     "target": "es2021",
+    "lib": ["dom", "dom.iterable", "es2023"],
     "baseUrl": ".",
     "outDir": "dist",
     "moduleResolution": "node",
