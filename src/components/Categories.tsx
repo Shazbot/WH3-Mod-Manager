@@ -1216,8 +1216,8 @@ const Categories = memo(() => {
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             rowSelection={rowSelection}
-            rowHeight={36}
-            headerHeight={36}
+            rowHeight={35}
+            headerHeight={35}
             animateRows={false}
             suppressRowHoverHighlight={true}
             suppressContextMenu={true}

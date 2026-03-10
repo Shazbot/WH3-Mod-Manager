@@ -479,3 +479,7 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 .hide-placeholders .react-flow__node-addPlaceholder {
   display: none !important;
 }
+
+.ag-cell {
+  font-size: 1.1rem;
+}
