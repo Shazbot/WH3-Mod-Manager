@@ -202,9 +202,14 @@ const TechNode = memo(({ data, selected }: NodeProps) => {
         >
           <div className="leading-tight">{typedData.title}</div>
           {typedData.showKeys && (
-            <div className="mt-0.5 text-[10px] opacity-70 whitespace-nowrap overflow-visible">
-              {typedData.technologyKey}
-            </div>
+            <>
+              <div className="mt-0.5 text-[10px] opacity-70 whitespace-nowrap overflow-visible">
+                {typedData.technologyKey}
+              </div>
+              <div className="text-[10px] opacity-60 whitespace-nowrap overflow-visible">
+                node:{typedData.nodeKey}
+              </div>
+            </>
           )}
         </div>
       </div>

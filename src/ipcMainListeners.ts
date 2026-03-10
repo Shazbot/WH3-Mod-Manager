@@ -140,6 +140,16 @@ const appendScopedSkillNodeHash = (
   return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
 };
 const buildDefaultSkillSetSuffix = (subtype: string) => `skill_set_${subtype}`;
+const buildSkillsDataSignature = (mods: Mod[], currentGame: SupportedGames) =>
+  JSON.stringify({
+    currentGame,
+    mods: sortByNameAndLoadOrder(mods).map((mod) => ({
+      path: mod.path,
+      loadOrder: mod.loadOrder ?? null,
+      lastChangedLocal: mod.lastChangedLocal ?? null,
+      lastChanged: mod.lastChanged ?? null,
+    })),
+  });
 const resolveSkillGenerationTemplate = (
   template: string,
   variables: { prefix: string; setSuffix: string; timestamp: string; row: string; column: string },
@@ -365,13 +375,15 @@ const appendCollisions = async (newPack: Pack) => {
   }
 };
 const matchVanillaDBFiles = /^db\\.*\\data__/;
-const appendPacksData = (newPack: Pack, mod?: Mod) => {
+const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
   const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
   console.log("appendPacksData: appending", newPack.name);
   console.log("appendPacksData: is existingPack:", !!existingPack);
   if (!existingPack) {
     appData.packsData.push(newPack);
-    windows.mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
+    if (emitToMainWindow) {
+      windows.mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
+    }
     const overwrittenFileNames = newPack.packedFiles
       .map((packedFile) => packedFile.name)
       .filter(
@@ -388,10 +400,12 @@ const appendPacksData = (newPack: Pack, mod?: Mod) => {
       });
     if (overwrittenFileNames.length > 0) {
       appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
-      windows.mainWindow?.webContents.send(
-        "setOverwrittenDataPackedFiles",
-        appData.overwrittenDataPackedFiles,
-      );
+      if (emitToMainWindow) {
+        windows.mainWindow?.webContents.send(
+          "setOverwrittenDataPackedFiles",
+          appData.overwrittenDataPackedFiles,
+        );
+      }
     }
     const outdatedPackFiles = new Set<string>();
     if (appData.currentGame == "wh3" && mod && (mod.lastChangedLocal || mod.lastChanged)) {
@@ -425,7 +439,9 @@ const appendPacksData = (newPack: Pack, mod?: Mod) => {
     console.log("outdatedPackFiles", outdatedPackFiles);
     if (outdatedPackFiles.size > 0) {
       appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
-      windows.mainWindow?.webContents.send("setOutdatedPackFiles", appData.outdatedPackFiles);
+      if (emitToMainWindow) {
+        windows.mainWindow?.webContents.send("setOutdatedPackFiles", appData.outdatedPackFiles);
+      }
     }
   } else {
     console.log("existing pack for", newPack.name, "found");
@@ -510,6 +526,7 @@ export const readModsByPath = async (
   modPaths: string[],
   packReadingOptions: PackReadingOptions,
   skipCollisionCheck = true,
+  emitToMainWindow = true,
 ) => {
   console.log("readModsByPath:", modPaths, "packReadingOptions:", packReadingOptions);
   // console.log("readModsByPath skipParsingTables:", skipParsingTables);
@@ -531,12 +548,16 @@ export const readModsByPath = async (
     }
     // console.log("READING ", modPath, readLocs);
     appData.currentlyReadingModPaths.push(modPath);
-    windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
+    if (emitToMainWindow) {
+      windows.mainWindow?.webContents.send("setCurrentlyReadingMod", modPath);
+    }
     const newPack = await readPack(modPath, packReadingOptions);
-    windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
+    if (emitToMainWindow) {
+      windows.mainWindow?.webContents.send("setLastModThatWasRead", modPath);
+    }
     appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != modPath);
     // if (appData.packsData.every((pack) => pack.path != modPath)) {
-    appendPacksData(newPack);
+    appendPacksData(newPack, undefined, emitToMainWindow);
     // }
     if (!skipCollisionCheck) {
       appendCollisions(newPack);
@@ -564,11 +585,44 @@ export const registerIpcMainListeners = (
     mainWindow?.webContents.send("setModData", [...tempModDatas]);
     tempModDatas.splice(0, tempModDatas.length);
   }, 200);
+  const getCachedSkillsSelection = () => {
+    if (!appData.skillsData) return undefined;
+
+    const currentSubtype = appData.lastSkillsSelection?.currentSubtype;
+    const currentSubtypeIndex = appData.lastSkillsSelection?.currentSubtypeIndex ?? 0;
+    if (
+      currentSubtype &&
+      appData.skillsData.subtypesToSet[currentSubtype] &&
+      appData.skillsData.subtypesToSet[currentSubtype][currentSubtypeIndex]
+    ) {
+      return {
+        currentSubtype,
+        currentSubtypeIndex,
+      };
+    }
+
+    const defaultSubtype = getDefaultSkillsSubtype(appData.skillsData.subtypesToSet);
+    if (!defaultSubtype) return undefined;
+
+    return {
+      currentSubtype: defaultSubtype,
+      currentSubtypeIndex: 0,
+    };
+  };
   const getSkillsData = async (mods: Mod[]) => {
     console.log(
       "getSkillsData:",
       mods.map((mod) => mod.name),
     );
+    const skillsDataSignature = buildSkillsDataSignature(mods, appData.currentGame);
+    if (appData.skillsData && appData.lastSkillsDataSignature === skillsDataSignature) {
+      console.log("getSkillsData: using in-memory cached skills data");
+      const cachedSelection = getCachedSkillsSelection();
+      if (cachedSelection) {
+        await getSkillsForSubtype(cachedSelection.currentSubtype, cachedSelection.currentSubtypeIndex);
+      }
+      return;
+    }
     const tablesToRead = resolveTable("character_skill_node_set_items_tables").map(
       (table) => `db\\${table}\\`,
     );
@@ -650,9 +704,9 @@ export const registerIpcMainListeners = (
     if (cachedVanillaSkillsCore) {
       console.log("getSkillsData: using cached vanilla skills core data");
       if (mods.length > 0) {
-        await readMods(mods, false, true, false, true, tablesToRead);
+        await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
       }
-      await readModsByPath(vanillaPacksToRead, { skipParsingTables: true, readLocs: true }, true);
+      await readModsByPath(vanillaPacksToRead, { skipParsingTables: true, readLocs: true }, true, false);
       const vanillaPacks = appData.packsData.filter((packsData) =>
         vanillaPacksToRead.includes(packsData.path),
       );
@@ -683,17 +737,19 @@ export const registerIpcMainListeners = (
         icons,
         skillsDataPackPaths: vanillaPacks.concat(enabledModPacks).map((pack) => pack.path),
       };
+      appData.lastSkillsDataSignature = skillsDataSignature;
       const defaultSubtype = getDefaultSkillsSubtype(mergedSkillsCore.subtypesToSet);
       if (defaultSubtype) {
         await getSkillsForSubtype(defaultSubtype, 0);
       }
       return;
     }
-    await readMods(mods, false, true, false, true, tablesToRead);
+    await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
     await readModsByPath(
       vanillaPacksToRead,
       { skipParsingTables: false, readLocs: true, tablesToRead },
       true,
+      false,
     );
     const unsortedPacksTableData = getPacksTableData(
       appData.packsData.filter(
@@ -1590,6 +1646,7 @@ export const registerIpcMainListeners = (
         {} as Record<string, string>,
       ),
     };
+    appData.lastSkillsDataSignature = skillsDataSignature;
     if (appData.queuedSkillsData) {
       pushSkillsDataToMainWindow();
       if (windows.skillsWindow) {
@@ -1604,6 +1661,10 @@ export const registerIpcMainListeners = (
       getSkillsData(appData.enabledMods);
       return;
     }
+    appData.lastSkillsSelection = {
+      currentSubtype: subtype,
+      currentSubtypeIndex: subtypeIndex,
+    };
     const setKF = cachedSkillsData.subtypesToSet[subtype];
     console.log("sets for subtype:", setKF);
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
@@ -1746,7 +1807,9 @@ export const registerIpcMainListeners = (
       ),
     };
     if (appData.queuedSkillsData) {
-      pushSkillsDataToMainWindow();
+      if (appData.skillTreesDisplayMode === "tab") {
+        pushSkillsDataToMainWindow();
+      }
       if (windows.skillsWindow) {
         sendQueuedDataToSkills();
       }
@@ -6420,15 +6483,27 @@ export const registerIpcMainListeners = (
       viewerWindow.focus();
     }
   });
-  ipcMain.on("requestOpenSkillsWindow", (event, mods: Mod[]) => {
+  ipcMain.on("requestOpenSkillsWindow", async (event, mods: Mod[]) => {
     console.log("ON requestOpenSkillsWindow");
-    appData.enabledMods = mods.filter((mod) => mod.isEnabled);
-    getSkillsData(mods.filter((mod) => mod.isEnabled));
+    const enabledMods = mods.filter((mod) => mod.isEnabled);
+    appData.enabledMods = enabledMods;
     if (windows.skillsWindow) {
       windows.skillsWindow.focus();
-    } else {
-      createSkillsWindow();
+      return;
     }
+
+    const skillsDataSignature = buildSkillsDataSignature(enabledMods, appData.currentGame);
+    if (appData.skillsData && appData.lastSkillsDataSignature === skillsDataSignature) {
+      const cachedSelection = getCachedSkillsSelection();
+      if (cachedSelection) {
+        await getSkillsForSubtype(cachedSelection.currentSubtype, cachedSelection.currentSubtypeIndex);
+      }
+      createSkillsWindow();
+      return;
+    }
+
+    getSkillsData(enabledMods);
+    createSkillsWindow();
   });
   ipcMain.on("requestSkillsData", (event, mods: Mod[]) => {
     console.log("ON requestSkillsData");
@@ -6607,6 +6682,7 @@ export const registerIpcMainListeners = (
     readLocs = false,
     tablesToRead?: string[],
     filesToRead?: string[],
+    emitToMainWindow = true,
   ) => {
     if (!skipParsingTables) {
       appData.packsData = appData.packsData.filter((pack) => !mods.some((mod) => mod.path == pack.path));
@@ -6618,7 +6694,7 @@ export const registerIpcMainListeners = (
       ) {
         console.log("READING " + mod.name);
         appData.currentlyReadingModPaths.push(mod.path);
-        if (!skipParsingTables) mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
+        if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
         const newPack = await readPack(mod.path, {
           skipParsingTables,
           readScripts,
@@ -6626,12 +6702,12 @@ export const registerIpcMainListeners = (
           filesToRead,
           readLocs,
         });
-        if (!skipParsingTables) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
+        if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
         appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
           (path) => path != mod.path,
         );
         if (appData.packsData.every((pack) => pack.path != mod.path)) {
-          appendPacksData(newPack, mod);
+          appendPacksData(newPack, mod, emitToMainWindow);
         }
         if (!skipCollisionCheck) {
           appendCollisions(newPack);

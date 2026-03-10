@@ -190,6 +190,11 @@ interface AppData {
   areSkillsReady: boolean;
   queuedViewerData: (PackViewData | undefined)[];
   queuedSkillsData: SkillsData | undefined;
+  lastSkillsSelection?: {
+    currentSubtype: string;
+    currentSubtypeIndex: number;
+  };
+  lastSkillsDataSignature?: string;
   isChangingGameProcessPriority: boolean;
   currentLanguage?: SupportedLanguage;
   lastGetCustomizableMods?: string[];
@@ -254,6 +259,8 @@ const appData = {
   areSkillsReady: false,
   queuedViewerData: [],
   queuedSkillsData: undefined,
+  lastSkillsSelection: undefined,
+  lastSkillsDataSignature: undefined,
   isChangingGameProcessPriority: false,
   customizableMods: {},
   packMetaData: {},

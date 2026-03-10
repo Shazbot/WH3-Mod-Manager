@@ -27,13 +27,9 @@ import {
   setFromConfig,
   setHasConfigBeenRead,
   setIsAdmin,
-  setIsCheckingSkillRequirements,
   setIsDev,
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
-  setIsShowingHiddenModifiersInsideSkills,
-  setIsShowingHiddenSkills,
-  setIsShowingSkillNodeSetNames,
   setIsOnboardingToRun,
   setIsWH3Running,
   setLastModThatWasRead,
@@ -49,6 +45,7 @@ import {
   setPacksDataRead,
   setSaves,
   setSkillsData,
+  setSkillsViewOptions,
   setStartArgs,
   setUnsavedPacksData,
   setWarhammer3Folder,
@@ -108,6 +105,9 @@ window.api?.enableModsByName((event, packNames: string[]) => {
 });
 
 window.api?.setSkillsData((event, skillsData: SkillsData) => {
+  if (store.getState().app.skillTreesDisplayMode !== "tab") {
+    return;
+  }
   store.dispatch(setSkillsData(skillsData));
 });
 
@@ -314,12 +314,7 @@ window.api?.setCurrentLanguage((event, language: string) => {
 window.api?.onSkillsViewOptions((event, skillsViewOptions: SkillsViewOptions) => {
   hasReceivedSkillsViewOptions = true;
   lastSentSkillsViewOptions = skillsViewOptions;
-  store.dispatch(setIsShowingSkillNodeSetNames(skillsViewOptions.isShowingSkillNodeSetNames));
-  store.dispatch(setIsShowingHiddenSkills(skillsViewOptions.isShowingHiddenSkills));
-  store.dispatch(
-    setIsShowingHiddenModifiersInsideSkills(skillsViewOptions.isShowingHiddenModifiersInsideSkills),
-  );
-  store.dispatch(setIsCheckingSkillRequirements(skillsViewOptions.isCheckingSkillRequirements));
+  store.dispatch(setSkillsViewOptions(skillsViewOptions));
 });
 
 window.api?.setCurrentGame((event, game: SupportedGames, currentPreset: Preset, presets: Preset[]) => {

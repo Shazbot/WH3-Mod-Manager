@@ -490,8 +490,6 @@ const SkillsView = memo(
       nodeSizeDelta = 20;
       usingBiggerNodeHeight = true;
     }
-    console.log("usingBiggerNodeHeight:", usingBiggerNodeHeight);
-
     // console.log("with group:", skills.filter((skill) => skill.group).length);
     const groupedSkills = groupBy(
       skills.filter((skill) => skill.group),
@@ -508,13 +506,6 @@ const SkillsView = memo(
     const skillNodes: Nodes[] = [];
 
     if (!isEditMode) {
-      // LOG 1 (normal mode)
-      console.log(
-        "[SV] skillNodes render: isEditMode=false skills w/ group=",
-        skills.filter((s) => s.group).length,
-        "groupedSkills keys=",
-        Object.keys(groupedSkills),
-      );
       for (const [group, skills] of Object.entries(groupedSkills)) {
         let lowest = skills[0],
           highest = skills[0];
@@ -522,15 +513,6 @@ const SkillsView = memo(
           if (skills[i].y < lowest.y) lowest = skills[i];
           if (skills[i].y > highest.y) highest = skills[i];
         }
-        console.log(
-          "group",
-          group,
-          "size",
-          skills.length,
-          "skills:",
-          skills.map((skill) => skill.id),
-        );
-        console.log("[SV] pushing non-edit container:", `${group}_group`, "skills=", skills.length); // LOG 2
         skillNodes.push({
           id: `${group}_group`,
           data: {
@@ -590,22 +572,10 @@ const SkillsView = memo(
       for (const members of Object.values(editGroupMembers)) {
         members.sort((a, b) => a.y - b.y);
       }
-      // LOG 1 (edit mode)
-      console.log(
-        "[SV] skillNodes render: isEditMode=true skills w/ group=",
-        skills.filter((s) => s.group).length,
-        "groupedSkills keys=",
-        Object.keys(groupedSkills),
-        "editGroups=",
-        JSON.stringify(editGroups),
-        "editGroupMembers keys=",
-        Object.keys(editGroupMembers),
-      );
       for (const [groupId, members] of Object.entries(editGroupMembers)) {
         if (members.length < 2) continue;
         const lowest = members[0];
         const groupColor = groupIdToColor[groupId];
-        console.log("[SV] pushing edit container:", `${groupId}_group`, "members=", members.length); // LOG 3
         skillNodes.push({
           id: `${groupId}_group`,
           data: {
@@ -652,19 +622,6 @@ const SkillsView = memo(
           height: nodeHeight + 10,
         });
       }
-    }
-
-    // console.log("grouped skills:", JSON.stringify(groupedSkills));
-
-    // DEBUG
-    for (const group of Object.keys(groupedSkills)) {
-      console.log("GROUP:", group);
-
-      const skills = groupedSkills[group];
-      for (const skill of skills) {
-        console.log("SKILL:", skill.id, skill.origTier, skill.origIndent);
-      }
-      console.log("DONE WITH GROUP");
     }
 
     skills.forEach((skill, i) => {
@@ -811,11 +768,9 @@ const SkillsView = memo(
 
         skillNodesRow.sort((firstNode, secondNode) => firstNode.position.x - secondNode.position.x);
         let delta = 0;
-        console.log("row:", row);
         for (let i = 1; i < skillNodesRow.length; i++) {
           const node = skillNodesRow[i];
           const nodePrev = skillNodesRow[i - 1];
-          console.log("current node:", node.data.label);
           if (node.position.x != nodePrev.position.x) {
             if (node.data.isGrouping) {
               delta += 50;
@@ -834,20 +789,11 @@ const SkillsView = memo(
       }
     }
 
-    console.log("LINKED SKILLS:-----------------------");
-    for (const skill of skills) {
-      if (skill.linkedToNode) {
-        console.log("SKILL:", skill.id, skill.x, skill.y, skill.linkedToNode);
-      }
-    }
-    console.log("LINKED SKILLS DONE-------------------------");
-
     const initialEdges: SkillEdge[] = [];
     skills
       .filter((skill) => skill.linkedToNode)
       .forEach((skillWithLink) => {
         const linkedNode = skillWithLink.linkedToNode;
-        console.log("for", skillWithLink.nodeId, "searching for node", linkedNode);
         if (linkedNode) {
           const linkedSkillNode = skillNodes.find((skillNode) => skillNode.data.nodeId == `${linkedNode}`);
           const sourceSkillNode = skillNodes.find(
@@ -877,33 +823,9 @@ const SkillsView = memo(
 
     // console.log("initialEdges:", initialEdges);
 
-    console.log("nodeSizeDelta:", nodeSizeDelta);
-
     const [nodes, setNodes, onNodesChange] = useNodesState<Nodes>(
       initialSnapshot?.nodes ? deepClone(initialSnapshot.nodes) : deepClone(skillNodes),
     );
-
-    useEffect(() => {
-      const containers = nodes.filter((n) => n.className === "reactFlowGroup");
-      if (containers.length > 0) {
-        console.log(
-          "[SV] RF nodes containers:",
-          containers.map((c) => ({
-            id: c.id,
-            w: c.width,
-            h: c.height,
-            sw: (c.style as any)?.width,
-            sh: (c.style as any)?.height,
-            measured: c.measured,
-          })),
-        );
-        const children = nodes.filter((n) => n.parentId);
-        console.log(
-          "[SV] RF nodes children:",
-          children.map((c) => ({ id: c.id, parentId: c.parentId, pos: c.position })),
-        );
-      }
-    }, [nodes, isEditMode, editGroups]);
 
     const [edges, setEdges, onEdgesChange] = useEdgesState<(typeof initialEdges)[0]>(
       initialSnapshot?.edges ? (deepClone(initialSnapshot.edges) as SkillEdge[]) : deepClone(initialEdges),
@@ -3775,23 +3697,9 @@ const SkillsView = memo(
     // ReactFlow won't refresh when things like isShowingHiddenModifiersInsideSkills change, so force it.
     // In edit mode this is guarded to avoid wiping edit state on data changes (e.g. pack load).
     useEffect(() => {
-      console.log(
-        "[SV] RF-refresh effect fired: isEditMode=",
-        isEditMode, // LOG 4
-        "skipTransition=",
-        skipTransitionEffect.current,
-        "isRestoring=",
-        isRestoringSnapshot.current,
-      );
       if (isRestoringSnapshot.current) return;
       if (isEditMode && !skipTransitionEffect.current) return; // edit mode manages its own nodes
       isFirstEditModeTransition.current = true;
-      console.log(
-        "[SV] RF-refresh: setting nodes count=",
-        skillNodes.length,
-        "containers=",
-        skillNodes.filter((n) => (n.data as any)?.isGrouping).length,
-      ); // LOG 4b
       setNodes(deepClone(skillNodes));
       setEdges(deepClone(initialEdges));
     }, [
@@ -4044,27 +3952,11 @@ const SkillsView = memo(
             groupKeyToNodeIds[skill.group].push(skill.nodeId);
           }
 
-          console.log(
-            "[SV] isFirst: currentSkillsWithGroup=", // LOG 5
-            skillsData.currentSkills.filter((s) => s.group).length,
-            "groupKeyToNodeIds=",
-            JSON.stringify(groupKeyToNodeIds),
-          );
-
           for (const members of Object.values(groupKeyToNodeIds)) {
             if (members.length < 2) continue;
             const groupId = `editGroup_${groupCounter++}`;
             for (const nodeId of members) newGroupEntries[nodeId] = groupId;
           }
-
-          console.log(
-            "[SV] isFirst: newGroupEntries=",
-            JSON.stringify(newGroupEntries), // LOG 5b
-            "groupCounter=",
-            groupCounter,
-            "nextGroupId=",
-            nextGroupId,
-          );
 
           if (groupCounter > nextGroupId) {
             justAutoGrouped.current = true;
@@ -4084,16 +3976,6 @@ const SkillsView = memo(
 
     // Recalculate group containers and member positions from current nodes state
     useEffect(() => {
-      console.log(
-        "[SV] editGroups effect: isEditMode=",
-        isEditMode, // LOG 6
-        "skip=",
-        skipEditGroupsEffect.current,
-        "justAutoGrouped=",
-        justAutoGrouped.current,
-        "editGroups keys=",
-        Object.keys(editGroups).length,
-      );
       if (!isEditMode) return;
       if (skipEditGroupsEffect.current) {
         skipEditGroupsEffect.current = false;
@@ -4104,12 +3986,6 @@ const SkillsView = memo(
       // new editGroups in this render, so we can use it directly instead of the functional update.
       if (justAutoGrouped.current) {
         justAutoGrouped.current = false;
-        console.log(
-          "[SV] editGroups effect: justAutoGrouped path, skillNodes containers=",
-          skillNodes.filter((n) => (n.data as any)?.isGrouping).length,
-          "total=",
-          skillNodes.length,
-        ); // LOG 6b
         setNodes(deepClone(skillNodes));
       } else {
         setNodes((currentNodes) => {

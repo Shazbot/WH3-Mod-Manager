@@ -858,6 +858,11 @@ const appSlice = createSlice({
       state.skillNodesToLevel = {};
       state.currentRank = 1;
     },
+    clearSkillsData: (state: AppState) => {
+      state.skillsData = undefined;
+      state.skillNodesToLevel = {};
+      state.currentRank = 1;
+    },
     setPacksData: (state: AppState, action: PayloadAction<PackViewData[]>) => {
       const packsData = action.payload;
 
@@ -1542,8 +1547,19 @@ const appSlice = createSlice({
     setIsCheckingSkillRequirements: (state: AppState, action: PayloadAction<boolean>) => {
       state.isCheckingSkillRequirements = action.payload;
     },
+    setSkillsViewOptions: (state: AppState, action: PayloadAction<SkillsViewOptions>) => {
+      state.isShowingSkillNodeSetNames = action.payload.isShowingSkillNodeSetNames;
+      state.isShowingHiddenSkills = action.payload.isShowingHiddenSkills;
+      state.isShowingHiddenModifiersInsideSkills = action.payload.isShowingHiddenModifiersInsideSkills;
+      state.isCheckingSkillRequirements = action.payload.isCheckingSkillRequirements;
+    },
     setSkillTreesDisplayMode: (state: AppState, action: PayloadAction<TreeDisplayMode>) => {
       state.skillTreesDisplayMode = action.payload;
+      if (action.payload !== "tab") {
+        state.skillsData = undefined;
+        state.skillNodesToLevel = {};
+        state.currentRank = 1;
+      }
       ensureValidCurrentTab(state);
     },
     setTechnologyTreesDisplayMode: (state: AppState, action: PayloadAction<TreeDisplayMode>) => {
@@ -1675,12 +1691,14 @@ export const {
   setIsModTagPickerOpen,
   setTagForMod,
   setSkillsData,
+  clearSkillsData,
   setPackSearchResults,
   setIsLocalizingSubtypes,
   setIsShowingSkillNodeSetNames,
   setIsShowingHiddenSkills,
   setIsShowingHiddenModifiersInsideSkills,
   setIsCheckingSkillRequirements,
+  setSkillsViewOptions,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
   setUserFlowOptions,
