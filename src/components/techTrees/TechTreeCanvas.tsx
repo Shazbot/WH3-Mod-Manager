@@ -1818,7 +1818,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             </label>
           </Dropdown.Item>
         </Dropdown>
-        {canEditTechnologyTrees ? (
+        {canEditTechnologyTrees && (
           <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -1836,8 +1836,6 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             />
             Edit mode
           </label>
-        ) : (
-          <span className="text-xs text-gray-400 select-none">View only</span>
         )}
         {isEditMode && (
           <>

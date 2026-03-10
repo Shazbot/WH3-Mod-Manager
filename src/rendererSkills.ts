@@ -5,13 +5,10 @@ import { renderSkillsWindow } from "./appSkills";
 import { setupRendererLogging } from "./rendererCommon";
 import {
   setCurrentLanguage,
-  setIsCheckingSkillRequirements,
   setIsFeaturesForModdersEnabled,
-  setIsShowingHiddenModifiersInsideSkills,
-  setIsShowingHiddenSkills,
-  setIsShowingSkillNodeSetNames,
   setModdersPrefix,
   setSkillsData,
+  setSkillsViewOptions,
   setStartArgs,
 } from "./appSlice";
 
@@ -22,12 +19,7 @@ let hasReceivedSkillsViewOptions = false;
 let lastSentSkillsViewOptions: SkillsViewOptions | undefined;
 
 const applySkillsViewOptions = (skillsViewOptions: SkillsViewOptions) => {
-  store.dispatch(setIsShowingSkillNodeSetNames(skillsViewOptions.isShowingSkillNodeSetNames));
-  store.dispatch(setIsShowingHiddenSkills(skillsViewOptions.isShowingHiddenSkills));
-  store.dispatch(
-    setIsShowingHiddenModifiersInsideSkills(skillsViewOptions.isShowingHiddenModifiersInsideSkills),
-  );
-  store.dispatch(setIsCheckingSkillRequirements(skillsViewOptions.isCheckingSkillRequirements));
+  store.dispatch(setSkillsViewOptions(skillsViewOptions));
 };
 
 window.api?.setStartArgs((event, startArgs) => {
