@@ -161,6 +161,8 @@ interface AppData {
   isShowingHiddenSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
   isCheckingSkillRequirements: boolean;
+  skillTreesDisplayMode: TreeDisplayMode;
+  technologyTreesDisplayMode: TreeDisplayMode;
   hasReadConfig: boolean;
   packsData: Pack[];
   unsavedPacksData: Record<string, PackedFile[]>;
@@ -217,6 +219,8 @@ const appData = {
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,
   isCheckingSkillRequirements: true,
+  skillTreesDisplayMode: "window",
+  technologyTreesDisplayMode: "window",
   hasReadConfig: false,
   packsData: [],
   unsavedPacksData: {},

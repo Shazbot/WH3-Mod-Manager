@@ -77,6 +77,7 @@ if (!gotTheLock) {
     isAppQuitting = true;
     if (windows.viewerWindow && !windows.viewerWindow.isDestroyed()) windows.viewerWindow.destroy();
     if (windows.skillsWindow && !windows.skillsWindow.isDestroyed()) windows.skillsWindow.destroy();
+    if (windows.techTreesWindow && !windows.techTreesWindow.isDestroyed()) windows.techTreesWindow.destroy();
     if (windows.mainWindow && !windows.mainWindow.isDestroyed()) windows.mainWindow.destroy();
 
     // Skip the normal Electron quit flow here. The update helper already took over
@@ -193,6 +194,7 @@ if (!gotTheLock) {
       if (isAppQuitting) return;
       if (windows.viewerWindow && !windows.viewerWindow.isDestroyed()) windows.viewerWindow.close();
       if (windows.skillsWindow && !windows.skillsWindow.isDestroyed()) windows.skillsWindow.close();
+      if (windows.techTreesWindow && !windows.techTreesWindow.isDestroyed()) windows.techTreesWindow.close();
     });
 
     const waitForModDownloads = async () => {
@@ -405,6 +407,12 @@ if (!gotTheLock) {
       windows.mainWindow?.webContents.send("setIsDev", isDev);
       windows.mainWindow?.webContents.send("setStartArgs", appData.startArgs);
       windows.mainWindow?.webContents.send("setIsAdmin", appData.isAdmin);
+      windows.mainWindow?.webContents.send("setSkillsViewOptions", {
+        isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
+        isShowingHiddenSkills: appData.isShowingHiddenSkills,
+        isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
+        isCheckingSkillRequirements: appData.isCheckingSkillRequirements,
+      } as SkillsViewOptions);
 
       try {
         const localesPath = isDev ? "./locales/" : "./resources/app/.webpack/main/locales";

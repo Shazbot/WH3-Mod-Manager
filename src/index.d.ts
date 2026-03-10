@@ -183,9 +183,13 @@ declare global {
     isShowingHiddenSkills: boolean;
     isShowingHiddenModifiersInsideSkills: boolean;
     isCheckingSkillRequirements: boolean;
+    skillTreesDisplayMode: TreeDisplayMode;
+    technologyTreesDisplayMode: TreeDisplayMode;
     skillNodesToLevel: Record<string, number>;
     currentRank: number;
   }
+
+  type TreeDisplayMode = "off" | "tab" | "window";
 
   type SkillsViewOptions = Pick<
     AppState,
@@ -222,6 +226,8 @@ declare global {
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
     | "isCheckingSkillRequirements"
+    | "skillTreesDisplayMode"
+    | "technologyTreesDisplayMode"
   > &
     AppStateMainProcessExtras;
 
@@ -914,6 +920,7 @@ declare global {
     | "mods"
     | "enabledMods"
     | "categories"
+    | "skills"
     | "visuals"
     | "twui"
     | "techTrees"

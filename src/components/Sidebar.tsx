@@ -45,6 +45,9 @@ const Sidebar = memo(() => {
   const dataModLastChangedLocal = useAppSelector((state) => state.app.dataModLastChangedLocal);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const removedModsData = useAppSelector((state) => state.app.removedModsData);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
+  const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
 
   const savesState = useAppSelector((state) => state.app.saves);
   const saves = useMemo(
@@ -60,6 +63,7 @@ const Sidebar = memo(() => {
   const [isShowingRequiredMods, setIsShowingRequiredMods] = useState<boolean>(false);
   const [isWaitingForRelaunch, setIsWaitingForRelaunch] = useState<boolean>(false);
   const [isWaitingForContinueRelaunch, setIsWaitingForContinueRelaunch] = useState<boolean>(false);
+  const [isTreeMenuOpen, setIsTreeMenuOpen] = useState(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -72,6 +76,7 @@ const Sidebar = memo(() => {
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
   const continueDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
   const updateNotificationTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
+  const treeMenuRef = useRef<HTMLDivElement | null>(null);
   const previousIsWH3RunningRef = useRef(isWH3Running);
   const isShiftDownRef = useRef(false);
   const isControlDownRef = useRef(false);
@@ -79,6 +84,23 @@ const Sidebar = memo(() => {
   const terminateGameClicked = () => {
     window.api?.terminateGame();
   };
+
+  const canOpenSkillsWindow = currentGame === "wh3" && skillTreesDisplayMode === "window";
+  const canOpenTechTreesWindow = currentGame === "wh3" && technologyTreesDisplayMode === "window";
+
+  useEffect(() => {
+    if (!isTreeMenuOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (treeMenuRef.current?.contains(event.target as Node)) return;
+      setIsTreeMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [isTreeMenuOpen]);
 
   const playGameClicked = useCallback((forcedDelayTime?: number) => {
     console.log("playGameClicked: play game clicked");
@@ -792,16 +814,60 @@ const Sidebar = memo(() => {
           </div>
         </div>
 
-        {currentGame == "wh3" && (
+        {(canOpenSkillsWindow || canOpenTechTreesWindow) && (
           <div className="mt-4">
-            <div className="text-center mt-4">
-              <button
-                onClick={() => window.api?.requestOpenSkillsWindow(mods)}
-                className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
-                type="button"
-              >
-                {localized.skillsViewer}
-              </button>
+            <div className="text-center mt-4 relative" ref={treeMenuRef}>
+              {canOpenSkillsWindow && canOpenTechTreesWindow ? (
+                <>
+                  <button
+                    onClick={() => setIsTreeMenuOpen((currentValue) => !currentValue)}
+                    className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                    type="button"
+                  >
+                    {localized.treeWindows || "Trees"}
+                  </button>
+                  {isTreeMenuOpen && (
+                    <div className="absolute left-1/2 z-[250] mt-1 w-44 -translate-x-1/2 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+                      <button
+                        type="button"
+                        className="block w-full rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                        onClick={() => {
+                          window.api?.requestOpenSkillsWindow(mods);
+                          setIsTreeMenuOpen(false);
+                        }}
+                      >
+                        {localized.skillsViewer || "Skill Trees"}
+                      </button>
+                      <button
+                        type="button"
+                        className="block w-full rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                        onClick={() => {
+                          window.api?.requestOpenTechTreesWindow();
+                          setIsTreeMenuOpen(false);
+                        }}
+                      >
+                        {localized.technologies || "Technologies"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : canOpenSkillsWindow ? (
+                <button
+                  onClick={() => window.api?.requestOpenSkillsWindow(mods)}
+                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                  type="button"
+                >
+                  {localized.skillsViewer || "Skill Trees"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => window.api?.requestOpenTechTreesWindow()}
+                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                  type="button"
+                >
+                  {localized.techTreesTab || "Tech Trees"}
+                </button>
+              )}
             </div>
           </div>
         )}

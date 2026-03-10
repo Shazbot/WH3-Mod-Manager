@@ -96,6 +96,14 @@
                   "preload": {
                     "js": "./src/preload.ts"
                   }
+                },
+                {
+                  "html": "./src/viewer/viewerIndex.html",
+                  "js": "./src/rendererTechTrees.ts",
+                  "name": "tech_trees",
+                  "preload": {
+                    "js": "./src/preload.ts"
+                  }
                 }
               ]
             }
