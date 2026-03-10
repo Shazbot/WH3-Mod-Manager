@@ -23,6 +23,7 @@ import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import selectStyle from "../styles/selectStyle";
 import { Tooltip } from "flowbite-react";
+import { Modal } from "../flowbite";
 import ShareMods from "./ShareMods";
 import { useSelector } from "react-redux";
 import { createSelector } from "@reduxjs/toolkit";
@@ -62,6 +63,8 @@ const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
   const [isShowingSetFolderPaths, setIsShowingSetFolderPaths] = useState<boolean>(false);
   const [isShowingAboutScreen, setIsShowingAboutScreen] = useState<boolean>(false);
+  const [isForceResubscribeConfirmOpen, setIsForceResubscribeConfirmOpen] = useState(false);
+  const [modsToForceResubscribe, setModsToForceResubscribe] = useState<Mod[]>([]);
 
   const dispatch = useAppDispatch();
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
@@ -133,6 +136,26 @@ const OptionsDrawer = memo(() => {
   const forceResubscribeMods = useCallback((mods: Mod[]) => {
     window.api?.forceResubscribeMods(mods);
   }, []);
+
+  const openForceResubscribeConfirm = useCallback((mods: Mod[]) => {
+    setModsToForceResubscribe(mods);
+    setIsForceResubscribeConfirmOpen(true);
+  }, []);
+
+  const closeForceResubscribeConfirm = useCallback(() => {
+    setIsForceResubscribeConfirmOpen(false);
+    setModsToForceResubscribe([]);
+  }, []);
+
+  const confirmForceResubscribe = useCallback(() => {
+    forceResubscribeMods(modsToForceResubscribe);
+    closeForceResubscribeConfirm();
+  }, [closeForceResubscribeConfirm, forceResubscribeMods, modsToForceResubscribe]);
+
+  const openCreateSteamCollectionFromConfirm = useCallback(() => {
+    closeForceResubscribeConfirm();
+    dispatch(setIsCreateSteamCollectionOpen(true));
+  }, [closeForceResubscribeConfirm, dispatch]);
 
   const onDeleteChange = useCallback(
     (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
@@ -217,6 +240,39 @@ const OptionsDrawer = memo(() => {
       <CreateSteamCollection />
       <ImportSteamCollection />
       <PackSearcher />
+      <Modal
+        show={isForceResubscribeConfirmOpen}
+        onClose={closeForceResubscribeConfirm}
+        size="lg"
+        position="center"
+      >
+        <Modal.Header>{localized.forceResubscribe}</Modal.Header>
+        <Modal.Body>
+          <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
+            {localized.forceResubscribeBackupRecommendation}
+          </p>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            className="px-4 py-2 bg-gray-500 text-white font-medium text-sm rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400"
+            onClick={closeForceResubscribeConfirm}
+          >
+            {localized.cancel}
+          </button>
+          <button
+            className="px-4 py-2 bg-blue-600 text-white font-medium text-sm rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onClick={openCreateSteamCollectionFromConfirm}
+          >
+            {localized.createSteamCollection}
+          </button>
+          <button
+            className="px-4 py-2 bg-purple-600 text-white font-medium text-sm rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            onClick={confirmForceResubscribe}
+          >
+            {localized.forceResubscribeContinue}
+          </button>
+        </Modal.Footer>
+      </Modal>
 
       <div className="text-center">
         <button
@@ -363,7 +419,7 @@ const OptionsDrawer = memo(() => {
                   const mods = e.shiftKey
                     ? currentMods.filter((mod) => !mod.isInData)
                     : enabledMods.filter((mod) => !mod.isInData);
-                  forceResubscribeMods(mods);
+                  openForceResubscribeConfirm(mods);
                 }}
               >
                 <span className="uppercase">{localized.forceResubscribe}</span>
