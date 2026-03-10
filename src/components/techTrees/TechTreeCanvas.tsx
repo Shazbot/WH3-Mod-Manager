@@ -139,13 +139,55 @@ const resolveTechGenerationTemplate = (
     .replaceAll("${r}", variables.row)
     .replaceAll("${column}", variables.column)
     .replaceAll("${c}", variables.column);
+const appendScopedTechNodeHash = async (nodeKey: string, campaignKey?: string, factionKey?: string) => {
+  const scopeSource = `${campaignKey || ""}${factionKey || ""}`.trim();
+  if (!scopeSource) return nodeKey;
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi?.subtle) return nodeKey;
+  const scopeHashBuffer = new Uint8Array(
+    await cryptoApi.subtle.digest("SHA-256", new TextEncoder().encode(scopeSource)),
+  ).slice(0, 8);
+  const scopeHash = btoa(String.fromCharCode(...scopeHashBuffer))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+  return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
+};
 
 type TechTreeCanvasProps = {
   setKey: string;
+  isBlank?: boolean;
+  templateSetKey?: string;
 };
 
-const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
+const buildBlankTechnologyTree = (
+  blankSetKey: string,
+  templateTree?: TechnologyTreePayload,
+): TechnologyTreePayload => ({
+  set: {
+    key: blankSetKey,
+    localizedName: blankSetKey,
+    campaignKey: templateTree?.set.campaignKey,
+    factionKey: templateTree?.set.factionKey,
+    culture: templateTree?.set.culture,
+    subculture: templateTree?.set.subculture,
+    technologyCategory: templateTree?.set.technologyCategory,
+    tooltipString: templateTree?.set.tooltipString,
+  },
+  nodes: [],
+  links: [],
+  uiTabs: [],
+  uiTabToNodes: {},
+  uiGroups: [],
+  uiGroupBounds: [],
+  allTechnologies: templateTree?.allTechnologies || [],
+  allTechnologyIcons: templateTree?.allTechnologyIcons || [],
+  allEffects: templateTree?.allEffects || [],
+});
+
+const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTreeCanvasProps) => {
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
+  const isBlankTree = isBlank;
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [technologyTree, setTechnologyTree] = useState<TechnologyTreePayload | undefined>(undefined);
   const [selectedUiTab, setSelectedUiTab] = useState("all");
@@ -163,7 +205,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   const [technologyKeyTemplate, setTechnologyKeyTemplate] = useState(defaultTechnologyKeyTemplate);
   const [saveMode, setSaveMode] = useState<TechSaveMode>("changes");
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(
+  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(
     null,
   );
   const [isSaving, setIsSaving] = useState(false);
@@ -238,10 +280,16 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       if (!setKey) return;
       setIsLoadingTree(true);
       try {
-        const fetchedTree = await window.api?.getTechnologyTree(setKey);
-        setTechnologyTree(fetchedTree);
+        if (isBlankTree) {
+          const templateTree = templateSetKey ? await window.api?.getTechnologyTree(templateSetKey) : undefined;
+          setTechnologyTree(buildBlankTechnologyTree(setKey, templateTree));
+        } else {
+          const fetchedTree = await window.api?.getTechnologyTree(setKey);
+          setTechnologyTree(fetchedTree);
+        }
         setSelectedUiTab("all");
         setSelectedScopeKey("");
+        setIsEditMode(isBlankTree);
         setChangedNodePositions({});
         setChangedLinks({});
         setHiddenOverrides({});
@@ -265,7 +313,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       }
     };
     loadTree();
-  }, [setKey]);
+  }, [isBlankTree, setKey, templateSetKey]);
 
   useEffect(() => {
     if (!notification) return;
@@ -885,11 +933,11 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
 
     // Placeholder + label nodes in edit mode
     const editNodes: Node[] = [];
-    if (isEditMode && visibleNodes.length > 0) {
+    if (isEditMode && (visibleNodes.length > 0 || isBlankTree)) {
       const occupiedPositions = new Set<string>();
       let maxDisplayTier = 0;
-      let minIndent = MIN_TECH_ROW;
-      let maxIndent = MIN_TECH_ROW;
+      let minIndent = isBlankTree ? 0 : MIN_TECH_ROW;
+      let maxIndent = isBlankTree ? 0 : MIN_TECH_ROW;
       for (const node of visibleNodes) {
         const displayTier = Math.round(node.position.x / NODE_WIDTH);
         const indent = Math.round(node.position.y / NODE_HEIGHT);
@@ -964,6 +1012,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
     isRequirementsMode,
     isRequirementCheckActive,
     unlockedNodeKeySet,
+    isBlankTree,
     handleUnlockNode,
     handleLockNode,
   ]);
@@ -1146,6 +1195,12 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         visibleInUi: true,
       };
       const linkKey = `${link.parentKey}|${link.childKey}`;
+      setDeletedLinks((prev) => {
+        if (!prev.has(linkKey)) return prev;
+        const next = new Set(prev);
+        next.delete(linkKey);
+        return next;
+      });
       setChangedLinks((prev) => ({ ...prev, [linkKey]: link }));
       setEdges((existingEdges) => addEdge(connection, existingEdges));
     },
@@ -1534,6 +1589,36 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       return;
     }
 
+    const generationPrefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
+    const resolvedNewNodes = await Promise.all(
+      newNodes.map(async (newNode) => {
+        const generatedNodeKey = resolveTechGenerationTemplate(
+          nodeKeyTemplate.trim() || defaultTechNodeKeyTemplate,
+          {
+            prefix: generationPrefix,
+            nodeSet: technologyTree.set.key,
+            row: newNode.indent.toString(),
+            column: newNode.tier.toString(),
+          },
+        );
+        return {
+          originalNodeKey: newNode.nodeKey,
+          resolvedNode: {
+            ...newNode,
+            nodeKey: await appendScopedTechNodeHash(generatedNodeKey, newNode.campaignKey, newNode.factionKey),
+          },
+        };
+      }),
+    );
+    const remappedNodeKeys = new Map(
+      resolvedNewNodes.map(({ originalNodeKey, resolvedNode }) => [originalNodeKey, resolvedNode.nodeKey]),
+    );
+    const remappedChangedLinks = changedLinksArray.map((link) => ({
+      ...link,
+      parentKey: remappedNodeKeys.get(link.parentKey) || link.parentKey,
+      childKey: remappedNodeKeys.get(link.childKey) || link.childKey,
+    }));
+
     setIsSaving(true);
     try {
       const result = await window.api?.saveTechnologyChanges({
@@ -1542,9 +1627,9 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         packDirectory: savePackDirectory || "",
         tableNameOverride: tableNameOverride.trim() || undefined,
         changedNodes,
-        changedLinks: changedLinksArray,
+        changedLinks: remappedChangedLinks,
         hiddenTechnologies,
-        newNodes,
+        newNodes: resolvedNewNodes.map(({ resolvedNode }) => resolvedNode),
         deletedNodeKeys: deletedNodeKeysArray,
         deletedLinkKeys: deletedLinkKeysArray,
         editedNodes: editedNodesArray,
@@ -1555,10 +1640,15 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         return;
       }
 
-      setNotification({ message: `Saved ${result.packName} to ${result.packPath}`, type: "success" });
-      const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
-      if (refreshedTree) setTechnologyTree(refreshedTree);
-      resetStateAfterSave();
+      setNotification({
+        message: result.warning || `Saved ${result.packName} to ${result.packPath}`,
+        type: result.warning ? "warning" : "success",
+      });
+      if (!isBlankTree) {
+        const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
+        if (refreshedTree) setTechnologyTree(refreshedTree);
+        resetStateAfterSave();
+      }
       setIsSaveModalOpen(false);
     } finally {
       setIsSaving(false);
@@ -1566,6 +1656,9 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
   }, [
     buildChangesPayload,
     resetStateAfterSave,
+    moddersPrefix,
+    nodeKeyTemplate,
+    isBlankTree,
     savePackDirectory,
     savePackName,
     tableNameOverride,
@@ -1593,19 +1686,28 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
         return;
       }
 
-      setNotification({ message: `Saved ${result.packName} to ${result.packPath}`, type: "success" });
-      const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
-      if (refreshedTree) setTechnologyTree(refreshedTree);
-      resetStateAfterSave();
+      setNotification({
+        message: result.warning || `Saved ${result.packName} to ${result.packPath}`,
+        type: result.warning ? "warning" : "success",
+      });
+      if (!isBlankTree) {
+        const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
+        if (refreshedTree) setTechnologyTree(refreshedTree);
+        resetStateAfterSave();
+      }
       setIsSaveModalOpen(false);
     } finally {
       setIsSaving(false);
     }
-  }, [buildWholeTreePayload, resetStateAfterSave, savePackName, technologyTree]);
+  }, [buildWholeTreePayload, isBlankTree, resetStateAfterSave, savePackName, technologyTree]);
 
   const openSaveModal = useCallback(
     (mode: TechSaveMode) => {
       if (!technologyTree) return;
+      if (mode === "changes" && isBlankTree) {
+        setNotification({ message: "Save Only Changes is unavailable for blank technology trees.", type: "warning" });
+        return;
+      }
       const timestamp = Date.now().toString();
       setSaveMode(mode);
       setSavePackName(
@@ -1621,7 +1723,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
       setTechnologyKeyTemplate(defaultTechnologyKeyTemplate);
       setIsSaveModalOpen(true);
     },
-    [technologyTree],
+    [isBlankTree, technologyTree],
   );
 
   const handleSelectSavePackDirectory = useCallback(async () => {
@@ -1765,7 +1867,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                 <Dropdown.Item>
                   <button
                     className="w-36 px-4 py-2 rounded-lg border-2 border-gray-600 hover:bg-green-700 bg-green-600 text-white disabled:opacity-60"
-                    disabled={isSaving || !technologyTree}
+                    disabled={isSaving || !technologyTree || isBlankTree}
                     onClick={() => openSaveModal("changes")}
                   >
                     Save Only Changes
@@ -1816,7 +1918,11 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
             <Panel position="bottom-center">
               <div
                 className={`px-6 py-3 rounded-lg text-white text-sm shadow-lg cursor-pointer ${
-                  notification.type === "success" ? "bg-green-700" : "bg-red-700"
+                  notification.type === "success"
+                    ? "bg-green-700"
+                    : notification.type === "warning"
+                      ? "bg-amber-700"
+                      : "bg-red-700"
                 }`}
                 onClick={() => setNotification(null)}
               >
@@ -1826,7 +1932,7 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
           )}
         </ReactFlow>
       </div>
-      <Modal onClose={() => setIsSaveModalOpen(false)} show={isSaveModalOpen} size="md" position="center">
+      <Modal onClose={() => setIsSaveModalOpen(false)} show={isSaveModalOpen} size="lg" position="center">
         <Modal.Header>{saveMode === "changes" ? "Save Only Changes" : "Save Technology Tree"}</Modal.Header>
         <Modal.Body>
           <div className="space-y-4">
@@ -1878,6 +1984,19 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                 Available tokens: {"${prefix}"}, {"${nodeSet}"}, {"${timestamp}"}
               </p>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Technology Node Key Template</label>
+              <input
+                type="text"
+                value={nodeKeyTemplate}
+                onChange={(e) => setNodeKeyTemplate(e.target.value)}
+                disabled={isSaving}
+                className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400 font-mono"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Tokens: ${"{prefix}"}, ${"{nodeSet}"}, ${"{row}"}, ${"{column}"}
+              </p>
+            </div>
             {saveMode === "whole" && (
               <>
                 <div>
@@ -1905,21 +2024,6 @@ const TechTreeCanvas = memo(({ setKey }: TechTreeCanvasProps) => {
                   />
                   <span>Clone existing technologies</span>
                 </label>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Technology Node Key Template
-                  </label>
-                  <input
-                    type="text"
-                    value={nodeKeyTemplate}
-                    onChange={(e) => setNodeKeyTemplate(e.target.value)}
-                    disabled={isSaving}
-                    className="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-2.5 placeholder-gray-400 font-mono"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Tokens: ${"{prefix}"}, ${"{nodeSet}"}, ${"{row}"}, ${"{column}"}
-                  </p>
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">
                     Technology Key Template

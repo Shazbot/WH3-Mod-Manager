@@ -247,10 +247,17 @@ export function resolveTextReplacements(
   if (!localizedText) return;
 
   return localizedText.replaceAll(/{{tr:(.*?)}}/gi, (_, captureGroup) => {
-    // console.log("capture group is", captureGroup);
-    const replacementText =
+    let replacementText =
       getLoc(`ui_text_replacements_localised_text_${captureGroup}`) || getLoc(captureGroup);
-    // console.log("FOUND:", replacementText);
+    if (replacementText?.startsWith("{{tr:")) {
+      const nestedReplacementKey = replacementText.match(/^{{tr:(.*?)}}$/i)?.[1];
+      if (nestedReplacementKey) {
+        replacementText =
+          getLoc(`ui_text_replacements_localised_text_${nestedReplacementKey}`) ||
+          getLoc(nestedReplacementKey) ||
+          replacementText;
+      }
+    }
     return replacementText || captureGroup;
   });
 }

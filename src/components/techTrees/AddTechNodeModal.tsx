@@ -149,6 +149,13 @@ const AddTechNodeModal = ({
       })
       .filter((option) => !!option.value);
   });
+  const [effectValues, setEffectValues] = useState<Record<string, string>>(() => {
+    const initialValues: Record<string, string> = {};
+    for (const effect of existingNode?.effects || []) {
+      initialValues[effect.effectKey] = effect.value || "0";
+    }
+    return initialValues;
+  });
 
   const customTechnologyKeyTrimmed = customTechnologyKey.trim();
   const customKeyExists = existingTechnologyKeys.has(customTechnologyKeyTrimmed);
@@ -189,7 +196,10 @@ const AddTechNodeModal = ({
     const effects =
       technologyMode === "existing"
         ? selectedTechnology?.technology.effects || []
-        : selectedEffects.map((option) => option.effect);
+        : selectedEffects.map((option) => ({
+            ...option.effect,
+            value: effectValues[option.value] ?? option.effect.value ?? "0",
+          }));
     const iconData = technologyMode === "existing" ? selectedTechnology?.technology.iconData : selectedIcon?.iconData;
     const iconPath = technologyMode === "existing" ? selectedTechnology?.technology.iconPath : selectedIcon?.value;
 
@@ -326,7 +336,19 @@ const AddTechNodeModal = ({
               isMulti
               options={effectOptions}
               value={selectedEffects}
-              onChange={(newValue) => setSelectedEffects([...(newValue as EffectOption[])])}
+              onChange={(newValue) => {
+                const nextEffects = [...(newValue as EffectOption[])];
+                setSelectedEffects(nextEffects);
+                setEffectValues((prev) => {
+                  const nextValues = { ...prev };
+                  for (const option of nextEffects) {
+                    if (nextValues[option.value] === undefined) {
+                      nextValues[option.value] = option.effect.value || "0";
+                    }
+                  }
+                  return nextValues;
+                });
+              }}
               styles={selectStyle}
               filterOption={createFilter({ ignoreAccents: false })}
               placeholder="Search effects..."
@@ -341,6 +363,37 @@ const AddTechNodeModal = ({
                 </div>
               )}
             />
+            {selectedEffects.length > 0 && (
+              <div className="space-y-2 mt-2 rounded border border-gray-700 bg-gray-800/50 p-2">
+                {selectedEffects.map((option) => (
+                  <div key={option.value} className="flex items-center gap-2">
+                    {option.effect.iconData && (
+                      <img
+                        className="h-5 w-5 object-contain"
+                        src={`data:image/png;base64,${option.effect.iconData}`}
+                        alt=""
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-gray-200 truncate">{option.label}</div>
+                      <div className="text-xs text-gray-500 truncate">{option.value}</div>
+                    </div>
+                    <input
+                      type="text"
+                      value={effectValues[option.value] ?? "0"}
+                      onChange={(event) =>
+                        setEffectValues((prev) => ({
+                          ...prev,
+                          [option.value]: event.target.value,
+                        }))
+                      }
+                      className={`${inputClass} !w-32`}
+                      placeholder="Value"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             <div>
               <label className="block text-xs text-gray-400 mb-1">Icon</label>
               <div className="flex gap-2">

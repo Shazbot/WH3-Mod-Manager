@@ -10,7 +10,6 @@ import React, {
   useState,
 } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
-import { createHash } from "crypto";
 import {
   setIsCheckingSkillRequirements,
   setIsShowingHiddenModifiersInsideSkills,
@@ -47,10 +46,23 @@ const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/
 const defaultSkillTableNameTemplate = "${prefix}_${setSuffix}_${timestamp}";
 const defaultSkillNodeKeyTemplate = "${prefix}_skill_node_${row}_${column}";
 const defaultCharacterSkillKeyTemplate = "${prefix}_skill_${row}_${column}";
-const appendScopedSkillNodeHash = (nodeKey: string, factionKey?: string, subculture?: string) => {
-  const scopeSource = `${factionKey || ""}${subculture || ""}`.trim();
+const appendScopedSkillNodeHash = async (
+  nodeKey: string,
+  campaignKey?: string,
+  factionKey?: string,
+  subculture?: string,
+) => {
+  const scopeSource = `${campaignKey || ""}${factionKey || ""}${subculture || ""}`.trim();
   if (!scopeSource) return nodeKey;
-  const scopeHash = createHash("sha256").update(scopeSource).digest().subarray(0, 8).toString("base64url");
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi?.subtle) return nodeKey;
+  const scopeHashBuffer = new Uint8Array(
+    await cryptoApi.subtle.digest("SHA-256", new TextEncoder().encode(scopeSource)),
+  ).slice(0, 8);
+  const scopeHash = btoa(String.fromCharCode(...scopeHashBuffer))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
   return nodeKey.endsWith("_") ? `${nodeKey}${scopeHash}` : `${nodeKey}_${scopeHash}`;
 };
 const buildDefaultSkillSetSuffix = (subtype: string) => `skill_set_${subtype}`;
@@ -403,6 +415,9 @@ const SkillsView = memo(
 
     let skills = skillsData.currentSkills;
     const subtype = skillsData.currentSubtype;
+    const currentSkillSetKey = skillsData.subtypesToSet?.[skillsData.currentSubtype]?.[skillsData.currentSubtypeIndex];
+    const currentSkillSetCampaignKey =
+      skillsData.subtypeAndSets?.find((set) => set.key === currentSkillSetKey)?.campaignKey || "";
 
     // return <></>;
     if (!skills) {
@@ -2960,6 +2975,7 @@ const SkillsView = memo(
       customTableName,
       customKeyPrefix,
       customSkillKeyTemplate,
+      currentSkillSetCampaignKey,
       moddersPrefix,
     ]);
 
@@ -2972,7 +2988,7 @@ const SkillsView = memo(
         const setSuffix = buildDefaultSkillSetSuffix(subtype);
         const nodeKeyTemplate = customKeyPrefix.trim() || defaultSkillNodeKeyTemplate;
         const skillKeyTemplate = customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate;
-        const makeNodeKey = (row: number, col: number, faction?: string, subculture?: string) =>
+        const makeNodeKey = async (row: number, col: number, faction?: string, subculture?: string) =>
           appendScopedSkillNodeHash(
             resolveSkillGenerationTemplate(nodeKeyTemplate, {
               prefix,
@@ -2981,17 +2997,23 @@ const SkillsView = memo(
               row: row.toString(),
               column: col.toString(),
             }),
+            currentSkillSetCampaignKey,
             faction,
             subculture,
           );
-        const makeSkillKey = (row: number, col: number) =>
-          resolveSkillGenerationTemplate(skillKeyTemplate, {
-            prefix,
-            setSuffix,
-            timestamp: ts,
-            row: row.toString(),
-            column: col.toString(),
-          });
+        const makeSkillKey = async (row: number, col: number, faction?: string, subculture?: string) =>
+          appendScopedSkillNodeHash(
+            resolveSkillGenerationTemplate(skillKeyTemplate, {
+              prefix,
+              setSuffix,
+              timestamp: ts,
+              row: row.toString(),
+              column: col.toString(),
+            }),
+            currentSkillSetCampaignKey,
+            faction,
+            subculture,
+          );
         const skillNodes = nodes.filter((n) => n.type === "skill");
 
         // Build group expansion maps (same as handleSavePackConfirm)
@@ -3131,7 +3153,7 @@ const SkillsView = memo(
             const origSkill = origNodeMap.get(origNodeId);
             if (!origSkill) {
               // Node has existingSkillKey but isn't in original data — newly added node reusing an existing skill
-              const newNodeKey = makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
+              const newNodeKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
               nodeKeyMap.set(n.id, newNodeKey);
               newNodes.push({
                 newNodeKey,
@@ -3164,7 +3186,7 @@ const SkillsView = memo(
 
             if (edgesChanged) {
               // Connections changed — need replacement
-              const newKey = makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
+              const newKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
               nodeKeyMap.set(origNodeId, newKey);
               replacedNodes.push({
                 originalNodeKey: origNodeId,
@@ -3205,8 +3227,8 @@ const SkillsView = memo(
             }
           } else {
             // New node (pasted/added)
-            const newNodeKey = makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
-            const newSkillKey = makeSkillKey(currentRow, currentCol);
+            const newNodeKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
+            const newSkillKey = await makeSkillKey(currentRow, currentCol, data.faction, data.subculture);
             nodeKeyMap.set(n.id, newNodeKey);
             newNodes.push({
               newNodeKey,

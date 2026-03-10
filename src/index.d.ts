@@ -569,6 +569,16 @@ declare global {
     currentSkills: Skill[];
     subtypeToNumSets: subtypeToNumSets;
     subtypesToSet?: Record<string, string[]>;
+    subtypeAndSets?: {
+      key: string;
+      agentSubtype: string;
+      agentKey: string;
+      campaignKey: string;
+      factionKey: string;
+      subculture: string;
+      forArmy: string;
+      forNavy: string;
+    }[];
     nodeLinks: Record<
       string,
       {
