@@ -14,7 +14,6 @@ export default defineConfig([
       "**/node_modules/**",
       "**/.webpack/**",
       "**/coverage/**",
-      "**/storybook-static/**",
       "temp/**",
       "dist/**",
       "**/.*",
