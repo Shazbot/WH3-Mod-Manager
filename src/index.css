@@ -483,3 +483,83 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 .ag-cell {
   font-size: 1.1rem;
 }
+
+.pack-tables-grid .pack-table-header .ag-header-cell-label {
+  align-items: flex-start;
+  position: relative;
+  width: calc(100% + 1.5rem);
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  white-space: normal;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-cell-text {
+  display: -webkit-box;
+  flex: 1 1 100%;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.15;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-label-icon,
+.pack-tables-grid .pack-table-header .ag-sort-indicator-container,
+.pack-tables-grid .pack-table-header .ag-header-cell-filter-button {
+  position: absolute;
+  top: 0;
+  align-self: flex-start;
+}
+
+.pack-tables-grid .ag-ltr .pack-table-header .ag-header-label-icon,
+.pack-tables-grid .ag-ltr .pack-table-header .ag-header-menu-icon,
+.pack-tables-grid .ag-rtl .pack-table-header .ag-header-label-icon,
+.pack-tables-grid .ag-rtl .pack-table-header .ag-header-menu-icon {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-label-icon {
+  display: flex;
+  justify-content: center;
+  min-width: 1rem;
+  right: 0;
+}
+
+.pack-tables-grid .pack-table-header .ag-header-cell-filter-button {
+  display: flex;
+  justify-content: center;
+  min-width: 1rem;
+  right: 0.2rem;
+  top: 0.5rem;
+}
+
+.pack-tables-grid .pack-table-header .ag-sort-indicator-container {
+  display: flex;
+  gap: 0.125rem;
+  justify-content: flex-start;
+  min-width: 1.5rem;
+  left: -0.75rem;
+  top: -0.2rem;
+}
+
+.pack-tables-grid .pack-table-header-right .ag-header-cell-label {
+  justify-content: flex-end;
+}
+
+.pack-tables-grid .pack-table-header-right .ag-header-cell-text {
+  text-align: right;
+}
+
+.pack-tables-grid .pack-table-row-index-cell {
+  overflow: visible;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  text-overflow: clip;
+  white-space: nowrap;
+  text-align: center;
+}
