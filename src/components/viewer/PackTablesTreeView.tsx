@@ -292,6 +292,14 @@ const PackTablesTreeView = React.memo(
 
     const dbNodeById = useMemo(() => buildNodeById(dbData), [dbData]);
     const fileNodeById = useMemo(() => buildNodeById(fileData), [fileData]);
+    const safeDbSelectedNodeIds = useMemo(
+      () => dbSelectedNodeIds.filter((selectedId) => dbNodeById.has(selectedId)),
+      [dbNodeById, dbSelectedNodeIds],
+    );
+    const safeFileSelectedNodeIds = useMemo(
+      () => fileSelectedNodeIds.filter((selectedId) => fileNodeById.has(selectedId)),
+      [fileNodeById, fileSelectedNodeIds],
+    );
 
     useEffect(() => {
       const validIds = new Set(dbData.map((node) => node.id));
@@ -806,6 +814,7 @@ const PackTablesTreeView = React.memo(
       onSelect: (selectionProps: ITreeViewOnSelectProps) => void,
     ) => (
       <TreeView
+        key={`${treeTab}|${packPath}|${data.length}`}
         data={data}
         aria-label={treeTab === "db" ? "DB files tree" : "Packed files tree"}
         multiSelect={true}
@@ -934,8 +943,15 @@ const PackTablesTreeView = React.memo(
         </div>
 
         {activeTreeTab === "db"
-          ? renderTree("db", dbData, dbSelectedNodeIds, setDbSelectedNodeIds, dbNodeById, onDBTreeSelect)
-          : renderTree("files", fileData, fileSelectedNodeIds, setFileSelectedNodeIds, fileNodeById, onFileTreeSelect)}
+          ? renderTree("db", dbData, safeDbSelectedNodeIds, setDbSelectedNodeIds, dbNodeById, onDBTreeSelect)
+          : renderTree(
+              "files",
+              fileData,
+              safeFileSelectedNodeIds,
+              setFileSelectedNodeIds,
+              fileNodeById,
+              onFileTreeSelect,
+            )}
 
         {/* Context Menu */}
         {contextMenu && (
