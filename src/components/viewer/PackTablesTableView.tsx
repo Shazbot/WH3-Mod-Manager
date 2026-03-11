@@ -11,7 +11,7 @@ import type {
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, DBVersion, Field, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
-import { setDeepCloneTarget, setPacksData } from "@/src/appSlice";
+import { setDeepCloneTarget } from "@/src/appSlice";
 import { dataFromBackend } from "./packDataStore";
 import debounce from "just-debounce-it";
 import {
@@ -19,6 +19,7 @@ import {
   ColumnWidthHint,
   getPreparedTable,
   PreparedTableData,
+  PreparedRowData,
   setPreparedTable,
   TableCellValue,
 } from "./tablePrepCache";
@@ -62,7 +63,7 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
   globalAny[AG_GRID_MODULES_KEY] = true;
 }
 
-type RowData = TableCellValue[];
+type RowData = PreparedRowData;
 type SelectionRange = { startRow: number; endRow: number; startCol: number; endCol: number };
 type DragSelectionState = {
   mode: "cells" | "row";
@@ -379,7 +380,7 @@ const prepareTableData = (
     .map(({ header }) => header);
 
   const chunkedTable: AmendedSchemaField[][] = Array.from({ length: rowCount }, () => []);
-  const data: TableCellValue[][] = Array.from({ length: rowCount }, () => new Array(columnCount));
+  const data: RowData[] = Array.from({ length: rowCount }, (_value, rowIndex) => ({ __rowId: String(rowIndex) }));
   const lowerCaseColumnValues: string[][] = Array.from({ length: columnCount }, () => new Array(rowCount));
   const textNonEmptyCounts = new Array(columnCount).fill(0);
   const textMaxLengths = new Array(columnCount).fill(0);
@@ -393,7 +394,7 @@ const prepareTableData = (
 
       chunkedTable[rowIndex].push(cell);
       const cellValue = resolveCellValue(cell);
-      data[rowIndex][colIndex] = cellValue;
+      data[rowIndex][String(colIndex)] = cellValue;
       lowerCaseColumnValues[colIndex][rowIndex] = String(cell.resolvedKeyValue).toLowerCase();
 
       if (columns[colIndex]?.type !== "text") continue;
@@ -429,6 +430,114 @@ const prepareTableData = (
     columnFilterOptions,
     keyColumnNames,
     lowerCaseColumnValues,
+  };
+};
+
+const getResolvedCellLowerCase = (value: string): string => value.toLowerCase();
+
+const getUpdatedTextColumnWidthHint = (
+  preparedTableData: PreparedTableData,
+  columnIndex: number,
+): ColumnWidthHint | undefined => {
+  if (preparedTableData.columns[columnIndex]?.type !== "text") return undefined;
+
+  let nonEmptyCount = 0;
+  let widestValue = "";
+  let maxLength = 0;
+
+  for (const row of preparedTableData.data) {
+    const rawValue = row[String(columnIndex)];
+    const value = rawValue == null ? "" : String(rawValue);
+    if (value.length === 0) continue;
+    nonEmptyCount++;
+    if (value.length > maxLength) {
+      maxLength = value.length;
+      widestValue = value;
+    }
+  }
+
+  return { maxLength, nonEmptyCount, widestValue };
+};
+
+const updatePreparedTableDataCell = (
+  preparedTableData: PreparedTableData,
+  rowIndex: number,
+  colIndex: number,
+  nextValue: TableCellValue,
+  resolvedKeyValue: string,
+): PreparedTableData => {
+  const nextRow = {
+    ...preparedTableData.data[rowIndex],
+    [String(colIndex)]: nextValue,
+  };
+  const nextData = [...preparedTableData.data];
+  nextData[rowIndex] = nextRow;
+
+  const nextChunkedRow = [...preparedTableData.chunkedTable[rowIndex]];
+  const previousCell = nextChunkedRow[colIndex];
+  if (previousCell) {
+    nextChunkedRow[colIndex] = {
+      ...previousCell,
+      resolvedKeyValue,
+    };
+  }
+  const nextChunkedTable = [...preparedTableData.chunkedTable];
+  nextChunkedTable[rowIndex] = nextChunkedRow;
+
+  const nextLowerCaseColumn = [...(preparedTableData.lowerCaseColumnValues[colIndex] || [])];
+  nextLowerCaseColumn[rowIndex] = getResolvedCellLowerCase(resolvedKeyValue);
+  const nextLowerCaseColumnValues = [...preparedTableData.lowerCaseColumnValues];
+  nextLowerCaseColumnValues[colIndex] = nextLowerCaseColumn;
+
+  const nextColumnWidthHints = [...preparedTableData.columnWidthHints];
+  nextColumnWidthHints[colIndex] = getUpdatedTextColumnWidthHint(
+    {
+      ...preparedTableData,
+      data: nextData,
+      chunkedTable: nextChunkedTable,
+      lowerCaseColumnValues: nextLowerCaseColumnValues,
+    },
+    colIndex,
+  );
+
+  return {
+    ...preparedTableData,
+    data: nextData,
+    chunkedTable: nextChunkedTable,
+    lowerCaseColumnValues: nextLowerCaseColumnValues,
+    columnWidthHints: nextColumnWidthHints,
+  };
+};
+
+const appendPreparedTableDataRow = (
+  preparedTableData: PreparedTableData,
+  appendedRowFields: AmendedSchemaField[],
+): PreparedTableData => {
+  const nextRowIndex = preparedTableData.data.length;
+  const nextRow: RowData = { __rowId: String(nextRowIndex) };
+  appendedRowFields.forEach((cell, colIndex) => {
+    nextRow[String(colIndex)] = resolveCellValue(cell);
+  });
+
+  const nextData = [...preparedTableData.data, nextRow];
+  const nextChunkedTable = [...preparedTableData.chunkedTable, appendedRowFields];
+  const nextLowerCaseColumnValues = preparedTableData.lowerCaseColumnValues.map((columnValues, colIndex) => [
+    ...columnValues,
+    getResolvedCellLowerCase(appendedRowFields[colIndex]?.resolvedKeyValue ?? ""),
+  ]);
+  const nextPreparedTableData = {
+    ...preparedTableData,
+    data: nextData,
+    chunkedTable: nextChunkedTable,
+    lowerCaseColumnValues: nextLowerCaseColumnValues,
+  };
+  const nextColumnWidthHints = preparedTableData.columnWidthHints.map((_hint, colIndex) =>
+    getUpdatedTextColumnWidthHint(nextPreparedTableData, colIndex),
+  );
+
+  return {
+    ...nextPreparedTableData,
+    columnWidthHints: nextColumnWidthHints,
   };
 };
 
@@ -671,17 +780,14 @@ const AgGridWrapper = memo(
           wrapHeaderText: true,
           headerClass: colType === "numeric" ? "pack-table-header pack-table-header-right" : "pack-table-header",
           colId: String(colIndex),
+          cellDataType: colType === "checkbox" ? "boolean" : undefined,
           editable: canEditTable,
           width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
           minWidth: !useFixedSizing && colType === "text" ? width : undefined,
           flex: !useFixedSizing && colType === "text" ? 1 : undefined,
           cellRenderer: colType === "checkbox" ? "agCheckboxCellRenderer" : undefined,
-          valueGetter: (p) => p.data?.[colIndex],
-          valueSetter: (p) => {
-            if (!p.data) return false;
-            p.data[colIndex] = p.newValue as TableCellValue;
-            return true;
-          },
+          cellEditor: colType === "checkbox" ? "agCheckboxCellEditor" : undefined,
+          field: String(colIndex),
           valueFormatter: isFloatColumn ? (p) => formatFloatDisplayValue(p.value) : undefined,
           cellStyle:
             colType === "checkbox"
@@ -942,7 +1048,7 @@ const AgGridWrapper = memo(
           return;
         }
 
-        const deepCloneValue = ev.data?.[deepCloneColIndex];
+        const deepCloneValue = ev.data?.[String(deepCloneColIndex)];
         const label = `Deep clone ${deepCloneValue ?? ""}`.trimEnd();
         const mouse = ev.event as MouseEvent | undefined;
         setMenuState({
@@ -1066,7 +1172,7 @@ const AgGridWrapper = memo(
                 if (colIndex < 0 || colIndex >= currentSchema.fields.length) {
                   return "";
                 }
-                const value = row[colIndex];
+                const value = row[String(colIndex)];
                 return value == null ? "" : String(value);
               });
               lines.push(cells.join("\t"));
@@ -1095,7 +1201,7 @@ const AgGridWrapper = memo(
       const colIndex = Number(colId);
       if (!Number.isFinite(colIndex)) return;
 
-      const value = row[colIndex];
+      const value = row[String(colIndex)];
       await copyTextToClipboard(value == null ? "" : String(value));
       ev.preventDefault();
     }, [currentSchema.fields.length]);
@@ -1137,6 +1243,7 @@ const AgGridWrapper = memo(
           ref={gridRef}
           theme="legacy"
           rowData={rowData}
+          getRowId={(params) => params.data.__rowId}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           rowHeight={rowHeight}
@@ -1351,26 +1458,15 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
   );
 
   const applyPackFileLocally = useCallback(
-    (nextPackFile: PackedFile) => {
-      const nextPreparedTableData = prepareTableData(nextPackFile, currentSchema!, keyColumnNamesUnderscore);
+    (nextPackFile: PackedFile, nextPreparedTableData?: PreparedTableData) => {
+      const resolvedPreparedTableData =
+        nextPreparedTableData ?? prepareTableData(nextPackFile, currentSchema!, keyColumnNamesUnderscore);
       clearPreparedTableForPackedFile(packPath, nextPackFile.name);
       setWorkingPackFile(nextPackFile);
-      setWorkingPreparedTableData(nextPreparedTableData);
-      dispatch(
-        setPacksData([
-          {
-            packName: packData!.packName,
-            packPath,
-            tables: packData!.tables,
-            packedFiles: {
-              [nextPackFile.name]: nextPackFile,
-            },
-          },
-        ]),
-      );
-      return nextPreparedTableData;
+      setWorkingPreparedTableData(resolvedPreparedTableData);
+      return resolvedPreparedTableData;
     },
-    [currentSchema, dispatch, keyColumnNamesUnderscore, packData, packPath],
+    [currentSchema, keyColumnNamesUnderscore, packPath],
   );
 
   const commitPackFileChange = useCallback(
@@ -1378,13 +1474,14 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
       nextPackFile: PackedFile,
       previousPackFile: PackedFile,
       previousPreparedTableData: PreparedTableData,
+      nextPreparedTableData?: PreparedTableData,
       historyMode: "push" | "undo" | "redo" | "none" = "push",
     ) => {
       if (!currentSchema || !packData) {
         return false;
       }
 
-      applyPackFileLocally(nextPackFile);
+      applyPackFileLocally(nextPackFile, nextPreparedTableData);
 
       try {
         const result = await window.api?.saveDBTableEdits(packPath, nextPackFile);
@@ -1414,25 +1511,13 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
         clearPreparedTableForPackedFile(packPath, previousPackFile.name);
         setWorkingPackFile(previousPackFile);
         setWorkingPreparedTableData(previousPreparedTableData);
-        dispatch(
-          setPacksData([
-            {
-              packName: packData.packName,
-              packPath,
-              tables: packData.tables,
-              packedFiles: {
-                [previousPackFile.name]: previousPackFile,
-              },
-            },
-          ]),
-        );
         showDialog(`Failed to save DB table edits: ${error instanceof Error ? error.message : "Unknown error"}`, {
           title: "Save Failed",
         });
         return false;
       }
     },
-    [applyPackFileLocally, currentSchema, dispatch, packData, packPath, showDialog, syncHistorySize],
+    [applyPackFileLocally, currentSchema, packData, packPath, showDialog, syncHistorySize],
   );
 
   const handleCellValueChangedCallback = useCallback(
@@ -1483,7 +1568,20 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
         ...activePackFile,
         schemaFields: nextSchemaFields,
       } as PackedFile;
-      const didSave = await commitPackFileChange(nextPackFile, previousPackFile, previousPreparedTableData, "push");
+      const nextPreparedTableData = updatePreparedTableDataCell(
+        previousPreparedTableData,
+        unfilteredRowIndex,
+        colIndex,
+        parsedCellValue.value,
+        parsedCellValue.resolvedKeyValue,
+      );
+      const didSave = await commitPackFileChange(
+        nextPackFile,
+        previousPackFile,
+        previousPreparedTableData,
+        nextPreparedTableData,
+        "push",
+      );
       if (!didSave) {
         event.node?.setDataValue(colId, event.oldValue);
       }
@@ -1506,15 +1604,17 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
 
     const previousPackFile = activePackFile;
     const previousPreparedTableData = activePreparedTableData;
+    const appendedRowFields = buildDefaultRowSchemaFields(currentSchema);
     const nextPackFile = {
       ...activePackFile,
       schemaFields: [
         ...((activePackFile.schemaFields as AmendedSchemaField[] | undefined) || []),
-        ...buildDefaultRowSchemaFields(currentSchema),
+        ...appendedRowFields,
       ],
     } as PackedFile;
+    const nextPreparedTableData = appendPreparedTableDataRow(previousPreparedTableData, appendedRowFields);
 
-    await commitPackFileChange(nextPackFile, previousPackFile, previousPreparedTableData, "push");
+    await commitPackFileChange(nextPackFile, previousPackFile, previousPreparedTableData, nextPreparedTableData, "push");
   }, [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange, currentSchema]);
 
   const handleUndo = useCallback(async () => {
@@ -1525,7 +1625,7 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
     const previousSnapshot = historyPastRef.current[historyPastRef.current.length - 1];
     if (!previousSnapshot) return;
 
-    await commitPackFileChange(previousSnapshot, activePackFile, activePreparedTableData, "undo");
+    await commitPackFileChange(previousSnapshot, activePackFile, activePreparedTableData, undefined, "undo");
   }, [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange]);
 
   const handleRedo = useCallback(async () => {
@@ -1536,7 +1636,7 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
     const nextSnapshot = historyFutureRef.current[historyFutureRef.current.length - 1];
     if (!nextSnapshot) return;
 
-    await commitPackFileChange(nextSnapshot, activePackFile, activePreparedTableData, "redo");
+    await commitPackFileChange(nextSnapshot, activePackFile, activePreparedTableData, undefined, "redo");
   }, [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange]);
 
   useEffect(() => {
