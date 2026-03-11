@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import SkillsTreeView from "./SkillsTreeView";
 import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
+import { SkillsDataContext } from "./skillsDataContext";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
 import { setIsShowingSkillNodeSetNames } from "../../appSlice";
@@ -270,12 +271,14 @@ const SkillsViewer = memo(() => {
           )}
           <div style={{ flex: 1 }}>
             {activeTab && (
-              <SkillsView
-                key={activeTab.id}
-                ref={skillsViewRef}
-                skillsData={activeTab.skillsData}
-                initialSnapshot={activeTab.snapshot}
-              />
+              <SkillsDataContext.Provider value={activeTab.skillsData}>
+                <SkillsView
+                  key={activeTab.id}
+                  ref={skillsViewRef}
+                  skillsData={activeTab.skillsData}
+                  initialSnapshot={activeTab.snapshot}
+                />
+              </SkillsDataContext.Provider>
             )}
           </div>
         </div>

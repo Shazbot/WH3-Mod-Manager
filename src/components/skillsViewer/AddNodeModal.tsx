@@ -1,10 +1,10 @@
-import React, { memo, useMemo, useState } from "react";
+import React, { memo, useContext, useMemo, useState } from "react";
 import { Modal } from "../../flowbite/components/Modal/index";
-import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "@/src/localizationContext";
 import Select, { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
 import selectStyle from "@/src/styles/selectStyle";
+import { SkillsDataContext } from "./skillsDataContext";
 
 interface AddNodeModalProps {
   isOpen: boolean;
@@ -60,7 +60,7 @@ const inputClass =
 const AddNodeModal = memo(
   ({ isOpen, onClose, onAdd, initialRow, initialColumn, editingData }: AddNodeModalProps) => {
     const localized = useLocalizations();
-    const skillsData = useAppSelector((state) => state.app.skillsData);
+    const skillsData = useContext(SkillsDataContext);
 
     const [mode, setMode] = useState<"custom" | "existing">(
       editingData?.existingSkillKey ? "existing" : "custom",

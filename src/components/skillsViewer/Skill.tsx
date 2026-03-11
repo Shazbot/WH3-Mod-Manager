@@ -1,9 +1,10 @@
-import React, { memo, useCallback, useState } from "react";
+import React, { memo, useCallback, useContext, useState } from "react";
 import { Handle, NodeToolbar, Position } from "@xyflow/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
 import AbilityTooltipCard from "./AbilityTooltipCard";
+import { SkillsDataContext } from "./skillsDataContext";
 
 export type SkillData = {
   skillBackground: string;
@@ -37,7 +38,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const dispatch = useAppDispatch();
   const { skillBackground, skillIconBackground, skillIcon, label } = data;
   const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
-  const skillsData = useAppSelector((state) => state.app.skillsData);
+  const skillsData = useContext(SkillsDataContext);
   const currentRank = useAppSelector((state) => state.app.currentRank);
 
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
