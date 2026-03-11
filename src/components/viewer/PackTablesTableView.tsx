@@ -85,6 +85,15 @@ const resolveCellValue = (cell: AmendedSchemaField): TableCellValue => {
   return cell.resolvedKeyValue;
 };
 
+const formatFloatDisplayValue = (value: TableCellValue | null | undefined): string => {
+  if (typeof value !== "string") return value == null ? "" : String(value);
+
+  const normalizedValue = value.trim();
+  if (!/^-?\d+\.0+$/.test(normalizedValue)) return value;
+
+  return normalizedValue.replace(/\.0+$/, "");
+};
+
 const buildTableCacheKey = (
   packPath: string,
   packedFilePath: string,
@@ -292,19 +301,35 @@ const AgGridWrapper = memo(
       for (let colIndex = 0; colIndex < currentSchema.fields.length; colIndex++) {
         const field = currentSchema.fields[colIndex];
         const colType = columns[colIndex]?.type;
+        const isFloatColumn = field?.field_type === "F32" || field?.field_type === "F64";
         const isKey = !!field && keyColumnSet.has(field.name);
         const headerName = (isKey ? "🔑 " : "") + (columnHeaders[colIndex] ?? "");
 
         const width = getColumnWidth(colIndex);
         defs.push({
           headerName,
+          headerTooltip: columnHeaders[colIndex] ?? "",
           colId: String(colIndex),
           width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
           minWidth: !useFixedSizing && colType === "text" ? width : undefined,
           flex: !useFixedSizing && colType === "text" ? 1 : undefined,
           cellRenderer: colType === "checkbox" ? "agCheckboxCellRenderer" : undefined,
           valueGetter: (p) => p.data?.[colIndex],
-          cellClass: colType === "numeric" ? "text-right tabular-nums" : undefined,
+          valueFormatter: isFloatColumn ? (p) => formatFloatDisplayValue(p.value) : undefined,
+          cellStyle:
+            colType === "checkbox"
+              ? {
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }
+              : undefined,
+          cellClass:
+            colType === "numeric"
+              ? "text-right tabular-nums"
+              : colType === "checkbox"
+                ? "text-center"
+                : undefined,
         });
       }
 
