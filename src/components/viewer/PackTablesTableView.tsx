@@ -7,7 +7,6 @@ import type {
   CellMouseOverEvent,
   CellValueChangedEvent,
   ColDef,
-  ColumnHeaderClickedEvent,
 } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
@@ -543,17 +542,6 @@ const AgGridWrapper = memo(
       [currentSchema.fields.length],
     );
 
-    const isColumnSelected = useCallback(
-      (colIndex: number) => {
-        if (rowCount <= 0) return false;
-
-        return selectionRangesRef.current.some(
-          (range) => range.startRow === 0 && range.endRow === rowCount - 1 && colIndex >= range.startCol && colIndex <= range.endCol,
-        );
-      },
-      [rowCount],
-    );
-
     const selectedColumnSignature = useMemo(() => {
       if (rowCount <= 0) return "";
 
@@ -608,12 +596,7 @@ const AgGridWrapper = memo(
           headerTooltip: fullHeaderName,
           autoHeaderHeight: true,
           wrapHeaderText: true,
-          headerClass: () => {
-            const classes = ["pack-table-header"];
-            if (colType === "numeric") classes.push("pack-table-header-right");
-            if (isColumnSelected(colIndex)) classes.push("pack-table-header-selected");
-            return classes;
-          },
+          headerClass: colType === "numeric" ? "pack-table-header pack-table-header-right" : "pack-table-header",
           colId: String(colIndex),
           editable: canEditTable,
           width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
@@ -654,7 +637,6 @@ const AgGridWrapper = memo(
       rowIndexColumnWidth,
       useFixedSizing,
       isCellSelected,
-      isColumnSelected,
       isRowSelected,
     ]);
 
@@ -697,7 +679,16 @@ const AgGridWrapper = memo(
     }, [selectionRanges]);
 
     useEffect(() => {
-      gridRef.current?.api?.refreshHeader();
+      const root = gridRootRef.current;
+      if (!root) return;
+
+      const selectedColumnIds = new Set(selectedColumnSignature === "" ? [] : selectedColumnSignature.split(","));
+      const headerCells = root.querySelectorAll(".ag-header-cell[col-id]");
+      headerCells.forEach((headerCell) => {
+        const rawColId = headerCell.getAttribute("col-id") ?? "";
+        const isSelected = rawColId !== "__rowIndex" && selectedColumnIds.has(rawColId);
+        headerCell.classList.toggle("pack-table-header-selected", isSelected);
+      });
     }, [selectedColumnSignature]);
 
     useEffect(() => {
@@ -948,25 +939,6 @@ const AgGridWrapper = memo(
       [stopAutoScroll, updateDragSelection],
     );
 
-    const onColumnHeaderClicked = useCallback(
-      (event: ColumnHeaderClickedEvent<RowData>) => {
-        const clickedColumn = event.column;
-        if (!clickedColumn || !("getColId" in clickedColumn)) return;
-
-        const colId = clickedColumn.getColId();
-        const colIndex = Number(colId);
-        if (!Number.isFinite(colIndex) || colIndex < 0 || rowCount <= 0) return;
-
-        const sourceEvent = (event as ColumnHeaderClickedEvent<RowData> & { sourceEvent?: MouseEvent }).sourceEvent;
-        if (!hasAdditiveSelectionModifier(sourceEvent)) return;
-
-        setSelectionRanges((currentRanges) =>
-          appendSelectionRange(currentRanges, normalizeSelectionRange(0, colIndex, rowCount - 1, colIndex)),
-        );
-      },
-      [rowCount],
-    );
-
     const onKeyDownCapture = useCallback(async (ev: React.KeyboardEvent) => {
       const isCopy = (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "c";
       if (!isCopy) return;
@@ -1031,6 +1003,25 @@ const AgGridWrapper = memo(
         onKeyDownCapture={onKeyDownCapture}
         onMouseDownCapture={(ev) => {
           if (ev.button === 1) ev.stopPropagation();
+
+          if (!hasAdditiveSelectionModifier(ev) || rowCount <= 0) return;
+          if ((ev.target as Element | null)?.closest(".ag-header-cell-resize")) return;
+          if ((ev.target as Element | null)?.closest(".ag-header-cell-menu-button, .ag-header-cell-filter-button")) return;
+
+          const headerCell = (ev.target as Element | null)?.closest(".ag-header-cell[col-id]");
+          if (!(headerCell instanceof HTMLElement)) return;
+
+          const rawColId = headerCell.getAttribute("col-id") ?? "";
+          if (rawColId === "__rowIndex") return;
+
+          const colIndex = Number(rawColId);
+          if (!Number.isFinite(colIndex) || colIndex < 0) return;
+
+          setSelectionRanges((currentRanges) =>
+            appendSelectionRange(currentRanges, normalizeSelectionRange(0, colIndex, rowCount - 1, colIndex)),
+          );
+          ev.preventDefault();
+          ev.stopPropagation();
         }}
         onContextMenu={(ev) => ev.preventDefault()}
       >
@@ -1046,7 +1037,6 @@ const AgGridWrapper = memo(
           suppressRowHoverHighlight={true}
           onCellMouseDown={onCellMouseDown}
           onCellMouseOver={onCellMouseOver}
-          onColumnHeaderClicked={onColumnHeaderClicked}
           onCellContextMenu={onCellContextMenu}
           onCellValueChanged={onCellValueChangedCallback}
         />
