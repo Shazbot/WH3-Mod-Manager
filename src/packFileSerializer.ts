@@ -2280,7 +2280,7 @@ const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
   const result = Buffer.concat(fieldBuffers);
   return result;
 };
-const serializePackFileDataToBuffer = (packFile: NewPackedFile): Buffer => {
+export const serializePackFileDataToBuffer = (packFile: NewPackedFile): Buffer => {
   if (packFile.buffer) {
     return packFile.buffer;
   }

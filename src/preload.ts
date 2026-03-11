@@ -371,6 +371,14 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("saveNodeFlow", flowName, flowData, packPath),
 
+  saveDBTableEdits: (
+    packPath: string,
+    packedFile: PackedFile,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("saveDBTableEdits", packPath, packedFile),
+
   savePackWithUnsavedFiles: (
     packPath: string,
   ): Promise<{
