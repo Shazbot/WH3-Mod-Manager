@@ -378,7 +378,6 @@ const matchVanillaDBFiles = /^db\\.*\\data__/;
 const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
   const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
   console.log("appendPacksData: appending", newPack.name);
-  console.log("appendPacksData: is existingPack:", !!existingPack);
   if (!existingPack) {
     appData.packsData.push(newPack);
     if (emitToMainWindow) {
@@ -436,7 +435,6 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
           }, outdatedPackFiles);
       }
     }
-    console.log("outdatedPackFiles", outdatedPackFiles);
     if (outdatedPackFiles.size > 0) {
       appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
       if (emitToMainWindow) {
@@ -469,7 +467,6 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
   }
 };
 export const getLocsTrie = (pack: Pack) => {
-  console.log("getLocsTrie:", pack.name);
   const trie = new Trie<string>("_");
   const locPFs = Object.values(pack.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
   const packViewData = getPackViewData(pack, undefined, true);

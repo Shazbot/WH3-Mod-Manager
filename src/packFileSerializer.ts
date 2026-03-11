@@ -833,7 +833,6 @@ export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], g
   return results;
 };
 export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: boolean) => {
-  console.log("getPackViewData:", pack.name, table);
   const tables = pack.packedFiles.map((packedFile) => packedFile.name);
   const locFiles: Record<string, PackedFile> = {};
   if (getLocs) {

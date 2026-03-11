@@ -134,8 +134,6 @@ const getPackTableData = (
   packData: PackViewData,
   rowFilter?: (row: PlainPackDataTypes[]) => boolean
 ) => {
-  console.log("getPackTableData packedFilePath:", packedFilePath);
-
   const packedFiles: PackedFile[] = [];
   const packFile = packData.packedFiles[packedFilePath];
   if (!packFile) {
