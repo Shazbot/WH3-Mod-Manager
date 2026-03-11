@@ -13,13 +13,20 @@ import { dataFromBackend } from "./packDataStore";
 import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import type { DBVersion, PackedFile } from "../../packFileTypes";
+import { isOpenablePackedFilePath } from "@/src/utility/packFileViewing";
 
 type PackTablesTreeViewProps = {
+  packPath: string;
+  preferredTab: "db" | "files";
   tableFilter: string;
   showDialog: ShowViewerDialog;
   onOpenDBTable: (selection: DBTableSelection, options?: { forceNewTab?: boolean }) => void;
   onOpenFlowFile: (
     selection: { flowFile: string; packPath: string },
+    options?: { forceNewTab?: boolean },
+  ) => void;
+  onOpenPackedFile: (
+    selection: { filePath: string; packPath: string },
     options?: { forceNewTab?: boolean },
   ) => void;
 };
@@ -31,15 +38,139 @@ export type PackTablesTreeViewHandle = {
   openNewFlowDialog: () => void;
 };
 
+const isDBPackedFileName = (packFileName: string): boolean =>
+  Boolean(getDBNameFromString(packFileName) && getDBSubnameFromString(packFileName));
+
+const buildPathTree = (filePaths: string[]): TreeData => {
+  const root: TreeData = { name: "", children: [] };
+
+  for (const filePath of filePaths) {
+    const segments = filePath.split(/[\\/]/).filter(Boolean);
+    let currentNode = root;
+    for (const segment of segments) {
+      let nextNode = currentNode.children?.find((child) => child.name === segment);
+      if (!nextNode) {
+        nextNode = { name: segment, children: [] };
+        currentNode.children?.push(nextNode);
+      }
+      currentNode = nextNode;
+    }
+  }
+
+  const sortChildren = (node: TreeData) => {
+    node.children?.sort((first, second) => first.name.localeCompare(second.name));
+    node.children?.forEach(sortChildren);
+  };
+
+  sortChildren(root);
+  return root;
+};
+
+const buildNodeById = (data: INode[]) => {
+  const idToNode = new Map<INode["id"], INode>();
+  for (const node of data) {
+    idToNode.set(node.id, node);
+  }
+  return idToNode;
+};
+
+const buildHiddenNodeIds = (data: INode[], nodeById: Map<INode["id"], INode>, normalizedFilter: string) => {
+  if (normalizedFilter === "") return new Set<INode["id"]>();
+
+  const matchedIds: Array<INode["id"]> = [];
+  for (const node of data) {
+    if (node.name.toLowerCase().includes(normalizedFilter)) {
+      matchedIds.push(node.id);
+    }
+  }
+
+  const visibleNodeIds = new Set<INode["id"]>();
+  const traversedDescendants = new Set<INode["id"]>();
+
+  for (const matchedId of matchedIds) {
+    let iterNode: INode | undefined = nodeById.get(matchedId);
+    while (iterNode) {
+      visibleNodeIds.add(iterNode.id);
+      if (iterNode.parent == null) break;
+      iterNode = nodeById.get(iterNode.parent);
+    }
+
+    const stack = [matchedId];
+    while (stack.length > 0) {
+      const currentId = stack.pop();
+      if (currentId == null || traversedDescendants.has(currentId)) continue;
+      traversedDescendants.add(currentId);
+      visibleNodeIds.add(currentId);
+
+      const currentNode = nodeById.get(currentId);
+      if (!currentNode) continue;
+
+      for (const childId of currentNode.children) {
+        stack.push(childId);
+      }
+    }
+  }
+
+  const hiddenNodes = new Set<INode["id"]>();
+  for (const node of data) {
+    if (!visibleNodeIds.has(node.id)) {
+      hiddenNodes.add(node.id);
+    }
+  }
+
+  return hiddenNodes;
+};
+
+const getDescendantLeafIds = (element: INode, nodeById: Map<INode["id"], INode>): Array<string | number> => {
+  const result: Array<string | number> = [];
+  const stack: INode[] = [element];
+
+  while (stack.length > 0) {
+    const currentNode = stack.pop();
+    if (!currentNode) break;
+
+    if (!currentNode.children || currentNode.children.length === 0) {
+      if (currentNode.id !== 0) {
+        result.push(currentNode.id as string | number);
+      }
+      continue;
+    }
+
+    for (let i = currentNode.children.length - 1; i >= 0; i--) {
+      const childNode = nodeById.get(currentNode.children[i]);
+      if (childNode) stack.push(childNode);
+    }
+  }
+
+  return result;
+};
+
+const getNodeFullPath = (element: INode, nodeById: Map<INode["id"], INode>): string => {
+  const segments: string[] = [];
+  let iterNode: INode | undefined = element;
+
+  while (iterNode && iterNode.id !== 0) {
+    if (iterNode.name) {
+      segments.unshift(iterNode.name);
+    }
+    if (iterNode.parent == null) break;
+    iterNode = nodeById.get(iterNode.parent);
+  }
+
+  return segments.join("\\");
+};
+
 const PackTablesTreeView = React.memo(
   React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
     const dispatch = useAppDispatch();
-    const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
     const currentGame = useAppSelector((state) => state.app.currentGame);
     const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
     const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
 
-    const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+    const [activeTreeTab, setActiveTreeTab] = React.useState<"db" | "files">(props.preferredTab);
+    const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; treeTab: "db" | "files" } | null>(
+      null,
+    );
     const [isNewFlowDialogOpen, setIsNewFlowDialogOpen] = React.useState(false);
     const [newFlowName, setNewFlowName] = React.useState("");
     const [isNewTableDialogOpen, setIsNewTableDialogOpen] = React.useState(false);
@@ -50,19 +181,24 @@ const PackTablesTreeView = React.memo(
     const [isLoadingNewTableOptions, setIsLoadingNewTableOptions] = React.useState(false);
     const [isCreatingNewTable, setIsCreatingNewTable] = React.useState(false);
     const pendingOpenTimeoutRef = React.useRef<number | null>(null);
-    const [selectedNodeIds, setSelectedNodeIds] = React.useState<Array<string | number>>([]);
+    const [dbSelectedNodeIds, setDbSelectedNodeIds] = React.useState<Array<string | number>>([]);
+    const [fileSelectedNodeIds, setFileSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
     const [isExportingSelection, setIsExportingSelection] = React.useState(false);
+
+    useEffect(() => {
+      setActiveTreeTab(props.preferredTab);
+    }, [props.preferredTab]);
 
     useImperativeHandle(ref, () => ({
       openNewFlowDialog: () => {
         setContextMenu(null);
+        setActiveTreeTab("files");
         setIsNewFlowDialogOpen(true);
       },
     }));
 
-    const packPath =
-      currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
+    const packPath = props.packPath || (gameToPackWithDBTablesName[currentGame] || "db.pack");
     const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
     const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
     const isVanillaPackOpen = packData ? vanillaPackNames.includes(packData.packName) : false;
@@ -88,7 +224,7 @@ const PackTablesTreeView = React.memo(
       return versions.find((version) => version.version === defaultVersion) || versions[0];
     }, [availableTableVersions, defaultTableVersions, newTableName]);
 
-    const data = useMemo(() => {
+    const dbData = useMemo(() => {
       if (!packData) {
         return flattenTree({ name: "", children: [] });
       }
@@ -111,36 +247,14 @@ const PackTablesTreeView = React.memo(
         addDbEntry(packFileName);
       }
 
-      const unsavedFlowNames = new Set<string>();
-      const unsavedStandaloneNames: string[] = [];
       if (unsavedFiles.length > 0) {
         for (const unsavedFile of unsavedFiles.toReversed()) {
-          if (unsavedFile.name.startsWith("whmmflows\\")) {
-            unsavedFlowNames.add(unsavedFile.name);
-            continue;
-          }
           const dbName = getDBNameFromString(unsavedFile.name);
           const dbSubname = getDBSubnameFromString(unsavedFile.name);
           if (dbName && dbSubname) {
             addDbEntry(unsavedFile.name);
-            continue;
           }
-          unsavedStandaloneNames.push(unsavedFile.name);
         }
-      }
-
-      const flowFiles = packData.tables.filter((tableName) => tableName.startsWith("whmmflows\\"));
-      for (const flowFile of flowFiles) {
-        if (unsavedFlowNames.has(flowFile)) continue;
-        root.children?.splice(0, 0, { name: flowFile, children: [] });
-      }
-
-      for (const unsavedFlowName of unsavedFlowNames) {
-        root.children?.splice(0, 0, { name: unsavedFlowName, children: [] });
-      }
-
-      for (const unsavedStandaloneName of unsavedStandaloneNames) {
-        root.children?.splice(0, 0, { name: unsavedStandaloneName, children: [] });
       }
 
       for (const dbName of [...dbEntriesByName.keys()].toSorted((first, second) => first.localeCompare(second))) {
@@ -156,18 +270,32 @@ const PackTablesTreeView = React.memo(
       return flattenTree(root);
     }, [packData, unsavedFiles]);
 
-    const nodeById = useMemo(() => {
-      const idToNode = new Map<INode["id"], INode>();
-      for (const node of data) {
-        idToNode.set(node.id, node);
+    const fileData = useMemo(() => {
+      if (!packData) {
+        return flattenTree({ name: "", children: [] });
       }
-      return idToNode;
-    }, [data]);
 
-    // Clean up stale selectedNodeIds when tree data changes
+      const fileNames = new Set<string>();
+      for (const packFileName of packData.tables) {
+        if (!isDBPackedFileName(packFileName)) {
+          fileNames.add(packFileName);
+        }
+      }
+      for (const unsavedFile of unsavedFiles) {
+        if (!isDBPackedFileName(unsavedFile.name)) {
+          fileNames.add(unsavedFile.name);
+        }
+      }
+
+      return flattenTree(buildPathTree(Array.from(fileNames).toSorted((first, second) => first.localeCompare(second))));
+    }, [packData, unsavedFiles]);
+
+    const dbNodeById = useMemo(() => buildNodeById(dbData), [dbData]);
+    const fileNodeById = useMemo(() => buildNodeById(fileData), [fileData]);
+
     useEffect(() => {
-      const validIds = new Set(data.map((node) => node.id));
-      setSelectedNodeIds((prevSelectedIds) =>
+      const validIds = new Set(dbData.map((node) => node.id));
+      setDbSelectedNodeIds((prevSelectedIds) =>
         (() => {
           const nextSelectedIds = prevSelectedIds.filter((selectedId) => validIds.has(selectedId));
           const isSameSelection =
@@ -176,56 +304,31 @@ const PackTablesTreeView = React.memo(
           return isSameSelection ? prevSelectedIds : nextSelectedIds;
         })(),
       );
-    }, [data]);
+    }, [dbData]);
+
+    useEffect(() => {
+      const validIds = new Set(fileData.map((node) => node.id));
+      setFileSelectedNodeIds((prevSelectedIds) =>
+        (() => {
+          const nextSelectedIds = prevSelectedIds.filter((selectedId) => validIds.has(selectedId));
+          const isSameSelection =
+            nextSelectedIds.length === prevSelectedIds.length &&
+            nextSelectedIds.every((selectedId, index) => selectedId === prevSelectedIds[index]);
+          return isSameSelection ? prevSelectedIds : nextSelectedIds;
+        })(),
+      );
+    }, [fileData]);
 
     const normalizedFilter = props.tableFilter.toLowerCase().trim();
 
-    const hiddenNodeIds = useMemo(() => {
-      if (normalizedFilter === "") return new Set<INode["id"]>();
-
-      const matchedIds: Array<INode["id"]> = [];
-      for (const node of data) {
-        if (node.name.toLowerCase().includes(normalizedFilter)) {
-          matchedIds.push(node.id);
-        }
-      }
-
-      const visibleNodeIds = new Set<INode["id"]>();
-      const traversedDescendants = new Set<INode["id"]>();
-
-      for (const matchedId of matchedIds) {
-        let iterNode: INode | undefined = nodeById.get(matchedId);
-        while (iterNode) {
-          visibleNodeIds.add(iterNode.id);
-          if (iterNode.parent == null) break;
-          iterNode = nodeById.get(iterNode.parent);
-        }
-
-        const stack = [matchedId];
-        while (stack.length > 0) {
-          const currentId = stack.pop();
-          if (currentId == null || traversedDescendants.has(currentId)) continue;
-          traversedDescendants.add(currentId);
-          visibleNodeIds.add(currentId);
-
-          const currentNode = nodeById.get(currentId);
-          if (!currentNode) continue;
-
-          for (const childId of currentNode.children) {
-            stack.push(childId);
-          }
-        }
-      }
-
-      const hiddenNodes = new Set<INode["id"]>();
-      for (const node of data) {
-        if (!visibleNodeIds.has(node.id)) {
-          hiddenNodes.add(node.id);
-        }
-      }
-
-      return hiddenNodes;
-    }, [data, nodeById, normalizedFilter]);
+    const dbHiddenNodeIds = useMemo(
+      () => buildHiddenNodeIds(dbData, dbNodeById, normalizedFilter),
+      [dbData, dbNodeById, normalizedFilter],
+    );
+    const fileHiddenNodeIds = useMemo(
+      () => buildHiddenNodeIds(fileData, fileNodeById, normalizedFilter),
+      [fileData, fileNodeById, normalizedFilter],
+    );
 
     const getDBSelectionForElement = (element: INode) => {
       if (element.children && element.children.length > 0) return;
@@ -242,13 +345,18 @@ const PackTablesTreeView = React.memo(
       }
 
       if (!element.parent) return;
-      const parentLeaf = nodeById.get(element.parent);
+      const parentLeaf = dbNodeById.get(element.parent);
       if (!parentLeaf || !parentLeaf.name) return;
       return {
         packPath: packData!.packPath,
         dbName: parentLeaf.name,
         dbSubname: element.name,
       } as DBTableSelection;
+    };
+
+    const getPackedFilePathForElement = (element: INode) => {
+      if (element.children && element.children.length > 0) return;
+      return getNodeFullPath(element, fileNodeById);
     };
 
     const getPackedFileForDBSelection = (selection: DBTableSelection): PackedFile | undefined => {
@@ -314,53 +422,30 @@ const PackTablesTreeView = React.memo(
       return tsvLines.join("\n");
     };
 
-	    const selectedDBTableSelections = useMemo(() => {
-	      if (!packData) return [];
-	      if (!contextMenu && !isExportingSelection) return [];
+    const selectedDBTableSelections = useMemo(() => {
+      if (!packData) return [];
+      if ((!contextMenu || contextMenu.treeTab !== "db") && !isExportingSelection) return [];
 
-	      const dedupedSelections = new Map<string, DBTableSelection>();
-	      for (const selectedId of selectedNodeIds) {
-	        const node = nodeById.get(selectedId);
-	        if (!node) continue;
-	        const selection = getDBSelectionForElement(node);
-	        if (!selection) continue;
-	        dedupedSelections.set(`${selection.packPath}|${selection.dbName}|${selection.dbSubname}`, selection);
-	      }
+      const dedupedSelections = new Map<string, DBTableSelection>();
+      for (const selectedId of dbSelectedNodeIds) {
+        const node = dbNodeById.get(selectedId);
+        if (!node) continue;
+        const selection = getDBSelectionForElement(node);
+        if (!selection) continue;
+        dedupedSelections.set(`${selection.packPath}|${selection.dbName}|${selection.dbSubname}`, selection);
+      }
 
-	      return Array.from(dedupedSelections.values()).filter((selection) => {
-	        const packedFile = getPackedFileForDBSelection(selection);
-	        return Boolean(packedFile?.schemaFields && packedFile?.tableSchema);
-	      });
-	    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedNodeIds, nodeById, packData, unsavedFiles, contextMenu, isExportingSelection]);
+      return Array.from(dedupedSelections.values()).filter((selection) => {
+        const packedFile = getPackedFileForDBSelection(selection);
+        return Boolean(packedFile?.schemaFields && packedFile?.tableSchema);
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dbSelectedNodeIds, dbNodeById, packData, unsavedFiles, contextMenu, isExportingSelection]);
 
-	    const getDescendantLeafIds = (element: INode): Array<string | number> => {
-	      const result: Array<string | number> = [];
-	      const stack: INode[] = [element];
-
-	      while (stack.length > 0) {
-	        const currentNode = stack.pop();
-	        if (!currentNode) break;
-
-	        const children = currentNode.children;
-	        if (!children || children.length === 0) {
-	          if (currentNode.id !== 0) {
-	            result.push(currentNode.id as string | number);
-	          }
-	          continue;
-	        }
-
-	        // Keep traversal stable-ish by pushing in reverse.
-	        for (let i = children.length - 1; i >= 0; i--) {
-	          const childNode = nodeById.get(children[i]);
-	          if (childNode) stack.push(childNode);
-	        }
-	      }
-
-	      return result;
-	    };
-
-    const addIdsToSelection = (idsToAdd: Array<string | number>) => {
+    const addIdsToSelection = (
+      idsToAdd: Array<string | number>,
+      setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
+    ) => {
       if (idsToAdd.length === 0) return;
       setSelectedNodeIds((prevSelectedIds) => {
         const nextSelectedIds = new Set(prevSelectedIds);
@@ -369,7 +454,10 @@ const PackTablesTreeView = React.memo(
       });
     };
 
-    const toggleIdsInSelection = (idsToToggle: Array<string | number>) => {
+    const toggleIdsInSelection = (
+      idsToToggle: Array<string | number>,
+      setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
+    ) => {
       if (idsToToggle.length === 0) return;
       setSelectedNodeIds((prevSelectedIds) => {
         const nextSelectedIds = new Set(prevSelectedIds);
@@ -383,54 +471,68 @@ const PackTablesTreeView = React.memo(
       });
     };
 
-	    const onTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
-	      if (lastLabelSelectionModeRef.current === "single") {
-	        setSelectedNodeIds([selectionProps.element.id as string | number]);
-	      } else if (lastLabelSelectionModeRef.current == null) {
-	        setSelectedNodeIds([...selectionProps.treeState.selectedIds]);
-	      }
-	      lastLabelSelectionModeRef.current = null;
-
-      if (!packData) return;
-
-      if (selectionProps.element.name.startsWith("whmmflows\\")) {
-        if (pendingOpenTimeoutRef.current != null) {
-          window.clearTimeout(pendingOpenTimeoutRef.current);
-        }
-        pendingOpenTimeoutRef.current = window.setTimeout(() => {
-          pendingOpenTimeoutRef.current = null;
-          props.onOpenFlowFile({ flowFile: selectionProps.element.name, packPath: packData.packPath });
-        }, 180);
-        return;
+    const onDBTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
+      if (lastLabelSelectionModeRef.current === "single") {
+        setDbSelectedNodeIds([selectionProps.element.id as string | number]);
+      } else if (lastLabelSelectionModeRef.current == null) {
+        setDbSelectedNodeIds([...selectionProps.treeState.selectedIds]);
       }
+      lastLabelSelectionModeRef.current = null;
 
-      if (
-        selectionProps.isSelected &&
-        selectionProps.element.parent &&
-        selectionProps.element.children &&
-        selectionProps.element.children.length < 1
-      ) {
-        const dbSelection = getDBSelectionForElement(selectionProps.element);
-        if (dbSelection) {
-          if (pendingOpenTimeoutRef.current != null) {
-            window.clearTimeout(pendingOpenTimeoutRef.current);
-          }
-          pendingOpenTimeoutRef.current = window.setTimeout(() => {
-            pendingOpenTimeoutRef.current = null;
-            props.onOpenDBTable(dbSelection);
-          }, 180);
-        }
+      if (!selectionProps.isSelected) return;
+
+      const dbSelection = getDBSelectionForElement(selectionProps.element);
+      if (!dbSelection) return;
+      if (pendingOpenTimeoutRef.current != null) {
+        window.clearTimeout(pendingOpenTimeoutRef.current);
       }
+      pendingOpenTimeoutRef.current = window.setTimeout(() => {
+        pendingOpenTimeoutRef.current = null;
+        props.onOpenDBTable(dbSelection);
+      }, 180);
     };
 
-    const handleOpenInNewTab = (element: INode) => {
+    const onFileTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
+      if (lastLabelSelectionModeRef.current === "single") {
+        setFileSelectedNodeIds([selectionProps.element.id as string | number]);
+      } else if (lastLabelSelectionModeRef.current == null) {
+        setFileSelectedNodeIds([...selectionProps.treeState.selectedIds]);
+      }
+      lastLabelSelectionModeRef.current = null;
+
+      if (!packData || !selectionProps.isSelected) return;
+
+      const filePath = getPackedFilePathForElement(selectionProps.element);
+      if (!filePath) return;
+      if (pendingOpenTimeoutRef.current != null) {
+        window.clearTimeout(pendingOpenTimeoutRef.current);
+      }
+      pendingOpenTimeoutRef.current = window.setTimeout(() => {
+        pendingOpenTimeoutRef.current = null;
+        if (filePath.startsWith("whmmflows\\")) {
+          props.onOpenFlowFile({ flowFile: filePath, packPath: packData.packPath });
+          return;
+        }
+        if (!isOpenablePackedFilePath(filePath)) return;
+        props.onOpenPackedFile({ filePath, packPath: packData.packPath });
+      }, 180);
+    };
+
+    const handleOpenInNewTab = (element: INode, treeTab: "db" | "files") => {
       if (!packData) return;
       if (pendingOpenTimeoutRef.current != null) {
         window.clearTimeout(pendingOpenTimeoutRef.current);
         pendingOpenTimeoutRef.current = null;
       }
-      if (element.name.startsWith("whmmflows\\")) {
-        props.onOpenFlowFile({ flowFile: element.name, packPath: packData.packPath }, { forceNewTab: true });
+      if (treeTab === "files") {
+        const filePath = getPackedFilePathForElement(element);
+        if (!filePath) return;
+        if (filePath.startsWith("whmmflows\\")) {
+          props.onOpenFlowFile({ flowFile: filePath, packPath: packData.packPath }, { forceNewTab: true });
+          return;
+        }
+        if (!isOpenablePackedFilePath(filePath)) return;
+        props.onOpenPackedFile({ filePath, packPath: packData.packPath }, { forceNewTab: true });
         return;
       }
 
@@ -467,14 +569,14 @@ const PackTablesTreeView = React.memo(
       );
     };
 
-    const isTreeNodeFiltered = (element: INode): boolean => {
+    const isTreeNodeFiltered = (element: INode, treeTab: "db" | "files"): boolean => {
       if (normalizedFilter === "") return false;
-      return hiddenNodeIds.has(element.id);
+      return treeTab === "db" ? dbHiddenNodeIds.has(element.id) : fileHiddenNodeIds.has(element.id);
     };
 
-    const handleContextMenu = (e: React.MouseEvent) => {
+    const handleContextMenu = (e: React.MouseEvent, treeTab: "db" | "files") => {
       e.preventDefault();
-      setContextMenu({ x: e.clientX, y: e.clientY });
+      setContextMenu({ x: e.clientX, y: e.clientY, treeTab });
     };
 
     // Close context menu when clicking outside
@@ -488,6 +590,7 @@ const PackTablesTreeView = React.memo(
 
     const handleAddNewFlow = () => {
       setContextMenu(null);
+      setActiveTreeTab("files");
       setIsNewFlowDialogOpen(true);
     };
 
@@ -694,106 +797,145 @@ const PackTablesTreeView = React.memo(
       }
     };
 
+    const renderTree = (
+      treeTab: "db" | "files",
+      data: INode[],
+      selectedIds: Array<string | number>,
+      setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
+      nodeById: Map<INode["id"], INode>,
+      onSelect: (selectionProps: ITreeViewOnSelectProps) => void,
+    ) => (
+      <TreeView
+        data={data}
+        aria-label={treeTab === "db" ? "DB files tree" : "Packed files tree"}
+        multiSelect={true}
+        selectedIds={selectedIds}
+        onSelect={onSelect}
+        nodeRenderer={({
+          element,
+          isBranch,
+          isExpanded,
+          isSelected,
+          isDisabled,
+          getNodeProps,
+          level,
+          handleExpand,
+          handleSelect,
+        }) => {
+          const handleLabelClick = (e: React.MouseEvent<HTMLSpanElement>) => {
+            e.stopPropagation();
+            if (e.shiftKey) {
+              lastLabelSelectionModeRef.current = "shift";
+              e.preventDefault();
+              if (pendingOpenTimeoutRef.current != null) {
+                window.clearTimeout(pendingOpenTimeoutRef.current);
+                pendingOpenTimeoutRef.current = null;
+              }
+
+              const idsToSelect = isBranch
+                ? getDescendantLeafIds(element, nodeById)
+                : [element.id as string | number];
+              addIdsToSelection(idsToSelect, setSelectedNodeIds);
+              lastLabelSelectionModeRef.current = null;
+              return;
+            }
+
+            if (e.ctrlKey || e.metaKey) {
+              lastLabelSelectionModeRef.current = "ctrl";
+              e.preventDefault();
+              if (pendingOpenTimeoutRef.current != null) {
+                window.clearTimeout(pendingOpenTimeoutRef.current);
+                pendingOpenTimeoutRef.current = null;
+              }
+
+              const idsToToggle = isBranch
+                ? getDescendantLeafIds(element, nodeById)
+                : [element.id as string | number];
+              toggleIdsInSelection(idsToToggle, setSelectedNodeIds);
+              lastLabelSelectionModeRef.current = null;
+              return;
+            }
+
+            lastLabelSelectionModeRef.current = "single";
+            setSelectedNodeIds([element.id as string | number]);
+            handleSelect(e);
+            if (isBranch) {
+              handleExpand(e);
+            }
+          };
+
+          return (
+            <div
+              {...getNodeProps({
+                onClick: (e) => {
+                  e.stopPropagation();
+                  handleExpand(e);
+                },
+              })}
+              style={{
+                marginLeft: 40 * (level - 1),
+                opacity: isDisabled ? 0.5 : 1,
+              }}
+              className={
+                "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
+                (isSelected ? "bg-gray-700/60 " : "") +
+                "hover:underline " +
+                (isTreeNodeFiltered(element, treeTab) ? "hidden" : "")
+              }
+            >
+              {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
+              <span
+                onClick={handleLabelClick}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenInNewTab(element, treeTab);
+                }}
+                className="relative select-none"
+              >
+                {element.name}
+              </span>
+            </div>
+          );
+        }}
+      />
+    );
+
     if (!packData) {
       return <></>;
     }
 
     return (
-      <div onContextMenu={handleContextMenu} className="relative select-none h-full min-h-full">
-        <TreeView
-          data={data}
-          aria-label="Controlled expanded node tree"
-          multiSelect={true}
-          selectedIds={selectedNodeIds}
-          onSelect={(props) => onTreeSelect(props)}
-          nodeRenderer={({
-            element,
-            isBranch,
-            isExpanded,
-            isSelected,
-            isDisabled,
-            getNodeProps,
-            level,
-            handleExpand,
-            handleSelect,
-	          }) => {
-	            const handleLabelClick = (e: React.MouseEvent<HTMLSpanElement>) => {
-	              // Prevent click bubbling to ancestor branch wrappers; otherwise clicking a child can toggle/select its parents.
-	              e.stopPropagation();
-	              if (e.shiftKey) {
-	                lastLabelSelectionModeRef.current = "shift";
-	                e.preventDefault();
-	                if (pendingOpenTimeoutRef.current != null) {
-	                  window.clearTimeout(pendingOpenTimeoutRef.current);
-	                  pendingOpenTimeoutRef.current = null;
-	                }
+      <div onContextMenu={(e) => handleContextMenu(e, activeTreeTab)} className="relative select-none h-full min-h-full">
+        <div className="sticky top-0 z-10 flex border-b border-gray-700 bg-gray-900/95 mb-2">
+          <button
+            type="button"
+            onClick={() => setActiveTreeTab("db")}
+            className={
+              "px-3 py-2 text-xs font-medium border-b-2 " +
+              (activeTreeTab === "db"
+                ? "text-white border-blue-500 bg-gray-800/80"
+                : "text-gray-400 border-transparent hover:text-white hover:bg-gray-800/60")
+            }
+          >
+            DB Tables
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTreeTab("files")}
+            className={
+              "px-3 py-2 text-xs font-medium border-b-2 " +
+              (activeTreeTab === "files"
+                ? "text-white border-blue-500 bg-gray-800/80"
+                : "text-gray-400 border-transparent hover:text-white hover:bg-gray-800/60")
+            }
+          >
+            Files
+          </button>
+        </div>
 
-                const idsToSelect = isBranch
-                  ? getDescendantLeafIds(element)
-                  : [element.id as string | number];
-                addIdsToSelection(idsToSelect);
-                lastLabelSelectionModeRef.current = null;
-                return;
-              }
-
-	              if (e.ctrlKey || e.metaKey) {
-	                lastLabelSelectionModeRef.current = "ctrl";
-	                e.preventDefault();
-	                if (pendingOpenTimeoutRef.current != null) {
-	                  window.clearTimeout(pendingOpenTimeoutRef.current);
-	                  pendingOpenTimeoutRef.current = null;
-	                }
-
-                const idsToToggle = isBranch
-                  ? getDescendantLeafIds(element)
-                  : [element.id as string | number];
-                toggleIdsInSelection(idsToToggle);
-                lastLabelSelectionModeRef.current = null;
-                return;
-	              }
-
-	              lastLabelSelectionModeRef.current = "single";
-	              setSelectedNodeIds([element.id as string | number]);
-	              handleSelect(e);
-	              if (isBranch) {
-	                handleExpand(e);
-	              }
-	            };
-
-	            return (
-	              <div
-	                {...getNodeProps({
-	                  onClick: (e) => {
-	                    e.stopPropagation();
-	                    handleExpand(e);
-	                  },
-	                })}
-	                style={{
-	                  marginLeft: 40 * (level - 1),
-	                  opacity: isDisabled ? 0.5 : 1,
-	                }}
-                className={
-                  "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-pointer rounded " +
-                  (isSelected ? "bg-gray-700/60 " : "") +
-                  "hover:underline " +
-                  (isTreeNodeFiltered(element) ? "hidden" : "")
-                }
-              >
-                {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
-                <span
-                  onClick={handleLabelClick}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenInNewTab(element);
-                  }}
-                  className="relative select-none"
-                >
-                  {element.name}
-                </span>
-              </div>
-            );
-          }}
-        />
+        {activeTreeTab === "db"
+          ? renderTree("db", dbData, dbSelectedNodeIds, setDbSelectedNodeIds, dbNodeById, onDBTreeSelect)
+          : renderTree("files", fileData, fileSelectedNodeIds, setFileSelectedNodeIds, fileNodeById, onFileTreeSelect)}
 
         {/* Context Menu */}
         {contextMenu && (
@@ -801,7 +943,7 @@ const PackTablesTreeView = React.memo(
             className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[150px]"
             style={{ top: contextMenu.y, left: contextMenu.x }}
           >
-            {!isVanillaPackOpen && (
+            {!isVanillaPackOpen && contextMenu.treeTab === "files" && (
               <button
                 onClick={handleAddNewFlow}
                 className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
@@ -809,7 +951,7 @@ const PackTablesTreeView = React.memo(
                 Add New Flow
               </button>
             )}
-            {!isVanillaPackOpen && (
+            {!isVanillaPackOpen && contextMenu.treeTab === "db" && (
               <button
                 onClick={handleAddNewTable}
                 disabled={isLoadingNewTableOptions}
@@ -818,7 +960,7 @@ const PackTablesTreeView = React.memo(
                 {isLoadingNewTableOptions ? "Loading Tables..." : "Add New Table"}
               </button>
             )}
-            {selectedDBTableSelections.length > 0 && (
+            {contextMenu.treeTab === "db" && selectedDBTableSelections.length > 0 && (
               <button
                 onClick={handleExportSelectedAsTSV}
                 disabled={isExportingSelection}

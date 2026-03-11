@@ -458,6 +458,8 @@ const api = {
   ): Promise<{
     success: boolean;
     text?: string;
+    base64?: string;
+    mimeType?: string;
     error?: string;
   }> => ipcRenderer.invoke("readFileFromPack", packPath, fileName),
 
