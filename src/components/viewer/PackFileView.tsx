@@ -3,6 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { xml } from "@codemirror/lang-xml";
 import { StreamLanguage } from "@codemirror/language";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { useAppSelector } from "@/src/hooks";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import type { ShowViewerDialog } from "./viewerDialogs";
@@ -144,6 +145,7 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
         <CodeMirror
           value={loadedState.text || ""}
           height="100%"
+          theme={vscodeDark}
           extensions={editorExtensions}
           editable={false}
           basicSetup={{
