@@ -3,6 +3,7 @@ import { useAppDispatch, useAppSelector } from "../../hooks";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import PackTablesTreeView, { PackTablesTreeViewHandle } from "./PackTablesTreeView";
+import PackFileView from "./PackFileView";
 import PackTablesTableView from "./PackTablesTableView";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
@@ -16,7 +17,7 @@ import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import { getPackNameFromPath } from "@/src/utility/packFileHelpers";
 
-type ViewerTabKind = "db" | "flow";
+type ViewerTabKind = "db" | "flow" | "file";
 
 type ViewerTab = {
   id: string;
@@ -27,6 +28,7 @@ type ViewerTab = {
   dbName?: string;
   dbSubname?: string;
   flowFile?: string;
+  filePath?: string;
 };
 
 type ViewerTabCandidate = Omit<ViewerTab, "id">;
@@ -53,8 +55,6 @@ const ModsViewer = memo(() => {
   const startArgs = useAppSelector((state) => state.app.startArgs);
   const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
   const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
-  const currentPackData = useAppSelector((state) => selectCurrentPackData(state, packPath));
-  const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
 
   const [isOpen, setIsOpen] = React.useState(true);
   const [isSaveAsModalOpen, setIsSaveAsModalOpen] = React.useState(false);
@@ -67,6 +67,10 @@ const ModsViewer = memo(() => {
   const [openTabs, setOpenTabs] = useState<ViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [messageDialog, setMessageDialog] = useState<{ title: string; message: string } | null>(null);
+  const activeTab = useMemo(() => openTabs.find((tab) => tab.id === activeTabId) ?? null, [openTabs, activeTabId]);
+  const activeViewerPackPath = activeTab?.packPath ?? packPath;
+  const currentPackData = useAppSelector((state) => selectCurrentPackData(state, activeViewerPackPath));
+  const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, activeViewerPackPath));
 
   const treeViewRef = useRef<PackTablesTreeViewHandle>(null);
   const saveAsPackNameInputRef = useRef<HTMLInputElement>(null);
@@ -166,6 +170,18 @@ const ModsViewer = memo(() => {
     };
   }, []);
 
+  const buildPackedFileTabCandidate = useCallback((filePath: string, packPath: string): ViewerTabCandidate => {
+    const packLabel = getPackNameFromPath(packPath) ?? packPath;
+    const shortFileName = filePath.split(/[\\/]/).pop() ?? filePath;
+    return {
+      fileKey: `file|${packPath}|${filePath}`,
+      title: `${shortFileName}${packLabel ? ` | ${packLabel}` : ""}`,
+      kind: "file",
+      packPath,
+      filePath,
+    };
+  }, []);
+
   const openOrActivateTab = useCallback(
     (candidate: ViewerTabCandidate, options: { forceNewTab?: boolean } = {}) => {
       const now = Date.now();
@@ -240,6 +256,13 @@ const ModsViewer = memo(() => {
     [buildFlowTabCandidate, openOrActivateTab],
   );
 
+  const handleOpenPackedFile = useCallback(
+    (selection: { filePath: string; packPath: string }, options?: { forceNewTab?: boolean }) => {
+      openOrActivateTab(buildPackedFileTabCandidate(selection.filePath, selection.packPath), options);
+    },
+    [buildPackedFileTabCandidate, openOrActivateTab],
+  );
+
   const handleCloseTab = useCallback(
     (tabId: string) => {
       setOpenTabs((prevTabs) => {
@@ -259,7 +282,6 @@ const ModsViewer = memo(() => {
   );
 
   const hasUnsavedFiles = unsavedFiles.length > 0;
-  const activeTab = useMemo(() => openTabs.find((tab) => tab.id === activeTabId) ?? null, [openTabs, activeTabId]);
 
   useEffect(() => {
     if (!activeTabId) return;
@@ -278,6 +300,31 @@ const ModsViewer = memo(() => {
       }
       suppressSelectionToTabSyncRef.current = true;
       dispatch(selectFlowFile({ flowFile: activeTab.flowFile, packPath: activeTab.packPath }));
+      lastSelectionKeyRef.current = activeTab.fileKey;
+      return;
+    }
+
+    if (activeTab.kind === "file" && activeTab.filePath) {
+      const isAlreadySelected =
+        !currentFlowSelection &&
+        currentDBSelection?.packPath === activeTab.packPath &&
+        !currentDBSelection?.dbName &&
+        !currentDBSelection?.dbSubname;
+      if (isAlreadySelected) {
+        lastSelectionKeyRef.current = activeTab.fileKey;
+        return;
+      }
+      suppressSelectionToTabSyncRef.current = true;
+      if (currentFlowSelection) {
+        dispatch(selectFlowFile(undefined));
+      }
+      dispatch(
+        selectDBTable({
+          packPath: activeTab.packPath,
+          dbName: "",
+          dbSubname: "",
+        }),
+      );
       lastSelectionKeyRef.current = activeTab.fileKey;
       return;
     }
@@ -762,7 +809,7 @@ const ModsViewer = memo(() => {
 
                 {hasUnsavedFiles && (
                   <div className="flex gap-2">
-                    {!packPath.startsWith("memory://") && (
+                    {!activeViewerPackPath.startsWith("memory://") && (
                       <button
                         onClick={handleSavePack}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
@@ -810,10 +857,13 @@ const ModsViewer = memo(() => {
                   <div className="overflow-auto flex-1 scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
                   <PackTablesTreeView
                     ref={treeViewRef}
+                    packPath={activeViewerPackPath}
+                    preferredTab={activeTab?.kind === "flow" || activeTab?.kind === "file" ? "files" : "db"}
                     tableFilter={dbTableFilter}
                     showDialog={showDialog}
                     onOpenDBTable={handleOpenDBTable}
                     onOpenFlowFile={handleOpenFlowFile}
+                    onOpenPackedFile={handleOpenPackedFile}
                   />
                   </div>
 
@@ -880,13 +930,17 @@ const ModsViewer = memo(() => {
                 </div>
                 <div className="flex-1 min-h-0">
                   {activeTab ? (
-                    (activeTab.kind === "db" && !activeTab.dbName && !activeTab.dbSubname ? (
+                    activeTab.kind === "db" && !activeTab.dbName && !activeTab.dbSubname ? (
                       <div className="h-full flex items-center justify-center text-sm text-gray-400">
                         Empty pack. Add a flow or create/edit files to populate it.
                       </div>
-                    ) : currentFlowFileSelection && (
-                      <NodeEditor currentFile={currentFlowFileSelection} currentPack={packPath} />
-                    )) || <PackTablesTableView showDialog={showDialog} />
+                    ) : activeTab.kind === "flow" && activeTab.flowFile ? (
+                      <NodeEditor currentFile={activeTab.flowFile} currentPack={activeTab.packPath} />
+                    ) : activeTab.kind === "file" && activeTab.filePath ? (
+                      <PackFileView packPath={activeTab.packPath} filePath={activeTab.filePath} showDialog={showDialog} />
+                    ) : (
+                      <PackTablesTableView showDialog={showDialog} />
+                    )
                   ) : (
                     <div className="h-full flex items-center justify-center text-sm text-gray-400">
                       Select a file to view

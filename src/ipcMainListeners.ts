@@ -109,6 +109,7 @@ import {
 } from "./supportedGames";
 import { tryOpenFile } from "./utility/fileHelpers";
 import getPackTableData from "./utility/frontend/packDataHandling";
+import { decodePackedTextBuffer, getPackedFileMimeType, getPackedFileViewerKind } from "./utility/packFileViewing";
 import { collator } from "./utility/packFileSorting";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie from "./utility/trie";
@@ -4126,19 +4127,36 @@ export const registerIpcMainListeners = (
           error: `File "${fileName}" not found in pack`,
         };
       }
-      // Convert buffer to text
-      let text: string;
-      if (file.text) {
-        text = file.text;
-      } else if (file.buffer) {
-        text = file.buffer.toString("utf-8");
-      } else {
+      const viewerKind = getPackedFileViewerKind(fileName);
+      if (!viewerKind) {
+        return {
+          success: false,
+          error: "Unsupported file type",
+        };
+      }
+      if (viewerKind === "image") {
+        if (!file.buffer) {
+          return {
+            success: false,
+            error: "Image data is unavailable",
+          };
+        }
+        return {
+          success: true,
+          base64: file.buffer.toString("base64"),
+          mimeType: getPackedFileMimeType(fileName),
+        };
+      }
+      if (file.text != null) {
+        return { success: true, text: file.text };
+      }
+      if (!file.buffer) {
         return {
           success: false,
           error: "File has no readable content",
         };
       }
-      return { success: true, text };
+      return { success: true, text: decodePackedTextBuffer(file.buffer) };
     } catch (error) {
       console.error("Error reading file from pack:", error);
       return {
