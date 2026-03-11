@@ -1,7 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, memo, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { AgGridReact } from "ag-grid-react";
-import type { CellContextMenuEvent, CellValueChangedEvent, ColDef, RowSelectionOptions } from "ag-grid-community";
+import type {
+  CellContextMenuEvent,
+  CellMouseDownEvent,
+  CellMouseOverEvent,
+  CellValueChangedEvent,
+  ColDef,
+  ColumnHeaderClickedEvent,
+} from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, DBVersion, Field, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
@@ -54,6 +61,13 @@ if (!globalAny[AG_GRID_MODULES_KEY]) {
 }
 
 type RowData = TableCellValue[];
+type SelectionRange = { startRow: number; endRow: number; startCol: number; endCol: number };
+type DragSelectionState = {
+  mode: "cells" | "row";
+  anchorRow: number;
+  anchorCol: number;
+  baseRanges: SelectionRange[];
+};
 
 let textMeasureContext: CanvasRenderingContext2D | undefined;
 
@@ -370,6 +384,34 @@ const copyTextToClipboard = async (text: string): Promise<void> => {
   }
 };
 
+const normalizeSelectionRange = (startRow: number, startCol: number, endRow: number, endCol: number): SelectionRange => ({
+  startRow: Math.min(startRow, endRow),
+  endRow: Math.max(startRow, endRow),
+  startCol: Math.min(startCol, endCol),
+  endCol: Math.max(startCol, endCol),
+});
+
+const appendSelectionRange = (ranges: SelectionRange[], nextRange: SelectionRange): SelectionRange[] => {
+  const normalizedRange = normalizeSelectionRange(
+    nextRange.startRow,
+    nextRange.startCol,
+    nextRange.endRow,
+    nextRange.endCol,
+  );
+  const alreadyPresent = ranges.some(
+    (range) =>
+      range.startRow === normalizedRange.startRow &&
+      range.endRow === normalizedRange.endRow &&
+      range.startCol === normalizedRange.startCol &&
+      range.endCol === normalizedRange.endCol,
+  );
+
+  return alreadyPresent ? ranges : [...ranges, normalizedRange];
+};
+
+const hasAdditiveSelectionModifier = (event?: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey"> | null): boolean =>
+  !!event && (event.shiftKey || event.ctrlKey || event.metaKey);
+
 const AgGridWrapper = memo(
   ({
     rowData,
@@ -383,6 +425,7 @@ const AgGridWrapper = memo(
     currentSchema,
     isBigTable,
     rowCount,
+    tableSelectionKey,
   }: {
     rowData: RowData[];
     columns: Array<{ type: "numeric" | "checkbox" | "text" }>;
@@ -395,9 +438,13 @@ const AgGridWrapper = memo(
     currentSchema: DBVersion;
     isBigTable: boolean;
     rowCount: number;
+    tableSelectionKey: string;
   }) => {
     const keyColumnSet = useMemo(() => new Set(keyColumnNamesUnderscore), [keyColumnNamesUnderscore]);
     const gridRef = useRef<AgGridReact<RowData>>(null);
+    const [selectionRanges, setSelectionRanges] = useState<SelectionRange[]>([]);
+    const selectionRangesRef = useRef<SelectionRange[]>([]);
+    const dragSelectionRef = useRef<DragSelectionState | null>(null);
 
     const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
     const rowHeight = useFixedSizing ? BIG_TABLE_ROW_HEIGHT : NORMAL_TABLE_ROW_HEIGHT;
@@ -449,15 +496,56 @@ const AgGridWrapper = memo(
       [canEditTable],
     );
 
-    const rowSelection = useMemo<RowSelectionOptions<RowData>>(
-      () => ({
-        mode: "multiRow",
-        enableClickSelection: true,
-        checkboxes: false,
-        headerCheckbox: false,
-      }),
-      [],
+    const isCellSelected = useCallback((rowIndex: number, colIndex: number) => {
+      return selectionRangesRef.current.some(
+        (range) =>
+          rowIndex >= range.startRow &&
+          rowIndex <= range.endRow &&
+          colIndex >= range.startCol &&
+          colIndex <= range.endCol,
+      );
+    }, []);
+
+    const isRowSelected = useCallback(
+      (rowIndex: number) => {
+        const lastColumnIndex = currentSchema.fields.length - 1;
+        if (lastColumnIndex < 0) return false;
+
+        return selectionRangesRef.current.some(
+          (range) =>
+            rowIndex >= range.startRow &&
+            rowIndex <= range.endRow &&
+            range.startCol === 0 &&
+            range.endCol === lastColumnIndex,
+        );
+      },
+      [currentSchema.fields.length],
     );
+
+    const isColumnSelected = useCallback(
+      (colIndex: number) => {
+        if (rowCount <= 0) return false;
+
+        return selectionRangesRef.current.some(
+          (range) => range.startRow === 0 && range.endRow === rowCount - 1 && colIndex >= range.startCol && colIndex <= range.endCol,
+        );
+      },
+      [rowCount],
+    );
+
+    const selectedColumnSignature = useMemo(() => {
+      if (rowCount <= 0) return "";
+
+      const selectedColumns = new Set<number>();
+      for (const range of selectionRanges) {
+        if (range.startRow !== 0 || range.endRow !== rowCount - 1) continue;
+        for (let colIndex = range.startCol; colIndex <= range.endCol; colIndex++) {
+          selectedColumns.add(colIndex);
+        }
+      }
+
+      return Array.from(selectedColumns).sort((a, b) => a - b).join(",");
+    }, [rowCount, selectionRanges]);
 
     const columnDefs = useMemo<Array<ColDef<RowData>>>(() => {
       const defs: Array<ColDef<RowData>> = [
@@ -473,7 +561,14 @@ const AgGridWrapper = memo(
           filter: false,
           suppressMovable: true,
           valueGetter: (p) => (typeof p.node?.rowIndex === "number" ? p.node.rowIndex + 1 : ""),
-          cellClass: "pack-table-row-index-cell text-right tabular-nums",
+          cellClass: (p) => {
+            const rowIndex = p.node?.rowIndex;
+            const classes = ["pack-table-row-index-cell", "text-right", "tabular-nums"];
+            if (typeof rowIndex === "number" && isRowSelected(rowIndex)) {
+              classes.push("pack-table-row-index-selected");
+            }
+            return classes;
+          },
         },
       ];
 
@@ -492,8 +587,12 @@ const AgGridWrapper = memo(
           headerTooltip: fullHeaderName,
           autoHeaderHeight: true,
           wrapHeaderText: true,
-          headerClass:
-            colType === "numeric" ? "pack-table-header pack-table-header-right" : "pack-table-header",
+          headerClass: () => {
+            const classes = ["pack-table-header"];
+            if (colType === "numeric") classes.push("pack-table-header-right");
+            if (isColumnSelected(colIndex)) classes.push("pack-table-header-selected");
+            return classes;
+          },
           colId: String(colIndex),
           editable: canEditTable,
           width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
@@ -510,12 +609,16 @@ const AgGridWrapper = memo(
                   justifyContent: "center",
                 }
               : undefined,
-          cellClass:
-            colType === "numeric"
-              ? "text-right tabular-nums"
-              : colType === "checkbox"
-                ? "text-center"
-                : undefined,
+          cellClass: (p) => {
+            const rowIndex = p.node?.rowIndex;
+            const classes: string[] = [];
+            if (colType === "numeric") classes.push("text-right", "tabular-nums");
+            if (colType === "checkbox") classes.push("text-center");
+            if (typeof rowIndex === "number" && isCellSelected(rowIndex, colIndex)) {
+              classes.push("pack-table-cell-selected");
+            }
+            return classes;
+          },
         });
       }
 
@@ -529,6 +632,9 @@ const AgGridWrapper = memo(
       keyColumnSet,
       rowIndexColumnWidth,
       useFixedSizing,
+      isCellSelected,
+      isColumnSelected,
+      isRowSelected,
     ]);
 
     const [menuState, setMenuState] = useState<
@@ -561,6 +667,33 @@ const AgGridWrapper = memo(
         window.removeEventListener("keydown", onWindowKeyDown);
       };
     }, [menuState]);
+
+    useEffect(() => {
+      selectionRangesRef.current = selectionRanges;
+      const api = gridRef.current?.api;
+      if (!api) return;
+      api.refreshCells({ force: true });
+    }, [selectionRanges]);
+
+    useEffect(() => {
+      gridRef.current?.api?.refreshHeader();
+    }, [selectedColumnSignature]);
+
+    useEffect(() => {
+      dragSelectionRef.current = null;
+      setSelectionRanges([]);
+    }, [tableSelectionKey]);
+
+    useEffect(() => {
+      const onWindowMouseUp = () => {
+        dragSelectionRef.current = null;
+      };
+
+      window.addEventListener("mouseup", onWindowMouseUp);
+      return () => {
+        window.removeEventListener("mouseup", onWindowMouseUp);
+      };
+    }, []);
 
     const onCellContextMenu = useCallback(
       (ev: CellContextMenuEvent<RowData>) => {
@@ -606,12 +739,118 @@ const AgGridWrapper = memo(
       [currentSchema.fields, firstKeyColumnIndex, keyColumnSet],
     );
 
+    const onCellMouseDown = useCallback(
+      (event: CellMouseDownEvent<RowData>) => {
+        const mouseEvent = event.event as MouseEvent | null;
+        if (!mouseEvent || mouseEvent.button !== 0) return;
+
+        const rowIndex = event.node?.rowIndex;
+        if (typeof rowIndex !== "number" || rowIndex < 0 || currentSchema.fields.length === 0) return;
+
+        const colId = event.column?.getColId() ?? "";
+        const isRowHeader = colId === "__rowIndex";
+        const colIndex = isRowHeader ? 0 : Number(colId);
+        if (!isRowHeader && (!Number.isFinite(colIndex) || colIndex < 0)) return;
+
+        const baseRanges = hasAdditiveSelectionModifier(mouseEvent) ? selectionRangesRef.current : [];
+        const nextRange = isRowHeader
+          ? normalizeSelectionRange(rowIndex, 0, rowIndex, currentSchema.fields.length - 1)
+          : normalizeSelectionRange(rowIndex, colIndex, rowIndex, colIndex);
+
+        dragSelectionRef.current = {
+          mode: isRowHeader ? "row" : "cells",
+          anchorRow: rowIndex,
+          anchorCol: isRowHeader ? 0 : colIndex,
+          baseRanges,
+        };
+        setSelectionRanges(appendSelectionRange(baseRanges, nextRange));
+
+        if (isRowHeader) {
+          mouseEvent.preventDefault();
+        }
+      },
+      [currentSchema.fields],
+    );
+
+    const onCellMouseOver = useCallback(
+      (event: CellMouseOverEvent<RowData>) => {
+        const dragSelection = dragSelectionRef.current;
+        if (!dragSelection) return;
+
+        const rowIndex = event.node?.rowIndex;
+        if (typeof rowIndex !== "number" || rowIndex < 0) return;
+
+        const colId = event.column?.getColId() ?? "";
+        const hoveredColIndex = colId === "__rowIndex" ? dragSelection.anchorCol : Number(colId);
+        if (!Number.isFinite(hoveredColIndex) || hoveredColIndex < 0) return;
+
+        const nextRange =
+          dragSelection.mode === "row"
+            ? normalizeSelectionRange(dragSelection.anchorRow, 0, rowIndex, currentSchema.fields.length - 1)
+            : normalizeSelectionRange(dragSelection.anchorRow, dragSelection.anchorCol, rowIndex, hoveredColIndex);
+
+        setSelectionRanges(appendSelectionRange(dragSelection.baseRanges, nextRange));
+      },
+      [currentSchema.fields.length],
+    );
+
+    const onColumnHeaderClicked = useCallback(
+      (event: ColumnHeaderClickedEvent<RowData>) => {
+        const clickedColumn = event.column;
+        if (!clickedColumn || !("getColId" in clickedColumn)) return;
+
+        const colId = clickedColumn.getColId();
+        const colIndex = Number(colId);
+        if (!Number.isFinite(colIndex) || colIndex < 0 || rowCount <= 0) return;
+
+        const sourceEvent = (event as ColumnHeaderClickedEvent<RowData> & { sourceEvent?: MouseEvent }).sourceEvent;
+        if (!hasAdditiveSelectionModifier(sourceEvent)) return;
+
+        setSelectionRanges((currentRanges) =>
+          appendSelectionRange(currentRanges, normalizeSelectionRange(0, colIndex, rowCount - 1, colIndex)),
+        );
+      },
+      [rowCount],
+    );
+
     const onKeyDownCapture = useCallback(async (ev: React.KeyboardEvent) => {
       const isCopy = (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "c";
       if (!isCopy) return;
 
       const api = gridRef.current?.api;
       if (!api) return;
+
+      if (selectionRangesRef.current.length > 0) {
+        const rangeBlocks = selectionRangesRef.current
+          .map((range) => {
+            const lines: string[] = [];
+            for (let rowIndex = range.startRow; rowIndex <= range.endRow; rowIndex++) {
+              const rowNode = api.getDisplayedRowAtIndex(rowIndex);
+              const row = rowNode?.data;
+              if (!row) continue;
+
+              const cells: string[] = [];
+              for (let colIndex = range.startCol; colIndex <= range.endCol; colIndex++) {
+                if (colIndex < 0 || colIndex >= currentSchema.fields.length) {
+                  cells.push("");
+                  continue;
+                }
+                const value = row[colIndex];
+                cells.push(value == null ? "" : String(value));
+              }
+              lines.push(cells.join("\t"));
+            }
+
+            return lines.join("\n");
+          })
+          .filter((block) => block !== "");
+
+        if (rangeBlocks.length > 0) {
+          await copyTextToClipboard(rangeBlocks.join("\n\n"));
+          ev.preventDefault();
+          return;
+        }
+      }
 
       const focused = api.getFocusedCell();
       if (!focused) return;
@@ -628,7 +867,7 @@ const AgGridWrapper = memo(
       const value = row[colIndex];
       await copyTextToClipboard(value == null ? "" : String(value));
       ev.preventDefault();
-    }, []);
+    }, [currentSchema.fields.length]);
 
     return (
       <div
@@ -646,11 +885,13 @@ const AgGridWrapper = memo(
           rowData={rowData}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
-          rowSelection={rowSelection}
           rowHeight={rowHeight}
           headerHeight={rowHeight}
           animateRows={false}
           suppressRowHoverHighlight={true}
+          onCellMouseDown={onCellMouseDown}
+          onCellMouseOver={onCellMouseOver}
+          onColumnHeaderClicked={onColumnHeaderClicked}
           onCellContextMenu={onCellContextMenu}
           onCellValueChanged={onCellValueChangedCallback}
         />
@@ -963,6 +1204,7 @@ const PackTablesTableView = memo(() => {
           currentSchema={currentSchema}
           isBigTable={isBigTable}
           rowCount={rowCount}
+          tableSelectionKey={`${currentDBTableSelection.packPath}|${currentDBTableSelection.dbName}|${currentDBTableSelection.dbSubname}`}
         />
       </div>
       <div className="mt-3 flex gap-6 shrink-0">
