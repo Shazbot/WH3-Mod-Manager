@@ -1367,6 +1367,7 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
   const currentSchema = selectedPackFile?.tableSchema;
   const packName = getPackNameFromPath(packPath) ?? packPath;
   const canEditTable = isFeaturesForModdersEnabled && !vanillaPackNames.includes(packName);
+  const openedTableKey = packedFilePath ? `${packPath}|${packedFilePath}` : "";
 
   const tableCacheKey = useMemo(() => {
     if (!selectedPackFile || !currentSchema || !packedFilePath || !packPath) return "";
@@ -1387,6 +1388,7 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
   const [workingPreparedTableData, setWorkingPreparedTableData] = useState<PreparedTableData | undefined>(undefined);
   const historyPastRef = useRef<PackedFile[]>([]);
   const historyFutureRef = useRef<PackedFile[]>([]);
+  const hydratedTableKeyRef = useRef<string | null>(null);
   const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
 
   const syncHistorySize = useCallback(() => {
@@ -1397,15 +1399,29 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
   }, []);
 
   useEffect(() => {
+    if (!openedTableKey) {
+      hydratedTableKeyRef.current = null;
+      setWorkingPackFile(undefined);
+      setWorkingPreparedTableData(undefined);
+      return;
+    }
+
+    if (!selectedPackFile || !preparedTableData) return;
+
+    const isNewTable = hydratedTableKeyRef.current !== openedTableKey;
+    const isUninitialized = !workingPackFile || !workingPreparedTableData;
+    if (!isNewTable && !isUninitialized) return;
+
+    hydratedTableKeyRef.current = openedTableKey;
     setWorkingPackFile(selectedPackFile);
     setWorkingPreparedTableData(preparedTableData);
-  }, [selectedPackFile, preparedTableData]);
+  }, [openedTableKey, preparedTableData, selectedPackFile, workingPackFile, workingPreparedTableData]);
 
   useEffect(() => {
     historyPastRef.current = [];
     historyFutureRef.current = [];
     setHistorySize({ past: 0, future: 0 });
-  }, [packPath, packedFilePath]);
+  }, [openedTableKey]);
 
   const activePackFile = workingPackFile ?? selectedPackFile;
   const activePreparedTableData = workingPreparedTableData ?? preparedTableData;
