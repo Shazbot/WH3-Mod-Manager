@@ -244,6 +244,73 @@ const parseEditedCellValue = (
   }
 };
 
+const buildDefaultCellValue = (
+  fieldName: string,
+  fieldType: SCHEMA_FIELD_TYPE,
+  defaultValue: string,
+  isKey: boolean,
+): AmendedSchemaField => {
+  const normalizedDefaultValue = defaultValue ?? "";
+
+  switch (fieldType) {
+    case "Boolean": {
+      const normalized = normalizedDefaultValue.trim().toLowerCase();
+      const nextValue = ["1", "true", "yes"].includes(normalized);
+      return {
+        name: fieldName,
+        type: fieldType,
+        isKey,
+        resolvedKeyValue: nextValue ? "1" : "0",
+        fields: buildFieldValues(fieldType, nextValue),
+      };
+    }
+    case "OptionalStringU8": {
+      const nextValue = normalizedDefaultValue === "0" ? "" : normalizedDefaultValue;
+      return {
+        name: fieldName,
+        type: fieldType,
+        isKey,
+        resolvedKeyValue: nextValue === "" ? "0" : nextValue,
+        fields: buildFieldValues(fieldType, nextValue),
+      };
+    }
+    case "I16":
+    case "I32":
+    case "I64":
+    case "ColourRGB":
+    case "F32":
+    case "F64": {
+      const normalized = normalizedDefaultValue.trim();
+      const parsedNumber = normalized === "" ? 0 : Number(normalized);
+      const nextValue = Number.isFinite(parsedNumber) ? parsedNumber : 0;
+      const resolvedKeyValue = normalized !== "" && Number.isFinite(parsedNumber) ? normalized : "0";
+      return {
+        name: fieldName,
+        type: fieldType,
+        isKey,
+        resolvedKeyValue,
+        fields: buildFieldValues(fieldType, nextValue),
+      };
+    }
+    case "StringU8":
+    case "StringU16":
+    default:
+      return {
+        name: fieldName,
+        type: fieldType,
+        isKey,
+        resolvedKeyValue: normalizedDefaultValue,
+        fields: buildFieldValues(fieldType, normalizedDefaultValue),
+      };
+  }
+};
+
+const buildDefaultRowSchemaFields = (schema: DBVersion): AmendedSchemaField[] => {
+  return schema.fields.map((field) =>
+    buildDefaultCellValue(field.name, field.field_type, field.default_value, field.is_key),
+  );
+};
+
 const getDisplayColumnHeader = (headerName: string): string => {
   return COLUMN_HEADER_DISPLAY_NAMES[headerName] ?? headerName;
 };
@@ -1203,11 +1270,27 @@ const PackTablesTableView = memo(() => {
   }, [tableCacheKey, selectedPackFile, currentSchema, keyColumnNamesUnderscore]);
 
   const [workingPreparedTableData, setWorkingPreparedTableData] = useState<PreparedTableData | undefined>(undefined);
+  const historyPastRef = useRef<PackedFile[]>([]);
+  const historyFutureRef = useRef<PackedFile[]>([]);
+  const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
+
+  const syncHistorySize = useCallback(() => {
+    setHistorySize({
+      past: historyPastRef.current.length,
+      future: historyFutureRef.current.length,
+    });
+  }, []);
 
   useEffect(() => {
     setWorkingPackFile(selectedPackFile);
     setWorkingPreparedTableData(preparedTableData);
   }, [selectedPackFile, preparedTableData]);
+
+  useEffect(() => {
+    historyPastRef.current = [];
+    historyFutureRef.current = [];
+    setHistorySize({ past: 0, future: 0 });
+  }, [packPath, packedFilePath]);
 
   const activePackFile = workingPackFile ?? selectedPackFile;
   const activePreparedTableData = workingPreparedTableData ?? preparedTableData;
@@ -1261,6 +1344,89 @@ const PackTablesTableView = memo(() => {
     [dispatch, filteredRowIndices],
   );
 
+  const applyPackFileLocally = useCallback(
+    (nextPackFile: PackedFile) => {
+      const nextPreparedTableData = prepareTableData(nextPackFile, currentSchema!, keyColumnNamesUnderscore);
+      clearPreparedTableForPackedFile(packPath, nextPackFile.name);
+      setWorkingPackFile(nextPackFile);
+      setWorkingPreparedTableData(nextPreparedTableData);
+      dispatch(
+        setPacksData([
+          {
+            packName: packData!.packName,
+            packPath,
+            tables: packData!.tables,
+            packedFiles: {
+              [nextPackFile.name]: nextPackFile,
+            },
+          },
+        ]),
+      );
+      return nextPreparedTableData;
+    },
+    [currentSchema, dispatch, keyColumnNamesUnderscore, packData, packPath],
+  );
+
+  const commitPackFileChange = useCallback(
+    async (
+      nextPackFile: PackedFile,
+      previousPackFile: PackedFile,
+      previousPreparedTableData: PreparedTableData,
+      historyMode: "push" | "undo" | "redo" | "none" = "push",
+    ) => {
+      if (!currentSchema || !packData) {
+        return false;
+      }
+
+      applyPackFileLocally(nextPackFile);
+
+      try {
+        const result = await window.api?.saveDBTableEdits(packPath, nextPackFile);
+        if (!result?.success) {
+          throw new Error(result?.error || "Failed to store DB table edits");
+        }
+
+        if (historyMode === "push") {
+          historyPastRef.current.push(previousPackFile);
+          if (historyPastRef.current.length > 100) {
+            historyPastRef.current.shift();
+          }
+          historyFutureRef.current = [];
+          syncHistorySize();
+        } else if (historyMode === "undo") {
+          historyPastRef.current.pop();
+          historyFutureRef.current.push(previousPackFile);
+          syncHistorySize();
+        } else if (historyMode === "redo") {
+          historyFutureRef.current.pop();
+          historyPastRef.current.push(previousPackFile);
+          syncHistorySize();
+        }
+
+        return true;
+      } catch (error) {
+        clearPreparedTableForPackedFile(packPath, previousPackFile.name);
+        setWorkingPackFile(previousPackFile);
+        setWorkingPreparedTableData(previousPreparedTableData);
+        dispatch(
+          setPacksData([
+            {
+              packName: packData.packName,
+              packPath,
+              tables: packData.tables,
+              packedFiles: {
+                [previousPackFile.name]: previousPackFile,
+              },
+            },
+          ]),
+        );
+        alert(`Failed to save DB table edits: ${error instanceof Error ? error.message : "Unknown error"}`);
+        return false;
+      }
+    },
+    [applyPackFileLocally, currentSchema, dispatch, packData, packPath, syncHistorySize],
+  );
+
   const handleCellValueChangedCallback = useCallback(
     async (event: CellValueChangedEvent<RowData>) => {
       if (!canEditTable || !activePackFile?.schemaFields || !currentSchema || !packData || !activePreparedTableData) {
@@ -1309,61 +1475,98 @@ const PackTablesTableView = memo(() => {
         ...activePackFile,
         schemaFields: nextSchemaFields,
       } as PackedFile;
-      const nextPreparedTableData = prepareTableData(nextPackFile, currentSchema, keyColumnNamesUnderscore);
-
-      clearPreparedTableForPackedFile(packPath, nextPackFile.name);
-      setWorkingPackFile(nextPackFile);
-      setWorkingPreparedTableData(nextPreparedTableData);
-      dispatch(
-        setPacksData([
-          {
-            packName: packData.packName,
-            packPath,
-            tables: packData.tables,
-            packedFiles: {
-              [nextPackFile.name]: nextPackFile,
-            },
-          },
-        ]),
-      );
-
-      try {
-        const result = await window.api?.saveDBTableEdits(packPath, nextPackFile);
-        if (!result?.success) {
-          throw new Error(result?.error || "Failed to store DB table edits");
-        }
-      } catch (error) {
-        clearPreparedTableForPackedFile(packPath, previousPackFile.name);
-        setWorkingPackFile(previousPackFile);
-        setWorkingPreparedTableData(previousPreparedTableData);
-        dispatch(
-          setPacksData([
-            {
-              packName: packData.packName,
-              packPath,
-              tables: packData.tables,
-              packedFiles: {
-                [previousPackFile.name]: previousPackFile,
-              },
-            },
-          ]),
-        );
+      const didSave = await commitPackFileChange(nextPackFile, previousPackFile, previousPreparedTableData, "push");
+      if (!didSave) {
         event.node?.setDataValue(colId, event.oldValue);
-        alert(`Failed to save DB table edits: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     },
     [
       activePackFile,
       activePreparedTableData,
       canEditTable,
+      commitPackFileChange,
       currentSchema,
-      dispatch,
       filteredRowIndices,
-      keyColumnNamesUnderscore,
       packData,
-      packPath,
     ],
   );
+
+  const handleAddRow = useCallback(async () => {
+    if (!canEditTable || !activePackFile || !currentSchema || !activePreparedTableData) {
+      return;
+    }
+
+    const previousPackFile = activePackFile;
+    const previousPreparedTableData = activePreparedTableData;
+    const nextPackFile = {
+      ...activePackFile,
+      schemaFields: [
+        ...((activePackFile.schemaFields as AmendedSchemaField[] | undefined) || []),
+        ...buildDefaultRowSchemaFields(currentSchema),
+      ],
+    } as PackedFile;
+
+    await commitPackFileChange(nextPackFile, previousPackFile, previousPreparedTableData, "push");
+  }, [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange, currentSchema]);
+
+  const handleUndo = useCallback(async () => {
+    if (!canEditTable || !activePackFile || !activePreparedTableData) {
+      return;
+    }
+
+    const previousSnapshot = historyPastRef.current[historyPastRef.current.length - 1];
+    if (!previousSnapshot) return;
+
+    await commitPackFileChange(previousSnapshot, activePackFile, activePreparedTableData, "undo");
+  }, [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange]);
+
+  const handleRedo = useCallback(async () => {
+    if (!canEditTable || !activePackFile || !activePreparedTableData) {
+      return;
+    }
+
+    const nextSnapshot = historyFutureRef.current[historyFutureRef.current.length - 1];
+    if (!nextSnapshot) return;
+
+    await commitPackFileChange(nextSnapshot, activePackFile, activePreparedTableData, "redo");
+  }, [activePackFile, activePreparedTableData, canEditTable, commitPackFileChange]);
+
+  useEffect(() => {
+    if (!canEditTable) return;
+
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.altKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "input, textarea, select, [contenteditable='true'], .ag-cell-inline-editing, .ag-rich-select, .ag-popup-editor",
+        )
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (!event.shiftKey && key === "z") {
+        if (historyPastRef.current.length === 0) return;
+        event.preventDefault();
+        void handleUndo();
+        return;
+      }
+
+      if (key === "y" || (event.shiftKey && key === "z")) {
+        if (historyFutureRef.current.length === 0) return;
+        event.preventDefault();
+        void handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onWindowKeyDown);
+    };
+  }, [canEditTable, handleRedo, handleUndo]);
 
   if (!currentDBTableSelection || !packData || !activePackFile || !currentSchema || !activePreparedTableData) {
     return <></>;
@@ -1387,7 +1590,36 @@ const PackTablesTableView = memo(() => {
           tableSelectionKey={`${currentDBTableSelection.packPath}|${currentDBTableSelection.dbName}|${currentDBTableSelection.dbSubname}`}
         />
       </div>
-      <div className="mt-3 flex gap-6 shrink-0">
+      <div className="mt-3 flex gap-4 shrink-0 items-center flex-wrap">
+        {canEditTable && (
+          <>
+            <button
+              type="button"
+              onClick={() => void handleAddRow()}
+              className="px-3 py-2 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Add Row
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleUndo()}
+              disabled={historySize.past === 0}
+              title="Undo (Ctrl/Cmd+Z)"
+              className="px-3 py-2 text-sm rounded bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-50 disabled:hover:bg-gray-700"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRedo()}
+              disabled={historySize.future === 0}
+              title="Redo (Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z)"
+              className="px-3 py-2 text-sm rounded bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-50 disabled:hover:bg-gray-700"
+            >
+              Redo
+            </button>
+          </>
+        )}
         <select
           value={keyFilterOrDefault}
           onChange={(e) => setKeyFilter(e.target.value)}
