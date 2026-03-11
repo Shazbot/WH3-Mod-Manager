@@ -33,6 +33,9 @@ type ViewerTabCandidate = Omit<ViewerTab, "id">;
 const hasDBSelectionTarget = (selection?: DBTableSelection): selection is DBTableSelection =>
   Boolean(selection?.packPath && selection.dbName && selection.dbSubname);
 
+const getEmptyPackSelectionPath = (selection?: DBTableSelection): string | undefined =>
+  selection?.packPath && !selection.dbName && !selection.dbSubname ? selection.packPath : undefined;
+
 const ModsViewer = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
@@ -120,6 +123,18 @@ const ModsViewer = memo(() => {
       packPath: selection.packPath,
       dbName: selection.dbName,
       dbSubname: selection.dbSubname,
+    };
+  }, []);
+
+  const buildEmptyPackTabCandidate = useCallback((packPath: string): ViewerTabCandidate => {
+    const packLabel = getPackNameFromPath(packPath) ?? packPath;
+    return {
+      fileKey: `pack|${packPath}`,
+      title: packLabel,
+      kind: "db",
+      packPath,
+      dbName: "",
+      dbSubname: "",
     };
   }, []);
 
@@ -249,6 +264,31 @@ const ModsViewer = memo(() => {
       return;
     }
 
+    if (activeTab.kind === "db" && activeTab.packPath && !activeTab.dbName && !activeTab.dbSubname) {
+      const isAlreadySelected =
+        !currentFlowFileSelection &&
+        currentDBTableSelection?.packPath === activeTab.packPath &&
+        !currentDBTableSelection?.dbName &&
+        !currentDBTableSelection?.dbSubname;
+      if (isAlreadySelected) {
+        lastSelectionKeyRef.current = activeTab.fileKey;
+        return;
+      }
+      suppressSelectionToTabSyncRef.current = true;
+      if (currentFlowFileSelection) {
+        dispatch(selectFlowFile(undefined));
+      }
+      dispatch(
+        selectDBTable({
+          packPath: activeTab.packPath,
+          dbName: "",
+          dbSubname: "",
+        }),
+      );
+      lastSelectionKeyRef.current = activeTab.fileKey;
+      return;
+    }
+
     if (activeTab.dbName && activeTab.dbSubname) {
       const isAlreadySelected =
         !currentFlowFileSelection &&
@@ -300,12 +340,21 @@ const ModsViewer = memo(() => {
       const candidate = buildDbTabCandidate(currentDBTableSelection);
       if (lastSelectionKeyRef.current === candidate.fileKey) return;
       openOrActivateTab(candidate);
+      return;
+    }
+
+    const emptyPackPath = getEmptyPackSelectionPath(currentDBTableSelection);
+    if (emptyPackPath) {
+      const candidate = buildEmptyPackTabCandidate(emptyPackPath);
+      if (lastSelectionKeyRef.current === candidate.fileKey) return;
+      openOrActivateTab(candidate);
     }
   }, [
     currentFlowFileSelection,
     currentFlowFilePackPath,
     currentDBTableSelection,
     packPath,
+    buildEmptyPackTabCandidate,
     buildFlowTabCandidate,
     buildDbTabCandidate,
     openOrActivateTab,
@@ -424,6 +473,7 @@ const ModsViewer = memo(() => {
     try {
       const packName = newPackName.trim();
       const packPath = `memory://${packName}`;
+      const emptyPackTabCandidate = buildEmptyPackTabCandidate(packPath);
 
       const newPackData: PackViewData = {
         packName: packName,
@@ -433,6 +483,8 @@ const ModsViewer = memo(() => {
       };
 
       dispatch(setPacksData([newPackData]));
+      openOrActivateTab(emptyPackTabCandidate, { forceNewTab: true });
+      dispatch(selectFlowFile(undefined));
 
       dispatch(
         selectDBTable({
@@ -783,7 +835,11 @@ const ModsViewer = memo(() => {
                 </div>
                 <div className="flex-1 min-h-0">
                   {activeTab ? (
-                    (currentFlowFileSelection && (
+                    (activeTab.kind === "db" && !activeTab.dbName && !activeTab.dbSubname ? (
+                      <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                        Empty pack. Add a flow or create/edit files to populate it.
+                      </div>
+                    ) : currentFlowFileSelection && (
                       <NodeEditor currentFile={currentFlowFileSelection} currentPack={packPath} />
                     )) || <PackTablesTableView />
                   ) : (
