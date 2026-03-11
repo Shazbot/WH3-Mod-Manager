@@ -74,6 +74,8 @@ type DragSelectionState = {
 
 let textMeasureContext: CanvasRenderingContext2D | undefined;
 
+const getColumnFieldKey = (colIndex: number): string => String(colIndex);
+
 const measureTextWidth = (text: string, font: string): number => {
   if (text.length === 0) return 0;
   if (typeof document === "undefined") {
@@ -394,7 +396,7 @@ const prepareTableData = (
 
       chunkedTable[rowIndex].push(cell);
       const cellValue = resolveCellValue(cell);
-      data[rowIndex][String(colIndex)] = cellValue;
+      data[rowIndex][getColumnFieldKey(colIndex)] = cellValue;
       lowerCaseColumnValues[colIndex][rowIndex] = String(cell.resolvedKeyValue).toLowerCase();
 
       if (columns[colIndex]?.type !== "text") continue;
@@ -446,7 +448,7 @@ const getUpdatedTextColumnWidthHint = (
   let maxLength = 0;
 
   for (const row of preparedTableData.data) {
-    const rawValue = row[String(columnIndex)];
+    const rawValue = row[getColumnFieldKey(columnIndex)];
     const value = rawValue == null ? "" : String(rawValue);
     if (value.length === 0) continue;
     nonEmptyCount++;
@@ -468,7 +470,7 @@ const updatePreparedTableDataCell = (
 ): PreparedTableData => {
   const nextRow = {
     ...preparedTableData.data[rowIndex],
-    [String(colIndex)]: nextValue,
+    [getColumnFieldKey(colIndex)]: nextValue,
   };
   const nextData = [...preparedTableData.data];
   nextData[rowIndex] = nextRow;
@@ -516,7 +518,7 @@ const appendPreparedTableDataRow = (
   const nextRowIndex = preparedTableData.data.length;
   const nextRow: RowData = { __rowId: String(nextRowIndex) };
   appendedRowFields.forEach((cell, colIndex) => {
-    nextRow[String(colIndex)] = resolveCellValue(cell);
+    nextRow[getColumnFieldKey(colIndex)] = resolveCellValue(cell);
   });
 
   const nextData = [...preparedTableData.data, nextRow];
@@ -787,7 +789,7 @@ const AgGridWrapper = memo(
           flex: !useFixedSizing && colType === "text" ? 1 : undefined,
           cellRenderer: colType === "checkbox" ? "agCheckboxCellRenderer" : undefined,
           cellEditor: colType === "checkbox" ? "agCheckboxCellEditor" : undefined,
-          field: String(colIndex),
+          field: getColumnFieldKey(colIndex),
           valueFormatter: isFloatColumn ? (p) => formatFloatDisplayValue(p.value) : undefined,
           cellStyle:
             colType === "checkbox"
@@ -1048,7 +1050,7 @@ const AgGridWrapper = memo(
           return;
         }
 
-        const deepCloneValue = ev.data?.[String(deepCloneColIndex)];
+        const deepCloneValue = ev.data?.[getColumnFieldKey(deepCloneColIndex)];
         const label = `Deep clone ${deepCloneValue ?? ""}`.trimEnd();
         const mouse = ev.event as MouseEvent | undefined;
         setMenuState({
@@ -1172,7 +1174,7 @@ const AgGridWrapper = memo(
                 if (colIndex < 0 || colIndex >= currentSchema.fields.length) {
                   return "";
                 }
-                const value = row[String(colIndex)];
+                const value = row[getColumnFieldKey(colIndex)];
                 return value == null ? "" : String(value);
               });
               lines.push(cells.join("\t"));
@@ -1201,7 +1203,7 @@ const AgGridWrapper = memo(
       const colIndex = Number(colId);
       if (!Number.isFinite(colIndex)) return;
 
-      const value = row[String(colIndex)];
+      const value = row[getColumnFieldKey(colIndex)];
       await copyTextToClipboard(value == null ? "" : String(value));
       ev.preventDefault();
     }, [currentSchema.fields.length]);
@@ -1477,7 +1479,7 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
       nextPreparedTableData?: PreparedTableData,
       historyMode: "push" | "undo" | "redo" | "none" = "push",
     ) => {
-      if (!currentSchema || !packData) {
+      if (!currentSchema) {
         return false;
       }
 
@@ -1517,12 +1519,12 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
         return false;
       }
     },
-    [applyPackFileLocally, currentSchema, packData, packPath, showDialog, syncHistorySize],
+    [applyPackFileLocally, currentSchema, packPath, showDialog, syncHistorySize],
   );
 
   const handleCellValueChangedCallback = useCallback(
     async (event: CellValueChangedEvent<RowData>) => {
-      if (!canEditTable || !activePackFile?.schemaFields || !currentSchema || !packData || !activePreparedTableData) {
+      if (!canEditTable || !activePackFile?.schemaFields || !currentSchema || !activePreparedTableData) {
         return;
       }
       if (event.newValue === event.oldValue) return;
@@ -1593,7 +1595,6 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
       commitPackFileChange,
       currentSchema,
       filteredRowIndices,
-      packData,
     ],
   );
 
