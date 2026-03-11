@@ -777,6 +777,12 @@ const AgGridWrapper = memo(
         const dragSelection = dragSelectionRef.current;
         if (!dragSelection) return;
 
+        const mouseEvent = event.event as MouseEvent | null;
+        if (!mouseEvent || (mouseEvent.buttons & 1) !== 1) {
+          dragSelectionRef.current = null;
+          return;
+        }
+
         const rowIndex = event.node?.rowIndex;
         if (typeof rowIndex !== "number" || rowIndex < 0) return;
 
