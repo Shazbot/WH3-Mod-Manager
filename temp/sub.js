@@ -49,6 +49,23 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 Object.defineProperty(exports, "__esModule", { value: true });
 var steamworks = require("./../steamworks");
 var fs = require("fs");
+var appendSublog = function (message) {
+    fs.appendFileSync("sublog.txt", "".concat(message, "\n"));
+};
+var logSteamError = function (operation, error, ids) {
+    var _a;
+    var itemIds = (_a = ids === null || ids === void 0 ? void 0 : ids.map(function (id) { return id.toString(); }).join(",")) !== null && _a !== void 0 ? _a : "";
+    var suffix = itemIds ? " ids=".concat(itemIds) : "";
+    var errorMessage = error instanceof Error ? error.message : String(error);
+    appendSublog("ERROR ".concat(operation).concat(suffix, ": ").concat(errorMessage));
+};
+var parseItemIds = function (rawIds) {
+    return (rawIds !== null && rawIds !== void 0 ? rawIds : "")
+        .split(",")
+        .map(function (id) { return id.trim(); })
+        .filter(function (id) { return id !== "" && /^\d+$/.test(id); })
+        .map(function (id) { return BigInt(id); });
+};
 if (process.argv[3] == "justRun") {
     console.log("justRun");
     steamworks.init(Number(process.argv[2]));
@@ -162,7 +179,7 @@ var getDependencies = function (client, ids, cb) {
     }
     var dependenciesMap = new Map();
     var promises = ids.map(function (id) {
-        return new Promise(function (resolve, reject) {
+        return new Promise(function (resolve) {
             client.workshop
                 .getItemDependencies(id)
                 .then(function (dependencyIds) {
@@ -170,8 +187,9 @@ var getDependencies = function (client, ids, cb) {
                 resolve();
             })
                 .catch(function (e) {
-                fs.appendFileSync("sublog.txt", "ERROR:");
-                fs.appendFileSync("sublog.txt", e.toString());
+                dependenciesMap.set(id.toString(), []);
+                logSteamError("getItemDependencies", e, [id]);
+                resolve();
             });
         });
     });
@@ -181,7 +199,7 @@ var getDependencies = function (client, ids, cb) {
 };
 if (process.argv[3] == "getDependencies") {
     console.log("getDependencies");
-    var ids = process.argv[4].split(",").map(function (id) { return BigInt(id); });
+    var ids = parseItemIds(process.argv[4]);
     var client = steamworks.init(Number(process.argv[2]));
     getDependencies(client, ids, function (dependenciesMap) {
         if (process.send)
@@ -195,10 +213,12 @@ var getItems = function (client, ids, cb) {
     if (!process.send) {
         process.exit();
     }
-    client.workshop
-        .getItems(ids)
-        .then(function (data) {
-        var newData = data.items
+    if (ids.length === 0) {
+        cb([]);
+        return;
+    }
+    var stringifyItems = function (data) {
+        return data.items
             .filter(function (data) { return data; })
             .map(function (data) {
             return data &&
@@ -236,17 +256,47 @@ var getItems = function (client, ids, cb) {
                             : "",
                     } });
         });
-        cb(newData);
+    };
+    client.workshop
+        .getItems(ids)
+        .then(function (data) {
+        cb(stringifyItems(data));
     })
-        .catch(function (e) {
-        fs.appendFileSync("sublog.txt", "ERROR:");
-        fs.appendFileSync("sublog.txt", e.toString());
-        process.exit();
-    });
+        .catch(function (e) { return __awaiter(void 0, void 0, void 0, function () {
+        var fallbackItems;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    logSteamError("getItems.batch", e, ids);
+                    return [4 /*yield*/, Promise.all(ids.map(function (id) { return __awaiter(void 0, void 0, void 0, function () {
+                            var data, singleItemError_1;
+                            return __generator(this, function (_a) {
+                                switch (_a.label) {
+                                    case 0:
+                                        _a.trys.push([0, 2, , 3]);
+                                        return [4 /*yield*/, client.workshop.getItems([id])];
+                                    case 1:
+                                        data = _a.sent();
+                                        return [2 /*return*/, stringifyItems(data)[0]];
+                                    case 2:
+                                        singleItemError_1 = _a.sent();
+                                        logSteamError("getItems.single", singleItemError_1, [id]);
+                                        return [2 /*return*/, undefined];
+                                    case 3: return [2 /*return*/];
+                                }
+                            });
+                        }); }))];
+                case 1:
+                    fallbackItems = _a.sent();
+                    cb(fallbackItems.filter(function (item) { return item !== undefined; }));
+                    return [2 /*return*/];
+            }
+        });
+    }); });
 };
 if (process.argv[3] == "getModsData") {
     console.log("getModsData");
-    var ids_2 = process.argv[4].split(",").map(function (id) { return BigInt(id); });
+    var ids_2 = parseItemIds(process.argv[4]);
     var client_3 = steamworks.init(Number(process.argv[2]));
     getItems(client_3, ids_2, function (data) {
         getDependencies(client_3, ids_2, function (dependenciesMap) {
@@ -295,7 +345,7 @@ if (process.argv[3] == "checkState") {
 }
 if (process.argv[3] == "getItems") {
     console.log("getItems");
-    var ids = process.argv[4].split(",").map(function (id) { return BigInt(id); });
+    var ids = parseItemIds(process.argv[4]);
     var client = steamworks.init(Number(process.argv[2]));
     getItems(client, ids, function (data) {
         if (process.send)

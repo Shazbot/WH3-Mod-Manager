@@ -51,6 +51,24 @@ interface WorkshopItemStringInsteadOfBigInt {
   children?: string[];
 }
 
+const appendSublog = (message: string) => {
+  fs.appendFileSync("sublog.txt", `${message}\n`);
+};
+
+const logSteamError = (operation: string, error: unknown, ids?: bigint[]) => {
+  const itemIds = ids?.map((id) => id.toString()).join(",") ?? "";
+  const suffix = itemIds ? ` ids=${itemIds}` : "";
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  appendSublog(`ERROR ${operation}${suffix}: ${errorMessage}`);
+};
+
+const parseItemIds = (rawIds: string | undefined) =>
+  (rawIds ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id !== "" && /^\d+$/.test(id))
+    .map((id) => BigInt(id));
+
 if (process.argv[3] == "justRun") {
   console.log("justRun");
   steamworks.init(Number(process.argv[2]));
@@ -167,7 +185,7 @@ const getDependencies = (
 
   const promises = ids.map(
     (id) =>
-      new Promise<void>((resolve, reject) => {
+      new Promise<void>((resolve) => {
         client.workshop
           .getItemDependencies(id)
           .then((dependencyIds) => {
@@ -178,8 +196,9 @@ const getDependencies = (
             resolve();
           })
           .catch((e) => {
-            fs.appendFileSync("sublog.txt", "ERROR:");
-            fs.appendFileSync("sublog.txt", e.toString());
+            dependenciesMap.set(id.toString(), []);
+            logSteamError("getItemDependencies", e, [id]);
+            resolve();
           });
       })
   );
@@ -190,7 +209,7 @@ const getDependencies = (
 };
 if (process.argv[3] == "getDependencies") {
   console.log("getDependencies");
-  const ids = process.argv[4].split(",").map((id) => BigInt(id));
+  const ids = parseItemIds(process.argv[4]);
   const client = steamworks.init(Number(process.argv[2]));
 
   getDependencies(client, ids, (dependenciesMap) => {
@@ -210,65 +229,88 @@ const getItems = (
     process.exit();
   }
 
+  if (ids.length === 0) {
+    cb([]);
+    return;
+  }
+
+  const stringifyItems = (data: Awaited<ReturnType<typeof client.workshop.getItems>>) =>
+    data.items
+      .filter((data) => data)
+      .map(
+        (data) =>
+          data &&
+          ({
+            ...data,
+            owner: { ...data.owner, steamId64: data?.owner.steamId64.toString() },
+            publishedFileId: data.publishedFileId.toString(),
+            statistics: {
+              numSubscriptions: data.statistics.numSubscriptions
+                ? data.statistics.numSubscriptions.toString()
+                : "",
+              numFavorites: data.statistics.numFavorites ? data.statistics.numFavorites.toString() : "",
+              numFollowers: data.statistics.numFollowers ? data.statistics.numFollowers.toString() : "",
+              numUniqueSubscriptions: data.statistics.numUniqueSubscriptions
+                ? data.statistics.numUniqueSubscriptions.toString()
+                : "",
+              numUniqueFavorites: data.statistics.numUniqueFavorites
+                ? data.statistics.numUniqueFavorites.toString()
+                : "",
+              numUniqueFollowers: data.statistics.numUniqueFollowers
+                ? data.statistics.numUniqueFollowers.toString()
+                : "",
+              numUniqueWebsiteViews: data.statistics.numUniqueWebsiteViews
+                ? data.statistics.numUniqueWebsiteViews.toString()
+                : "",
+              reportScore: data.statistics.reportScore ? data.statistics.reportScore.toString() : "",
+              numSecondsPlayed: data.statistics.numSecondsPlayed
+                ? data.statistics.numSecondsPlayed.toString()
+                : "",
+              numPlaytimeSessions: data.statistics.numPlaytimeSessions
+                ? data.statistics.numPlaytimeSessions.toString()
+                : "",
+              numComments: data.statistics.numComments ? data.statistics.numComments.toString() : "",
+              numSecondsPlayedDuringTimePeriod: data.statistics.numSecondsPlayedDuringTimePeriod
+                ? data.statistics.numSecondsPlayedDuringTimePeriod.toString()
+                : "",
+              numPlaytimeSessionsDuringTimePeriod: data.statistics.numPlaytimeSessionsDuringTimePeriod
+                ? data.statistics.numPlaytimeSessionsDuringTimePeriod.toString()
+                : "",
+            },
+          } as WorkshopItemStringInsteadOfBigInt)
+      ) as WorkshopItemStringInsteadOfBigInt[];
+
   client.workshop
     .getItems(ids)
     .then((data) => {
-      const newData = data.items
-        .filter((data) => data)
-        .map(
-          (data) =>
-            data &&
-            ({
-              ...data,
-              owner: { ...data.owner, steamId64: data?.owner.steamId64.toString() },
-              publishedFileId: data.publishedFileId.toString(),
-              statistics: {
-                numSubscriptions: data.statistics.numSubscriptions
-                  ? data.statistics.numSubscriptions.toString()
-                  : "",
-                numFavorites: data.statistics.numFavorites ? data.statistics.numFavorites.toString() : "",
-                numFollowers: data.statistics.numFollowers ? data.statistics.numFollowers.toString() : "",
-                numUniqueSubscriptions: data.statistics.numUniqueSubscriptions
-                  ? data.statistics.numUniqueSubscriptions.toString()
-                  : "",
-                numUniqueFavorites: data.statistics.numUniqueFavorites
-                  ? data.statistics.numUniqueFavorites.toString()
-                  : "",
-                numUniqueFollowers: data.statistics.numUniqueFollowers
-                  ? data.statistics.numUniqueFollowers.toString()
-                  : "",
-                numUniqueWebsiteViews: data.statistics.numUniqueWebsiteViews
-                  ? data.statistics.numUniqueWebsiteViews.toString()
-                  : "",
-                reportScore: data.statistics.reportScore ? data.statistics.reportScore.toString() : "",
-                numSecondsPlayed: data.statistics.numSecondsPlayed
-                  ? data.statistics.numSecondsPlayed.toString()
-                  : "",
-                numPlaytimeSessions: data.statistics.numPlaytimeSessions
-                  ? data.statistics.numPlaytimeSessions.toString()
-                  : "",
-                numComments: data.statistics.numComments ? data.statistics.numComments.toString() : "",
-                numSecondsPlayedDuringTimePeriod: data.statistics.numSecondsPlayedDuringTimePeriod
-                  ? data.statistics.numSecondsPlayedDuringTimePeriod.toString()
-                  : "",
-                numPlaytimeSessionsDuringTimePeriod: data.statistics.numPlaytimeSessionsDuringTimePeriod
-                  ? data.statistics.numPlaytimeSessionsDuringTimePeriod.toString()
-                  : "",
-              },
-            } as WorkshopItemStringInsteadOfBigInt)
-        ) as WorkshopItemStringInsteadOfBigInt[];
-      cb(newData);
+      cb(stringifyItems(data));
     })
-    .catch((e) => {
-      fs.appendFileSync("sublog.txt", "ERROR:");
-      fs.appendFileSync("sublog.txt", e.toString());
-      process.exit();
+    .catch(async (e) => {
+      logSteamError("getItems.batch", e, ids);
+
+      const fallbackItems = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const data = await client.workshop.getItems([id]);
+            return stringifyItems(data)[0];
+          } catch (singleItemError) {
+            logSteamError("getItems.single", singleItemError, [id]);
+            return undefined;
+          }
+        })
+      );
+
+      cb(
+        fallbackItems.filter(
+          (item): item is WorkshopItemStringInsteadOfBigInt => item !== undefined
+        )
+      );
     });
 };
 
 if (process.argv[3] == "getModsData") {
   console.log("getModsData");
-  const ids = process.argv[4].split(",").map((id) => BigInt(id));
+  const ids = parseItemIds(process.argv[4]);
   const client = steamworks.init(Number(process.argv[2]));
 
   getItems(client, ids, (data) => {
@@ -314,7 +356,7 @@ if (process.argv[3] == "checkState") {
 }
 if (process.argv[3] == "getItems") {
   console.log("getItems");
-  const ids = process.argv[4].split(",").map((id) => BigInt(id));
+  const ids = parseItemIds(process.argv[4]);
   const client = steamworks.init(Number(process.argv[2]));
 
   getItems(client, ids, (data) => {

@@ -24,13 +24,71 @@ export function fetchModData(
   retryIndex = 0,
 ) {
   const joinedIds = ids.filter((id) => !isNaN(parseFloat(id))).join(",");
+  let hasTriggeredBatchFallback = false;
+  const fallbackToIndividualFetch = () => {
+    if (hasTriggeredBatchFallback) {
+      return;
+    }
+    hasTriggeredBatchFallback = true;
+
+    if (ids.length <= 1 || retryIndex >= 3) {
+      return;
+    }
+
+    log(`Retrying workshop metadata fetch one item at a time for ids: ${joinedIds}`);
+    for (const workshopId of ids) {
+      fetchModData([workshopId], cb, log, retryIndex + 1);
+    }
+  };
+
+  const emitWorkshopData = (
+    workshopData: WorkshopItemStringInsteadOfBigInt[],
+    modsData: ModsData,
+    depModsData: WorkshopItemStringInsteadOfBigInt[] = [],
+  ) => {
+    const modIdToModName = new Map<string, string>();
+    for (const modData of depModsData.concat(workshopData)) {
+      modIdToModName.set(modData.publishedFileId, modData.title);
+    }
+
+    for (let i = 0; i < workshopData.length; i++) {
+      const workshopItem = workshopData[i];
+
+      if (workshopItem) {
+        const reqModIdToName = [] as [string, string][];
+        const depIds = modsData.dependencies[workshopItem.publishedFileId];
+        if (depIds) {
+          for (const depId of depIds.filter((id) => id != wh3mmWorkshopId)) {
+            reqModIdToName.push([depId, modIdToModName.get(depId) ?? ""]);
+          }
+        }
+
+        const modId = workshopItem.owner.steamId64.toString();
+
+        const modData = {
+          workshopId: workshopItem.publishedFileId,
+          humanName: workshopItem.title,
+          author: modsData.authors[modId] ?? "",
+          reqModIdToName: reqModIdToName,
+          reqModIds: modsData.dependencies[workshopItem.publishedFileId] ?? [],
+          lastChanged: workshopItem.timeUpdated * 1000,
+          subscriptionTime: workshopItem.timeAddedToUserList * 1000,
+          isDeleted: false,
+          tags: workshopItem.tags,
+        } as ModData;
+        cb(modData);
+      }
+    }
+  };
 
   const child = fork(
     nodePath.join(__dirname, "sub.js"),
     [gameToSteamId[appData.currentGame], "getModsData", joinedIds],
     {},
   );
-  child.on("message", (modsData: ModsData) => {
+  let gotModsData = false;
+  child.once("message", (modsData: ModsData) => {
+    gotModsData = true;
     const workshopData = modsData.mods;
 
     const dedupedDependencyIds = Array.from(new Set(Object.values(modsData.dependencies).flat()));
@@ -38,46 +96,44 @@ export function fetchModData(
       (depId) => !modsData.mods.some((mod) => mod.publishedFileId == depId),
     );
 
+    if (unsubbedDepIds.length === 0) {
+      emitWorkshopData(workshopData, modsData);
+      return;
+    }
+
     const child = fork(
       nodePath.join(__dirname, "sub.js"),
       [gameToSteamId[appData.currentGame], "getItems", unsubbedDepIds.join(",")],
       {},
     );
-    child.on("message", (depModsData: WorkshopItemStringInsteadOfBigInt[]) => {
-      const modIdToModName = new Map<string, string>();
-      for (const modData of depModsData.concat(workshopData)) {
-        modIdToModName.set(modData.publishedFileId, modData.title);
-      }
-
-      for (let i = 0; i < workshopData.length; i++) {
-        const workshopItem = workshopData[i];
-
-        if (workshopItem) {
-          const reqModIdToName = [] as [string, string][];
-          const depIds = modsData.dependencies[workshopItem.publishedFileId];
-          if (depIds) {
-            for (const depId of depIds.filter((id) => id != wh3mmWorkshopId)) {
-              reqModIdToName.push([depId, modIdToModName.get(depId) ?? ""]);
-            }
-          }
-
-          const modId = workshopItem.owner.steamId64.toString();
-
-          const modData = {
-            workshopId: workshopItem.publishedFileId,
-            humanName: workshopItem.title,
-            author: modsData.authors[modId] ?? "",
-            reqModIdToName: reqModIdToName,
-            reqModIds: modsData.dependencies[modId] ?? [],
-            lastChanged: workshopItem.timeUpdated * 1000,
-            subscriptionTime: workshopItem.timeAddedToUserList * 1000,
-            isDeleted: false,
-            tags: workshopItem.tags,
-          } as ModData;
-          cb(modData);
-        }
+    let gotDependencyData = false;
+    child.once("message", (depModsData: WorkshopItemStringInsteadOfBigInt[]) => {
+      gotDependencyData = true;
+      emitWorkshopData(workshopData, modsData, depModsData);
+    });
+    child.once("error", (error) => {
+      log(`Workshop dependency child process error for ids ${unsubbedDepIds.join(",")}: ${error.message}`);
+    });
+    child.once("exit", (code, signal) => {
+      if (!gotDependencyData) {
+        log(
+          `Workshop dependency child exited before returning data for ids ${unsubbedDepIds.join(",")} (code=${code}, signal=${signal})`,
+        );
+        emitWorkshopData(workshopData, modsData);
       }
     });
+  });
+  child.once("error", (error) => {
+    log(`Workshop metadata child process error for ids ${joinedIds}: ${error.message}`);
+    fallbackToIndividualFetch();
+  });
+  child.once("exit", (code, signal) => {
+    if (!gotModsData) {
+      log(
+        `Workshop metadata child exited before returning data for ids ${joinedIds} (code=${code}, signal=${signal})`,
+      );
+      fallbackToIndividualFetch();
+    }
   });
 
   for (let i = 0; i < ids.length; i++) {
