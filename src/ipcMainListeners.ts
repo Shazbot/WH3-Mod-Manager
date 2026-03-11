@@ -73,12 +73,12 @@ import {
 import {
   appendLocalizationsToSkills,
   formatEffectLocalization,
-  getNodeRequirements,
   getNodesToParents,
   getRawEffectLocalization,
   getSkills,
   NodeLinks,
   NodeSkill,
+  pickTreeNodeData,
   resolveTextReplacements,
   SkillAndIcons,
 } from "./skills";
@@ -1575,7 +1575,7 @@ export const registerIpcMainListeners = (
       },
       {} as Record<string, number>,
     );
-    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+    const treeNodeData = pickTreeNodeData(nodesKF, kfSkills, nodeLinks, nodeToSkill, nodeToSkillLocks);
     const characterEffectKeys = new Set<string>();
     for (const effect of skillsAndEffects) {
       if (effect.effectScope.startsWith("character_")) {
@@ -1624,11 +1624,9 @@ export const registerIpcMainListeners = (
       subtypesToSet,
       subtypeAndSets,
       currentSkills: kfSkills,
-      nodeLinks,
-      nodeRequirements,
+      ...treeNodeData,
       icons,
       subtypes,
-      nodeToSkillLocks,
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
       allEffects,
@@ -1733,7 +1731,7 @@ export const registerIpcMainListeners = (
       },
       {} as Record<string, number>,
     );
-    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+    const treeNodeData = pickTreeNodeData(nodesKF, kfSkills, nodeLinks, nodeToSkill, nodeToSkillLocks);
     const characterEffectKeys = new Set<string>();
     for (const effects of Object.values(cachedSkillsData.skillsToEffects)) {
       for (const effect of effects) {
@@ -1784,9 +1782,7 @@ export const registerIpcMainListeners = (
       subtypeToNumSets,
       subtypesToSet,
       subtypeAndSets: cachedSkillsData.subtypeAndSets,
-      nodeLinks,
-      nodeRequirements,
-      nodeToSkillLocks,
+      ...treeNodeData,
       icons,
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,

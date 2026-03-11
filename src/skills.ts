@@ -28,6 +28,46 @@ export type SkillsToEffects = Record<string, Effect[]>;
 export type NodesToParents = Record<string, Skill[]>;
 export type EffectsToEffectData = Record<string, EffectData>;
 
+/**
+ * Picks the entries of a game-wide record keyed by skill node that belong to one tree.
+ * @param record - The record covering every skill node in the game.
+ * @param nodeIds - The node keys of the tree being sent.
+ * @returns A new record holding only those nodes' entries.
+ */
+export function pickTreeNodeEntries<T>(record: Record<string, T>, nodeIds: Iterable<string>) {
+  const picked: Record<string, T> = {};
+  for (const nodeId of nodeIds) {
+    if (Object.hasOwn(record, nodeId)) picked[nodeId] = record[nodeId];
+  }
+  return picked;
+}
+
+/**
+ * Picks one tree's entries from the game-wide node links, requirements and locks. Together they are ~14 MB, and
+ * the tree only looks up its own nodes.
+ * @param nodes - The node keys of the tree being sent.
+ * @param skills - The tree's skills, which can include parent nodes missing from `nodes`.
+ * @param nodeLinks - The links of every skill node in the game.
+ * @param nodeToSkill - The skill of every skill node in the game.
+ * @param nodeToSkillLocks - The skill locks of every skill node in the game.
+ * @returns The tree's `nodeLinks`, `nodeRequirements` and `nodeToSkillLocks`.
+ */
+export function pickTreeNodeData<T>(
+  nodes: string[],
+  skills: { nodeId: string }[],
+  nodeLinks: NodeLinks,
+  nodeToSkill: Record<string, NodeSkill>,
+  nodeToSkillLocks: Record<string, T>,
+) {
+  const treeNodeIds = new Set([...nodes, ...skills.map((skill) => skill.nodeId)]);
+  const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+  return {
+    nodeLinks: pickTreeNodeEntries(nodeLinks, treeNodeIds),
+    nodeRequirements: pickTreeNodeEntries(nodeRequirements, treeNodeIds),
+    nodeToSkillLocks: pickTreeNodeEntries(nodeToSkillLocks, treeNodeIds),
+  };
+}
+
 export function getNodesToParents(
   nodes: string[],
   nodeLinks: NodeLinks,
