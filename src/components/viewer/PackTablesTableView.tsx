@@ -36,6 +36,8 @@ const FIXED_SIZING_ROW_THRESHOLD = 1000;
 const TABLE_PREP_CACHE_VERSION = 3;
 const ROW_INDEX_COLUMN_MIN_WIDTH = 50;
 const ROW_INDEX_COLUMN_PADDING_PX = 20;
+const SELECTION_AUTO_SCROLL_EDGE_PX = 32;
+const SELECTION_AUTO_SCROLL_MAX_STEP_PX = 24;
 const ROW_INDEX_GRID_CELL_FONT = "400 17.6px Roboto, Arial, sans-serif";
 const TEXT_COLUMN_WIDTH_CHAR_PX = 7;
 const TEXT_COLUMN_WIDTH_PADDING_PX = 52;
@@ -412,6 +414,22 @@ const appendSelectionRange = (ranges: SelectionRange[], nextRange: SelectionRang
 const hasAdditiveSelectionModifier = (event?: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey"> | null): boolean =>
   !!event && (event.shiftKey || event.ctrlKey || event.metaKey);
 
+const getAutoScrollDelta = (pointer: number, start: number, end: number): number => {
+  const distanceToStart = pointer - start;
+  if (distanceToStart < SELECTION_AUTO_SCROLL_EDGE_PX) {
+    const intensity = (SELECTION_AUTO_SCROLL_EDGE_PX - distanceToStart) / SELECTION_AUTO_SCROLL_EDGE_PX;
+    return -Math.ceil(SELECTION_AUTO_SCROLL_MAX_STEP_PX * Math.min(Math.max(intensity, 0), 1));
+  }
+
+  const distanceToEnd = end - pointer;
+  if (distanceToEnd < SELECTION_AUTO_SCROLL_EDGE_PX) {
+    const intensity = (SELECTION_AUTO_SCROLL_EDGE_PX - distanceToEnd) / SELECTION_AUTO_SCROLL_EDGE_PX;
+    return Math.ceil(SELECTION_AUTO_SCROLL_MAX_STEP_PX * Math.min(Math.max(intensity, 0), 1));
+  }
+
+  return 0;
+};
+
 const AgGridWrapper = memo(
   ({
     rowData,
@@ -442,9 +460,12 @@ const AgGridWrapper = memo(
   }) => {
     const keyColumnSet = useMemo(() => new Set(keyColumnNamesUnderscore), [keyColumnNamesUnderscore]);
     const gridRef = useRef<AgGridReact<RowData>>(null);
+    const gridRootRef = useRef<HTMLDivElement | null>(null);
     const [selectionRanges, setSelectionRanges] = useState<SelectionRange[]>([]);
     const selectionRangesRef = useRef<SelectionRange[]>([]);
     const dragSelectionRef = useRef<DragSelectionState | null>(null);
+    const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+    const autoScrollFrameRef = useRef<number | null>(null);
 
     const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
     const rowHeight = useFixedSizing ? BIG_TABLE_ROW_HEIGHT : NORMAL_TABLE_ROW_HEIGHT;
@@ -681,12 +702,22 @@ const AgGridWrapper = memo(
 
     useEffect(() => {
       dragSelectionRef.current = null;
+      dragPointerRef.current = null;
+      if (autoScrollFrameRef.current != null) {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+        autoScrollFrameRef.current = null;
+      }
       setSelectionRanges([]);
     }, [tableSelectionKey]);
 
     useEffect(() => {
       const onWindowMouseUp = () => {
         dragSelectionRef.current = null;
+        dragPointerRef.current = null;
+        if (autoScrollFrameRef.current != null) {
+          window.cancelAnimationFrame(autoScrollFrameRef.current);
+          autoScrollFrameRef.current = null;
+        }
       };
 
       window.addEventListener("mouseup", onWindowMouseUp);
@@ -694,6 +725,123 @@ const AgGridWrapper = memo(
         window.removeEventListener("mouseup", onWindowMouseUp);
       };
     }, []);
+
+    const updateDragSelection = useCallback(
+      (rowIndex: number, colIndex: number) => {
+        const dragSelection = dragSelectionRef.current;
+        if (!dragSelection) return;
+        if (rowIndex < 0 || currentSchema.fields.length === 0) return;
+
+        const nextRange =
+          dragSelection.mode === "row"
+            ? normalizeSelectionRange(dragSelection.anchorRow, 0, rowIndex, currentSchema.fields.length - 1)
+            : normalizeSelectionRange(dragSelection.anchorRow, dragSelection.anchorCol, rowIndex, colIndex);
+
+        setSelectionRanges(appendSelectionRange(dragSelection.baseRanges, nextRange));
+      },
+      [currentSchema.fields.length],
+    );
+
+    const updateDragSelectionFromPoint = useCallback(
+      (clientX: number, clientY: number) => {
+        const target = document.elementFromPoint(clientX, clientY);
+        if (!(target instanceof Element)) return;
+
+        const cellElement = target.closest(".ag-cell[col-id]");
+        if (!(cellElement instanceof HTMLElement)) return;
+
+        const rowElement = cellElement.closest(".ag-row[row-index]");
+        if (!(rowElement instanceof HTMLElement)) return;
+
+        const rowIndex = Number(rowElement.getAttribute("row-index"));
+        if (!Number.isFinite(rowIndex) || rowIndex < 0) return;
+
+        const rawColId = cellElement.getAttribute("col-id") ?? "";
+        const colIndex = rawColId === "__rowIndex" ? 0 : Number(rawColId);
+        if (!Number.isFinite(colIndex) || colIndex < 0) return;
+
+        updateDragSelection(rowIndex, colIndex);
+      },
+      [updateDragSelection],
+    );
+
+    const stopAutoScroll = useCallback(() => {
+      if (autoScrollFrameRef.current != null) {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+        autoScrollFrameRef.current = null;
+      }
+    }, []);
+
+    const runAutoScroll = useCallback(() => {
+      autoScrollFrameRef.current = null;
+
+      const dragSelection = dragSelectionRef.current;
+      const pointer = dragPointerRef.current;
+      const root = gridRootRef.current;
+      if (!dragSelection || !pointer || !root) return;
+
+      const bodyViewport = root.querySelector(".ag-body-viewport") as HTMLElement | null;
+      const centerViewport = root.querySelector(".ag-center-cols-viewport") as HTMLElement | null;
+      const horizontalViewport = root.querySelector(".ag-body-horizontal-scroll-viewport") as HTMLElement | null;
+      if (!bodyViewport) return;
+
+      const bodyRect = bodyViewport.getBoundingClientRect();
+      const deltaY = getAutoScrollDelta(pointer.clientY, bodyRect.top, bodyRect.bottom);
+      const deltaX = centerViewport ? getAutoScrollDelta(pointer.clientX, bodyRect.left, bodyRect.right) : 0;
+
+      let didScroll = false;
+
+      if (deltaY !== 0) {
+        const nextScrollTop = Math.max(0, bodyViewport.scrollTop + deltaY);
+        if (nextScrollTop !== bodyViewport.scrollTop) {
+          bodyViewport.scrollTop = nextScrollTop;
+          didScroll = true;
+        }
+      }
+
+      if (deltaX !== 0 && centerViewport) {
+        const maxScrollLeft = Math.max(0, centerViewport.scrollWidth - centerViewport.clientWidth);
+        const nextScrollLeft = Math.min(maxScrollLeft, Math.max(0, centerViewport.scrollLeft + deltaX));
+        if (nextScrollLeft !== centerViewport.scrollLeft) {
+          centerViewport.scrollLeft = nextScrollLeft;
+          if (horizontalViewport) {
+            horizontalViewport.scrollLeft = nextScrollLeft;
+          }
+          didScroll = true;
+        }
+      }
+
+      if (didScroll) {
+        updateDragSelectionFromPoint(pointer.clientX, pointer.clientY);
+      }
+
+      autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
+    }, [updateDragSelectionFromPoint]);
+
+    const startAutoScroll = useCallback(() => {
+      if (autoScrollFrameRef.current != null) return;
+      autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
+    }, [runAutoScroll]);
+
+    useEffect(() => {
+      const onWindowMouseMove = (event: MouseEvent) => {
+        if (!dragSelectionRef.current) return;
+
+        if ((event.buttons & 1) !== 1) {
+          dragSelectionRef.current = null;
+          dragPointerRef.current = null;
+          stopAutoScroll();
+          return;
+        }
+
+        dragPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+      };
+
+      window.addEventListener("mousemove", onWindowMouseMove);
+      return () => {
+        window.removeEventListener("mousemove", onWindowMouseMove);
+      };
+    }, [stopAutoScroll]);
 
     const onCellContextMenu = useCallback(
       (ev: CellContextMenuEvent<RowData>) => {
@@ -763,7 +911,9 @@ const AgGridWrapper = memo(
           anchorCol: isRowHeader ? 0 : colIndex,
           baseRanges,
         };
+        dragPointerRef.current = { clientX: mouseEvent.clientX, clientY: mouseEvent.clientY };
         setSelectionRanges(appendSelectionRange(baseRanges, nextRange));
+        startAutoScroll();
 
         if (isRowHeader) {
           mouseEvent.preventDefault();
@@ -780,9 +930,12 @@ const AgGridWrapper = memo(
         const mouseEvent = event.event as MouseEvent | null;
         if (!mouseEvent || (mouseEvent.buttons & 1) !== 1) {
           dragSelectionRef.current = null;
+          dragPointerRef.current = null;
+          stopAutoScroll();
           return;
         }
 
+        dragPointerRef.current = { clientX: mouseEvent.clientX, clientY: mouseEvent.clientY };
         const rowIndex = event.node?.rowIndex;
         if (typeof rowIndex !== "number" || rowIndex < 0) return;
 
@@ -790,14 +943,9 @@ const AgGridWrapper = memo(
         const hoveredColIndex = colId === "__rowIndex" ? dragSelection.anchorCol : Number(colId);
         if (!Number.isFinite(hoveredColIndex) || hoveredColIndex < 0) return;
 
-        const nextRange =
-          dragSelection.mode === "row"
-            ? normalizeSelectionRange(dragSelection.anchorRow, 0, rowIndex, currentSchema.fields.length - 1)
-            : normalizeSelectionRange(dragSelection.anchorRow, dragSelection.anchorCol, rowIndex, hoveredColIndex);
-
-        setSelectionRanges(appendSelectionRange(dragSelection.baseRanges, nextRange));
+        updateDragSelection(rowIndex, hoveredColIndex);
       },
-      [currentSchema.fields.length],
+      [stopAutoScroll, updateDragSelection],
     );
 
     const onColumnHeaderClicked = useCallback(
@@ -877,6 +1025,7 @@ const AgGridWrapper = memo(
 
     return (
       <div
+        ref={gridRootRef}
         className="ag-theme-material-dark pack-tables-grid"
         style={{ height: "100%", width: "100%" }}
         onKeyDownCapture={onKeyDownCapture}
