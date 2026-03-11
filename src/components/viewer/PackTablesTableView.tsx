@@ -952,23 +952,50 @@ const AgGridWrapper = memo(
       if (!api) return;
 
       if (selectionRangesRef.current.length > 0) {
-        const rangeBlocks = selectionRangesRef.current
-          .map((range) => {
+        const rangeGroups = new Map<string, SelectionRange[]>();
+        for (const range of selectionRangesRef.current) {
+          const key = `${range.startRow}:${range.endRow}`;
+          const existingRanges = rangeGroups.get(key);
+          if (existingRanges) {
+            existingRanges.push(range);
+          } else {
+            rangeGroups.set(key, [range]);
+          }
+        }
+
+        const rangeBlocks = Array.from(rangeGroups.entries())
+          .sort(([firstKey], [secondKey]) => {
+            const [firstStartRow, firstEndRow] = firstKey.split(":").map(Number);
+            const [secondStartRow, secondEndRow] = secondKey.split(":").map(Number);
+            if (firstStartRow !== secondStartRow) return firstStartRow - secondStartRow;
+            return firstEndRow - secondEndRow;
+          })
+          .map(([, groupedRanges]) => {
+            const startRow = Math.min(...groupedRanges.map((range) => range.startRow));
+            const endRow = Math.max(...groupedRanges.map((range) => range.endRow));
+            const selectedColumns = new Set<number>();
+            for (const range of groupedRanges) {
+              for (let colIndex = range.startCol; colIndex <= range.endCol; colIndex++) {
+                selectedColumns.add(colIndex);
+              }
+            }
+
+            const orderedColumns = Array.from(selectedColumns).sort((first, second) => first - second);
+            if (orderedColumns.length === 0) return "";
+
             const lines: string[] = [];
-            for (let rowIndex = range.startRow; rowIndex <= range.endRow; rowIndex++) {
+            for (let rowIndex = startRow; rowIndex <= endRow; rowIndex++) {
               const rowNode = api.getDisplayedRowAtIndex(rowIndex);
               const row = rowNode?.data;
               if (!row) continue;
 
-              const cells: string[] = [];
-              for (let colIndex = range.startCol; colIndex <= range.endCol; colIndex++) {
+              const cells = orderedColumns.map((colIndex) => {
                 if (colIndex < 0 || colIndex >= currentSchema.fields.length) {
-                  cells.push("");
-                  continue;
+                  return "";
                 }
                 const value = row[colIndex];
-                cells.push(value == null ? "" : String(value));
-              }
+                return value == null ? "" : String(value);
+              });
               lines.push(cells.join("\t"));
             }
 
