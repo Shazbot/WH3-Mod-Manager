@@ -25,11 +25,24 @@ const BIG_TABLE_NUMERIC_COL_WIDTH = 96;
 const BIG_TABLE_CHECKBOX_COL_WIDTH = 36;
 const FIXED_SIZING_ROW_THRESHOLD = 1000;
 const TABLE_PREP_CACHE_VERSION = 3;
+const ROW_INDEX_COLUMN_MIN_WIDTH = 50;
+const ROW_INDEX_COLUMN_PADDING_PX = 20;
+const ROW_INDEX_GRID_CELL_FONT = "400 17.6px Roboto, Arial, sans-serif";
 const TEXT_COLUMN_WIDTH_CHAR_PX = 7;
 const TEXT_COLUMN_WIDTH_PADDING_PX = 52;
 const TEXT_COLUMN_WIDTH_MIN_PX = 110;
 const GRID_CELL_FONT = "400 14px Roboto, Arial, sans-serif";
 const GRID_HEADER_FONT = "500 14px Roboto, Arial, sans-serif";
+const KEY_HEADER_ICON_WIDTH_PX = 22;
+const COLUMN_HEADER_DISPLAY_NAMES: Record<string, string> = {
+  "additional building requirement": "building req.",
+  "campaign cap": "camp. cap",
+  "create time": "creation time",
+  "multiplayer cap": "MP cap",
+  "multiplayer cost": "MP cost",
+  "num men": "men",
+  "num ships": "ships",
+};
 
 const AG_GRID_MODULES_KEY = "__whmmAgGridModulesRegistered";
 const globalAny = globalThis as unknown as Record<string, unknown>;
@@ -92,6 +105,28 @@ const formatFloatDisplayValue = (value: TableCellValue | null | undefined): stri
   if (!/^-?\d+\.0+$/.test(normalizedValue)) return value;
 
   return normalizedValue.replace(/\.0+$/, "");
+};
+
+const getDisplayColumnHeader = (headerName: string): string => {
+  return COLUMN_HEADER_DISPLAY_NAMES[headerName] ?? headerName;
+};
+
+const getHeaderMinWidth = (headerName: string, hasKeyIcon: boolean): number => {
+  const minHeaderWidth = TEXT_COLUMN_WIDTH_MIN_PX * 1;
+  if (headerName.length === 0) return minHeaderWidth;
+
+  const words = headerName.split(/\s+/).filter(Boolean);
+  const longestWordWidth = words.reduce((maxWidth, word) => {
+    return Math.max(maxWidth, measureTextWidth(word, GRID_HEADER_FONT));
+  }, 0);
+  const fullHeaderWidth = measureTextWidth(headerName, GRID_HEADER_FONT);
+  const twoLineWidth = Math.ceil(fullHeaderWidth / 2);
+  const iconWidth = hasKeyIcon ? KEY_HEADER_ICON_WIDTH_PX : 0;
+
+  return Math.max(
+    minHeaderWidth,
+    Math.ceil(Math.max(longestWordWidth, twoLineWidth) + TEXT_COLUMN_WIDTH_PADDING_PX + iconWidth),
+  );
 };
 
 const buildTableCacheKey = (
@@ -240,6 +275,10 @@ const AgGridWrapper = memo(
 
     const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
     const rowHeight = useFixedSizing ? BIG_TABLE_ROW_HEIGHT : NORMAL_TABLE_ROW_HEIGHT;
+    const rowIndexColumnWidth = useMemo(() => {
+      const maxRowNumberWidth = measureTextWidth(String(Math.max(rowCount, 1)), ROW_INDEX_GRID_CELL_FONT);
+      return Math.max(ROW_INDEX_COLUMN_MIN_WIDTH, Math.ceil(maxRowNumberWidth + ROW_INDEX_COLUMN_PADDING_PX));
+    }, [rowCount]);
 
     const firstKeyColumnIndex = useMemo(() => {
       if (keyColumnSet.size === 0) return -1;
@@ -248,7 +287,7 @@ const AgGridWrapper = memo(
 
     const getTextColumnWidth = useCallback(
       (columnIndex: number) => {
-        const headerText = columnHeaders[columnIndex] ?? "";
+        const headerText = getDisplayColumnHeader(columnHeaders[columnIndex] ?? "");
         const hint = columnWidthHints[columnIndex];
         const widestValue = hint?.widestValue ?? "";
         const headerWidth = measureTextWidth(headerText, GRID_HEADER_FONT);
@@ -289,12 +328,15 @@ const AgGridWrapper = memo(
         {
           headerName: "",
           colId: "__rowIndex",
-          width: 64,
+          width: rowIndexColumnWidth,
+          minWidth: rowIndexColumnWidth,
           resizable: false,
           pinned: "left",
+          sortable: false,
+          filter: false,
           suppressMovable: true,
           valueGetter: (p) => (typeof p.node?.rowIndex === "number" ? p.node.rowIndex + 1 : ""),
-          cellClass: "text-right tabular-nums",
+          cellClass: "pack-table-row-index-cell text-right tabular-nums",
         },
       ];
 
@@ -303,12 +345,18 @@ const AgGridWrapper = memo(
         const colType = columns[colIndex]?.type;
         const isFloatColumn = field?.field_type === "F32" || field?.field_type === "F64";
         const isKey = !!field && keyColumnSet.has(field.name);
-        const headerName = (isKey ? "🔑 " : "") + (columnHeaders[colIndex] ?? "");
+        const fullHeaderName = columnHeaders[colIndex] ?? "";
+        const displayHeaderName = getDisplayColumnHeader(fullHeaderName);
+        const headerName = (isKey ? "🔑 " : "") + displayHeaderName;
 
-        const width = getColumnWidth(colIndex);
+        const width = Math.max(getColumnWidth(colIndex), getHeaderMinWidth(displayHeaderName, isKey));
         defs.push({
           headerName,
-          headerTooltip: columnHeaders[colIndex] ?? "",
+          headerTooltip: fullHeaderName,
+          autoHeaderHeight: true,
+          wrapHeaderText: true,
+          headerClass:
+            colType === "numeric" ? "pack-table-header pack-table-header-right" : "pack-table-header",
           colId: String(colIndex),
           width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
           minWidth: !useFixedSizing && colType === "text" ? width : undefined,
@@ -334,7 +382,15 @@ const AgGridWrapper = memo(
       }
 
       return defs;
-    }, [columnHeaders, columns, currentSchema.fields, getColumnWidth, keyColumnSet, useFixedSizing]);
+    }, [
+      columnHeaders,
+      columns,
+      currentSchema.fields,
+      getColumnWidth,
+      keyColumnSet,
+      rowIndexColumnWidth,
+      useFixedSizing,
+    ]);
 
     const [menuState, setMenuState] = useState<
       | {
@@ -437,7 +493,7 @@ const AgGridWrapper = memo(
 
     return (
       <div
-        className="ag-theme-material-dark"
+        className="ag-theme-material-dark pack-tables-grid"
         style={{ height: "100%", width: "100%" }}
         onKeyDownCapture={onKeyDownCapture}
         onMouseDownCapture={(ev) => {
