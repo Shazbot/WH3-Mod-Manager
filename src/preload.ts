@@ -379,6 +379,15 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("saveDBTableEdits", packPath, packedFile),
 
+  saveTextPackedFileEdits: (
+    packPath: string,
+    filePath: string,
+    text: string,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("saveTextPackedFileEdits", packPath, filePath, text),
+
   savePackWithUnsavedFiles: (
     packPath: string,
   ): Promise<{
