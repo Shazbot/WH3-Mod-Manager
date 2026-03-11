@@ -1,13 +1,17 @@
 import React, { useEffect, useImperativeHandle, useMemo } from "react";
-import { useAppSelector } from "../../hooks";
+import { setUnsavedPacksData } from "@/src/appSlice";
+import { useAppDispatch, useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
+import Select, { SingleValue } from "react-select";
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
 import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
-import { gameToPackWithDBTablesName } from "../../supportedGames";
+import { gameToPackWithDBTablesName, vanillaPackNames } from "../../supportedGames";
+import selectStyle from "../../styles/selectStyle";
+import { dataFromBackend } from "./packDataStore";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
-import type { PackedFile } from "../../packFileTypes";
+import type { DBVersion, PackedFile } from "../../packFileTypes";
 
 type PackTablesTreeViewProps = {
   tableFilter: string;
@@ -18,22 +22,31 @@ type PackTablesTreeViewProps = {
   ) => void;
 };
 
-	type TreeData = { name: string; children?: TreeData[] };
+type TreeData = { name: string; children?: TreeData[] };
+type TableOption = { value: string; label: string };
 
-	export type PackTablesTreeViewHandle = {
-	  openNewFlowDialog: () => void;
-	};
+export type PackTablesTreeViewHandle = {
+  openNewFlowDialog: () => void;
+};
 
-	const PackTablesTreeView = React.memo(
-	  React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
-	    const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
-	    const currentGame = useAppSelector((state) => state.app.currentGame);
-	    const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
+const PackTablesTreeView = React.memo(
+  React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
+    const dispatch = useAppDispatch();
+    const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
+    const currentGame = useAppSelector((state) => state.app.currentGame);
+    const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
     const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
 
     const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
     const [isNewFlowDialogOpen, setIsNewFlowDialogOpen] = React.useState(false);
     const [newFlowName, setNewFlowName] = React.useState("");
+    const [isNewTableDialogOpen, setIsNewTableDialogOpen] = React.useState(false);
+    const [newTableName, setNewTableName] = React.useState("");
+    const [newTableSuffix, setNewTableSuffix] = React.useState("");
+    const [availableTableVersions, setAvailableTableVersions] = React.useState<Record<string, DBVersion[]>>({});
+    const [defaultTableVersions, setDefaultTableVersions] = React.useState<Record<string, number>>({});
+    const [isLoadingNewTableOptions, setIsLoadingNewTableOptions] = React.useState(false);
+    const [isCreatingNewTable, setIsCreatingNewTable] = React.useState(false);
     const pendingOpenTimeoutRef = React.useRef<number | null>(null);
     const [selectedNodeIds, setSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
@@ -50,41 +63,92 @@ type PackTablesTreeViewProps = {
       currentDBTableSelection?.packPath ?? (gameToPackWithDBTablesName[currentGame] || "db.pack");
     const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
     const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
+    const isVanillaPackOpen = packData ? vanillaPackNames.includes(packData.packName) : false;
+
+    const vanillaTableOptions = useMemo<TableOption[]>(
+      () =>
+        Object.keys(availableTableVersions)
+          .toSorted((first, second) => first.localeCompare(second))
+          .map((tableName) => ({ value: tableName, label: tableName })),
+      [availableTableVersions],
+    );
+
+    const selectedNewTableOption = useMemo(
+      () => vanillaTableOptions.find((option) => option.value === newTableName) ?? null,
+      [newTableName, vanillaTableOptions],
+    );
+
+    const selectedNewTableSchema = useMemo(() => {
+      if (!newTableName) return undefined;
+      const versions = availableTableVersions[newTableName];
+      if (!versions || versions.length === 0) return undefined;
+      const defaultVersion = defaultTableVersions[newTableName];
+      return versions.find((version) => version.version === defaultVersion) || versions[0];
+    }, [availableTableVersions, defaultTableVersions, newTableName]);
 
     const data = useMemo(() => {
       if (!packData) {
         return flattenTree({ name: "", children: [] });
       }
 
-      const sortedPackTables = packData.tables.toSorted((first, second) => first.localeCompare(second));
       const root: TreeData = { name: "", children: [] };
-      const dbNodes = new Map<string, TreeData>();
-
-      for (const packFileName of sortedPackTables) {
+      const dbEntriesByName = new Map<string, Set<string>>();
+      const addDbEntry = (packFileName: string) => {
         const dbName = getDBNameFromString(packFileName);
         const dbSubname = getDBSubnameFromString(packFileName);
-        if (!dbName || !dbSubname) continue;
-
-        let dbNode = dbNodes.get(dbName);
-        if (!dbNode) {
-          dbNode = { name: dbName, children: [] };
-          dbNodes.set(dbName, dbNode);
-          root.children?.push(dbNode);
+        if (!dbName || !dbSubname) return;
+        let subnames = dbEntriesByName.get(dbName);
+        if (!subnames) {
+          subnames = new Set<string>();
+          dbEntriesByName.set(dbName, subnames);
         }
-        dbNode.children?.push({ name: dbSubname, children: [] });
+        subnames.add(dbSubname);
+      };
+
+      for (const packFileName of packData.tables) {
+        addDbEntry(packFileName);
       }
 
+      const unsavedFlowNames = new Set<string>();
+      const unsavedStandaloneNames: string[] = [];
       if (unsavedFiles.length > 0) {
         for (const unsavedFile of unsavedFiles.toReversed()) {
-          root.children?.splice(0, 0, { name: unsavedFile.name, children: [] });
+          if (unsavedFile.name.startsWith("whmmflows\\")) {
+            unsavedFlowNames.add(unsavedFile.name);
+            continue;
+          }
+          const dbName = getDBNameFromString(unsavedFile.name);
+          const dbSubname = getDBSubnameFromString(unsavedFile.name);
+          if (dbName && dbSubname) {
+            addDbEntry(unsavedFile.name);
+            continue;
+          }
+          unsavedStandaloneNames.push(unsavedFile.name);
         }
       }
 
-      const unsavedFlowNames = new Set(unsavedFiles.map((unsavedFile) => unsavedFile.name));
       const flowFiles = packData.tables.filter((tableName) => tableName.startsWith("whmmflows\\"));
       for (const flowFile of flowFiles) {
         if (unsavedFlowNames.has(flowFile)) continue;
         root.children?.splice(0, 0, { name: flowFile, children: [] });
+      }
+
+      for (const unsavedFlowName of unsavedFlowNames) {
+        root.children?.splice(0, 0, { name: unsavedFlowName, children: [] });
+      }
+
+      for (const unsavedStandaloneName of unsavedStandaloneNames) {
+        root.children?.splice(0, 0, { name: unsavedStandaloneName, children: [] });
+      }
+
+      for (const dbName of [...dbEntriesByName.keys()].toSorted((first, second) => first.localeCompare(second))) {
+        const subnames = dbEntriesByName.get(dbName);
+        root.children?.push({
+          name: dbName,
+          children: [...(subnames || [])]
+            .toSorted((first, second) => first.localeCompare(second))
+            .map((dbSubname) => ({ name: dbSubname, children: [] })),
+        });
       }
 
       return flattenTree(root);
@@ -186,8 +250,15 @@ type PackTablesTreeViewProps = {
     };
 
     const getPackedFileForDBSelection = (selection: DBTableSelection): PackedFile | undefined => {
-      if (!packData?.packedFiles) return undefined;
       const packedFilePath = `db\\${selection.dbName}\\${selection.dbSubname}`;
+      const unsavedFile =
+        unsavedFiles.find((file) => file.name === packedFilePath) ||
+        unsavedFiles.find((file) => file.name.startsWith(packedFilePath));
+      if (unsavedFile) {
+        return unsavedFile;
+      }
+
+      if (!packData?.packedFiles) return undefined;
       if (packData.packedFiles[packedFilePath]) {
         return packData.packedFiles[packedFilePath];
       }
@@ -259,7 +330,7 @@ type PackTablesTreeViewProps = {
 	        return Boolean(packedFile?.schemaFields && packedFile?.tableSchema);
 	      });
 	    // eslint-disable-next-line react-hooks/exhaustive-deps
-	    }, [selectedNodeIds, nodeById, packData, contextMenu, isExportingSelection]);
+    }, [selectedNodeIds, nodeById, packData, unsavedFiles, contextMenu, isExportingSelection]);
 
 	    const getDescendantLeafIds = (element: INode): Array<string | number> => {
 	      const result: Array<string | number> = [];
@@ -418,6 +489,50 @@ type PackTablesTreeViewProps = {
       setIsNewFlowDialogOpen(true);
     };
 
+    const closeNewTableDialog = () => {
+      setIsNewTableDialogOpen(false);
+      setNewTableName("");
+      setNewTableSuffix("");
+      setIsCreatingNewTable(false);
+    };
+
+    const handleAddNewTable = async () => {
+      setContextMenu(null);
+      setIsLoadingNewTableOptions(true);
+      try {
+        const [dbNameToDBVersions, nextDefaultTableVersions] = await Promise.all([
+          window.api?.getDBNameToDBVersions(),
+          window.api?.getDefaultTableVersions(),
+        ]);
+
+        const resolvedTableVersions =
+          dbNameToDBVersions && Object.keys(dbNameToDBVersions).length > 0
+            ? dbNameToDBVersions
+            : dataFromBackend.DBNameToDBVersions;
+
+        const tableNames = Object.keys(resolvedTableVersions).toSorted((first, second) =>
+          first.localeCompare(second),
+        );
+        if (tableNames.length === 0) {
+          alert("No vanilla DB tables are available for this game");
+          return;
+        }
+
+        setAvailableTableVersions(resolvedTableVersions);
+        setDefaultTableVersions(nextDefaultTableVersions || {});
+        setNewTableName((currentValue) =>
+          currentValue && resolvedTableVersions[currentValue] ? currentValue : tableNames[0],
+        );
+        setNewTableSuffix("");
+        setIsNewTableDialogOpen(true);
+      } catch (error) {
+        console.error("Error loading vanilla DB table definitions:", error);
+        alert(`Failed to load vanilla DB table definitions: ${error instanceof Error ? error.message : "Unknown error"}`);
+      } finally {
+        setIsLoadingNewTableOptions(false);
+      }
+    };
+
     const handleExportSelectedAsTSV = async () => {
       if (selectedDBTableSelections.length === 0 || isExportingSelection) return;
 
@@ -493,12 +608,81 @@ type PackTablesTreeViewProps = {
       setNewFlowName("");
     };
 
+    const handleCreateNewTable = async () => {
+      if (!packData) return;
+
+      const trimmedTableName = newTableName.trim();
+      const trimmedSuffix = newTableSuffix.trim();
+      if (!trimmedTableName) {
+        alert("Please choose a table");
+        return;
+      }
+      if (!trimmedSuffix) {
+        alert("Please enter the table name suffix");
+        return;
+      }
+      if (/[\\/]/.test(trimmedSuffix)) {
+        alert("Enter only the xxx portion of db/table_name/xxx");
+        return;
+      }
+
+      const schema = selectedNewTableSchema;
+      if (!schema) {
+        alert(`No schema found for ${trimmedTableName}`);
+        return;
+      }
+
+      const packedFileName = `db\\${trimmedTableName}\\${trimmedSuffix}`;
+      const alreadyExistsInPack =
+        packData.tables.includes(packedFileName) ||
+        Boolean(packData.packedFiles?.[packedFileName]) ||
+        unsavedFiles.some((file) => file.name === packedFileName);
+      if (alreadyExistsInPack) {
+        alert(`A table already exists at db/${trimmedTableName}/${trimmedSuffix}`);
+        return;
+      }
+
+      setIsCreatingNewTable(true);
+      try {
+        const nextPackedFile: PackedFile = {
+          name: packedFileName,
+          file_size: 0,
+          start_pos: 0,
+          schemaFields: [],
+          version: schema.version,
+          tableSchema: schema,
+        };
+
+        const result = await window.api?.saveDBTableEdits(packData.packPath, nextPackedFile);
+        if (!result?.success) {
+          throw new Error(result?.error || "Failed to create DB table");
+        }
+
+        dispatch(
+          setUnsavedPacksData({
+            packPath: packData.packPath,
+            unsavedFileData: [nextPackedFile],
+          }),
+        );
+        props.onOpenDBTable({
+          packPath: packData.packPath,
+          dbName: trimmedTableName,
+          dbSubname: trimmedSuffix,
+        });
+        closeNewTableDialog();
+      } catch (error) {
+        console.error("Error creating DB table:", error);
+        alert(`Failed to create DB table: ${error instanceof Error ? error.message : "Unknown error"}`);
+        setIsCreatingNewTable(false);
+      }
+    };
+
     if (!packData) {
       return <></>;
     }
 
     return (
-      <div onContextMenu={handleContextMenu} className="relative select-none">
+      <div onContextMenu={handleContextMenu} className="relative select-none h-full min-h-full">
         <TreeView
           data={data}
           aria-label="Controlled expanded node tree"
@@ -600,12 +784,23 @@ type PackTablesTreeViewProps = {
             className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[150px]"
             style={{ top: contextMenu.y, left: contextMenu.x }}
           >
-            <button
-              onClick={handleAddNewFlow}
-              className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
-            >
-              Add New Flow
-            </button>
+            {!isVanillaPackOpen && (
+              <button
+                onClick={handleAddNewFlow}
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm"
+              >
+                Add New Flow
+              </button>
+            )}
+            {!isVanillaPackOpen && (
+              <button
+                onClick={handleAddNewTable}
+                disabled={isLoadingNewTableOptions}
+                className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm disabled:opacity-50"
+              >
+                {isLoadingNewTableOptions ? "Loading Tables..." : "Add New Table"}
+              </button>
+            )}
             {selectedDBTableSelections.length > 0 && (
               <button
                 onClick={handleExportSelectedAsTSV}
@@ -663,6 +858,79 @@ type PackTablesTreeViewProps = {
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
                 >
                   Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isNewTableDialogOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+              <h2 className="text-xl font-bold text-white mb-4">Create New DB Table</h2>
+
+              <div className="mb-4">
+                <label className="block text-white text-sm font-medium mb-2">Vanilla Table</label>
+                <Select
+                  options={vanillaTableOptions}
+                  value={selectedNewTableOption}
+                  onChange={(option: SingleValue<TableOption>) => setNewTableName(option?.value ?? "")}
+                  styles={{
+                    ...selectStyle,
+                    menuPortal: (base) => ({
+                      ...base,
+                      zIndex: 70,
+                    }),
+                    menu: (base) => ({
+                      ...selectStyle.menu(base),
+                      zIndex: 70,
+                    }),
+                  }}
+                  placeholder="Search tables..."
+                  isClearable={false}
+                  menuPortalTarget={document.body}
+                  menuPosition="fixed"
+                />
+              </div>
+
+              <div className="mb-2">
+                <label className="block text-white text-sm font-medium mb-2">Table Suffix</label>
+                <input
+                  type="text"
+                  value={newTableSuffix}
+                  onChange={(e) => setNewTableSuffix(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleCreateNewTable();
+                    } else if (e.key === "Escape") {
+                      closeNewTableDialog();
+                    }
+                  }}
+                  className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+                  placeholder="xxx"
+                  autoFocus
+                />
+              </div>
+
+              <div className="mb-4 text-sm text-gray-300">
+                <div>Path: {newTableName ? `db/${newTableName}/${newTableSuffix || "xxx"}` : "db/.../xxx"}</div>
+                <div>Version: {selectedNewTableSchema?.version ?? "Unknown"}</div>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={closeNewTableDialog}
+                  disabled={isCreatingNewTable}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateNewTable}
+                  disabled={!newTableName || isCreatingNewTable}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
+                >
+                  {isCreatingNewTable ? "Creating..." : "Create"}
                 </button>
               </div>
             </div>
