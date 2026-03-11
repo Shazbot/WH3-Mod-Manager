@@ -410,6 +410,11 @@ const appendSelectionRange = (ranges: SelectionRange[], nextRange: SelectionRang
   return alreadyPresent ? ranges : [...ranges, normalizedRange];
 };
 
+const filterFullColumnSelections = (ranges: SelectionRange[], rowCount: number): SelectionRange[] => {
+  if (rowCount <= 0) return [];
+  return ranges.filter((range) => range.startRow === 0 && range.endRow === rowCount - 1);
+};
+
 const hasAdditiveSelectionModifier = (event?: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey"> | null): boolean =>
   !!event && (event.shiftKey || event.ctrlKey || event.metaKey);
 
@@ -1018,7 +1023,10 @@ const AgGridWrapper = memo(
           if (!Number.isFinite(colIndex) || colIndex < 0) return;
 
           setSelectionRanges((currentRanges) =>
-            appendSelectionRange(currentRanges, normalizeSelectionRange(0, colIndex, rowCount - 1, colIndex)),
+            appendSelectionRange(
+              filterFullColumnSelections(currentRanges, rowCount),
+              normalizeSelectionRange(0, colIndex, rowCount - 1, colIndex),
+            ),
           );
           ev.preventDefault();
           ev.stopPropagation();
