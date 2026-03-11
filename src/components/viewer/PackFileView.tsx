@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { xml } from "@codemirror/lang-xml";
 import { StreamLanguage } from "@codemirror/language";
@@ -7,6 +7,8 @@ import { vscodeDark } from "@uiw/codemirror-theme-vscode";
 import { useAppSelector } from "@/src/hooks";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import type { ShowViewerDialog } from "./viewerDialogs";
+import { getPackNameFromPath } from "@/src/utility/packFileHelpers";
+import { vanillaPackNames } from "@/src/supportedGames";
 import {
   decodePackedTextBuffer,
   getPackedFileLowerExtension,
@@ -30,9 +32,21 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
   const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
   const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const [loadState, setLoadState] = useState<LoadState>({ status: "idle" });
+  const [workingText, setWorkingText] = useState<string | undefined>(undefined);
+  const [persistedText, setPersistedText] = useState("");
+  const [isPersisting, setIsPersisting] = useState(false);
 
   const viewerKind = useMemo(() => getPackedFileViewerKind(filePath), [filePath]);
+  const openedTextFileKey = viewerKind === "text" ? `${packPath}|${filePath}` : "";
+  const packName = getPackNameFromPath(packPath) ?? packPath;
+  const canEditTextFile = viewerKind === "text" && isFeaturesForModdersEnabled && !vanillaPackNames.includes(packName);
+  const hydratedTextFileKeyRef = useRef<string | null>(null);
+  const latestWorkingTextRef = useRef<string | undefined>(undefined);
+  const persistedTextRef = useRef("");
+  const saveTimeoutRef = useRef<number | null>(null);
+  const saveRequestIdRef = useRef(0);
   const packedFile = useMemo(() => {
     const unsavedMatch =
       unsavedFiles.find((file) => file.name === filePath) || unsavedFiles.find((file) => file.name.startsWith(filePath));
@@ -107,7 +121,97 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
     return () => {
       isCancelled = true;
     };
-  }, [filePath, packPath, packedFile, showDialog, viewerKind]);
+  }, [filePath, packPath, packedFile?.buffer, packedFile?.text, showDialog, viewerKind]);
+
+  useEffect(() => {
+    latestWorkingTextRef.current = workingText;
+  }, [workingText]);
+
+  useEffect(() => {
+    persistedTextRef.current = persistedText;
+  }, [persistedText]);
+
+  useEffect(() => {
+    if (viewerKind !== "text" || loadState.status !== "loaded") return;
+
+    const nextText = loadState.text || "";
+    const shouldHydrate = hydratedTextFileKeyRef.current !== openedTextFileKey || workingText == null;
+    if (!shouldHydrate) return;
+
+    hydratedTextFileKeyRef.current = openedTextFileKey;
+    setWorkingText(nextText);
+    setPersistedText(nextText);
+    setIsPersisting(false);
+    latestWorkingTextRef.current = nextText;
+  }, [loadState, openedTextFileKey, viewerKind, workingText]);
+
+  const persistText = useCallback(
+    async (nextText: string, options?: { suppressDialog?: boolean }) => {
+      if (!canEditTextFile) return true;
+
+      const requestId = ++saveRequestIdRef.current;
+      setIsPersisting(true);
+
+      try {
+        const result = await window.api?.saveTextPackedFileEdits(packPath, filePath, nextText);
+        if (!result?.success) {
+          throw new Error(result?.error || "Failed to store text file edits");
+        }
+
+        if (requestId === saveRequestIdRef.current) {
+          setPersistedText(nextText);
+          setIsPersisting(false);
+        }
+
+        return true;
+      } catch (error) {
+        if (requestId === saveRequestIdRef.current) {
+          setIsPersisting(false);
+        }
+        if (!options?.suppressDialog) {
+          showDialog(
+            `Failed to save ${filePath}: ${error instanceof Error ? error.message : "Unknown error"}`,
+            { title: "Save Failed" },
+          );
+        }
+        return false;
+      }
+    },
+    [canEditTextFile, filePath, packPath, showDialog],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current != null) {
+        window.clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+
+      const pendingText = latestWorkingTextRef.current;
+      if (!canEditTextFile || pendingText == null || pendingText === persistedTextRef.current) return;
+      void persistText(pendingText, { suppressDialog: true });
+    };
+  }, [canEditTextFile, openedTextFileKey, persistText]);
+
+  const handleTextChange = useCallback(
+    (nextText: string) => {
+      if (!canEditTextFile) return;
+
+      setWorkingText(nextText);
+      latestWorkingTextRef.current = nextText;
+
+      if (saveTimeoutRef.current != null) {
+        window.clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+
+      saveTimeoutRef.current = window.setTimeout(() => {
+        saveTimeoutRef.current = null;
+        void persistText(nextText);
+      }, 250);
+    },
+    [canEditTextFile, persistText],
+  );
 
   if (!viewerKind) {
     return <div className="h-full flex items-center justify-center text-sm text-gray-400">Unsupported file type.</div>;
@@ -122,6 +226,8 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   }
 
   const loadedState = loadState as Extract<LoadState, { status: "loaded" }>;
+  const displayedText = workingText ?? loadedState.text ?? "";
+  const hasPendingTextChanges = canEditTextFile && displayedText !== persistedText;
 
   if (viewerKind === "image") {
     return (
@@ -140,14 +246,20 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-gray-900">
-      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700">{filePath}</div>
+      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center justify-between gap-3">
+        <span className="truncate">{filePath}</span>
+        <span className="shrink-0 text-[11px] uppercase tracking-wide text-gray-500">
+          {canEditTextFile ? (isPersisting ? "Saving..." : hasPendingTextChanges ? "Modified" : "Editable") : "Read Only"}
+        </span>
+      </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         <CodeMirror
-          value={loadedState.text || ""}
+          value={displayedText}
           height="100%"
           theme={vscodeDark}
           extensions={editorExtensions}
-          editable={false}
+          editable={canEditTextFile}
+          onChange={handleTextChange}
           basicSetup={{
             foldGutter: true,
             highlightActiveLine: false,

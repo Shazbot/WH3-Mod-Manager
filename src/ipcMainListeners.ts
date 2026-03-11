@@ -3603,6 +3603,42 @@ export const registerIpcMainListeners = (
       };
     }
   });
+  ipcMain.handle("saveTextPackedFileEdits", async (event, packPath: string, filePath: string, text: string) => {
+    try {
+      let unsavedFiles = appData.unsavedPacksData[packPath];
+      if (!unsavedFiles) {
+        unsavedFiles = [];
+        appData.unsavedPacksData[packPath] = unsavedFiles;
+      }
+
+      const buffer = Buffer.from(text, "utf8");
+      const nextUnsavedFile = {
+        name: filePath,
+        file_size: buffer.length,
+        start_pos: -1,
+        text,
+        buffer,
+      } as PackedFile;
+
+      const existingFileIndex = unsavedFiles.findIndex((file) => file.name == filePath);
+      if (existingFileIndex != -1) {
+        unsavedFiles.splice(existingFileIndex, 1, nextUnsavedFile);
+      } else {
+        unsavedFiles.push(nextUnsavedFile);
+      }
+
+      mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error saving text packed file edits:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to save text packed file edits",
+      };
+    }
+  });
   ipcMain.handle("savePackWithUnsavedFiles", async (event, packPath: string) => {
     try {
       console.log("savePackWithUnsavedFiles:", packPath);
