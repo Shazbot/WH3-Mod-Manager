@@ -189,6 +189,7 @@ interface AppData {
   isViewerReady: boolean;
   areSkillsReady: boolean;
   queuedViewerData: (PackViewData | undefined)[];
+  lastOpenedViewerPackPath?: string;
   queuedSkillsData: SkillsData | undefined;
   lastSkillsSelection?: {
     currentSubtype: string;
@@ -258,6 +259,7 @@ const appData = {
   isViewerReady: false,
   areSkillsReady: false,
   queuedViewerData: [],
+  lastOpenedViewerPackPath: undefined,
   queuedSkillsData: undefined,
   lastSkillsSelection: undefined,
   lastSkillsDataSignature: undefined,

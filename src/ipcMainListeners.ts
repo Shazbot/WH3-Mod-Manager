@@ -6469,6 +6469,7 @@ export const registerIpcMainListeners = (
       }
     }
     console.log("ON requestOpenModInViewer", modPath);
+    appData.lastOpenedViewerPackPath = modPath;
     let viewerWindow = getLiveViewerWindow();
     if (!viewerWindow) {
       createViewerWindow();
@@ -6765,12 +6766,16 @@ export const registerIpcMainListeners = (
       return;
     }
     console.log("SENDING QUEUED DATA TO VIEWER");
+    const queuedPackPath = appData.queuedViewerData[0]?.packPath;
+    if (queuedPackPath) {
+      appData.lastOpenedViewerPackPath = queuedPackPath;
+    }
     windows.viewerWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
     windows.viewerWindow?.webContents.send("setPacksData", appData.queuedViewerData);
-    windows.viewerWindow?.webContents.send("openModInViewer", appData.queuedViewerData[0]?.packPath);
-    if (appData.queuedViewerData[0]?.packPath)
+    windows.viewerWindow?.webContents.send("openModInViewer", queuedPackPath);
+    if (queuedPackPath)
       windows.viewerWindow?.setTitle(
-        `WH3 Mod Manager v${version}: viewing ${nodePath.basename(appData.queuedViewerData[0]?.packPath)}`,
+        `WH3 Mod Manager v${version}: viewing ${nodePath.basename(queuedPackPath)}`,
       );
     windows.viewerWindow?.focus();
     appData.queuedViewerData = [];
@@ -6801,6 +6806,13 @@ export const registerIpcMainListeners = (
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedViewerData.length > 0) {
       sendQueuedDataToViewer();
+    } else if (appData.lastOpenedViewerPackPath) {
+      windows.viewerWindow?.webContents.send("setCurrentGameNaive", appData.currentGame);
+      getPackData(appData.lastOpenedViewerPackPath);
+      windows.viewerWindow?.webContents.send("openModInViewer", appData.lastOpenedViewerPackPath);
+      windows.viewerWindow?.setTitle(
+        `WH3 Mod Manager v${version}: viewing ${nodePath.basename(appData.lastOpenedViewerPackPath)}`,
+      );
     }
   });
   const sendQueuedDataToSkills = async () => {

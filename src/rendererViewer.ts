@@ -26,8 +26,6 @@ setupRendererLogging();
 
 console.log("IN RENDERER (viewer)");
 
-window.api?.viewerIsReady();
-
 window.api?.setStartArgs((event, startArgs) => {
   store.dispatch(setStartArgs(startArgs));
 });
@@ -154,5 +152,7 @@ window.api?.setDBNameToDBVersions(
     }
   },
 );
+
+window.api?.viewerIsReady();
 
 renderViewerWindow();
