@@ -26,6 +26,9 @@ setupRendererLogging();
 
 console.log("IN RENDERER (viewer)");
 
+const stripUnsavedFileBuffers = (unsavedFileData: PackedFile[]): PackedFile[] =>
+  unsavedFileData.map(({ buffer, ...unsavedFile }) => unsavedFile);
+
 window.api?.setStartArgs((event, startArgs) => {
   store.dispatch(setStartArgs(startArgs));
 });
@@ -62,7 +65,12 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
 });
 
 window.api?.setUnsavedPacksData((event, packPath: string, unsavedFileData: PackedFile[]) => {
-  store.dispatch(setUnsavedPacksData({ packPath, unsavedFileData } as SetUnsavedPacksDataPayload));
+  store.dispatch(
+    setUnsavedPacksData({
+      packPath,
+      unsavedFileData: stripUnsavedFileBuffers(unsavedFileData),
+    } as SetUnsavedPacksDataPayload),
+  );
 });
 
 window.api?.setPackDataStore(

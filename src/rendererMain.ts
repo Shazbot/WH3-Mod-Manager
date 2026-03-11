@@ -50,6 +50,7 @@ import {
   setUnsavedPacksData,
   setWarhammer3Folder,
 } from "./appSlice";
+import { PackedFile } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 
 setupRendererLogging();
@@ -272,8 +273,16 @@ window.api?.setPacksData((event, packsData: PackViewData[]) => {
   store.dispatch(setPacksData(packsData));
 });
 
+const stripUnsavedFileBuffers = (unsavedFileData: PackedFile[]): PackedFile[] =>
+  unsavedFileData.map(({ buffer, ...unsavedFile }) => unsavedFile);
+
 window.api?.setUnsavedPacksData((event, packPath: string, unsavedFileData) => {
-  store.dispatch(setUnsavedPacksData({ packPath, unsavedFileData } as SetUnsavedPacksDataPayload));
+  store.dispatch(
+    setUnsavedPacksData({
+      packPath,
+      unsavedFileData: stripUnsavedFileBuffers(unsavedFileData as PackedFile[]),
+    } as SetUnsavedPacksDataPayload),
+  );
 });
 
 window.api?.setPacksDataRead((event, packPaths: string[]) => {
