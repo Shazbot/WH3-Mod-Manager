@@ -1,6 +1,7 @@
 import { AmendedSchemaField } from "@/src/packFileTypes";
 
 export type TableCellValue = string | number | boolean;
+export type PreparedRowData = Record<string, TableCellValue | string> & { __rowId: string };
 
 export interface ColumnWidthHint {
   maxLength: number;
@@ -10,7 +11,7 @@ export interface ColumnWidthHint {
 
 export interface PreparedTableData {
   chunkedTable: AmendedSchemaField[][];
-  data: TableCellValue[][];
+  data: PreparedRowData[];
   columnHeaders: string[];
   columns: Array<{ type: "numeric" | "checkbox" | "text" }>;
   columnWidthHints: Array<ColumnWidthHint | undefined>;
