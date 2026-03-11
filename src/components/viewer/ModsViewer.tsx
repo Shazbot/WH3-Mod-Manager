@@ -80,6 +80,7 @@ const ModsViewer = memo(() => {
     null,
   );
   const lastSelectionKeyRef = useRef<string | null>(null);
+  const lastProcessedSelectionRequestKeyRef = useRef<string | null>(null);
   const suppressSelectionToTabSyncRef = useRef(false);
   const currentDBTableSelectionRef = useRef(currentDBTableSelection);
   const currentFlowFileSelectionRef = useRef(currentFlowFileSelection);
@@ -305,26 +306,6 @@ const ModsViewer = memo(() => {
     }
 
     if (activeTab.kind === "file" && activeTab.filePath) {
-      const isAlreadySelected =
-        !currentFlowSelection &&
-        currentDBSelection?.packPath === activeTab.packPath &&
-        !currentDBSelection?.dbName &&
-        !currentDBSelection?.dbSubname;
-      if (isAlreadySelected) {
-        lastSelectionKeyRef.current = activeTab.fileKey;
-        return;
-      }
-      suppressSelectionToTabSyncRef.current = true;
-      if (currentFlowSelection) {
-        dispatch(selectFlowFile(undefined));
-      }
-      dispatch(
-        selectDBTable({
-          packPath: activeTab.packPath,
-          dbName: "",
-          dbSubname: "",
-        }),
-      );
       lastSelectionKeyRef.current = activeTab.fileKey;
       return;
     }
@@ -384,10 +365,32 @@ const ModsViewer = memo(() => {
   ]);
 
   useEffect(() => {
+    let selectionRequestKey: string | null = null;
+    if (currentFlowFileSelection) {
+      const flowPackPath = currentFlowFilePackPath ?? currentDBTableSelection?.packPath ?? packPath;
+      if (flowPackPath) {
+        selectionRequestKey = `flow|${flowPackPath}|${currentFlowFileSelection}`;
+      }
+    } else if (hasDBSelectionTarget(currentDBTableSelection)) {
+      selectionRequestKey = `db|${currentDBTableSelection.packPath}|${currentDBTableSelection.dbName}|${currentDBTableSelection.dbSubname}`;
+    } else {
+      const emptyPackPath = getEmptyPackSelectionPath(currentDBTableSelection);
+      if (emptyPackPath) {
+        selectionRequestKey = `pack|${emptyPackPath}`;
+      }
+    }
+
     if (suppressSelectionToTabSyncRef.current) {
       suppressSelectionToTabSyncRef.current = false;
+      lastProcessedSelectionRequestKeyRef.current = selectionRequestKey;
       return;
     }
+
+    if (selectionRequestKey === lastProcessedSelectionRequestKeyRef.current) {
+      return;
+    }
+
+    lastProcessedSelectionRequestKeyRef.current = selectionRequestKey;
 
     if (currentFlowFileSelection) {
       const flowPackPath = currentFlowFilePackPath ?? currentDBTableSelection?.packPath ?? packPath;
