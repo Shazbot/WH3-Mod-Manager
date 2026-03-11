@@ -9,6 +9,7 @@ import { renderViewerWindow } from "./appViewer";
 import { setupRendererLogging } from "./rendererCommon";
 import {
   selectDBTable,
+  selectFlowFile,
   setCurrentGameNaive,
   setCurrentLanguage,
   setIsFeaturesForModdersEnabled,
@@ -50,10 +51,11 @@ window.api?.setCurrentGameNaive((event, game) => {
 });
 
 window.api?.openModInViewer((event, modPath: string) => {
+  store.dispatch(selectFlowFile(undefined));
   store.dispatch(
     selectDBTable({
       packPath: modPath,
-      dbName: "main_units_tables",
+      dbName: "",
       dbSubname: "",
     }),
   );

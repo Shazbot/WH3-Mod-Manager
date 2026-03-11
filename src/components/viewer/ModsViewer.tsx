@@ -77,12 +77,21 @@ const ModsViewer = memo(() => {
   );
   const lastSelectionKeyRef = useRef<string | null>(null);
   const suppressSelectionToTabSyncRef = useRef(false);
+  const currentDBTableSelectionRef = useRef(currentDBTableSelection);
+  const currentFlowFileSelectionRef = useRef(currentFlowFileSelection);
+  const currentFlowFilePackPathRef = useRef(currentFlowFilePackPath);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
   const showDialog = useCallback<ShowViewerDialog>((message, options) => {
     setMessageDialog({ title: options?.title ?? "Message", message });
   }, []);
+
+  useEffect(() => {
+    currentDBTableSelectionRef.current = currentDBTableSelection;
+    currentFlowFileSelectionRef.current = currentFlowFileSelection;
+    currentFlowFilePackPathRef.current = currentFlowFilePackPath;
+  }, [currentDBTableSelection, currentFlowFilePackPath, currentFlowFileSelection]);
 
   // Focus on the Save As pack name input when modal opens
   useEffect(() => {
@@ -256,10 +265,13 @@ const ModsViewer = memo(() => {
     if (!activeTabId) return;
     const activeTab = openTabs.find((tab) => tab.id === activeTabId);
     if (!activeTab) return;
+    const currentDBSelection = currentDBTableSelectionRef.current;
+    const currentFlowSelection = currentFlowFileSelectionRef.current;
+    const currentFlowPackPath = currentFlowFilePackPathRef.current;
 
     if (activeTab.kind === "flow" && activeTab.flowFile) {
       const isAlreadySelected =
-        currentFlowFileSelection === activeTab.flowFile && currentFlowFilePackPath === activeTab.packPath;
+        currentFlowSelection === activeTab.flowFile && currentFlowPackPath === activeTab.packPath;
       if (isAlreadySelected) {
         lastSelectionKeyRef.current = activeTab.fileKey;
         return;
@@ -272,16 +284,16 @@ const ModsViewer = memo(() => {
 
     if (activeTab.kind === "db" && activeTab.packPath && !activeTab.dbName && !activeTab.dbSubname) {
       const isAlreadySelected =
-        !currentFlowFileSelection &&
-        currentDBTableSelection?.packPath === activeTab.packPath &&
-        !currentDBTableSelection?.dbName &&
-        !currentDBTableSelection?.dbSubname;
+        !currentFlowSelection &&
+        currentDBSelection?.packPath === activeTab.packPath &&
+        !currentDBSelection?.dbName &&
+        !currentDBSelection?.dbSubname;
       if (isAlreadySelected) {
         lastSelectionKeyRef.current = activeTab.fileKey;
         return;
       }
       suppressSelectionToTabSyncRef.current = true;
-      if (currentFlowFileSelection) {
+      if (currentFlowSelection) {
         dispatch(selectFlowFile(undefined));
       }
       dispatch(
@@ -297,16 +309,16 @@ const ModsViewer = memo(() => {
 
     if (activeTab.dbName && activeTab.dbSubname) {
       const isAlreadySelected =
-        !currentFlowFileSelection &&
-        currentDBTableSelection?.packPath === activeTab.packPath &&
-        currentDBTableSelection?.dbName === activeTab.dbName &&
-        currentDBTableSelection?.dbSubname === activeTab.dbSubname;
+        !currentFlowSelection &&
+        currentDBSelection?.packPath === activeTab.packPath &&
+        currentDBSelection?.dbName === activeTab.dbName &&
+        currentDBSelection?.dbSubname === activeTab.dbSubname;
       if (isAlreadySelected) {
         lastSelectionKeyRef.current = activeTab.fileKey;
         return;
       }
       suppressSelectionToTabSyncRef.current = true;
-      if (currentFlowFileSelection) {
+      if (currentFlowSelection) {
         dispatch(selectFlowFile(undefined));
       }
       dispatch(
@@ -322,9 +334,6 @@ const ModsViewer = memo(() => {
     activeTabId,
     openTabs,
     dispatch,
-    currentFlowFileSelection,
-    currentFlowFilePackPath,
-    currentDBTableSelection,
   ]);
 
   useEffect(() => {
