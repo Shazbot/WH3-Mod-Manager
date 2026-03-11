@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, memo, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { AgGridReact } from "ag-grid-react";
-import type { CellContextMenuEvent, ColDef } from "ag-grid-community";
+import type { CellContextMenuEvent, ColDef, RowSelectionOptions } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { getDBPackedFilePath } from "../../utility/packFileHelpers";
 import { AmendedSchemaField, DBVersion, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
@@ -323,6 +323,16 @@ const AgGridWrapper = memo(
       [],
     );
 
+    const rowSelection = useMemo<RowSelectionOptions<RowData>>(
+      () => ({
+        mode: "multiRow",
+        enableClickSelection: true,
+        checkboxes: false,
+        headerCheckbox: false,
+      }),
+      [],
+    );
+
     const columnDefs = useMemo<Array<ColDef<RowData>>>(() => {
       const defs: Array<ColDef<RowData>> = [
         {
@@ -507,6 +517,7 @@ const AgGridWrapper = memo(
           rowData={rowData}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
+          rowSelection={rowSelection}
           rowHeight={rowHeight}
           headerHeight={rowHeight}
           animateRows={false}
