@@ -49,6 +49,7 @@ import {
   mergeMods,
   readFromExistingPack,
   readPack,
+  serializePackFileDataToBuffer,
   typeToBuffer,
   writeStartGamePack,
   writePack,
@@ -3551,6 +3552,53 @@ export const registerIpcMainListeners = (
       return {
         success: false,
         error: error instanceof Error ? error.message : "Failed to save flow",
+      };
+    }
+  });
+  ipcMain.handle("saveDBTableEdits", async (event, packPath: string, packedFile: PackedFile) => {
+    try {
+      if (!packedFile.schemaFields || !packedFile.tableSchema) {
+        return {
+          success: false,
+          error: `Cannot save DB table "${packedFile.name}" without schema fields and table schema`,
+        };
+      }
+
+      let unsavedFiles = appData.unsavedPacksData[packPath];
+      if (!unsavedFiles) {
+        unsavedFiles = [];
+        appData.unsavedPacksData[packPath] = unsavedFiles;
+      }
+
+      const buffer = serializePackFileDataToBuffer({
+        name: packedFile.name,
+        schemaFields: packedFile.schemaFields,
+        tableSchema: packedFile.tableSchema,
+        version: packedFile.version,
+      });
+
+      const nextUnsavedFile = {
+        ...packedFile,
+        buffer,
+        file_size: buffer.length,
+      } as PackedFile;
+
+      const existingFileIndex = unsavedFiles.findIndex((file) => file.name == packedFile.name);
+      if (existingFileIndex != -1) {
+        unsavedFiles.splice(existingFileIndex, 1, nextUnsavedFile);
+      } else {
+        unsavedFiles.push(nextUnsavedFile);
+      }
+
+      mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error saving DB table edits:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to save DB table edits",
       };
     }
   });

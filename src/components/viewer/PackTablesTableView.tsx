@@ -1,21 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, memo, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { AgGridReact } from "ag-grid-react";
-import type { CellContextMenuEvent, ColDef, RowSelectionOptions } from "ag-grid-community";
+import type { CellContextMenuEvent, CellValueChangedEvent, ColDef, RowSelectionOptions } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import { getDBPackedFilePath } from "../../utility/packFileHelpers";
-import { AmendedSchemaField, DBVersion, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
-import { setDeepCloneTarget } from "@/src/appSlice";
+import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
+import { AmendedSchemaField, DBVersion, Field, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
+import { setDeepCloneTarget, setPacksData } from "@/src/appSlice";
 import { dataFromBackend } from "./packDataStore";
 import debounce from "just-debounce-it";
 import {
+  clearPreparedTableForPackedFile,
   ColumnWidthHint,
   getPreparedTable,
   PreparedTableData,
   setPreparedTable,
   TableCellValue,
 } from "./tablePrepCache";
-import { makeSelectCurrentPackData } from "./viewerSelectors";
+import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
+import { vanillaPackNames } from "@/src/supportedGames";
 
 const BIG_TABLE_ROW_THRESHOLD = 20000;
 const BIG_TABLE_CELL_THRESHOLD = 2000000;
@@ -105,6 +107,126 @@ const formatFloatDisplayValue = (value: TableCellValue | null | undefined): stri
   if (!/^-?\d+\.0+$/.test(normalizedValue)) return value;
 
   return normalizedValue.replace(/\.0+$/, "");
+};
+
+const buildFieldValues = (fieldType: SCHEMA_FIELD_TYPE, value: string | number | boolean): Field[] => {
+  switch (fieldType) {
+    case "Boolean":
+      return [{ type: "UInt8", val: value ? 1 : 0 }];
+    case "StringU16":
+      return [{ type: "String", val: String(value) }];
+    case "StringU8": {
+      const stringValue = String(value);
+      return [
+        { type: "Int16", val: stringValue.length },
+        { type: "String", val: stringValue },
+      ];
+    }
+    case "OptionalStringU8": {
+      const stringValue = String(value);
+      if (stringValue === "") {
+        return [{ type: "Int8", val: 0 }];
+      }
+      return [
+        { type: "Int8", val: 1 },
+        { type: "Int16", val: stringValue.length },
+        { type: "String", val: stringValue },
+      ];
+    }
+    case "F32":
+      return [{ type: "F32", val: Number(value) }];
+    case "I32":
+    case "ColourRGB":
+      return [{ type: "I32", val: Number(value) }];
+    case "I16":
+      return [{ type: "I16", val: Number(value) }];
+    case "F64":
+      return [{ type: "F64", val: Number(value) }];
+    case "I64":
+      return [{ type: "I64", val: Number(value) }];
+    default:
+      return [{ type: "String", val: String(value) }];
+  }
+};
+
+const parseEditedCellValue = (
+  fieldType: SCHEMA_FIELD_TYPE,
+  value: unknown,
+): { value: TableCellValue; resolvedKeyValue: string; fields: Field[] } | undefined => {
+  switch (fieldType) {
+    case "Boolean": {
+      if (typeof value === "boolean") {
+        return {
+          value,
+          resolvedKeyValue: value ? "1" : "0",
+          fields: buildFieldValues(fieldType, value),
+        };
+      }
+
+      const normalized = String(value ?? "")
+        .trim()
+        .toLowerCase();
+      if (["1", "true", "yes"].includes(normalized)) {
+        return {
+          value: true,
+          resolvedKeyValue: "1",
+          fields: buildFieldValues(fieldType, true),
+        };
+      }
+      if (["0", "false", "no"].includes(normalized)) {
+        return {
+          value: false,
+          resolvedKeyValue: "0",
+          fields: buildFieldValues(fieldType, false),
+        };
+      }
+      return undefined;
+    }
+    case "StringU16":
+    case "StringU8": {
+      const nextValue = String(value ?? "");
+      return {
+        value: nextValue,
+        resolvedKeyValue: nextValue,
+        fields: buildFieldValues(fieldType, nextValue),
+      };
+    }
+    case "OptionalStringU8": {
+      const nextValue = String(value ?? "");
+      return {
+        value: nextValue,
+        resolvedKeyValue: nextValue === "" ? "0" : nextValue,
+        fields: buildFieldValues(fieldType, nextValue),
+      };
+    }
+    case "I16":
+    case "I32":
+    case "I64":
+    case "ColourRGB": {
+      const normalized = String(value ?? "").trim();
+      if (!/^-?\d+$/.test(normalized)) return undefined;
+      const parsedValue = Number(normalized);
+      return {
+        value: parsedValue,
+        resolvedKeyValue: normalized,
+        fields: buildFieldValues(fieldType, parsedValue),
+      };
+    }
+    case "F32":
+    case "F64": {
+      const normalized = String(value ?? "").trim();
+      if (normalized === "") return undefined;
+      const parsedValue = Number(normalized);
+      if (!Number.isFinite(parsedValue)) return undefined;
+      return {
+        value: parsedValue,
+        resolvedKeyValue: normalized,
+        fields: buildFieldValues(fieldType, parsedValue),
+      };
+    }
+    default:
+      return undefined;
+  }
 };
 
 const getDisplayColumnHeader = (headerName: string): string => {
@@ -254,6 +376,8 @@ const AgGridWrapper = memo(
     columns,
     columnHeaders,
     columnWidthHints,
+    canEditTable,
+    onCellValueChangedCallback,
     onContextMenuCallback,
     keyColumnNamesUnderscore,
     currentSchema,
@@ -264,6 +388,8 @@ const AgGridWrapper = memo(
     columns: Array<{ type: "numeric" | "checkbox" | "text" }>;
     columnHeaders: string[];
     columnWidthHints: Array<ColumnWidthHint | undefined>;
+    canEditTable: boolean;
+    onCellValueChangedCallback: (event: CellValueChangedEvent<RowData>) => void;
     onContextMenuCallback: (row: number, col: number) => void;
     keyColumnNamesUnderscore: string[];
     currentSchema: DBVersion;
@@ -311,7 +437,7 @@ const AgGridWrapper = memo(
 
     const defaultColDef = useMemo<ColDef<RowData>>(
       () => ({
-        editable: false,
+        editable: canEditTable,
         sortable: true,
         filter: true,
         resizable: true,
@@ -320,7 +446,7 @@ const AgGridWrapper = memo(
         // autoHeaderHeight: true,
         // wrapHeaderText: true,
       }),
-      [],
+      [canEditTable],
     );
 
     const rowSelection = useMemo<RowSelectionOptions<RowData>>(
@@ -338,6 +464,7 @@ const AgGridWrapper = memo(
         {
           headerName: "",
           colId: "__rowIndex",
+          editable: false,
           width: rowIndexColumnWidth,
           minWidth: rowIndexColumnWidth,
           resizable: false,
@@ -368,6 +495,7 @@ const AgGridWrapper = memo(
           headerClass:
             colType === "numeric" ? "pack-table-header pack-table-header-right" : "pack-table-header",
           colId: String(colIndex),
+          editable: canEditTable,
           width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
           minWidth: !useFixedSizing && colType === "text" ? width : undefined,
           flex: !useFixedSizing && colType === "text" ? 1 : undefined,
@@ -397,6 +525,7 @@ const AgGridWrapper = memo(
       columns,
       currentSchema.fields,
       getColumnWidth,
+      canEditTable,
       keyColumnSet,
       rowIndexColumnWidth,
       useFixedSizing,
@@ -523,6 +652,7 @@ const AgGridWrapper = memo(
           animateRows={false}
           suppressRowHoverHighlight={true}
           onCellContextMenu={onCellContextMenu}
+          onCellValueChanged={onCellValueChangedCallback}
         />
 
         {menuState && (
@@ -558,12 +688,14 @@ const AgGridWrapper = memo(
 const PackTablesTableView = memo(() => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const startArgs = useAppSelector((state) => state.app.startArgs);
 
   const [keyFilter, setKeyFilter] = useState<string>("");
   const [tableFilterInput, setTableFilterInput] = useState<string>("");
   const [tableFilter, setTableFilter] = useState<string>("");
   const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
+  const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
 
   const setTableFilterDebounced = useMemo(
     () =>
@@ -593,14 +725,23 @@ const PackTablesTableView = memo(() => {
 
   const packPath = currentDBTableSelection?.packPath ?? "";
   const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
+  const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
 
   const packedFilePath = useMemo(() => {
     if (!currentDBTableSelection) return "";
     return getDBPackedFilePath(currentDBTableSelection);
   }, [currentDBTableSelection]);
 
-  const packFile = useMemo(() => {
-    if (!packData || !packedFilePath || !packData.packedFiles) return undefined;
+  const selectedPackFile = useMemo(() => {
+    if (!packedFilePath) return undefined;
+
+    const unsavedDirectMatch = unsavedFiles.find((file) => file.name === packedFilePath);
+    if (unsavedDirectMatch) return unsavedDirectMatch;
+
+    const unsavedPrefixMatch = unsavedFiles.find((file) => file.name.startsWith(packedFilePath));
+    if (unsavedPrefixMatch) return unsavedPrefixMatch;
+
+    if (!packData || !packData.packedFiles) return undefined;
 
     const directMatch = packData.packedFiles[packedFilePath];
     if (directMatch) return directMatch;
@@ -612,55 +753,69 @@ const PackTablesTableView = memo(() => {
     }
 
     return undefined;
-  }, [packData, packedFilePath]);
+  }, [packData, packedFilePath, unsavedFiles]);
 
-  const currentSchema = packFile?.tableSchema;
+  const [workingPackFile, setWorkingPackFile] = useState<PackedFile | undefined>(undefined);
   const keyColumnNamesUnderscore = useMemo(() => {
     if (!currentDBTableSelection) return [];
     return dataFromBackend.referencedColums[currentDBTableSelection.dbName] || [];
   }, [currentDBTableSelection]);
 
+  const currentSchema = selectedPackFile?.tableSchema;
+  const packName = getPackNameFromPath(packPath) ?? packPath;
+  const canEditTable = isFeaturesForModdersEnabled && !vanillaPackNames.includes(packName);
+
   const tableCacheKey = useMemo(() => {
-    if (!packFile || !currentSchema || !packedFilePath || !packPath) return "";
-    return buildTableCacheKey(packPath, packedFilePath, packFile, currentSchema);
-  }, [packPath, packedFilePath, packFile, currentSchema]);
+    if (!selectedPackFile || !currentSchema || !packedFilePath || !packPath) return "";
+    return buildTableCacheKey(packPath, packedFilePath, selectedPackFile, currentSchema);
+  }, [packPath, packedFilePath, selectedPackFile, currentSchema]);
 
   const preparedTableData = useMemo(() => {
-    if (!packFile || !currentSchema || !tableCacheKey) return undefined;
+    if (!selectedPackFile || !currentSchema || !tableCacheKey) return undefined;
 
     const cached = getPreparedTable(tableCacheKey);
     if (cached) return cached;
 
-    const prepared = prepareTableData(packFile, currentSchema, keyColumnNamesUnderscore);
+    const prepared = prepareTableData(selectedPackFile, currentSchema, keyColumnNamesUnderscore);
     setPreparedTable(tableCacheKey, prepared);
     return prepared;
-  }, [tableCacheKey, packFile, currentSchema, keyColumnNamesUnderscore]);
+  }, [tableCacheKey, selectedPackFile, currentSchema, keyColumnNamesUnderscore]);
+
+  const [workingPreparedTableData, setWorkingPreparedTableData] = useState<PreparedTableData | undefined>(undefined);
 
   useEffect(() => {
-    if (!preparedTableData || preparedTableData.columnFilterOptions.length === 0) return;
-    if (keyFilter !== "" && preparedTableData.columnFilterOptions.includes(keyFilter)) return;
-    setKeyFilter(preparedTableData.columnFilterOptions[0]);
-  }, [preparedTableData, keyFilter]);
+    setWorkingPackFile(selectedPackFile);
+    setWorkingPreparedTableData(preparedTableData);
+  }, [selectedPackFile, preparedTableData]);
+
+  const activePackFile = workingPackFile ?? selectedPackFile;
+  const activePreparedTableData = workingPreparedTableData ?? preparedTableData;
+
+  useEffect(() => {
+    if (!activePreparedTableData || activePreparedTableData.columnFilterOptions.length === 0) return;
+    if (keyFilter !== "" && activePreparedTableData.columnFilterOptions.includes(keyFilter)) return;
+    setKeyFilter(activePreparedTableData.columnFilterOptions[0]);
+  }, [activePreparedTableData, keyFilter]);
 
   const onFilterInputChange = (value: string) => {
     setTableFilterInput(value);
     setTableFilterDebounced(value);
   };
 
-  const keyFilterOrDefault = keyFilter !== "" ? keyFilter : (preparedTableData?.columnFilterOptions[0] ?? "");
-  const indexOfFilteredColumn = preparedTableData?.columnHeaders.indexOf(keyFilterOrDefault) ?? -1;
+  const keyFilterOrDefault = keyFilter !== "" ? keyFilter : (activePreparedTableData?.columnFilterOptions[0] ?? "");
+  const indexOfFilteredColumn = activePreparedTableData?.columnHeaders.indexOf(keyFilterOrDefault) ?? -1;
   const normalizedTableFilter = tableFilter.trim();
-  const rowCount = preparedTableData?.data.length ?? 0;
-  const colCount = preparedTableData?.columnHeaders.length ?? 0;
+  const rowCount = activePreparedTableData?.data.length ?? 0;
+  const colCount = activePreparedTableData?.columnHeaders.length ?? 0;
   const isBigTable = rowCount >= BIG_TABLE_ROW_THRESHOLD || rowCount * colCount >= BIG_TABLE_CELL_THRESHOLD;
 
   const filteredRowIndices = useMemo(() => {
-    if (!preparedTableData) return [];
+    if (!activePreparedTableData) return [];
     if (indexOfFilteredColumn === -1 || normalizedTableFilter === "") {
-      return preparedTableData.data.map((_row, rowIndex) => rowIndex);
+      return activePreparedTableData.data.map((_row, rowIndex) => rowIndex);
     }
 
-    const lowerCaseColumn = preparedTableData.lowerCaseColumnValues[indexOfFilteredColumn] || [];
+    const lowerCaseColumn = activePreparedTableData.lowerCaseColumnValues[indexOfFilteredColumn] || [];
     const filteredIndices: number[] = [];
     for (let rowIndex = 0; rowIndex < lowerCaseColumn.length; rowIndex++) {
       const value = lowerCaseColumn[rowIndex];
@@ -670,12 +825,12 @@ const PackTablesTableView = memo(() => {
     }
 
     return filteredIndices;
-  }, [preparedTableData, indexOfFilteredColumn, normalizedTableFilter]);
+  }, [activePreparedTableData, indexOfFilteredColumn, normalizedTableFilter]);
 
   const filteredData = useMemo(() => {
-    if (!preparedTableData) return [];
-    return filteredRowIndices.map((rowIndex) => preparedTableData.data[rowIndex]);
-  }, [preparedTableData, filteredRowIndices]);
+    if (!activePreparedTableData) return [];
+    return filteredRowIndices.map((rowIndex) => activePreparedTableData.data[rowIndex]);
+  }, [activePreparedTableData, filteredRowIndices]);
 
   const handleContextMenuCallback = useCallback(
     (row: number, col: number) => {
@@ -685,7 +840,111 @@ const PackTablesTableView = memo(() => {
     [dispatch, filteredRowIndices],
   );
 
-  if (!currentDBTableSelection || !packData || !packFile || !currentSchema || !preparedTableData) {
+  const handleCellValueChangedCallback = useCallback(
+    async (event: CellValueChangedEvent<RowData>) => {
+      if (!canEditTable || !activePackFile?.schemaFields || !currentSchema || !packData || !activePreparedTableData) {
+        return;
+      }
+      if (event.newValue === event.oldValue) return;
+
+      const displayedRowIndex = event.node?.rowIndex;
+      if (typeof displayedRowIndex !== "number" || displayedRowIndex < 0) return;
+
+      const colId = event.column?.getColId() ?? "";
+      if (colId === "__rowIndex") return;
+
+      const colIndex = Number(colId);
+      if (!Number.isFinite(colIndex) || colIndex < 0) return;
+
+      const unfilteredRowIndex = filteredRowIndices[displayedRowIndex];
+      if (unfilteredRowIndex == null) return;
+
+      const fieldDefinition = currentSchema.fields[colIndex];
+      if (!fieldDefinition) return;
+
+      const parsedCellValue = parseEditedCellValue(fieldDefinition.field_type, event.newValue);
+      if (!parsedCellValue) {
+        event.node?.setDataValue(colId, event.oldValue);
+        return;
+      }
+
+      const previousPackFile = activePackFile;
+      const previousPreparedTableData = activePreparedTableData;
+      const nextSchemaFields = [...(activePackFile.schemaFields as AmendedSchemaField[])];
+      const flatFieldIndex = unfilteredRowIndex * currentSchema.fields.length + colIndex;
+      const previousCell = nextSchemaFields[flatFieldIndex] as AmendedSchemaField | undefined;
+      if (!previousCell) {
+        event.node?.setDataValue(colId, event.oldValue);
+        return;
+      }
+
+      nextSchemaFields[flatFieldIndex] = {
+        ...previousCell,
+        fields: parsedCellValue.fields,
+        resolvedKeyValue: parsedCellValue.resolvedKeyValue,
+      };
+
+      const nextPackFile = {
+        ...activePackFile,
+        schemaFields: nextSchemaFields,
+      } as PackedFile;
+      const nextPreparedTableData = prepareTableData(nextPackFile, currentSchema, keyColumnNamesUnderscore);
+
+      clearPreparedTableForPackedFile(packPath, nextPackFile.name);
+      setWorkingPackFile(nextPackFile);
+      setWorkingPreparedTableData(nextPreparedTableData);
+      dispatch(
+        setPacksData([
+          {
+            packName: packData.packName,
+            packPath,
+            tables: packData.tables,
+            packedFiles: {
+              [nextPackFile.name]: nextPackFile,
+            },
+          },
+        ]),
+      );
+
+      try {
+        const result = await window.api?.saveDBTableEdits(packPath, nextPackFile);
+        if (!result?.success) {
+          throw new Error(result?.error || "Failed to store DB table edits");
+        }
+      } catch (error) {
+        clearPreparedTableForPackedFile(packPath, previousPackFile.name);
+        setWorkingPackFile(previousPackFile);
+        setWorkingPreparedTableData(previousPreparedTableData);
+        dispatch(
+          setPacksData([
+            {
+              packName: packData.packName,
+              packPath,
+              tables: packData.tables,
+              packedFiles: {
+                [previousPackFile.name]: previousPackFile,
+              },
+            },
+          ]),
+        );
+        event.node?.setDataValue(colId, event.oldValue);
+        alert(`Failed to save DB table edits: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
+    },
+    [
+      activePackFile,
+      activePreparedTableData,
+      canEditTable,
+      currentSchema,
+      dispatch,
+      filteredRowIndices,
+      keyColumnNamesUnderscore,
+      packData,
+      packPath,
+    ],
+  );
+
+  if (!currentDBTableSelection || !packData || !activePackFile || !currentSchema || !activePreparedTableData) {
     return <></>;
   }
 
@@ -694,9 +953,11 @@ const PackTablesTableView = memo(() => {
       <div id="packTablesTableParent" className="flex-1 min-h-0 w-full overflow-hidden bg-gray-900">
         <AgGridWrapper
           rowData={filteredData}
-          columns={preparedTableData.columns}
-          columnHeaders={preparedTableData.columnHeaders}
-          columnWidthHints={preparedTableData.columnWidthHints}
+          columns={activePreparedTableData.columns}
+          columnHeaders={activePreparedTableData.columnHeaders}
+          columnWidthHints={activePreparedTableData.columnWidthHints}
+          canEditTable={canEditTable}
+          onCellValueChangedCallback={handleCellValueChangedCallback}
           onContextMenuCallback={handleContextMenuCallback}
           keyColumnNamesUnderscore={keyColumnNamesUnderscore}
           currentSchema={currentSchema}
@@ -710,7 +971,7 @@ const PackTablesTableView = memo(() => {
           onChange={(e) => setKeyFilter(e.target.value)}
           className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
         >
-          {preparedTableData.columnFilterOptions.map((option) => (
+          {activePreparedTableData.columnFilterOptions.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
