@@ -22,6 +22,7 @@ import {
   setPreparedTable,
   TableCellValue,
 } from "./tablePrepCache";
+import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import { vanillaPackNames } from "@/src/supportedGames";
 
@@ -676,6 +677,11 @@ const AgGridWrapper = memo(
           flex: !useFixedSizing && colType === "text" ? 1 : undefined,
           cellRenderer: colType === "checkbox" ? "agCheckboxCellRenderer" : undefined,
           valueGetter: (p) => p.data?.[colIndex],
+          valueSetter: (p) => {
+            if (!p.data) return false;
+            p.data[colIndex] = p.newValue as TableCellValue;
+            return true;
+          },
           valueFormatter: isFloatColumn ? (p) => formatFloatDisplayValue(p.value) : undefined,
           cellStyle:
             colType === "checkbox"
@@ -1173,7 +1179,7 @@ const AgGridWrapper = memo(
   },
 );
 
-const PackTablesTableView = memo(() => {
+const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog }) => {
   const dispatch = useAppDispatch();
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -1420,11 +1426,13 @@ const PackTablesTableView = memo(() => {
             },
           ]),
         );
-        alert(`Failed to save DB table edits: ${error instanceof Error ? error.message : "Unknown error"}`);
+        showDialog(`Failed to save DB table edits: ${error instanceof Error ? error.message : "Unknown error"}`, {
+          title: "Save Failed",
+        });
         return false;
       }
     },
-    [applyPackFileLocally, currentSchema, dispatch, packData, packPath, syncHistorySize],
+    [applyPackFileLocally, currentSchema, dispatch, packData, packPath, showDialog, syncHistorySize],
   );
 
   const handleCellValueChangedCallback = useCallback(

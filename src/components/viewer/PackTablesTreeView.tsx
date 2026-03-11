@@ -10,11 +10,13 @@ import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packF
 import { gameToPackWithDBTablesName, vanillaPackNames } from "../../supportedGames";
 import selectStyle from "../../styles/selectStyle";
 import { dataFromBackend } from "./packDataStore";
+import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import type { DBVersion, PackedFile } from "../../packFileTypes";
 
 type PackTablesTreeViewProps = {
   tableFilter: string;
+  showDialog: ShowViewerDialog;
   onOpenDBTable: (selection: DBTableSelection, options?: { forceNewTab?: boolean }) => void;
   onOpenFlowFile: (
     selection: { flowFile: string; packPath: string },
@@ -514,7 +516,7 @@ const PackTablesTreeView = React.memo(
           first.localeCompare(second),
         );
         if (tableNames.length === 0) {
-          alert("No vanilla DB tables are available for this game");
+          props.showDialog("No vanilla DB tables are available for this game", { title: "No Tables" });
           return;
         }
 
@@ -527,7 +529,12 @@ const PackTablesTreeView = React.memo(
         setIsNewTableDialogOpen(true);
       } catch (error) {
         console.error("Error loading vanilla DB table definitions:", error);
-        alert(`Failed to load vanilla DB table definitions: ${error instanceof Error ? error.message : "Unknown error"}`);
+        props.showDialog(
+          `Failed to load vanilla DB table definitions: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+          { title: "Error" },
+        );
       } finally {
         setIsLoadingNewTableOptions(false);
       }
@@ -554,21 +561,27 @@ const PackTablesTreeView = React.memo(
           .filter((file): file is { relativePath: string; content: string } => Boolean(file));
 
         if (exportFiles.length === 0) {
-          alert("No exportable DB tables selected");
+          props.showDialog("No exportable DB tables selected", { title: "Nothing To Export" });
           return;
         }
 
         const result = await window.api?.writeTextFilesToDirectory(outputDirectory, exportFiles);
 
         if (!result?.success) {
-          alert(`Failed to export TSV files: ${result?.error || "Unknown error"}`);
+          props.showDialog(`Failed to export TSV files: ${result?.error || "Unknown error"}`, {
+            title: "Export Failed",
+          });
           return;
         }
 
-        alert(`Exported ${exportFiles.length} TSV file(s) to: ${outputDirectory}`);
+        props.showDialog(`Exported ${exportFiles.length} TSV file(s) to: ${outputDirectory}`, {
+          title: "Export Complete",
+        });
       } catch (error) {
         console.error("Error exporting selected tables as TSV:", error);
-        alert(`Error exporting TSV files: ${error instanceof Error ? error.message : "Unknown error"}`);
+        props.showDialog(`Error exporting TSV files: ${error instanceof Error ? error.message : "Unknown error"}`, {
+          title: "Export Failed",
+        });
       } finally {
         setIsExportingSelection(false);
       }
@@ -576,7 +589,7 @@ const PackTablesTreeView = React.memo(
 
     const handleCreateNewFlow = async () => {
       if (!newFlowName.trim()) {
-        alert("Please enter a valid flow name");
+        props.showDialog("Please enter a valid flow name", { title: "Missing Name" });
         return;
       }
 
@@ -614,21 +627,21 @@ const PackTablesTreeView = React.memo(
       const trimmedTableName = newTableName.trim();
       const trimmedSuffix = newTableSuffix.trim();
       if (!trimmedTableName) {
-        alert("Please choose a table");
+        props.showDialog("Please choose a table", { title: "Missing Table" });
         return;
       }
       if (!trimmedSuffix) {
-        alert("Please enter the table name suffix");
+        props.showDialog("Please enter the table name suffix", { title: "Missing Suffix" });
         return;
       }
       if (/[\\/]/.test(trimmedSuffix)) {
-        alert("Enter only the xxx portion of db/table_name/xxx");
+        props.showDialog("Enter only the xxx portion of db/table_name/xxx", { title: "Invalid Suffix" });
         return;
       }
 
       const schema = selectedNewTableSchema;
       if (!schema) {
-        alert(`No schema found for ${trimmedTableName}`);
+        props.showDialog(`No schema found for ${trimmedTableName}`, { title: "Schema Missing" });
         return;
       }
 
@@ -638,7 +651,9 @@ const PackTablesTreeView = React.memo(
         Boolean(packData.packedFiles?.[packedFileName]) ||
         unsavedFiles.some((file) => file.name === packedFileName);
       if (alreadyExistsInPack) {
-        alert(`A table already exists at db/${trimmedTableName}/${trimmedSuffix}`);
+        props.showDialog(`A table already exists at db/${trimmedTableName}/${trimmedSuffix}`, {
+          title: "Table Exists",
+        });
         return;
       }
 
@@ -672,7 +687,9 @@ const PackTablesTreeView = React.memo(
         closeNewTableDialog();
       } catch (error) {
         console.error("Error creating DB table:", error);
-        alert(`Failed to create DB table: ${error instanceof Error ? error.message : "Unknown error"}`);
+        props.showDialog(`Failed to create DB table: ${error instanceof Error ? error.message : "Unknown error"}`, {
+          title: "Create Failed",
+        });
         setIsCreatingNewTable(false);
       }
     };

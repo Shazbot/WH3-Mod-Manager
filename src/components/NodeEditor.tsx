@@ -596,7 +596,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const result = await window.api?.saveNodeFlow(currentFile, flowData, currentPack);
       if (result?.success) {
         nodeEditorDebugLog("Flow saved successfully to:", result.filePath);
-        // alert(`Flow saved successfully!`);
+        // show success dialog here if this path is revived.
         dispatch(
           addToast({
             type: "success",

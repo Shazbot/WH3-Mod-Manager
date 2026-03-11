@@ -12,6 +12,7 @@ import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
 import { selectDBTable, selectFlowFile, setDeepCloneTarget, setPacksData } from "@/src/appSlice";
 import NodeEditor from "../NodeEditor";
+import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import { getPackNameFromPath } from "@/src/utility/packFileHelpers";
 
@@ -65,6 +66,7 @@ const ModsViewer = memo(() => {
   const [isNewPackProcessing, setIsNewPackProcessing] = React.useState(false);
   const [openTabs, setOpenTabs] = useState<ViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [messageDialog, setMessageDialog] = useState<{ title: string; message: string } | null>(null);
 
   const treeViewRef = useRef<PackTablesTreeViewHandle>(null);
   const saveAsPackNameInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +79,10 @@ const ModsViewer = memo(() => {
   const suppressSelectionToTabSyncRef = useRef(false);
 
   const localized: Record<string, string> = useContext(localizationContext);
+
+  const showDialog = useCallback<ShowViewerDialog>((message, options) => {
+    setMessageDialog({ title: options?.title ?? "Message", message });
+  }, []);
 
   // Focus on the Save As pack name input when modal opens
   useEffect(() => {
@@ -384,7 +390,7 @@ const ModsViewer = memo(() => {
     handleOpenDBTable,
   ]);
 
-  const handleSavePack = async () => {
+  const handleSavePack = useCallback(async () => {
     if (!hasUnsavedFiles) return;
 
     try {
@@ -394,16 +400,18 @@ const ModsViewer = memo(() => {
         const message = result.warning
           ? `${result.warning}\n\nSaved to: ${result.savedPath}`
           : `Pack saved successfully to: ${result.savedPath}`;
-        alert(message);
+        showDialog(message, { title: "Pack Saved" });
       } else {
         console.error("Failed to save pack:", result?.error);
-        alert(`Failed to save pack: ${result?.error || "Unknown error"}`);
+        showDialog(`Failed to save pack: ${result?.error || "Unknown error"}`, { title: "Save Failed" });
       }
     } catch (error) {
       console.error("Error saving pack:", error);
-      alert(`Error saving pack: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showDialog(`Error saving pack: ${error instanceof Error ? error.message : "Unknown error"}`, {
+        title: "Save Failed",
+      });
     }
-  };
+  }, [hasUnsavedFiles, packPath, showDialog]);
 
   const handleSavePackAs = () => {
     if (!hasUnsavedFiles) return;
@@ -412,9 +420,9 @@ const ModsViewer = memo(() => {
     setIsSaveAsModalOpen(true);
   };
 
-  const handleSaveAsConfirm = async () => {
+  const handleSaveAsConfirm = useCallback(async () => {
     if (!saveAsPackName.trim() || !saveAsDirectory) {
-      alert("Please enter a pack name and select a directory");
+      showDialog("Please enter a pack name and select a directory", { title: "Missing Information" });
       return;
     }
 
@@ -428,23 +436,25 @@ const ModsViewer = memo(() => {
       );
       if (result?.success) {
         console.log("Pack saved as successfully:", result.savedPath);
-        alert(`Pack saved successfully to: ${result.savedPath}`);
+        showDialog(`Pack saved successfully to: ${result.savedPath}`, { title: "Pack Saved" });
         setIsSaveAsModalOpen(false);
         setSaveAsPackName("");
         setSaveAsDirectory(undefined);
       } else {
         console.error("Failed to save pack as:", result?.error);
-        alert(`Failed to save pack as: ${result?.error || "Unknown error"}`);
+        showDialog(`Failed to save pack as: ${result?.error || "Unknown error"}`, { title: "Save Failed" });
       }
     } catch (error) {
       console.error("Error saving pack as:", error);
-      alert(`Error saving pack as: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showDialog(`Error saving pack as: ${error instanceof Error ? error.message : "Unknown error"}`, {
+        title: "Save Failed",
+      });
     } finally {
       setIsSaveAsProcessing(false);
     }
-  };
+  }, [packPath, saveAsDirectory, saveAsPackName, showDialog]);
 
-  const handleSelectSaveAsDirectory = async () => {
+  const handleSelectSaveAsDirectory = useCallback(async () => {
     try {
       const selectedDirectory = await window.api?.selectDirectory();
       if (selectedDirectory) {
@@ -452,9 +462,11 @@ const ModsViewer = memo(() => {
       }
     } catch (error) {
       console.error("Error selecting directory:", error);
-      alert(`Error selecting directory: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showDialog(`Error selecting directory: ${error instanceof Error ? error.message : "Unknown error"}`, {
+        title: "Directory Selection Failed",
+      });
     }
-  };
+  }, [showDialog]);
 
   const handleNewPack = () => {
     if (!isFeaturesForModdersEnabled) return;
@@ -462,9 +474,9 @@ const ModsViewer = memo(() => {
     setIsNewPackModalOpen(true);
   };
 
-  const handleNewPackConfirm = async () => {
+  const handleNewPackConfirm = useCallback(async () => {
     if (!newPackName.trim()) {
-      alert("Please enter a pack name");
+      showDialog("Please enter a pack name", { title: "Missing Name" });
       return;
     }
 
@@ -499,11 +511,19 @@ const ModsViewer = memo(() => {
       setNewPackName("");
     } catch (error) {
       console.error("Error creating pack:", error);
-      alert(`Error creating pack: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showDialog(`Error creating pack: ${error instanceof Error ? error.message : "Unknown error"}`, {
+        title: "Create Failed",
+      });
     } finally {
       setIsNewPackProcessing(false);
     }
-  };
+  }, [
+    buildEmptyPackTabCandidate,
+    dispatch,
+    newPackName,
+    openOrActivateTab,
+    showDialog,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -684,6 +704,21 @@ const ModsViewer = memo(() => {
         </Modal.Footer>
       </Modal>
 
+      <Modal onClose={() => setMessageDialog(null)} show={!!messageDialog} size="md" position="center">
+        <Modal.Header>{messageDialog?.title ?? "Message"}</Modal.Header>
+        <Modal.Body>
+          <div className="whitespace-pre-wrap text-sm text-gray-200">{messageDialog?.message}</div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            onClick={() => setMessageDialog(null)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
+          >
+            OK
+          </button>
+        </Modal.Footer>
+      </Modal>
+
       <div className="dark:text-gray-300 explicit-height-without-topbar-and-padding flex flex-col">
         {isOpen && (
           <>
@@ -767,6 +802,7 @@ const ModsViewer = memo(() => {
                   <PackTablesTreeView
                     ref={treeViewRef}
                     tableFilter={dbTableFilter}
+                    showDialog={showDialog}
                     onOpenDBTable={handleOpenDBTable}
                     onOpenFlowFile={handleOpenFlowFile}
                   />
@@ -841,7 +877,7 @@ const ModsViewer = memo(() => {
                       </div>
                     ) : currentFlowFileSelection && (
                       <NodeEditor currentFile={currentFlowFileSelection} currentPack={packPath} />
-                    )) || <PackTablesTableView />
+                    )) || <PackTablesTableView showDialog={showDialog} />
                   ) : (
                     <div className="h-full flex items-center justify-center text-sm text-gray-400">
                       Select a file to view
