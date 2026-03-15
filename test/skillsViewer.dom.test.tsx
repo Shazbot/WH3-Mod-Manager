@@ -20,12 +20,13 @@ vi.mock("../src/components/skillsViewer/SkillsTreeView", () => ({
   }: {
     tableFilter: string;
     onSelect?: (subtype: string, subtypeIndex: number) => void;
-    onDoubleClick?: (subtype: string, subtypeIndex: number) => void;
+    onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
   }) => (
     <div>
       <div data-testid="tree-filter">{tableFilter}</div>
       <button onClick={() => onSelect?.("beta", 0)}>select-beta</button>
-      <button onClick={() => onDoubleClick?.("gamma", 0)}>open-gamma</button>
+      <button onClick={() => onDoubleClick?.("gamma", 0, false)}>open-gamma</button>
+      <button onClick={() => onDoubleClick?.("beta", 0, true)}>open-beta</button>
     </div>
   ),
 }));
@@ -192,6 +193,41 @@ describe("SkillsViewer", () => {
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-gamma-0");
     expect(screen.getByText("beta")).toBeInTheDocument();
     expect(screen.getByText("gamma")).toBeInTheDocument();
+  });
+
+  it("sends a double-clicked tree to a new tab when its first click is still loading", () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    fireEvent.click(screen.getByRole("button", { name: "open-beta" }));
+
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta")));
+    });
+
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    fireEvent.click(screen.getByText("alpha"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
+  });
+
+  it("moves a double-clicked tree to a new tab once its first click has loaded", () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta")));
+    });
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "open-beta" }));
+
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    fireEvent.click(screen.getByText("alpha"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
+    fireEvent.click(screen.getByText("beta"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
   });
 
   it("keeps an older tab's tree when switching back to it", () => {

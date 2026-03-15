@@ -21,6 +21,8 @@ let nextTabId = 1;
 const SKILL_NODE_SET_MARKER = "_skill_node_set_";
 type SkillSubtypeSelection = { subtype: string; subtypeIndex: number };
 
+const selectionKey = (selection: SkillSubtypeSelection) => `${selection.subtype}:${selection.subtypeIndex}`;
+
 const isMatchingSelection = (selection: SkillSubtypeSelection | null, skillsData: SkillsData) =>
   selection != null &&
   selection.subtype === skillsData.currentSubtype &&
@@ -33,6 +35,8 @@ const SkillsViewer = memo(() => {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const pendingNewTab = useRef<SkillSubtypeSelection | null>(null);
   const pendingActiveTab = useRef<SkillSubtypeSelection | null>(null);
+  // The tab a single click last replaced, kept so a double-click can give it back.
+  const replacedTab = useRef<{ selectionKey: string; previous: SkillTab } | null>(null);
   const routedSkillsData = useRef<SkillsData | null>(null);
   const skillsViewRef = useRef<SkillsViewHandle>(null);
   const dispatch = useAppDispatch();
@@ -146,6 +150,11 @@ const SkillsViewer = memo(() => {
     const pendingActive = pendingActiveTab.current;
     if (pendingActive && isMatchingSelection(pendingActive, skillsData) && activeTabId) {
       pendingActiveTab.current = null;
+      const replaced = tabs.find((tab) => tab.id === activeTabId);
+      if (replaced) {
+        const snapshot = skillsViewRef.current?.getSnapshot();
+        replacedTab.current = { selectionKey: selectionKey(pendingActive), previous: { ...replaced, snapshot } };
+      }
       setTabs((prev) =>
         prev.map((tab) => {
           if (tab.id !== activeTabId) return tab;
@@ -192,15 +201,40 @@ const SkillsViewer = memo(() => {
         }),
       );
     }
-  }, [activeTabId, skillsData, snapshotCurrentTab, tabs.length]);
+  }, [activeTabId, skillsData, snapshotCurrentTab, tabs]);
 
   const onTreeSelect = useCallback((subtype: string, subtypeIndex: number) => {
     pendingActiveTab.current = { subtype, subtypeIndex };
     window.api?.getSkillsForSubtype(subtype, subtypeIndex);
   }, []);
 
-  const onTreeDoubleClick = useCallback((subtype: string, subtypeIndex: number) => {
-    console.log("Double clicked", subtype);
+  const onTreeDoubleClick = useCallback((subtype: string, subtypeIndex: number, firstClickSelected: boolean) => {
+    // The first click of a double-click already loads the tree into the active tab, so single clicks never wait to
+    // rule out a double-click. The double-click moves that tree to a new tab and gives the active tab back its tree.
+    const key = selectionKey({ subtype, subtypeIndex });
+    const pendingActive = pendingActiveTab.current;
+    const firstClickPending =
+      firstClickSelected && pendingActive && selectionKey(pendingActive) === key ? pendingActive : null;
+    const replaced = replacedTab.current;
+    if (firstClickSelected && !firstClickPending && replaced?.selectionKey === key) {
+      replacedTab.current = null;
+      const previous = replaced.previous;
+      const restoredTab = { ...previous, id: `tab_${nextTabId++}` };
+      // The loaded tree keeps its tab id so its view stays mounted.
+      setTabs((prev) => {
+        const current = prev.find((tab) => tab.id === previous.id);
+        if (!current || selectionKey(current) !== key) return prev;
+        return [...prev.map((tab) => (tab === current ? restoredTab : tab)), current];
+      });
+      return;
+    }
+
+    if (firstClickPending) {
+      // Its response has not arrived yet, so it is routed to a new tab instead.
+      pendingNewTab.current = firstClickPending;
+      pendingActiveTab.current = null;
+      return;
+    }
     pendingNewTab.current = { subtype, subtypeIndex };
     window.api?.getSkillsForSubtype(subtype, subtypeIndex);
   }, []);

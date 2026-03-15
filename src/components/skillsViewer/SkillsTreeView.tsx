@@ -8,13 +8,13 @@ import "@silevis/reactgrid/styles.css";
 type SkillsTreeViewProps = {
   tableFilter: string;
   onSelect?: (subtype: string, subtypeIndex: number) => void;
-  onDoubleClick?: (subtype: string, subtypeIndex: number) => void;
+  onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
 };
 
 const collator = new Intl.Collator("en");
 
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
-  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstClickSelected = useRef(false);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
   const skillsData = useAppSelector((state) => state.app.skillsData);
@@ -167,6 +167,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
           isBranch,
           isExpanded,
           isDisabled,
+          isSelected,
           getNodeProps,
           level,
           handleExpand,
@@ -192,26 +193,14 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
                   }
                 }}
                 onClick={(e) => {
-                  if (props.onDoubleClick) {
-                    const evt = { ...e } as React.MouseEvent;
-                    if (clickTimer.current) clearTimeout(clickTimer.current);
-                    clickTimer.current = setTimeout(() => {
-                      clickTimer.current = null;
-                      handleSelect(evt);
-                    }, 250);
-                  } else {
-                    handleSelect(e);
-                  }
+                  if (e.detail === 1) firstClickSelected.current = !isSelected;
+                  handleSelect(e);
                 }}
                 onDoubleClick={(e) => {
                   e.preventDefault();
                   window.getSelection()?.removeAllRanges();
-                  if (clickTimer.current) {
-                    clearTimeout(clickTimer.current);
-                    clickTimer.current = null;
-                  }
                   const metadata = element.metadata as TreeMetadata;
-                  props.onDoubleClick?.(metadata.subtype, metadata.subtypeIndex);
+                  props.onDoubleClick?.(metadata.subtype, metadata.subtypeIndex, firstClickSelected.current);
                 }}
                 className="relative hover:underline cursor-pointer"
                 title={getNodeTooltip(element)}
