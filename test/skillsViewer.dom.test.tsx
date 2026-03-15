@@ -193,4 +193,17 @@ describe("SkillsViewer", () => {
     expect(screen.getByText("beta")).toBeInTheDocument();
     expect(screen.getByText("gamma")).toBeInTheDocument();
   });
+
+  it("keeps an older tab's tree when switching back to it", () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "open-gamma" }));
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("gamma")));
+    });
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-gamma-0");
+
+    fireEvent.click(screen.getByText("alpha"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
+  });
 });

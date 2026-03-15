@@ -33,6 +33,7 @@ const SkillsViewer = memo(() => {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const pendingNewTab = useRef<SkillSubtypeSelection | null>(null);
   const pendingActiveTab = useRef<SkillSubtypeSelection | null>(null);
+  const routedSkillsData = useRef<SkillsData | null>(null);
   const skillsViewRef = useRef<SkillsViewHandle>(null);
   const dispatch = useAppDispatch();
   const debouncedFilterChange = useRef(debounce((val: string) => setDBTableFilter(val), 150));
@@ -120,6 +121,9 @@ const SkillsViewer = memo(() => {
   // When Redux skillsData updates, route it to the correct tab
   useEffect(() => {
     if (!skillsData || !skillsData.currentSkills) return;
+    // Switching tabs re-runs this effect. Only a new response is routed, or the tab switched to would be overwritten.
+    if (skillsData === routedSkillsData.current) return;
+    routedSkillsData.current = skillsData;
 
     const pending = pendingNewTab.current;
     if (pending && isMatchingSelection(pending, skillsData)) {
