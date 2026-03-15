@@ -76,6 +76,7 @@ import {
   getNodesToParents,
   getRawEffectLocalization,
   getSkills,
+  getSubtypesToLocalizedNames,
   NodeLinks,
   NodeSkill,
   pickTreeNodeData,
@@ -1632,14 +1633,7 @@ export const registerIpcMainListeners = (
       allEffects,
       allSkills,
       allSkillIcons,
-      subtypesToLocalizedNames: subtypes.reduce(
-        (acc, curr) => {
-          const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
-          if (localized) acc[curr] = localized;
-          return acc;
-        },
-        {} as Record<string, string>,
-      ),
+      subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
     appData.lastSkillsDataSignature = skillsDataSignature;
     if (appData.queuedSkillsData) {
@@ -1790,14 +1784,7 @@ export const registerIpcMainListeners = (
       allEffects,
       allSkills,
       allSkillIcons,
-      subtypesToLocalizedNames: subtypes.reduce(
-        (acc, curr) => {
-          const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
-          if (localized) acc[curr] = localized;
-          return acc;
-        },
-        {} as Record<string, string>,
-      ),
+      subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
     if (appData.queuedSkillsData) {
       if (appData.skillTreesDisplayMode === "tab") {

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { NodeLinks, pickTreeNodeData, pickTreeNodeEntries } from "../src/skills";
+import { getSubtypesToLocalizedNames, NodeLinks, pickTreeNodeData, pickTreeNodeEntries } from "../src/skills";
 
 describe("pickTreeNodeEntries", () => {
   it("keeps only the entries of the given nodes", () => {
@@ -33,5 +33,22 @@ describe("pickTreeNodeData", () => {
       nodeRequirements: { node_child: { single: ["node_parent"] } },
       nodeToSkillLocks: { node_child: ["lock"] },
     });
+  });
+});
+
+describe("getSubtypesToLocalizedNames", () => {
+  it("looks each subtype up once per loc packs, including subtypes added later", () => {
+    const locs = {};
+    const getLoc = vi.fn((locId: string) =>
+      locId === "agent_subtypes_onscreen_name_override_kf" ? "Karl Franz" : undefined,
+    );
+
+    expect(getSubtypesToLocalizedNames(["kf", "unnamed"], locs, getLoc)).toEqual({ kf: "Karl Franz" });
+    expect(getSubtypesToLocalizedNames(["kf", "unnamed", "added"], locs, getLoc)).toEqual({ kf: "Karl Franz" });
+    expect(getLoc).toHaveBeenCalledTimes(3);
+
+    // New loc packs come with a new data build, so the names are looked up again.
+    getSubtypesToLocalizedNames(["kf"], {}, getLoc);
+    expect(getLoc).toHaveBeenCalledTimes(4);
   });
 });

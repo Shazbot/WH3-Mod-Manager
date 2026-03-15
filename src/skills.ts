@@ -1,5 +1,10 @@
 import groupBy from "object.groupby";
 
+// Game-wide lookups that are the same for every tree, kept per skills-data build so a tree switch does not redo them.
+// Each build makes new `nodeLinks` and `locs` objects and does not change them after, so those are the keys.
+const nodeRequirementsCache = new WeakMap<NodeLinks, ReturnType<typeof getNodeRequirements>>();
+const localizedSubtypeNamesCache = new WeakMap<object, Map<string, string | undefined>>();
+
 export type NodeSkill = {
   node: string;
   skill: string;
@@ -60,12 +65,43 @@ export function pickTreeNodeData<T>(
   nodeToSkillLocks: Record<string, T>,
 ) {
   const treeNodeIds = new Set([...nodes, ...skills.map((skill) => skill.nodeId)]);
-  const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+  let nodeRequirements = nodeRequirementsCache.get(nodeLinks);
+  if (!nodeRequirements) {
+    nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+    nodeRequirementsCache.set(nodeLinks, nodeRequirements);
+  }
   return {
     nodeLinks: pickTreeNodeEntries(nodeLinks, treeNodeIds),
     nodeRequirements: pickTreeNodeEntries(nodeRequirements, treeNodeIds),
     nodeToSkillLocks: pickTreeNodeEntries(nodeToSkillLocks, treeNodeIds),
   };
+}
+
+/**
+ * Gets the on-screen names of the agent subtypes. Each name is looked up once per `locs`, since the lookup walks
+ * every loc pack.
+ * @param subtypes - The agent subtype keys.
+ * @param locs - The loc packs `getLoc` reads, used as the cache key.
+ * @param getLoc - Looks up one loc key.
+ * @returns The localized name of each subtype that has one.
+ */
+export function getSubtypesToLocalizedNames(
+  subtypes: string[],
+  locs: object,
+  getLoc: (locId: string) => string | undefined,
+) {
+  let names = localizedSubtypeNamesCache.get(locs);
+  if (!names) {
+    names = new Map();
+    localizedSubtypeNamesCache.set(locs, names);
+  }
+  const subtypesToLocalizedNames = {} as Record<string, string>;
+  for (const subtype of subtypes) {
+    if (!names.has(subtype)) names.set(subtype, getLoc(`agent_subtypes_onscreen_name_override_${subtype}`));
+    const localized = names.get(subtype);
+    if (localized) subtypesToLocalizedNames[subtype] = localized;
+  }
+  return subtypesToLocalizedNames;
 }
 
 export function getNodesToParents(
