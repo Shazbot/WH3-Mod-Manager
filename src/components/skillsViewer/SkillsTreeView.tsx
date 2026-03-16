@@ -9,9 +9,12 @@ type SkillsTreeViewProps = {
   tableFilter: string;
   onSelect?: (subtype: string, subtypeIndex: number) => void;
   onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
+  isSelectionCleared?: boolean;
 };
 
 const collator = new Intl.Collator("en");
+// Kept stable because the tree re-applies `selectedIds` whenever the array changes.
+const NO_SELECTED_IDS: string[] = [];
 
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const firstClickSelected = useRef(false);
@@ -162,6 +165,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
         data={data}
         aria-label="Controlled expanded node tree"
         onSelect={(props) => onTreeSelect(props)}
+        selectedIds={props.isSelectionCleared ? NO_SELECTED_IDS : undefined}
         nodeRenderer={({
           element,
           isBranch,

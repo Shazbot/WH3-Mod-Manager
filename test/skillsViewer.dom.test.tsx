@@ -17,13 +17,16 @@ vi.mock("../src/components/skillsViewer/SkillsTreeView", () => ({
     tableFilter,
     onSelect,
     onDoubleClick,
+    isSelectionCleared,
   }: {
     tableFilter: string;
     onSelect?: (subtype: string, subtypeIndex: number) => void;
     onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
+    isSelectionCleared?: boolean;
   }) => (
     <div>
       <div data-testid="tree-filter">{tableFilter}</div>
+      <div data-testid="tree-selection-cleared">{String(!!isSelectionCleared)}</div>
       <button onClick={() => onSelect?.("beta", 0)}>select-beta</button>
       <button onClick={() => onDoubleClick?.("gamma", 0, false)}>open-gamma</button>
       <button onClick={() => onDoubleClick?.("beta", 0, true)}>open-beta</button>
@@ -241,5 +244,27 @@ describe("SkillsViewer", () => {
 
     fireEvent.click(screen.getByText("alpha"));
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
+  });
+
+  it("closes the only tab, clears the list selection and opens the next clicked tree in a new tab", () => {
+    const store = renderViewer();
+    expect(screen.getByTestId("tree-selection-cleared")).toHaveTextContent("false");
+
+    fireEvent.click(screen.getByText("alpha").parentElement!.querySelector("button")!);
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("skills-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tree-selection-cleared")).toHaveTextContent("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta")));
+    });
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    expect(screen.getByTestId("tree-selection-cleared")).toHaveTextContent("false");
+
+    // A double-click finds the tree already in its own tab, so it opens no second one.
+    fireEvent.click(screen.getByRole("button", { name: "open-beta" }));
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText("beta")).toHaveLength(1);
   });
 });

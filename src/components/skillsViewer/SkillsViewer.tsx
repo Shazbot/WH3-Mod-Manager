@@ -35,8 +35,9 @@ const SkillsViewer = memo(() => {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const pendingNewTab = useRef<SkillSubtypeSelection | null>(null);
   const pendingActiveTab = useRef<SkillSubtypeSelection | null>(null);
-  // The tab a single click last replaced, kept so a double-click can give it back.
-  const replacedTab = useRef<{ selectionKey: string; previous: SkillTab } | null>(null);
+  // The tab a single click last replaced, kept so a double-click can give it back. It has none when the click opened
+  // the first tab.
+  const replacedTab = useRef<{ selectionKey: string; previous?: SkillTab } | null>(null);
   const routedSkillsData = useRef<SkillsData | null>(null);
   const skillsViewRef = useRef<SkillsViewHandle>(null);
   const dispatch = useAppDispatch();
@@ -130,16 +131,24 @@ const SkillsViewer = memo(() => {
     routedSkillsData.current = skillsData;
 
     const pending = pendingNewTab.current;
-    if (pending && isMatchingSelection(pending, skillsData)) {
-      // Double-click: snapshot current tab, then create a new tab
-      pendingNewTab.current = null;
+    const pendingActive = pendingActiveTab.current;
+    // Double-click: snapshot current tab, then create a new tab. With no tab open, a single click opens one too.
+    const isPendingNewTab = isMatchingSelection(pending, skillsData);
+    const newTabSelection = isPendingNewTab
+      ? pending
+      : !activeTabId && isMatchingSelection(pendingActive, skillsData)
+        ? pendingActive
+        : null;
+    if (newTabSelection) {
+      if (isPendingNewTab) pendingNewTab.current = null;
+      else replacedTab.current = { selectionKey: selectionKey(newTabSelection) };
       pendingActiveTab.current = null;
       snapshotCurrentTab();
       const id = `tab_${nextTabId++}`;
       const newTab: SkillTab = {
         id,
-        subtype: pending.subtype,
-        subtypeIndex: pending.subtypeIndex,
+        subtype: newTabSelection.subtype,
+        subtypeIndex: newTabSelection.subtypeIndex,
         skillsData,
       };
       setTabs((prev) => [...prev, newTab]);
@@ -147,8 +156,7 @@ const SkillsViewer = memo(() => {
       return;
     }
 
-    const pendingActive = pendingActiveTab.current;
-    if (pendingActive && isMatchingSelection(pendingActive, skillsData) && activeTabId) {
+    if (pendingActive && isMatchingSelection(pendingActive, skillsData)) {
       pendingActiveTab.current = null;
       const replaced = tabs.find((tab) => tab.id === activeTabId);
       if (replaced) {
@@ -219,6 +227,8 @@ const SkillsViewer = memo(() => {
     if (firstClickSelected && !firstClickPending && replaced?.selectionKey === key) {
       replacedTab.current = null;
       const previous = replaced.previous;
+      // The first click opened its own tab, so there is nothing to move.
+      if (!previous) return;
       const restoredTab = { ...previous, id: `tab_${nextTabId++}` };
       // The loaded tree keeps its tab id so its view stays mounted.
       setTabs((prev) => {
@@ -269,6 +279,7 @@ const SkillsViewer = memo(() => {
                 tableFilter={dbTableFilter}
                 onSelect={onTreeSelect}
                 onDoubleClick={onTreeDoubleClick}
+                isSelectionCleared={tabs.length === 0}
               />
             </div>
           </div>
@@ -291,17 +302,15 @@ const SkillsViewer = memo(() => {
                     <span className="mr-2" title={tabLabel.tooltip}>
                       {tabLabel.display}
                     </span>
-                    {tabs.length > 1 && (
-                      <button
-                        className="text-gray-500 hover:text-white ml-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          closeTab(tab.id);
-                        }}
-                      >
-                        <FontAwesomeIcon icon={faXmark} size="xs" />
-                      </button>
-                    )}
+                    <button
+                      className="text-gray-500 hover:text-white ml-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faXmark} size="xs" />
+                    </button>
                   </div>
                 );
               })}

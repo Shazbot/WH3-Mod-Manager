@@ -61,4 +61,29 @@ describe("SkillsTreeView", () => {
     fireEvent.dblClick(thorgrim);
     expect(onDoubleClick).toHaveBeenLastCalledWith("dwf_thorgrim", 0, false);
   });
+
+  it("deselects the row when the selection is cleared", () => {
+    const store = createStore();
+    const onSelect = vi.fn();
+    const renderTree = (isSelectionCleared: boolean) => (
+      <Provider store={store}>
+        <SkillsTreeView tableFilter="" onSelect={onSelect} isSelectionCleared={isSelectionCleared} />
+      </Provider>
+    );
+
+    const { rerender } = render(renderTree(false));
+    const thorgrim = screen.getByText("dwf_thorgrim");
+    const row = thorgrim.closest('[role="treeitem"]')!;
+    fireEvent.click(thorgrim, { detail: 1 });
+    expect(row).toHaveAttribute("aria-selected", "true");
+
+    rerender(renderTree(true));
+    expect(row).not.toHaveAttribute("aria-selected", "true");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+
+    // The row can be picked again while the selection stays cleared.
+    fireEvent.click(thorgrim, { detail: 1 });
+    expect(row).toHaveAttribute("aria-selected", "true");
+    expect(onSelect).toHaveBeenCalledTimes(2);
+  });
 });
