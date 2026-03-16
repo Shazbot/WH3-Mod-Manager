@@ -298,6 +298,13 @@ const SkillsViewer = memo(() => {
                         : "bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-gray-300"
                     }`}
                     onClick={() => switchTab(tab.id)}
+                    onMouseDown={(e) => {
+                      // Keeps the middle button from starting autoscroll.
+                      if (e.button === 1) e.preventDefault();
+                    }}
+                    onAuxClick={(e) => {
+                      if (e.button === 1) closeTab(tab.id);
+                    }}
                   >
                     <span className="mr-2" title={tabLabel.tooltip}>
                       {tabLabel.display}

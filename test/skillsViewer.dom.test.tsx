@@ -267,4 +267,12 @@ describe("SkillsViewer", () => {
     expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
     expect(screen.getAllByText("beta")).toHaveLength(1);
   });
+
+  it("closes a tab on middle click", () => {
+    renderViewer();
+
+    fireEvent(screen.getByText("alpha"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("skills-view")).not.toBeInTheDocument();
+  });
 });
