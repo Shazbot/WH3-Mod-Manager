@@ -16,11 +16,13 @@ vi.mock("../src/components/skillsViewer/SkillsTreeView", () => ({
   default: ({
     tableFilter,
     onSelect,
+    onHover,
     onDoubleClick,
     isSelectionCleared,
   }: {
     tableFilter: string;
     onSelect?: (subtype: string, subtypeIndex: number) => void;
+    onHover?: (subtype: string, subtypeIndex: number) => void;
     onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
     isSelectionCleared?: boolean;
   }) => (
@@ -28,6 +30,7 @@ vi.mock("../src/components/skillsViewer/SkillsTreeView", () => ({
       <div data-testid="tree-filter">{tableFilter}</div>
       <div data-testid="tree-selection-cleared">{String(!!isSelectionCleared)}</div>
       <button onClick={() => onSelect?.("beta", 0)}>select-beta</button>
+      <button onClick={() => onHover?.("beta", 0)}>hover-beta</button>
       <button onClick={() => onDoubleClick?.("gamma", 0, false)}>open-gamma</button>
       <button onClick={() => onDoubleClick?.("beta", 0, true)}>open-beta</button>
     </div>
@@ -134,13 +137,21 @@ const renderViewer = (skillsData = createSkillsData("alpha")) => {
 
 describe("SkillsViewer", () => {
   let getSkillsForSubtypeMock: ReturnType<typeof vi.fn>;
+  let prefetchSkillsForSubtypeMock: ReturnType<typeof vi.fn>;
+  let setSkillsSelectionMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     getSkillsForSubtypeMock = vi.fn();
+    prefetchSkillsForSubtypeMock = vi.fn((subtype: string, subtypeIndex: number) =>
+      Promise.resolve(createSkillsData(subtype, subtypeIndex)),
+    );
+    setSkillsSelectionMock = vi.fn();
     window.api = {
       ...window.api,
       getSkillsForSubtype: getSkillsForSubtypeMock,
+      prefetchSkillsForSubtype: prefetchSkillsForSubtypeMock,
+      setSkillsSelection: setSkillsSelectionMock,
     } as NonNullable<Window["api"]>;
   });
 
@@ -274,5 +285,35 @@ describe("SkillsViewer", () => {
     fireEvent(screen.getByText("alpha"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
     expect(screen.queryByText("alpha")).not.toBeInTheDocument();
     expect(screen.queryByTestId("skills-view")).not.toBeInTheDocument();
+  });
+
+  it("shows a hovered tree on click without asking main again", async () => {
+    renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "hover-beta" }));
+    fireEvent.click(screen.getByRole("button", { name: "hover-beta" }));
+    expect(prefetchSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    await act(async () => {});
+
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    expect(getSkillsForSubtypeMock).not.toHaveBeenCalled();
+    expect(setSkillsSelectionMock).toHaveBeenCalledWith("beta", 0);
+  });
+
+  it("drops hovered trees when main pushes rebuilt data", async () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "hover-beta" }));
+    await act(async () => {});
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("alpha")));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    await act(async () => {});
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledWith("beta", 0);
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
   });
 });

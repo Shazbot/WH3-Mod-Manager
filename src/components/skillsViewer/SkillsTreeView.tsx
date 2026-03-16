@@ -1,4 +1,4 @@
-import React, { memo, useRef } from "react";
+import React, { memo, useEffect, useRef } from "react";
 import { useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
@@ -8,6 +8,7 @@ import "@silevis/reactgrid/styles.css";
 type SkillsTreeViewProps = {
   tableFilter: string;
   onSelect?: (subtype: string, subtypeIndex: number) => void;
+  onHover?: (subtype: string, subtypeIndex: number) => void;
   onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
   isSelectionCleared?: boolean;
 };
@@ -15,9 +16,13 @@ type SkillsTreeViewProps = {
 const collator = new Intl.Collator("en");
 // Kept stable because the tree re-applies `selectedIds` whenever the array changes.
 const NO_SELECTED_IDS: string[] = [];
+// How long the pointer rests on a row before `onHover`, so sweeping past rows does not load their trees.
+const HOVER_DELAY_MS = 100;
 
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const firstClickSelected = useRef(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
   const skillsData = useAppSelector((state) => state.app.skillsData);
@@ -191,9 +196,23 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
             >
               {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
               <span
+                onMouseEnter={() => {
+                  const metadata = element.metadata as TreeMetadata;
+                  clearTimeout(hoverTimer.current);
+                  hoverTimer.current = setTimeout(
+                    () => props.onHover?.(metadata.subtype, metadata.subtypeIndex),
+                    HOVER_DELAY_MS,
+                  );
+                }}
+                onMouseLeave={() => clearTimeout(hoverTimer.current)}
                 onMouseDown={(e) => {
                   if (e.detail > 1) {
                     e.preventDefault();
+                  } else if (e.button === 0) {
+                    // A click is coming, so the hover delay is not worth waiting out.
+                    clearTimeout(hoverTimer.current);
+                    const metadata = element.metadata as TreeMetadata;
+                    props.onHover?.(metadata.subtype, metadata.subtypeIndex);
                   }
                 }}
                 onClick={(e) => {

@@ -7,7 +7,7 @@ import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
 import { SkillsDataContext } from "./skillsDataContext";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
-import { setIsShowingSkillNodeSetNames } from "../../appSlice";
+import { setIsShowingSkillNodeSetNames, setSkillsData } from "../../appSlice";
 
 type SkillTab = {
   id: string;
@@ -19,6 +19,8 @@ type SkillTab = {
 
 let nextTabId = 1;
 const SKILL_NODE_SET_MARKER = "_skill_node_set_";
+// Each prefetched tree carries the full icon set, so only the few most recently hovered ones are kept.
+const PREFETCHED_TREES_LIMIT = 3;
 type SkillSubtypeSelection = { subtype: string; subtypeIndex: number };
 
 const selectionKey = (selection: SkillSubtypeSelection) => `${selection.subtype}:${selection.subtypeIndex}`;
@@ -39,6 +41,9 @@ const SkillsViewer = memo(() => {
   // the first tab.
   const replacedTab = useRef<{ selectionKey: string; previous?: SkillTab } | null>(null);
   const routedSkillsData = useRef<SkillsData | null>(null);
+  // Trees loaded on hover, by selection key, so a click can show one without waiting on main.
+  const prefetchedTrees = useRef(new Map<string, Promise<SkillsData | undefined>>());
+  const servedFromPrefetch = useRef<SkillsData | null>(null);
   const skillsViewRef = useRef<SkillsViewHandle>(null);
   const dispatch = useAppDispatch();
   const debouncedFilterChange = useRef(debounce((val: string) => setDBTableFilter(val), 150));
@@ -129,6 +134,9 @@ const SkillsViewer = memo(() => {
     // Switching tabs re-runs this effect. Only a new response is routed, or the tab switched to would be overwritten.
     if (skillsData === routedSkillsData.current) return;
     routedSkillsData.current = skillsData;
+    // Main cannot say whether it pushed a requested tree or a rebuild, and a rebuild makes the prefetched trees
+    // stale, so any push from main drops them.
+    if (skillsData !== servedFromPrefetch.current) prefetchedTrees.current = new Map();
 
     const pending = pendingNewTab.current;
     const pendingActive = pendingActiveTab.current;
@@ -211,10 +219,59 @@ const SkillsViewer = memo(() => {
     }
   }, [activeTabId, skillsData, snapshotCurrentTab, tabs]);
 
-  const onTreeSelect = useCallback((subtype: string, subtypeIndex: number) => {
-    pendingActiveTab.current = { subtype, subtypeIndex };
-    window.api?.getSkillsForSubtype(subtype, subtypeIndex);
+  const onTreeHover = useCallback((subtype: string, subtypeIndex: number) => {
+    const trees = prefetchedTrees.current;
+    const key = selectionKey({ subtype, subtypeIndex });
+    if (!window.api || trees.has(key)) return;
+    if (trees.size >= PREFETCHED_TREES_LIMIT) {
+      // A Map keeps insertion order, so the first key is the oldest.
+      const oldestKey = trees.keys().next().value;
+      if (oldestKey !== undefined) trees.delete(oldestKey);
+    }
+    const prefetch = window.api.prefetchSkillsForSubtype(subtype, subtypeIndex).catch(() => undefined);
+    trees.set(key, prefetch);
+    prefetch.then((data) => {
+      if (!data && trees.get(key) === prefetch) trees.delete(key);
+    });
   }, []);
+
+  // Uses the hover prefetch when there is one, and asks main otherwise.
+  const requestTree = useCallback(
+    (subtype: string, subtypeIndex: number) => {
+      const key = selectionKey({ subtype, subtypeIndex });
+      const prefetch = prefetchedTrees.current.get(key);
+      if (!prefetch) {
+        window.api?.getSkillsForSubtype(subtype, subtypeIndex);
+        return;
+      }
+      window.api?.setSkillsSelection(subtype, subtypeIndex);
+      prefetch.then((data) => {
+        // A rebuild may have cleared it while it was loading.
+        if (!data || prefetchedTrees.current.get(key) !== prefetch) {
+          window.api?.getSkillsForSubtype(subtype, subtypeIndex);
+          return;
+        }
+        // Another tree may have been picked while it was loading.
+        const isStillPending = [pendingActiveTab.current, pendingNewTab.current].some(
+          (pending) => pending && selectionKey(pending) === key,
+        );
+        if (!isStillPending) return;
+        // A copy, so a tree shown from the prefetch before still counts as a new response.
+        const served = { ...data };
+        servedFromPrefetch.current = served;
+        dispatch(setSkillsData(served));
+      });
+    },
+    [dispatch],
+  );
+
+  const onTreeSelect = useCallback(
+    (subtype: string, subtypeIndex: number) => {
+      pendingActiveTab.current = { subtype, subtypeIndex };
+      requestTree(subtype, subtypeIndex);
+    },
+    [requestTree],
+  );
 
   const onTreeDoubleClick = useCallback((subtype: string, subtypeIndex: number, firstClickSelected: boolean) => {
     // The first click of a double-click already loads the tree into the active tab, so single clicks never wait to
@@ -278,6 +335,7 @@ const SkillsViewer = memo(() => {
               <SkillsTreeView
                 tableFilter={dbTableFilter}
                 onSelect={onTreeSelect}
+                onHover={onTreeHover}
                 onDoubleClick={onTreeDoubleClick}
                 isSelectionCleared={tabs.length === 0}
               />

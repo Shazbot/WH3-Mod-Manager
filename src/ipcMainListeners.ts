@@ -1654,6 +1654,22 @@ export const registerIpcMainListeners = (
       currentSubtype: subtype,
       currentSubtypeIndex: subtypeIndex,
     };
+    appData.queuedSkillsData = await buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
+    if (appData.queuedSkillsData) {
+      if (appData.skillTreesDisplayMode === "tab") {
+        pushSkillsDataToMainWindow();
+      }
+      if (windows.skillsWindow) {
+        sendQueuedDataToSkills();
+      }
+    }
+  };
+  // Builds one tree's payload without sending it or changing the last selection, so a prefetch can use it too.
+  const buildSkillsForSubtype = async (
+    cachedSkillsData: NonNullable<typeof appData.skillsData>,
+    subtype: string,
+    subtypeIndex: number,
+  ): Promise<SkillsData> => {
     const setKF = cachedSkillsData.subtypesToSet[subtype];
     console.log("sets for subtype:", setKF);
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
@@ -1768,7 +1784,7 @@ export const registerIpcMainListeners = (
         path: iconPath,
         name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
       }));
-    appData.queuedSkillsData = {
+    return {
       // subtypeToSkills: { [subtype]: kfSkills },
       currentSubtype: subtype,
       currentSubtypeIndex: subtypeIndex,
@@ -1786,14 +1802,6 @@ export const registerIpcMainListeners = (
       allSkillIcons,
       subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
-    if (appData.queuedSkillsData) {
-      if (appData.skillTreesDisplayMode === "tab") {
-        pushSkillsDataToMainWindow();
-      }
-      if (windows.skillsWindow) {
-        sendQueuedDataToSkills();
-      }
-    }
   };
   const getTableRowData = (
     packsTableData: PackViewData[],
@@ -4496,6 +4504,18 @@ export const registerIpcMainListeners = (
   });
   ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
     getSkillsForSubtype(subtype, subtypeIndex);
+  });
+  ipcMain.handle("prefetchSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
+    const cachedSkillsData = appData.skillsData;
+    if (!cachedSkillsData) return undefined;
+    return buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
+  });
+  // A tree served from the renderer's prefetch cache still has to be remembered for the next rebuild.
+  ipcMain.on("setSkillsSelection", (event, subtype: string, subtypeIndex: number) => {
+    appData.lastSkillsSelection = {
+      currentSubtype: subtype,
+      currentSubtypeIndex: subtypeIndex,
+    };
   });
   ipcMain.on("createNewSkillTree", async (event, subtype: string) => {
     const cachedSkillsData = appData.skillsData;

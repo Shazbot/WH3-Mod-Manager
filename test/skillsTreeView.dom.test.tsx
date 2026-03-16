@@ -86,4 +86,32 @@ describe("SkillsTreeView", () => {
     expect(row).toHaveAttribute("aria-selected", "true");
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
+
+  it("reports a hovered row once the pointer rests on it, and right away on mouse down", () => {
+    vi.useFakeTimers();
+    const onHover = vi.fn();
+
+    render(
+      <Provider store={createStore()}>
+        <SkillsTreeView tableFilter="" onHover={onHover} />
+      </Provider>,
+    );
+
+    // Passing over a row does not count.
+    const mannfred = screen.getByText("vmp_mannfred");
+    fireEvent.mouseEnter(mannfred);
+    fireEvent.mouseLeave(mannfred);
+    vi.advanceTimersByTime(500);
+    expect(onHover).not.toHaveBeenCalled();
+
+    const thorgrim = screen.getByText("dwf_thorgrim");
+    fireEvent.mouseEnter(thorgrim);
+    vi.advanceTimersByTime(100);
+    expect(onHover).toHaveBeenCalledWith("dwf_thorgrim", 0);
+
+    fireEvent.mouseDown(screen.getByText("emp_karl_franz"), { detail: 1, button: 0 });
+    expect(onHover).toHaveBeenLastCalledWith("emp_karl_franz", 0);
+    expect(onHover).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
 });
