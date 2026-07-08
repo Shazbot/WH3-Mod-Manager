@@ -227,6 +227,8 @@ declare global {
     filter: string;
     alwaysEnabledModNames: string[];
     hiddenModNames: string[];
+    /** Pack names of mods whose missing required mods the user chose to stop being warned about. */
+    ignoredMissingReqModNames: string[];
     saves: GameSave[];
     isOnboardingToRun: boolean;
     hasConfigBeenRead: boolean;
@@ -485,6 +487,7 @@ declare global {
     games: Record<SupportedGames, GameConfig>;
     alwaysEnabledModNames: string[];
     hiddenModNames: string[];
+    ignoredMissingReqModNames: string[];
   };
 
   /** The flattened single-game view of the config that main sends to the renderer. */
@@ -493,6 +496,7 @@ declare global {
       configVersion: number;
       alwaysEnabledModNames: string[];
       hiddenModNames: string[];
+      ignoredMissingReqModNames: string[];
       appFolderPaths: GameFolderPaths;
     };
 

@@ -1217,6 +1217,7 @@ const appSlice = createSlice({
       state.isCategoryAuthorEnabled = !!fromConfigAppState.isCategoryAuthorEnabled;
       state.areCategoryThumbnailsEnabled = !!fromConfigAppState.areCategoryThumbnailsEnabled;
       state.hiddenModNames = fromConfigAppState.hiddenModNames;
+      state.ignoredMissingReqModNames = fromConfigAppState.ignoredMissingReqModNames;
       state.alwaysEnabledModNames = fromConfigAppState.alwaysEnabledModNames;
       state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
@@ -1507,6 +1508,9 @@ const appSlice = createSlice({
       state.currentPreset.mods
         .filter((mod) => hiddenNames.has(mod.name) && !alwaysEnabledNames.has(mod.name))
         .forEach((mod) => (mod.isEnabled = false));
+    },
+    toggleIgnoredMissingReqMods: (state: AppState, action: PayloadAction<string[]>) => {
+      state.ignoredMissingReqModNames = toggleModNames(state.ignoredMissingReqModNames, action.payload);
     },
     setSaves: (state: AppState, action: PayloadAction<GameSave[]>) => {
       const saves = action.payload;
@@ -2057,6 +2061,7 @@ export const {
   resetModLoadOrderAll,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
+  toggleIgnoredMissingReqMods,
   setSaves,
   setIsOnboardingToRun,
   setWasOnboardingEverRun,

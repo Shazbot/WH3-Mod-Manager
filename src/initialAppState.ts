@@ -12,6 +12,7 @@ const initialState = {
   filter: "",
   alwaysEnabledModNames: [],
   hiddenModNames: [],
+  ignoredMissingReqModNames: [],
   saves: [],
   isOnboardingToRun: false,
   hasConfigBeenRead: false,
