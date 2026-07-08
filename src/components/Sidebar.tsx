@@ -28,6 +28,7 @@ import { toPresetEntries } from "../config/presetEntries";
 import { Modal } from "../flowbite";
 import { getConflictingStartposMods } from "../utility/startposConflicts";
 import { getEnabledMods } from "../modsHelpers";
+import { splitIgnoredMissingModDependencies } from "../utility/frontend/missingModDependencies";
 
 type OptionType = {
   value: string;
@@ -99,6 +100,7 @@ const Sidebar = memo(() => {
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
   const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
+  const ignoredMissingReqModNames = useAppSelector((state) => state.app.ignoredMissingReqModNames);
 
   const savesState = useAppSelector((state) => state.app.saves);
   const saves = useMemo(
@@ -548,7 +550,7 @@ const Sidebar = memo(() => {
     [allMods, enabledMods],
   );
 
-  const missingModDependencies = enabledMods
+  const allMissingModDependencies = enabledMods
     .filter((mod) => mod.reqModIdToName && mod.reqModIdToName.length > 0)
     .map((mod) => mod as ModWithDefinedReqModIdToName)
     .map(
@@ -563,6 +565,10 @@ const Sidebar = memo(() => {
         ] as [Mod, [string, string][]],
     )
     .filter((member) => member[1].length > 0);
+  const { active: missingModDependencies, ignored: ignoredMissingModDependencies } = splitIgnoredMissingModDependencies(
+    allMissingModDependencies,
+    ignoredMissingReqModNames,
+  );
 
   const outdatedMergedPacks = enabledMods
     .filter((mod) => mod.mergedModsData)
@@ -677,7 +683,7 @@ const Sidebar = memo(() => {
       <RequiredMods
         isOpen={isShowingRequiredMods}
         setIsOpen={setIsShowingRequiredMods}
-        modDependencies={missingModDependencies}
+        modDependencies={allMissingModDependencies}
       />
       <div className="fixed h-[90vh] max-h-[90vh] overflow-y-auto z-[40]">
         <div id="presetSection">
@@ -865,6 +871,17 @@ const Sidebar = memo(() => {
                   {localized.missingReqMods}
                 </SidebarTooltip>
               </div>
+            </div>
+          )}
+
+          {missingModDependencies.length == 0 && ignoredMissingModDependencies.length > 0 && (
+            <div className="text-center text-xs text-gray-500 mb-4">
+              <span
+                className="cursor-pointer underline decoration-dotted"
+                onClick={() => onMissingDependenciesClicked()}
+              >
+                {`${localized.missingRequiredModsIgnored || "Ignored missing required mods"}: ${ignoredMissingModDependencies.length}`}
+              </span>
             </div>
           )}
 

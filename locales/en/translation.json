@@ -104,6 +104,7 @@
   "cancelLoadOrderPlacementHelp": "Press Esc or right-click to cancel.",
   "missing": "missing:",
   "missingReqMods": "Missing Required Mods!",
+  "missingRequiredModsIgnored": "Ignored missing required mods",
   "missingRequiredModsCount": "missing",
   "ignoreMissingRequiredMods": "Ignore",
   "ignoredMissingRequiredMods": "Ignored",
