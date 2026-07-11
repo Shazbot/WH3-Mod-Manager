@@ -354,6 +354,8 @@
   "cleanSymLinksMsg": "Removes all symbolic links in data. Won't touch real mods that aren't symbolic links.",
   "unhideMods": "Unhide mods you've previously hidden:",
   "hiddenMods": "Hidden Mods",
+  "ignoredMissingRequiredModsOption": "Ignored Required Mods",
+  "unignoreMissingRequiredMods": "Select a mod to warn about its missing required mods again:",
   "shareMods": "Share Mods",
   "shareModsMsg": "Share current mod list with other people for multiplayer:",
   "shareModLists": "Share Mod List",

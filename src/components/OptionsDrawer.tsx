@@ -2,6 +2,7 @@ import Select, { ActionMeta, SingleValue, SingleValueProps, components } from "r
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
+  toggleIgnoredMissingReqMods,
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
@@ -103,6 +104,17 @@ const gameToImageSrc = supportedGames.reduce(
   {} as Record<string, string>,
 );
 
+/**
+ * Builds select options for stored mod names, labelled with the installed mod's human name when we still have it.
+ * @param names Pack names to list.
+ * @param mods Mods to look up human names from.
+ * @returns One option per name.
+ */
+const toModNameOptions = (names: string[], mods: Mod[]): OptionType[] => {
+  const humanNamesByName = new Map(mods.map((mod) => [mod.name, mod.humanName]));
+  return names.map((name) => ({ value: name, label: humanNamesByName.get(name) || name }));
+};
+
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
   const [isShowingSetFolderPaths, setIsShowingSetFolderPaths] = useState<boolean>(false);
@@ -132,6 +144,7 @@ const OptionsDrawer = memo(() => {
 
   const dispatch = useAppDispatch();
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
+  const ignoredMissingReqModNames = useAppSelector((state) => state.app.ignoredMissingReqModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
@@ -417,12 +430,13 @@ const OptionsDrawer = memo(() => {
   const hiddenModsToOptionViewDataSelector = createSelector(
     (state: { app: AppState }) => state.app.hiddenModNames,
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (names, mods) => {
-      const humanNamesByName = new Map(mods.map((mod) => [mod.name, mod.humanName]));
-      return names.map((name) => ({ value: name, label: humanNamesByName.get(name) || name }));
-    },
+    toModNameOptions,
   );
   const options: OptionType[] = useSelector(hiddenModsToOptionViewDataSelector);
+  const ignoredMissingReqModOptions = useMemo(
+    () => toModNameOptions(ignoredMissingReqModNames, currentMods),
+    [currentMods, ignoredMissingReqModNames],
+  );
 
   const availableLanguagesToOptionsSelector = createSelector(
     (state: { app: AppState }) => state.app.availableLanguages,
@@ -521,6 +535,13 @@ const OptionsDrawer = memo(() => {
       if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([newValue.value]));
     },
     [hiddenModNames, dispatch],
+  );
+
+  const onUnignoreMissingReqModChange = useCallback(
+    (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+      if (newValue && actionMeta.action === "select-option") dispatch(toggleIgnoredMissingReqMods([newValue.value]));
+    },
+    [dispatch],
   );
 
   const onGameChange = useCallback(
@@ -1323,6 +1344,20 @@ const OptionsDrawer = memo(() => {
 
             <div>
               <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+            </div>
+
+            <h6 className="mt-10">{localized.ignoredMissingRequiredModsOption || "Ignored Required Mods"}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.unignoreMissingRequiredMods || "Select a mod to warn about its missing required mods again:"}
+            </p>
+
+            <div>
+              <Select
+                options={ignoredMissingReqModOptions}
+                styles={selectStyle}
+                onChange={onUnignoreMissingReqModChange}
+                value={null}
+              ></Select>
             </div>
 
             <h6 className="mt-10">{localized.shareMods}</h6>
