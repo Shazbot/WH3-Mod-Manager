@@ -108,6 +108,7 @@
   "missingRequiredModsCount": "missing",
   "ignoreMissingRequiredMods": "Ignore",
   "ignoredMissingRequiredMods": "Ignored",
+  "missingModName": "(missing name)",
   "outdatedOverwritingPacksTooltip": "These packs overwrite CA data and should not be used when outdated:",
   "outdatedOverwritingPacks": "Outdated overwriting packs!",
   "overwrites": "overwrites:",

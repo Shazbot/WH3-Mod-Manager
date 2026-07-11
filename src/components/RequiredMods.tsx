@@ -54,7 +54,9 @@ const MissingModGroups = ({ modDependencies, onModClick }: MissingModGroupsProps
       <div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
         {reqs.map(([reqId, reqHumanName]) => (
           <React.Fragment key={reqId}>
-            <div className="text-base leading-relaxed text-gray-500 dark:text-gray-300">{reqHumanName}</div>
+            <div className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
+              {reqHumanName || `${localized.missingModName || "(missing name)"} - ${reqId}`}
+            </div>
             <button
               className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
               type="button"
@@ -144,7 +146,7 @@ const RequiredMods = memo((props: RequiredModsProps) => {
           onClose={onClose}
           size="2xl"
           position="top-center"
-          explicitClasses={["mt-8"]}
+          explicitClasses={["mt-8", "!max-w-[max(42rem,50vw)]"]}
         >
           <Modal.Header>{localized.missingRequiredMods}</Modal.Header>
           <Modal.Body>
