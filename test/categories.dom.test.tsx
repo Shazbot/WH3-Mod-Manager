@@ -179,6 +179,23 @@ describe("Categories", () => {
     });
   });
 
+  it("keeps the grid scroll position when toggling a mod or category visibility", async () => {
+    const user = userEvent.setup();
+    renderCategories();
+
+    await screen.findByLabelText("Toggle mod Mod One");
+    const viewport = document.querySelector<HTMLElement>(".ag-body-viewport");
+    expect(viewport).not.toBeNull();
+
+    viewport!.scrollTop = 140;
+    await user.click(screen.getByLabelText("Toggle mod Mod One"));
+    await waitFor(() => expect(viewport!.scrollTop).toBe(140));
+
+    viewport!.scrollTop = 210;
+    await user.click(screen.getByRole("button", { name: "Collapse All Alpha" }));
+    await waitFor(() => expect(viewport!.scrollTop).toBe(210));
+  });
+
   it("removes a badge category from a mod row", async () => {
     const user = userEvent.setup();
     const { store } = renderCategories();
