@@ -3001,7 +3001,7 @@ export const registerIpcMainListeners = (
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
-  const FLOW_EXECUTION_CACHE_VERSION = 1;
+  const FLOW_EXECUTION_CACHE_VERSION = 3;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
@@ -3053,15 +3053,7 @@ export const registerIpcMainListeners = (
   };
   const getModStatForFlowSignature = async (
     mod: Mod,
-    cache: PackHeaderCache,
   ): Promise<{ size: number; mtimeMs: number } | null> => {
-    if (typeof mod.size === "number" && typeof mod.lastChangedLocal === "number") {
-      return { size: mod.size, mtimeMs: mod.lastChangedLocal };
-    }
-    const cachedEntry = cache[mod.path];
-    if (cachedEntry) {
-      return { size: cachedEntry.size, mtimeMs: cachedEntry.lastChangedLocal };
-    }
     try {
       const stat = await fs.promises.stat(mod.path);
       return { size: stat.size, mtimeMs: stat.mtimeMs };
@@ -3215,7 +3207,6 @@ export const registerIpcMainListeners = (
     startGameOptions: StartGameOptions,
     dataFolderPath: string,
   ): Promise<string | null> => {
-    const headerCache = await loadPackHeaderCache();
     const enabledModsSignatureData: Array<{
       path: string;
       name: string;
@@ -3224,7 +3215,7 @@ export const registerIpcMainListeners = (
       mtimeMs: number;
     }> = [];
     for (const mod of sortedEnabledMods) {
-      const stat = await getModStatForFlowSignature(mod, headerCache);
+      const stat = await getModStatForFlowSignature(mod);
       if (!stat) return null;
       enabledModsSignatureData.push({
         path: mod.path,
@@ -3690,6 +3681,18 @@ export const registerIpcMainListeners = (
           console.log(`Pack saved to: ${savePath}`);
         } else {
           throw error;
+        }
+      }
+      if (replacedOriginal) {
+        appData.packsData = appData.packsData.filter((packData) => packData.path !== packPath);
+        delete appData.packMetaData[packPath];
+        if (packHeaderCache) {
+          delete packHeaderCache[packPath];
+          await savePackHeaderCache();
+        }
+        if (flowExecutionCache) {
+          delete flowExecutionCache.byGame[appData.currentGame];
+          await saveFlowExecutionCache();
         }
       }
       // Clear unsaved files for this pack
