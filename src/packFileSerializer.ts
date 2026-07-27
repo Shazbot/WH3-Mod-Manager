@@ -45,6 +45,7 @@ import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
 import {
   PreparedFlow,
+  areFlowFilesLoaded,
   createFlowExecutionContext,
   flowExecutionDebugLog,
   isFlowExecutionDebugEnabled,
@@ -1370,7 +1371,9 @@ export const executeFlowsForPack = async (
     // Note: Counter tracking is NOT reset here - it's reset once at game launch level
     // This ensures counters are unique across all flows in all packs
     // Read the pack to get flow files
-    const sourceMod = sourcePack ?? (await readPack(pathSource, { readFlows: true, skipParsingTables: true }));
+    const sourceMod = areFlowFilesLoaded(sourcePack)
+      ? sourcePack
+      : await readPack(pathSource, { readFlows: true, skipParsingTables: true });
     // Filter for flow files
     const flowFiles = sourceMod.packedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
     if (flowFiles.length === 0) {
@@ -1387,6 +1390,7 @@ export const executeFlowsForPack = async (
         const flowContent = flowFile.text || (flowFile.buffer ? flowFile.buffer.toString("utf-8") : "");
         if (!flowContent) {
           console.warn(`Flow file ${flowFile.name} has no content`);
+          hadErrors = true;
           continue;
         }
         const flowFileName = flowFile.name;
