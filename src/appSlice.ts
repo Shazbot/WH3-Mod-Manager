@@ -104,9 +104,7 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   );
 
   // filter out the mods in data that are also in data/modding
-  const moddingNames = new Set(
-    state.currentPreset.mods.filter((m) => m.isInModding).map((m) => m.name),
-  );
+  const moddingNames = new Set(state.currentPreset.mods.filter((m) => m.isInModding).map((m) => m.name));
   const dataModsThatAreInModding = new Set(
     state.currentPreset.mods.filter(
       (iterMod) => iterMod.isInData && !iterMod.isInModding && moddingNames.has(iterMod.name),
@@ -253,7 +251,9 @@ const selectPresetInternal = (state: AppState, presetSelection: SelectOperation,
     });
   }
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach((mod) => (mod.isEnabled = true));
+  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
+    (mod) => (mod.isEnabled = true),
+  );
 };
 
 const createPresetFromCollection = (state: AppState, importSteamCollection: ImportSteamCollection) => {
@@ -379,7 +379,7 @@ const getBestBisectBoundaryIndex = (groupSizes: number[], targetSize: number) =>
   return bestIndex;
 };
 
-const shuffleItems = <T,>(items: T[]) => {
+const shuffleItems = <T>(items: T[]) => {
   const shuffled = [...items];
 
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -424,12 +424,10 @@ const getDependencyAwareBisectGroups = (presetMods: Mod[]) => {
   const modsByPath = new Map(presetMods.map((mod) => [mod.path, mod]));
   const modsByName = new Map(presetMods.map((mod) => [mod.name, mod]));
   const modsByWorkshopId = new Map(
-    presetMods
-      .filter((mod) => mod.workshopId != "")
-      .map((mod) => [mod.workshopId, mod] as const)
+    presetMods.filter((mod) => mod.workshopId != "").map((mod) => [mod.workshopId, mod] as const),
   );
   const dependenciesByPath = new Map<string, Set<string>>(
-    presetMods.map((mod) => [mod.path, new Set<string>()] as const)
+    presetMods.map((mod) => [mod.path, new Set<string>()] as const),
   );
 
   const addDependencyEdge = (firstPath: string, secondPath: string) => {
@@ -485,24 +483,30 @@ const getDependencyAwareBisectGroups = (presetMods: Mod[]) => {
 const createDependencyAwareBisectedPresetMods = (
   presetMods: Mod[],
   isRandom: boolean,
-  isLoadOrderPreset: boolean
+  isLoadOrderPreset: boolean,
 ) => {
   const groups = getDependencyAwareBisectGroups(presetMods);
   const groupsToSplit = isRandom ? shuffleItems(groups) : groups;
   const cutoff = Math.ceil(presetMods.length / 2);
   const boundaryIndex = getBestBisectBoundaryIndex(
     groupsToSplit.map((group) => group.length),
-    cutoff
+    cutoff,
   );
-  const firstPresetMods = normalizeBisectedPresetMods(groupsToSplit.slice(0, boundaryIndex).flat(), isLoadOrderPreset);
-  const secondPresetMods = normalizeBisectedPresetMods(groupsToSplit.slice(boundaryIndex).flat(), isLoadOrderPreset);
+  const firstPresetMods = normalizeBisectedPresetMods(
+    groupsToSplit.slice(0, boundaryIndex).flat(),
+    isLoadOrderPreset,
+  );
+  const secondPresetMods = normalizeBisectedPresetMods(
+    groupsToSplit.slice(boundaryIndex).flat(),
+    isLoadOrderPreset,
+  );
 
   return [firstPresetMods, secondPresetMods] as const;
 };
 
 const createBisectedModListPresetsInternal = (
   state: AppState,
-  { isRandom, ignoreDependencies }: CreateBisectedModListPresetsPayload
+  { isRandom, ignoreDependencies }: CreateBisectedModListPresetsPayload,
 ) => {
   const enabledMods = state.currentPreset.mods.filter((mod) => mod.isEnabled);
   const isLoadOrderPreset = enabledMods.some((mod) => mod.loadOrder != undefined);
@@ -1493,7 +1497,7 @@ const appSlice = createSlice({
     },
     createBisectedModListPresets: (
       state: AppState,
-      action: PayloadAction<CreateBisectedModListPresetsPayload>
+      action: PayloadAction<CreateBisectedModListPresetsPayload>,
     ) => {
       createBisectedModListPresetsInternal(state, action.payload);
     },

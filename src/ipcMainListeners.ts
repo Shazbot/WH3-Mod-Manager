@@ -20,7 +20,11 @@ import appData, { GameFolderPaths } from "./appData";
 import type { SerializedNode, SerializedConnection } from "./nodeGraph/types";
 import { packDataStore } from "./components/viewer/packDataStore";
 import i18n from "./configs/i18next.config";
-import { buildDBIndirectReferences, buildDBReferenceTree, type DBIndirectReferenceCacheContext } from "./DBClone";
+import {
+  buildDBIndirectReferences,
+  buildDBReferenceTree,
+  type DBIndirectReferenceCacheContext,
+} from "./DBClone";
 import { buildAbilityTooltipDataForEffects } from "./abilityTooltips";
 import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
 import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
@@ -109,7 +113,11 @@ import {
 } from "./supportedGames";
 import { tryOpenFile } from "./utility/fileHelpers";
 import getPackTableData from "./utility/frontend/packDataHandling";
-import { decodePackedTextBuffer, getPackedFileMimeType, getPackedFileViewerKind } from "./utility/packFileViewing";
+import {
+  decodePackedTextBuffer,
+  getPackedFileMimeType,
+  getPackedFileViewerKind,
+} from "./utility/packFileViewing";
 import { collator } from "./utility/packFileSorting";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie from "./utility/trie";
@@ -317,7 +325,9 @@ const sendAssetEditorOpenRequest = async (args: {
         openInExistingKitbashTab: args.openInExistingKitbashTab,
         packPathOnDisk: args.packPathOnDisk,
       };
-      socket.write(`${JSON.stringify(request)}\n`);
+      const requestAsJSON = JSON.stringify(request);
+      console.log("sending asset editor request:", requestAsJSON);
+      socket.write(`${requestAsJSON}\n`);
     });
     socket.on("data", (chunk: string) => {
       if (settled) return;
@@ -1964,10 +1974,7 @@ export const registerIpcMainListeners = (
     return nextUniqueIndex;
   };
   const normalizeTechnologyBuildingLevel = (buildingLevel: string | undefined) => {
-    if (
-      buildingLevel === "wh_main_human_port_ruin" ||
-      buildingLevel === "wh_main_chs_port_ruin"
-    ) {
+    if (buildingLevel === "wh_main_human_port_ruin" || buildingLevel === "wh_main_chs_port_ruin") {
       return undefined;
     }
     return buildingLevel;
@@ -2102,7 +2109,10 @@ export const registerIpcMainListeners = (
       linksByKey[linkKey] = {
         parentKey,
         childKey,
-        parentLinkPosition: parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "parent_link_position"), 2),
+        parentLinkPosition: parseOptionalNumber(
+          getSchemaFieldValue(schemaFieldRow, "parent_link_position"),
+          2,
+        ),
         childLinkPosition: parseOptionalNumber(getSchemaFieldValue(schemaFieldRow, "child_link_position"), 4),
         parentLinkPositionOffset: parseOptionalFloat(
           getSchemaFieldValue(schemaFieldRow, "parent_link_position_offset"),
@@ -2134,13 +2144,17 @@ export const registerIpcMainListeners = (
         tooltipString: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tooltip_string")),
       };
     });
-    getTableRowData(packsTableData, "technology_ui_tabs_to_technology_nodes_junctions_tables", (schemaFieldRow) => {
-      const tab = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tab"));
-      const node = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "node"));
-      if (!tab || !node) return;
-      if (!uiTabToNodes[tab]) uiTabToNodes[tab] = [];
-      if (!uiTabToNodes[tab].includes(node)) uiTabToNodes[tab].push(node);
-    });
+    getTableRowData(
+      packsTableData,
+      "technology_ui_tabs_to_technology_nodes_junctions_tables",
+      (schemaFieldRow) => {
+        const tab = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "tab"));
+        const node = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "node"));
+        if (!tab || !node) return;
+        if (!uiTabToNodes[tab]) uiTabToNodes[tab] = [];
+        if (!uiTabToNodes[tab].includes(node)) uiTabToNodes[tab].push(node);
+      },
+    );
     getTableRowData(packsTableData, "technology_ui_groups_tables", (schemaFieldRow) => {
       const key = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "key"));
       if (!key) return;
@@ -2213,30 +2227,32 @@ export const registerIpcMainListeners = (
       const icon = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "icon"));
       if (key) effectsForTech[key] = { icon };
     });
-    const technologyToEffectsByKey: Record<string, Record<string, { effectKey: string; value?: string }>> = {};
+    const technologyToEffectsByKey: Record<
+      string,
+      Record<string, { effectKey: string; value?: string }>
+    > = {};
     const technologyEffectScopesByKey: Record<string, string> = {};
-    getTableRowData(
-      packsTableData,
-      "technology_effects_junction_tables",
-      (schemaFieldRow) => {
-        const techKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "technology"));
-        const effectKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect"));
-        if (!techKey || !effectKey) return;
-        const effectScope = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect_scope"));
-        if (!technologyToEffectsByKey[techKey]) technologyToEffectsByKey[techKey] = {};
-        technologyToEffectsByKey[techKey][effectKey] = {
-          effectKey,
-          value: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "value")),
-        };
-        if (effectScope && !technologyEffectScopesByKey[effectKey]) {
-          technologyEffectScopesByKey[effectKey] = effectScope;
-        }
-        if (!technologyEffectRowsByKey[techKey]) technologyEffectRowsByKey[techKey] = {};
-        technologyEffectRowsByKey[techKey][effectKey] = schemaRowToRecord(schemaFieldRow);
-      },
-    );
+    getTableRowData(packsTableData, "technology_effects_junction_tables", (schemaFieldRow) => {
+      const techKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "technology"));
+      const effectKey = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect"));
+      if (!techKey || !effectKey) return;
+      const effectScope = parseOptionalString(getSchemaFieldValue(schemaFieldRow, "effect_scope"));
+      if (!technologyToEffectsByKey[techKey]) technologyToEffectsByKey[techKey] = {};
+      technologyToEffectsByKey[techKey][effectKey] = {
+        effectKey,
+        value: parseOptionalString(getSchemaFieldValue(schemaFieldRow, "value")),
+      };
+      if (effectScope && !technologyEffectScopesByKey[effectKey]) {
+        technologyEffectScopesByKey[effectKey] = effectScope;
+      }
+      if (!technologyEffectRowsByKey[techKey]) technologyEffectRowsByKey[techKey] = {};
+      technologyEffectRowsByKey[techKey][effectKey] = schemaRowToRecord(schemaFieldRow);
+    });
     const technologyToEffects: Record<string, { effectKey: string; value?: string }[]> = Object.fromEntries(
-      Object.entries(technologyToEffectsByKey).map(([techKey, effectsByKey]) => [techKey, Object.values(effectsByKey)]),
+      Object.entries(technologyToEffectsByKey).map(([techKey, effectsByKey]) => [
+        techKey,
+        Object.values(effectsByKey),
+      ]),
     );
     const techIconPaths = Array.from(
       new Set(
@@ -2265,7 +2281,9 @@ export const registerIpcMainListeners = (
           .map((icon) => `ui\\campaign ui\\effect_bundles\\${icon}`),
       ).values(),
     );
-    const iconPaths = Array.from(new Set([...techIconPaths, ...allTechnologyIconPaths, ...effectIconPaths]).values());
+    const iconPaths = Array.from(
+      new Set([...techIconPaths, ...allTechnologyIconPaths, ...effectIconPaths]).values(),
+    );
     const locs = getLocsFromPacks(orderedPacks, getLocsTrie);
     const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
     return {
@@ -3051,9 +3069,7 @@ export const registerIpcMainListeners = (
     }
     return value;
   };
-  const getModStatForFlowSignature = async (
-    mod: Mod,
-  ): Promise<{ size: number; mtimeMs: number } | null> => {
+  const getModStatForFlowSignature = async (mod: Mod): Promise<{ size: number; mtimeMs: number } | null> => {
     try {
       const stat = await fs.promises.stat(mod.path);
       return { size: stat.size, mtimeMs: stat.mtimeMs };
@@ -3089,9 +3105,7 @@ export const registerIpcMainListeners = (
       .map((packName) => nodePath.join(dataFolder, packName))
       .toSorted((first, second) => first.localeCompare(second));
   };
-  const getCompatVanillaTableToPackPaths = (
-    vanillaPackPaths: string[],
-  ): Record<string, string[]> => {
+  const getCompatVanillaTableToPackPaths = (vanillaPackPaths: string[]): Record<string, string[]> => {
     const vanillaPackPathsSet = new Set(vanillaPackPaths);
     const tableToPackPaths: Record<string, string[]> = {};
     for (const pack of appData.vanillaPacks) {
@@ -3594,42 +3608,45 @@ export const registerIpcMainListeners = (
       };
     }
   });
-  ipcMain.handle("saveTextPackedFileEdits", async (event, packPath: string, filePath: string, text: string) => {
-    try {
-      let unsavedFiles = appData.unsavedPacksData[packPath];
-      if (!unsavedFiles) {
-        unsavedFiles = [];
-        appData.unsavedPacksData[packPath] = unsavedFiles;
+  ipcMain.handle(
+    "saveTextPackedFileEdits",
+    async (event, packPath: string, filePath: string, text: string) => {
+      try {
+        let unsavedFiles = appData.unsavedPacksData[packPath];
+        if (!unsavedFiles) {
+          unsavedFiles = [];
+          appData.unsavedPacksData[packPath] = unsavedFiles;
+        }
+
+        const buffer = Buffer.from(text, "utf8");
+        const nextUnsavedFile = {
+          name: filePath,
+          file_size: buffer.length,
+          start_pos: -1,
+          text,
+          buffer,
+        } as PackedFile;
+
+        const existingFileIndex = unsavedFiles.findIndex((file) => file.name == filePath);
+        if (existingFileIndex != -1) {
+          unsavedFiles.splice(existingFileIndex, 1, nextUnsavedFile);
+        } else {
+          unsavedFiles.push(nextUnsavedFile);
+        }
+
+        mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+        windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
+
+        return { success: true };
+      } catch (error) {
+        console.error("Error saving text packed file edits:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to save text packed file edits",
+        };
       }
-
-      const buffer = Buffer.from(text, "utf8");
-      const nextUnsavedFile = {
-        name: filePath,
-        file_size: buffer.length,
-        start_pos: -1,
-        text,
-        buffer,
-      } as PackedFile;
-
-      const existingFileIndex = unsavedFiles.findIndex((file) => file.name == filePath);
-      if (existingFileIndex != -1) {
-        unsavedFiles.splice(existingFileIndex, 1, nextUnsavedFile);
-      } else {
-        unsavedFiles.push(nextUnsavedFile);
-      }
-
-      mainWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
-      windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, unsavedFiles);
-
-      return { success: true };
-    } catch (error) {
-      console.error("Error saving text packed file edits:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to save text packed file edits",
-      };
-    }
-  });
+    },
+  );
   ipcMain.handle("savePackWithUnsavedFiles", async (event, packPath: string) => {
     try {
       console.log("savePackWithUnsavedFiles:", packPath);
@@ -4897,7 +4914,7 @@ export const registerIpcMainListeners = (
             const lockingNode = nodes.find((n) => n.skillId === lock.lockingSkillKey);
             return buildRowFromSchema(schema.fields, {
               character_skill: lockingNode
-                ? (nodeIdToNewSkillKey[lockingNode.nodeId] || lock.lockingSkillKey)
+                ? nodeIdToNewSkillKey[lockingNode.nodeId] || lock.lockingSkillKey
                 : lock.lockingSkillKey,
               character_skill_node: nodeIdToNewNodeKey[lock.lockedNodeId] || lock.lockedNodeId,
               level: lock.requiredLevel.toString(),
@@ -5237,10 +5254,7 @@ export const registerIpcMainListeners = (
     const technologyData = await ensureTechnologyData();
     if (!technologyData) return [];
     return Object.values(technologyData.setsByKey).sort((firstSet, secondSet) =>
-      collator.compare(
-        firstSet.localizedName || firstSet.key,
-        secondSet.localizedName || secondSet.key,
-      ),
+      collator.compare(firstSet.localizedName || firstSet.key, secondSet.localizedName || secondSet.key),
     );
   });
   ipcMain.handle("getTechnologyTree", async (event, setKey: string) => {
@@ -5285,7 +5299,8 @@ export const registerIpcMainListeners = (
         pixelOffsetY: node.pixelOffsetY,
         researchPointsRequired: node.researchPointsRequired,
         optionalUiGroup: node.optionalUiGroup,
-        localizedName: resolveTechnologyLoc(`technologies_onscreen_name_${node.technologyKey}`) || node.technologyKey,
+        localizedName:
+          resolveTechnologyLoc(`technologies_onscreen_name_${node.technologyKey}`) || node.technologyKey,
         shortDescription: resolveTechnologyLoc(`technologies_short_description_${node.technologyKey}`),
         longDescription: resolveTechnologyLoc(`technologies_long_description_${node.technologyKey}`),
         iconPath,
@@ -5301,7 +5316,8 @@ export const registerIpcMainListeners = (
         const technologyRow = technologyData.technologyRowsByKey[technology.key] || {};
         return {
           key: technology.key,
-          localizedName: resolveTechnologyLoc(`technologies_onscreen_name_${technology.key}`) || technology.key,
+          localizedName:
+            resolveTechnologyLoc(`technologies_onscreen_name_${technology.key}`) || technology.key,
           researchPointsRequired: parseOptionalNumber(technologyRow.research_points_required, 0),
           buildingLevel: technology.buildingLevel,
           shortDescription: resolveTechnologyLoc(`technologies_short_description_${technology.key}`),
@@ -5313,7 +5329,10 @@ export const registerIpcMainListeners = (
         };
       })
       .sort((firstTechnology, secondTechnology) =>
-        collator.compare(firstTechnology.localizedName || firstTechnology.key, secondTechnology.localizedName || secondTechnology.key),
+        collator.compare(
+          firstTechnology.localizedName || firstTechnology.key,
+          secondTechnology.localizedName || secondTechnology.key,
+        ),
       );
     const allTechnologyIcons: TechnologyIconEntry[] = Object.entries(technologyData.icons)
       .filter(([iconPath]) => iconPath.toLowerCase().startsWith("ui\\campaign ui\\technologies\\"))
@@ -5341,7 +5360,10 @@ export const registerIpcMainListeners = (
         };
       })
       .sort((firstEffect, secondEffect) =>
-        collator.compare(firstEffect.localizedKey || firstEffect.effectKey, secondEffect.localizedKey || secondEffect.effectKey),
+        collator.compare(
+          firstEffect.localizedKey || firstEffect.effectKey,
+          secondEffect.localizedKey || secondEffect.effectKey,
+        ),
       );
     const links = Object.values(technologyData.linksByKey).filter(
       (link) => nodeSet.has(link.parentKey) && nodeSet.has(link.childKey),
@@ -5385,10 +5407,7 @@ export const registerIpcMainListeners = (
           getLocById(technologyData.locs, `technology_ui_groups_optional_display_name_${uiGroup.key}`),
         optionalDisplayDescription:
           uiGroup.optionalDisplayDescription ||
-          getLocById(
-            technologyData.locs,
-            `technology_ui_groups_optional_display_desctiption_${uiGroup.key}`,
-          ),
+          getLocById(technologyData.locs, `technology_ui_groups_optional_display_desctiption_${uiGroup.key}`),
       }));
     const uiGroupBounds = technologyData.uiGroupBounds.filter((bounds) => {
       if (!relevantGroupKeys.has(bounds.groupKey)) return false;
@@ -5445,10 +5464,13 @@ export const registerIpcMainListeners = (
       const sourceSetExists = !!technologyData.setsByKey[data.setKey];
       const shouldWriteNodeSet = shouldCloneNodeSet || !sourceSetExists;
       const shouldCloneTechnologies = !!data.cloneTechnologies;
-      const usedTechnologyUniqueIndexes = buildUsedTechnologyUniqueIndexes(technologyData.technologyRowsByKey);
+      const usedTechnologyUniqueIndexes = buildUsedTechnologyUniqueIndexes(
+        technologyData.technologyRowsByKey,
+      );
       const finalPackName = data.packName.endsWith(".pack") ? data.packName : `${data.packName}.pack`;
       const packPath = nodePath.join(data.packDirectory || dataFolder, finalPackName);
-      const nodeKeyTemplate = data.nodeKeyTemplate?.trim() || "${prefix}_tech_node_${nodeSet}_${row}_${column}";
+      const nodeKeyTemplate =
+        data.nodeKeyTemplate?.trim() || "${prefix}_tech_node_${nodeSet}_${row}_${column}";
       const technologyKeyTemplate =
         data.technologyKeyTemplate?.trim() || "${prefix}_tech_${nodeSet}_${row}_${column}";
       const buildRowFromSchema = (
@@ -5536,17 +5558,9 @@ export const registerIpcMainListeners = (
         const generatedTechnologyKey = resolveGenerationTemplate(technologyKeyTemplate, templateVariables);
         const finalNode = {
           ...sourceNode,
-          nodeKey: appendScopedTechNodeHash(
-            generatedNodeKey,
-            sourceNode.campaignKey,
-            sourceNode.factionKey,
-          ),
+          nodeKey: appendScopedTechNodeHash(generatedNodeKey, sourceNode.campaignKey, sourceNode.factionKey),
           technologyKey: shouldCloneTechnologies
-            ? appendScopedTechNodeHash(
-                generatedTechnologyKey,
-                sourceNode.campaignKey,
-                sourceNode.factionKey,
-              )
+            ? appendScopedTechNodeHash(generatedTechnologyKey, sourceNode.campaignKey, sourceNode.factionKey)
             : sourceNode.technologyKey,
           setKey: targetSetKey,
         };
@@ -5615,7 +5629,11 @@ export const registerIpcMainListeners = (
           }),
         ];
         const buffer = await buildDBFileBuffer(setSchema.version, setRows, setSchema.fields);
-        packFiles.push({ name: `db\\technology_node_sets_tables\\${tableName}`, file_size: buffer.length, buffer });
+        packFiles.push({
+          name: `db\\technology_node_sets_tables\\${tableName}`,
+          file_size: buffer.length,
+          buffer,
+        });
       }
 
       const nodeSchema = getPreferredSchema("technology_nodes_tables");
@@ -5633,12 +5651,18 @@ export const registerIpcMainListeners = (
           pixel_offset_x: finalNode.pixelOffsetX.toString(),
           pixel_offset_y: finalNode.pixelOffsetY.toString(),
           research_points_required: finalNode.researchPointsRequired.toString(),
-          optional_ui_group: finalNode.optionalUiGroup ? (uiGroupKeyRemap.get(finalNode.optionalUiGroup) ?? "") : "",
+          optional_ui_group: finalNode.optionalUiGroup
+            ? (uiGroupKeyRemap.get(finalNode.optionalUiGroup) ?? "")
+            : "",
         }),
       );
       if (nodeRows.length > 0) {
         const buffer = await buildDBFileBuffer(nodeSchema.version, nodeRows, nodeSchema.fields);
-        packFiles.push({ name: `db\\technology_nodes_tables\\${tableName}`, file_size: buffer.length, buffer });
+        packFiles.push({
+          name: `db\\technology_nodes_tables\\${tableName}`,
+          file_size: buffer.length,
+          buffer,
+        });
       }
       if (referencedUiGroupKeys.size > 0) {
         const uiGroupsSchema = getPreferredSchema("technology_ui_groups_tables");
@@ -5661,12 +5685,18 @@ export const registerIpcMainListeners = (
           .filter((row): row is (string | boolean)[] => !!row);
         if (uiGroupRows.length > 0) {
           const buffer = await buildDBFileBuffer(uiGroupsSchema.version, uiGroupRows, uiGroupsSchema.fields);
-          packFiles.push({ name: `db\\technology_ui_groups_tables\\${tableName}`, file_size: buffer.length, buffer });
+          packFiles.push({
+            name: `db\\technology_ui_groups_tables\\${tableName}`,
+            file_size: buffer.length,
+            buffer,
+          });
         }
       }
 
       if (shouldWriteNodeMappings) {
-        const uiTabsToNodesSchema = getPreferredSchema("technology_ui_tabs_to_technology_nodes_junctions_tables");
+        const uiTabsToNodesSchema = getPreferredSchema(
+          "technology_ui_tabs_to_technology_nodes_junctions_tables",
+        );
         const uiTabsToNodesRows = Object.entries(data.uiTabToNodes || {}).flatMap(([tab, nodeKeys]) =>
           nodeKeys
             .map((nodeKey) => nodeKeyRemap.get(nodeKey))
@@ -5691,7 +5721,9 @@ export const registerIpcMainListeners = (
           });
         }
 
-        const uiGroupBoundsSchema = getPreferredSchema("technology_ui_groups_to_technology_nodes_junctions_tables");
+        const uiGroupBoundsSchema = getPreferredSchema(
+          "technology_ui_groups_to_technology_nodes_junctions_tables",
+        );
         const uiGroupBoundsRows = (data.uiGroupBounds || []).flatMap((bounds) => {
           const topLeftNode = nodeKeyRemap.get(bounds.topLeftNode);
           const bottomRightNode = nodeKeyRemap.get(bounds.bottomRightNode);
@@ -5755,7 +5787,11 @@ export const registerIpcMainListeners = (
       );
       if (linkRows.length > 0) {
         const buffer = await buildDBFileBuffer(linkSchema.version, linkRows, linkSchema.fields);
-        packFiles.push({ name: `db\\technology_node_links_tables\\${tableName}`, file_size: buffer.length, buffer });
+        packFiles.push({
+          name: `db\\technology_node_links_tables\\${tableName}`,
+          file_size: buffer.length,
+          buffer,
+        });
       }
 
       const nodesByTechnologyKey = new Map<
@@ -5771,11 +5807,14 @@ export const registerIpcMainListeners = (
         }
       }
       const normalizeComparableString = (value: string | undefined) => (value || "").trim();
-      const normalizeComparableNumber = (value: string | undefined) => parseOptionalNumber(value, 0).toString();
+      const normalizeComparableNumber = (value: string | undefined) =>
+        parseOptionalNumber(value, 0).toString();
       const normalizeComparableBool = (value: string | undefined) =>
         parseOptionalBool(value, false) ? "true" : "false";
       const normalizeComparableIconName = (value: string | undefined) =>
-        normalizeComparableString(value).replace(/\.(png|jpg|jpeg)$/i, "").toLowerCase();
+        normalizeComparableString(value)
+          .replace(/\.(png|jpg|jpeg)$/i, "")
+          .toLowerCase();
       const buildEffectsSignature = (effects: { effectKey?: string; value?: string }[] | undefined) =>
         JSON.stringify(
           (effects || [])
@@ -5811,30 +5850,33 @@ export const registerIpcMainListeners = (
             research_points_required: finalNode.researchPointsRequired.toString(),
             icon_name: getTechnologyIconNameFromPath(finalNode.iconPath),
             is_hidden: finalNode.isHidden ? "true" : "false",
-            building_level: getTechnologyBuildingLevelForWrite(finalNode.buildingLevel, originalTechnologyRow),
+            building_level: getTechnologyBuildingLevelForWrite(
+              finalNode.buildingLevel,
+              originalTechnologyRow,
+            ),
           };
           const rowDifferences = {
             missingOriginalRow: !originalTechnologyRow,
             key:
               technologyFieldNames.has("key") &&
               normalizeComparableString(originalTechnologyRow?.key) !==
-              normalizeComparableString(nextTechnologyRow.key),
+                normalizeComparableString(nextTechnologyRow.key),
             research_points_required:
               technologyFieldNames.has("research_points_required") &&
               normalizeComparableNumber(originalTechnologyRow?.research_points_required) !==
-              normalizeComparableNumber(nextTechnologyRow.research_points_required),
+                normalizeComparableNumber(nextTechnologyRow.research_points_required),
             icon_name:
               technologyFieldNames.has("icon_name") &&
               normalizeComparableIconName(originalTechnologyRow?.icon_name) !==
-              normalizeComparableIconName(nextTechnologyRow.icon_name),
+                normalizeComparableIconName(nextTechnologyRow.icon_name),
             is_hidden:
               technologyFieldNames.has("is_hidden") &&
               normalizeComparableBool(originalTechnologyRow?.is_hidden) !==
-              normalizeComparableBool(nextTechnologyRow.is_hidden),
+                normalizeComparableBool(nextTechnologyRow.is_hidden),
             building_level:
               technologyFieldNames.has("building_level") &&
               normalizeComparableString(originalTechnologyRow?.building_level) !==
-              normalizeComparableString(nextTechnologyRow.building_level),
+                normalizeComparableString(nextTechnologyRow.building_level),
           };
           const basicDataChanged =
             rowDifferences.missingOriginalRow ||
@@ -5878,10 +5920,13 @@ export const registerIpcMainListeners = (
             research_points_required: finalNode.researchPointsRequired.toString(),
             icon_name: getTechnologyIconNameFromPath(finalNode.iconPath),
             is_hidden: finalNode.isHidden ? "true" : "false",
-            building_level: getTechnologyBuildingLevelForWrite(finalNode.buildingLevel, originalTechnologyRow),
+            building_level: getTechnologyBuildingLevelForWrite(
+              finalNode.buildingLevel,
+              originalTechnologyRow,
+            ),
             unique_index: shouldAllocateNewUniqueIndex
               ? allocateTechnologyUniqueIndex(usedTechnologyUniqueIndexes)
-              : (originalTechnologyRow.unique_index || ""),
+              : originalTechnologyRow.unique_index || "",
             is_military: isBrandNewTechnology ? "true" : originalTechnologyRow.is_military,
           });
         });
@@ -5920,7 +5965,11 @@ export const registerIpcMainListeners = (
         }
       }
       if (techEffectsRows.length > 0) {
-        const buffer = await buildDBFileBuffer(techEffectsSchema.version, techEffectsRows, techEffectsSchema.fields);
+        const buffer = await buildDBFileBuffer(
+          techEffectsSchema.version,
+          techEffectsRows,
+          techEffectsSchema.fields,
+        );
         packFiles.push({
           name: `db\\technology_effects_junction_tables\\${tableName}`,
           file_size: buffer.length,
@@ -5930,8 +5979,7 @@ export const registerIpcMainListeners = (
       const locRowsByKey: Record<string, string> = {};
       for (const { technologyKey, finalNode, shouldWriteLoc } of technologyEntries) {
         if (!shouldWriteLoc) continue;
-        locRowsByKey[`technologies_onscreen_name_${technologyKey}`] =
-          finalNode.displayName || technologyKey;
+        locRowsByKey[`technologies_onscreen_name_${technologyKey}`] = finalNode.displayName || technologyKey;
         if (finalNode.shortDescription !== undefined) {
           locRowsByKey[`technologies_short_description_${technologyKey}`] = finalNode.shortDescription;
         }
@@ -5974,7 +6022,9 @@ export const registerIpcMainListeners = (
       if (!dataFolder) return { success: false, error: "Data folder not found" };
       const technologyData = await ensureTechnologyData();
       if (!technologyData) return { success: false, error: "Technology data could not be loaded" };
-      const usedTechnologyUniqueIndexes = buildUsedTechnologyUniqueIndexes(technologyData.technologyRowsByKey);
+      const usedTechnologyUniqueIndexes = buildUsedTechnologyUniqueIndexes(
+        technologyData.technologyRowsByKey,
+      );
       const defaultModdersPrefix = normalizeGeneratedPrefix(appData.moddersPrefix);
       const generationTimestamp = Date.now().toString();
       const resolveGenerationTemplate = (
@@ -6069,7 +6119,8 @@ export const registerIpcMainListeners = (
         if (data.editedNodes) {
           for (const editedNode of data.editedNodes) {
             if (deletedNodeSet.has(editedNode.nodeKey)) continue;
-            const existingRow = dedupedRowsByNodeKey[editedNode.nodeKey] || technologyData.nodeRowsByKey[editedNode.nodeKey];
+            const existingRow =
+              dedupedRowsByNodeKey[editedNode.nodeKey] || technologyData.nodeRowsByKey[editedNode.nodeKey];
             if (!existingRow) continue;
             const updatedRow: Record<string, string | boolean> = { ...existingRow };
             if (editedNode.technologyKey !== undefined && editedNode.technologyKey.trim() !== "") {
@@ -6099,7 +6150,11 @@ export const registerIpcMainListeners = (
         const rows = Object.values(dedupedRowsByNodeKey).map((row) => buildRowFromSchema(schema.fields, row));
         if (rows.length > 0) {
           const buffer = await buildDBFileBuffer(schema.version, rows, schema.fields);
-          packFiles.push({ name: `db\\technology_nodes_tables\\${tableName}`, file_size: buffer.length, buffer });
+          packFiles.push({
+            name: `db\\technology_nodes_tables\\${tableName}`,
+            file_size: buffer.length,
+            buffer,
+          });
         }
       }
       // Handle edited nodes in technologies_tables (for display name, building level, etc.)
@@ -6108,7 +6163,11 @@ export const registerIpcMainListeners = (
         const dedupedRows: Record<string, Record<string, string | boolean>> = {};
         for (const editedNode of data.editedNodes) {
           const nodeRow = technologyData.nodeRowsByKey[editedNode.nodeKey];
-          const technologyKey = (editedNode.technologyKey || (nodeRow?.technology_key as string) || "").trim();
+          const technologyKey = (
+            editedNode.technologyKey ||
+            (nodeRow?.technology_key as string) ||
+            ""
+          ).trim();
           if (!technologyKey) continue;
           const originalTechRow = technologyData.technologyRowsByKey[technologyKey];
           const sourceTechnologyKey = (nodeRow?.technology_key as string) || "";
@@ -6153,7 +6212,11 @@ export const registerIpcMainListeners = (
             });
           } else {
             const buffer = await buildDBFileBuffer(techSchema.version, rows, techSchema.fields);
-            packFiles.push({ name: `db\\technologies_tables\\${tableName}`, file_size: buffer.length, buffer });
+            packFiles.push({
+              name: `db\\technologies_tables\\${tableName}`,
+              file_size: buffer.length,
+              buffer,
+            });
           }
         }
       }
@@ -6324,7 +6387,7 @@ export const registerIpcMainListeners = (
           techEffectsRows.push(
             buildRowFromSchema(techEffectsSchema.fields, {
               ...(sourceTechnologyKey
-                ? (technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey] || {})
+                ? technologyData.technologyEffectRowsByKey[sourceTechnologyKey]?.[effectKey] || {}
                 : {}),
               technology: technologyKey,
               effect: effectKey,
@@ -6343,14 +6406,26 @@ export const registerIpcMainListeners = (
       if (data.editedNodes) {
         for (const editedNode of data.editedNodes) {
           const nodeRow = technologyData.nodeRowsByKey[editedNode.nodeKey];
-          const technologyKey = (editedNode.technologyKey || (nodeRow?.technology_key as string) || "").trim();
+          const technologyKey = (
+            editedNode.technologyKey ||
+            (nodeRow?.technology_key as string) ||
+            ""
+          ).trim();
           if (!technologyKey) continue;
           if (technologyData.technologyRowsByKey[technologyKey]) continue;
-          pushTechnologyEffects(technologyKey, editedNode.effects, nodeRow?.technology_key as string | undefined);
+          pushTechnologyEffects(
+            technologyKey,
+            editedNode.effects,
+            nodeRow?.technology_key as string | undefined,
+          );
         }
       }
       if (techEffectsRows.length > 0) {
-        const buffer = await buildDBFileBuffer(techEffectsSchema.version, techEffectsRows, techEffectsSchema.fields);
+        const buffer = await buildDBFileBuffer(
+          techEffectsSchema.version,
+          techEffectsRows,
+          techEffectsSchema.fields,
+        );
         packFiles.push({
           name: `db\\technology_effects_junction_tables\\${tableName}`,
           file_size: buffer.length,
@@ -6366,26 +6441,46 @@ export const registerIpcMainListeners = (
             locRows.push([`technologies_onscreen_name_${newNode.technologyKey}`, newNode.displayName, false]);
           }
           if (newNode.shortDescription) {
-            locRows.push([`technologies_short_description_${newNode.technologyKey}`, newNode.shortDescription, false]);
+            locRows.push([
+              `technologies_short_description_${newNode.technologyKey}`,
+              newNode.shortDescription,
+              false,
+            ]);
           }
           if (newNode.longDescription) {
-            locRows.push([`technologies_long_description_${newNode.technologyKey}`, newNode.longDescription, false]);
+            locRows.push([
+              `technologies_long_description_${newNode.technologyKey}`,
+              newNode.longDescription,
+              false,
+            ]);
           }
         }
       }
       if (data.editedNodes) {
         for (const editedNode of data.editedNodes) {
           const nodeRow = technologyData.nodeRowsByKey[editedNode.nodeKey];
-          const technologyKey = (editedNode.technologyKey || (nodeRow?.technology_key as string) || "").trim();
+          const technologyKey = (
+            editedNode.technologyKey ||
+            (nodeRow?.technology_key as string) ||
+            ""
+          ).trim();
           if (!technologyKey) continue;
           if (editedNode.displayName !== undefined) {
             locRows.push([`technologies_onscreen_name_${technologyKey}`, editedNode.displayName, false]);
           }
           if (editedNode.shortDescription !== undefined) {
-            locRows.push([`technologies_short_description_${technologyKey}`, editedNode.shortDescription, false]);
+            locRows.push([
+              `technologies_short_description_${technologyKey}`,
+              editedNode.shortDescription,
+              false,
+            ]);
           }
           if (editedNode.longDescription !== undefined) {
-            locRows.push([`technologies_long_description_${technologyKey}`, editedNode.longDescription, false]);
+            locRows.push([
+              `technologies_long_description_${technologyKey}`,
+              editedNode.longDescription,
+              false,
+            ]);
           }
         }
       }
@@ -6800,7 +6895,8 @@ export const registerIpcMainListeners = (
       ) {
         console.log("READING " + mod.name);
         appData.currentlyReadingModPaths.push(mod.path);
-        if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
+        if (!skipParsingTables && emitToMainWindow)
+          mainWindow?.webContents.send("setCurrentlyReadingMod", mod.name);
         const newPack = await readPack(mod.path, {
           skipParsingTables,
           readScripts,
@@ -6808,7 +6904,8 @@ export const registerIpcMainListeners = (
           filesToRead,
           readLocs,
         });
-        if (!skipParsingTables && emitToMainWindow) mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
+        if (!skipParsingTables && emitToMainWindow)
+          mainWindow?.webContents.send("setLastModThatWasRead", mod.name);
         appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
           (path) => path != mod.path,
         );
