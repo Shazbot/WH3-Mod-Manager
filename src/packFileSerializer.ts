@@ -45,7 +45,7 @@ import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
 import {
   PreparedFlow,
-  areFlowFilesLoaded,
+  canReuseFlowSourcePack,
   createFlowExecutionContext,
   flowExecutionDebugLog,
   isFlowExecutionDebugEnabled,
@@ -1358,7 +1358,7 @@ export const executeFlowsForPack = async (
   pathTarget: string,
   userFlowOptions: UserFlowOptions,
   packName: string,
-  sourcePack?: Pick<Pack, "packedFiles">,
+  sourcePack?: Pick<Pack, "packedFiles" | "lastChangedLocal" | "size">,
 ): Promise<{ createdPackPaths: string[]; hadErrors: boolean }> => {
   void pathTarget;
   const createdPackPaths = new Set<string>();
@@ -1371,7 +1371,8 @@ export const executeFlowsForPack = async (
     // Note: Counter tracking is NOT reset here - it's reset once at game launch level
     // This ensures counters are unique across all flows in all packs
     // Read the pack to get flow files
-    const sourceMod = areFlowFilesLoaded(sourcePack)
+    const sourceStat = await fs.promises.stat(pathSource);
+    const sourceMod = canReuseFlowSourcePack(sourcePack, sourceStat)
       ? sourcePack
       : await readPack(pathSource, { readFlows: true, skipParsingTables: true });
     // Filter for flow files

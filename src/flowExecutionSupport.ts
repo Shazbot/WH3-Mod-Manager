@@ -30,6 +30,23 @@ export const flowExecutionDebugLog = (context: Pick<FlowExecutionContext, "isDeb
     console.log(...args);
   }
 };
+export const areFlowFilesLoaded = (
+  sourcePack: Pick<Pack, "packedFiles"> | undefined,
+): sourcePack is Pick<Pack, "packedFiles"> => {
+  if (!sourcePack) return false;
+  const flowFiles = sourcePack.packedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
+  return (
+    flowFiles.length > 0 &&
+    flowFiles.every((file) => file.text !== undefined || file.buffer !== undefined)
+  );
+};
+export const canReuseFlowSourcePack = (
+  sourcePack: Pick<Pack, "packedFiles" | "lastChangedLocal" | "size"> | undefined,
+  currentFile: { mtimeMs: number; size: number },
+): sourcePack is Pick<Pack, "packedFiles" | "lastChangedLocal" | "size"> =>
+  areFlowFilesLoaded(sourcePack) &&
+  sourcePack.lastChangedLocal === currentFile.mtimeMs &&
+  sourcePack.size === currentFile.size;
 export const buildReadPackCacheKey = (packPath: string, packReadingOptions: PackReadingOptions): string => {
   const keyPayload = {
     packPath,
