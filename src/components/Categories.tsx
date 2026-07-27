@@ -1224,6 +1224,7 @@ const Categories = memo(() => {
             preventDefaultOnContextMenu={true}
             getRowId={(params) => params.data.id}
             resetRowDataOnUpdate={true}
+            suppressScrollOnNewData={true}
             onCellClicked={onCellClicked}
             onCellContextMenu={onCellContextMenu}
             onColumnResized={onColumnResized}
