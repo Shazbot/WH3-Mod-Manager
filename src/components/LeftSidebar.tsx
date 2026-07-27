@@ -1,4 +1,4 @@
-import React, { memo, useContext, useEffect } from "react";
+import React, { memo, useContext, useEffect, useMemo } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-tabs";
 import "../styles/LeftSidebar.css";
 import { IoIosList, IoMdCheckboxOutline } from "react-icons/io";
@@ -22,7 +22,10 @@ const LeftSidebar = memo(() => {
   const showVisualsTab = isFeaturesForModdersEnabled && isDev;
   const isSkillsTabVisible = currentGame === "wh3" && skillTreesDisplayMode === "tab";
   const isTechTreesTabVisible = currentGame === "wh3" && technologyTreesDisplayMode === "tab";
-  const tabIndexToTabType: MainWindowTab[] = ["mods", "enabledMods", "categories", "presets"];
+  const tabIndexToTabType: MainWindowTab[] = useMemo(
+    () => ["mods", "enabledMods", "categories", "presets"],
+    [],
+  );
   if (isSkillsTabVisible) tabIndexToTabType.push("skills");
   if (showVisualsTab) tabIndexToTabType.push("visuals");
   if (isTechTreesTabVisible) tabIndexToTabType.push("techTrees");
