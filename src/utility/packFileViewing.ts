@@ -36,6 +36,11 @@ export const getPackedFileLowerExtension = (filePath: string): string => {
 };
 
 export const getPackedFileViewerKind = (filePath: string): PackedFileViewerKind | undefined => {
+  const normalizedFilePath = filePath.replace(/\//g, "\\").toLowerCase();
+  if (normalizedFilePath.startsWith("whmmflows\\")) {
+    return "text";
+  }
+
   const extension = getPackedFileLowerExtension(filePath);
   if (TEXT_FILE_EXTENSIONS.has(extension)) {
     return "text";
