@@ -16,7 +16,11 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { DBVersion } from "../packFileTypes";
 import { applyConnection, rehydrateGraph, removeEdge } from "../nodeGraph/connectionRules";
-import { applyNodeDataPatch, deleteSelectedNodesFromGraph, withNodeEditorActions } from "../nodeGraph/editorState";
+import {
+  applyNodeDataPatchFromRef,
+  deleteSelectedNodesFromGraph,
+  withNodeEditorActions,
+} from "../nodeGraph/editorState";
 import { FlowOptionsModal } from "../nodeGraph/FlowOptionsModal";
 import {
   deserializeNodeGraph,
@@ -251,11 +255,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
   const updateNodeData = useCallback(
     (nodeId: string, detail: FlowNodeDataPatch) => {
-      const nextGraph = applyNodeDataPatch(
-        {
-          nodes: nodesRef.current,
-          edges,
-        },
+      const nextGraph = applyNodeDataPatchFromRef(
+        nodesRef,
+        edges,
         nodeId,
         detail,
         {
