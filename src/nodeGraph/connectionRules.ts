@@ -551,6 +551,9 @@ export const applyConnection = (
     nextEdges = updater(nextEdges);
   };
 
+  const isLookupSourceConnection =
+    targetNode.type === "lookup" && (params.targetHandle === "input-source" || !params.targetHandle);
+
   setEdges((edges) => {
     const sourceHandlePart = params.sourceHandle ? `-${params.sourceHandle}` : "";
     const targetHandlePart = params.targetHandle ? `-${params.targetHandle}` : "";
@@ -697,7 +700,7 @@ export const applyConnection = (
   if (
     (TABLE_METADATA_TARGETS.has(targetNode.type as string) ||
       targetNode.type === "generaterows" ||
-      targetNode.type === "lookup") &&
+      isLookupSourceConnection) &&
     sourceNode.type === "getcountercolumn"
   ) {
     const counterData = getNodeData<GraphRuleNodeData>(sourceNode);
@@ -839,7 +842,7 @@ export const applyConnection = (
   }
 
   if (
-    (targetNode.type === "lookup" || targetNode.type === "groupby" || targetNode.type === "deduplicate") &&
+    (isLookupSourceConnection || targetNode.type === "groupby" || targetNode.type === "deduplicate") &&
     (sourceNode.type === "tableselection" ||
       sourceNode.type === "tableselectiondropdown" ||
       sourceNode.type === "filter" ||
