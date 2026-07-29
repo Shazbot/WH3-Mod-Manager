@@ -90,6 +90,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         schemaColumns: data.schemaColumns || [],
         customRows: data.customRows || [],
         newColumnName: maybeString(data.newColumnName),
+        filename: maybeString(data.filename),
         tsvFileName: maybeString(data.tsvFileName),
         tableName: maybeString(data.tableName),
         sourceInputColumns: data.sourceInputColumns || null,
