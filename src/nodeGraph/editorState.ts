@@ -246,6 +246,31 @@ export const applyNodeDataPatch = (
   );
 };
 
+export const applyNodeDataPatchFromRef = (
+  nodesRef: { current: Node[] },
+  edges: Edge[],
+  nodeId: string,
+  patch: FlowNodeDataPatch,
+  context: SchemaContext,
+): GraphMutationResult => {
+  const nextGraph = applyNodeDataPatch(
+    {
+      nodes: nodesRef.current,
+      edges,
+    },
+    nodeId,
+    patch,
+    context,
+  );
+
+  // A node can dispatch multiple related patches before React commits a render.
+  // Keep the imperative snapshot current so every subsequent patch composes with
+  // the preceding one instead of restoring stale node data.
+  nodesRef.current = nextGraph.nodes;
+
+  return nextGraph;
+};
+
 export const deleteSelectedNodesFromGraph = (nodes: Node[], edges: Edge[]) => {
   const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
 
