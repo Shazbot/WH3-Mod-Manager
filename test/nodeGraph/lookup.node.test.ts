@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createFlowExecutionContext } from "../../src/flowExecutionSupport";
+import { executeNodeAction } from "../../src/nodeExecutor";
+
 vi.mock("@mongodb-js/zstd", () => ({
   decompress: vi.fn(async (input: Uint8Array) => input),
 }));
 vi.mock("electron-is-dev", () => ({
   default: false,
 }));
-
-import { executeNodeAction } from "../../src/nodeExecutor";
-import { createFlowExecutionContext } from "../../src/flowExecutionSupport";
 
 const createSchemaField = (name: string, value: string | number) => ({
   name,
@@ -18,7 +18,7 @@ const createSchemaField = (name: string, value: string | number) => ({
   isKey: false,
 });
 
-const createDbField = (name: string) => ({
+const createDbField = (name: string, value: string | number) => ({
   name,
   field_type: typeof value === "number" ? "I32" : "StringU8",
   is_key: false,
@@ -47,7 +47,7 @@ const createTableSelection = (tableName: string, columns: string[], rows: Array<
           schemaFields,
           tableSchema: {
             version: 1,
-            fields: columns.map((columnName) => createDbField(columnName)),
+            fields: columns.map((columnName, index) => createDbField(columnName, rows[0]?.[index] ?? "")),
           },
         },
       },
@@ -93,5 +93,95 @@ describe("lookup node", () => {
       "campaign_public_order_populace_effects_tables_populace_happiness",
     ]);
     expect(result.data?.tables[0].table.schemaFields).toHaveLength(8);
+  });
+
+  it("pads unmatched left-join rows with empty indexed cells", async () => {
+    const source = createTableSelection(
+      "source_tables",
+      ["key", "source_value"],
+      [
+        ["missing", "unmatched source"],
+        ["match", "matched source"],
+      ],
+    );
+    const indexed = createTableSelection(
+      "indexed_tables",
+      ["source_key", "indexed_value"],
+      [["match", "matched indexed"]],
+    );
+
+    const result = await executeNodeAction({
+      nodeId: "lookup_left",
+      nodeType: "lookup",
+      textValue: "",
+      config: {
+        joinType: "left",
+        lookupColumn: "key",
+        indexColumns: ["source_key"],
+        indexJoinColumn: "source_key",
+      },
+      inputData: [source, indexed],
+      executionContext: createFlowExecutionContext(),
+    });
+
+    expect(result.success).toBe(true);
+    const outputTable = result.data?.tables[0].table;
+    const outputColumns = outputTable.tableSchema.fields.map((field: { name: string }) => field.name);
+    const outputRows = Array.from({ length: outputTable.schemaFields.length / outputColumns.length }, (_, index) =>
+      outputTable.schemaFields
+        .slice(index * outputColumns.length, (index + 1) * outputColumns.length)
+        .map((field: { resolvedKeyValue: string }) => field.resolvedKeyValue),
+    );
+
+    expect(outputColumns).toEqual([
+      "source_tables_key",
+      "source_tables_source_value",
+      "indexed_tables_source_key",
+      "indexed_tables_indexed_value",
+    ]);
+    expect(outputRows).toEqual([
+      ["missing", "unmatched source", "", ""],
+      ["match", "matched source", "match", "matched indexed"],
+    ]);
+  });
+
+  it("skips unmatched rows for an inner join", async () => {
+    const source = createTableSelection(
+      "source_tables",
+      ["key", "source_value"],
+      [
+        ["missing", "unmatched source"],
+        ["match", "matched source"],
+      ],
+    );
+    const indexed = createTableSelection(
+      "indexed_tables",
+      ["source_key", "indexed_value"],
+      [["match", "matched indexed"]],
+    );
+
+    const result = await executeNodeAction({
+      nodeId: "lookup_inner",
+      nodeType: "lookup",
+      textValue: "",
+      config: {
+        joinType: "inner",
+        lookupColumn: "key",
+        indexColumns: ["source_key"],
+        indexJoinColumn: "source_key",
+      },
+      inputData: [source, indexed],
+      executionContext: createFlowExecutionContext(),
+    });
+
+    expect(result.success).toBe(true);
+    const outputTable = result.data?.tables[0].table;
+    expect(outputTable.tableSchema.fields).toHaveLength(4);
+    expect(outputTable.schemaFields.map((field: { resolvedKeyValue: string }) => field.resolvedKeyValue)).toEqual([
+      "match",
+      "matched source",
+      "match",
+      "matched indexed",
+    ]);
   });
 });

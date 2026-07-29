@@ -3710,6 +3710,17 @@ async function executeLookupNode(
 
     // Create a new table with joined rows
     const joinedRows: AmendedSchemaField[][] = [];
+    const sourceSchemaFields: DBField[] = sourceTable.table.tableSchema?.fields || [];
+    const indexedSchemaFields: DBField[] = indexedData.sourceTable.table.tableSchema?.fields || [];
+    const emptyIndexedRowTemplate: AmendedSchemaField[] = await Promise.all(
+      indexedSchemaFields.map(async (field) => ({
+        name: `${lookupTableName}_${field.name}`,
+        type: field.field_type,
+        fields: [{ type: "Buffer" as const, val: await typeToBuffer(field.field_type, "") }],
+        resolvedKeyValue: "",
+        isKey: field.is_key,
+      })),
+    );
 
     for (const { row: sourceRow, lookupColumnIndex } of sourceRowsWithLookupIndex) {
       const lookupCell = sourceRow[lookupColumnIndex];
@@ -3729,7 +3740,11 @@ async function executeLookupNode(
             ...cell,
             name: `${sourceTableName}_${cell.name}`,
           }));
-          joinedRows.push(prefixedSourceRow);
+          const emptyIndexedRow = emptyIndexedRowTemplate.map((cell) => ({
+            ...cell,
+            fields: cell.fields.map((field) => ({ ...field })),
+          }));
+          joinedRows.push([...prefixedSourceRow, ...emptyIndexedRow]);
         }
         // Inner join: skip row
       } else {
@@ -3750,25 +3765,22 @@ async function executeLookupNode(
 
     hotPathLog(executionContext, `Lookup Node ${nodeId}: Created ${joinedRows.length} joined rows`);
 
-    // We need to create a new packed file with the joined data
-    // Build proper DBField schema from joined row structure
-    const schemaFields: DBField[] = [];
-    if (joinedRows.length > 0) {
-      for (const cell of joinedRows[0]) {
-        schemaFields.push({
-          name: cell.name,
-          field_type: cell.type as SCHEMA_FIELD_TYPE,
-          is_key: cell.isKey || false,
-          default_value: "",
-          is_filename: false,
-          is_reference: [],
-          description: `Joined column from ${joinType} join`,
-          ca_order: -1,
-          is_bitwise: 0,
-          enum_values: {},
-        });
-      }
-    }
+    // Build the joined schema from both input schemas so it does not depend on
+    // whether the first output row matched.
+    const schemaFields: DBField[] = [
+      ...sourceSchemaFields.map((field) => ({
+        ...field,
+        name: `${sourceTableName}_${field.name}`,
+        description: `Source column from ${joinType} join`,
+        ca_order: -1,
+      })),
+      ...indexedSchemaFields.map((field) => ({
+        ...field,
+        name: `${lookupTableName}_${field.name}`,
+        description: `Indexed column from ${joinType} join`,
+        ca_order: -1,
+      })),
+    ];
 
     const schemaVersion = sourceTable.table.tableSchema?.version ?? 1;
     const tableVersion = sourceTable.table.version;
