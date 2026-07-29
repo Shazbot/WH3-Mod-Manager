@@ -113,4 +113,38 @@ describe("graphSerialization", () => {
     expect(result.nodes[1].data.packName).toBe("flow-value.pack");
     expect(result.connections).toEqual([]);
   });
+
+  it("preserves the Dump to TSV filename through serialization and loading", () => {
+    const nodes = [
+      {
+        id: "node_0",
+        type: "dumptotsv",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Dump to TSV",
+          type: "dumptotsv",
+          filename: "agent_subtypes.tsv",
+          openInWindows: true,
+          inputType: "TableSelection",
+        },
+      },
+    ] as any[];
+
+    const serializedGraph = serializeNodeGraphState({
+      nodes,
+      edges: [],
+      flowOptions: [],
+      isGraphEnabled: true,
+      graphStartsEnabled: true,
+    });
+    const deserializedGraph = deserializeNodeGraph(JSON.stringify(serializedGraph));
+    const executionGraph = prepareGraphForExecution({
+      nodes: deserializedGraph.nodes,
+      edges: deserializedGraph.edges,
+    });
+
+    expect(serializedGraph.nodes[0].data.filename).toBe("agent_subtypes.tsv");
+    expect(deserializedGraph.nodes[0].data.filename).toBe("agent_subtypes.tsv");
+    expect(executionGraph.nodes[0].data.filename).toBe("agent_subtypes.tsv");
+  });
 });

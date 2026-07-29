@@ -99,6 +99,7 @@ export interface SerializedNode {
     schemaColumns?: Array<Record<string, unknown>>;
     customRows?: Array<Record<string, unknown>>;
     newColumnName?: string;
+    filename?: string;
     tsvFileName?: string;
     tableName?: string;
     sourceInputColumns?: string[] | null;
