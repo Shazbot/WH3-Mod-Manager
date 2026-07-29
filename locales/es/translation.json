@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "Tipo de unión:",
   "nodeEditorInnerJoin": "Unión interna",
   "nodeEditorLeftJoin": "Unirse a la izquierda",
+  "nodeEditorAntiJoin": "Solo filas de origen sin coincidencia",
   "nodeEditorNestedJoin": "Anidado (1 a muchos)",
   "nodeEditorCrossJoin": "Unión cruzada (producto cartesiano)",
   "nodeEditorNestedTableSelection": "Selección de tabla anidada",

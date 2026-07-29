@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "조인 유형:",
   "nodeEditorInnerJoin": "내부 조인",
   "nodeEditorLeftJoin": "왼쪽 조인",
+  "nodeEditorAntiJoin": "일치 항목이 없는 소스 행만",
   "nodeEditorNestedJoin": "중첩(일대다)",
   "nodeEditorCrossJoin": "교차 조인(데카르트 곱)",
   "nodeEditorNestedTableSelection": "중첩테이블선택",

@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "Tipo de adesão:",
   "nodeEditorInnerJoin": "Junção interna",
   "nodeEditorLeftJoin": "Juntar-se à esquerda",
+  "nodeEditorAntiJoin": "Apenas linhas de origem sem correspondência",
   "nodeEditorNestedJoin": "Aninhado (1 para muitos)",
   "nodeEditorCrossJoin": "Junção cruzada (produto cartesiano)",
   "nodeEditorNestedTableSelection": "NestedTableSelection",

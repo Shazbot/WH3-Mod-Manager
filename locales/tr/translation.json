@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "Birleştirme Türü:",
   "nodeEditorInnerJoin": "İç Birleştirme",
   "nodeEditorLeftJoin": "Sol Katıl",
+  "nodeEditorAntiJoin": "Yalnızca eşleşmeyen kaynak satırları",
   "nodeEditorNestedJoin": "İç içe (1'den çoğa)",
   "nodeEditorCrossJoin": "Çapraz Birleştirme (Kartezyen Ürün)",
   "nodeEditorNestedTableSelection": "NestedTableSelection",

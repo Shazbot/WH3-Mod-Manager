@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "Тип присоединения:",
   "nodeEditorInnerJoin": "Внутреннее соединение",
   "nodeEditorLeftJoin": "Левое присоединение",
+  "nodeEditorAntiJoin": "Только исходные строки без совпадений",
   "nodeEditorNestedJoin": "Вложенный (от 1 ко многим)",
   "nodeEditorCrossJoin": "Перекрестное соединение (декартово произведение)",
   "nodeEditorNestedTableSelection": "NestedTableSelection",

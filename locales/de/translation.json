@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "Beitrittstyp:",
   "nodeEditorInnerJoin": "Innere Verbindung",
   "nodeEditorLeftJoin": "Links beitreten",
+  "nodeEditorAntiJoin": "Nur Quellzeilen ohne Übereinstimmung",
   "nodeEditorNestedJoin": "Verschachtelt (1-zu-viele)",
   "nodeEditorCrossJoin": "Kreuzverbindung (kartesisches Produkt)",
   "nodeEditorNestedTableSelection": "NestedTableSelection",

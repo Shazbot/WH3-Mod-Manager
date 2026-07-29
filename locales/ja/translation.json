@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "結合タイプ:",
   "nodeEditorInnerJoin": "内部結合",
   "nodeEditorLeftJoin": "左結合",
+  "nodeEditorAntiJoin": "一致しないソース行のみ",
   "nodeEditorNestedJoin": "ネストされた (1 対多)",
   "nodeEditorCrossJoin": "クロス結合 (デカルト積)",
   "nodeEditorNestedTableSelection": "ネストされたテーブル選択",

@@ -45,4 +45,47 @@ describe("react flow node types", () => {
     expect(onUpdateNodeData).toHaveBeenCalled();
     expect(onUpdateNodeData).toHaveBeenLastCalledWith({ textValue: "abc" });
   });
+
+  it("offers a user-friendly unmatched-source lookup mode", () => {
+    const { getByText } = render(
+      <div style={{ width: 640, height: 500 }}>
+        <ReactFlowProvider>
+          <ReactFlow
+            fitView
+            edges={[]}
+            nodeTypes={reactFlowNodeTypes}
+            nodes={[
+              {
+                id: "lookup_1",
+                type: "lookup",
+                position: { x: 0, y: 0 },
+                data: {
+                  label: "Lookup",
+                  type: "lookup",
+                  lookupColumn: "key",
+                  indexJoinColumn: "agent_subtype",
+                  indexColumns: ["agent_subtype"],
+                  joinType: "anti",
+                  inputType: "TableSelection",
+                  indexedInputType: "TableSelection",
+                  outputType: "TableSelection",
+                  columnNames: [],
+                  sourceInputColumns: ["key"],
+                  indexedTableColumns: ["agent_subtype"],
+                  connectedTableName: "agent_subtypes_tables",
+                  indexedTableName: "unique_agents_tables",
+                  DBNameToDBVersions: {},
+                  inputCount: 2,
+                },
+              } as any,
+            ]}
+          />
+        </ReactFlowProvider>
+      </div>,
+    );
+
+    const antiJoinLabel = getByText("Only source rows without a match").closest("label");
+    expect(antiJoinLabel).not.toBeNull();
+    expect(antiJoinLabel?.querySelector("input")).toBeChecked();
+  });
 });
