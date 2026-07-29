@@ -147,4 +147,30 @@ describe("graphSerialization", () => {
     expect(deserializedGraph.nodes[0].data.filename).toBe("agent_subtypes.tsv");
     expect(executionGraph.nodes[0].data.filename).toBe("agent_subtypes.tsv");
   });
+
+  it("preserves the anti-join lookup mode for execution", () => {
+    const nodes = [
+      {
+        id: "node_0",
+        type: "lookup",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Lookup",
+          type: "lookup",
+          lookupColumn: "key",
+          indexColumns: ["agent_subtype"],
+          joinType: "anti",
+          inputType: "TableSelection",
+          outputType: "TableSelection",
+        },
+      },
+    ] as any[];
+
+    const executionGraph = prepareGraphForExecution({
+      nodes,
+      edges: [],
+    });
+
+    expect(executionGraph.nodes[0].data.joinType).toBe("anti");
+  });
 });

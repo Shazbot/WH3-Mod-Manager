@@ -175,7 +175,7 @@ export interface LookupNodeData extends NodeData {
   lookupColumn: string;
   indexJoinColumn?: string;
   indexColumns?: string[];
-  joinType: "inner" | "left" | "nested" | "cross";
+  joinType: "inner" | "left" | "anti" | "nested" | "cross";
   inputType: "TableSelection";
   indexedInputType: "IndexedTable" | "TableSelection";
   outputType: "TableSelection" | "NestedTableSelection";

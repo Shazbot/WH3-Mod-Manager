@@ -184,4 +184,45 @@ describe("lookup node", () => {
       "matched indexed",
     ]);
   });
+
+  it("returns only unprefixed source rows without matches for an anti join", async () => {
+    const source = createTableSelection(
+      "agent_subtypes_tables",
+      ["key", "source_value"],
+      [
+        ["missing", "unmatched source"],
+        ["match", "matched source"],
+      ],
+    );
+    const indexed = createTableSelection(
+      "unique_agents_tables",
+      ["agent_subtype", "indexed_value"],
+      [["match", "matched indexed"]],
+    );
+
+    const result = await executeNodeAction({
+      nodeId: "lookup_anti",
+      nodeType: "lookup",
+      textValue: "",
+      config: {
+        joinType: "anti",
+        lookupColumn: "key",
+        indexColumns: ["agent_subtype"],
+        indexJoinColumn: "agent_subtype",
+      },
+      inputData: [source, indexed],
+      executionContext: createFlowExecutionContext(),
+    });
+
+    expect(result.success).toBe(true);
+    const outputTable = result.data?.tables[0].table;
+    expect(outputTable.tableSchema.fields.map((field: { name: string }) => field.name)).toEqual([
+      "key",
+      "source_value",
+    ]);
+    expect(outputTable.schemaFields.map((field: { resolvedKeyValue: string }) => field.resolvedKeyValue)).toEqual([
+      "missing",
+      "unmatched source",
+    ]);
+  });
 });

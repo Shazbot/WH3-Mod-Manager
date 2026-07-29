@@ -555,6 +555,7 @@
   "nodeEditorJoinTypeLabel": "加盟类型：",
   "nodeEditorInnerJoin": "内连接",
   "nodeEditorLeftJoin": "左连接",
+  "nodeEditorAntiJoin": "仅保留不匹配的源行",
   "nodeEditorNestedJoin": "嵌套（一对多）",
   "nodeEditorCrossJoin": "交叉连接（笛卡尔积）",
   "nodeEditorNestedTableSelection": "嵌套表选择",

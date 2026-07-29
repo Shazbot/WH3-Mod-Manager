@@ -670,6 +670,7 @@
   "nodeEditorJoinTypeLabel": "Join Type:",
   "nodeEditorInnerJoin": "Inner Join",
   "nodeEditorLeftJoin": "Left Join",
+  "nodeEditorAntiJoin": "Only source rows without a match",
   "nodeEditorNestedJoin": "Nested (1-to-many)",
   "nodeEditorCrossJoin": "Cross Join (Cartesian Product)",
   "nodeEditorNestedTableSelection": "NestedTableSelection",

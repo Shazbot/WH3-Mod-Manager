@@ -69,7 +69,7 @@ export interface SerializedNode {
     flowExecutionId?: string;
     indexColumns?: string[];
     lookupColumn?: string;
-    joinType?: "inner" | "left" | "nested" | "cross";
+    joinType?: "inner" | "left" | "anti" | "nested" | "cross";
     tablePrefix?: string;
     tablePrefixes?: string[];
     aggregateColumn?: string;

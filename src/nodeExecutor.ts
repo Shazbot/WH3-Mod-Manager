@@ -3403,7 +3403,7 @@ async function executeLookupNode(
   // Parse configuration
   const parsed = getNodeConfig<{
     lookupColumn?: string;
-    joinType?: "inner" | "left" | "nested" | "cross";
+    joinType?: "inner" | "left" | "anti" | "nested" | "cross";
     indexColumns?: string[];
     indexJoinColumn?: string;
   }>(config, textValue);
@@ -3712,15 +3712,18 @@ async function executeLookupNode(
     const joinedRows: AmendedSchemaField[][] = [];
     const sourceSchemaFields: DBField[] = sourceTable.table.tableSchema?.fields || [];
     const indexedSchemaFields: DBField[] = indexedData.sourceTable.table.tableSchema?.fields || [];
-    const emptyIndexedRowTemplate: AmendedSchemaField[] = await Promise.all(
-      indexedSchemaFields.map(async (field) => ({
-        name: `${lookupTableName}_${field.name}`,
-        type: field.field_type,
-        fields: [{ type: "Buffer" as const, val: await typeToBuffer(field.field_type, "") }],
-        resolvedKeyValue: "",
-        isKey: field.is_key,
-      })),
-    );
+    const emptyIndexedRowTemplate: AmendedSchemaField[] =
+      joinType === "left"
+        ? await Promise.all(
+            indexedSchemaFields.map(async (field) => ({
+              name: `${lookupTableName}_${field.name}`,
+              type: field.field_type,
+              fields: [{ type: "Buffer" as const, val: await typeToBuffer(field.field_type, "") }],
+              resolvedKeyValue: "",
+              isKey: field.is_key,
+            })),
+          )
+        : [];
 
     for (const { row: sourceRow, lookupColumnIndex } of sourceRowsWithLookupIndex) {
       const lookupCell = sourceRow[lookupColumnIndex];
@@ -3745,9 +3748,11 @@ async function executeLookupNode(
             fields: cell.fields.map((field) => ({ ...field })),
           }));
           joinedRows.push([...prefixedSourceRow, ...emptyIndexedRow]);
+        } else if (joinType === "anti") {
+          joinedRows.push(sourceRow.map((cell) => ({ ...cell })));
         }
         // Inner join: skip row
-      } else {
+      } else if (joinType !== "anti") {
         // Match found: create joined rows
         for (const lookupRow of lookupMatches) {
           const prefixedSourceRow = sourceRow.map((cell) => ({
@@ -3767,20 +3772,23 @@ async function executeLookupNode(
 
     // Build the joined schema from both input schemas so it does not depend on
     // whether the first output row matched.
-    const schemaFields: DBField[] = [
-      ...sourceSchemaFields.map((field) => ({
-        ...field,
-        name: `${sourceTableName}_${field.name}`,
-        description: `Source column from ${joinType} join`,
-        ca_order: -1,
-      })),
-      ...indexedSchemaFields.map((field) => ({
-        ...field,
-        name: `${lookupTableName}_${field.name}`,
-        description: `Indexed column from ${joinType} join`,
-        ca_order: -1,
-      })),
-    ];
+    const schemaFields: DBField[] =
+      joinType === "anti"
+        ? sourceSchemaFields.map((field) => ({ ...field }))
+        : [
+            ...sourceSchemaFields.map((field) => ({
+              ...field,
+              name: `${sourceTableName}_${field.name}`,
+              description: `Source column from ${joinType} join`,
+              ca_order: -1,
+            })),
+            ...indexedSchemaFields.map((field) => ({
+              ...field,
+              name: `${lookupTableName}_${field.name}`,
+              description: `Indexed column from ${joinType} join`,
+              ca_order: -1,
+            })),
+          ];
 
     const schemaVersion = sourceTable.table.tableSchema?.version ?? 1;
     const tableVersion = sourceTable.table.version;
@@ -3794,13 +3802,17 @@ async function executeLookupNode(
       `Lookup Node ${nodeId}: Creating joined table with schema version=${schemaVersion}, table version=${tableVersion}`,
     );
 
+    const outputTableName =
+      joinType === "anti"
+        ? `${sourceTableName}_unmatched_${lookupTableName}`
+        : `${sourceTableName}_joined_${lookupTableName}`;
     const joinedTable: DBTablesNodeTable = {
-      name: `${sourceTableName}_joined_${lookupTableName}`,
-      fileName: `${sourceTableName}_joined_${lookupTableName}`,
+      name: outputTableName,
+      fileName: outputTableName,
       sourceFile: sourceTable.sourceFile,
       table: {
         ...sourceTable.table,
-        name: `db\\${sourceTableName}_joined_${lookupTableName}`,
+        name: `db\\${outputTableName}`,
         schemaFields: joinedRows.flat(),
         tableSchema: {
           version: schemaVersion,

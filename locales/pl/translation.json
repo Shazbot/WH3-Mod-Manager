@@ -633,6 +633,7 @@
   "nodeEditorJoinTypeLabel": "Typ dołączenia:",
   "nodeEditorInnerJoin": "Połączenie wewnętrzne",
   "nodeEditorLeftJoin": "Lewe dołączenie",
+  "nodeEditorAntiJoin": "Tylko wiersze źródłowe bez dopasowania",
   "nodeEditorNestedJoin": "Zagnieżdżone (1-do-wielu)",
   "nodeEditorCrossJoin": "Połączenie krzyżowe (produkt kartezjański)",
   "nodeEditorNestedTableSelection": "Wybór zagnieżdżonej tabeli",

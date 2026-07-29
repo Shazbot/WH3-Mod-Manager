@@ -639,6 +639,7 @@
   "nodeEditorJoinTypeLabel": "Type de jointure :",
   "nodeEditorInnerJoin": "Jointure interne",
   "nodeEditorLeftJoin": "Rejoindre à gauche",
+  "nodeEditorAntiJoin": "Uniquement les lignes sources sans correspondance",
   "nodeEditorNestedJoin": "Imbriqué (1 à plusieurs)",
   "nodeEditorCrossJoin": "Jointure croisée (produit cartésien)",
   "nodeEditorNestedTableSelection": "Sélection de table imbriquée",

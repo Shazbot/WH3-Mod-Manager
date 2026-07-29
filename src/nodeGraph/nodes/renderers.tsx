@@ -2292,7 +2292,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
   const defaultTableVersions = useDefaultTableVersions();
   const [lookupColumn, setLookupColumn] = useState(data.lookupColumn || "");
   const [indexJoinColumn, setIndexJoinColumn] = useState(data.indexJoinColumn || data.indexColumns?.[0] || "");
-  const [joinType, setJoinType] = useState<"inner" | "left" | "nested" | "cross">(data.joinType || "inner");
+  const [joinType, setJoinType] = useState<LookupNodeData["joinType"]>(data.joinType || "inner");
   const [columnNames, setColumnNames] = useState<string[]>(
     data.columnNames ? Array.from(new Set(data.columnNames)) : [],
   );
@@ -2459,13 +2459,13 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
   React.useEffect(() => {
     let newColumns: string[] = [];
 
-    if (joinType === "nested") {
-      // For nested joins, output columns are just source columns (lookup is nested)
+    if (joinType === "nested" || joinType === "anti") {
+      // Nested and anti joins output only source columns.
       if (sourceColumnNames.length > 0) {
         newColumns = sourceColumnNames;
       }
     } else {
-      // For inner/left/cross joins, output is prefixed source + prefixed indexed columns
+      // For inner/left/cross joins, output is prefixed source + prefixed indexed columns.
       if (sourceColumnNames.length > 0 && indexedColumnNames.length > 0) {
         const sourceTableName = data.connectedTableName || "source";
         const indexedTableName = data.indexedTableName || data.connectedIndexTableName || "indexed";
@@ -2617,7 +2617,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
     dispatchNodeDataUpdate(data, updateEvent.detail);
   };
 
-  const handleJoinTypeChange = (newType: "inner" | "left" | "nested" | "cross") => {
+  const handleJoinTypeChange = (newType: LookupNodeData["joinType"]) => {
     setJoinType(newType);
     const newOutputType = newType === "nested" ? "NestedTableSelection" : "TableSelection";
     const updateEvent = {
@@ -2748,6 +2748,17 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
               className="w-3 h-3"
             />
             <span className="text-xs text-white">{localized.nodeEditorLeftJoin || "Left Join"}</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              checked={joinType === "anti"}
+              onChange={() => handleJoinTypeChange("anti")}
+              className="w-3 h-3"
+            />
+            <span className="text-xs text-white">
+              {localized.nodeEditorAntiJoin || "Only source rows without a match"}
+            </span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
