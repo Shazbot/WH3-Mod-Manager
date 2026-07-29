@@ -6,6 +6,7 @@ import { useLocalizations } from "../../localizationContext";
 import { SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { SupportedGames } from "../../supportedGames";
 import { getTableVersion } from "../connectionRules";
+import { validateLookupSchemaReference } from "../lookupSchemaValidation";
 import {
   dispatchNodeDataUpdate,
   nodeEditorDebugLog,
@@ -2540,29 +2541,24 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
       return;
     }
 
-    // Check if the lookup column has a reference to the indexed table
-    // is_reference format: [table1, column1, table2, column2, ...]
-    if (lookupField.is_reference && lookupField.is_reference.length > 0) {
-      // Parse the reference pairs
-      let hasValidReference = false;
-      let hasTableReference = false;
-      const referencedColumns: string[] = [];
+    const indexedTableVersions = data.DBNameToDBVersions[indexedTableName];
+    const indexedVersion =
+      indexedTableVersions && indexedTableVersions.length > 0
+        ? getTableVersion(indexedTableName, indexedTableVersions, defaultTableVersions) ?? indexedTableVersions[0]
+        : undefined;
+    const indexedField = indexedVersion?.fields?.find((field) => field.name === indexJoinColumn);
+    const referenceValidation = validateLookupSchemaReference({
+      lookupField,
+      indexedField,
+      sourceTableName: data.connectedTableName,
+      lookupColumn,
+      indexedTableName,
+      indexJoinColumn,
+    });
 
-      for (let i = 0; i < lookupField.is_reference.length; i += 2) {
-        const refTable = lookupField.is_reference[i];
-        const refColumn = lookupField.is_reference[i + 1];
-
-        if (refTable === indexedTableName) {
-          hasTableReference = true;
-          referencedColumns.push(refColumn);
-          if (refColumn === indexJoinColumn) {
-            hasValidReference = true;
-          }
-        }
-      }
-
-      if (!hasValidReference) {
-        if (hasTableReference) {
+    if (!referenceValidation.hasValidReference) {
+      if (referenceValidation.lookupHasReferences) {
+        if (referenceValidation.lookupReferencesIndexedTable) {
           const template =
             localized.nodeEditorWarningColumnReferencesTableButNotColumn ||
             'Warning: Column "{{lookupColumn}}" references table "{{indexedTableName}}", but not column "{{indexJoinColumn}}". Expected reference columns: {{referencedColumns}}';
@@ -2571,7 +2567,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
               .replace("{{lookupColumn}}", lookupColumn)
               .replace("{{indexedTableName}}", indexedTableName)
               .replace("{{indexJoinColumn}}", indexJoinColumn)
-              .replace("{{referencedColumns}}", referencedColumns.join(", ")),
+              .replace("{{referencedColumns}}", referenceValidation.lookupReferencedColumns.join(", ")),
           );
         } else {
           const template =
@@ -2584,13 +2580,13 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
           );
         }
       } else {
-        setSchemaWarning(""); // Valid reference found
+        const template =
+          localized.nodeEditorWarningColumnDoesNotHaveAnySchemaReferences ||
+          'Warning: Column "{{lookupColumn}}" does not have any schema references. This join may produce unexpected results.';
+        setSchemaWarning(template.replace("{{lookupColumn}}", lookupColumn));
       }
     } else {
-      const template =
-        localized.nodeEditorWarningColumnDoesNotHaveAnySchemaReferences ||
-        'Warning: Column "{{lookupColumn}}" does not have any schema references. This join may produce unexpected results.';
-      setSchemaWarning(template.replace("{{lookupColumn}}", lookupColumn));
+      setSchemaWarning("");
     }
   }, [
     lookupColumn,
@@ -2599,6 +2595,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
     data.indexedTableName,
     data.connectedIndexTableName,
     data.DBNameToDBVersions,
+    defaultTableVersions,
     localized,
   ]);
 
