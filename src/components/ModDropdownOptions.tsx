@@ -29,6 +29,7 @@ import RenameModal from "./RenameModal";
 
 import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
+import { isWorkshopMod } from "../modSources";
 
 type ModDropdownOptionsProps = {
   mod?: Mod;
@@ -61,9 +62,9 @@ const deletePack = (mod: Mod) => {
   window.api?.deletePack(mod);
 };
 const unsubscribe = (mod: Mod, allMods: Mod[]) => {
-  const modInContent = mod.isInData
-    ? allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData)
-    : mod;
+  const modInContent = isWorkshopMod(mod)
+    ? mod
+    : allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
   if (!modInContent) return;
   window.api?.unsubscribeToMod(modInContent);
 };
@@ -84,8 +85,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const onGoToWorkshopPageClick = useCallback(
     (mod: Mod) => {
       let workshopId = mod.workshopId;
-      if (mod.isInData) {
-        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      if (!isWorkshopMod(mod)) {
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
         if (!contentMod) return;
         workshopId = contentMod.workshopId;
       }
@@ -97,8 +98,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const onOpenInSteam = useCallback(
     (mod: Mod) => {
       let workshopId = mod.workshopId;
-      if (mod.isInData) {
-        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      if (!isWorkshopMod(mod)) {
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
         if (!contentMod) return;
         workshopId = contentMod.workshopId;
       }
@@ -109,7 +110,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
 
   const updateMod = useCallback(
     (mod: Mod) => {
-      const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+      const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
       if (contentMod == null) return;
 
       window.api?.updateMod(mod, contentMod);
@@ -126,7 +127,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const fakeUpdatePack = useCallback(
     (mod: Mod) => {
       if (!isDev) {
-        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && !iterMod.isInData);
+        const contentMod = allMods.find((iterMod) => iterMod.name == mod.name && isWorkshopMod(iterMod));
         if (contentMod == null) return;
       }
 
@@ -137,8 +138,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const forceModDownload = useCallback(
     (mod: Mod) => {
       let modToDownload: Mod | undefined = mod;
-      if (mod.isInData)
-        modToDownload = allMods.find((iterMod) => !iterMod.isInData && iterMod.name == mod.name);
+      if (!isWorkshopMod(mod))
+        modToDownload = allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == mod.name);
       if (!modToDownload) return;
 
       window.api?.forceModDownload(modToDownload);
@@ -293,8 +294,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
               </li>
             )}
             {props.mod &&
-              (!props.mod?.isInData ||
-                allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData)) && (
+              (isWorkshopMod(props.mod) ||
+                allMods.some((iterMod) => iterMod.name == props.mod?.name && isWorkshopMod(iterMod))) && (
                 <>
                   <li>
                     <a
@@ -481,7 +482,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </li>
               )} */}
             {props.mod?.isInData &&
-              (allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) || isDev) && (
+              (allMods.some((iterMod) => iterMod.name == props.mod?.name && isWorkshopMod(iterMod)) || isDev) && (
                 <>
                   <li>
                     <a
@@ -545,8 +546,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </Tooltip>
               </a>
             </li>
-            {(!props.mod?.isInData ||
-              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name)) && (
+            {(!!props.mod && isWorkshopMod(props.mod) ||
+              allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == props.mod?.name)) && (
               <li>
                 <a
                   onClick={() => {
@@ -568,8 +569,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </a>
               </li>
             )}
-            {(!props.mod?.isInData ||
-              allMods.find((iterMod) => !iterMod.isInData && iterMod.name == props.mod?.name)) && (
+            {(!!props.mod && isWorkshopMod(props.mod) ||
+              allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == props.mod?.name)) && (
               <li>
                 <a
                   onClick={() => {

@@ -920,5 +920,15 @@
   "saveOnlyChanges": "仅保存更改",
   "JSON": "JSON",
   "level": "等级",
-  "techTreesTab": "科技树"
+  "techTreesTab": "科技树",
+  "modFolders": "Mod Folders",
+  "modFoldersHelp": "Add folders containing pack files and order them from highest to lowest priority.",
+  "dataFolder": "Data",
+  "workshop": "Workshop",
+  "addModFolder": "Add Folder",
+  "copyModsToFolder": "Copy Mods to New Folder",
+  "copyModsToFolderHelp": "Copies enabled mods; hold Shift to copy all mods.",
+  "overwriteMods": "Overwrite existing mods?",
+  "customFolderCopyConflicts": "The destination already contains {{count}} matching pack(s).",
+  "overwrite": "Overwrite"
 }

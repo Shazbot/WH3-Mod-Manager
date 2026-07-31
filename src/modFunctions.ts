@@ -11,6 +11,7 @@ import * as fsExtra from "fs-extra";
 import * as os from "os";
 import { gameToGameFolder, gameToManifest, gameToSteamId, SupportedGames } from "./supportedGames";
 import { decodeHTML } from "entities";
+import { DATA_MOD_SOURCE_ID, WORKSHOP_MOD_SOURCE_ID } from "./modSources";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
@@ -346,6 +347,8 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
     mergedModsData,
     isSymbolicLink,
     tags: ["mod"],
+    sourceId: DATA_MOD_SOURCE_ID,
+    sourceKind: "data",
   };
   return mod;
 }
@@ -580,9 +583,110 @@ export async function getContentModInFolder(
     size,
     isSymbolicLink,
     tags: ["mod"],
+    sourceId: WORKSHOP_MOD_SOURCE_ID,
+    sourceKind: "workshop",
   };
   return mod;
 }
+
+export async function getCustomMod(filePath: string, sourceId: string, log: (msg: string) => void): Promise<Mod> {
+  const fileName = nodePath.basename(filePath);
+  const modDirectory = nodePath.dirname(filePath);
+  let lastChangedLocal: number | undefined;
+  let size = -1;
+  let isSymbolicLink = false;
+  try {
+    const stats = await dumbfs.promises.lstat(filePath);
+    lastChangedLocal = stats.mtimeMs;
+    size = stats.size;
+    isSymbolicLink = stats.isSymbolicLink();
+  } catch (error) {
+    log(`ERROR: ${error}`);
+  }
+
+  const thumbnailBasePath = nodePath.join(modDirectory, fileName.replace(/\.pack$/i, ""));
+  const thumbnailCandidates = [`${thumbnailBasePath}.png`, `${thumbnailBasePath}.jpg`];
+  let imgPath = thumbnailCandidates.find((candidate) => fsExtra.existsSync(candidate)) || "";
+  if (!imgPath) {
+    try {
+      const siblingFiles = await dumbfs.promises.readdir(modDirectory);
+      const fallbackImage = siblingFiles.find((name) => /\.(png|jpg)$/i.test(name));
+      if (fallbackImage) imgPath = nodePath.join(modDirectory, fallbackImage);
+    } catch {
+      // A missing thumbnail is valid.
+    }
+  }
+
+  let mergedModsData = null;
+  try {
+    mergedModsData = await fsExtra.readJSON(filePath.replace(/\.pack$/i, ".json"));
+  } catch {
+    // Companion merge metadata is optional.
+  }
+
+  return {
+    humanName: "",
+    name: fileName,
+    path: filePath,
+    modDirectory,
+    imgPath,
+    workshopId: fileName,
+    isEnabled: false,
+    isInData: false,
+    isInModding: false,
+    loadOrder: undefined,
+    lastChangedLocal,
+    author: "",
+    isDeleted: false,
+    isMovie: false,
+    size,
+    mergedModsData,
+    isSymbolicLink,
+    tags: ["mod"],
+    sourceId,
+    sourceKind: "custom",
+  };
+}
+
+const getCustomModPaths = async (folderPath: string): Promise<string[]> => {
+  if (!fsExtra.existsSync(folderPath)) return [];
+  const rootEntries = await dumbfs.promises.readdir(folderPath, { withFileTypes: true });
+  const packPaths = rootEntries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".pack"))
+    .map((entry) => nodePath.join(folderPath, entry.name));
+
+  const childDirectories = rootEntries.filter(
+    (entry) => entry.isDirectory() && entry.name !== "whmm_backups",
+  );
+  const childPackPaths = await Promise.all(
+    childDirectories.map(async (entry) => {
+      const childPath = nodePath.join(folderPath, entry.name);
+      try {
+        const childEntries = await dumbfs.promises.readdir(childPath, { withFileTypes: true });
+        return childEntries
+          .filter((childEntry) => childEntry.isFile() && childEntry.name.endsWith(".pack"))
+          .map((childEntry) => nodePath.join(childPath, childEntry.name));
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  return [...packPaths, ...childPackPaths.flat()];
+};
+
+export const getCustomMods = async (
+  folder: CustomModFolder,
+  log: (msg: string) => void,
+): Promise<Mod[]> => {
+  const modPaths = await getCustomModPaths(folder.path);
+  const settledMods = await Promise.allSettled(
+    modPaths.map((modPath) => getCustomMod(modPath, folder.id, log)),
+  );
+  return (settledMods.filter((result) => result.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map(
+    (result) => result.value,
+  );
+};
 
 export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
   const mods: Mod[] = [];
@@ -634,6 +738,10 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
         mods.push(mod);
       }
     });
+  }
+
+  for (const customFolder of appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || []) {
+    mods.push(...(await getCustomMods(customFolder, log)));
   }
 
   // if a mod in data is missing a thumbnail, use the content mod's thumbnail

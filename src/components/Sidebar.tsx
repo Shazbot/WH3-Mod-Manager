@@ -23,6 +23,7 @@ import RequiredMods from "./RequiredMods";
 import localizationContext from "../localizationContext";
 import Help from "./Help";
 import { gameToPackWithDBTablesName } from "../supportedGames";
+import { isWorkshopMod } from "../modSources";
 
 type OptionType = {
   value: string;
@@ -447,7 +448,7 @@ const Sidebar = memo(() => {
   const timeCheckedOverwrittenDataPackedFiles: typeof overwrittenDataPackedFiles = {};
   if (dataModLastChangedLocal) {
     for (const [packName, data] of Object.entries(overwrittenDataPackedFiles)) {
-      const mod = enabledMods.find((iterMod) => !iterMod.isInData && iterMod.name == packName);
+      const mod = enabledMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == packName);
       if (mod && mod.lastChanged && mod.lastChanged < dataModLastChangedLocal) {
         timeCheckedOverwrittenDataPackedFiles[packName] = data;
       }

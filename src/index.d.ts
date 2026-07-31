@@ -42,6 +42,15 @@ declare global {
     categories?: string[];
     tags: string[];
     isInModding?: boolean;
+    sourceId?: string;
+    sourceKind?: ModSourceKind;
+  }
+
+  type ModSourceKind = "data" | "workshop" | "custom";
+
+  interface CustomModFolder {
+    id: string;
+    path: string;
   }
 
   interface ModData {
