@@ -516,6 +516,17 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("copyModsToNewCustomFolder", data),
 
+  syncWorkshopModsToCustomFolder: (data: {
+    customSourceId: string;
+    enabledWorkshopModNames: string[];
+  }): Promise<{
+    success: boolean;
+    updated?: string[];
+    added?: string[];
+    failed?: Array<{ path: string; error: string }>;
+    error?: string;
+  }> => ipcRenderer.invoke("syncWorkshopModsToCustomFolder", data),
+
   createNewPack: (
     packName: string,
     packDirectory: string,

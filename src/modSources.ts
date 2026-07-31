@@ -15,6 +15,61 @@ export const getModSourceKind = (mod: Mod): ModSourceKind => {
 
 export const isWorkshopMod = (mod: Mod): boolean => getModSourceKind(mod) === "workshop";
 
+export interface WorkshopModSyncItem {
+  workshopMod: Mod;
+  customMod?: Mod;
+}
+
+export const getWorkshopModSyncItems = (
+  mods: Mod[],
+  customSourceId: string,
+  enabledWorkshopModNames: string[],
+): WorkshopModSyncItem[] => {
+  const enabledNames = new Set(enabledWorkshopModNames);
+  const workshopModsByName = new Map<string, Mod>();
+  const customModsByName = new Map<string, Mod[]>();
+
+  for (const mod of mods) {
+    if (isWorkshopMod(mod)) {
+      const existingWorkshopMod = workshopModsByName.get(mod.name);
+      if (
+        !existingWorkshopMod ||
+        (mod.lastChangedLocal ?? Number.NEGATIVE_INFINITY) >
+          (existingWorkshopMod.lastChangedLocal ?? Number.NEGATIVE_INFINITY)
+      ) {
+        workshopModsByName.set(mod.name, mod);
+      }
+    } else if (getModSourceId(mod) === customSourceId) {
+      const matchingCustomMods = customModsByName.get(mod.name) || [];
+      matchingCustomMods.push(mod);
+      customModsByName.set(mod.name, matchingCustomMods);
+    }
+  }
+
+  const syncItems: WorkshopModSyncItem[] = [];
+  for (const workshopMod of workshopModsByName.values()) {
+    const matchingCustomMods = customModsByName.get(workshopMod.name) || [];
+    if (matchingCustomMods.length === 0) {
+      if (enabledNames.has(workshopMod.name)) syncItems.push({ workshopMod });
+      continue;
+    }
+
+    for (const customMod of matchingCustomMods) {
+      const workshopChangedAt = workshopMod.lastChangedLocal;
+      const customChangedAt = customMod.lastChangedLocal;
+      if (
+        workshopChangedAt === undefined ||
+        customChangedAt === undefined ||
+        workshopChangedAt > customChangedAt
+      ) {
+        syncItems.push({ workshopMod, customMod });
+      }
+    }
+  }
+
+  return syncItems;
+};
+
 export const normalizeModSourceOrder = (
   folderPaths: Pick<GameFolderPaths, "customModFolders" | "modSourceOrder">,
   canReorderBuiltInSources: boolean,

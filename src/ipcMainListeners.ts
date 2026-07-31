@@ -41,6 +41,7 @@ import {
 } from "./modFunctions";
 import {
   DATA_MOD_SOURCE_ID,
+  getWorkshopModSyncItems,
   insertCustomSourceFirst,
   isWorkshopMod,
   normalizeModSourceOrder,
@@ -4734,6 +4735,73 @@ export const registerIpcMainListeners = (
       mainWindow?.webContents.send("setAppFolderPaths", folderPaths);
       await getAllMods();
       return { success: true, copied, failed, folderPaths };
+    },
+  );
+  ipcMain.handle(
+    "syncWorkshopModsToCustomFolder",
+    async (
+      event,
+      data: { customSourceId: string; enabledWorkshopModNames: string[] },
+    ) => {
+      const folderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const customFolder = (folderPaths.customModFolders || []).find(
+        (folder) => folder.id === data.customSourceId,
+      );
+      if (!customFolder) return { success: false, error: "Custom mod folder not found." };
+      try {
+        if (!fs.statSync(customFolder.path).isDirectory()) {
+          return { success: false, error: "Custom mod folder is not a directory." };
+        }
+      } catch {
+        return { success: false, error: "Custom mod folder does not exist." };
+      }
+
+      const knownMods = await getMods(log);
+      const syncItems = getWorkshopModSyncItems(
+        knownMods,
+        customFolder.id,
+        data.enabledWorkshopModNames,
+      );
+      const updated: string[] = [];
+      const added: string[] = [];
+      const failed: Array<{ path: string; error: string }> = [];
+
+      for (const { workshopMod, customMod } of syncItems) {
+        const destinationPackPath = customMod?.path || nodePath.join(customFolder.path, workshopMod.name);
+        try {
+          await fs.promises.copyFile(workshopMod.path, destinationPackPath);
+          (customMod ? updated : added).push(workshopMod.name);
+
+          if (workshopMod.imgPath && fsExtra.existsSync(workshopMod.imgPath)) {
+            const thumbnailExtension = nodePath.extname(workshopMod.imgPath).toLowerCase();
+            if (thumbnailExtension === ".png" || thumbnailExtension === ".jpg") {
+              const thumbnailName = `${nodePath.basename(
+                destinationPackPath,
+                nodePath.extname(destinationPackPath),
+              )}${thumbnailExtension}`;
+              try {
+                await fs.promises.copyFile(
+                  workshopMod.imgPath,
+                  nodePath.join(nodePath.dirname(destinationPackPath), thumbnailName),
+                );
+              } catch (error) {
+                failed.push({
+                  path: workshopMod.imgPath,
+                  error: error instanceof Error ? error.message : "Unknown thumbnail copy error",
+                });
+              }
+            }
+          }
+        } catch (error) {
+          failed.push({
+            path: workshopMod.path,
+            error: error instanceof Error ? error.message : "Unknown copy error",
+          });
+        }
+      }
+
+      if (updated.length > 0 || added.length > 0) await getAllMods();
+      return { success: true, updated, added, failed };
     },
   );
   ipcMain.on("copyToDataAsSymbolicLink", async (event, modPathsToCopy?: string[]) => {

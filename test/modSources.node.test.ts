@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DATA_MOD_SOURCE_ID,
+  getWorkshopModSyncItems,
   insertCustomSourceAfterData,
   normalizeModSourceOrder,
   resolveModsBySourcePriority,
@@ -102,5 +103,52 @@ describe("mod source priority", () => {
     });
 
     expect(resolveModsBySourcePriority([dataMod, moddingMod], {}, false)).toEqual([moddingMod]);
+  });
+
+  it("syncs newer Workshop copies already in a custom folder", () => {
+    const workshopMod = createMod({
+      path: "/workshop/123/example.pack",
+      sourceId: WORKSHOP_MOD_SOURCE_ID,
+      sourceKind: "workshop",
+      lastChangedLocal: 200,
+    });
+    const customMod = createMod({
+      path: "/custom/nested/example.pack",
+      sourceId: "custom-1",
+      sourceKind: "custom",
+      lastChangedLocal: 100,
+    });
+
+    expect(getWorkshopModSyncItems([customMod, workshopMod], "custom-1", [])).toEqual([
+      { workshopMod, customMod },
+    ]);
+  });
+
+  it("does not overwrite an up-to-date or newer custom copy", () => {
+    const workshopMod = createMod({
+      sourceId: WORKSHOP_MOD_SOURCE_ID,
+      sourceKind: "workshop",
+      lastChangedLocal: 100,
+    });
+    const customMod = createMod({
+      sourceId: "custom-1",
+      sourceKind: "custom",
+      lastChangedLocal: 200,
+    });
+
+    expect(getWorkshopModSyncItems([workshopMod, customMod], "custom-1", [])).toEqual([]);
+  });
+
+  it("adds newly enabled Workshop mods that are absent from the custom folder", () => {
+    const workshopMod = createMod({
+      name: "new.pack",
+      sourceId: WORKSHOP_MOD_SOURCE_ID,
+      sourceKind: "workshop",
+    });
+
+    expect(getWorkshopModSyncItems([workshopMod], "custom-1", ["new.pack"])).toEqual([
+      { workshopMod },
+    ]);
+    expect(getWorkshopModSyncItems([workshopMod], "custom-1", [])).toEqual([]);
   });
 });
