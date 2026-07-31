@@ -7291,6 +7291,9 @@ export const registerIpcMainListeners = (
   ipcMain.on("openFolderInExplorer", (event, path: string) => {
     shell.showItemInFolder(path);
   });
+  ipcMain.on("openDirectoryInExplorer", (event, path: string) => {
+    void shell.openPath(path);
+  });
   const openInSteam = (url: string) => {
     exec(`start steam://openurl/${url}`);
   };

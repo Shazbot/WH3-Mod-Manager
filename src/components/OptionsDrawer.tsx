@@ -628,28 +628,43 @@ const OptionsDrawer = memo(() => {
                             <span className="ml-2 text-xs text-red-400">{localized.missing || "Missing"}</span>
                           )}
                         </div>
-                        <div className="truncate text-xs text-gray-500" title={sourcePath || ""}>
-                          {sourcePath || "—"}
-                        </div>
+                        {sourcePath && !isMissing ? (
+                          <button
+                            type="button"
+                            className="block w-full truncate text-left text-xs text-gray-500 hover:text-gray-300 hover:underline focus:text-gray-300 focus:underline focus:outline-none"
+                            title={sourcePath}
+                            onClick={() => window.api?.openDirectoryInExplorer(sourcePath)}
+                          >
+                            {sourcePath}
+                          </button>
+                        ) : (
+                          <div className="truncate text-xs text-gray-500" title={sourcePath || ""}>
+                            {sourcePath || "—"}
+                          </div>
+                        )}
                       </div>
-                      <button
-                        type="button"
-                        aria-label={`Move ${label} up`}
-                        disabled={!canMoveSource || index === 0}
-                        onClick={() => moveModSource(sourceId, -1)}
-                        className="px-2 py-1 text-gray-300 disabled:opacity-30"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${label} down`}
-                        disabled={!canMoveSource || index === modSourceOrder.length - 1}
-                        onClick={() => moveModSource(sourceId, 1)}
-                        className="px-2 py-1 text-gray-300 disabled:opacity-30"
-                      >
-                        ↓
-                      </button>
+                      {canMoveSource && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label={`Move ${label} up`}
+                            disabled={index === 0}
+                            onClick={() => moveModSource(sourceId, -1)}
+                            className="px-2 py-1 text-gray-300 disabled:opacity-30"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Move ${label} down`}
+                            disabled={index === modSourceOrder.length - 1}
+                            onClick={() => moveModSource(sourceId, 1)}
+                            className="px-2 py-1 text-gray-300 disabled:opacity-30"
+                          >
+                            ↓
+                          </button>
+                        </>
+                      )}
                       {customFolder && (
                         <button
                           type="button"
