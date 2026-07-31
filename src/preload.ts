@@ -491,6 +491,30 @@ const api = {
 
   selectDirectory: (): Promise<string | undefined> => ipcRenderer.invoke("selectDirectory"),
 
+  updateCustomModSources: (data: {
+    game: SupportedGames;
+    customModFolders: CustomModFolder[];
+    modSourceOrder: string[];
+  }): Promise<{ success: boolean; folderPaths?: GameFolderPaths; error?: string }> =>
+    ipcRenderer.invoke("updateCustomModSources", data),
+
+  getCustomModFolderStatuses: (folderPaths: string[]): Promise<Record<string, boolean>> =>
+    ipcRenderer.invoke("getCustomModFolderStatuses", folderPaths),
+
+  copyModsToNewCustomFolder: (data: {
+    destinationPath: string;
+    modPaths: string[];
+    overwrite: boolean;
+  }): Promise<{
+    success: boolean;
+    copied?: string[];
+    failed?: Array<{ path: string; error: string }>;
+    conflicts?: string[];
+    requiresConfirmation?: boolean;
+    folderPaths?: GameFolderPaths;
+    error?: string;
+  }> => ipcRenderer.invoke("copyModsToNewCustomFolder", data),
+
   createNewPack: (
     packName: string,
     packDirectory: string,

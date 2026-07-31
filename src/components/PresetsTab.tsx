@@ -17,6 +17,7 @@ import localizationContext from "../localizationContext";
 import { getModsSortedByHumanNameAndName, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { isModAlwaysEnabled, withoutDataAndContentDuplicates } from "../modsHelpers";
 import { SortingType } from "../utility/modRowSorting";
+import { resolveModsBySourcePriority } from "../modSources";
 
 type PresetOption = {
   value: string;
@@ -77,6 +78,8 @@ const PresetsTab = memo(() => {
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
   const categories = useAppSelector((state) => state.app.categories);
+  const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
+  const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
 
   const [selectedPresetName, setSelectedPresetName] = useState<string | undefined>(undefined);
   const [pendingPresetName, setPendingPresetName] = useState<string | undefined>(undefined);
@@ -136,16 +139,15 @@ const PresetsTab = memo(() => {
   );
 
   const bestModByName = useMemo(() => {
-    const modsByName = new Map<string, Mod>();
+    const modsByName = new Map(
+      resolveModsBySourcePriority(allMods, appFolderPaths, isFeaturesForModdersEnabled).map((mod) => [
+        mod.name,
+        { ...mod, reqModIdToName: [...(mod.reqModIdToName ?? [])] },
+      ]),
+    );
     for (const mod of allMods) {
       const existingMod = modsByName.get(mod.name);
-      if (!existingMod) {
-        modsByName.set(mod.name, { ...mod, reqModIdToName: [...(mod.reqModIdToName ?? [])] });
-        continue;
-      }
-
-      // Keep the same data-vs-content preference as the main mod lists, but preserve dependency metadata from both.
-      const preferredMod = existingMod.isInData || !mod.isInData ? existingMod : mod;
+      if (!existingMod) continue;
       const mergedReqsById = new Map<string, [string, string]>();
       (existingMod.reqModIdToName ?? []).forEach(([reqId, reqName]) =>
         mergedReqsById.set(reqId, [reqId, reqName]),
@@ -153,12 +155,12 @@ const PresetsTab = memo(() => {
       (mod.reqModIdToName ?? []).forEach(([reqId, reqName]) => mergedReqsById.set(reqId, [reqId, reqName]));
 
       modsByName.set(mod.name, {
-        ...preferredMod,
+        ...existingMod,
         reqModIdToName: [...mergedReqsById.values()],
       });
     }
     return modsByName;
-  }, [allMods]);
+  }, [allMods, appFolderPaths, isFeaturesForModdersEnabled]);
 
   const knownModsByName = useMemo(() => {
     const modsByName = new Map<string, Mod>();

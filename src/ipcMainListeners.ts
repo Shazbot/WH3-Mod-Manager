@@ -9,7 +9,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron"
 import windowStateKeeper from "electron-window-state";
 import * as fs from "fs";
 import * as fsExtra from "fs-extra";
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import debounce from "just-debounce-it";
 import fetch from "node-fetch";
@@ -33,11 +33,19 @@ import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modC
 import {
   fetchModData,
   getContentModInFolder,
+  getCustomMod,
   getDataMod,
   getFolderPaths,
   getLastUpdated,
   getMods,
 } from "./modFunctions";
+import {
+  DATA_MOD_SOURCE_ID,
+  insertCustomSourceFirst,
+  isWorkshopMod,
+  normalizeModSourceOrder,
+  WORKSHOP_MOD_SOURCE_ID,
+} from "./modSources";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
 import { readPackHeader } from "./packFileHandler";
 import {
@@ -178,6 +186,7 @@ let contentWatcher: chokidar.FSWatcher | undefined;
 let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
+let customModFoldersWatcher: chokidar.FSWatcher | undefined;
 export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
@@ -2346,6 +2355,7 @@ export const registerIpcMainListeners = (
         console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
         // mainWindow?.webContents.send("setCurrentGameNaive", newGame);
         mainWindow?.webContents.send("setAppFolderPaths", {
+          ...appData.gamesToGameFolderPaths[newGame],
           gamePath: gamePath || "",
           contentFolder: contentFolder || "",
         } as GameFolderPaths);
@@ -2405,11 +2415,23 @@ export const registerIpcMainListeners = (
   const removeMod = async (mainWindow: BrowserWindow, modPath: string) => {
     mainWindow?.webContents.send("removeMod", modPath);
   };
+  const isPathInsideFolder = (filePath: string, folderPath: string) => {
+    const relativePath = nodePath.relative(folderPath, filePath);
+    return relativePath !== "" && !relativePath.startsWith("..") && !nodePath.isAbsolute(relativePath);
+  };
   const getMod = async (mainWindow: BrowserWindow, modPath: string) => {
     let mod: Mod | undefined;
     try {
-      if (modPath.includes(`\\content\\${gameToSteamId[appData.currentGame]}\\`)) {
-        const modSubfolderName = nodePath.dirname(modPath).replace(/.*\\/, "");
+      const gameFolderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const customFolder = (gameFolderPaths.customModFolders || []).find((folder) =>
+        isPathInsideFolder(modPath, folder.path),
+      );
+      if (gameFolderPaths.dataFolder && isPathInsideFolder(modPath, gameFolderPaths.dataFolder)) {
+        mod = await getDataMod(modPath, log);
+      } else if (customFolder) {
+        mod = await getCustomMod(modPath, customFolder.id, log);
+      } else if (gameFolderPaths.contentFolder && isPathInsideFolder(modPath, gameFolderPaths.contentFolder)) {
+        const modSubfolderName = nodePath.basename(nodePath.dirname(modPath));
         console.log("looking for ", modSubfolderName);
         mod = await getContentModInFolder(modSubfolderName, log);
       } else {
@@ -2507,7 +2529,9 @@ export const registerIpcMainListeners = (
       //   if (!mod.isInData && !appData.subscribedModIds.includes(mod.workshopId)) console.log(mod.workshopId);
       // }
       if (appData.subscribedModIds.length != 0) {
-        mods = mods.filter((mod) => mod.isInData || appData.subscribedModIds.includes(mod.workshopId));
+        mods = mods.filter(
+          (mod) => !isWorkshopMod(mod) || appData.subscribedModIds.includes(mod.workshopId),
+        );
       }
       console.log("after subscription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
@@ -2647,7 +2671,9 @@ export const registerIpcMainListeners = (
             mods
               .filter(
                 (mod) =>
-                  !mod.isInData && !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId)),
+                  isWorkshopMod(mod) &&
+                  !isNaN(Number(mod.workshopId)) &&
+                  !isNaN(parseFloat(mod.workshopId)),
               )
               .map((mod) => mod.workshopId)
               .join(";"),
@@ -2668,6 +2694,8 @@ export const registerIpcMainListeners = (
     downloadsWatcher = undefined;
     await mergedWatcher?.close();
     mergedWatcher = undefined;
+    await customModFoldersWatcher?.close();
+    customModFoldersWatcher = undefined;
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
@@ -2741,6 +2769,27 @@ export const registerIpcMainListeners = (
           onNewPackFound(path);
         });
     }
+    const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
+    const existingCustomFolders = customFolders.filter((folder) => fsExtra.existsSync(folder.path));
+    if (!customModFoldersWatcher && existingCustomFolders.length > 0) {
+      const customFolderPatterns = existingCustomFolders.flatMap((folder) => {
+        const sanitizedFolder = folder.path.replaceAll("\\", "/").replaceAll("//", "/");
+        return [`${sanitizedFolder}/*.pack`, `${sanitizedFolder}/*/*.pack`];
+      });
+      customModFoldersWatcher = chokidar
+        .watch(customFolderPatterns, {
+          ignoreInitial: true,
+          awaitWriteFinish: true,
+          followSymlinks: false,
+          ignored: /whmm_backups/,
+        })
+        .on("add", async (path) => onNewPackFound(path, true))
+        .on("unlink", async (path) => onPackDeleted(path))
+        .on("change", async (path) => {
+          await onPackDeleted(path);
+          await onNewPackFound(path, true);
+        });
+    }
     if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
       exec(`mkdir "${mergedDirPath}"`);
@@ -2801,6 +2850,19 @@ export const registerIpcMainListeners = (
       }
       if (appState.gameFolderPaths) {
         appData.gamesToGameFolderPaths = appState.gameFolderPaths;
+        for (const game of supportedGames) {
+          const folderPaths = appData.gamesToGameFolderPaths[game] || {
+            gamePath: undefined,
+            dataFolder: undefined,
+            contentFolder: undefined,
+          };
+          appData.gamesToGameFolderPaths[game] = folderPaths;
+          folderPaths.customModFolders = folderPaths.customModFolders || [];
+          folderPaths.modSourceOrder = normalizeModSourceOrder(
+            folderPaths,
+            appState.isFeaturesForModdersEnabled || false,
+          );
+        }
         if (appState.currentGame) {
           const gameFolderPaths = appData.gamesToGameFolderPaths[appState.currentGame];
           if (gameFolderPaths.contentFolder && !fs.existsSync(gameFolderPaths.contentFolder)) {
@@ -4330,6 +4392,7 @@ export const registerIpcMainListeners = (
       const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
       console.log("SENDING setAppFolderPaths", gamePath, contentFolder);
       mainWindow?.webContents.send("setAppFolderPaths", {
+        ...appData.gamesToGameFolderPaths[appData.currentGame],
         gamePath: gamePath || "",
         contentFolder: contentFolder || "",
       } as GameFolderPaths);
@@ -4530,6 +4593,149 @@ export const registerIpcMainListeners = (
     await Promise.allSettled(copyPromises);
     // getAllMods();
   });
+  const normalizeComparablePath = (folderPath: string) => {
+    const normalizedPath = nodePath.resolve(folderPath);
+    return process.platform === "win32" ? normalizedPath.toLowerCase() : normalizedPath;
+  };
+  const sourcePathsOverlap = (firstPath: string, secondPath: string) => {
+    const first = normalizeComparablePath(firstPath);
+    const second = normalizeComparablePath(secondPath);
+    const firstToSecond = nodePath.relative(first, second);
+    const secondToFirst = nodePath.relative(second, first);
+    const isInside = (relativePath: string) =>
+      relativePath === "" || (!relativePath.startsWith("..") && !nodePath.isAbsolute(relativePath));
+    return isInside(firstToSecond) || isInside(secondToFirst);
+  };
+  const validateCustomModFolders = (game: SupportedGames, customFolders: CustomModFolder[]) => {
+    const gameFolderPaths = appData.gamesToGameFolderPaths[game];
+    const existingCustomIds = new Set((gameFolderPaths.customModFolders || []).map((folder) => folder.id));
+    const seenIds = new Set<string>();
+    const paths: Array<{ id: string; path: string }> = [];
+    if (gameFolderPaths.dataFolder) paths.push({ id: DATA_MOD_SOURCE_ID, path: gameFolderPaths.dataFolder });
+    if (gameFolderPaths.contentFolder) {
+      paths.push({ id: WORKSHOP_MOD_SOURCE_ID, path: gameFolderPaths.contentFolder });
+    }
+
+    for (const folder of customFolders) {
+      if (!folder.id || !folder.path) return "Custom mod folders must have an ID and path.";
+      if (seenIds.has(folder.id)) return `Duplicate custom folder ID: ${folder.id}`;
+      seenIds.add(folder.id);
+      if (!existingCustomIds.has(folder.id)) {
+        try {
+          if (!fs.statSync(folder.path).isDirectory()) return `Not a directory: ${folder.path}`;
+        } catch {
+          return `Folder does not exist: ${folder.path}`;
+        }
+      }
+      const overlappingSource = paths.find((source) => sourcePathsOverlap(source.path, folder.path));
+      if (overlappingSource) return `Folder overlaps another mod source: ${overlappingSource.path}`;
+      paths.push(folder);
+    }
+    return undefined;
+  };
+  ipcMain.handle(
+    "updateCustomModSources",
+    async (
+      event,
+      data: { game: SupportedGames; customModFolders: CustomModFolder[]; modSourceOrder: string[] },
+    ) => {
+      const error = validateCustomModFolders(data.game, data.customModFolders);
+      if (error) return { success: false, error };
+
+      const folderPaths = appData.gamesToGameFolderPaths[data.game];
+      const didFolderListChange =
+        JSON.stringify(folderPaths.customModFolders || []) !== JSON.stringify(data.customModFolders);
+      folderPaths.customModFolders = data.customModFolders;
+      folderPaths.modSourceOrder = normalizeModSourceOrder(
+        { ...folderPaths, modSourceOrder: data.modSourceOrder },
+        appData.isFeaturesForModdersEnabled,
+      );
+      if (data.game === appData.currentGame) {
+        mainWindow?.webContents.send("setAppFolderPaths", folderPaths);
+        if (didFolderListChange) await getAllMods();
+      }
+      return { success: true, folderPaths };
+    },
+  );
+  ipcMain.handle("getCustomModFolderStatuses", (event, folderPaths: string[]) =>
+    Object.fromEntries(
+      folderPaths.map((folderPath) => {
+        try {
+          return [folderPath, fs.statSync(folderPath).isDirectory()];
+        } catch {
+          return [folderPath, false];
+        }
+      }),
+    ),
+  );
+  ipcMain.handle(
+    "copyModsToNewCustomFolder",
+    async (
+      event,
+      data: { destinationPath: string; modPaths: string[]; overwrite: boolean },
+    ) => {
+      if (data.modPaths.length === 0) return { success: false, error: "No mods selected." };
+      const folderPaths = appData.gamesToGameFolderPaths[appData.currentGame];
+      const candidateFolder = { id: `custom-${randomUUID()}`, path: data.destinationPath };
+      const validationError = validateCustomModFolders(appData.currentGame, [
+        ...(folderPaths.customModFolders || []),
+        candidateFolder,
+      ]);
+      if (validationError) return { success: false, error: validationError };
+
+      const conflicts = data.modPaths
+        .map((modPath) => nodePath.basename(modPath))
+        .filter((modName) => fsExtra.existsSync(nodePath.join(data.destinationPath, modName)));
+      if (conflicts.length > 0 && !data.overwrite) {
+        return { success: false, requiresConfirmation: true, conflicts };
+      }
+
+      const knownMods = appData.allMods.length > 0 ? appData.allMods : await getMods(log);
+      const copied: string[] = [];
+      const failed: Array<{ path: string; error: string }> = [];
+      for (const modPath of data.modPaths) {
+        try {
+          const modName = nodePath.basename(modPath);
+          await fs.promises.copyFile(modPath, nodePath.join(data.destinationPath, modName));
+          copied.push(modName);
+          const sourceMod = knownMods.find((mod) => mod.path === modPath);
+          if (sourceMod?.imgPath && fsExtra.existsSync(sourceMod.imgPath)) {
+            const thumbnailExtension = nodePath.extname(sourceMod.imgPath).toLowerCase();
+            if (thumbnailExtension === ".png" || thumbnailExtension === ".jpg") {
+              const thumbnailName = `${nodePath.basename(modName, nodePath.extname(modName))}${thumbnailExtension}`;
+              try {
+                await fs.promises.copyFile(
+                  sourceMod.imgPath,
+                  nodePath.join(data.destinationPath, thumbnailName),
+                );
+              } catch (error) {
+                failed.push({
+                  path: sourceMod.imgPath,
+                  error: error instanceof Error ? error.message : "Unknown thumbnail copy error",
+                });
+              }
+            }
+          }
+        } catch (error) {
+          failed.push({
+            path: modPath,
+            error: error instanceof Error ? error.message : "Unknown copy error",
+          });
+        }
+      }
+
+      if (copied.length === 0) return { success: false, error: "No mods could be copied.", failed };
+
+      folderPaths.customModFolders = [...(folderPaths.customModFolders || []), candidateFolder];
+      folderPaths.modSourceOrder = insertCustomSourceFirst(
+        normalizeModSourceOrder(folderPaths, appData.isFeaturesForModdersEnabled),
+        candidateFolder.id,
+      );
+      mainWindow?.webContents.send("setAppFolderPaths", folderPaths);
+      await getAllMods();
+      return { success: true, copied, failed, folderPaths };
+    },
+  );
   ipcMain.on("copyToDataAsSymbolicLink", async (event, modPathsToCopy?: string[]) => {
     console.log("copyToDataAsSymbolicLink modPathsToCopy:", modPathsToCopy);
     const mods = await getMods(log);
@@ -8087,17 +8293,22 @@ export const registerIpcMainListeners = (
             console.log(`Added flow pack to mod list: ${packFileName}`);
           }
         }
+        const workingDirectoryLines = Array.from(
+          new Set(
+            enabledModsWithoutMergedInMods
+              .filter((mod) => !mod.isInModding)
+              .filter(
+                (mod) =>
+                  nodePath.relative(
+                    appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string,
+                    mod.modDirectory,
+                  ) != "",
+              )
+              .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`),
+          ),
+        );
         const text =
-          enabledModsWithoutMergedInMods
-            .filter((mod) => !mod.isInModding)
-            .filter(
-              (mod) =>
-                nodePath.relative(
-                  appData.gamesToGameFolderPaths[appData.currentGame].dataFolder as string,
-                  mod.modDirectory,
-                ) != "",
-            )
-            .map((mod) => `add_working_directory "${linuxBit + mod.modDirectory}";`)
+          workingDirectoryLines
             .concat(enabledModsWithoutMergedInMods.map((mod) => `mod "${mod.name}";`))
             .join("\n") + extraEnabledMods;
         try {

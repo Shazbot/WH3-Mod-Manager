@@ -207,6 +207,8 @@ export type GameFolderPaths = {
   gamePath: string | undefined;
   contentFolder: string | undefined;
   dataFolder: string | undefined;
+  customModFolders?: CustomModFolder[];
+  modSourceOrder?: string[];
 };
 
 const appData = {
@@ -272,6 +274,8 @@ for (const supportedGame of supportedGames) {
     gamePath: undefined,
     dataFolder: undefined,
     contentFolder: undefined,
+    customModFolders: [],
+    modSourceOrder: ["data", "workshop"],
   };
 }
 

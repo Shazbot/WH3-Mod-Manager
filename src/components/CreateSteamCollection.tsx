@@ -5,6 +5,7 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import { setIsCreateSteamCollectionOpen } from "../appSlice";
 import localizationContext from "../localizationContext";
 import { gameToSteamId } from "../supportedGames";
+import { isWorkshopMod } from "../modSources";
 
 const CreateSteamCollection = memo(() => {
   const dispatch = useAppDispatch();
@@ -23,13 +24,13 @@ const CreateSteamCollection = memo(() => {
 
   const enabledPresetWorkshopMods = enabledMods
     .map(
-      (mod) => (!mod.isInData && mod) || allMods.find((allMod) => !allMod.isInData && allMod.name == mod.name)
+      (mod) => (isWorkshopMod(mod) && mod) || allMods.find((allMod) => isWorkshopMod(allMod) && allMod.name == mod.name)
     )
     .filter((workshopId): workshopId is Mod => !!workshopId);
 
   const allPresetWorkshopMods = presetMods
     .map(
-      (mod) => (!mod.isInData && mod) || allMods.find((allMod) => !allMod.isInData && allMod.name == mod.name)
+      (mod) => (isWorkshopMod(mod) && mod) || allMods.find((allMod) => isWorkshopMod(allMod) && allMod.name == mod.name)
     )
     .filter((workshopId): workshopId is Mod => !!workshopId);
 

@@ -50,6 +50,7 @@ import {
   setUnsavedPacksData,
   setWarhammer3Folder,
 } from "./appSlice";
+import { isWorkshopMod } from "./modSources";
 import { PackedFile } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 
@@ -222,12 +223,12 @@ window.api?.failedReadingConfig(() => {
 window.api?.modsPopulated((event, mods: Mod[]) => {
   mods = mods.filter((mod) => mod !== undefined);
   store.dispatch(setMods(mods));
-  window.api?.getAllModData(mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId));
+  window.api?.getAllModData(mods.filter(isWorkshopMod).map((mod) => mod.workshopId));
 });
 
 window.api?.addMod((event, mod: Mod) => {
   store.dispatch(addMod(mod));
-  if (mod.workshopId && mod.workshopId !== "") {
+  if (isWorkshopMod(mod) && mod.workshopId && mod.workshopId !== "") {
     window.api?.getAllModData([mod.workshopId]);
   }
 });

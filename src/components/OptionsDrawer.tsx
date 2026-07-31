@@ -1,5 +1,5 @@
 import Select, { ActionMeta, SingleValue, SingleValueProps, components } from "react-select";
-import React, { memo, useCallback, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
@@ -20,6 +20,7 @@ import {
   setIsPackSearcherOpen,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
+  setAppFolderPaths,
 } from "../appSlice";
 import Drawer from "./Drawer";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -38,6 +39,13 @@ import ISO6391 from "iso-639-1";
 import { gameToSupportedGameOptions, supportedGames } from "../supportedGames";
 import store from "../store";
 import PackSearcher from "./PackSearcher";
+import {
+  DATA_MOD_SOURCE_ID,
+  insertCustomSourceAfterData,
+  normalizeModSourceOrder,
+  isWorkshopMod,
+  WORKSHOP_MOD_SOURCE_ID,
+} from "../modSources";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -67,6 +75,13 @@ const OptionsDrawer = memo(() => {
   const [isShowingAboutScreen, setIsShowingAboutScreen] = useState<boolean>(false);
   const [isForceResubscribeConfirmOpen, setIsForceResubscribeConfirmOpen] = useState(false);
   const [modsToForceResubscribe, setModsToForceResubscribe] = useState<Mod[]>([]);
+  const [modFolderMessage, setModFolderMessage] = useState("");
+  const [customFolderStatuses, setCustomFolderStatuses] = useState<Record<string, boolean>>({});
+  const [pendingCustomFolderCopy, setPendingCustomFolderCopy] = useState<{
+    destinationPath: string;
+    modPaths: string[];
+    conflicts: string[];
+  } | null>(null);
 
   const dispatch = useAppDispatch();
   const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
@@ -90,6 +105,8 @@ const OptionsDrawer = memo(() => {
   const currentLanguage = useAppSelector((state) => state.app.currentLanguage);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const currentMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const allMods = useAppSelector((state) => state.app.allMods);
+  const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
 
   const localized = useLocalizations();
 
@@ -97,12 +114,104 @@ const OptionsDrawer = memo(() => {
     (state: { app: AppState }) => state.app.currentPreset.mods,
     (mods: Mod[]) => mods.filter((iterMod) => iterMod.isEnabled)
   );
-  const contentModsWorshopIdsSelector = createSelector(
-    (state: { app: AppState }) => state.app.currentPreset.mods,
-    (mods: Mod[]) => mods.filter((mod) => !mod.isInData).map((mod) => mod.workshopId)
-  );
-  const contentModsWorshopIds = useSelector(contentModsWorshopIdsSelector);
   const enabledMods = useSelector(enabledModsSelector);
+  const workshopMods = useMemo(() => allMods.filter(isWorkshopMod), [allMods]);
+  const customModFolders = useMemo(
+    () => appFolderPaths.customModFolders || [],
+    [appFolderPaths.customModFolders],
+  );
+  const modSourceOrder = useMemo(
+    () => normalizeModSourceOrder(appFolderPaths, isFeaturesForModdersEnabled),
+    [appFolderPaths, isFeaturesForModdersEnabled],
+  );
+
+  useEffect(() => {
+    window.api
+      ?.getCustomModFolderStatuses(customModFolders.map((folder) => folder.path))
+      .then(setCustomFolderStatuses);
+  }, [customModFolders]);
+
+  const updateCustomModSources = useCallback(
+    async (folders: CustomModFolder[], sourceOrder: string[]) => {
+      const result = await window.api?.updateCustomModSources({
+        game: currentGame,
+        customModFolders: folders,
+        modSourceOrder: sourceOrder,
+      });
+      if (!result?.success || !result.folderPaths) {
+        setModFolderMessage(result?.error || "Failed to update mod folders.");
+        return false;
+      }
+      dispatch(setAppFolderPaths(result.folderPaths));
+      setModFolderMessage("");
+      return true;
+    },
+    [currentGame, dispatch],
+  );
+
+  const addCustomModFolder = useCallback(async () => {
+    const folderPath = await window.api?.selectDirectory();
+    if (!folderPath) return;
+    const sourceId = `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const nextFolders = [...customModFolders, { id: sourceId, path: folderPath }];
+    const nextOrder = insertCustomSourceAfterData(modSourceOrder, sourceId);
+    await updateCustomModSources(nextFolders, nextOrder);
+  }, [customModFolders, modSourceOrder, updateCustomModSources]);
+
+  const removeCustomModFolder = useCallback(
+    async (sourceId: string) => {
+      await updateCustomModSources(
+        customModFolders.filter((folder) => folder.id !== sourceId),
+        modSourceOrder.filter((iterSourceId) => iterSourceId !== sourceId),
+      );
+    },
+    [customModFolders, modSourceOrder, updateCustomModSources],
+  );
+
+  const moveModSource = useCallback(
+    async (sourceId: string, offset: -1 | 1) => {
+      const currentIndex = modSourceOrder.indexOf(sourceId);
+      const targetIndex = currentIndex + offset;
+      if (currentIndex < 0 || targetIndex < 0 || targetIndex >= modSourceOrder.length) return;
+      const nextOrder = [...modSourceOrder];
+      [nextOrder[currentIndex], nextOrder[targetIndex]] = [nextOrder[targetIndex], nextOrder[currentIndex]];
+      await updateCustomModSources(customModFolders, nextOrder);
+    },
+    [customModFolders, modSourceOrder, updateCustomModSources],
+  );
+
+  const finishCustomFolderCopy = useCallback(
+    async (destinationPath: string, modPaths: string[], overwrite: boolean) => {
+      const result = await window.api?.copyModsToNewCustomFolder({ destinationPath, modPaths, overwrite });
+      if (result?.requiresConfirmation && result.conflicts) {
+        setPendingCustomFolderCopy({ destinationPath, modPaths, conflicts: result.conflicts });
+        return;
+      }
+      setPendingCustomFolderCopy(null);
+      if (!result?.success) {
+        setModFolderMessage(result?.error || "Failed to copy mods.");
+        return;
+      }
+      if (result.folderPaths) dispatch(setAppFolderPaths(result.folderPaths));
+      const failureSuffix = result.failed?.length ? ` ${result.failed.length} file(s) failed.` : "";
+      setModFolderMessage(`Copied ${result.copied?.length || 0} mod(s).${failureSuffix}`);
+    },
+    [dispatch],
+  );
+
+  const copyModsToNewCustomFolder = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      const modsToCopy = event.shiftKey ? currentMods : enabledMods;
+      if (modsToCopy.length === 0) {
+        setModFolderMessage("No mods selected to copy.");
+        return;
+      }
+      const destinationPath = await window.api?.selectDirectory();
+      if (!destinationPath) return;
+      await finishCustomFolderCopy(destinationPath, modsToCopy.map((mod) => mod.path), false);
+    },
+    [currentMods, enabledMods, finishCustomFolderCopy],
+  );
 
   const hiddenModsToOptionViewDataSelector = createSelector(
     (state: { app: AppState }) => state.app.hiddenMods,
@@ -291,6 +400,44 @@ const OptionsDrawer = memo(() => {
           </button>
         </Modal.Footer>
       </Modal>
+      <Modal
+        show={!!pendingCustomFolderCopy}
+        onClose={() => setPendingCustomFolderCopy(null)}
+        size="lg"
+        position="center"
+      >
+        <Modal.Header>{localized.overwriteMods || "Overwrite existing mods?"}</Modal.Header>
+        <Modal.Body>
+          <p className="text-sm text-gray-300">
+            {(localized.customFolderCopyConflicts || "The destination already contains {{count}} matching pack(s).")
+              .replace("{{count}}", String(pendingCustomFolderCopy?.conflicts.length || 0))}
+          </p>
+          <div className="mt-2 max-h-40 overflow-auto text-xs text-gray-400">
+            {pendingCustomFolderCopy?.conflicts.join(", ")}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+            onClick={() => setPendingCustomFolderCopy(null)}
+          >
+            {localized.cancel || "Cancel"}
+          </button>
+          <button
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            onClick={() => {
+              if (!pendingCustomFolderCopy) return;
+              finishCustomFolderCopy(
+                pendingCustomFolderCopy.destinationPath,
+                pendingCustomFolderCopy.modPaths,
+                true,
+              );
+            }}
+          >
+            {localized.overwrite || "Overwrite"}
+          </button>
+        </Modal.Footer>
+      </Modal>
 
       <div className="text-center">
         <button
@@ -415,11 +562,12 @@ const OptionsDrawer = memo(() => {
               <button
                 className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={(e) => {
-                  const modIds = e.shiftKey
-                    ? contentModsWorshopIds
-                    : contentModsWorshopIds.filter((modId) =>
-                        enabledMods.some((enabledMod) => enabledMod.workshopId == modId)
-                      );
+                  const modIds = (e.shiftKey
+                    ? workshopMods
+                    : workshopMods.filter((mod) =>
+                        enabledMods.some((enabledMod) => enabledMod.name === mod.name),
+                      )
+                  ).map((mod) => mod.workshopId);
                   forceDownloadMods(modIds);
                 }}
               >
@@ -435,12 +583,103 @@ const OptionsDrawer = memo(() => {
                 className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={(e) => {
                   const mods = e.shiftKey
-                    ? currentMods.filter((mod) => !mod.isInData)
-                    : enabledMods.filter((mod) => !mod.isInData);
+                    ? workshopMods
+                    : workshopMods.filter((mod) =>
+                        enabledMods.some((enabledMod) => enabledMod.name === mod.name),
+                      );
                   openForceResubscribeConfirm(mods);
                 }}
               >
                 <span className="uppercase">{localized.forceResubscribe}</span>
+              </button>
+            </div>
+
+            <h6 className="mt-8">{localized.modFolders || "Mod Folders"}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.modFoldersHelp ||
+                "Add folders containing pack files and order them from highest to lowest priority."}
+            </p>
+            <div className="space-y-2">
+              {modSourceOrder.map((sourceId, index) => {
+                const customFolder = customModFolders.find((folder) => folder.id === sourceId);
+                const isBuiltIn = sourceId === DATA_MOD_SOURCE_ID || sourceId === WORKSHOP_MOD_SOURCE_ID;
+                const canMoveSource = !isBuiltIn || isFeaturesForModdersEnabled;
+                const label =
+                  sourceId === DATA_MOD_SOURCE_ID
+                    ? localized.dataFolder || "Data"
+                    : sourceId === WORKSHOP_MOD_SOURCE_ID
+                      ? localized.workshop || "Workshop"
+                      : customFolder?.path.split(/[\\/]/).filter(Boolean).pop() || "Custom folder";
+                const sourcePath =
+                  sourceId === DATA_MOD_SOURCE_ID
+                    ? appFolderPaths.dataFolder
+                    : sourceId === WORKSHOP_MOD_SOURCE_ID
+                      ? appFolderPaths.contentFolder
+                      : customFolder?.path;
+                const isMissing = customFolder ? customFolderStatuses[customFolder.path] === false : false;
+                return (
+                  <div key={sourceId} className="rounded border border-gray-600 bg-gray-900/40 p-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 text-xs text-gray-400">{index + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm text-gray-200">
+                          {label}
+                          {isMissing && (
+                            <span className="ml-2 text-xs text-red-400">{localized.missing || "Missing"}</span>
+                          )}
+                        </div>
+                        <div className="truncate text-xs text-gray-500" title={sourcePath || ""}>
+                          {sourcePath || "—"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Move ${label} up`}
+                        disabled={!canMoveSource || index === 0}
+                        onClick={() => moveModSource(sourceId, -1)}
+                        className="px-2 py-1 text-gray-300 disabled:opacity-30"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${label} down`}
+                        disabled={!canMoveSource || index === modSourceOrder.length - 1}
+                        onClick={() => moveModSource(sourceId, 1)}
+                        className="px-2 py-1 text-gray-300 disabled:opacity-30"
+                      >
+                        ↓
+                      </button>
+                      {customFolder && (
+                        <button
+                          type="button"
+                          onClick={() => removeCustomModFolder(sourceId)}
+                          className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
+                        >
+                          {localized.remove || "Remove"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {modFolderMessage && <p className="mt-2 text-sm text-gray-300">{modFolderMessage}</p>}
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={addCustomModFolder}
+                className="flex-1 rounded bg-purple-600 px-3 py-2 text-xs font-medium uppercase text-white hover:bg-purple-700"
+              >
+                {localized.addModFolder || "Add Folder"}
+              </button>
+              <button
+                type="button"
+                onClick={copyModsToNewCustomFolder}
+                title={localized.copyModsToFolderHelp || "Copies enabled mods; hold Shift to copy all mods."}
+                className="flex-1 rounded bg-purple-600 px-3 py-2 text-xs font-medium uppercase text-white hover:bg-purple-700"
+              >
+                {localized.copyModsToFolder || "Copy Mods to New Folder"}
               </button>
             </div>
 

@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { SupportedGames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
+import { isWorkshopMod, resolveModsBySourcePriority } from "./modSources";
 
 const isMainWindowTabAvailable = (state: AppState, tab: MainWindowTab) => {
   switch (tab) {
@@ -94,25 +95,30 @@ const renameCategoryByPayload = (state: AppState, payload: RenameCategoryPayload
 };
 
 const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
-  state.currentPreset.mods = mods;
+  const previousModsByName = new Map(state.currentPreset.mods.map((mod) => [mod.name, mod]));
   state.allMods = mods;
+  state.currentPreset.mods = resolveModsBySourcePriority(
+    mods,
+    state.appFolderPaths,
+    state.isFeaturesForModdersEnabled,
+  ).map((mod) => {
+    const previousMod = previousModsByName.get(mod.name);
+    if (!previousMod) return mod;
+    mod.isEnabled = previousMod.isEnabled;
+    mod.categories = previousMod.categories;
+    mod.loadOrder = previousMod.loadOrder;
+    if (!mod.humanName) mod.humanName = previousMod.humanName;
+    if (!mod.author) mod.author = previousMod.author;
+    if (!mod.imgPath) mod.imgPath = previousMod.imgPath;
+    return mod;
+  });
 
-  // Dedup: keep inData versions, drop non-inData when an inData version exists
-  const inDataNames = new Set(mods.filter((m) => m.isInData).map((m) => m.name));
-  state.currentPreset.mods = state.currentPreset.mods.filter(
-    (mod) => mod.isInData || !inDataNames.has(mod.name),
-  );
-
-  // filter out the mods in data that are also in data/modding
-  const moddingNames = new Set(state.currentPreset.mods.filter((m) => m.isInModding).map((m) => m.name));
-  const dataModsThatAreInModding = new Set(
-    state.currentPreset.mods.filter(
-      (iterMod) => iterMod.isInData && !iterMod.isInModding && moddingNames.has(iterMod.name),
-    ),
-  );
-  state.currentPreset.mods = state.currentPreset.mods.filter((mod) => !dataModsThatAreInModding.has(mod));
-
-  if (state.dataFromConfig && state.dataFromConfig.currentPreset.version != undefined) {
+  const isInitialModPopulation = previousModsByName.size === 0;
+  if (
+    isInitialModPopulation &&
+    state.dataFromConfig &&
+    state.dataFromConfig.currentPreset.version != undefined
+  ) {
     state.currentPreset.version = state.dataFromConfig.currentPreset.version;
     console.log("sorting as in preset from config in setMods");
     state.currentPreset.mods = sortAsInPreset(
@@ -127,19 +133,21 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
       .filter((iterMod) => alwaysEnabledNames.has(iterMod.name))
       .forEach((mod) => (mod.isEnabled = true));
 
-    const currentModsByName = new Map(state.currentPreset.mods.map((m) => [m.name, m]));
-    state.dataFromConfig.currentPreset.mods
-      .filter((mod) => mod !== undefined)
-      .forEach((mod) => {
-        const existingMod = currentModsByName.get(mod.name);
-        if (existingMod) {
-          existingMod.isEnabled = mod.isEnabled;
-          existingMod.categories = mod.categories;
-          if (mod.humanName !== "") existingMod.humanName = mod.humanName;
-          if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
-          if (mod.author != "") existingMod.author = mod.author;
-        }
-      });
+    if (isInitialModPopulation) {
+      const currentModsByName = new Map(state.currentPreset.mods.map((m) => [m.name, m]));
+      state.dataFromConfig.currentPreset.mods
+        .filter((mod) => mod !== undefined)
+        .forEach((mod) => {
+          const existingMod = currentModsByName.get(mod.name);
+          if (existingMod) {
+            existingMod.isEnabled = mod.isEnabled;
+            existingMod.categories = mod.categories;
+            if (mod.humanName !== "") existingMod.humanName = mod.humanName;
+            if (mod.loadOrder != null) existingMod.loadOrder = mod.loadOrder;
+            if (mod.author != "") existingMod.author = mod.author;
+          }
+        });
+    }
   }
 
   const appStartIndex = state.presets.findIndex((preset) => preset.name === "On App Start");
@@ -182,6 +190,25 @@ const setModLoadOrderInternal = (
   //     .map((mod) => [mod.name, mod.loadOrder])
   // );
   adjustDuplicates(state.currentPreset.mods, ourMod);
+};
+
+const reconcileCurrentPresetModSources = (state: AppState) => {
+  const previousModsByName = new Map(state.currentPreset.mods.map((mod) => [mod.name, mod]));
+  state.currentPreset.mods = resolveModsBySourcePriority(
+    state.allMods,
+    state.appFolderPaths,
+    state.isFeaturesForModdersEnabled,
+  ).map((mod) => {
+    const previousMod = previousModsByName.get(mod.name);
+    if (!previousMod || previousMod.path === mod.path) return mod;
+    mod.isEnabled = previousMod.isEnabled;
+    mod.categories = previousMod.categories;
+    mod.loadOrder = previousMod.loadOrder;
+    if (!mod.humanName) mod.humanName = previousMod.humanName;
+    if (!mod.author) mod.author = previousMod.author;
+    if (!mod.imgPath) mod.imgPath = previousMod.imgPath;
+    return mod;
+  });
 };
 
 const disableAllModsInternal = (state: AppState) => {
@@ -674,16 +701,21 @@ const appSlice = createSlice({
 
         // if we couldn't find a place for it
         if (!state.currentPreset.mods.find((iterMod) => iterMod == mod)) state.currentPreset.mods.push(mod);
-      } else if (mod.isInData) {
+      } else if (
+        resolveModsBySourcePriority(
+          [alreadyExistsByName, mod],
+          state.appFolderPaths,
+          state.isFeaturesForModdersEnabled,
+        )[0] === mod
+      ) {
         const previousIndex = state.currentPreset.mods.indexOf(alreadyExistsByName);
-        if (!alreadyExistsByName.isInModding) {
-          console.log("Mod is in modding, splicing it into current presset.");
-          state.currentPreset.mods.splice(previousIndex, 1, mod);
-        }
+        state.currentPreset.mods.splice(previousIndex, 1, mod);
         mod.isEnabled = alreadyExistsByName.isEnabled;
         mod.author = alreadyExistsByName.author;
         mod.imgPath = alreadyExistsByName.imgPath;
         mod.humanName = alreadyExistsByName.humanName;
+        mod.categories = alreadyExistsByName.categories;
+        mod.loadOrder = alreadyExistsByName.loadOrder;
       }
 
       if (!state.allMods.find((iterMod) => iterMod.path == mod.path)) {
@@ -737,7 +769,7 @@ const appSlice = createSlice({
         const removedModInAll = state.allMods.find((iterMod) => iterMod.path == modPath);
         if (removedModInAll) {
           const sameModOrSymLinkInData =
-            !removedModInAll.isInData &&
+            isWorkshopMod(removedModInAll) &&
             state.currentPreset.mods.find(
               (iterMod) => iterMod.isInData && iterMod.name == removedModInAll.name,
             );
@@ -749,24 +781,23 @@ const appSlice = createSlice({
             state.allMods = state.allMods.filter((iterMod) => iterMod.path !== removedModInAll.path);
           }
         }
+        state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
         return;
       }
 
-      // check if we can enable mod with the same name, either in data (if the mod was in modded) or in content
-      const dataMod =
-        (removedMod.isInData &&
-          removedMod.isInModding &&
-          state.allMods.find(
-            (iterMod) => iterMod.isInData && !iterMod.isInModding && iterMod.name == removedMod.name,
-          )) ||
-        (removedMod.isInData &&
-          state.allMods.find((iterMod) => !iterMod.isInData && iterMod.name == removedMod.name));
+      const fallbackMod = resolveModsBySourcePriority(
+        state.allMods.filter((iterMod) => iterMod.path !== modPath && iterMod.name === removedMod.name),
+        state.appFolderPaths,
+        state.isFeaturesForModdersEnabled,
+      )[0];
 
-      if (dataMod) {
-        state.currentPreset.mods.push(dataMod);
+      if (fallbackMod) {
+        state.currentPreset.mods.push(fallbackMod);
         if (removedMod.isEnabled) {
-          dataMod.isEnabled = true;
+          fallbackMod.isEnabled = true;
         }
+        fallbackMod.categories = removedMod.categories;
+        fallbackMod.loadOrder = removedMod.loadOrder;
       }
 
       state.removedModsData.push({
@@ -786,27 +817,28 @@ const appSlice = createSlice({
       const datas = action.payload;
 
       for (const data of datas) {
-        // if the same mod is also in data cover it as well
-        const contentMod = state.allMods.find((mod) => mod.workshopId == data.workshopId);
+        // Propagate Workshop metadata to whichever same-named source currently wins priority.
+        const contentMod = state.allMods.find(
+          (mod) => isWorkshopMod(mod) && mod.workshopId == data.workshopId,
+        );
         if (contentMod) {
-          const dataMod = state.currentPreset.mods.find(
-            (iterMod) => iterMod.isInData && iterMod.name == contentMod.name,
-          );
-          if (dataMod) {
-            if (data.humanName && data.humanName != "" && dataMod.humanName != data.humanName)
-              dataMod.humanName = data.humanName ?? "";
-            if (data.author && data.author != "" && dataMod.author != data.author)
-              dataMod.author = data.author;
+          const preferredMod = state.currentPreset.mods.find((iterMod) => iterMod.name == contentMod.name);
+          if (preferredMod) {
+            if (data.humanName && data.humanName != "" && preferredMod.humanName != data.humanName)
+              preferredMod.humanName = data.humanName ?? "";
+            if (data.author && data.author != "" && preferredMod.author != data.author)
+              preferredMod.author = data.author;
+            if (data.lastChanged && preferredMod.lastChanged != data.lastChanged)
+              preferredMod.lastChanged = data.lastChanged;
             if (
               data.reqModIdToName &&
               data.reqModIdToName.length > 0 &&
-              !equal(dataMod.reqModIdToName, data.reqModIdToName)
+              !equal(preferredMod.reqModIdToName, data.reqModIdToName)
             )
-              dataMod.reqModIdToName = data.reqModIdToName;
+              preferredMod.reqModIdToName = data.reqModIdToName;
             if (data.tags) {
-              if (dataMod.tags.length != data.tags.length) {
-                // console.log("tags changed:", dataMod.name, dataMod.tags, "->", data.tags);
-                dataMod.tags = data.tags;
+              if (preferredMod.tags.length != data.tags.length) {
+                preferredMod.tags = data.tags;
               }
               if (contentMod.tags.length != data.tags.length) {
                 // console.log("tags changed:", contentMod.name, contentMod.tags, "->", data.tags);
@@ -939,6 +971,7 @@ const appSlice = createSlice({
     },
     setAppFolderPaths: (state: AppState, action: PayloadAction<GameFolderPaths>) => {
       state.appFolderPaths = action.payload;
+      reconcileCurrentPresetModSources(state);
       state.isSetAppFolderPathsDone = true;
     },
     requestGameFolderPaths: (state: AppState, action: PayloadAction<SupportedGames | undefined>) => {
@@ -1250,7 +1283,12 @@ const appSlice = createSlice({
           state.dataFromConfig.currentPreset = currentPreset;
           state.dataFromConfig.presets = presets;
         }
-        if (currentPreset.mods) setCurrentPresetToMods(state, currentPreset.mods);
+        if (currentPreset.mods) {
+          state.currentPreset = { ...currentPreset, mods: [] };
+          setCurrentPresetToMods(state, state.allMods.length > 0 ? state.allMods : currentPreset.mods);
+          state.currentPreset.name = currentPreset.name;
+          state.currentPreset.version = currentPreset.version;
+        }
       }
     },
     setCurrentGameNaive: (state: AppState, action: PayloadAction<SupportedGames>) => {
@@ -1322,9 +1360,11 @@ const appSlice = createSlice({
     },
     toggleIsFeaturesForModdersEnabled: (state: AppState) => {
       state.isFeaturesForModdersEnabled = !state.isFeaturesForModdersEnabled;
+      reconcileCurrentPresetModSources(state);
     },
     setIsFeaturesForModdersEnabled: (state: AppState, action: PayloadAction<boolean>) => {
       state.isFeaturesForModdersEnabled = action.payload;
+      reconcileCurrentPresetModSources(state);
     },
     setModdersPrefix: (state: AppState, action: PayloadAction<string>) => {
       state.moddersPrefix = action.payload;

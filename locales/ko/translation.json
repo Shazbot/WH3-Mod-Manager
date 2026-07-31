@@ -918,5 +918,15 @@
   "saveOnlyChanges": "변경 사항만 저장",
   "JSON": "JSON",
   "level": "수준",
-  "techTreesTab": "테크 트리"
+  "techTreesTab": "테크 트리",
+  "modFolders": "Mod Folders",
+  "modFoldersHelp": "Add folders containing pack files and order them from highest to lowest priority.",
+  "dataFolder": "Data",
+  "workshop": "Workshop",
+  "addModFolder": "Add Folder",
+  "copyModsToFolder": "Copy Mods to New Folder",
+  "copyModsToFolderHelp": "Copies enabled mods; hold Shift to copy all mods.",
+  "overwriteMods": "Overwrite existing mods?",
+  "customFolderCopyConflicts": "The destination already contains {{count}} matching pack(s).",
+  "overwrite": "Overwrite"
 }
