@@ -134,13 +134,8 @@ export const resolveModsBySourcePriority = (
 };
 
 export const insertCustomSourceAfterData = (sourceOrder: string[], sourceId: string): string[] => {
-  const nextOrder = sourceOrder.filter((iterSourceId) => iterSourceId !== sourceId);
-  const dataIndex = nextOrder.indexOf(DATA_MOD_SOURCE_ID);
-  nextOrder.splice(dataIndex >= 0 ? dataIndex + 1 : 0, 0, sourceId);
-  return nextOrder;
+  const remainingSources = sourceOrder.filter(
+    (iterSourceId) => iterSourceId !== sourceId && iterSourceId !== DATA_MOD_SOURCE_ID,
+  );
+  return [DATA_MOD_SOURCE_ID, sourceId, ...remainingSources];
 };
-
-export const insertCustomSourceFirst = (sourceOrder: string[], sourceId: string): string[] => [
-  sourceId,
-  ...sourceOrder.filter((iterSourceId) => iterSourceId !== sourceId),
-];

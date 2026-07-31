@@ -933,5 +933,7 @@
   "overwrite": "Overwrite",
   "updateCustomFolderFromWorkshopHelp": "Copies newer Workshop versions already in this folder and adds enabled Workshop mods.",
   "updating": "Updating…",
-  "activeModsFromFolder": "Active mods: {{count}}"
+  "activeModsFromFolder": "Active mods: {{count}}",
+  "customModFoldersVersionHelp": "Tip: Copy enabled mods to a higher-priority custom folder to keep those exact versions. Workshop updates will not replace the active custom copies; use Update when you want to refresh them.",
+  "modFolderPriorityHelp": "Priority: If a mod exists in multiple folders, the copy from the highest-priority folder is used."
 }

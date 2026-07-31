@@ -42,7 +42,7 @@ import {
 import {
   DATA_MOD_SOURCE_ID,
   getWorkshopModSyncItems,
-  insertCustomSourceFirst,
+  insertCustomSourceAfterData,
   isWorkshopMod,
   normalizeModSourceOrder,
   WORKSHOP_MOD_SOURCE_ID,
@@ -4728,7 +4728,7 @@ export const registerIpcMainListeners = (
       if (copied.length === 0) return { success: false, error: "No mods could be copied.", failed };
 
       folderPaths.customModFolders = [...(folderPaths.customModFolders || []), candidateFolder];
-      folderPaths.modSourceOrder = insertCustomSourceFirst(
+      folderPaths.modSourceOrder = insertCustomSourceAfterData(
         normalizeModSourceOrder(folderPaths, appData.isFeaturesForModdersEnabled),
         candidateFolder.id,
       );

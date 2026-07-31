@@ -65,10 +65,13 @@ type OptionType = {
   label: string;
 };
 
-const gameToImageSrc = supportedGames.reduce((acc, currentGame) => {
-  acc[currentGame as string] = require(`../assets/game_icons/${currentGame}.png`);
-  return acc;
-}, {} as Record<string, string>);
+const gameToImageSrc = supportedGames.reduce(
+  (acc, currentGame) => {
+    acc[currentGame as string] = require(`../assets/game_icons/${currentGame}.png`);
+    return acc;
+  },
+  {} as Record<string, string>,
+);
 
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
@@ -114,7 +117,7 @@ const OptionsDrawer = memo(() => {
 
   const enabledModsSelector = createSelector(
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (mods: Mod[]) => mods.filter((iterMod) => iterMod.isEnabled)
+    (mods: Mod[]) => mods.filter((iterMod) => iterMod.isEnabled),
   );
   const enabledMods = useSelector(enabledModsSelector);
   const workshopMods = useMemo(() => allMods.filter(isWorkshopMod), [allMods]);
@@ -218,7 +221,11 @@ const OptionsDrawer = memo(() => {
       }
       const destinationPath = await window.api?.selectDirectory();
       if (!destinationPath) return;
-      await finishCustomFolderCopy(destinationPath, modsToCopy.map((mod) => mod.path), false);
+      await finishCustomFolderCopy(
+        destinationPath,
+        modsToCopy.map((mod) => mod.path),
+        false,
+      );
     },
     [currentMods, enabledMods, finishCustomFolderCopy],
   );
@@ -261,7 +268,7 @@ const OptionsDrawer = memo(() => {
       hiddenMods.map((mod) => {
         const humanName = mod.humanName !== "" ? mod.humanName : mod.name;
         return { value: mod.name, label: humanName };
-      })
+      }),
   );
   const options: OptionType[] = useSelector(hiddenModsToOptionViewDataSelector);
 
@@ -274,12 +281,12 @@ const OptionsDrawer = memo(() => {
         })
         .toSorted((a, b) => {
           return a.label.localeCompare(b.label);
-        })
+        }),
   );
   const languageOptions = useSelector(availableLanguagesToOptionsSelector);
 
   const availableGames = supportedGames.map(
-    (gameKey) => ({ value: gameKey, label: localized[gameKey] } as OptionType)
+    (gameKey) => ({ value: gameKey, label: localized[gameKey] }) as OptionType,
   );
 
   const [areOptionsOpen, setAreOptionsOpen] = useState(false);
@@ -326,7 +333,7 @@ const OptionsDrawer = memo(() => {
       if (!mod) return;
       if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([mod]));
     },
-    [alwaysHidden]
+    [alwaysHidden],
   );
 
   const onGameChange = useCallback(
@@ -339,7 +346,7 @@ const OptionsDrawer = memo(() => {
         window.api?.requestGameChange(game, store.getState().app);
       }
     },
-    [supportedGames]
+    [supportedGames],
   );
 
   const onLanguageChange = useCallback(
@@ -352,7 +359,7 @@ const OptionsDrawer = memo(() => {
         window.api?.requestLanguageChange(language);
       }
     },
-    [availableLanguages]
+    [availableLanguages],
   );
 
   const copyToData = useCallback(
@@ -363,7 +370,7 @@ const OptionsDrawer = memo(() => {
         window.api?.copyToData(enabledMods.map((mod) => mod.path));
       }
     },
-    [enabledMods]
+    [enabledMods],
   );
 
   const bisectModList = useCallback(
@@ -372,10 +379,10 @@ const OptionsDrawer = memo(() => {
         createBisectedModListPresets({
           isRandom: isModSelectionRandom,
           ignoreDependencies: e.shiftKey,
-        })
+        }),
       );
     },
-    [dispatch]
+    [dispatch],
   );
 
   const copyToDataAsSymbolicLink = useCallback(
@@ -385,11 +392,11 @@ const OptionsDrawer = memo(() => {
       } else {
         window.api?.copyToDataAsSymbolicLink(enabledMods.map((mod) => mod.path));
         dispatch(
-          setDataModsToEnableByName([...dataModsToEnableByName, ...enabledMods.map((mod) => mod.name)])
+          setDataModsToEnableByName([...dataModsToEnableByName, ...enabledMods.map((mod) => mod.name)]),
         );
       }
     },
-    [enabledMods]
+    [enabledMods],
   );
 
   const SingleValue = ({ children, ...props }: SingleValueProps<OptionType, false>) => (
@@ -451,8 +458,10 @@ const OptionsDrawer = memo(() => {
         <Modal.Header>{localized.overwriteMods || "Overwrite existing mods?"}</Modal.Header>
         <Modal.Body>
           <p className="text-sm text-gray-300">
-            {(localized.customFolderCopyConflicts || "The destination already contains {{count}} matching pack(s).")
-              .replace("{{count}}", String(pendingCustomFolderCopy?.conflicts.length || 0))}
+            {(
+              localized.customFolderCopyConflicts ||
+              "The destination already contains {{count}} matching pack(s)."
+            ).replace("{{count}}", String(pendingCustomFolderCopy?.conflicts.length || 0))}
           </p>
           <div className="mt-2 max-h-40 overflow-auto text-xs text-gray-400">
             {pendingCustomFolderCopy?.conflicts.join(", ")}
@@ -604,11 +613,12 @@ const OptionsDrawer = memo(() => {
               <button
                 className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                 onClick={(e) => {
-                  const modIds = (e.shiftKey
-                    ? workshopMods
-                    : workshopMods.filter((mod) =>
-                        enabledMods.some((enabledMod) => enabledMod.name === mod.name),
-                      )
+                  const modIds = (
+                    e.shiftKey
+                      ? workshopMods
+                      : workshopMods.filter((mod) =>
+                          enabledMods.some((enabledMod) => enabledMod.name === mod.name),
+                        )
                   ).map((mod) => mod.workshopId);
                   forceDownloadMods(modIds);
                 }}
@@ -641,6 +651,14 @@ const OptionsDrawer = memo(() => {
               {localized.modFoldersHelp ||
                 "Add folders containing pack files and order them from highest to lowest priority."}
             </p>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.modFolderPriorityHelp ||
+                "Priority: If a mod exists in multiple folders, the copy from the highest-priority folder is used."}
+            </p>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.customModFoldersVersionHelp ||
+                "Tip: Copy enabled mods to a higher-priority custom folder to keep those exact versions. Workshop updates will not replace the active custom copies; use Update when you want to refresh them."}
+            </p>
             <div className="space-y-2">
               {modSourceOrder.map((sourceId, index) => {
                 const customFolder = customModFolders.find((folder) => folder.id === sourceId);
@@ -667,7 +685,9 @@ const OptionsDrawer = memo(() => {
                         <div className="truncate text-sm text-gray-200">
                           {label}
                           {isMissing && (
-                            <span className="ml-2 text-xs text-red-400">{localized.missing || "Missing"}</span>
+                            <span className="ml-2 text-xs text-red-400">
+                              {localized.missing || "Missing"}
+                            </span>
                           )}
                         </div>
                         {sourcePath && !isMissing ? (
@@ -1073,7 +1093,10 @@ const OptionsDrawer = memo(() => {
                   "Choose whether Skill Trees and Tech Trees appear as tabs, standalone windows, or not at all."}
               </p>
               <div className="mt-3 grid gap-3">
-                <label className="block text-sm text-gray-900 dark:text-gray-100" htmlFor="skillTreesDisplayMode">
+                <label
+                  className="block text-sm text-gray-900 dark:text-gray-100"
+                  htmlFor="skillTreesDisplayMode"
+                >
                   {localized.skillTrees || "Skill Trees"}
                 </label>
                 <FormSelect
