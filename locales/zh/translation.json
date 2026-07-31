@@ -932,5 +932,6 @@
   "customFolderCopyConflicts": "The destination already contains {{count}} matching pack(s).",
   "overwrite": "Overwrite",
   "updateCustomFolderFromWorkshopHelp": "Copies newer Workshop versions already in this folder and adds enabled Workshop mods.",
-  "updating": "Updating…"
+  "updating": "Updating…",
+  "activeModsFromFolder": "Active mods: {{count}}"
 }

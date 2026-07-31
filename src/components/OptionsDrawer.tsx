@@ -41,6 +41,7 @@ import store from "../store";
 import PackSearcher from "./PackSearcher";
 import {
   DATA_MOD_SOURCE_ID,
+  getModSourceId,
   insertCustomSourceAfterData,
   normalizeModSourceOrder,
   isWorkshopMod,
@@ -125,6 +126,14 @@ const OptionsDrawer = memo(() => {
     () => normalizeModSourceOrder(appFolderPaths, isFeaturesForModdersEnabled),
     [appFolderPaths, isFeaturesForModdersEnabled],
   );
+  const activeModCountBySourceId = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const mod of currentMods) {
+      const sourceId = getModSourceId(mod);
+      counts.set(sourceId, (counts.get(sourceId) || 0) + 1);
+    }
+    return counts;
+  }, [currentMods]);
 
   useEffect(() => {
     window.api
@@ -673,6 +682,17 @@ const OptionsDrawer = memo(() => {
                         ) : (
                           <div className="truncate text-xs text-gray-500" title={sourcePath || ""}>
                             {sourcePath || "—"}
+                          </div>
+                        )}
+                        {customFolder && (
+                          <div
+                            className="mt-1 text-xs text-gray-400"
+                            title="Mods currently selected from this folder by source priority."
+                          >
+                            {(localized.activeModsFromFolder || "Active mods: {{count}}").replace(
+                              "{{count}}",
+                              String(activeModCountBySourceId.get(sourceId) || 0),
+                            )}
                           </div>
                         )}
                       </div>
