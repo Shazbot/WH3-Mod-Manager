@@ -1,4 +1,27 @@
-import { DBVersion, SchemaField, AmendedSchemaField } from "@/src/packFileTypes";
+import type { DBVersion, SchemaField, AmendedSchemaField, PackedFile } from "@/src/packFileTypes";
+import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
+
+export const getPackFileInventory = (
+  packData: Pick<PackViewData, "tables" | "packedFiles">,
+  unsavedFiles: Array<Pick<PackedFile, "name">>,
+) => {
+  const fileNames = new Set([
+    ...packData.tables,
+    ...Object.keys(packData.packedFiles || {}),
+    ...unsavedFiles.map((file) => file.name),
+  ]);
+  const hasDBTables = [...fileNames].some(
+    (fileName) => Boolean(getDBNameFromString(fileName) && getDBSubnameFromString(fileName)),
+  );
+
+  return {
+    isEmpty: fileNames.size === 0,
+    hasDBTables,
+    hasFiles: [...fileNames].some(
+      (fileName) => !getDBNameFromString(fileName) || !getDBSubnameFromString(fileName),
+    ),
+  };
+};
 
 export const chunkTableIntoRows = (schemaFields: SchemaField[], currentSchema: DBVersion) => {
   return (

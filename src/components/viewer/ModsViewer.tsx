@@ -16,6 +16,7 @@ import NodeEditor from "../NodeEditor";
 import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import { getPackNameFromPath } from "@/src/utility/packFileHelpers";
+import { getPackFileInventory } from "./viewerHelpers";
 
 type ViewerTabKind = "db" | "flow" | "file";
 
@@ -71,6 +72,10 @@ const ModsViewer = memo(() => {
   const activeViewerPackPath = activeTab?.packPath ?? packPath;
   const currentPackData = useAppSelector((state) => selectCurrentPackData(state, activeViewerPackPath));
   const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, activeViewerPackPath));
+  const packFileInventory = useMemo(
+    () => (currentPackData ? getPackFileInventory(currentPackData, unsavedFiles) : undefined),
+    [currentPackData, unsavedFiles],
+  );
 
   const treeViewRef = useRef<PackTablesTreeViewHandle>(null);
   const saveAsPackNameInputRef = useRef<HTMLInputElement>(null);
@@ -861,7 +866,13 @@ const ModsViewer = memo(() => {
                   <PackTablesTreeView
                     ref={treeViewRef}
                     packPath={activeViewerPackPath}
-                    preferredTab={activeTab?.kind === "flow" || activeTab?.kind === "file" ? "files" : "db"}
+                    preferredTab={
+                      activeTab?.kind === "flow" ||
+                      activeTab?.kind === "file" ||
+                      (!packFileInventory?.hasDBTables && packFileInventory?.hasFiles)
+                        ? "files"
+                        : "db"
+                    }
                     tableFilter={dbTableFilter}
                     showDialog={showDialog}
                     onOpenDBTable={handleOpenDBTable}
@@ -935,7 +946,9 @@ const ModsViewer = memo(() => {
                   {activeTab ? (
                     activeTab.kind === "db" && !activeTab.dbName && !activeTab.dbSubname ? (
                       <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                        Empty pack. Add a flow or create/edit files to populate it.
+                        {packFileInventory?.isEmpty
+                          ? "Empty pack. Add a flow or create/edit files to populate it."
+                          : "Select a file to view"}
                       </div>
                     ) : activeTab.kind === "flow" && activeTab.flowFile ? (
                       <NodeEditor currentFile={activeTab.flowFile} currentPack={activeTab.packPath} />

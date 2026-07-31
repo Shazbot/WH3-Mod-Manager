@@ -188,7 +188,7 @@ const PackTablesTreeView = React.memo(
 
     useEffect(() => {
       setActiveTreeTab(props.preferredTab);
-    }, [props.preferredTab]);
+    }, [props.packPath, props.preferredTab]);
 
     useImperativeHandle(ref, () => ({
       openNewFlowDialog: () => {
