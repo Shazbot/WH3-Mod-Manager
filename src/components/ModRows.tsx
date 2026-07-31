@@ -38,6 +38,7 @@ import { WindowScroller, AutoSizer, List, CellMeasurerCache, CellMeasurer } from
 import { MeasuredCellParent } from "react-virtualized/dist/es/CellMeasurer";
 import { GridCoreProps } from "react-virtualized/dist/es/Grid";
 import hash from "object-hash";
+import { getModSourceId, getModSourceKind } from "../modSources";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const defaultModThumbnailSrc = require("../assets/modThumbnail.png");
@@ -80,6 +81,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const packDataOverwrites = useAppSelector((state) => state.app.packDataOverwrites);
   const modBeingCustomized = useAppSelector((state) => state.app.modBeingCustomized);
   const isDev = useAppSelector((state) => state.app.isDev);
+  const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isFlowOptionsModalOpen, setIsFlowOptionsModalOpen] = useState<boolean>(false);
@@ -515,6 +517,11 @@ const ModRows = memo((props: ModRowsProps) => {
     [hiddenModNames, unfilteredMods]
   );
 
+  const customFolderPathBySourceId = useMemo(
+    () => new Map((appFolderPaths.customModFolders || []).map((folder) => [folder.id, folder.path])),
+    [appFolderPaths.customModFolders],
+  );
+
   const rowData = useMemo(
     () =>
       visibleMods.map((mod) => ({
@@ -523,6 +530,10 @@ const ModRows = memo((props: ModRowsProps) => {
         isEnabledInMergedMod: mergedModPaths.has(mod.path),
         decodedHumanName: decodeHtml(decodeHtml(mod.humanName) ?? ""),
         decodedAuthor: decodeHtml(decodeHtml(mod.author) ?? ""),
+        customFolderPath:
+          getModSourceKind(mod) === "custom"
+            ? customFolderPathBySourceId.get(getModSourceId(mod))
+            : undefined,
         hasDbCustomization: Boolean(customizableMods[mod.path]?.some((file) => file.startsWith("db\\"))),
         hasFlowCustomization: Boolean(
           customizableMods[mod.path]?.some((file) => file.startsWith("whmmflows\\"))
@@ -530,7 +541,15 @@ const ModRows = memo((props: ModRowsProps) => {
         hasPackDataOverwrite: Boolean(packDataOverwrites[mod.path]),
         thumbnailSrc: (isDev || mod.imgPath === "") ? defaultModThumbnailSrc : mod.imgPath,
       })),
-    [alwaysEnabledModNames, customizableMods, isDev, mergedModPaths, packDataOverwrites, visibleMods]
+    [
+      alwaysEnabledModNames,
+      customFolderPathBySourceId,
+      customizableMods,
+      isDev,
+      mergedModPaths,
+      packDataOverwrites,
+      visibleMods,
+    ]
   );
 
   const onDropWithVisibleMods = useCallback(() => {
@@ -604,6 +623,7 @@ const ModRows = memo((props: ModRowsProps) => {
               thumbnailSrc: row.thumbnailSrc,
               decodedHumanName: row.decodedHumanName,
               decodedAuthor: row.decodedAuthor,
+              customFolderPath: row.customFolderPath,
               hasDbCustomization: row.hasDbCustomization,
               hasFlowCustomization: row.hasFlowCustomization,
               hasPackDataOverwrite: row.hasPackDataOverwrite,
@@ -823,6 +843,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   thumbnailSrc,
                   decodedHumanName,
                   decodedAuthor,
+                  customFolderPath,
                   hasDbCustomization,
                   hasFlowCustomization,
                   hasPackDataOverwrite,
@@ -860,6 +881,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   thumbnailSrc,
                   decodedHumanName,
                   decodedAuthor,
+                  customFolderPath,
                   hasDbCustomization,
                   hasFlowCustomization,
                   hasPackDataOverwrite,

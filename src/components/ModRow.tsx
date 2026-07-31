@@ -8,6 +8,7 @@ import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
 import { Icons } from "./icons";
 import { CellMeasurerChildProps } from "react-virtualized/dist/es/CellMeasurer";
+import CustomModFolderIcon from "./CustomModFolderIcon";
 
 const FontAwesomeIconMemo = memo(FontAwesomeIcon);
 
@@ -37,6 +38,7 @@ type ModRowProps = {
   thumbnailSrc: string;
   decodedHumanName: string;
   decodedAuthor: string;
+  customFolderPath?: string;
   hasDbCustomization: boolean;
   hasFlowCustomization: boolean;
   hasPackDataOverwrite: boolean;
@@ -81,6 +83,7 @@ const ModRow = memo(
     thumbnailSrc,
     decodedHumanName,
     decodedAuthor,
+    customFolderPath,
     hasDbCustomization,
     hasFlowCustomization,
     hasPackDataOverwrite,
@@ -281,6 +284,7 @@ const ModRow = memo(
                 </Tooltip>
               )}
               {mod.name.replace(".pack", "")}
+              <CustomModFolderIcon folderPath={customFolderPath} />
             </span>
           </label>
         </div>

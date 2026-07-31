@@ -3,6 +3,7 @@ import Select, { SingleValue } from "react-select";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLock, faTriangleExclamation, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { BsArrowDownUp } from "react-icons/bs";
+import { FiFolder } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
   addToast,
@@ -17,7 +18,8 @@ import localizationContext from "../localizationContext";
 import { getModsSortedByHumanNameAndName, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { isModAlwaysEnabled, withoutDataAndContentDuplicates } from "../modsHelpers";
 import { SortingType } from "../utility/modRowSorting";
-import { resolveModsBySourcePriority } from "../modSources";
+import { getModSourceId, getModSourceKind, resolveModsBySourcePriority } from "../modSources";
+import CustomModFolderIcon from "./CustomModFolderIcon";
 
 type PresetOption = {
   value: string;
@@ -161,6 +163,18 @@ const PresetsTab = memo(() => {
     }
     return modsByName;
   }, [allMods, appFolderPaths, isFeaturesForModdersEnabled]);
+
+  const customFolderPathBySourceId = useMemo(
+    () => new Map((appFolderPaths.customModFolders || []).map((folder) => [folder.id, folder.path])),
+    [appFolderPaths.customModFolders],
+  );
+  const getCustomFolderPath = useCallback(
+    (mod: Mod) =>
+      getModSourceKind(mod) === "custom"
+        ? customFolderPathBySourceId.get(getModSourceId(mod))
+        : undefined,
+    [customFolderPathBySourceId],
+  );
 
   const knownModsByName = useMemo(() => {
     const modsByName = new Map<string, Mod>();
@@ -1046,6 +1060,7 @@ const PresetsTab = memo(() => {
                       {mod.isInData && (
                         <span className="ml-1 text-orange-500 font-semibold opacity-80">D</span>
                       )}
+                      <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />
                       {isMissing && (
                         <span className="ml-2 text-xs text-amber-400">
                           {localized.missingModTag || "(missing)"}
@@ -1114,6 +1129,10 @@ const PresetsTab = memo(() => {
             <span className="ml-2">
               <span className="text-orange-500 font-semibold">D</span>{" "}
               {localized.dataModLegend || "= mod is in data folder."}
+            </span>
+            <span className="ml-2 inline-flex items-center">
+              <FiFolder className="mr-1 h-3.5 w-3.5 text-slate-400 opacity-80" />
+              {localized.customFolderModLegend || "= mod is from a custom folder."}
             </span>
           </div>
         </div>
@@ -1221,6 +1240,7 @@ const PresetsTab = memo(() => {
                   <div className="truncate cursor-pointer">
                     {getModDisplayName(mod)}
                     {mod.isInData && <span className="ml-1 text-orange-500 font-semibold">D</span>}
+                    <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />
                   </div>
                   <button
                     className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40"
