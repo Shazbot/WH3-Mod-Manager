@@ -62,6 +62,20 @@ describe("mod source priority", () => {
     ]);
   });
 
+  it("gives a new custom folder priority below Data and above every existing source", () => {
+    expect(
+      insertCustomSourceAfterData(
+        ["custom-old", WORKSHOP_MOD_SOURCE_ID, DATA_MOD_SOURCE_ID],
+        "custom-new",
+      ),
+    ).toEqual([
+      DATA_MOD_SOURCE_ID,
+      "custom-new",
+      "custom-old",
+      WORKSHOP_MOD_SOURCE_ID,
+    ]);
+  });
+
   it("resolves duplicate names using configured priority", () => {
     const dataMod = createMod({
       path: "/game/data/example.pack",
