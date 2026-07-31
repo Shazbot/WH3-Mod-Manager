@@ -77,6 +77,7 @@ const OptionsDrawer = memo(() => {
   const [modsToForceResubscribe, setModsToForceResubscribe] = useState<Mod[]>([]);
   const [modFolderMessage, setModFolderMessage] = useState("");
   const [customFolderStatuses, setCustomFolderStatuses] = useState<Record<string, boolean>>({});
+  const [syncingCustomFolderId, setSyncingCustomFolderId] = useState<string>();
   const [pendingCustomFolderCopy, setPendingCustomFolderCopy] = useState<{
     destinationPath: string;
     modPaths: string[];
@@ -211,6 +212,38 @@ const OptionsDrawer = memo(() => {
       await finishCustomFolderCopy(destinationPath, modsToCopy.map((mod) => mod.path), false);
     },
     [currentMods, enabledMods, finishCustomFolderCopy],
+  );
+
+  const syncWorkshopModsToCustomFolder = useCallback(
+    async (customSourceId: string) => {
+      setSyncingCustomFolderId(customSourceId);
+      setModFolderMessage("");
+      try {
+        const result = await window.api?.syncWorkshopModsToCustomFolder({
+          customSourceId,
+          enabledWorkshopModNames: enabledMods.filter(isWorkshopMod).map((mod) => mod.name),
+        });
+        if (!result?.success) {
+          setModFolderMessage(result?.error || "Failed to update the custom mod folder.");
+          return;
+        }
+
+        const updatedCount = result.updated?.length || 0;
+        const addedCount = result.added?.length || 0;
+        const failedCount = result.failed?.length || 0;
+        const failureSuffix = failedCount ? ` ${failedCount} file(s) failed.` : "";
+        setModFolderMessage(
+          updatedCount === 0 && addedCount === 0
+            ? failedCount > 0
+              ? `Failed to copy ${failedCount} Workshop file(s).`
+              : "No Workshop updates or newly enabled Workshop mods were found."
+            : `Updated ${updatedCount} and added ${addedCount} Workshop mod(s).${failureSuffix}`,
+        );
+      } finally {
+        setSyncingCustomFolderId(undefined);
+      }
+    },
+    [enabledMods],
   );
 
   const hiddenModsToOptionViewDataSelector = createSelector(
@@ -666,13 +699,29 @@ const OptionsDrawer = memo(() => {
                         </>
                       )}
                       {customFolder && (
-                        <button
-                          type="button"
-                          onClick={() => removeCustomModFolder(sourceId)}
-                          className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
-                        >
-                          {localized.remove || "Remove"}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            disabled={isMissing || syncingCustomFolderId !== undefined}
+                            title={
+                              localized.updateCustomFolderFromWorkshopHelp ||
+                              "Copies newer Workshop versions already in this folder and adds enabled Workshop mods."
+                            }
+                            onClick={() => syncWorkshopModsToCustomFolder(sourceId)}
+                            className="px-2 py-1 text-xs text-purple-300 hover:text-purple-200 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {syncingCustomFolderId === sourceId
+                              ? localized.updating || "Updating…"
+                              : localized.update || "Update"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomModFolder(sourceId)}
+                            className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
+                          >
+                            {localized.remove || "Remove"}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

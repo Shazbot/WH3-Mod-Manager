@@ -928,5 +928,7 @@
   "copyModsToFolderHelp": "Copies enabled mods; hold Shift to copy all mods.",
   "overwriteMods": "Overwrite existing mods?",
   "customFolderCopyConflicts": "The destination already contains {{count}} matching pack(s).",
-  "overwrite": "Overwrite"
+  "overwrite": "Overwrite",
+  "updateCustomFolderFromWorkshopHelp": "Copies newer Workshop versions already in this folder and adds enabled Workshop mods.",
+  "updating": "Updating…"
 }
