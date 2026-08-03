@@ -616,7 +616,7 @@
   "nodeEditorSelectReverseTable": "Select table to reverse to...",
   "nodeEditorNoReverseTablesFound": "No tables reference the input table",
   "nodeEditorReferencingRows": "Referencing Rows",
-  "nodeEditorEnterFormulaUsingX": "Enter formula using x as input (e.g., x + 10, x * 1.5, x^2 + 3*x - 5)...",
+  "nodeEditorEnterFormulaUsingX": "Enter a number, or a formula using x (e.g., 10, x + 10, x * 1.5)...",
   "nodeEditorLowestValue": "Lowest Value",
   "nodeEditorEnterValueExample100": "Enter value (e.g., 100)...",
   "nodeEditorAppliesMathCeil": "Applies Math.ceil() to all values",

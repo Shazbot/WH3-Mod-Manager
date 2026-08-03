@@ -1262,7 +1262,7 @@ export const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; 
         onChange={handleTextChange}
         placeholder={
           localized.nodeEditorEnterFormulaUsingX ||
-          "Enter formula using x as input (e.g., x + 10, x * 1.5, x^2 + 3*x - 5)..."
+          "Enter a number, or a formula using x (e.g., 10, x + 10, x * 1.5)..."
         }
         className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
       />
