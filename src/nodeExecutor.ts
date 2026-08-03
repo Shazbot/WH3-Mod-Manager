@@ -5807,37 +5807,34 @@ async function executeDumpToTSVNode(
     // Build TSV from ChangedColumnSelection
     const tsvLines: string[] = [];
 
-    // Process each table entry in the columns array
+    // Process each adjusted source table so the dump includes the complete rows,
+    // not just the columns that were selected for modification.
     for (const tableEntry of adjustedInputData.columns) {
       const tableName = tableEntry.tableName || "unknown";
-      const fileName = tableEntry.fileName || "";
-      const columnNames = tableEntry.selectedColumns || [];
-      const data = tableEntry.data || [];
+      const sourceTable = tableEntry.sourceTable;
 
-      console.log(
-        `Dump to TSV Node ${nodeId}: Table "${tableName}" has ${columnNames.length} columns and ${data.length} data entries`,
-      );
-
-      // Header: table name, file name, then column names
-      if (tsvLines.length === 0 && columnNames.length > 0) {
-        const headerCols = ["_table", "_file", ...columnNames];
-        tsvLines.push(headerCols.join("\t"));
+      if (!sourceTable.schemaFields || !sourceTable.tableSchema) {
+        console.warn(`Dump to TSV Node ${nodeId}: Skipping adjusted table "${tableName}" without schema data`);
+        continue;
       }
 
-      // data is an array where each entry is {col: columnName, data: value}
-      // For single column selection, each entry is one row
-      // For multiple columns, entries are interleaved: row1col1, row1col2, row2col1, row2col2, etc.
-      const numCols = columnNames.length || 1;
-      const numRows = Math.floor(data.length / numCols);
+      const rows = getRowsForPackedFile(sourceTable, executionContext);
 
-      for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
-        const rowValues = [tableName, fileName];
-        for (let colIdx = 0; colIdx < numCols; colIdx++) {
-          const dataIdx = rowIdx * numCols + colIdx;
-          const value = data[dataIdx]?.data ?? "";
-          rowValues.push(String(value).replace(/\t/g, " ").replace(/\n/g, " "));
-        }
-        tsvLines.push(rowValues.join("\t"));
+      console.log(
+        `Dump to TSV Node ${nodeId}: Adjusted table "${tableName}" has ${sourceTable.tableSchema.fields.length} columns and ${rows.length} rows`,
+      );
+
+      if (rows.length > 0 && tsvLines.length === 0) {
+        tsvLines.push(rows[0].map((cell) => cell.name).join("\t"));
+      }
+
+      for (const row of rows) {
+        const values = row.map((cell) =>
+          String(cell.resolvedKeyValue ?? "")
+            .replace(/\t/g, " ")
+            .replace(/\n/g, " "),
+        );
+        tsvLines.push(values.join("\t"));
       }
     }
 
