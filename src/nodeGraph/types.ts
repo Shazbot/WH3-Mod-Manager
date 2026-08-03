@@ -36,6 +36,7 @@ export interface SerializedNode {
   data: {
     label: string;
     type: FlowNodeType;
+    isDisabled?: boolean;
     textValue?: string;
     selectedPack?: string;
     selectedTable?: string;

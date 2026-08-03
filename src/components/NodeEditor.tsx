@@ -19,6 +19,7 @@ import { applyConnection, rehydrateGraph, removeEdge } from "../nodeGraph/connec
 import {
   applyNodeDataPatchFromRef,
   deleteSelectedNodesFromGraph,
+  toggleSelectedNodesDisabled,
   withNodeEditorActions,
 } from "../nodeGraph/editorState";
 import { FlowOptionsModal } from "../nodeGraph/FlowOptionsModal";
@@ -285,20 +286,63 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     setEdges(nextGraph.edges);
   }, [edges, setEdges, setNodes]);
 
+  const selectedNodes = nodes.filter((node) => node.selected);
+  const hasSelectedNodes = selectedNodes.length > 0;
+  const areAllSelectedNodesDisabled =
+    hasSelectedNodes && selectedNodes.every((node) => node.data.isDisabled === true);
+
+  const toggleSelectedNodes = useCallback(() => {
+    const nextGraph = toggleSelectedNodesDisabled(nodesRef.current);
+    if (nextGraph.selectedNodeIds.length === 0) {
+      return;
+    }
+
+    nodesRef.current = nextGraph.nodes;
+    setNodes(nextGraph.nodes);
+    if (
+      nextGraph.disabled &&
+      quickConnectSourceNodeId &&
+      nextGraph.selectedNodeIds.includes(quickConnectSourceNodeId)
+    ) {
+      setQuickConnectSourceNodeId(null);
+    }
+  }, [quickConnectSourceNodeId, setNodes]);
+
   const nodesWithEditorActions = useMemo(() => {
     const actionNodes = withNodeEditorActions(nodes, {
       updateNodeData,
     });
 
-    return actionNodes.map((node) =>
-      node.id === quickConnectSourceNodeId
-        ? {
-            ...node,
-            className: [node.className, "quick-connect-source"].filter(Boolean).join(" "),
-          }
-        : node,
-    );
+    return actionNodes.map((node) => {
+      const className = [
+        node.className,
+        node.id === quickConnectSourceNodeId ? "quick-connect-source" : undefined,
+        node.data.isDisabled === true ? "node-disabled" : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return className === node.className ? node : { ...node, className };
+    });
   }, [nodes, quickConnectSourceNodeId, updateNodeData]);
+
+  const disabledNodeIds = useMemo(
+    () => new Set(nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id)),
+    [nodes],
+  );
+  const edgesWithDisabledState = useMemo(
+    () =>
+      edges.map((edge) =>
+        disabledNodeIds.has(edge.source)
+          ? {
+              ...edge,
+              animated: false,
+              className: [edge.className, "disabled-source"].filter(Boolean).join(" "),
+            }
+          : edge,
+      ),
+    [disabledNodeIds, edges],
+  );
 
   // Keep the ref updated with current nodes
   React.useEffect(() => {
@@ -882,7 +926,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             <ReactFlow
               className="node-editor-flow"
               nodes={nodesWithEditorActions}
-              edges={edges}
+              edges={edgesWithDisabledState}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
@@ -986,6 +1030,43 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                     {localized.nodeEditorRun || "Run"}
                   </>
                 )}
+              </button>
+
+              {/* Enable or disable selected nodes */}
+              <button
+                onClick={toggleSelectedNodes}
+                disabled={!hasSelectedNodes}
+                title={
+                  areAllSelectedNodesDisabled
+                    ? "Enable the selected nodes"
+                    : "Disable the selected nodes and stop their outgoing branches"
+                }
+                className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                  hasSelectedNodes
+                    ? areAllSelectedNodesDisabled
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      : "bg-orange-600 hover:bg-orange-700 text-white cursor-pointer"
+                    : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {areAllSelectedNodesDisabled ? (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 12h14m-7-7v14"
+                    />
+                  ) : (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  )}
+                </svg>
+                {areAllSelectedNodesDisabled ? "Enable" : "Disable"}
               </button>
 
               {/* Delete selected nodes button */}

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyNodeDataPatch, withNodeEditorActions } from "../../src/nodeGraph/editorState";
+import {
+  applyNodeDataPatch,
+  toggleSelectedNodesDisabled,
+  withNodeEditorActions,
+} from "../../src/nodeGraph/editorState";
 
 const createField = (name: string) => ({
   name,
@@ -206,5 +210,37 @@ describe("withNodeEditorActions", () => {
     (node.data as any).onUpdateNodeData({ textValue: "updated.pack" });
 
     expect(updateNodeData).toHaveBeenCalledWith("node_1", { textValue: "updated.pack" });
+  });
+});
+
+describe("toggleSelectedNodesDisabled", () => {
+  it("disables selected nodes together and enables them on the next toggle", () => {
+    const nodes = [
+      {
+        id: "selected-enabled",
+        selected: true,
+        data: { isDisabled: false },
+      },
+      {
+        id: "selected-disabled",
+        selected: true,
+        data: { isDisabled: true },
+      },
+      {
+        id: "unselected",
+        selected: false,
+        data: { isDisabled: false },
+      },
+    ] as any[];
+
+    const disabledResult = toggleSelectedNodesDisabled(nodes);
+
+    expect(disabledResult.disabled).toBe(true);
+    expect(disabledResult.nodes.map((node) => node.data.isDisabled)).toEqual([true, true, false]);
+
+    const enabledResult = toggleSelectedNodesDisabled(disabledResult.nodes);
+
+    expect(enabledResult.disabled).toBe(false);
+    expect(enabledResult.nodes.map((node) => node.data.isDisabled)).toEqual([false, false, false]);
   });
 });

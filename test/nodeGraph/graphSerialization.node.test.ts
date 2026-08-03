@@ -173,4 +173,37 @@ describe("graphSerialization", () => {
 
     expect(executionGraph.nodes[0].data.joinType).toBe("anti");
   });
+
+  it("preserves disabled nodes through saving, loading, and execution preparation", () => {
+    const nodes = [
+      {
+        id: "node_0",
+        type: "packedfiles",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Pack Files",
+          type: "packedfiles",
+          isDisabled: true,
+          textValue: "disabled.pack",
+        },
+      },
+    ] as any[];
+
+    const serializedGraph = serializeNodeGraphState({
+      nodes,
+      edges: [],
+      flowOptions: [],
+      isGraphEnabled: true,
+      graphStartsEnabled: true,
+    });
+    const deserializedGraph = deserializeNodeGraph(JSON.stringify(serializedGraph));
+    const executionGraph = prepareGraphForExecution({
+      nodes: deserializedGraph.nodes,
+      edges: deserializedGraph.edges,
+    });
+
+    expect(serializedGraph.nodes[0].data.isDisabled).toBe(true);
+    expect(deserializedGraph.nodes[0].data.isDisabled).toBe(true);
+    expect(executionGraph.nodes[0].data.isDisabled).toBe(true);
+  });
 });

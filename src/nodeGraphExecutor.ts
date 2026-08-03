@@ -366,6 +366,11 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       if (executed.has(node.id)) {
         continue;
       }
+      if (node.data.isDisabled === true) {
+        flowExecutionDebugLog(executionContext, `Skipping disabled node ${node.id} (${node.type})`);
+        executed.add(node.id);
+        continue;
+      }
       try {
         flowExecutionDebugLog(executionContext, `Executing node ${node.id} (${node.type})`);
         const config = nodeConfigs?.[node.id];
@@ -420,7 +425,7 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
       `Node graph execution finished in ${elapsedTime.toFixed(2)}ms: ${successCount}/${executionResults.size} nodes succeeded`,
     );
     return {
-      success: successCount > 0,
+      success: failureCount === 0,
       executionResults,
       totalExecuted: executionResults.size,
       successCount,
