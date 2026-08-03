@@ -1,10 +1,10 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer from "../src/appSlice";
+import appReducer, { setIsFeaturesForModdersEnabled } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import localizationContext from "../src/localizationContext";
 import LeftSidebar from "../src/components/LeftSidebar";
@@ -115,13 +115,15 @@ const renderWithState = (ui: React.ReactNode, stateOverrides: Partial<AppState> 
     },
   });
 
-  return render(
+  const renderResult = render(
     <Provider store={store}>
       <localizationContext.Provider value={localizedStrings}>
         {ui}
       </localizationContext.Provider>
     </Provider>,
   );
+
+  return { ...renderResult, store };
 };
 
 describe("tree display DOM behavior", () => {
@@ -157,6 +159,23 @@ describe("tree display DOM behavior", () => {
     expect(screen.queryByText("Skill Trees")).not.toBeInTheDocument();
     expect(screen.queryByText("Tech Trees")).not.toBeInTheDocument();
     expect(screen.queryByText("Node Editor")).not.toBeInTheDocument();
+  });
+
+  it("selects the Node Editor after modder features are enabled at runtime", () => {
+    const { store } = renderWithState(<LeftSidebar />, {
+      isFeaturesForModdersEnabled: false,
+      skillTreesDisplayMode: "tab",
+      technologyTreesDisplayMode: "tab",
+    });
+
+    expect(screen.queryByText("Node Editor")).not.toBeInTheDocument();
+
+    act(() => {
+      store.dispatch(setIsFeaturesForModdersEnabled(true));
+    });
+    fireEvent.click(screen.getByText("Node Editor"));
+
+    expect(store.getState().app.currentTab).toBe("nodeEditor");
   });
 
   it("shows a combined Trees menu button when both trees use standalone windows", () => {

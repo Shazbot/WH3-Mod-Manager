@@ -22,14 +22,14 @@ const LeftSidebar = memo(() => {
   const showVisualsTab = isFeaturesForModdersEnabled && isDev;
   const isSkillsTabVisible = currentGame === "wh3" && skillTreesDisplayMode === "tab";
   const isTechTreesTabVisible = currentGame === "wh3" && technologyTreesDisplayMode === "tab";
-  const tabIndexToTabType: MainWindowTab[] = useMemo(
-    () => ["mods", "enabledMods", "categories", "presets"],
-    [],
-  );
-  if (isSkillsTabVisible) tabIndexToTabType.push("skills");
-  if (showVisualsTab) tabIndexToTabType.push("visuals");
-  if (isTechTreesTabVisible) tabIndexToTabType.push("techTrees");
-  if (isFeaturesForModdersEnabled) tabIndexToTabType.push("nodeEditor");
+  const tabIndexToTabType: MainWindowTab[] = useMemo(() => {
+    const tabs: MainWindowTab[] = ["mods", "enabledMods", "categories", "presets"];
+    if (isSkillsTabVisible) tabs.push("skills");
+    if (showVisualsTab) tabs.push("visuals");
+    if (isTechTreesTabVisible) tabs.push("techTrees");
+    if (isFeaturesForModdersEnabled) tabs.push("nodeEditor");
+    return tabs;
+  }, [isFeaturesForModdersEnabled, isSkillsTabVisible, isTechTreesTabVisible, showVisualsTab]);
 
   const onTabSelected = (index: number) => {
     const tabType = tabIndexToTabType[index];
