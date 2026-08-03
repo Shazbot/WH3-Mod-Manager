@@ -286,3 +286,32 @@ export const deleteSelectedNodesFromGraph = (nodes: Node[], edges: Edge[]) => {
     deletedNodeIds: selectedNodeIds,
   };
 };
+
+export const toggleSelectedNodesDisabled = (nodes: Node[]) => {
+  const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
+
+  if (selectedNodeIds.length === 0) {
+    return { nodes, selectedNodeIds, disabled: false };
+  }
+
+  const selectedNodeIdSet = new Set(selectedNodeIds);
+  const disabled = nodes.some(
+    (node) => selectedNodeIdSet.has(node.id) && node.data.isDisabled !== true,
+  );
+
+  return {
+    nodes: nodes.map((node) =>
+      selectedNodeIdSet.has(node.id)
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              isDisabled: disabled,
+            },
+          }
+        : node,
+    ),
+    selectedNodeIds,
+    disabled,
+  };
+};

@@ -49,4 +49,12 @@ describe("flow editor node selection style", () => {
     expect(style.outline).toBe("4px dashed #22d3ee");
     expect(style.filter).toContain("drop-shadow");
   });
+
+  it("shows disabled nodes and their stopped outgoing connections", () => {
+    const css = readFileSync(path.resolve(process.cwd(), "src/index.css"), "utf8");
+
+    expect(css).toContain(".react-flow__node.node-disabled > *");
+    expect(css).toContain('content: "Disabled"');
+    expect(css).toContain(".react-flow__edge.disabled-source .react-flow__edge-path");
+  });
 });

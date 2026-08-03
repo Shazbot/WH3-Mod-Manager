@@ -443,6 +443,35 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   filter: drop-shadow(0 0 8px rgb(34 211 238 / 80%));
 }
 
+.node-editor-flow .react-flow__node.node-disabled > * {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.node-editor-flow .react-flow__node.node-disabled::after {
+  content: "Disabled";
+  position: absolute;
+  top: -0.85rem;
+  left: 50%;
+  z-index: 2;
+  padding: 0.1rem 0.45rem;
+  transform: translateX(-50%);
+  border: 1px solid rgb(251 146 60 / 80%);
+  border-radius: 9999px;
+  background: rgb(67 20 7 / 95%);
+  color: #fed7aa;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1rem;
+  pointer-events: none;
+}
+
+.node-editor-flow .react-flow__edge.disabled-source .react-flow__edge-path {
+  stroke: #64748b;
+  stroke-dasharray: 8 6;
+  stroke-opacity: 0.35;
+}
+
 .skillTooltip {
   padding: 1rem;
   background-repeat: no-repeat;

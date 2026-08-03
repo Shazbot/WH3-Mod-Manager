@@ -42,6 +42,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
       data: {
         label: String(data.label || ""),
         type: String(data.type || "") as FlowNodeType,
+        isDisabled: data.isDisabled === true,
         textValue: maybeString(data.textValue),
         selectedPack: maybeString(data.selectedPack),
         selectedTable: maybeString(data.selectedTable),

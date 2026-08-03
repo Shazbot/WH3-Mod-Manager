@@ -341,6 +341,7 @@ const api = {
       data: {
         label: string;
         type: string;
+        isDisabled?: boolean;
         textValue?: string;
         outputType?: string;
         inputType?: string;
