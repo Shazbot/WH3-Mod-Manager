@@ -55,6 +55,9 @@ describe("flow editor node selection style", () => {
 
     expect(css).toContain(".react-flow__node.node-disabled > *");
     expect(css).toContain('content: "Disabled"');
+    expect(css).toContain(".react-flow__node.node-disabled-by-upstream > *");
+    expect(css).toContain('content: "Blocked by disabled node"');
     expect(css).toContain(".react-flow__edge.disabled-source .react-flow__edge-path");
+    expect(css).toContain(".react-flow__edge.disabled-consequence .react-flow__edge-path");
   });
 });

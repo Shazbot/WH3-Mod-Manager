@@ -466,10 +466,40 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   pointer-events: none;
 }
 
+.node-editor-flow .react-flow__node.node-disabled-by-upstream > * {
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}
+
+.node-editor-flow .react-flow__node.node-disabled-by-upstream::after {
+  content: "Blocked by disabled node";
+  position: absolute;
+  top: -0.85rem;
+  left: 50%;
+  z-index: 2;
+  padding: 0.1rem 0.45rem;
+  transform: translateX(-50%);
+  border: 1px solid rgb(167 139 250 / 80%);
+  border-radius: 9999px;
+  background: rgb(46 16 101 / 95%);
+  color: #ddd6fe;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .node-editor-flow .react-flow__edge.disabled-source .react-flow__edge-path {
   stroke: #64748b;
   stroke-dasharray: 8 6;
   stroke-opacity: 0.35;
+}
+
+.node-editor-flow .react-flow__edge.disabled-consequence .react-flow__edge-path {
+  stroke: #a78bfa;
+  stroke-dasharray: 4 7;
+  stroke-opacity: 0.4;
 }
 
 .skillTooltip {
