@@ -2108,15 +2108,7 @@ async function executeNumericAdjustmentNode(
   if (!formula) {
     return {
       success: false,
-      error: "No formula provided. Enter a mathematical expression using x as the input variable.",
-    };
-  }
-
-  // Validate that the formula contains 'x' variable
-  if (!formula.includes("x")) {
-    return {
-      success: false,
-      error: "Formula must contain variable x representing the input value.",
+      error: "No value provided. Enter a number or a mathematical expression using x as the input variable.",
     };
   }
 
