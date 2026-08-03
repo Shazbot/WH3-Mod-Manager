@@ -792,6 +792,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         <DefaultTableVersionsContext.Provider value={defaultTableVersions}>
           <ReactFlowProvider>
             <ReactFlow
+              className="node-editor-flow"
               nodes={nodesWithEditorActions}
               edges={edges}
               onNodesChange={onNodesChange}
