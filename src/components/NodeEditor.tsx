@@ -22,6 +22,7 @@ import {
   withNodeEditorActions,
 } from "../nodeGraph/editorState";
 import { FlowOptionsModal } from "../nodeGraph/FlowOptionsModal";
+import { buildQuickConnectionCandidates, hasDirectedConnection } from "../nodeGraph/quickConnect";
 import {
   deserializeNodeGraph,
   prepareGraphForExecution,
@@ -232,6 +233,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [quickConnectSourceNodeId, setQuickConnectSourceNodeId] = useState<string | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
@@ -284,15 +286,30 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   }, [edges, setEdges, setNodes]);
 
   const nodesWithEditorActions = useMemo(() => {
-    return withNodeEditorActions(nodes, {
+    const actionNodes = withNodeEditorActions(nodes, {
       updateNodeData,
     });
-  }, [nodes, updateNodeData]);
+
+    return actionNodes.map((node) =>
+      node.id === quickConnectSourceNodeId
+        ? {
+            ...node,
+            className: [node.className, "quick-connect-source"].filter(Boolean).join(" "),
+          }
+        : node,
+    );
+  }, [nodes, quickConnectSourceNodeId, updateNodeData]);
 
   // Keep the ref updated with current nodes
   React.useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  React.useEffect(() => {
+    if (quickConnectSourceNodeId && !nodes.some((node) => node.id === quickConnectSourceNodeId)) {
+      setQuickConnectSourceNodeId(null);
+    }
+  }, [nodes, quickConnectSourceNodeId]);
 
   React.useEffect(() => {
     nodeEditorDebugLog("getDBNameToDBVersions");
@@ -328,6 +345,77 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       setEdges(nextGraph.edges);
     },
     [DBNameToDBVersions, defaultTableVersions, edges, setEdges, setNodes, sortedTableNames],
+  );
+
+  const onNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      const eventTarget = event.target as HTMLElement;
+      if (eventTarget.closest("input, textarea, select, button, a, .react-flow__handle")) {
+        return;
+      }
+
+      if (!event.shiftKey) {
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+
+      if (!quickConnectSourceNodeId) {
+        const sourceHandles =
+          reactFlowInstance?.getInternalNode(node.id)?.internals.handleBounds?.source ?? [];
+        if (sourceHandles.length > 0) {
+          setQuickConnectSourceNodeId(node.id);
+        }
+        return;
+      }
+
+      if (quickConnectSourceNodeId === node.id) {
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+
+      if (hasDirectedConnection(edges, quickConnectSourceNodeId, node.id)) {
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+
+      const sourceHandles =
+        reactFlowInstance?.getInternalNode(quickConnectSourceNodeId)?.internals.handleBounds?.source ?? [];
+      const targetHandles =
+        reactFlowInstance?.getInternalNode(node.id)?.internals.handleBounds?.target ?? [];
+      const candidates = buildQuickConnectionCandidates({
+        sourceNodeId: quickConnectSourceNodeId,
+        targetNodeId: node.id,
+        sourceHandles,
+        targetHandles,
+        edges,
+      });
+
+      for (const candidate of candidates) {
+        const nextGraph = applyConnection(
+          { nodes: nodesRef.current, edges },
+          candidate,
+          { DBNameToDBVersions, defaultTableVersions, sortedTableNames },
+        );
+        if (!nextGraph.accepted) {
+          continue;
+        }
+
+        setNodes(nextGraph.nodes);
+        setEdges(nextGraph.edges);
+        setQuickConnectSourceNodeId(null);
+        return;
+      }
+    },
+    [
+      DBNameToDBVersions,
+      defaultTableVersions,
+      edges,
+      quickConnectSourceNodeId,
+      reactFlowInstance,
+      setEdges,
+      setNodes,
+      sortedTableNames,
+    ],
   );
 
   const onEdgeClick = useCallback(
@@ -798,6 +886,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              onPaneClick={() => setQuickConnectSourceNodeId(null)}
               onEdgeClick={onEdgeClick}
               onInit={setReactFlowInstance}
               onDrop={onDrop}

@@ -507,6 +507,17 @@ export const applyConnection = (
     return { ...state, accepted: false };
   }
 
+  const duplicateConnection = state.edges.some(
+    (edge) =>
+      edge.source === params.source &&
+      edge.target === params.target &&
+      (edge.sourceHandle ?? null) === (params.sourceHandle ?? null) &&
+      (edge.targetHandle ?? null) === (params.targetHandle ?? null),
+  );
+  if (duplicateConnection) {
+    return { ...state, accepted: false };
+  }
+
   const sourceOutputType: NodeEdgeTypes | undefined = sourceNode.data
     ? (getNodeData<GraphRuleNodeData>(sourceNode).outputType as NodeEdgeTypes | undefined)
     : undefined;

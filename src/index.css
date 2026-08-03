@@ -436,6 +436,13 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   filter: drop-shadow(0 0 8px rgb(250 204 21 / 75%));
 }
 
+.node-editor-flow .react-flow__node.quick-connect-source {
+  outline: 4px dashed #22d3ee;
+  outline-offset: 3px;
+  border-radius: 0.75rem;
+  filter: drop-shadow(0 0 8px rgb(34 211 238 / 80%));
+}
+
 .skillTooltip {
   padding: 1rem;
   background-repeat: no-repeat;
