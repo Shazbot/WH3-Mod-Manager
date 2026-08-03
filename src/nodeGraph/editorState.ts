@@ -287,6 +287,45 @@ export const deleteSelectedNodesFromGraph = (nodes: Node[], edges: Edge[]) => {
   };
 };
 
+export const getNodesDisabledByUpstream = (nodes: Node[], edges: Edge[]) => {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const manuallyDisabledNodeIds = new Set(
+    nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id),
+  );
+  const reachableNodeIds = new Set(manuallyDisabledNodeIds);
+  const nodesToVisit = [...manuallyDisabledNodeIds];
+  const outgoingTargetIdsBySource = new Map<string, string[]>();
+
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      continue;
+    }
+
+    const targetIds = outgoingTargetIdsBySource.get(edge.source);
+    if (targetIds) {
+      targetIds.push(edge.target);
+    } else {
+      outgoingTargetIdsBySource.set(edge.source, [edge.target]);
+    }
+  }
+
+  for (let index = 0; index < nodesToVisit.length; index += 1) {
+    const sourceId = nodesToVisit[index];
+    for (const targetId of outgoingTargetIdsBySource.get(sourceId) || []) {
+      if (reachableNodeIds.has(targetId)) {
+        continue;
+      }
+
+      reachableNodeIds.add(targetId);
+      nodesToVisit.push(targetId);
+    }
+  }
+
+  return new Set(
+    [...reachableNodeIds].filter((nodeId) => !manuallyDisabledNodeIds.has(nodeId)),
+  );
+};
+
 export const toggleSelectedNodesDisabled = (nodes: Node[]) => {
   const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
 

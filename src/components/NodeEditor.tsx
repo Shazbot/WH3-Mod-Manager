@@ -19,6 +19,7 @@ import { applyConnection, rehydrateGraph, removeEdge } from "../nodeGraph/connec
 import {
   applyNodeDataPatchFromRef,
   deleteSelectedNodesFromGraph,
+  getNodesDisabledByUpstream,
   toggleSelectedNodesDisabled,
   withNodeEditorActions,
 } from "../nodeGraph/editorState";
@@ -308,6 +309,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     }
   }, [quickConnectSourceNodeId, setNodes]);
 
+  const manuallyDisabledNodeIds = useMemo(
+    () => new Set(nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id)),
+    [nodes],
+  );
+  const nodesDisabledByUpstream = useMemo(
+    () => getNodesDisabledByUpstream(nodes, edges),
+    [edges, nodes],
+  );
+
   const nodesWithEditorActions = useMemo(() => {
     const actionNodes = withNodeEditorActions(nodes, {
       updateNodeData,
@@ -317,31 +327,34 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       const className = [
         node.className,
         node.id === quickConnectSourceNodeId ? "quick-connect-source" : undefined,
-        node.data.isDisabled === true ? "node-disabled" : undefined,
+        manuallyDisabledNodeIds.has(node.id) ? "node-disabled" : undefined,
+        nodesDisabledByUpstream.has(node.id) ? "node-disabled-by-upstream" : undefined,
       ]
         .filter(Boolean)
         .join(" ");
 
       return className === node.className ? node : { ...node, className };
     });
-  }, [nodes, quickConnectSourceNodeId, updateNodeData]);
+  }, [manuallyDisabledNodeIds, nodes, nodesDisabledByUpstream, quickConnectSourceNodeId, updateNodeData]);
 
-  const disabledNodeIds = useMemo(
-    () => new Set(nodes.filter((node) => node.data.isDisabled === true).map((node) => node.id)),
-    [nodes],
-  );
   const edgesWithDisabledState = useMemo(
     () =>
-      edges.map((edge) =>
-        disabledNodeIds.has(edge.source)
+      edges.map((edge) => {
+        const disabledClassName = manuallyDisabledNodeIds.has(edge.source)
+          ? "disabled-source"
+          : nodesDisabledByUpstream.has(edge.source) || nodesDisabledByUpstream.has(edge.target)
+            ? "disabled-consequence"
+            : undefined;
+
+        return disabledClassName
           ? {
               ...edge,
               animated: false,
-              className: [edge.className, "disabled-source"].filter(Boolean).join(" "),
+              className: [edge.className, disabledClassName].filter(Boolean).join(" "),
             }
-          : edge,
-      ),
-    [disabledNodeIds, edges],
+          : edge;
+      }),
+    [edges, manuallyDisabledNodeIds, nodesDisabledByUpstream],
   );
 
   // Keep the ref updated with current nodes

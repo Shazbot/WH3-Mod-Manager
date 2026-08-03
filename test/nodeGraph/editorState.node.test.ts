@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   applyNodeDataPatch,
+  getNodesDisabledByUpstream,
   toggleSelectedNodesDisabled,
   withNodeEditorActions,
 } from "../../src/nodeGraph/editorState";
@@ -242,5 +243,30 @@ describe("toggleSelectedNodesDisabled", () => {
 
     expect(enabledResult.disabled).toBe(false);
     expect(enabledResult.nodes.map((node) => node.data.isDisabled)).toEqual([false, false, false]);
+  });
+});
+
+describe("getNodesDisabledByUpstream", () => {
+  it("finds every downstream node while keeping manually disabled nodes separate", () => {
+    const nodes = [
+      { id: "manual-root", data: { isDisabled: true } },
+      { id: "blocked-child", data: {} },
+      { id: "manual-middle", data: { isDisabled: true } },
+      { id: "blocked-leaf", data: {} },
+      { id: "unrelated", data: {} },
+    ] as any[];
+    const edges = [
+      { source: "manual-root", target: "blocked-child" },
+      { source: "blocked-child", target: "manual-middle" },
+      { source: "manual-middle", target: "blocked-leaf" },
+      { source: "blocked-leaf", target: "blocked-child" },
+    ] as any[];
+
+    const disabledByUpstream = getNodesDisabledByUpstream(nodes, edges);
+
+    expect([...disabledByUpstream].sort()).toEqual(["blocked-child", "blocked-leaf"]);
+    expect(disabledByUpstream.has("manual-root")).toBe(false);
+    expect(disabledByUpstream.has("manual-middle")).toBe(false);
+    expect(disabledByUpstream.has("unrelated")).toBe(false);
   });
 });
