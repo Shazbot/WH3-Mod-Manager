@@ -193,6 +193,20 @@ const setModLoadOrderInternal = (
   adjustDuplicates(state.currentPreset.mods, ourMod);
 };
 
+const applyUsedModsImportToState = (state: AppState, modNames: string[]) => {
+  const importedMods = getUsedModImport(
+    modNames,
+    state.currentPreset.mods.map((mod) => mod.name),
+  );
+  const importByName = new Map(importedMods.map((mod) => [mod.name, mod]));
+
+  state.currentPreset.mods.forEach((mod) => {
+    const importedMod = importByName.get(mod.name);
+    mod.isEnabled = importedMod !== undefined;
+    mod.loadOrder = importedMod?.loadOrder;
+  });
+};
+
 const reconcileCurrentPresetModSources = (state: AppState) => {
   const previousModsByName = new Map(state.currentPreset.mods.map((mod) => [mod.name, mod]));
   state.currentPreset.mods = resolveModsBySourcePriority(
@@ -671,13 +685,25 @@ const appSlice = createSlice({
         action.payload,
         state.currentPreset.mods.map((mod) => mod.name),
       );
-      const importByName = new Map(importedMods.map((mod) => [mod.name, mod]));
+      if (importedMods.some((mod) => mod.loadOrder !== undefined)) {
+        state.pendingUsedModsImport = action.payload;
+        return;
+      }
 
-      state.currentPreset.mods.forEach((mod) => {
-        const importedMod = importByName.get(mod.name);
-        mod.isEnabled = importedMod !== undefined;
-        mod.loadOrder = importedMod?.loadOrder;
-      });
+      applyUsedModsImportToState(state, action.payload);
+    },
+    resolveUsedModsImport: (
+      state: AppState,
+      action: PayloadAction<"automatic" | "previous">,
+    ) => {
+      if (!state.pendingUsedModsImport) return;
+
+      const modNames =
+        action.payload === "automatic"
+          ? [...state.pendingUsedModsImport].sort(compareModNames)
+          : state.pendingUsedModsImport;
+      applyUsedModsImportToState(state, modNames);
+      state.pendingUsedModsImport = undefined;
     },
     disableAllMods: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
@@ -1707,6 +1733,7 @@ export const {
   importSteamCollection,
   enableModsByName,
   importModsFromUsedMods,
+  resolveUsedModsImport,
   setPacksData,
   setUnsavedPacksData,
   setPacksDataRead,

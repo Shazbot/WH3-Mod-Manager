@@ -47,8 +47,8 @@ import {
   normalizeModSourceOrder,
   WORKSHOP_MOD_SOURCE_ID,
 } from "./modSources";
-import { compareModNames, sortByNameAndLoadOrder } from "./modSortingHelpers";
-import { getUsedModImport, parseUsedMods } from "./usedMods";
+import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { parseUsedMods } from "./usedMods";
 import { readPackHeader } from "./packFileHandler";
 import {
   addFakeUpdate,
@@ -2505,7 +2505,7 @@ export const registerIpcMainListeners = (
     removePackFromCollisions(path);
   };
   const matchTableNamePart = /^db\\(.*?)\\data__/;
-  const getAllMods = async (afterModsPopulated?: (mods: Mod[]) => void | Promise<void>) => {
+  const getAllMods = async (afterModsPopulated?: () => void | Promise<void>) => {
     const timeStartedFetchingSubbedIds = Date.now();
     try {
       appData.subscribedModIds = [];
@@ -2537,7 +2537,7 @@ export const registerIpcMainListeners = (
       }
       console.log("after subscription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
-      await afterModsPopulated?.(mods);
+      await afterModsPopulated?.();
       const packHeadersToSend: PackHeaderData[] = [];
       await Promise.all(
         mods.map(async (mod) => {
@@ -4386,40 +4386,12 @@ export const registerIpcMainListeners = (
       }
       getAllMods(
         modsToImport
-          ? async (mods) => {
-              let namesInChosenOrder = modsToImport;
-              const needsCustomLoadOrder = getUsedModImport(
-                modsToImport,
-                mods.map((mod) => mod.name),
-              ).some((mod) => mod.loadOrder !== undefined);
-
-              if (needsCustomLoadOrder) {
-                let useAutomaticLoadOrder = true;
-                const currentMainWindow = mainWindow;
-                if (currentMainWindow && !currentMainWindow.isDestroyed()) {
-                  const { response } = await dialog.showMessageBox(currentMainWindow, {
-                    type: "question",
-                    title: "Choose Mod Load Order",
-                    message: "Your previously enabled mods use a custom load order.",
-                    detail:
-                      "Automatic load order is recommended for most users and helps avoid unintended compatibility issues. Would you like to use automatic load order, or keep the order from your previous mod launcher?",
-                    buttons: ["Use Automatic Order (Recommended)", "Keep Previous Order"],
-                    defaultId: 0,
-                    cancelId: 0,
-                    noLink: true,
-                  });
-                  useAutomaticLoadOrder = response === 0;
-                }
-                if (useAutomaticLoadOrder) {
-                  namesInChosenOrder = [...modsToImport].sort(compareModNames);
-                }
-              }
-
+          ? () => {
               console.log(
                 "config doesn't exist, importing mods from used_mods.txt:",
-                namesInChosenOrder,
+                modsToImport,
               );
-              mainWindow?.webContents.send("importModsFromUsedMods", namesInChosenOrder);
+              mainWindow?.webContents.send("importModsFromUsedMods", modsToImport);
             }
           : undefined,
       );
