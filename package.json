@@ -20,9 +20,9 @@
     "publish": "electron-forge publish",
     "lint": "eslint --cache --cache-strategy content --cache-location .eslintcache \"src/**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
-    "test": "node node_modules/vitest/vitest.mjs run --config vitest.config.mts",
-    "test:watch": "node node_modules/vitest/vitest.mjs --config vitest.config.mts",
-    "test:coverage": "node node_modules/vitest/vitest.mjs run --config vitest.config.mts --coverage"
+    "test": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native",
+    "test:watch": "node node_modules/vitest/vitest.mjs --config vitest.config.mjs --configLoader native",
+    "test:coverage": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native --coverage"
   },
   "keywords": [],
   "author": {
