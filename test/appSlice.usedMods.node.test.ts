@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import appReducer, { importModsFromUsedMods, resolveUsedModsImport } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import { sortByNameAndLoadOrder } from "../src/modSortingHelpers";
+import { SortingType } from "../src/utility/modRowSorting";
 
 const createMod = (name: string): Mod =>
   ({
@@ -47,6 +48,7 @@ describe("importModsFromUsedMods", () => {
       loadOrder: undefined,
     });
     expect(state.pendingUsedModsImport).toBeUndefined();
+    expect(state.modRowsSortingType).toBe(SortingType.Ordered);
   });
 
   it("uses automatic order when recommended", () => {

@@ -703,6 +703,9 @@ const appSlice = createSlice({
           ? [...state.pendingUsedModsImport].sort(compareModNames)
           : state.pendingUsedModsImport;
       applyUsedModsImportToState(state, modNames);
+      if (action.payload === "previous") {
+        state.modRowsSortingType = SortingType.Ordered;
+      }
       state.pendingUsedModsImport = undefined;
     },
     disableAllMods: (state: AppState) => {

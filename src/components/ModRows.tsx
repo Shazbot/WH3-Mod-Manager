@@ -126,6 +126,7 @@ const ModRows = memo((props: ModRowsProps) => {
     (iterMod) => !hiddenModNames.has(iterMod.name) || alwaysEnabledModNames.has(iterMod.name)
   );
   const orderedMods = sortByNameAndLoadOrder(modsToOrder);
+  const loadOrderIndexByModName = new Map(orderedMods.map((mod, index) => [mod.name, index]));
 
   let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
 
@@ -594,7 +595,7 @@ const ModRows = memo((props: ModRowsProps) => {
             key={key}
             {...{
               style,
-              index,
+              loadOrderIndex: loadOrderIndexByModName.get(row.mod.name) ?? index,
               gridClass,
               mod: row.mod,
               onRowHoverStart,
@@ -853,7 +854,7 @@ const ModRows = memo((props: ModRowsProps) => {
               <ModRow
                 key={mod.path}
                 {...{
-                  index: i,
+                  loadOrderIndex: loadOrderIndexByModName.get(mod.name) ?? i,
                   mod,
                   onRowHoverStart,
                   onRowHoverEnd,

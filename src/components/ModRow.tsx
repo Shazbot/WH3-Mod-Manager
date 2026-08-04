@@ -14,7 +14,7 @@ const FontAwesomeIconMemo = memo(FontAwesomeIcon);
 
 type ModRowProps = {
   mod: Mod;
-  index: number;
+  loadOrderIndex: number;
   onRowHoverStart: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
   onRowHoverEnd: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
   onDrop: (e: React.DragEvent<HTMLDivElement>, setAfterMod?: boolean) => void;
@@ -61,7 +61,7 @@ const formatLastChanged = (lastChanged: number) => {
 
 const ModRow = memo(
   ({
-    index,
+    loadOrderIndex,
     mod,
     style,
     onRowHoverStart,
@@ -140,7 +140,7 @@ const ModRow = memo(
       >
         <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + ghostClass}></div>
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
-          {mod.loadOrder == undefined && <span>{index + 1}</span>}
+          {mod.loadOrder == undefined && <span>{loadOrderIndex + 1}</span>}
           {mod.loadOrder != undefined && (
             <>
               <span className="text-blue-500 font-bold">{mod.loadOrder + 1}</span>

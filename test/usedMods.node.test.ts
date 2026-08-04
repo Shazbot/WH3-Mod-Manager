@@ -53,6 +53,18 @@ describe("getUsedModImport", () => {
     expect(sortImport(desiredOrder).map((mod) => mod.name)).toEqual(desiredOrder);
   });
 
+  it("keeps pj_console first while pinning only that mod", () => {
+    const desiredOrder = ["pj_console.pack", "@xou_high_elves.pack", "pj_loadfile.pack"];
+    const imported = getUsedModImport(desiredOrder, desiredOrder);
+
+    expect(imported).toEqual([
+      { name: "pj_console.pack", loadOrder: 0 },
+      { name: "@xou_high_elves.pack", loadOrder: undefined },
+      { name: "pj_loadfile.pack", loadOrder: undefined },
+    ]);
+    expect(sortImport(desiredOrder).map((mod) => mod.name)).toEqual(desiredOrder);
+  });
+
   it("ignores unavailable and duplicate entries before assigning positions", () => {
     expect(
       getUsedModImport(
