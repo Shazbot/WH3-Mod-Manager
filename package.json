@@ -175,7 +175,8 @@
     "webpack-sources": "^3.2.3"
   },
   "resolutions": {
-    "node-abi": "^4.26.0"
+    "node-abi": "^4.26.0",
+    "rollup": "npm:@rollup/wasm-node@4.59.0"
   },
   "dependencies": {
     "@codemirror/lang-xml": "^6.1.0",
