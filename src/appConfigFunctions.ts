@@ -171,10 +171,12 @@ export function writeAppConfig(data: AppState) {
 
 export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProperties> {
   let data: string | undefined;
+  let configPath: string | undefined;
   try {
     const userData = app.getPath("userData");
     const userDataConfigFilePath = nodePath.join(userData, configFileName);
     data = await fs.promises.readFile(userDataConfigFilePath, "utf8");
+    configPath = userDataConfigFilePath;
     // eslint-disable-next-line no-empty
   } catch (err) {}
 
@@ -182,11 +184,14 @@ export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProp
     if (!data) {
       const exeDirConfigPath = nodePath.join(nodePath.dirname(app.getPath("exe")), configFileName);
       data = await fs.promises.readFile(exeDirConfigPath, "utf8");
+      configPath = exeDirConfigPath;
     }
     // eslint-disable-next-line no-empty
   } catch (err) {}
 
   if (!data) throw new Error("No App config file exists!");
+
+  console.log("read app config from:", configPath);
 
   return JSON.parse(data);
 }
