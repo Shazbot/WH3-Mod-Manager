@@ -4399,11 +4399,11 @@ export const registerIpcMainListeners = (
                 if (currentMainWindow && !currentMainWindow.isDestroyed()) {
                   const { response } = await dialog.showMessageBox(currentMainWindow, {
                     type: "question",
-                    title: "Import Mod Load Order",
-                    message: "used_mods.txt contains a custom mod load order.",
+                    title: "Choose Mod Load Order",
+                    message: "Your previously enabled mods use a custom load order.",
                     detail:
-                      "Using the automatic load order is recommended. Would you like to use the automatic load order instead?",
-                    buttons: ["Use Automatic Order (Recommended)", "Keep used_mods.txt Order"],
+                      "Automatic load order is recommended for most users and helps avoid unintended compatibility issues. Would you like to use automatic load order, or keep the order from your previous mod launcher?",
+                    buttons: ["Use Automatic Order (Recommended)", "Keep Previous Order"],
                     defaultId: 0,
                     cancelId: 0,
                     noLink: true,
