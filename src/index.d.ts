@@ -112,6 +112,7 @@ declare global {
     categoryColors: Record<string, string>;
     currentPreset: Preset;
     importedMods: ModIdAndLoadOrder[];
+    pendingUsedModsImport: string[] | undefined;
     presets: Preset[];
     lastSelectedPreset: Preset | null;
     filter: string;

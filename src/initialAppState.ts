@@ -75,6 +75,7 @@ const initialState = {
   removedModsData: [],
   modRowsSortingType: SortingType.Ordered,
   importedMods: [],
+  pendingUsedModsImport: undefined,
   availableLanguages: ["en"],
   packDataOverwrites: {},
   modBeingCustomized: undefined,

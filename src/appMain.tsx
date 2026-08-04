@@ -9,6 +9,7 @@ import { Toasts } from "./components/Toasts";
 import Onboarding from "./components/Onboarding";
 import LeftSidebar from "./components/LeftSidebar";
 import Main from "./components/Main";
+import UsedModsLoadOrderModal from "./components/UsedModsLoadOrderModal";
 
 import LocalizationContext, { staticTextIds, useLocalizations } from "./localizationContext";
 import { useAppSelector } from "./hooks";
@@ -58,6 +59,7 @@ const AppMain = React.memo(() => {
           <LeftSidebar />
           <Main scrollElement={scrollElement} />
         </div>
+        <UsedModsLoadOrderModal />
         <Toasts />
       </ErrorBoundary>
     </LocalizationContext.Provider>
