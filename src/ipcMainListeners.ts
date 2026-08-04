@@ -48,6 +48,7 @@ import {
   WORKSHOP_MOD_SOURCE_ID,
 } from "./modSources";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { parseUsedMods } from "./usedMods";
 import { readPackHeader } from "./packFileHandler";
 import {
   addFakeUpdate,
@@ -2504,7 +2505,7 @@ export const registerIpcMainListeners = (
     removePackFromCollisions(path);
   };
   const matchTableNamePart = /^db\\(.*?)\\data__/;
-  const getAllMods = async () => {
+  const getAllMods = async (afterModsPopulated?: () => void) => {
     const timeStartedFetchingSubbedIds = Date.now();
     try {
       appData.subscribedModIds = [];
@@ -2536,6 +2537,7 @@ export const registerIpcMainListeners = (
       }
       console.log("after subscription filter:", mods.length);
       mainWindow?.webContents.send("modsPopulated", mods);
+      afterModsPopulated?.();
       const packHeadersToSend: PackHeaderData[] = [];
       await Promise.all(
         mods.map(async (mod) => {
@@ -4368,26 +4370,28 @@ export const registerIpcMainListeners = (
           break;
         }
       }
-      getAllMods().then(async () => {
+      let modsToImport: string[] | undefined;
+      if (!doesConfigExist) {
         try {
-          if (doesConfigExist) return;
           const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
-          if (!gamePath) return;
-          const usedModsFilePath = nodePath.join(gamePath, "used_mods.txt");
-          const usedModsData = await fs.promises.readFile(usedModsFilePath, "utf8");
-          const modsToEnable: string[] = [];
-          for (const line of usedModsData.split("\n")) {
-            const match = line.match(/mod\s+"([^"]+)";/);
-            if (match) {
-              modsToEnable.push(match[1]);
-            }
+          if (gamePath) {
+            const usedModsFilePath = nodePath.join(gamePath, "used_mods.txt");
+            const encoding = appData.currentGame == "shogun2" ? "utf16le" : "utf8";
+            const usedModsData = await fs.promises.readFile(usedModsFilePath, encoding);
+            modsToImport = parseUsedMods(usedModsData);
           }
-          console.log("config doesn't exist, enabling mods from used_mods.txt:", modsToEnable);
-          mainWindow?.webContents.send("enableModsByName", modsToEnable);
         } catch {
           // Ignore a missing used_mods fallback file.
         }
-      });
+      }
+      getAllMods(
+        modsToImport
+          ? () => {
+              console.log("config doesn't exist, importing mods from used_mods.txt:", modsToImport);
+              mainWindow?.webContents.send("importModsFromUsedMods", modsToImport);
+            }
+          : undefined,
+      );
     } finally {
       const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
       const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
