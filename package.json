@@ -124,7 +124,6 @@
     "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^9",
     "@pmmmwh/react-refresh-webpack-plugin": "^0.5.15",
-    "@rollup/rollup-linux-x64-gnu": "4.59.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -255,7 +254,6 @@
     "stream-http": "^3.2.0",
     "tailwind-merge": "^2.2.2",
     "tailwindcss-animate": "^1.0.7",
-    "ts-pattern": "^5.2.0",
     "unzipper": "^0.12.3",
     "winreg": "^1.2.4"
   },
