@@ -115,6 +115,8 @@ const api = {
     ipcRenderer.on("fromAppConfig", callback),
   failedReadingConfig: (callback: (event: Electron.IpcRendererEvent) => void) =>
     ipcRenderer.on("failedReadingConfig", callback),
+  importModsFromUsedMods: (callback: (event: Electron.IpcRendererEvent, modNames: string[]) => void) =>
+    ipcRenderer.on("importModsFromUsedMods", callback),
   modsPopulated: (callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void) =>
     ipcRenderer.on("modsPopulated", callback),
   addMod: (callback: (event: Electron.IpcRendererEvent, mod: Mod) => void) =>

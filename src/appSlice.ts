@@ -15,6 +15,7 @@ import equal from "fast-deep-equal";
 import { format } from "date-fns";
 import { SupportedGames } from "./supportedGames";
 import { packDataStore } from "./components/viewer/packDataStore";
+import { getUsedModImport } from "./usedMods";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
 import { isWorkshopMod, resolveModsBySourcePriority } from "./modSources";
 
@@ -664,6 +665,19 @@ const appSlice = createSlice({
       state.currentPreset.mods
         .filter((mod) => modNameSet.has(mod.name))
         .forEach((mod) => (mod.isEnabled = true));
+    },
+    importModsFromUsedMods: (state: AppState, action: PayloadAction<string[]>) => {
+      const importedMods = getUsedModImport(
+        action.payload,
+        state.currentPreset.mods.map((mod) => mod.name),
+      );
+      const importByName = new Map(importedMods.map((mod) => [mod.name, mod]));
+
+      state.currentPreset.mods.forEach((mod) => {
+        const importedMod = importByName.get(mod.name);
+        mod.isEnabled = importedMod !== undefined;
+        mod.loadOrder = importedMod?.loadOrder;
+      });
     },
     disableAllMods: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
@@ -1692,6 +1706,7 @@ export const {
   createdMergedPack,
   importSteamCollection,
   enableModsByName,
+  importModsFromUsedMods,
   setPacksData,
   setUnsavedPacksData,
   setPacksDataRead,

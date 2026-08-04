@@ -13,6 +13,7 @@ import {
   addToast,
   createdMergedPack,
   enableModsByName,
+  importModsFromUsedMods,
   importSteamCollection,
   removeMod,
   requestGameFolderPaths,
@@ -104,6 +105,10 @@ window.api?.packsInSave((event, packNames: string[]) => {
 
 window.api?.enableModsByName((event, packNames: string[]) => {
   store.dispatch(enableModsByName(packNames));
+});
+
+window.api?.importModsFromUsedMods((event, packNames: string[]) => {
+  store.dispatch(importModsFromUsedMods(packNames));
 });
 
 window.api?.setSkillsData((event, skillsData: SkillsData) => {
