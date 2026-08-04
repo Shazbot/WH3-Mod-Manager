@@ -2,7 +2,6 @@ import { AmendedSchemaField, NewPackedFile, Pack, PackedFile, PackCollisions } f
 import { GameFolderPaths } from "./appData";
 import { api } from "./preload";
 import { SupportedGames } from "./supportedGames";
-import { string } from "ts-pattern/dist/patterns";
 
 export {};
 

@@ -1,7 +1,6 @@
 import * as steamworks from "./../steamworks";
 import { workshop } from "../steamworks/client.d";
 import * as fs from "fs";
-import { string } from "ts-pattern/dist/patterns";
 
 interface PlayerSteamIdStringInsteadOfBigInt {
   steamId64: string;
