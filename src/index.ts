@@ -136,10 +136,88 @@ if (!gotTheLock) {
       icon: "./assets/modmanager.ico",
     });
 
-    mainWindowState.manage(windows.mainWindow);
+    const mainWindow = windows.mainWindow;
+    const mainWebContents = mainWindow.webContents;
+    const startupStartedAt = Date.now();
+    let hasRendererMainMounted = false;
+    const startupDiagnosticTimeout = setTimeout(() => {
+      if (!hasRendererMainMounted && !mainWindow.isDestroyed()) {
+        console.log("[startup] Main renderer did not report a React mount within 10 seconds", {
+          url: mainWebContents.getURL(),
+          isLoading: mainWebContents.isLoading(),
+          isCrashed: mainWebContents.isCrashed(),
+        });
+      }
+    }, 10_000);
+
+    const onRendererMainMounted = (event: Electron.IpcMainEvent) => {
+      if (event.sender.id !== mainWebContents.id) return;
+      hasRendererMainMounted = true;
+      clearTimeout(startupDiagnosticTimeout);
+      ipcMain.removeListener("rendererMainMounted", onRendererMainMounted);
+      console.log(`[startup] Main renderer React mounted after ${Date.now() - startupStartedAt}ms`);
+    };
+
+    ipcMain.on("rendererMainMounted", onRendererMainMounted);
+
+    mainWebContents.on("dom-ready", () => {
+      console.log(`[startup] Main renderer DOM ready after ${Date.now() - startupStartedAt}ms`);
+    });
+
+    mainWebContents.on("did-finish-load", () => {
+      console.log(`[startup] Main renderer finished loading after ${Date.now() - startupStartedAt}ms`);
+    });
+
+    mainWebContents.on(
+      "did-fail-load",
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame) return;
+        console.log("[startup] Main renderer failed to load", {
+          errorCode,
+          errorDescription,
+          validatedURL,
+        });
+      },
+    );
+
+    mainWebContents.on("preload-error", (_event, preloadPath, error) => {
+      console.log("[startup] Main renderer preload failed", {
+        preloadPath,
+        message: error.message,
+        stack: error.stack,
+      });
+    });
+
+    mainWebContents.on("render-process-gone", (_event, details) => {
+      console.log("[startup] Main renderer process exited", details);
+    });
+
+    mainWebContents.on("unresponsive", () => {
+      console.log("[startup] Main renderer became unresponsive");
+    });
+
+    mainWebContents.on("responsive", () => {
+      console.log("[startup] Main renderer became responsive again");
+    });
+
+    mainWebContents.on("console-message", (details) => {
+      if (details.level !== "warning" && details.level !== "error") return;
+      console.log(`[renderer console ${details.level}] ${details.message}`, {
+        sourceId: details.sourceId,
+        lineNumber: details.lineNumber,
+      });
+    });
+
+    mainWindowState.manage(mainWindow);
 
     // and load the index.html of the app.
-    windows.mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+    mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY).catch((error) => {
+      console.log("[startup] Main renderer loadURL rejected", {
+        url: MAIN_WINDOW_WEBPACK_ENTRY,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    });
 
     windows.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
       shell.openExternal(url);
@@ -190,7 +268,9 @@ if (!gotTheLock) {
       evt.preventDefault();
     });
 
-    windows.mainWindow.on("closed", () => {
+    mainWindow.on("closed", () => {
+      clearTimeout(startupDiagnosticTimeout);
+      ipcMain.removeListener("rendererMainMounted", onRendererMainMounted);
       if (isAppQuitting) return;
       if (windows.viewerWindow && !windows.viewerWindow.isDestroyed()) windows.viewerWindow.close();
       if (windows.skillsWindow && !windows.skillsWindow.isDestroyed()) windows.skillsWindow.close();
@@ -480,6 +560,23 @@ if (!gotTheLock) {
   // initialization and is ready to create browser windows.
   // Some APIs can only be used after this event occurs.
   app.on("ready", createWindow);
+
+  app.once("gpu-info-update", () => {
+    app
+      .getGPUInfo("basic")
+      .then((gpuInfo) => {
+        console.log("[startup] GPU diagnostics", {
+          hardwareAccelerationEnabled: app.isHardwareAccelerationEnabled(),
+          featureStatus: app.getGPUFeatureStatus(),
+          gpuInfo,
+        });
+      })
+      .catch((error) => {
+        console.log("[startup] Failed to read GPU diagnostics", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
 
   app.whenReady().then(() => {
     installExtension(REACT_DEVELOPER_TOOLS, {
