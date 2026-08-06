@@ -128,12 +128,16 @@ export function getModsSortedByHumanNameAndName(mods: Mod[]) {
   });
 }
 
-export function getModsSortedByEnabled(mods: Mod[]) {
+export function getModsSortedByEnabled(mods: Mod[], orderedMods: Mod[], enabledFirst: boolean) {
+  const orderedModIndices = new Map(orderedMods.map((mod, index) => [mod, index]));
   return [...mods].sort((firstMod, secondMod) => {
     if (firstMod.isEnabled == secondMod.isEnabled) {
-      return compareModNames(firstMod.name, secondMod.name);
+      return (
+        (orderedModIndices.get(firstMod) ?? Number.MAX_SAFE_INTEGER) -
+        (orderedModIndices.get(secondMod) ?? Number.MAX_SAFE_INTEGER)
+      );
     }
-    return firstMod.isEnabled ? -1 : 1;
+    return firstMod.isEnabled === enabledFirst ? -1 : 1;
   });
 }
 

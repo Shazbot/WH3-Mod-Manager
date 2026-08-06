@@ -160,10 +160,11 @@ export function getSortedMods(
       break;
     case SortingType.IsEnabled:
     case SortingType.IsEnabledReverse:
-      mods = getModsSortedByEnabled(presetMods);
-      if (sortingType == SortingType.IsEnabledReverse) {
-        mods = mods.reverse();
-      }
+      mods = getModsSortedByEnabled(
+        presetMods,
+        orderedMods,
+        sortingType === SortingType.IsEnabled,
+      );
       break;
     case SortingType.LastUpdated:
     case SortingType.LastUpdatedReverse:
