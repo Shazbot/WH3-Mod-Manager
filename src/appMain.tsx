@@ -29,6 +29,7 @@ function ErrorFallback({ error }: { error: Error }) {
 const AppMain = React.memo(() => {
   useEffect(() => {
     startTiming("app_main_mount");
+    window.api?.rendererMainMounted();
     return () => {
       endTiming("app_main_mount");
     };

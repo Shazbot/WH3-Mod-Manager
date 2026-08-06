@@ -73,6 +73,7 @@ const api = {
   enableModsByName: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("enableModsByName", callback),
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
+  rendererMainMounted: () => ipcRenderer.send("rendererMainMounted"),
   viewerIsReady: () => ipcRenderer.send("viewerIsReady"),
   skillsAreReady: () => ipcRenderer.send("skillsAreReady"),
   techTreesAreReady: () => ipcRenderer.send("techTreesAreReady"),
