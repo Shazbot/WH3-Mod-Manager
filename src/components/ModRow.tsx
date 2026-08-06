@@ -1,4 +1,4 @@
-import { faCamera, faEraser, faFileArchive, faGrip } from "@fortawesome/free-solid-svg-icons";
+import { faCamera, faEraser, faFileArchive } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import React, { CSSProperties, memo, useContext, useMemo } from "react";
 import { Tooltip } from "flowbite-react";
@@ -9,6 +9,7 @@ import localizationContext from "../localizationContext";
 import { Icons } from "./icons";
 import { CellMeasurerChildProps } from "react-virtualized/dist/es/CellMeasurer";
 import CustomModFolderIcon from "./CustomModFolderIcon";
+import { BsArrowDownUp } from "react-icons/bs";
 
 const FontAwesomeIconMemo = memo(FontAwesomeIcon);
 
@@ -17,13 +18,8 @@ type ModRowProps = {
   loadOrderIndex: number;
   onRowHoverStart: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
   onRowHoverEnd: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>, setAfterMod?: boolean) => void;
-  onDrag: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDragEnter: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDragLeave: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDragEnd: (e: React.DragEvent<HTMLDivElement>) => void;
+  onSetLoadOrderMode: (mod: Mod) => void;
+  onSelectLoadOrderPosition: (position: number) => void;
   onModToggled: (mod: Mod) => void;
   onModRightClick: (e: React.MouseEvent<HTMLDivElement, MouseEvent>, mod: Mod) => void;
   onCustomizeModClicked: (e: React.MouseEvent<HTMLOrSVGElement, MouseEvent>, mod: Mod) => void;
@@ -45,6 +41,10 @@ type ModRowProps = {
   sortingType: SortingType;
   currentTab: MainWindowTab;
   isLast: boolean;
+  rowIndex: number;
+  activeLoadOrderPosition: number;
+  isLoadOrderPlacementMode: boolean;
+  isLoadOrderPlacementSource: boolean;
   style: CSSProperties;
   gridClass: string;
   registerChild: CellMeasurerChildProps["registerChild"];
@@ -66,12 +66,8 @@ const ModRow = memo(
     style,
     onRowHoverStart,
     onRowHoverEnd,
-    onDrop,
-    onDrag,
-    onDragStart,
-    onDragLeave,
-    onDragEnter,
-    onDragOver,
+    onSetLoadOrderMode,
+    onSelectLoadOrderPosition,
     onModToggled,
     onModRightClick,
     onRemoveModOrder,
@@ -88,6 +84,10 @@ const ModRow = memo(
     hasFlowCustomization,
     hasPackDataOverwrite,
     isLast,
+    rowIndex,
+    activeLoadOrderPosition,
+    isLoadOrderPlacementMode,
+    isLoadOrderPlacementSource,
     sortingType,
     currentTab,
     onCustomizeModClicked,
@@ -124,21 +124,31 @@ const ModRow = memo(
 
     return (
       <div
-        className={`relative grid row-div-paddings row-hover-highlight ${gridClass}`}
+        className={`relative grid row-div-paddings row-hover-highlight ${gridClass} ${
+          isLoadOrderPlacementSource ? "row-bg-color-manually" : ""
+        }`}
         key={mod.name}
         onMouseEnter={(e) => onRowHoverStart(e)}
         onMouseLeave={(e) => onRowHoverEnd(e)}
-        onDrop={(e) => onDrop(e)}
-        onDrag={(e) => onDrag(e)}
-        onDragOver={(e) => onDragOver(e)}
-        onDragEnter={(e) => onDragEnter(e)}
-        onDragLeave={(e) => onDragLeave(e)}
         id={mod.name}
         data-load-order={mod.loadOrder}
         style={style}
         ref={registerChild}
       >
-        <div onDrop={(e) => onDrop(e)} className={"drop-ghost h-10 hidden " + ghostClass}></div>
+        {isLoadOrderPlacementMode && (
+          <button
+            type="button"
+            id={`enabled-mod-placeholder-${rowIndex}`}
+            aria-label={`${localization.selectNewLoadOrderPosition || "Select new load order / position"} ${
+              rowIndex + 1
+            }`}
+            className={
+              `drop-ghost h-10 cursor-pointer ${ghostClass} ` +
+              (activeLoadOrderPosition === rowIndex ? "bg-blue-700/40" : "opacity-70")
+            }
+            onClick={() => onSelectLoadOrderPosition(rowIndex)}
+          ></button>
+        )}
         <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
           {mod.loadOrder == undefined && <span>{loadOrderIndex + 1}</span>}
           {mod.loadOrder != undefined && (
@@ -147,7 +157,7 @@ const ModRow = memo(
             </>
           )}
         </div>
-        <div className="relative grid" onDragStart={(e) => onDragStart(e)}>
+        <div className="relative grid">
           {(currentTab != "enabledMods" && (
             <span className="make-tooltip-inline absolute self-center tooltip-width-20">
               <Tooltip
@@ -162,20 +172,26 @@ const ModRow = memo(
               >
                 <div
                   className="hidden absolute left-0 self-center cursor-not-allowed first:p-0 z-10"
-                  id={`drag-icon-${mod.name}`}
+                  id={`load-order-icon-${mod.name}`}
                 >
-                  <FontAwesomeIconMemo opacity={0.5} icon={faGrip} />
+                  <BsArrowDownUp opacity={0.5} />
                 </div>
               </Tooltip>
             </span>
           )) || (
-            <div
-              draggable="true"
-              className="hidden absolute left-0 self-center cursor-grab first:p-0 z-10"
-              id={`drag-icon-${mod.name}`}
+            <button
+              type="button"
+              className={`${isLoadOrderPlacementSource ? "" : "hidden"} absolute left-0 self-center cursor-pointer first:p-0 z-10`}
+              id={`load-order-icon-${mod.name}`}
+              title={localization.setLoadOrderMode || "Set load order"}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onSetLoadOrderMode(mod);
+              }}
             >
-              <FontAwesomeIconMemo icon={faGrip} />
-            </div>
+              <BsArrowDownUp />
+            </button>
           )}
           <form
             className={"grid place-items-center h-full " + (areThumbnailsEnabled ? "bigger-checkbox" : "")}
@@ -191,6 +207,7 @@ const ModRow = memo(
               name={mod.workshopId}
               id={mod.workshopId + "enabled"}
               checked={mod.isEnabled}
+              disabled={isLoadOrderPlacementMode}
               onChange={() => onModToggled(mod)}
             ></input>
           </form>
@@ -334,8 +351,19 @@ const ModRow = memo(
             />
           )}
         </div>
-        {isLast && (
-          <div onDrop={(e) => onDrop(e, true)} className={"drop-ghost h-10 hidden " + ghostClass}></div>
+        {isLast && isLoadOrderPlacementMode && (
+          <button
+            type="button"
+            id={`enabled-mod-placeholder-${rowIndex + 1}`}
+            aria-label={`${localization.selectNewLoadOrderPosition || "Select new load order / position"} ${
+              rowIndex + 2
+            }`}
+            className={
+              `drop-ghost h-10 cursor-pointer ${ghostClass} ` +
+              (activeLoadOrderPosition === rowIndex + 1 ? "bg-blue-700/40" : "opacity-70")
+            }
+            onClick={() => onSelectLoadOrderPosition(rowIndex + 1)}
+          ></button>
         )}
       </div>
     );
