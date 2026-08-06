@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getFilteredMods,
   getLoadOrderInsertionIndex,
+  getModsSortedByEnabled,
   getSparseLoadOrderByModName,
   sortAsInPreset,
   sortByNameAndLoadOrder,
@@ -84,6 +85,28 @@ describe("getFilteredMods", () => {
       ["alpha.pack", 0],
       ["gamma.pack", 2],
       ["beta.pack", 3],
+    ]);
+  });
+
+  it("uses load order as the secondary enabled-state sort in both directions", () => {
+    const enabledFirst = createMod({ name: "enabled-first.pack", isEnabled: true });
+    const disabledFirst = createMod({ name: "disabled-first.pack", isEnabled: false });
+    const enabledSecond = createMod({ name: "enabled-second.pack", isEnabled: true });
+    const disabledSecond = createMod({ name: "disabled-second.pack", isEnabled: false });
+    const mods = [disabledSecond, enabledSecond, disabledFirst, enabledFirst];
+    const loadOrder = [enabledFirst, disabledFirst, enabledSecond, disabledSecond];
+
+    expect(getModsSortedByEnabled(mods, loadOrder, true).map((mod) => mod.name)).toEqual([
+      "enabled-first.pack",
+      "enabled-second.pack",
+      "disabled-first.pack",
+      "disabled-second.pack",
+    ]);
+    expect(getModsSortedByEnabled(mods, loadOrder, false).map((mod) => mod.name)).toEqual([
+      "disabled-first.pack",
+      "disabled-second.pack",
+      "enabled-first.pack",
+      "enabled-second.pack",
     ]);
   });
 });
