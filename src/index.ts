@@ -18,6 +18,7 @@ import { windows, registerIpcMainListeners } from "./ipcMainListeners";
 import * as https from "https";
 import { Extract } from "unzipper";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
+import { flushAppConfigWrites } from "./appConfigFunctions";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -72,6 +73,7 @@ if (!gotTheLock) {
 
   let checkWH3RunningInterval: NodeJS.Timer;
   let isAppQuitting = false;
+  let isQuittingAfterConfigFlush = false;
 
   const terminateForExternalUpdate = () => {
     isAppQuitting = true;
@@ -83,7 +85,7 @@ if (!gotTheLock) {
     // Skip the normal Electron quit flow here. The update helper already took over
     // and a hard exit is more reliable than waiting on app shutdown hooks/handles.
     setTimeout(() => {
-      process.exit(0);
+      void flushAppConfigWrites().finally(() => process.exit(0));
     }, 250);
   };
 
@@ -605,8 +607,15 @@ if (!gotTheLock) {
     }
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     isAppQuitting = true;
+    if (isQuittingAfterConfigFlush) return;
+
+    event.preventDefault();
+    isQuittingAfterConfigFlush = true;
+    setTimeout(() => {
+      void flushAppConfigWrites().finally(() => app.quit());
+    }, 250);
   });
 
   app.on("activate", () => {

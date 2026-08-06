@@ -8,10 +8,11 @@ import * as nodePath from "path";
 import { version } from "../package.json";
 import { diff } from "deep-object-diff";
 
-let writeConfigTimeout: NodeJS.Timeout;
 let dataToWrite: AppStateToWrite | undefined;
-let isWriting = false;
 let hasConfigBeenRead = false;
+let requestedWriteRevision = 0;
+let completedWriteRevision = 0;
+let activeWritePromise: Promise<void> | undefined;
 
 const configFileName = "config.json";
 
@@ -78,6 +79,66 @@ const removeModDataWeDontSave = (mods: Mod[] | undefined) => {
   }
 };
 
+const persistConfigSnapshot = async (stringifiedData: string) => {
+  const backupVersionConfigName = `config_backup_v${version}.json`;
+
+  try {
+    // write to the dir where the exe is due to bizarre file permission issues
+    const exeDirPath = nodePath.dirname(app.getPath("exe"));
+    const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
+    const exeDirConfigPath = nodePath.join(exeDirPath, configFileName);
+    await fs.promises.writeFile(exeDirTempConfigPath, stringifiedData);
+    const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
+    await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
+    await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
+  } catch (err) {
+    console.log(err);
+  }
+
+  const userData = app.getPath("userData");
+  const tempFilePath = nodePath.join(userData, "config_temp.json");
+  await fs.promises.writeFile(tempFilePath, stringifiedData);
+
+  const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
+  await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
+  const configFilePath = nodePath.join(userData, configFileName);
+  await move(tempFilePath, configFilePath, { overwrite: true });
+};
+
+const processConfigWriteQueue = () => {
+  if (activeWritePromise) return activeWritePromise;
+
+  activeWritePromise = (async () => {
+    while (completedWriteRevision < requestedWriteRevision) {
+      const revisionToWrite = requestedWriteRevision;
+      const stringifiedData = JSON.stringify(dataToWrite);
+
+      try {
+        await persistConfigSnapshot(stringifiedData);
+        console.log("done writing config file");
+      } catch (error) {
+        console.log(error);
+      }
+
+      completedWriteRevision = revisionToWrite;
+    }
+  })().finally(() => {
+    activeWritePromise = undefined;
+    if (completedWriteRevision < requestedWriteRevision) void processConfigWriteQueue();
+  });
+
+  return activeWritePromise;
+};
+
+export const hasPendingAppConfigWrites = () =>
+  completedWriteRevision < requestedWriteRevision || activeWritePromise != null;
+
+export const flushAppConfigWrites = async () => {
+  while (hasPendingAppConfigWrites()) {
+    await processConfigWriteQueue();
+  }
+};
+
 export function writeAppConfig(data: AppState) {
   const toWrite: AppStateToWrite = appStateToConfigAppState(data);
 
@@ -126,47 +187,8 @@ export function writeAppConfig(data: AppState) {
   // if (dataToWrite) console.log("diff in config:", JSON.stringify(diff(dataToWrite, toWrite), null, 2));
 
   dataToWrite = deepClone(toWrite, true);
-
-  if (writeConfigTimeout) {
-    writeConfigTimeout.refresh();
-  } else {
-    writeConfigTimeout = setTimeout(async () => {
-      try {
-        if (isWriting) return;
-        isWriting = true;
-
-        const stringifiedData = JSON.stringify(dataToWrite);
-        const backupVersionConfigName = `config_backup_v${version}.json`;
-
-        try {
-          // write to the dir where the exe is due to bizarre file permission issues
-          const exeDirPath = nodePath.dirname(app.getPath("exe"));
-          const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
-          const exeDirConfigPath = nodePath.join(exeDirPath, configFileName);
-          await fs.promises.writeFile(exeDirTempConfigPath, stringifiedData);
-          const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
-          await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
-          await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
-        } catch (err) {
-          console.log(err);
-        }
-
-        const userData = app.getPath("userData");
-        const tempFilePath = nodePath.join(userData, "config_temp.json");
-        await fs.promises.writeFile(tempFilePath, stringifiedData);
-
-        const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
-        await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
-        const configFilePath = nodePath.join(userData, configFileName);
-        await move(tempFilePath, configFilePath, { overwrite: true });
-
-        console.log("done writing config file");
-        isWriting = false;
-      } catch (e) {
-        console.log(e);
-      }
-    }, 300);
-  }
+  requestedWriteRevision += 1;
+  void processConfigWriteQueue();
 }
 
 export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProperties> {

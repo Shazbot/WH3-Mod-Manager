@@ -1096,7 +1096,7 @@ const Categories = memo(() => {
             </div>
           )}
           {contextMenuSelection.kind === "one" && contextMenuSelection.mod && (
-            <ModDropdownOptions mod={contextMenuSelection.mod} mods={mods} visibleMods={mods} />
+            <ModDropdownOptions mod={contextMenuSelection.mod} mods={mods} />
           )}
         </div>
       </FloatingOverlay>
