@@ -9,7 +9,12 @@ import {
   withoutDataAndContentDuplicates,
 } from "./modsHelpers";
 import { SortingType } from "./utility/modRowSorting";
-import { compareModNames, sortAsInPreset, sortByNameAndLoadOrder } from "./modSortingHelpers";
+import {
+  compareModNames,
+  getSparseLoadOrderByModName,
+  sortAsInPreset,
+  sortByNameAndLoadOrder,
+} from "./modSortingHelpers";
 import initialState from "./initialAppState";
 import equal from "fast-deep-equal";
 import { format } from "date-fns";
@@ -95,12 +100,14 @@ const renameCategoryByPayload = (state: AppState, payload: RenameCategoryPayload
   }
 };
 
-const normalizeEnabledModLoadOrders = (mods: Mod[]) => {
+const sanitizeEnabledModLoadOrders = (mods: Mod[]) => {
   const enabledMods = mods.filter((mod) => mod.isEnabled);
   if (!enabledMods.some((mod) => mod.loadOrder != null)) return;
 
-  sortByNameAndLoadOrder(enabledMods).forEach((mod, index) => {
-    mod.loadOrder = index;
+  const loadOrderByModName = getSparseLoadOrderByModName(sortByNameAndLoadOrder(enabledMods));
+  enabledMods.forEach((mod) => {
+    const loadOrder = loadOrderByModName.get(mod.name);
+    if (loadOrder != null) mod.loadOrder = loadOrder;
   });
 };
 
@@ -162,7 +169,7 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
     }
   }
 
-  normalizeEnabledModLoadOrders(state.currentPreset.mods);
+  sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 
   const appStartIndex = state.presets.findIndex((preset) => preset.name === "On App Start");
   const newPreset = {
@@ -239,7 +246,7 @@ const reconcileCurrentPresetModSources = (state: AppState) => {
       imgPath: mod.imgPath || previousMod.imgPath,
     };
   });
-  normalizeEnabledModLoadOrders(state.currentPreset.mods);
+  sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
 const disableAllModsInternal = (state: AppState) => {
@@ -293,7 +300,7 @@ const applyPresetModsUnaryInternal = (state: AppState, presetMods: Mod[]) => {
     (mod) => (mod.isEnabled = true),
   );
 
-  normalizeEnabledModLoadOrders(state.currentPreset.mods);
+  sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
 const selectPresetInternal = (state: AppState, presetSelection: SelectOperation, newPreset: Preset) => {
@@ -315,7 +322,7 @@ const selectPresetInternal = (state: AppState, presetSelection: SelectOperation,
   findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
     (mod) => (mod.isEnabled = true),
   );
-  normalizeEnabledModLoadOrders(state.currentPreset.mods);
+  sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
 const createPresetFromCollection = (state: AppState, importSteamCollection: ImportSteamCollection) => {
@@ -680,6 +687,7 @@ const appSlice = createSlice({
         }
       }
 
+      sanitizeEnabledModLoadOrders(state.currentPreset.mods);
       state.importedMods = [];
     },
     enableAll: (state: AppState) => {
@@ -1122,7 +1130,7 @@ const appSlice = createSlice({
       state.currentPreset.mods
         .filter((iterMod) => alwaysEnabledNames.has(iterMod.name))
         .forEach((mod) => (mod.isEnabled = true));
-      normalizeEnabledModLoadOrders(state.currentPreset.mods);
+      sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 
       state.wasOnboardingEverRun = fromConfigAppState.wasOnboardingEverRun;
       if (!fromConfigAppState.wasOnboardingEverRun) state.isOnboardingToRun = true;
@@ -1245,10 +1253,10 @@ const appSlice = createSlice({
       console.log("new load order for:", modToChange.name, newIndex);
       // modToChange.loadOrder = newIndex;
 
-      state.currentPreset.mods.forEach((mod) => (mod.loadOrder = undefined));
-      orderedVisualMods.forEach((mod, index) => {
-        const modToSetLoadOrderOf = state.currentPreset.mods.find((modIter) => mod.name === modIter.name);
-        if (modToSetLoadOrderOf) modToSetLoadOrderOf.loadOrder = index;
+      const loadOrderByModName = getSparseLoadOrderByModName(orderedVisualMods, modNameToChange);
+      state.currentPreset.mods.forEach((mod) => {
+        const loadOrder = loadOrderByModName.get(mod.name);
+        if (loadOrder != null) mod.loadOrder = loadOrder;
       });
     },
     resetModLoadOrderAll: (state: AppState) => {
