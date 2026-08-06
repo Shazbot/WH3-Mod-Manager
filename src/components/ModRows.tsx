@@ -40,7 +40,6 @@ import { GridCoreProps } from "react-virtualized/dist/es/Grid";
 import hash from "object-hash";
 import { getModSourceId, getModSourceKind } from "../modSources";
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const defaultModThumbnailSrc = require("../assets/modThumbnail.png");
 
 const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
@@ -89,15 +88,14 @@ const ModRows = memo((props: ModRowsProps) => {
   // const [modBeingCustomized, setModBeingCustomized] = useState<Mod>();
   const [contextMenuMod, setContextMenuMod] = useState<Mod>();
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
+  const [loadOrderModName, setLoadOrderModName] = useState<string>();
+  const [activeLoadOrderPosition, setActiveLoadOrderPosition] = useState(0);
 
   const isCurrentTabEnabledMods = currentTab == "enabledMods";
 
   const localized: Record<string, string> = useContext(localizationContext);
 
-  const rowsParentRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<List>(null);
-  const currentDragTargetRef = useRef<Element>();
-  const draggedModIdRef = useRef("");
 
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const hiddenModNames = useMemo(() => new Set(hiddenMods.map((mod) => mod.name)), [hiddenMods]);
@@ -141,7 +139,7 @@ const ModRows = memo((props: ModRowsProps) => {
   }
 
   const unfilteredMods = mods;
-  if (filter !== "") {
+  if (filter !== "" && !loadOrderModName) {
     mods = getFilteredMods(mods, filter.toLowerCase(), isAuthorEnabled);
   }
 
@@ -180,243 +178,23 @@ const ModRows = memo((props: ModRowsProps) => {
     dispatch(resetModLoadOrderAll());
   }, [dispatch]);
 
-  const onDragEnd = useCallback(() => {
-    const draggedModId = draggedModIdRef.current;
-    currentDragTargetRef.current = undefined;
-    let oldTop = -1;
-    const originalElement = draggedModId !== "" ? document.getElementById(draggedModId) : null;
-    if (originalElement && originalElement.children[1]) {
-      oldTop = originalElement.children[1].getBoundingClientRect().top;
-    }
-
-    [...document.getElementsByClassName("row-bg-color-manually")].forEach((element) => {
-      element.classList.remove("row-bg-color-manually");
-    });
-
-    const body = document.getElementById("body");
-    if (body) body.classList.remove("disable-row-hover");
-
-    setTimeout(() => {
-      const modsGrid = document.getElementById("modsGrid");
-      if (modsGrid) {
-        const ghosts = modsGrid.getElementsByClassName("drop-ghost");
-        for (const ghost of ghosts) {
-          if (!ghost.classList.contains("hidden")) {
-            ghost.classList.add("hidden");
-          }
-        }
-      }
-
-      setTimeout(() => {
-        const draggedElement = draggedModId !== "" ? document.getElementById(draggedModId) : null;
-        if (oldTop != -1 && draggedElement && draggedElement.children[1]) {
-          const newTop = draggedElement.children[1].getBoundingClientRect().top;
-          document.getElementById("mod-rows-scroll")?.scrollBy(0, newTop - oldTop);
-        }
-        draggedModIdRef.current = "";
-      }, 50);
-    }, 100);
-  }, []);
-
-  const onDragStart = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    console.log("DRAG START");
-    const t = e.target as HTMLDivElement;
-    const draggedModId = t.id.replace("drag-icon-", "");
-
-    e.dataTransfer.effectAllowed = "move";
-    // console.log(`setting data ${t.id}`);
-    e.dataTransfer.setData("text/plain", draggedModId);
-    draggedModIdRef.current = draggedModId;
-
-    console.log("idOfDragged");
-    console.log(draggedModId);
-    console.log("111");
-    console.log(rowsParentRef.current?.clientHeight);
-    console.log(rowsParentRef.current?.scrollTop);
-    console.log(rowsParentRef.current?.getBoundingClientRect());
-    console.log("docu scroll", document.scrollingElement?.scrollTop);
-    const originalElement = document.getElementById("rowsParent");
-    // console.log("orig", !!originalElement, !!originalElement?.parentElement);
-    // if (!originalElement || !originalElement.parentElement) return;
-    console.log(originalElement?.getBoundingClientRect());
-    console.log(originalElement?.offsetTop);
-
-    const body = document.getElementById("body");
-    if (body) body.classList.add("disable-row-hover");
-
-    // console.log(t.id.replace("drag-icon-", ""));
-    const row = document.getElementById(draggedModId);
-    row?.classList.add("row-bg-color-manually");
-
-    // const elTop = t.offsetTop;
-    // const viewportHeight = window.innerHeight;
-
-    const viewportOffset = t.parentElement?.getBoundingClientRect();
-    const oldTop = viewportOffset?.top;
-    // these are relative to the viewport, i.e. the window
-
-    setTimeout(() => {
-      const modsGrid = document.getElementById("modsGrid");
-      if (modsGrid) {
-        const ghosts = modsGrid.getElementsByClassName("drop-ghost");
-        for (const ghost of ghosts) {
-          if (ghost.classList.contains("hidden")) ghost.classList.remove("hidden");
-        }
-      }
-      setTimeout(() => {
-        const newTop = t.parentElement?.getBoundingClientRect().top;
-        if (oldTop && newTop) document.getElementById("mod-rows-scroll")?.scrollBy(0, newTop - oldTop);
-
-        // t.parentElement?.scrollIntoView({ block: "center" });
-      }, 50);
-    }, 50);
-  }, []);
-
-  const onDragEnter = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      if (e.dataTransfer.types.length > 1) return;
-      const t = e.currentTarget as HTMLDivElement;
-
-      if (currentDragTargetRef.current && t === currentDragTargetRef.current.parentElement) return;
-
-      if (!document.getElementById("drop-ghost")) {
-        //   // ghost.parentElement.removeChild(ghost);
-        //   const newE = document.createElement("div");
-        //   newE.id = "drop-ghost";
-        //   newE.dataset.rowId = t.id;
-        //   newE.classList.add("drop-ghost");
-        //   newE.classList.add(getGhostClass());
-        //   if (areThumbnailsEnabled) newE.classList.add("h-10");
-        //   else newE.classList.add("h-8");
-        //   newE.addEventListener("dragover", (e) => {
-        //     e.preventDefault();
-        //   });
-        //   newE.addEventListener("drop", (e) => {
-        //     e.preventDefault();
-        //     const draggedId = e.dataTransfer?.getData("text/plain");
-        //     if (!draggedId || draggedId === "") return;
-        //     const currentTarget = e.currentTarget as HTMLElement;
-        //     // console.log("dropped on ghost: " + currentTarget.id);
-        //     // console.log("isBottomDrop: " + isBottomDrop);
-        //     if (!currentTarget.nextElementSibling) return;
-        //     const rowId = currentTarget.nextElementSibling.id;
-        //     afterDrop(draggedId, rowId);
-        //     onDragEnd();
-        //   });
-      }
-
-      // console.log("DRAG ENTER");
-      currentDragTargetRef.current = t.children[0];
-
-      e.stopPropagation();
-    },
-    []
-  );
-
-  const onDragLeave = useCallback(() => {
-    // console.log("onDragLeave");
-    // e.stopPropagation();
-  }, []);
-
-  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    // console.log("onDragOver");
-    // e.stopPropagation();
-    e.preventDefault();
-    // return false;
-  }, []);
-
-  const onDrop = useCallback((visualModList: Mod[]) => {
-    return (e: React.DragEvent<HTMLDivElement>, setAfterMod = false) => {
-      try {
-        console.log("onDrop");
-        // console.log(`dragged id with ${e.dataTransfer.getData("text/plain")}`);
-        const droppedId = e.dataTransfer.getData("text/plain");
-        if (droppedId === "") return;
-        draggedModIdRef.current = droppedId;
-
-        console.log("in ondrop droppedID", droppedId);
-
-        const t = e.currentTarget as HTMLDivElement;
-        console.log(`DROPPED ONTO ${t.id}`);
-        // console.log(`DROPPED ONTO`, t);
-
-        if (t.classList.contains("drop-ghost")) {
-          console.log("dropped onto ghost");
-          // if (!t.parentElement || t.parentElement?.id != droppedId) return;
-          if (!t.parentElement) return;
-
-          // console.log("droppend on top ghost");
-          // console.log("first", t.parentElement?.id);
-          // console.log("first", droppedId);
-          // console.log(22);
-          // console.log("nextElementSibling:", t.parentElement?.nextElementSibling);
-          // console.log(2233);
-          const modNameRelativeTo = t.parentElement?.id;
-          if (modNameRelativeTo) {
-            e.preventDefault();
-            e.stopPropagation();
-            dispatch(
-              setModLoadOrderRelativeTo({
-                modNameToChange: droppedId,
-                modNameRelativeTo,
-                visualModList,
-                setAfterMod,
-              } as ModLoadOrderRelativeTo)
-            );
-          }
-          return;
-        }
-
-        if (droppedId === t.id) return;
-        // console.log("isBottomDrop: " + isBottomDrop);
-        // if (!t.nextElementSibling) return;
-        dispatch(
-          setModLoadOrderRelativeTo({
-            modNameToChange: droppedId,
-            modNameRelativeTo: t.id,
-            visualModList,
-            setAfterMod,
-          } as ModLoadOrderRelativeTo)
-        );
-      } catch (e) {
-        console.log(e);
-      }
-      // onDragEnd();
-      // e.stopPropagation();
-    };
-  }, [dispatch]);
-
-  const onDrag = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      if (e.clientY < 150) {
-        const yRatio = e.clientY / 150;
-        document.getElementById("mod-rows-scroll")?.scrollBy(0, -(20 * yRatio + 60 * (1 - yRatio)));
-      }
-
-      if (e.clientY > innerHeight - 75) {
-        const yRatio = (e.clientY - (innerHeight - 75)) / 75;
-        document.getElementById("mod-rows-scroll")?.scrollBy(0, 60 * yRatio + 20 * (1 - yRatio));
-      }
-    },
-    []
-  );
-
   const onRowHoverStart = useCallback(
     (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
       if (sortingType !== SortingType.Ordered) return;
 
       const element = e.currentTarget as HTMLDivElement;
-      const dragIcon = document.getElementById(`drag-icon-${element.id}`);
-      if (dragIcon) dragIcon.classList.remove("hidden");
+      const loadOrderIcon = document.getElementById(`load-order-icon-${element.id}`);
+      if (loadOrderIcon) loadOrderIcon.classList.remove("hidden");
     },
     [sortingType]
   );
 
   const onRowHoverEnd = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
     const element = e.currentTarget as HTMLDivElement;
-    const dragIcon = document.getElementById(`drag-icon-${element.id}`);
-    if (dragIcon) dragIcon.classList.add("hidden");
-  }, []);
+    if (element.id === loadOrderModName) return;
+    const loadOrderIcon = document.getElementById(`load-order-icon-${element.id}`);
+    if (loadOrderIcon) loadOrderIcon.classList.add("hidden");
+  }, [loadOrderModName]);
 
   const onRemoveModOrder = useCallback((mod: Mod) => {
     dispatch(resetModLoadOrder([mod]));
@@ -518,6 +296,96 @@ const ModRows = memo((props: ModRowsProps) => {
     [hiddenModNames, unfilteredMods]
   );
 
+  const onSetLoadOrderMode = useCallback(
+    (mod: Mod) => {
+      if (!isCurrentTabEnabledMods || sortingType !== SortingType.Ordered) return;
+      if (loadOrderModName === mod.name) {
+        setLoadOrderModName(undefined);
+        return;
+      }
+
+      const currentIndex = unfilteredVisibleMods.findIndex((visibleMod) => visibleMod.name === mod.name);
+      setActiveLoadOrderPosition(Math.max(0, currentIndex));
+      setLoadOrderModName(mod.name);
+    },
+    [isCurrentTabEnabledMods, loadOrderModName, sortingType, unfilteredVisibleMods]
+  );
+
+  const onSelectLoadOrderPosition = useCallback(
+    (position: number) => {
+      if (!loadOrderModName || unfilteredVisibleMods.length === 0) return;
+
+      const modsWithoutSelected = unfilteredVisibleMods.filter((mod) => mod.name !== loadOrderModName);
+      const boundedPosition = Math.max(0, Math.min(position, modsWithoutSelected.length));
+      const isLastPosition = boundedPosition === modsWithoutSelected.length;
+      const relativeMod = isLastPosition
+        ? modsWithoutSelected[modsWithoutSelected.length - 1]
+        : modsWithoutSelected[boundedPosition];
+
+      if (relativeMod) {
+        dispatch(
+          setModLoadOrderRelativeTo({
+            modNameToChange: loadOrderModName,
+            modNameRelativeTo: relativeMod.name,
+            visualModList: [...unfilteredVisibleMods],
+            setAfterMod: isLastPosition,
+          })
+        );
+      }
+      setLoadOrderModName(undefined);
+    },
+    [dispatch, loadOrderModName, unfilteredVisibleMods]
+  );
+
+  useEffect(() => {
+    if (!loadOrderModName) return;
+    if (
+      !isCurrentTabEnabledMods ||
+      sortingType !== SortingType.Ordered ||
+      !unfilteredVisibleMods.some((mod) => mod.name === loadOrderModName)
+    ) {
+      setLoadOrderModName(undefined);
+    }
+  }, [isCurrentTabEnabledMods, loadOrderModName, sortingType, unfilteredVisibleMods]);
+
+  useEffect(() => {
+    if (!loadOrderModName) return;
+    const maxPosition = unfilteredVisibleMods.length;
+    if (activeLoadOrderPosition > maxPosition) setActiveLoadOrderPosition(maxPosition);
+  }, [activeLoadOrderPosition, loadOrderModName, unfilteredVisibleMods.length]);
+
+  useEffect(() => {
+    if (!loadOrderModName) return;
+    document
+      .getElementById(`enabled-mod-placeholder-${activeLoadOrderPosition}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeLoadOrderPosition, loadOrderModName]);
+
+  useEffect(() => {
+    if (!loadOrderModName) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setLoadOrderModName(undefined);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveLoadOrderPosition((previous) => Math.max(0, previous - 1));
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveLoadOrderPosition((previous) =>
+          Math.min(unfilteredVisibleMods.length, previous + 1)
+        );
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        onSelectLoadOrderPosition(activeLoadOrderPosition);
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [activeLoadOrderPosition, loadOrderModName, onSelectLoadOrderPosition, unfilteredVisibleMods.length]);
+
   const customFolderPathBySourceId = useMemo(
     () => new Map((appFolderPaths.customModFolders || []).map((folder) => [folder.id, folder.path])),
     [appFolderPaths.customModFolders],
@@ -553,12 +421,6 @@ const ModRows = memo((props: ModRowsProps) => {
     ]
   );
 
-  const onDropWithVisibleMods = useCallback(() => {
-    return onDrop(unfilteredVisibleMods);
-  }, [unfilteredVisibleMods, onDrop]);
-
-  const onDropMemoized = useMemo(() => onDropWithVisibleMods(), [onDropWithVisibleMods]);
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   const emptyFunc = useCallback(() => {}, []);
 
   const cache = useMemo(
@@ -596,17 +458,16 @@ const ModRows = memo((props: ModRowsProps) => {
             {...{
               style,
               loadOrderIndex: loadOrderIndexByModName.get(row.mod.name) ?? index,
+              rowIndex: index,
               gridClass,
               mod: row.mod,
               onRowHoverStart,
               onRowHoverEnd,
-              onDrop: isCurrentTabEnabledMods ? onDropMemoized : emptyFunc,
-              onDrag,
-              onDragStart,
-              onDragLeave,
-              onDragEnter,
-              onDragOver,
-              onDragEnd,
+              onSetLoadOrderMode,
+              onSelectLoadOrderPosition,
+              activeLoadOrderPosition,
+              isLoadOrderPlacementMode: isCurrentTabEnabledMods && !!loadOrderModName,
+              isLoadOrderPlacementSource: row.mod.name === loadOrderModName,
               onModToggled,
               onModRightClick,
               onCustomizeModClicked,
@@ -641,10 +502,14 @@ const ModRows = memo((props: ModRowsProps) => {
   return (
     <>
       <div
-        onDragEnd={onDragEnd}
+        onContextMenuCapture={(event) => {
+          if (!loadOrderModName) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setLoadOrderModName(undefined);
+        }}
         className={`dark:text-slate-100 ` + (areThumbnailsEnabled ? "text-lg" : "")}
         id="rowsParent"
-        ref={rowsParentRef}
       >
         <MemoizedFloatingOverlay
           onClick={() => onDropdownOverlayClick()}
@@ -855,16 +720,15 @@ const ModRows = memo((props: ModRowsProps) => {
                 key={mod.path}
                 {...{
                   loadOrderIndex: loadOrderIndexByModName.get(mod.name) ?? i,
+                  rowIndex: i,
                   mod,
                   onRowHoverStart,
                   onRowHoverEnd,
-                  onDrop: isCurrentTabEnabledMods ? onDropMemoized : emptyFunc,
-                  onDrag,
-                  onDragStart,
-                  onDragLeave,
-                  onDragEnter,
-                  onDragOver,
-                  onDragEnd,
+                  onSetLoadOrderMode,
+                  onSelectLoadOrderPosition,
+                  activeLoadOrderPosition,
+                  isLoadOrderPlacementMode: !!loadOrderModName,
+                  isLoadOrderPlacementSource: mod.name === loadOrderModName,
                   onModToggled,
                   onModRightClick,
                   onCustomizeModClicked,
@@ -893,6 +757,19 @@ const ModRows = memo((props: ModRowsProps) => {
               ></ModRow>
             ))}
         </div>
+        {loadOrderModName && (
+          <div
+            className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
+            role="status"
+          >
+            <div className="font-semibold">
+              {localized.selectNewLoadOrderPosition || "Select a new load order / position."}
+            </div>
+            <div className="mt-1 text-xs text-slate-300">
+              {localized.cancelLoadOrderPlacementHelp || "Press Esc or right-click to cancel."}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
