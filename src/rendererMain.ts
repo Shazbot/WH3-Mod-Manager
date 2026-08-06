@@ -138,6 +138,11 @@ const saveConfig = (appState: AppState) => {
 const saveConfigDebounced = debounce((appState: AppState) => {
   saveConfig(appState);
 }, 200);
+
+window.addEventListener("beforeunload", () => {
+  saveConfig(store.getState().app);
+});
+
 let lastReadModsSignature: string | undefined;
 
 let lastSentTreeDisplayModes:

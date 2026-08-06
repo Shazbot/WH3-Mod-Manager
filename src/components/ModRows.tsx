@@ -23,7 +23,11 @@ import {
   removeAllPackDataOverwrites,
 } from "../appSlice";
 import { Tooltip } from "flowbite-react";
-import { getFilteredMods, sortByNameAndLoadOrder } from "../modSortingHelpers";
+import {
+  getFilteredMods,
+  getLoadOrderInsertionIndex,
+  sortByNameAndLoadOrder,
+} from "../modSortingHelpers";
 import { FloatingOverlay } from "@floating-ui/react";
 import ModDropdown from "./ModDropdown";
 import { isModAlwaysEnabled } from "../modsHelpers";
@@ -41,6 +45,8 @@ import hash from "object-hash";
 import { getModSourceId, getModSourceKind } from "../modSources";
 
 const defaultModThumbnailSrc = require("../assets/modThumbnail.png");
+
+const noHiddenModNames = new Set<string>();
 
 const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
   const dataPackNames = new Set(mods.filter((mod) => mod.isInData).map((mod) => mod.name));
@@ -107,6 +113,10 @@ const ModRows = memo((props: ModRowsProps) => {
     () =>
       currentPresetMods.filter((iterMod) => iterMod.isEnabled || alwaysEnabledModNames.has(iterMod.name)),
     [alwaysEnabledModNames, currentPresetMods]
+  );
+  const canonicalEnabledMods = useMemo(
+    () => getVisibleMods(sortByNameAndLoadOrder(enabledMods), noHiddenModNames),
+    [enabledMods]
   );
   const presetMods = currentTab == "enabledMods" ? enabledMods : currentPresetMods;
   const enabledMergeMods = enabledMods.filter((mod) => mod.mergedModsData);
@@ -289,11 +299,20 @@ const ModRows = memo((props: ModRowsProps) => {
     );
   }, [enabledMods, customizableMods]);
 
-  const visibleMods = useMemo(() => getVisibleMods(mods, hiddenModNames), [hiddenModNames, mods]);
+  const visibleMods = useMemo(
+    () =>
+      loadOrderModName && isCurrentTabEnabledMods
+        ? canonicalEnabledMods
+        : getVisibleMods(mods, hiddenModNames),
+    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, mods]
+  );
 
   const unfilteredVisibleMods = useMemo(
-    () => getVisibleMods(unfilteredMods, hiddenModNames),
-    [hiddenModNames, unfilteredMods]
+    () =>
+      loadOrderModName && isCurrentTabEnabledMods
+        ? canonicalEnabledMods
+        : getVisibleMods(unfilteredMods, hiddenModNames),
+    [canonicalEnabledMods, hiddenModNames, isCurrentTabEnabledMods, loadOrderModName, unfilteredMods]
   );
 
   const onSetLoadOrderMode = useCallback(
@@ -304,19 +323,24 @@ const ModRows = memo((props: ModRowsProps) => {
         return;
       }
 
-      const currentIndex = unfilteredVisibleMods.findIndex((visibleMod) => visibleMod.name === mod.name);
+      const currentIndex = canonicalEnabledMods.findIndex((visibleMod) => visibleMod.name === mod.name);
       setActiveLoadOrderPosition(Math.max(0, currentIndex));
       setLoadOrderModName(mod.name);
     },
-    [isCurrentTabEnabledMods, loadOrderModName, sortingType, unfilteredVisibleMods]
+    [canonicalEnabledMods, isCurrentTabEnabledMods, loadOrderModName, sortingType]
   );
 
   const onSelectLoadOrderPosition = useCallback(
     (position: number) => {
       if (!loadOrderModName || unfilteredVisibleMods.length === 0) return;
 
+      const selectedIndex = unfilteredVisibleMods.findIndex((mod) => mod.name === loadOrderModName);
       const modsWithoutSelected = unfilteredVisibleMods.filter((mod) => mod.name !== loadOrderModName);
-      const boundedPosition = Math.max(0, Math.min(position, modsWithoutSelected.length));
+      const boundedPosition = getLoadOrderInsertionIndex(
+        selectedIndex,
+        position,
+        modsWithoutSelected.length,
+      );
       const isLastPosition = boundedPosition === modsWithoutSelected.length;
       const relativeMod = isLastPosition
         ? modsWithoutSelected[modsWithoutSelected.length - 1]
@@ -522,7 +546,6 @@ const ModRows = memo((props: ModRowsProps) => {
             positionX={positionX}
             positionY={positionY}
             mod={contextMenuMod}
-            visibleMods={unfilteredVisibleMods}
             referenceElement={dropdownReferenceElement}
             mods={mods}
           ></ModDropdown>

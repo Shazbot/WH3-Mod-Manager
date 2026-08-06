@@ -341,12 +341,19 @@ const Sidebar = memo(() => {
       if (e.key === "Control") isControlDownRef.current = false;
     };
 
+    const resetModifierKeys = () => {
+      isShiftDownRef.current = false;
+      isControlDownRef.current = false;
+    };
+
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", resetModifierKeys);
 
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", resetModifierKeys);
     };
   }, []);
 

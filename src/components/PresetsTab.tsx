@@ -15,7 +15,11 @@ import {
 } from "../appSlice";
 import selectStyle from "../styles/selectStyle";
 import localizationContext from "../localizationContext";
-import { getModsSortedByHumanNameAndName, sortByNameAndLoadOrder } from "../modSortingHelpers";
+import {
+  getLoadOrderInsertionIndex,
+  getModsSortedByHumanNameAndName,
+  sortByNameAndLoadOrder,
+} from "../modSortingHelpers";
 import { isModAlwaysEnabled, withoutDataAndContentDuplicates } from "../modsHelpers";
 import { SortingType } from "../utility/modRowSorting";
 import { getModSourceId, getModSourceKind, resolveModsBySourcePriority } from "../modSources";
@@ -536,6 +540,7 @@ const PresetsTab = memo(() => {
 
       const workingMods = [...enabledDraftMods];
       let modToPlace = workingMods.find((mod) => mod.name === placeModName);
+      const selectedIndex = workingMods.findIndex((mod) => mod.name === placeModName);
       if (!modToPlace) {
         const sourceMod = knownModsByName.get(placeModName) ?? createFallbackMod(placeModName);
         modToPlace = {
@@ -550,14 +555,16 @@ const PresetsTab = memo(() => {
         );
       }
 
-      const boundedIndex = Math.max(0, Math.min(placeholderIndex, workingMods.length));
+      const boundedIndex = getLoadOrderInsertionIndex(
+        selectedIndex,
+        placeholderIndex,
+        workingMods.length,
+      );
       workingMods.splice(boundedIndex, 0, modToPlace);
 
       const nextLoadOrders = new Map<string, number>();
       workingMods.forEach((mod, index) => {
-        if (draftLoadOrderByName.get(mod.name) != null || mod.name === placeModName) {
-          nextLoadOrders.set(mod.name, index);
-        }
+        nextLoadOrders.set(mod.name, index);
       });
 
       setDraftEnabledNames(nextEnabledNames);

@@ -3,7 +3,6 @@ import React, { memo, useCallback, useContext, useState } from "react";
 import {
   setCurrentModToUpload,
   setIsModTagPickerOpen,
-  setModLoadOrderRelativeTo,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
 } from "../appSlice";
@@ -21,7 +20,6 @@ import {
   FaSync,
   FaClock,
 } from "react-icons/fa";
-import { GoListOrdered } from "react-icons/go";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
 
 import { Modal } from "../flowbite";
@@ -34,7 +32,6 @@ import { isWorkshopMod } from "../modSources";
 type ModDropdownOptionsProps = {
   mod?: Mod;
   mods: Mod[];
-  visibleMods: Mod[];
 };
 
 const openInExplorer = (mod: Mod) => {
@@ -72,11 +69,7 @@ const unsubscribe = (mod: Mod, allMods: Mod[]) => {
 const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   const dispatch = useAppDispatch();
   const allMods = useAppSelector((state) => state.app.allMods);
-  const currentTab = useAppSelector((state) => state.app.currentTab);
   const isDev = useAppSelector((state) => state.app.isDev);
-  const [isSetLoadOrderOpen, setIsSetLoadOrderOpen] = useState(false);
-  const [loadOrderHasError, setLoadOrderHasError] = useState(false);
-  const [currentModLoadOrder, setCurrentModLoadOrder] = useState("");
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
@@ -159,77 +152,6 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
   return (
     (props.mod == null && <></>) || (
       <>
-        <Modal
-          onClose={() => setIsSetLoadOrderOpen(false)}
-          // show={true}
-          show={isSetLoadOrderOpen}
-          size="2xl"
-          position="center"
-        >
-          <Modal.Header>
-            {localized.setLoadOrderFor} {props.mod?.name}
-          </Modal.Header>
-          <Modal.Body>
-            <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300">
-              {`${localized.setLoadOrderMessage1} `}
-              <span className="text-red-600 font-semibold">{localized.setLoadOrderMessage2}</span>
-            </p>
-            <div className="flex mt-4 justify-center items-center">
-              <input
-                id="filterInput"
-                type="text"
-                onChange={(e) => {
-                  const loadOrder = e.target.value;
-                  setCurrentModLoadOrder(loadOrder);
-                  setLoadOrderHasError(loadOrder != "" && !Number(loadOrder));
-                }}
-                value={currentModLoadOrder}
-                className={
-                  "inline-block bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 w-20 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 " +
-                  (loadOrderHasError ? "!border-red-700" : "")
-                }
-              ></input>
-              <div className="ml-4 justify-center inline-block">
-                <button
-                  className="make-tooltip-w-full px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
-                  onClick={() => {
-                    const numLordOrder = Number(currentModLoadOrder);
-                    if (numLordOrder == null || isNaN(numLordOrder)) return;
-                    if (numLordOrder < 0) return;
-                    console.log("set numLordOrder:", numLordOrder);
-                    let relativeMod = props.visibleMods[numLordOrder];
-                    let setAfterMod = false;
-                    if (!relativeMod) {
-                      relativeMod = props.visibleMods[numLordOrder - 1];
-                      setAfterMod = true;
-                    }
-                    if (!relativeMod) return;
-                    dispatch(
-                      setModLoadOrderRelativeTo({
-                        modNameToChange: props.mod?.name,
-                        modNameRelativeTo: relativeMod.name,
-                        visualModList: props.visibleMods,
-                        setAfterMod: setAfterMod,
-                      } as ModLoadOrderRelativeTo)
-                    );
-
-                    // dispatch(
-                    //   setModLoadOrder({
-                    //     modName: props.mod?.name ?? "",
-                    //     loadOrder: numLordOrder,
-                    //     originalOrder: props.mod?.loadOrder,
-                    //   })
-                    // );
-                    setIsSetLoadOrderOpen(false);
-                  }}
-                >
-                  <span className="uppercase">{localized.setLoadOrder}</span>
-                </button>
-              </div>
-            </div>
-          </Modal.Body>
-        </Modal>
-
         {props.mod && (
           <RenameModal show={isRenameModalOpen} onClose={() => setIsRenameModalOpen(false)} mod={props.mod} />
         )}
@@ -279,20 +201,6 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
 
         <div>
           <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
-            {currentTab != "categories" && (
-              <li>
-                <a
-                  onClick={() => setIsSetLoadOrderOpen(true)}
-                  href="#"
-                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
-                >
-                  <span className="flex items-center gap-2">
-                    <GoListOrdered className="w-5 h-5"></GoListOrdered>
-                    {localized.setLoadOrder}
-                  </span>
-                </a>
-              </li>
-            )}
             {props.mod &&
               (isWorkshopMod(props.mod) ||
                 allMods.some((iterMod) => iterMod.name == props.mod?.name && isWorkshopMod(iterMod))) && (

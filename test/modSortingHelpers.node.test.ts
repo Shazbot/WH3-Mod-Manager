@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getFilteredMods, sortByNameAndLoadOrder } from "../src/modSortingHelpers";
+import {
+  getFilteredMods,
+  getLoadOrderInsertionIndex,
+  sortAsInPreset,
+  sortByNameAndLoadOrder,
+} from "../src/modSortingHelpers";
 
 const createMod = (overrides: Partial<Mod>): Mod =>
   ({
@@ -42,5 +47,27 @@ describe("getFilteredMods", () => {
       "beta.pack",
       "gamma.pack",
     ]);
+  });
+
+  it("keeps preset mods first while sorting absent mods deterministically", () => {
+    const alpha = createMod({ name: "alpha.pack" });
+    const beta = createMod({ name: "beta.pack" });
+    const gamma = createMod({ name: "gamma.pack" });
+    const delta = createMod({ name: "delta.pack" });
+
+    expect(sortAsInPreset([alpha, beta, gamma, delta], [gamma, alpha]).map((mod) => mod.name)).toEqual([
+      "gamma.pack",
+      "alpha.pack",
+      "beta.pack",
+      "delta.pack",
+    ]);
+  });
+
+  it("accounts for the removed source row when placing a mod downward", () => {
+    expect(getLoadOrderInsertionIndex(1, 0, 3)).toBe(0);
+    expect(getLoadOrderInsertionIndex(1, 1, 3)).toBe(1);
+    expect(getLoadOrderInsertionIndex(1, 2, 3)).toBe(1);
+    expect(getLoadOrderInsertionIndex(1, 4, 3)).toBe(3);
+    expect(getLoadOrderInsertionIndex(-1, 2, 3)).toBe(2);
   });
 });

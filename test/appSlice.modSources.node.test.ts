@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import appReducer, { setAppFolderPaths, setMods } from "../src/appSlice";
+import appReducer, { setAppFolderPaths, setModLoadOrderRelativeTo, setMods } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 
 const createMod = (path: string, sourceId: string, sourceKind: ModSourceKind, isInData: boolean): Mod => ({
@@ -46,5 +46,40 @@ describe("app mod source reconciliation", () => {
     expect(state.currentPreset.mods[0].path).toBe(dataMod.path);
     expect(state.currentPreset.mods[0].isEnabled).toBe(true);
     expect(state.allMods).toHaveLength(2);
+  });
+
+  it("does not restore stale startup load order when folder settings are reconciled", () => {
+    const folderPaths = {
+      gamePath: "/game",
+      dataFolder: "/game/data",
+      contentFolder: "/workshop",
+      customModFolders: [],
+      modSourceOrder: ["data", "workshop"],
+    };
+    const alpha = createMod("/game/data/alpha.pack", "data", "data", true);
+    alpha.name = "alpha.pack";
+    alpha.isEnabled = true;
+    const beta = createMod("/game/data/beta.pack", "data", "data", true);
+    beta.name = "beta.pack";
+    beta.isEnabled = true;
+
+    let state = appReducer({ ...initialState, appFolderPaths: folderPaths }, setMods([alpha, beta]));
+    state = appReducer(
+      state,
+      setModLoadOrderRelativeTo({
+        modNameToChange: beta.name,
+        modNameRelativeTo: alpha.name,
+        visualModList: [...state.currentPreset.mods],
+        setAfterMod: false,
+      }),
+    );
+    state = appReducer(state, setAppFolderPaths({ ...folderPaths }));
+
+    expect(
+      state.currentPreset.mods
+        .filter((mod) => mod.loadOrder != null)
+        .sort((first, second) => (first.loadOrder as number) - (second.loadOrder as number))
+        .map((mod) => mod.name),
+    ).toEqual(["beta.pack", "alpha.pack"]);
   });
 });
