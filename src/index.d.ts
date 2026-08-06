@@ -279,12 +279,6 @@ declare global {
   type StartGameOptions = StartGameSpecificOptions &
     Pick<AppState, "isClosedOnPlay" | "packDataOverwrites" | "userFlowOptions">;
 
-  interface ModLoadOrderPayload {
-    modName: string;
-    loadOrder: number;
-    originalOrder?: number;
-  }
-
   interface SetCurrentGamePayload {
     game: SupportedGames;
     currentPreset: Preset;
