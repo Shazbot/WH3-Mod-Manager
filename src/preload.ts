@@ -35,6 +35,10 @@ const api = {
   subscribeToMods: (ids: string[]) => ipcRenderer.send("subscribeToMods", ids),
   openFolderInExplorer: (path: string) => ipcRenderer.send("openFolderInExplorer", path),
   openDirectoryInExplorer: (path: string) => ipcRenderer.send("openDirectoryInExplorer", path),
+  openDiagnosticPath: (
+    target: DiagnosticPathTarget,
+    copyPath: boolean,
+  ): Promise<DiagnosticPathResult> => ipcRenderer.invoke("openDiagnosticPath", target, copyPath),
   openInSteam: (url: string) => ipcRenderer.send("openInSteam", url),
   openPack: (path: string) => ipcRenderer.send("openPack", path),
   getPacksInSave: (saveName: string) => ipcRenderer.send("getPacksInSave", saveName),

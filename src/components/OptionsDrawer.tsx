@@ -80,6 +80,7 @@ const OptionsDrawer = memo(() => {
   const [isForceResubscribeConfirmOpen, setIsForceResubscribeConfirmOpen] = useState(false);
   const [modsToForceResubscribe, setModsToForceResubscribe] = useState<Mod[]>([]);
   const [modFolderMessage, setModFolderMessage] = useState("");
+  const [logPathStatus, setLogPathStatus] = useState<{ message: string; isError: boolean }>();
   const [customFolderStatuses, setCustomFolderStatuses] = useState<Record<string, boolean>>({});
   const [syncingCustomFolderId, setSyncingCustomFolderId] = useState<string>();
   const [pendingCustomFolderCopy, setPendingCustomFolderCopy] = useState<{
@@ -325,6 +326,32 @@ const OptionsDrawer = memo(() => {
     dispatch(setIsCreateSteamCollectionOpen(true));
   }, [closeForceResubscribeConfirm, dispatch]);
 
+  const openDiagnosticPath = useCallback(
+    async (target: DiagnosticPathTarget, copyPath: boolean) => {
+      const result = await window.api?.openDiagnosticPath(target, copyPath);
+      if (!result) {
+        setLogPathStatus({ message: "Log tools are unavailable.", isError: true });
+        return;
+      }
+      if (!result.success) {
+        setLogPathStatus({ message: result.error || "Could not open the requested path.", isError: true });
+        return;
+      }
+      setLogPathStatus(
+        copyPath
+          ? {
+              message: (localized.logPathCopied || "Path copied to clipboard: {{path}}").replace(
+                "{{path}}",
+                result.path || "",
+              ),
+              isError: false,
+            }
+          : undefined,
+      );
+    },
+    [localized.logPathCopied],
+  );
+
   const onDeleteChange = useCallback(
     (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
       if (!newValue) return;
@@ -565,6 +592,55 @@ const OptionsDrawer = memo(() => {
                 }}
               ></Select>
             </div>
+
+            <section className="mt-8 rounded border border-gray-600 p-4">
+              <h6>{localized.applicationLogs || "Application Logs"}</h6>
+              <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+                {localized.applicationLogsHelp ||
+                  "Open application diagnostics. Hold Shift while clicking to copy the path instead."}
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  className="flex-1 rounded bg-purple-600 px-4 py-2 text-xs font-medium uppercase text-white hover:bg-purple-700"
+                  onClick={(event) => void openDiagnosticPath("appLogFile", event.shiftKey)}
+                >
+                  {localized.openMainLog || "Open main.log"}
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 rounded bg-purple-600 px-4 py-2 text-xs font-medium uppercase text-white hover:bg-purple-700"
+                  onClick={(event) => void openDiagnosticPath("appLogsFolder", event.shiftKey)}
+                >
+                  {localized.openLogsFolder || "Open Logs Folder"}
+                </button>
+              </div>
+            </section>
+
+            <section className="mt-6 rounded border border-gray-600 p-4">
+              <h6>{localized.gameLogs || "Game Logs"}</h6>
+              <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+                {localized.gameLogsHelp ||
+                  "Open the newest script_log_* file from the configured game folder. Hold Shift to copy its path instead."}
+              </p>
+              <button
+                type="button"
+                disabled={!appFolderPaths.gamePath}
+                className="w-full rounded bg-purple-600 px-4 py-2 text-xs font-medium uppercase text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={(event) => void openDiagnosticPath("latestGameScriptLog", event.shiftKey)}
+              >
+                {localized.openLatestGameLog || "Open Latest Script Log"}
+              </button>
+            </section>
+
+            {logPathStatus && (
+              <p
+                className={`mt-3 break-all text-sm ${logPathStatus.isError ? "text-red-400" : "text-green-400"}`}
+                role={logPathStatus.isError ? "alert" : "status"}
+              >
+                {logPathStatus.message}
+              </p>
+            )}
 
             <div className="flex items-center ml-1 mt-6">
               <input

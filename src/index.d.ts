@@ -10,6 +10,14 @@ declare global {
     api?: api;
   }
 
+  type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
+
+  interface DiagnosticPathResult {
+    success: boolean;
+    path?: string;
+    error?: string;
+  }
+
   type MergedModsData = {
     path: string;
     lastChanged: number;
