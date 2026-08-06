@@ -5,6 +5,7 @@ import * as cheerio from "cheerio";
 import { exec, fork } from "child_process";
 import chokidar from "chokidar";
 import { format } from "date-fns";
+import electronLog from "electron-log/main";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import windowStateKeeper from "electron-window-state";
 import * as fs from "fs";
@@ -123,6 +124,7 @@ import {
 } from "./supportedGames";
 import { tryOpenFile } from "./utility/fileHelpers";
 import getPackTableData from "./utility/frontend/packDataHandling";
+import { findLatestScriptLog } from "./utility/logPaths";
 import {
   decodePackedTextBuffer,
   getPackedFileMimeType,
@@ -7369,6 +7371,51 @@ export const registerIpcMainListeners = (
   ipcMain.on("openDirectoryInExplorer", (event, path: string) => {
     void shell.openPath(path);
   });
+  ipcMain.removeHandler("openDiagnosticPath");
+  ipcMain.handle(
+    "openDiagnosticPath",
+    async (_event, target: DiagnosticPathTarget, copyPath: boolean): Promise<DiagnosticPathResult> => {
+      try {
+        let targetPath: string;
+
+        if (target === "appLogFile") {
+          targetPath = electronLog.transports.file.getFile().path;
+        } else if (target === "appLogsFolder") {
+          targetPath = nodePath.dirname(electronLog.transports.file.getFile().path);
+        } else if (target === "latestGameScriptLog") {
+          const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
+          if (!gamePath) {
+            return { success: false, error: "The game folder is not configured." };
+          }
+
+          const latestScriptLog = await findLatestScriptLog(gamePath);
+          if (!latestScriptLog) {
+            return {
+              success: false,
+              error: `No script_log_* files were found in ${gamePath}.`,
+            };
+          }
+          targetPath = latestScriptLog;
+        } else {
+          return { success: false, error: "Unknown log path target." };
+        }
+
+        if (copyPath) {
+          clipboard.writeText(targetPath);
+          return { success: true, path: targetPath };
+        }
+
+        const openError = await shell.openPath(targetPath);
+        if (openError) return { success: false, path: targetPath, error: openError };
+        return { success: true, path: targetPath };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
   const openInSteam = (url: string) => {
     exec(`start steam://openurl/${url}`);
   };
