@@ -225,6 +225,7 @@ const applyUsedModsImportToState = (state: AppState, modNames: string[]) => {
     mod.isEnabled = importedMod !== undefined;
     mod.loadOrder = importedMod?.loadOrder;
   });
+  sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
 const reconcileCurrentPresetModSources = (state: AppState) => {
@@ -387,6 +388,7 @@ const handleImportSteamCollection = (state: AppState, importSteamCollection: Imp
         if (mod) setModLoadOrderInternal(mod, state, mod.name, i);
       }
     }
+    sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 
     state.toasts.push({
       messages: ["loc:importedModsFromSteamCollection"],
@@ -625,12 +627,18 @@ const appSlice = createSlice({
     toggleMod: (state: AppState, action: PayloadAction<Mod>) => {
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((mod) => mod.workshopId == inputMod.workshopId);
-      if (mod) mod.isEnabled = !mod.isEnabled;
+      if (mod) {
+        mod.isEnabled = !mod.isEnabled;
+        if (mod.isEnabled) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
+      }
     },
     setIsModEnabled: (state: AppState, action: PayloadAction<SetIsModEnabledPayload>) => {
       const { mod, isEnabled } = action.payload;
       const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
-      if (presetMod) presetMod.isEnabled = isEnabled;
+      if (presetMod) {
+        presetMod.isEnabled = isEnabled;
+        if (isEnabled) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
+      }
     },
     setAreModsEnabled: (state: AppState, action: PayloadAction<SetIsModEnabledPayload[]>) => {
       const enablePayloads = action.payload;
@@ -638,54 +646,33 @@ const appSlice = createSlice({
         const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
         if (presetMod) presetMod.isEnabled = isEnabled;
       }
-    },
-    setSharedMod: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
-      const payload = action.payload;
-      payload.forEach((idAndLoadOrder) => {
-        const mod = state.currentPreset.mods.find((mod) => mod.workshopId == idAndLoadOrder.workshopId);
-        if (mod) {
-          mod.isEnabled = true;
-          mod.loadOrder = idAndLoadOrder.loadOrder;
-        }
-      });
+      if (enablePayloads.some(({ isEnabled }) => isEnabled)) {
+        sanitizeEnabledModLoadOrders(state.currentPreset.mods);
+      }
     },
     orderImportedMods: (state: AppState) => {
       console.log("ordering imported mods");
-      for (let i = 0; i < state.importedMods.length; i++) {
-        const importedMod = state.importedMods[i];
-        console.log("imported mod:", importedMod.workshopId, importedMod.loadOrder);
-
-        const currentMod = state.currentPreset.mods.find(
-          (mod) => mod.workshopId == state.importedMods[i].workshopId,
-        );
-        if (!currentMod) continue;
-
-        if (importedMod.loadOrder == undefined) {
-          const currentModIndex = currentMod && state.currentPreset.mods.indexOf(currentMod);
-          if (currentModIndex == -1) continue;
-
-          if (i == 0) {
-            // no previous siblings so put it at start of all mods
-            state.currentPreset.mods.splice(currentModIndex, 1);
-            state.currentPreset.mods.splice(0, 0, currentMod);
-          } else {
-            const previousSiblingModIndex = state.currentPreset.mods.findIndex(
-              (mod) => mod.workshopId == state.importedMods[i - 1].workshopId,
-            );
-            if (previousSiblingModIndex != -1) {
-              // put the mod with the load order after the previous sibling
-              state.currentPreset.mods.splice(currentModIndex, 1);
-              state.currentPreset.mods.splice(previousSiblingModIndex, 0, currentMod);
-            }
-          }
-        } else {
-          const currentModIndex = currentMod && state.currentPreset.mods.indexOf(currentMod);
-          if (currentModIndex == -1) continue;
-          state.currentPreset.mods.splice(currentModIndex, 1);
-          state.currentPreset.mods.splice(importedMod.loadOrder, 0, currentMod);
-          currentMod.loadOrder = importedMod.loadOrder;
-        }
+      if (
+        state.importedMods.length === 0 ||
+        !state.importedMods.every((importedMod) =>
+          state.currentPreset.mods.some((mod) => mod.workshopId === importedMod.workshopId),
+        )
+      ) {
+        return;
       }
+
+      const importedModsByWorkshopId = new Map(
+        state.importedMods.map((mod) => [mod.workshopId, mod]),
+      );
+      state.currentPreset.mods.forEach((mod) => {
+        const importedMod = importedModsByWorkshopId.get(mod.workshopId);
+        mod.isEnabled = importedMod != null;
+        mod.loadOrder = importedMod?.loadOrder;
+      });
+
+      findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledMods).forEach(
+        (mod) => (mod.isEnabled = true),
+      );
 
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
       state.importedMods = [];
@@ -697,6 +684,7 @@ const appSlice = createSlice({
         state.alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
       );
       toEnable.forEach((mod) => (mod.isEnabled = true));
+      sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     enableModsByName: (state: AppState, action: PayloadAction<string[]>) => {
       const modNames = action.payload;
@@ -707,6 +695,7 @@ const appSlice = createSlice({
       state.currentPreset.mods
         .filter((mod) => modNameSet.has(mod.name))
         .forEach((mod) => (mod.isEnabled = true));
+      sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     importModsFromUsedMods: (state: AppState, action: PayloadAction<string[]>) => {
       const importedMods = getUsedModImport(
@@ -743,6 +732,7 @@ const appSlice = createSlice({
       state.currentPreset.mods
         .filter((iterMod) => alwaysEnabledNames.has(iterMod.name))
         .forEach((mod) => (mod.isEnabled = true));
+      sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     setImportedMods: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
       state.importedMods = action.payload;
@@ -829,6 +819,7 @@ const appSlice = createSlice({
       }
 
       checkImportedSteamCollections(state);
+      if (mod.isEnabled) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     removeMod: (state: AppState, action: PayloadAction<string>) => {
       const modPath = action.payload;
@@ -883,6 +874,7 @@ const appSlice = createSlice({
 
       state.currentPreset.mods = state.currentPreset.mods.filter((iterMod) => iterMod.path !== modPath);
       state.allMods = state.allMods.filter((iterMod) => iterMod.path !== modPath);
+      sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     setModData: (state: AppState, action: PayloadAction<ModData[]>) => {
       const datas = action.payload;
@@ -1215,19 +1207,6 @@ const appSlice = createSlice({
       const filter = action.payload;
       state.filter = filter;
     },
-    setModLoadOrder: (state: AppState, action: PayloadAction<ModLoadOrderPayload>) => {
-      console.log("in setModLoadOrder");
-      const payload = action.payload;
-      const ourMod = state.currentPreset.mods.find((mod) => mod.name === payload.modName);
-      const newLoadOrder = payload.loadOrder;
-      const originalLoadOrder = payload.originalOrder;
-
-      if (!ourMod) return;
-      setModLoadOrderInternal(ourMod, state, payload.modName, newLoadOrder, originalLoadOrder);
-
-      // printLoadOrders(state.currentPreset.mods);
-    },
-
     setModLoadOrderRelativeTo: (state: AppState, action: PayloadAction<ModLoadOrderRelativeTo>) => {
       const payload = action.payload;
       const { modNameToChange, modNameRelativeTo, visualModList } = payload;
@@ -1308,6 +1287,7 @@ const appSlice = createSlice({
         state.alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
       );
       modsToEnable.forEach((mod) => (mod.isEnabled = true));
+      if (modsToEnable.length > 0) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     toggleAlwaysHiddenMods: (state: AppState, action: PayloadAction<Mod[]>) => {
       const mods = action.payload;
@@ -1464,6 +1444,7 @@ const appSlice = createSlice({
       const existingMod = state.currentPreset.mods.find((mod) => mod.path == path);
       if (existingMod) {
         existingMod.isEnabled = true;
+        sanitizeEnabledModLoadOrders(state.currentPreset.mods);
       }
 
       state.toasts.push({
@@ -1731,7 +1712,6 @@ export const {
   applyPresetDraftMods,
   deletePreset,
   setFilter,
-  setModLoadOrder,
   setModLoadOrderRelativeTo,
   setCurrentLanguage,
   setCurrentGame,
@@ -1759,7 +1739,6 @@ export const {
   toggleIsFeaturesForModdersEnabled,
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
-  setSharedMod,
   orderImportedMods,
   addMod,
   removeMod,

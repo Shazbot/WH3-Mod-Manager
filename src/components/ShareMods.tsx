@@ -2,21 +2,18 @@ import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useCallback, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import {
-  disableAllMods,
   orderImportedMods,
   setAreModsEnabled,
   setImportedMods,
-  setSharedMod,
 } from "../appSlice";
 import { Spinner } from "flowbite-react";
-
-const subbedModIdsToWaitFor: ModIdAndLoadOrder[] = [];
 
 export interface ShareModsProps {
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 const ShareMods = memo((props: ShareModsProps) => {
+  const { isOpen, setIsOpen } = props;
   const dispatch = useAppDispatch();
   const [importModsText, setImportModsText] = useState("");
   const [isSpinnerOpen, setIsSpinnerOpen] = useState(false);
@@ -26,15 +23,19 @@ const ShareMods = memo((props: ShareModsProps) => {
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
 
   const onClose = useCallback(() => {
-    props.setIsOpen(!props.isOpen);
-  }, [props]);
+    setIsOpen(false);
+  }, [setIsOpen]);
+
+  const cancelPendingImport = useCallback(() => {
+    setIsSpinnerOpen(false);
+    dispatch(setImportedMods([]));
+  }, [dispatch]);
 
   const exportModsToClipboard = () => {
     window.api?.exportModsToClipboard(mods);
   };
 
   const importMods = () => {
-    dispatch(disableAllMods());
     const imported: ModIdAndLoadOrder[] = importModsText
       .trim()
       .split("|")
@@ -49,17 +50,14 @@ const ShareMods = memo((props: ShareModsProps) => {
     console.log("imported mods:", imported);
     dispatch(setImportedMods(imported));
 
-    const onlyIds = imported.map((idAndOrder) => idAndOrder.workshopId);
-    subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...imported);
-    console.log("waiting for: ", subbedModIdsToWaitFor);
-    props.setIsOpen(!props.isOpen);
-
-    const newMods = subbedModIdsToWaitFor.filter(
+    const newMods = imported.filter(
       (subbedMod) => !mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
     );
     if (newMods.length > 0) {
       setIsSpinnerOpen(true);
-      window.api?.subscribeToMods(onlyIds);
+      window.api?.subscribeToMods(newMods.map((mod) => mod.workshopId));
+    } else {
+      setIsOpen(false);
     }
   };
 
@@ -68,40 +66,26 @@ const ShareMods = memo((props: ShareModsProps) => {
   };
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (
-        importedMods.length > 0 &&
-        importedMods.every((importedMod) => mods.some((mod) => mod.workshopId == importedMod.workshopId))
-      ) {
-        dispatch(orderImportedMods());
-      }
-
-      const newMods = subbedModIdsToWaitFor.filter((subbedMod) =>
-        mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
-      );
-      if (newMods.length == 0) return;
-
-      const restOfMods = subbedModIdsToWaitFor.filter(
-        (subbedMod) => !mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
-      );
-      console.log("waiting for:", restOfMods);
-      subbedModIdsToWaitFor.splice(0, subbedModIdsToWaitFor.length, ...restOfMods);
-
-      dispatch(setSharedMod(newMods));
-    }, 100);
-    return () => clearInterval(interval);
-  }, [importedMods, subbedModIdsToWaitFor, mods]);
+    if (
+      importedMods.length > 0 &&
+      importedMods.every((importedMod) => mods.some((mod) => mod.workshopId == importedMod.workshopId))
+    ) {
+      dispatch(orderImportedMods());
+      setIsSpinnerOpen(false);
+      setIsOpen(false);
+    }
+  }, [dispatch, importedMods, mods, setIsOpen]);
 
   return (
     <>
-      {props.isOpen && (
+      {isOpen && (
         <>
           <Modal
-            onClose={() => setIsSpinnerOpen(false)}
+            onClose={cancelPendingImport}
             // show={true}
             show={
               isSpinnerOpen &&
-              !subbedModIdsToWaitFor.every((subbedMod) =>
+              !importedMods.every((subbedMod) =>
                 mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
               )
             }
@@ -121,7 +105,7 @@ const ShareMods = memo((props: ShareModsProps) => {
             </Modal.Body>
           </Modal>
           <Modal
-            show={props.isOpen}
+            show={isOpen}
             // show={true}
             onClose={onClose}
             size="2xl"

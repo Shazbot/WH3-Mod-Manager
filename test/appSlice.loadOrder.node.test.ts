@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import appReducer, {
   applyPresetDraftMods,
+  orderImportedMods,
   selectPreset,
+  setImportedMods,
   setModLoadOrderRelativeTo,
+  toggleMod,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import { sortByNameAndLoadOrder } from "../src/modSortingHelpers";
@@ -120,5 +123,66 @@ describe("load-order reducer behavior", () => {
       "beta.pack",
     ]);
     expect(state.currentPreset.mods.map((mod) => mod.loadOrder).sort()).toEqual([0, 1, 2]);
+  });
+
+  it("sanitizes custom positions when a disabled custom mod is re-enabled", () => {
+    const alpha = createMod("alpha.pack", true, 0);
+    const automatic = createMod("automatic.pack", true);
+    const zeta = createMod("zeta.pack", false, 0);
+
+    const state = appReducer(
+      { ...initialState, currentPreset: { name: "", mods: [alpha, automatic, zeta] } },
+      toggleMod(zeta),
+    );
+
+    expect(state.currentPreset.mods.find((mod) => mod.name === "alpha.pack")?.loadOrder).toBe(0);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "zeta.pack")?.loadOrder).toBe(1);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "automatic.pack")?.loadOrder).toBeUndefined();
+  });
+
+  it("does not partially apply an interrupted shared-mod import", () => {
+    const alpha = createMod("alpha.pack", true, 0);
+    const beta = createMod("beta.pack", false);
+    const pendingState = appReducer(
+      { ...initialState, currentPreset: { name: "", mods: [alpha, beta] } },
+      setImportedMods([
+        { workshopId: alpha.workshopId, loadOrder: undefined },
+        { workshopId: "missing-workshop-id", loadOrder: 0 },
+      ]),
+    );
+
+    const state = appReducer(pendingState, orderImportedMods());
+
+    expect(state.currentPreset.mods).toEqual(pendingState.currentPreset.mods);
+    expect(state.importedMods).toEqual(pendingState.importedMods);
+  });
+
+  it("applies a completed shared-mod import atomically with sparse ordering", () => {
+    const alpha = createMod("alpha.pack", true, 4);
+    const beta = createMod("beta.pack", false);
+    const old = createMod("old.pack", true, 0);
+    const pendingState = appReducer(
+      { ...initialState, currentPreset: { name: "", mods: [alpha, beta, old] } },
+      setImportedMods([
+        { workshopId: beta.workshopId, loadOrder: 0 },
+        { workshopId: alpha.workshopId, loadOrder: undefined },
+      ]),
+    );
+
+    const state = appReducer(pendingState, orderImportedMods());
+
+    expect(state.currentPreset.mods.find((mod) => mod.name === "beta.pack")).toMatchObject({
+      isEnabled: true,
+      loadOrder: 0,
+    });
+    expect(state.currentPreset.mods.find((mod) => mod.name === "alpha.pack")).toMatchObject({
+      isEnabled: true,
+      loadOrder: undefined,
+    });
+    expect(state.currentPreset.mods.find((mod) => mod.name === "old.pack")).toMatchObject({
+      isEnabled: false,
+      loadOrder: undefined,
+    });
+    expect(state.importedMods).toEqual([]);
   });
 });
