@@ -45,6 +45,16 @@ export function getLoadOrderInsertionIndex(
   return Math.max(0, Math.min(adjustedIndex, remainingModCount));
 }
 
+export function getSparseLoadOrderByModName(orderedMods: Mod[], movedModName?: string) {
+  const loadOrderByModName = new Map<string, number>();
+  orderedMods.forEach((mod, index) => {
+    if (mod.loadOrder != null || mod.name === movedModName) {
+      loadOrderByModName.set(mod.name, index);
+    }
+  });
+  return loadOrderByModName;
+}
+
 export function sortAsInPreset(mods: Mod[], modsInPreset: Mod[]) {
   const indexMap = new Map(modsInPreset.map((mod, i) => [mod.name, i]));
   const newMods = [...mods].sort((modF, modS) => {

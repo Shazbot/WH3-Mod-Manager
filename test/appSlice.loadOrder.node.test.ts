@@ -32,7 +32,7 @@ const orderedEnabledNames = (mods: Mod[]) =>
   sortByNameAndLoadOrder(mods.filter((mod) => mod.isEnabled)).map((mod) => mod.name);
 
 describe("load-order reducer behavior", () => {
-  it("fully replaces stale orders and gives always-enabled mods a unique position", () => {
+  it("fully replaces stale orders without making always-enabled mods custom", () => {
     const always = createMod("always.pack", true, 0);
     const alpha = createMod("alpha.pack", true, 1);
     const beta = createMod("beta.pack", true, 2);
@@ -54,22 +54,19 @@ describe("load-order reducer behavior", () => {
       "alpha.pack",
       "always.pack",
     ]);
-    expect(
-      state.currentPreset.mods
-        .filter((mod) => mod.isEnabled)
-        .map((mod) => mod.loadOrder)
-        .sort((first, second) => (first as number) - (second as number)),
-    ).toEqual([0, 1, 2]);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "beta.pack")?.loadOrder).toBe(0);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "alpha.pack")?.loadOrder).toBe(1);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "always.pack")?.loadOrder).toBeUndefined();
     expect(state.currentPreset.mods.find((mod) => mod.name === "absent.pack")).toMatchObject({
       isEnabled: false,
       loadOrder: undefined,
     });
   });
 
-  it("normalizes a reorder across the complete visual list and clears omitted stale orders", () => {
-    const alpha = createMod("alpha.pack", true, 0);
-    const beta = createMod("beta.pack", true, 1);
-    const hidden = createMod("hidden.pack", true, 2);
+  it("only makes the moved mod custom while using the complete visual list", () => {
+    const alpha = createMod("alpha.pack", true);
+    const beta = createMod("beta.pack", true);
+    const hidden = createMod("hidden.pack", true);
     const disabled = createMod("disabled.pack", false, 3);
 
     const state = appReducer(
@@ -90,7 +87,10 @@ describe("load-order reducer behavior", () => {
       "alpha.pack",
       "hidden.pack",
     ]);
-    expect(state.currentPreset.mods.find((mod) => mod.name === "disabled.pack")?.loadOrder).toBeUndefined();
+    expect(state.currentPreset.mods.find((mod) => mod.name === "beta.pack")?.loadOrder).toBe(0);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "alpha.pack")?.loadOrder).toBeUndefined();
+    expect(state.currentPreset.mods.find((mod) => mod.name === "hidden.pack")?.loadOrder).toBeUndefined();
+    expect(state.currentPreset.mods.find((mod) => mod.name === "disabled.pack")?.loadOrder).toBe(3);
   });
 
   it("loads a saved custom preset in its exact order", () => {

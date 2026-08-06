@@ -18,6 +18,7 @@ import localizationContext from "../localizationContext";
 import {
   getLoadOrderInsertionIndex,
   getModsSortedByHumanNameAndName,
+  getSparseLoadOrderByModName,
   sortByNameAndLoadOrder,
 } from "../modSortingHelpers";
 import { isModAlwaysEnabled, withoutDataAndContentDuplicates } from "../modsHelpers";
@@ -562,10 +563,7 @@ const PresetsTab = memo(() => {
       );
       workingMods.splice(boundedIndex, 0, modToPlace);
 
-      const nextLoadOrders = new Map<string, number>();
-      workingMods.forEach((mod, index) => {
-        nextLoadOrders.set(mod.name, index);
-      });
+      const nextLoadOrders = getSparseLoadOrderByModName(workingMods, placeModName);
 
       setDraftEnabledNames(nextEnabledNames);
       setDraftLoadOrderByName(nextLoadOrders);

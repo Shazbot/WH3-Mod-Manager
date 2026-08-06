@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import appReducer, { setAppFolderPaths, setModLoadOrderRelativeTo, setMods } from "../src/appSlice";
 import initialState from "../src/initialAppState";
+import { sortByNameAndLoadOrder } from "../src/modSortingHelpers";
 
 const createMod = (path: string, sourceId: string, sourceKind: ModSourceKind, isInData: boolean): Mod => ({
   humanName: "Example",
@@ -75,11 +76,11 @@ describe("app mod source reconciliation", () => {
     );
     state = appReducer(state, setAppFolderPaths({ ...folderPaths }));
 
-    expect(
-      state.currentPreset.mods
-        .filter((mod) => mod.loadOrder != null)
-        .sort((first, second) => (first.loadOrder as number) - (second.loadOrder as number))
-        .map((mod) => mod.name),
-    ).toEqual(["beta.pack", "alpha.pack"]);
+    expect(sortByNameAndLoadOrder(state.currentPreset.mods).map((mod) => mod.name)).toEqual([
+      "beta.pack",
+      "alpha.pack",
+    ]);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "beta.pack")?.loadOrder).toBe(0);
+    expect(state.currentPreset.mods.find((mod) => mod.name === "alpha.pack")?.loadOrder).toBeUndefined();
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getFilteredMods,
   getLoadOrderInsertionIndex,
+  getSparseLoadOrderByModName,
   sortAsInPreset,
   sortByNameAndLoadOrder,
 } from "../src/modSortingHelpers";
@@ -69,5 +70,20 @@ describe("getFilteredMods", () => {
     expect(getLoadOrderInsertionIndex(1, 2, 3)).toBe(1);
     expect(getLoadOrderInsertionIndex(1, 4, 3)).toBe(3);
     expect(getLoadOrderInsertionIndex(-1, 2, 3)).toBe(2);
+  });
+
+  it("keeps automatic mods automatic when reindexing a sparse custom order", () => {
+    const orderedMods = [
+      createMod({ name: "alpha.pack", loadOrder: 0 }),
+      createMod({ name: "delta.pack", loadOrder: undefined }),
+      createMod({ name: "gamma.pack", loadOrder: 3 }),
+      createMod({ name: "beta.pack", loadOrder: undefined }),
+    ];
+
+    expect([...getSparseLoadOrderByModName(orderedMods, "beta.pack")]).toEqual([
+      ["alpha.pack", 0],
+      ["gamma.pack", 2],
+      ["beta.pack", 3],
+    ]);
   });
 });
