@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "Control deslizante de rango",
   "nodeEditorOptionTypeCheckbox": "Caja",
   "nodeEditorFlowOptions": "Opciones de flujo",
+  "nodeEditorQuickConnectionStarted": "Conexión rápida iniciada.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Mantén pulsada Mayús y haz clic en un segundo nodo para crear la conexión.",
   "nodeEditorUserCanDisableFlow": "El usuario puede desactivar el flujo",
   "nodeEditorUserCanDisableFlowDescription": "Si están habilitadas, las opciones de usuario tendrán una casilla de verificación que deshabilita o habilita todo el flujo.",
   "nodeEditorFlowStartsEnabledByDefault": "Inicios de flujo habilitados de forma predeterminada",

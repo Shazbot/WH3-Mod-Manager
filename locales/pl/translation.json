@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "Suwak zakresu",
   "nodeEditorOptionTypeCheckbox": "Pole wyboru",
   "nodeEditorFlowOptions": "Opcje przepływu",
+  "nodeEditorQuickConnectionStarted": "Rozpoczęto szybkie łączenie.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Przytrzymaj Shift i kliknij drugi węzeł, aby utworzyć połączenie.",
   "nodeEditorUserCanDisableFlow": "Użytkownik może wyłączyć przepływ",
   "nodeEditorUserCanDisableFlowDescription": "Jeśli ta opcja jest włączona, opcje użytkownika będą miały pole wyboru, które wyłącza lub włącza cały przepływ.",
   "nodeEditorFlowStartsEnabledByDefault": "Uruchamianie przepływu jest domyślnie włączone",

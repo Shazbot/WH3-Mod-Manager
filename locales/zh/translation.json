@@ -668,6 +668,8 @@
   "nodeEditorOptionTypeRangeSlider": "范围滑块",
   "nodeEditorOptionTypeCheckbox": "复选框",
   "nodeEditorFlowOptions": "流程选项",
+  "nodeEditorQuickConnectionStarted": "已开始快速连接。",
+  "nodeEditorQuickConnectionSelectSecondNode": "按住 Shift 键并单击第二个节点以创建连接。",
   "nodeEditorUserCanDisableFlow": "用户可以禁用流量",
   "nodeEditorUserCanDisableFlowDescription": "如果启用，用户选项将有一个复选框，用于禁用或启用整个流程。",
   "nodeEditorFlowStartsEnabledByDefault": "默认情况下启用流程启动",

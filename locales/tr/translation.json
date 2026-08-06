@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "Aralık Kaydırıcısı",
   "nodeEditorOptionTypeCheckbox": "Onay kutusu",
   "nodeEditorFlowOptions": "Akış Seçenekleri",
+  "nodeEditorQuickConnectionStarted": "Hızlı bağlantı başlatıldı.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Bağlantıyı oluşturmak için Shift tuşuna basılı tutarak ikinci bir düğüme tıklayın.",
   "nodeEditorUserCanDisableFlow": "Kullanıcı Akışı Devre Dışı Bırakabilir",
   "nodeEditorUserCanDisableFlowDescription": "Etkinleştirilirse, kullanıcı seçeneklerinde tüm akışı devre dışı bırakan veya etkinleştiren bir onay kutusu bulunur.",
   "nodeEditorFlowStartsEnabledByDefault": "Akış başlangıçları varsayılan olarak etkindir",

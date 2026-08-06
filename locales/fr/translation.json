@@ -752,6 +752,8 @@
   "nodeEditorOptionTypeRangeSlider": "Curseur de plage",
   "nodeEditorOptionTypeCheckbox": "Case à cocher",
   "nodeEditorFlowOptions": "Options de flux",
+  "nodeEditorQuickConnectionStarted": "Connexion rapide démarrée.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Maintenez Maj enfoncée et cliquez sur un deuxième nœud pour créer la connexion.",
   "nodeEditorUserCanDisableFlow": "L'utilisateur peut désactiver le flux",
   "nodeEditorUserCanDisableFlowDescription": "Si elles sont activées, les options utilisateur auront une case à cocher qui désactive ou active l'ensemble du flux.",
   "nodeEditorFlowStartsEnabledByDefault": "Démarrages de flux activés par défaut",

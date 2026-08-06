@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "범위 슬라이더",
   "nodeEditorOptionTypeCheckbox": "체크박스",
   "nodeEditorFlowOptions": "흐름 옵션",
+  "nodeEditorQuickConnectionStarted": "빠른 연결을 시작했습니다.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Shift 키를 누른 채 두 번째 노드를 클릭하여 연결하세요.",
   "nodeEditorUserCanDisableFlow": "사용자가 흐름을 비활성화할 수 있음",
   "nodeEditorUserCanDisableFlowDescription": "활성화된 경우 사용자 옵션에는 전체 흐름을 비활성화하거나 활성화하는 확인란이 있습니다.",
   "nodeEditorFlowStartsEnabledByDefault": "흐름 시작은 기본적으로 활성화됩니다.",

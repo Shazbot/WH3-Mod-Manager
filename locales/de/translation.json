@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "Bereichsschieberegler",
   "nodeEditorOptionTypeCheckbox": "Kontrollkästchen",
   "nodeEditorFlowOptions": "Flow-Optionen",
+  "nodeEditorQuickConnectionStarted": "Schnellverbindung gestartet.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Klicke bei gedrückter Umschalttaste auf einen zweiten Knoten, um die Verbindung zu erstellen.",
   "nodeEditorUserCanDisableFlow": "Der Benutzer kann den Flow deaktivieren",
   "nodeEditorUserCanDisableFlowDescription": "Wenn diese Option aktiviert ist, verfügen die Benutzeroptionen über ein Kontrollkästchen, das den gesamten Ablauf deaktiviert oder aktiviert.",
   "nodeEditorFlowStartsEnabledByDefault": "Flow-Starts sind standardmäßig aktiviert",

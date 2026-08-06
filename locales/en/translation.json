@@ -783,6 +783,8 @@
   "nodeEditorOptionTypeRangeSlider": "Range Slider",
   "nodeEditorOptionTypeCheckbox": "Checkbox",
   "nodeEditorFlowOptions": "Flow Options",
+  "nodeEditorQuickConnectionStarted": "Quick connection started.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Shift-click a second node to create the connection.",
   "nodeEditorUserCanDisableFlow": "User Can Disable Flow",
   "nodeEditorUserCanDisableFlowDescription": "If enabled the user options will have a checkbox that disables or enables the whole flow.",
   "nodeEditorFlowStartsEnabledByDefault": "Flow starts enabled by default",
