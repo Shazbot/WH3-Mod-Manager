@@ -956,6 +956,22 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               <Background />
             </ReactFlow>
 
+            {quickConnectSourceNodeId && (
+              <div
+                className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="font-semibold">
+                  {localized.nodeEditorQuickConnectionStarted || "Quick connection started."}
+                </div>
+                <div className="mt-1 text-xs text-slate-300">
+                  {localized.nodeEditorQuickConnectionSelectSecondNode ||
+                    "Shift-click a second node to create the connection."}
+                </div>
+              </div>
+            )}
+
             {/* Control buttons positioned in top-right corner */}
             <div className="absolute top-4 right-4 z-10 flex gap-2">
               {/* Hidden file input */}

@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "レンジスライダー",
   "nodeEditorOptionTypeCheckbox": "チェックボックス",
   "nodeEditorFlowOptions": "フローオプション",
+  "nodeEditorQuickConnectionStarted": "クイック接続を開始しました。",
+  "nodeEditorQuickConnectionSelectSecondNode": "Shift キーを押しながら 2 つ目のノードをクリックして接続します。",
   "nodeEditorUserCanDisableFlow": "ユーザーはフローを無効にできます",
   "nodeEditorUserCanDisableFlowDescription": "有効にすると、ユーザー オプションにはフロー全体を無効または有効にするチェックボックスが表示されます。",
   "nodeEditorFlowStartsEnabledByDefault": "フローの開始はデフォルトで有効になっています",

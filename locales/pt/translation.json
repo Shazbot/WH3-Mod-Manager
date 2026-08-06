@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "Controle deslizante de intervalo",
   "nodeEditorOptionTypeCheckbox": "Caixa de seleção",
   "nodeEditorFlowOptions": "Opções de fluxo",
+  "nodeEditorQuickConnectionStarted": "Conexão rápida iniciada.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Mantenha Shift pressionado e clique em um segundo nó para criar a conexão.",
   "nodeEditorUserCanDisableFlow": "O usuário pode desativar o fluxo",
   "nodeEditorUserCanDisableFlowDescription": "Se habilitada as opções do usuário terão uma caixa de seleção que desabilita ou habilita todo o fluxo.",
   "nodeEditorFlowStartsEnabledByDefault": "O fluxo começa ativado por padrão",

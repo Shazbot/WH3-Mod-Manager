@@ -746,6 +746,8 @@
   "nodeEditorOptionTypeRangeSlider": "Ползунок диапазона",
   "nodeEditorOptionTypeCheckbox": "Флажок",
   "nodeEditorFlowOptions": "Параметры потока",
+  "nodeEditorQuickConnectionStarted": "Быстрое соединение начато.",
+  "nodeEditorQuickConnectionSelectSecondNode": "Удерживая Shift, щёлкните по второму узлу, чтобы создать соединение.",
   "nodeEditorUserCanDisableFlow": "Пользователь может отключить поток",
   "nodeEditorUserCanDisableFlowDescription": "Если этот параметр включен, параметры пользователя будут иметь флажок, который отключает или включает весь поток.",
   "nodeEditorFlowStartsEnabledByDefault": "Запуск потока включен по умолчанию",
