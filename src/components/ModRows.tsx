@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -73,6 +74,16 @@ type ModRowsProps = {
   scrollElement: RefObject<HTMLDivElement>;
 };
 
+const getLoadOrderRowAnchor = (modName: string) =>
+  document.getElementById(`load-order-row-anchor-${modName}`);
+
+type LoadOrderScrollSnapshot = {
+  modName: string;
+  originalScrollTop: number;
+  sourceViewportOffset?: number;
+  didAnchorSource: boolean;
+};
+
 const ModRows = memo((props: ModRowsProps) => {
   const dispatch = useAppDispatch();
   const filter = useAppSelector((state) => state.app.filter);
@@ -96,6 +107,9 @@ const ModRows = memo((props: ModRowsProps) => {
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
   const [loadOrderModName, setLoadOrderModName] = useState<string>();
   const [activeLoadOrderPosition, setActiveLoadOrderPosition] = useState(0);
+  const loadOrderScrollSnapshotRef = useRef<LoadOrderScrollSnapshot>();
+  const skipInitialPlaceholderScrollRef = useRef(false);
+  const pendingLoadOrderAnchorFramesRef = useRef<number[]>([]);
 
   const isCurrentTabEnabledMods = currentTab == "enabledMods";
 
@@ -323,11 +337,81 @@ const ModRows = memo((props: ModRowsProps) => {
         return;
       }
 
+      const scrollElement = props.scrollElement.current;
+      pendingLoadOrderAnchorFramesRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
+      pendingLoadOrderAnchorFramesRef.current = [];
+
+      const sourceElement = getLoadOrderRowAnchor(mod.name);
+      loadOrderScrollSnapshotRef.current = {
+        modName: mod.name,
+        originalScrollTop: scrollElement?.scrollTop ?? 0,
+        sourceViewportOffset:
+          scrollElement && sourceElement
+            ? sourceElement.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top
+            : undefined,
+        didAnchorSource: false,
+      };
+      skipInitialPlaceholderScrollRef.current = true;
+
       const currentIndex = canonicalEnabledMods.findIndex((visibleMod) => visibleMod.name === mod.name);
       setActiveLoadOrderPosition(Math.max(0, currentIndex));
       setLoadOrderModName(mod.name);
     },
-    [canonicalEnabledMods, isCurrentTabEnabledMods, loadOrderModName, sortingType]
+    [canonicalEnabledMods, isCurrentTabEnabledMods, loadOrderModName, props.scrollElement, sortingType]
+  );
+
+  useLayoutEffect(() => {
+    const snapshot = loadOrderScrollSnapshotRef.current;
+    if (!snapshot) return;
+
+    const scrollElement = props.scrollElement.current;
+    if (!loadOrderModName) {
+      pendingLoadOrderAnchorFramesRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
+      pendingLoadOrderAnchorFramesRef.current = [];
+      if (scrollElement) scrollElement.scrollTop = snapshot.originalScrollTop;
+      loadOrderScrollSnapshotRef.current = undefined;
+      skipInitialPlaceholderScrollRef.current = false;
+      return;
+    }
+
+    if (
+      snapshot.didAnchorSource ||
+      snapshot.modName !== loadOrderModName ||
+      snapshot.sourceViewportOffset == null
+    ) {
+      return;
+    }
+
+    const alignSourceRow = () => {
+      if (loadOrderScrollSnapshotRef.current !== snapshot) return;
+      const currentScrollElement = props.scrollElement.current;
+      const sourceElement = getLoadOrderRowAnchor(loadOrderModName);
+      if (!currentScrollElement || !sourceElement || snapshot.sourceViewportOffset == null) return;
+
+      const nextViewportOffset =
+        sourceElement.getBoundingClientRect().top - currentScrollElement.getBoundingClientRect().top;
+      currentScrollElement.scrollTop += nextViewportOffset - snapshot.sourceViewportOffset;
+    };
+
+    alignSourceRow();
+    const firstFrameId = window.requestAnimationFrame(() => {
+      alignSourceRow();
+      const secondFrameId = window.requestAnimationFrame(alignSourceRow);
+      pendingLoadOrderAnchorFramesRef.current.push(secondFrameId);
+    });
+    pendingLoadOrderAnchorFramesRef.current.push(firstFrameId);
+    snapshot.didAnchorSource = true;
+  }, [loadOrderModName, props.scrollElement]);
+
+  useLayoutEffect(
+    () => () => {
+      pendingLoadOrderAnchorFramesRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
+      pendingLoadOrderAnchorFramesRef.current = [];
+      const snapshot = loadOrderScrollSnapshotRef.current;
+      const scrollElement = props.scrollElement.current;
+      if (snapshot && scrollElement) scrollElement.scrollTop = snapshot.originalScrollTop;
+    },
+    [props.scrollElement],
   );
 
   const onSelectLoadOrderPosition = useCallback(
@@ -380,6 +464,10 @@ const ModRows = memo((props: ModRowsProps) => {
 
   useEffect(() => {
     if (!loadOrderModName) return;
+    if (skipInitialPlaceholderScrollRef.current) {
+      skipInitialPlaceholderScrollRef.current = false;
+      return;
+    }
     document
       .getElementById(`enabled-mod-placeholder-${activeLoadOrderPosition}`)
       ?.scrollIntoView({ block: "nearest" });

@@ -149,7 +149,11 @@ const ModRow = memo(
             onClick={() => onSelectLoadOrderPosition(rowIndex)}
           ></button>
         )}
-        <div className="flex justify-center items-center" onContextMenu={() => onRemoveModOrder(mod)}>
+        <div
+          id={`load-order-row-anchor-${mod.name}`}
+          className="flex justify-center items-center"
+          onContextMenu={() => onRemoveModOrder(mod)}
+        >
           {mod.loadOrder == undefined && <span>{loadOrderIndex + 1}</span>}
           {mod.loadOrder != undefined && (
             <>
