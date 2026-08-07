@@ -558,11 +558,6 @@ if (!gotTheLock) {
   // not using a default menu
   Menu.setApplicationMenu(null);
 
-  // This method will be called when Electron has finished
-  // initialization and is ready to create browser windows.
-  // Some APIs can only be used after this event occurs.
-  app.on("ready", createWindow);
-
   app.once("gpu-info-update", () => {
     app
       .getGPUInfo("basic")
@@ -580,26 +575,31 @@ if (!gotTheLock) {
       });
   });
 
-  if (isDev) {
-    app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    if (isDev) {
       const extensions = [
         ["React Developer Tools", REACT_DEVELOPER_TOOLS],
         ["Redux DevTools", REDUX_DEVTOOLS],
       ] as const;
 
-      for (const [extensionName, extension] of extensions) {
-        installExtension(extension, {
-          loadExtensionOptions: {
-            allowFileAccess: true,
-          },
-        })
-          .then((installedExtension) =>
-            console.log(`[devtools] Added ${installedExtension.name}`),
-          )
-          .catch((error) => console.log(`[devtools] Failed to install ${extensionName}`, error));
-      }
-    });
-  }
+      await Promise.all(
+        extensions.map(async ([extensionName, extension]) => {
+          try {
+            const installedExtension = await installExtension(extension, {
+              loadExtensionOptions: {
+                allowFileAccess: true,
+              },
+            });
+            console.log(`[devtools] Added ${installedExtension.name}`);
+          } catch (error) {
+            console.log(`[devtools] Failed to install ${extensionName}`, error);
+          }
+        }),
+      );
+    }
+
+    createWindow();
+  });
 
   // Quit when all windows are closed, except on macOS. There, it's common
   // for applications and their menu bar to stay active until the user quits
