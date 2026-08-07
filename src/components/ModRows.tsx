@@ -204,13 +204,13 @@ const ModRows = memo((props: ModRowsProps) => {
 
   const onRowHoverStart = useCallback(
     (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
-      if (sortingType !== SortingType.Ordered) return;
+      if (sortingType !== SortingType.Ordered || loadOrderModName) return;
 
       const element = e.currentTarget as HTMLDivElement;
       const loadOrderIcon = document.getElementById(`load-order-icon-${element.id}`);
       if (loadOrderIcon) loadOrderIcon.classList.remove("hidden");
     },
-    [sortingType]
+    [loadOrderModName, sortingType]
   );
 
   const onRowHoverEnd = useCallback((e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
@@ -340,6 +340,9 @@ const ModRows = memo((props: ModRowsProps) => {
       const scrollElement = props.scrollElement.current;
       pendingLoadOrderAnchorFramesRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId));
       pendingLoadOrderAnchorFramesRef.current = [];
+      document.querySelectorAll<HTMLElement>("[id^='load-order-icon-']").forEach((icon) => {
+        icon.classList.add("hidden");
+      });
 
       const sourceElement = getLoadOrderRowAnchor(mod.name);
       loadOrderScrollSnapshotRef.current = {
