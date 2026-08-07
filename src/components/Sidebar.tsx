@@ -522,7 +522,11 @@ const Sidebar = memo(() => {
 
   const resubscribeSelectedWorkshopMods = () => {
     if (selectedWorkshopRepairMods.length === 0) return;
-    window.api?.forceResubscribeMods(selectedWorkshopRepairMods);
+    if (isWorkshopRepairRunning) {
+      window.api?.cancelWorkshopRepairAndResubscribeMods(selectedWorkshopRepairMods);
+    } else {
+      window.api?.forceResubscribeMods(selectedWorkshopRepairMods);
+    }
     setIsWorkshopRepairModalOpen(false);
   };
 
@@ -651,10 +655,12 @@ const Sidebar = memo(() => {
           <button
             type="button"
             className="px-4 py-2 bg-red-600 text-white font-medium text-sm rounded hover:bg-red-700 disabled:opacity-50"
-            disabled={selectedWorkshopRepairMods.length === 0 || isWorkshopRepairRunning}
+            disabled={selectedWorkshopRepairMods.length === 0}
             onClick={resubscribeSelectedWorkshopMods}
           >
-            {localized.forceResubscribe || "Force Resubscribe"}
+            {isWorkshopRepairRunning
+              ? localized.cancelAndResubscribe || "Cancel and Resubscribe"
+              : localized.forceResubscribe || "Force Resubscribe"}
           </button>
           <button
             type="button"
