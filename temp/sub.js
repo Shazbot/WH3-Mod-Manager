@@ -56,7 +56,7 @@ var WORKSHOP_STATE_DOWNLOADING = 16;
 var WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
 var WORKSHOP_UPDATE_POLL_INTERVAL_MS = 1000;
 var WORKSHOP_UPDATE_RETRY_AFTER_MS = 30000;
-var WORKSHOP_UPDATE_TIMEOUT_MS = 5 * 60000;
+var WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS = 5 * 60000;
 var appendSublog = function (message) {
     fs.appendFileSync("sublog.txt", "".concat(message, "\n"));
 };
@@ -377,7 +377,7 @@ if (process.argv[3] == "checkState") {
         });
     };
     void (function () { return __awaiter(void 0, void 0, void 0, function () {
-        var updateItems, retriedWorkshopIds, _i, ids_4, workshopId, initialState, installTimestampBefore, expectedInstallTimestamp, isExpectedVersionInstalled, isAlreadyDownloading, requestAccepted, startedAt, elapsed, _a, updateItems_1, item, workshopId, state, downloadInfo, installTimestamp, expectedInstallTimestamp, isDownloadActive, _b, updateItems_2, item;
+        var updateItems, retriedWorkshopIds, _i, ids_4, workshopId, initialState, installTimestampBefore, expectedInstallTimestamp, isExpectedVersionInstalled, isAlreadyDownloading, requestAccepted, startedAt, lastActivityAt, isPendingUpdate, elapsed, didUpdateProgress, _a, updateItems_1, item, workshopId, state, downloadInfo, installTimestamp, expectedInstallTimestamp, hasMeaningfulDownloadInfo, downloadedBytes, totalBytes, isDownloadActive, _b, updateItems_2, item;
         var _c, _d;
         return __generator(this, function (_e) {
             switch (_e.label) {
@@ -437,16 +437,23 @@ if (process.argv[3] == "checkState") {
                 case 1:
                     _e.sent();
                     startedAt = Date.now();
+                    lastActivityAt = startedAt;
+                    isPendingUpdate = function (item) {
+                        return item.status === "requested" ||
+                            item.status === "already-downloading" ||
+                            item.status === "downloading";
+                    };
                     _e.label = 2;
                 case 2:
-                    if (!updateItems.some(function (item) { return item.status === "requested" || item.status === "already-downloading"; })) return [3 /*break*/, 4];
+                    if (!updateItems.some(isPendingUpdate)) return [3 /*break*/, 6];
                     return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, WORKSHOP_UPDATE_POLL_INTERVAL_MS); })];
                 case 3:
                     _e.sent();
                     elapsed = Date.now() - startedAt;
+                    didUpdateProgress = false;
                     for (_a = 0, updateItems_1 = updateItems; _a < updateItems_1.length; _a++) {
                         item = updateItems_1[_a];
-                        if (item.status !== "requested" && item.status !== "already-downloading")
+                        if (!isPendingUpdate(item))
                             continue;
                         try {
                             workshopId = BigInt(item.workshopId);
@@ -454,10 +461,25 @@ if (process.argv[3] == "checkState") {
                             downloadInfo = client_4.workshop.downloadInfo(workshopId);
                             installTimestamp = (_d = client_4.workshop.installInfo(workshopId)) === null || _d === void 0 ? void 0 : _d.timestamp;
                             expectedInstallTimestamp = expectedInstallTimestamps_1.get(item.workshopId);
+                            hasMeaningfulDownloadInfo = downloadInfo != null &&
+                                (downloadInfo.current > BigInt(0) || downloadInfo.total > BigInt(0));
+                            if (item.finalState !== state) {
+                                didUpdateProgress = true;
+                                lastActivityAt = Date.now();
+                            }
                             item.finalState = state;
                             if (downloadInfo) {
-                                item.downloadedBytes = downloadInfo.current.toString();
-                                item.totalBytes = downloadInfo.total.toString();
+                                downloadedBytes = downloadInfo.current.toString();
+                                totalBytes = downloadInfo.total.toString();
+                                if (hasMeaningfulDownloadInfo &&
+                                    (item.downloadedBytes !== downloadedBytes || item.totalBytes !== totalBytes)) {
+                                    didUpdateProgress = true;
+                                    lastActivityAt = Date.now();
+                                }
+                                if (hasMeaningfulDownloadInfo) {
+                                    item.downloadedBytes = downloadedBytes;
+                                    item.totalBytes = totalBytes;
+                                }
                             }
                             if ((state & WORKSHOP_STATE_NEEDS_UPDATE) === 0 &&
                                 (state & WORKSHOP_STATE_INSTALLED) !== 0 &&
@@ -465,32 +487,53 @@ if (process.argv[3] == "checkState") {
                                     (installTimestamp != null && installTimestamp >= expectedInstallTimestamp))) {
                                 item.status = "updated";
                                 item.installTimestampAfter = installTimestamp;
+                                didUpdateProgress = true;
+                                lastActivityAt = Date.now();
                                 continue;
                             }
                             isDownloadActive = (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+                            if (isDownloadActive && item.status !== "downloading") {
+                                item.status = "downloading";
+                                didUpdateProgress = true;
+                                lastActivityAt = Date.now();
+                            }
+                            else if (!isDownloadActive && item.status === "downloading") {
+                                item.status = "requested";
+                                didUpdateProgress = true;
+                            }
                             if (elapsed >= WORKSHOP_UPDATE_RETRY_AFTER_MS &&
-                                !isDownloadActive &&
+                                !hasMeaningfulDownloadInfo &&
                                 !retriedWorkshopIds.has(item.workshopId)) {
                                 retriedWorkshopIds.add(item.workshopId);
                                 item.retryAccepted = client_4.workshop.download(workshopId, true);
+                                didUpdateProgress = true;
+                                if (item.retryAccepted)
+                                    lastActivityAt = Date.now();
                             }
                         }
                         catch (error) {
                             item.status = "request-failed";
                             item.error = error instanceof Error ? error.message : String(error);
+                            didUpdateProgress = true;
                         }
                     }
-                    if (elapsed >= WORKSHOP_UPDATE_TIMEOUT_MS) {
+                    if (Date.now() - lastActivityAt >= WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS) {
                         for (_b = 0, updateItems_2 = updateItems; _b < updateItems_2.length; _b++) {
                             item = updateItems_2[_b];
-                            if (item.status === "requested" || item.status === "already-downloading") {
+                            if (isPendingUpdate(item)) {
                                 item.status = "timed-out";
+                                didUpdateProgress = true;
                             }
                         }
                     }
-                    return [3 /*break*/, 2];
-                case 4: return [4 /*yield*/, sendUpdateCheckMessage_1({ type: "finished", checkedCount: ids_3.length, items: updateItems })];
-                case 5:
+                    if (!didUpdateProgress) return [3 /*break*/, 5];
+                    return [4 /*yield*/, sendUpdateCheckMessage_1({ type: "progress", checkedCount: ids_3.length, items: updateItems })];
+                case 4:
+                    _e.sent();
+                    _e.label = 5;
+                case 5: return [3 /*break*/, 2];
+                case 6: return [4 /*yield*/, sendUpdateCheckMessage_1({ type: "finished", checkedCount: ids_3.length, items: updateItems })];
+                case 7:
                     _e.sent();
                     process.exit(0);
                     return [2 /*return*/];

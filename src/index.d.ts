@@ -1017,6 +1017,7 @@ declare global {
   type WorkshopUpdateCheckStatus =
     | "requested"
     | "already-downloading"
+    | "downloading"
     | "updated"
     | "request-failed"
     | "timed-out"
@@ -1042,7 +1043,7 @@ declare global {
   }
 
   export interface WorkshopUpdateCheckMessage {
-    type: "started" | "finished";
+    type: "started" | "progress" | "finished";
     checkedCount: number;
     items: WorkshopUpdateCheckItem[];
   }

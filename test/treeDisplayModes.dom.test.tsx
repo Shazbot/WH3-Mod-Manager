@@ -4,7 +4,10 @@ import { Provider } from "react-redux";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer, { setIsFeaturesForModdersEnabled } from "../src/appSlice";
+import appReducer, {
+  setIsFeaturesForModdersEnabled,
+  setWorkshopUpdateCheckMessage,
+} from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import localizationContext from "../src/localizationContext";
 import LeftSidebar from "../src/components/LeftSidebar";
@@ -211,7 +214,7 @@ describe("tree display DOM behavior", () => {
   it("warns when an enabled Workshop mod has an older installed timestamp", () => {
     const mod = createMod({ lastChanged: 200_000 });
 
-    renderWithState(<Sidebar />, {
+    const { store } = renderWithState(<Sidebar />, {
       currentPreset: { name: "", mods: [mod] },
       allMods: [mod],
       workshopInstallStatuses: {
@@ -227,6 +230,51 @@ describe("tree display DOM behavior", () => {
     expect(window.api?.repairOutdatedWorkshopMods).toHaveBeenCalledWith([
       { mod, remoteTimestampMs: 200_000 },
     ]);
+
+    act(() => {
+      store.dispatch(
+        setWorkshopUpdateCheckMessage({
+          type: "progress",
+          checkedCount: 1,
+          items: [
+            {
+              workshopId: "1",
+              initialState: 13,
+              finalState: 45,
+              status: "downloading",
+              requestAccepted: true,
+              installTimestampBefore: 100,
+              downloadedBytes: "0",
+              totalBytes: "0",
+            },
+          ],
+        }),
+      );
+    });
+    expect(screen.getByText("Update status: queued by Steam")).toBeInTheDocument();
+    expect(screen.queryByText(/0 B \/ 0 B/)).not.toBeInTheDocument();
+
+    act(() => {
+      store.dispatch(
+        setWorkshopUpdateCheckMessage({
+          type: "progress",
+          checkedCount: 1,
+          items: [
+            {
+              workshopId: "1",
+              initialState: 13,
+              finalState: 21,
+              status: "downloading",
+              requestAccepted: true,
+              installTimestampBefore: 100,
+              downloadedBytes: "1073741824",
+              totalBytes: "4294967296",
+            },
+          ],
+        }),
+      );
+    });
+    expect(screen.getByText("Update status: downloading (1 GB / 4 GB)")).toBeInTheDocument();
   });
 
   it("suppresses the outdated warning while Steam is downloading the update", () => {
@@ -243,7 +291,7 @@ describe("tree display DOM behavior", () => {
           workshopId: "1",
           initialState: 13,
           finalState: 21,
-          status: "already-downloading",
+          status: "downloading",
           requestAccepted: true,
           installTimestampBefore: 100,
         },
