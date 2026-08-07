@@ -78,6 +78,7 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       packedFileName: (node.data as any).packedFileName || "",
       additionalConfig: node.data.textValue || "",
       flowExecutionId: (node.data as any).flowExecutionId || "",
+      openInWindows: (node.data as any).openInWindows ?? false,
     });
   }
   if (node.type === "textsurround") {
