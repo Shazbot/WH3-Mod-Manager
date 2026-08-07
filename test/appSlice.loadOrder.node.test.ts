@@ -185,4 +185,45 @@ describe("load-order reducer behavior", () => {
     });
     expect(state.importedMods).toEqual([]);
   });
+
+  it("matches imported data-folder mods by pack name", () => {
+    const local = createMod("local.pack", false);
+    local.workshopId = "";
+    const workshop = createMod("workshop.pack", false);
+    const pendingState = appReducer(
+      { ...initialState, currentPreset: { name: "", mods: [local, workshop] } },
+      setImportedMods([
+        { workshopId: "", modName: local.name, loadOrder: 0 },
+        { workshopId: workshop.workshopId, loadOrder: 1 },
+      ]),
+    );
+
+    const state = appReducer(pendingState, orderImportedMods());
+
+    expect(state.currentPreset.mods.find((mod) => mod.name === local.name)).toMatchObject({
+      isEnabled: true,
+      loadOrder: 0,
+    });
+    expect(state.currentPreset.mods.find((mod) => mod.name === workshop.name)).toMatchObject({
+      isEnabled: true,
+      loadOrder: 1,
+    });
+    expect(state.importedMods).toEqual([]);
+  });
+
+  it("falls back to the Workshop ID when the local pack is not installed", () => {
+    const workshop = createMod("workshop-copy.pack", false);
+    workshop.workshopId = "987654";
+    const pendingState = appReducer(
+      { ...initialState, currentPreset: { name: "", mods: [workshop] } },
+      setImportedMods([
+        { workshopId: workshop.workshopId, modName: "sender-local-copy.pack", loadOrder: 0 },
+      ]),
+    );
+
+    const state = appReducer(pendingState, orderImportedMods());
+
+    expect(state.currentPreset.mods[0]).toMatchObject({ isEnabled: true, loadOrder: 0 });
+    expect(state.importedMods).toEqual([]);
+  });
 });

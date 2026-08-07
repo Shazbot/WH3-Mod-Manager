@@ -49,6 +49,7 @@ import {
   WORKSHOP_MOD_SOURCE_ID,
 } from "./modSources";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { serializeSharedModList } from "./sharedModList";
 import { parseUsedMods } from "./usedMods";
 import { readPackHeader } from "./packFileHandler";
 import {
@@ -7817,14 +7818,8 @@ export const registerIpcMainListeners = (
   ipcMain.on("subscribeToMods", async (event, ids: string[]) => {
     await subscribeToMods(ids);
   });
-  ipcMain.on("exportModsToClipboard", async (event, mods: Mod[]) => {
-    const sortedMods = sortByNameAndLoadOrder(mods);
-    const enabledMods = sortedMods.filter((mod) => mod.isEnabled);
-    const exportedMods = enabledMods
-      .filter((mod) => !isNaN(Number(mod.workshopId)) && !isNaN(parseFloat(mod.workshopId)))
-      .map((mod) => mod.workshopId + (mod.loadOrder != null ? `;${mod.loadOrder}` : ""))
-      .join("|");
-    clipboard.writeText(exportedMods);
+  ipcMain.on("exportModsToClipboard", async (event, mods: Mod[], availableMods: Mod[]) => {
+    clipboard.writeText(serializeSharedModList(mods, availableMods));
   });
   ipcMain.on("exportModNamesToClipboard", async (event, mods: Mod[]) => {
     const sortedMods = sortByNameAndLoadOrder(mods);

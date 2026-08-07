@@ -23,6 +23,7 @@ import { packDataStore } from "./components/viewer/packDataStore";
 import { getUsedModImport } from "./usedMods";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
 import { isWorkshopMod, resolveModsBySourcePriority } from "./modSources";
+import { sharedModMatchesInstalledMod } from "./sharedModList";
 
 const isMainWindowTabAvailable = (state: AppState, tab: MainWindowTab) => {
   switch (tab) {
@@ -655,17 +656,16 @@ const appSlice = createSlice({
       if (
         state.importedMods.length === 0 ||
         !state.importedMods.every((importedMod) =>
-          state.currentPreset.mods.some((mod) => mod.workshopId === importedMod.workshopId),
+          state.currentPreset.mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)),
         )
       ) {
         return;
       }
 
-      const importedModsByWorkshopId = new Map(
-        state.importedMods.map((mod) => [mod.workshopId, mod]),
-      );
       state.currentPreset.mods.forEach((mod) => {
-        const importedMod = importedModsByWorkshopId.get(mod.workshopId);
+        const importedMod = state.importedMods.find((iterMod) =>
+          sharedModMatchesInstalledMod(iterMod, mod),
+        );
         mod.isEnabled = importedMod != null;
         mod.loadOrder = importedMod?.loadOrder;
       });
