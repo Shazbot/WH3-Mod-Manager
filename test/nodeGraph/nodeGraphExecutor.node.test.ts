@@ -21,7 +21,7 @@ const createNode = (id: string, isDisabled = false) =>
     },
   }) as any;
 
-describe("disabled node graph execution", () => {
+describe("node graph execution", () => {
   beforeEach(() => {
     nodeExecutorMocks.executeNodeAction.mockReset();
     nodeExecutorMocks.resetCounterTracking.mockReset();
@@ -77,5 +77,46 @@ describe("disabled node graph execution", () => {
     expect(result.success).toBe(true);
     expect(result.totalExecuted).toBe(0);
     expect(result.failureCount).toBe(0);
+  });
+
+  it("passes every ChangedColumnSelection input to a shared Save Changes node", async () => {
+    const createChangedInput = (tableName: string) => ({
+      type: "ChangedColumnSelection",
+      adjustedInputData: { columns: [{ tableName }] },
+      originalData: { columns: [] },
+      appliedFormula: "test",
+    });
+    const inputsByNodeId = {
+      "changed-main-units": createChangedInput("main_units_tables"),
+      "changed-land-units": createChangedInput("land_units_tables"),
+      "changed-characters": createChangedInput("campaign_character_art_sets_tables"),
+    };
+    nodeExecutorMocks.executeNodeAction.mockImplementation(async ({ nodeId }: { nodeId: string }) => ({
+      success: true,
+      data: inputsByNodeId[nodeId as keyof typeof inputsByNodeId] ?? { type: "SaveResult" },
+    }));
+
+    const sourceNodes = Object.keys(inputsByNodeId).map((id) => createNode(id));
+    const saveNode = {
+      ...createNode("save"),
+      type: "savechanges",
+      data: { ...createNode("save").data, type: "savechanges" },
+    };
+    const result = await executeNodeGraph({
+      nodes: [...sourceNodes, saveNode],
+      connections: sourceNodes.map((sourceNode) => ({
+        id: `${sourceNode.id}-save`,
+        sourceId: sourceNode.id,
+        targetId: saveNode.id,
+      })),
+    });
+
+    expect(result.success).toBe(true);
+    expect(nodeExecutorMocks.executeNodeAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeId: "save",
+        inputData: Object.values(inputsByNodeId),
+      }),
+    );
   });
 });

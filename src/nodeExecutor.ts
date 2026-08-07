@@ -2728,6 +2728,14 @@ async function executeSaveChangesNode(
   config?: unknown,
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
+  if (Array.isArray(inputData)) {
+    const mergeResult = await executeMergeChangesNode(`${nodeId}:inputs`, inputData, executionContext);
+    if (!mergeResult.success) {
+      return mergeResult;
+    }
+    inputData = mergeResult.data;
+  }
+
   console.log(`SaveChanges Node ${nodeId}: Processing save configuration "${textValue}" with tables:`, {
     tableCount: inputData?.tables?.length,
     tableNames: inputData?.tables?.map((t: any) => t.name),

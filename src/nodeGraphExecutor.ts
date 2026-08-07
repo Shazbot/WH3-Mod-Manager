@@ -252,7 +252,7 @@ const buildInputDataForTarget = (
   if (targetNode.type === "savechanges") {
     const allTables: any[] = [];
     const allSourceFiles: any[] = [];
-    let changedColumnSelectionData = null;
+    const changedColumnSelectionInputs: any[] = [];
     let textData = null;
     for (const connection of targetIncomingConnections) {
       const inputData = extractConnectionData(connection, executionResults, nodeMap);
@@ -265,12 +265,13 @@ const buildInputDataForTarget = (
         if (inputData.sourceFiles) {
           allSourceFiles.push(...inputData.sourceFiles);
         }
-      } else if (inputData?.type === "ChangedColumnSelection" && !changedColumnSelectionData) {
-        changedColumnSelectionData = inputData;
+      } else if (inputData?.type === "ChangedColumnSelection") {
+        changedColumnSelectionInputs.push(inputData);
       }
     }
     if (textData) return textData;
-    if (changedColumnSelectionData) return changedColumnSelectionData;
+    if (changedColumnSelectionInputs.length === 1) return changedColumnSelectionInputs[0];
+    if (changedColumnSelectionInputs.length > 1) return changedColumnSelectionInputs;
     if (allTables.length > 0) {
       return {
         type: "TableSelection",
