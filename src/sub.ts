@@ -60,6 +60,41 @@ interface WorkshopInstallInfoDiagnostic {
   error?: string;
 }
 
+type WorkshopUpdateCheckStatus =
+  | "requested"
+  | "already-downloading"
+  | "updated"
+  | "request-failed"
+  | "timed-out";
+
+interface WorkshopUpdateCheckItem {
+  workshopId: string;
+  initialState: number;
+  finalState: number;
+  status: WorkshopUpdateCheckStatus;
+  requestAccepted: boolean;
+  retryAccepted?: boolean;
+  installTimestampBefore?: number;
+  installTimestampAfter?: number;
+  downloadedBytes?: string;
+  totalBytes?: string;
+  error?: string;
+}
+
+interface WorkshopUpdateCheckMessage {
+  type: "started" | "finished";
+  checkedCount: number;
+  items: WorkshopUpdateCheckItem[];
+}
+
+const WORKSHOP_STATE_INSTALLED = 4;
+const WORKSHOP_STATE_NEEDS_UPDATE = 8;
+const WORKSHOP_STATE_DOWNLOADING = 16;
+const WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
+const WORKSHOP_UPDATE_POLL_INTERVAL_MS = 1000;
+const WORKSHOP_UPDATE_RETRY_AFTER_MS = 30_000;
+const WORKSHOP_UPDATE_TIMEOUT_MS = 5 * 60_000;
+
 const appendSublog = (message: string) => {
   fs.appendFileSync("sublog.txt", `${message}\n`);
 };
@@ -73,7 +108,7 @@ const logSteamError = (operation: string, error: unknown, ids?: bigint[]) => {
 
 const parseItemIds = (rawIds: string | undefined) =>
   (rawIds ?? "")
-    .split(",")
+    .split(/[;,]/)
     .map((id) => id.trim())
     .filter((id) => id !== "" && /^\d+$/.test(id))
     .map((id) => BigInt(id));
@@ -366,23 +401,130 @@ if (process.argv[3] == "getModsData") {
 
 if (process.argv[3] == "checkState") {
   console.log("checkState");
-  const ids = process.argv[4].split(";"); //"2856936614";
+  const ids = parseItemIds(process.argv[4]);
   const client = steamworks.init(Number(process.argv[2]));
 
-  const idsThatNeedUpdates = ids
-    .map((id) => [id, client.workshop.state(BigInt(id))] as [string, number])
-    .filter((num) => num[1] & 8)
-    .map((num) => num[0]);
+  const sendUpdateCheckMessage = (message: WorkshopUpdateCheckMessage) =>
+    new Promise<void>((resolve) => {
+      if (!process.send) {
+        resolve();
+        return;
+      }
+      process.send(message, (error: Error | null) => {
+        if (error) appendSublog(`ERROR checkState.send: ${error.message}`);
+        resolve();
+      });
+    });
 
-  idsThatNeedUpdates.forEach(async (id) => {
-    client.workshop.download(BigInt(id), false);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  void (async () => {
+    const updateItems: WorkshopUpdateCheckItem[] = [];
+    const retriedWorkshopIds = new Set<string>();
+
+    for (const workshopId of ids) {
+      try {
+        const initialState = client.workshop.state(workshopId);
+        if ((initialState & WORKSHOP_STATE_NEEDS_UPDATE) === 0) continue;
+
+        const isAlreadyDownloading =
+          (initialState & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+        const requestAccepted = isAlreadyDownloading || client.workshop.download(workshopId, true);
+        updateItems.push({
+          workshopId: workshopId.toString(),
+          initialState,
+          finalState: initialState,
+          status: isAlreadyDownloading
+            ? "already-downloading"
+            : requestAccepted
+              ? "requested"
+              : "request-failed",
+          requestAccepted,
+          installTimestampBefore: client.workshop.installInfo(workshopId)?.timestamp,
+        });
+      } catch (error) {
+        updateItems.push({
+          workshopId: workshopId.toString(),
+          initialState: 0,
+          finalState: 0,
+          status: "request-failed",
+          requestAccepted: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await sendUpdateCheckMessage({ type: "started", checkedCount: ids.length, items: updateItems });
+    const startedAt = Date.now();
+
+    while (updateItems.some((item) => item.status === "requested" || item.status === "already-downloading")) {
+      await new Promise((resolve) => setTimeout(resolve, WORKSHOP_UPDATE_POLL_INTERVAL_MS));
+      const elapsed = Date.now() - startedAt;
+
+      for (const item of updateItems) {
+        if (item.status !== "requested" && item.status !== "already-downloading") continue;
+
+        try {
+          const workshopId = BigInt(item.workshopId);
+          const state = client.workshop.state(workshopId);
+          const downloadInfo = client.workshop.downloadInfo(workshopId);
+          item.finalState = state;
+          if (downloadInfo) {
+            item.downloadedBytes = downloadInfo.current.toString();
+            item.totalBytes = downloadInfo.total.toString();
+          }
+
+          if (
+            (state & WORKSHOP_STATE_NEEDS_UPDATE) === 0 &&
+            (state & WORKSHOP_STATE_INSTALLED) !== 0
+          ) {
+            item.status = "updated";
+            item.installTimestampAfter = client.workshop.installInfo(workshopId)?.timestamp;
+            continue;
+          }
+
+          const isDownloadActive =
+            (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+          if (
+            elapsed >= WORKSHOP_UPDATE_RETRY_AFTER_MS &&
+            !isDownloadActive &&
+            !retriedWorkshopIds.has(item.workshopId)
+          ) {
+            retriedWorkshopIds.add(item.workshopId);
+            item.retryAccepted = client.workshop.download(workshopId, true);
+          }
+        } catch (error) {
+          item.status = "request-failed";
+          item.error = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      if (elapsed >= WORKSHOP_UPDATE_TIMEOUT_MS) {
+        for (const item of updateItems) {
+          if (item.status === "requested" || item.status === "already-downloading") {
+            item.status = "timed-out";
+          }
+        }
+      }
+    }
+
+    await sendUpdateCheckMessage({ type: "finished", checkedCount: ids.length, items: updateItems });
+    process.exit(0);
+  })().catch(async (error) => {
+    await sendUpdateCheckMessage({
+      type: "finished",
+      checkedCount: ids.length,
+      items: [
+        {
+          workshopId: "unknown",
+          initialState: 0,
+          finalState: 0,
+          status: "request-failed",
+          requestAccepted: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      ],
+    });
+    process.exit(1);
   });
-
-  const timeoutValue = (idsThatNeedUpdates.length > 0 && 200) || 0;
-  setTimeout(() => {
-    process.exit();
-  }, timeoutValue);
 }
 if (process.argv[3] == "getItems") {
   console.log("getItems");
