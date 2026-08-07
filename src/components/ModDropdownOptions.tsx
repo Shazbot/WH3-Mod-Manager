@@ -139,6 +139,17 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
     },
     [allMods]
   );
+  const forceResubscribe = useCallback(
+    (mod: Mod) => {
+      const workshopMod = isWorkshopMod(mod)
+        ? mod
+        : allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == mod.name);
+      if (!workshopMod) return;
+
+      window.api?.forceResubscribeMods([workshopMod]);
+    },
+    [allMods]
+  );
   const reMerge = (mod: Mod) => {
     if (!mod) return;
     if (!mod.mergedModsData) return;
@@ -472,6 +483,34 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     <span className="flex items-center gap-2">
                       <FaDownload className="w-5 h-5"></FaDownload>
                       {localized.forceDownload}
+                    </span>
+                  </Tooltip>
+                </a>
+              </li>
+            )}
+            {(!!props.mod && isWorkshopMod(props.mod) ||
+              allMods.find((iterMod) => isWorkshopMod(iterMod) && iterMod.name == props.mod?.name)) && (
+              <li>
+                <a
+                  onClick={() => {
+                    if (props.mod) forceResubscribe(props.mod);
+                  }}
+                  href="#"
+                  className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                >
+                  <Tooltip
+                    placement="right"
+                    content={
+                      <div className="min-w-[10rem]">
+                        {localized.forceResubscribeModTooltip ||
+                          "Force Steam to unsubscribe and re-subscribe to this mod."}
+                      </div>
+                    }
+                    style="light"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FaSync className="w-5 h-5"></FaSync>
+                      {localized.forceResubscribe || "Force Resubscribe"}
                     </span>
                   </Tooltip>
                 </a>
