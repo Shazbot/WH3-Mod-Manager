@@ -82,10 +82,20 @@ describe("ModRows load-order scroll anchoring", () => {
     });
 
     const loadOrderButton = document.getElementById("load-order-icon-beta.pack") as HTMLButtonElement;
+    const otherRow = container.querySelector<HTMLElement>("[id='gamma.pack']") as HTMLElement;
+    const otherLoadOrderButton = document.getElementById(
+      "load-order-icon-gamma.pack",
+    ) as HTMLButtonElement;
+    fireEvent.mouseEnter(otherRow);
+    expect(otherLoadOrderButton).not.toHaveClass("hidden");
+
     await act(async () => fireEvent.click(loadOrderButton));
 
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeInTheDocument());
     await waitFor(() => expect(scrollElement.scrollTop).toBe(420));
+    expect(otherLoadOrderButton).toHaveClass("hidden");
+    fireEvent.mouseEnter(otherRow);
+    expect(otherLoadOrderButton).toHaveClass("hidden");
     expect(sourceRow.getBoundingClientRect().height).toBe(0);
     expect(sourceAnchor.getBoundingClientRect().top).toBeGreaterThanOrEqual(
       scrollElement.getBoundingClientRect().top,
@@ -98,17 +108,21 @@ describe("ModRows load-order scroll anchoring", () => {
 
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeNull());
     expect(scrollElement.scrollTop).toBe(100);
+    expect(otherLoadOrderButton).toHaveClass("hidden");
 
     await act(async () =>
       fireEvent.click(document.getElementById("load-order-icon-beta.pack") as HTMLButtonElement),
     );
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeInTheDocument());
     await waitFor(() => expect(scrollElement.scrollTop).toBe(420));
+    fireEvent.mouseEnter(otherRow);
+    expect(otherLoadOrderButton).toHaveClass("hidden");
 
     await act(async () =>
-      fireEvent.click(document.getElementById("enabled-mod-placeholder-0") as HTMLButtonElement),
+      fireEvent.click(document.getElementById("enabled-mod-placeholder-2") as HTMLButtonElement),
     );
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeNull());
     expect(scrollElement.scrollTop).toBe(100);
+    expect(otherLoadOrderButton).toHaveClass("hidden");
   });
 });
