@@ -94,6 +94,11 @@ describe("ModRows load-order scroll anchoring", () => {
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeInTheDocument());
     await waitFor(() => expect(scrollElement.scrollTop).toBe(420));
     expect(otherLoadOrderButton).toHaveClass("hidden");
+    expect(otherRow).not.toHaveClass("row-hover-highlight");
+    expect(document.getElementById("enabled-mod-placeholder-2")).toHaveClass(
+      "hover:bg-blue-700/40",
+      "hover:opacity-100",
+    );
     fireEvent.mouseEnter(otherRow);
     expect(otherLoadOrderButton).toHaveClass("hidden");
     expect(sourceRow.getBoundingClientRect().height).toBe(0);
@@ -109,6 +114,7 @@ describe("ModRows load-order scroll anchoring", () => {
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeNull());
     expect(scrollElement.scrollTop).toBe(100);
     expect(otherLoadOrderButton).toHaveClass("hidden");
+    expect(otherRow).toHaveClass("row-hover-highlight");
 
     await act(async () =>
       fireEvent.click(document.getElementById("load-order-icon-beta.pack") as HTMLButtonElement),
