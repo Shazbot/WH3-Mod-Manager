@@ -75,6 +75,14 @@ const isSameOptionalNumber = (first: number | undefined, second: number | undefi
   (first == null && second == null) || first === second;
 
 const stripPackExtension = (name: string) => name.replace(/\.pack$/i, "");
+const getMeaningfulHumanName = (mod: Mod) => {
+  const humanName = mod.humanName?.trim();
+  if (!humanName) return undefined;
+  if (stripPackExtension(humanName).toLowerCase() === stripPackExtension(mod.name).toLowerCase()) {
+    return undefined;
+  }
+  return humanName;
+};
 const RECENTLY_ADDED_HIGHLIGHT_MS = 2400;
 
 const PresetsTab = memo(() => {
@@ -167,6 +175,11 @@ const PresetsTab = memo(() => {
 
       modsByName.set(mod.name, {
         ...existingMod,
+        humanName:
+          getMeaningfulHumanName(existingMod) ??
+          getMeaningfulHumanName(mod) ??
+          existingMod.humanName ??
+          mod.humanName,
         reqModIdToName: [...mergedReqsById.values()],
       });
     }
@@ -188,7 +201,7 @@ const PresetsTab = memo(() => {
   const knownModsByName = useMemo(() => {
     const modsByName = new Map<string, Mod>();
     bestModByName.forEach((mod, name) => modsByName.set(name, mod));
-    selectedPreset?.mods.forEach((mod) => {
+    const mergeKnownMod = (mod: Mod) => {
       const existingMod = modsByName.get(mod.name);
       if (!existingMod) {
         modsByName.set(mod.name, { ...mod });
@@ -203,13 +216,19 @@ const PresetsTab = memo(() => {
 
       modsByName.set(mod.name, {
         ...existingMod,
-        humanName: existingMod.humanName || mod.humanName,
+        humanName:
+          getMeaningfulHumanName(existingMod) ??
+          getMeaningfulHumanName(mod) ??
+          existingMod.humanName ??
+          mod.humanName,
         workshopId: existingMod.workshopId || mod.workshopId,
         reqModIdToName: [...mergedReqsById.values()],
       });
-    });
+    };
+    currentPresetMods.forEach(mergeKnownMod);
+    selectedPreset?.mods.forEach(mergeKnownMod);
     return modsByName;
-  }, [bestModByName, selectedPreset]);
+  }, [bestModByName, currentPresetMods, selectedPreset]);
 
   const installedByName = useMemo(() => {
     const modsByName = new Map<string, Mod>();
@@ -404,12 +423,7 @@ const PresetsTab = memo(() => {
   }, [allMods, enabledDraftMods, knownModsByName, reqsByNameFromCurrentPreset]);
 
   const getModDisplayName = useCallback((mod: Mod) => {
-    const shortName = stripPackExtension(mod.name);
-    const humanName = mod.humanName?.trim();
-    if (humanName && humanName !== mod.name && humanName !== shortName) {
-      return `${humanName} (${shortName})`;
-    }
-    return shortName;
+    return getMeaningfulHumanName(mod) ?? stripPackExtension(mod.name);
   }, []);
 
   const missingDependencyIds = useMemo(() => {
@@ -1127,7 +1141,7 @@ const PresetsTab = memo(() => {
                     >
                       <FontAwesomeIcon icon={faXmark} />
                     </button>
-                    <div className="truncate cursor-pointer">
+                    <div className="truncate cursor-pointer" title={mod.name}>
                       <span className={isMissing ? "text-amber-400" : ""}>{getModDisplayName(mod)}</span>
                       {mod.isInData && (
                         <span className="ml-1 text-orange-500 font-semibold opacity-80">D</span>
@@ -1309,7 +1323,7 @@ const PresetsTab = memo(() => {
                   >
                     <BsArrowDownUp />
                   </button>
-                  <div className="truncate cursor-pointer">
+                  <div className="truncate cursor-pointer" title={mod.name}>
                     {getModDisplayName(mod)}
                     {mod.isInData && <span className="ml-1 text-orange-500 font-semibold">D</span>}
                     <CustomModFolderIcon folderPath={getCustomFolderPath(mod)} />

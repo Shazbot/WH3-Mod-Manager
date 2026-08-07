@@ -58,7 +58,16 @@ describe("preset editor additions", () => {
   });
 
   it("reveals, centers, and temporarily highlights a mod added to the preset", () => {
-    const enabledMod = createMod("enabled.pack", "Enabled Mod", true);
+    const enabledMod = {
+      ...createMod("enabled.pack", "", true),
+      isInData: true,
+      workshopId: "",
+    };
+    const enabledWorkshopMod = {
+      ...createMod("enabled.pack", "Enabled Mod", true),
+      path: "/workshop/enabled.pack",
+      workshopId: "enabled-workshop-id",
+    };
     const addedMod = createMod("added.pack", "Added Mod", false);
     const store = configureStore({
       reducer: { app: appReducer },
@@ -66,7 +75,7 @@ describe("preset editor additions", () => {
         app: {
           ...initialState,
           currentPreset: { name: "", mods: [enabledMod, addedMod] },
-          allMods: [enabledMod, addedMod],
+          allMods: [enabledMod, enabledWorkshopMod, addedMod],
         },
       },
     });
@@ -79,10 +88,16 @@ describe("preset editor additions", () => {
       </Provider>,
     );
 
+    const enabledRow = container.querySelector<HTMLElement>('[data-preset-mod-name="enabled.pack"]');
+    expect(enabledRow).toHaveTextContent("Enabled Mod");
+    expect(enabledRow).not.toHaveTextContent("enabled.pack");
+
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     const addedRow = container.querySelector<HTMLElement>('[data-preset-mod-name="added.pack"]');
     expect(addedRow).not.toBeNull();
+    expect(addedRow).toHaveTextContent("Added Mod");
+    expect(addedRow).not.toHaveTextContent("added.pack");
     expect(addedRow).toHaveClass("bg-emerald-500/30", "ring-emerald-400");
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
 
