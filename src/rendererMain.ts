@@ -35,6 +35,7 @@ import {
   setIsWH3Running,
   setLastModThatWasRead,
   setModData,
+  setWorkshopUpdateCheckMessage,
   setMods,
   setOutdatedPackFiles,
   setOverwrittenDataPackedFiles,
@@ -269,6 +270,10 @@ window.api?.savesPopulated((event, saves: GameSave[]) => {
 
 window.api?.setModData((event, modDatas: ModData[]) => {
   store.dispatch(setModData(modDatas));
+});
+
+window.api?.workshopUpdateCheck((event, message) => {
+  store.dispatch(setWorkshopUpdateCheckMessage(message));
 });
 
 window.api?.setPackHeaderData((event, packHeaderData: PackHeaderData[]) => {

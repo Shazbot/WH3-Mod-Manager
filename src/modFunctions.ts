@@ -65,6 +65,9 @@ export function fetchModData(
         }
 
         const modId = workshopItem.owner.steamId64.toString();
+        const installDiagnostic = modsData.installInfoDiagnostics?.find(
+          (diagnostic) => diagnostic.workshopId === workshopItem.publishedFileId,
+        );
 
         const modData = {
           workshopId: workshopItem.publishedFileId,
@@ -76,6 +79,8 @@ export function fetchModData(
           subscriptionTime: workshopItem.timeAddedToUserList * 1000,
           isDeleted: false,
           tags: workshopItem.tags,
+          workshopInstallTimestamp: installDiagnostic?.installedTimestamp,
+          workshopState: installDiagnostic?.state,
         } as ModData;
         cb(modData);
       }

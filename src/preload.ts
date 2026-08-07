@@ -58,6 +58,9 @@ const api = {
   mergeMods: (mods: Mod[]) => ipcRenderer.send("mergeMods", mods),
   handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) =>
     ipcRenderer.on("handleLog", callback),
+  workshopUpdateCheck: (
+    callback: (event: Electron.IpcRendererEvent, message: WorkshopUpdateCheckMessage) => void,
+  ) => ipcRenderer.on("workshopUpdateCheck", callback),
   subscribedToMods: (callback: (event: Electron.IpcRendererEvent, ids: string[]) => void) =>
     ipcRenderer.on("subscribedToMods", callback),
   createdMergedPack: (callback: (event: Electron.IpcRendererEvent, filePath: string) => void) =>
