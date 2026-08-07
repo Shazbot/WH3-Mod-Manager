@@ -97,25 +97,6 @@ export function fetchModData(
     gotModsData = true;
     const workshopData = modsData.mods;
 
-    for (const diagnostic of modsData.installInfoDiagnostics ?? []) {
-      const formatTimestamp = (timestamp: number | undefined) => {
-        if (timestamp == null) return "unavailable";
-        const date = new Date(timestamp * 1000);
-        return `${timestamp} (${Number.isNaN(date.getTime()) ? "invalid date" : date.toISOString()})`;
-      };
-      const needsUpdate = diagnostic.state == null ? "unknown" : String((diagnostic.state & 8) !== 0);
-      log(
-        `[Workshop installInfo] id=${diagnostic.workshopId}` +
-          ` remote=${formatTimestamp(diagnostic.remoteTimestamp)}` +
-          ` installed=${formatTimestamp(diagnostic.installedTimestamp)}` +
-          ` needsUpdate=${needsUpdate}` +
-          ` state=${diagnostic.state ?? "unavailable"}` +
-          ` sizeOnDisk=${diagnostic.sizeOnDisk ?? "unavailable"}` +
-          ` folder=${diagnostic.installFolder ?? "unavailable"}` +
-          (diagnostic.error ? ` error=${diagnostic.error}` : ""),
-      );
-    }
-
     const dedupedDependencyIds = Array.from(new Set(Object.values(modsData.dependencies).flat()));
     const unsubbedDepIds = dedupedDependencyIds.filter(
       (depId) => !modsData.mods.some((mod) => mod.publishedFileId == depId),

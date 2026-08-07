@@ -2689,19 +2689,11 @@ export const registerIpcMainListeners = (
         let receivedWorkshopUpdateResult = false;
         workshopUpdateChild.on("message", (message: WorkshopUpdateCheckMessage) => {
           mainWindow.webContents.send("workshopUpdateCheck", message);
-          if (message.type === "started") {
-            log(
-              `[Workshop update check] checked=${message.checkedCount} needsUpdate=${message.items.length}`,
-            );
-            return;
-          }
+          if (message.type === "started") return;
           if (message.type === "progress") return;
 
           receivedWorkshopUpdateResult = true;
-          if (message.items.length === 0) {
-            log(`[Workshop update check] all ${message.checkedCount} subscribed mods are up to date`);
-            return;
-          }
+          if (message.items.length === 0) return;
 
           for (const item of message.items) {
             const mod = mods.find(
