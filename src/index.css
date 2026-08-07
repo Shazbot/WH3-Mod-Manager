@@ -300,6 +300,11 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   z-index: 11;
 }
 
+.mod-row-header:hover,
+.mod-row-header:focus-within {
+  z-index: 12;
+}
+
 #top-bar {
   -webkit-user-select: none;
   -webkit-app-region: drag;
