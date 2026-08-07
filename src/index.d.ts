@@ -298,7 +298,9 @@ declare global {
     releaseNotesURL?: string;
   }
 
-  type ModIdAndLoadOrder = Pick<Mod, "workshopId" | "loadOrder">;
+  type ModIdAndLoadOrder = Pick<Mod, "workshopId" | "loadOrder"> & {
+    modName?: string;
+  };
 
   interface GameSave {
     name: string;

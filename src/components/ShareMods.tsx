@@ -7,6 +7,11 @@ import {
   setImportedMods,
 } from "../appSlice";
 import { Spinner } from "flowbite-react";
+import {
+  getMissingSharedWorkshopIds,
+  parseSharedModList,
+  sharedModMatchesInstalledMod,
+} from "../sharedModList";
 
 export interface ShareModsProps {
   isOpen: boolean;
@@ -18,6 +23,7 @@ const ShareMods = memo((props: ShareModsProps) => {
   const [importModsText, setImportModsText] = useState("");
   const [isSpinnerOpen, setIsSpinnerOpen] = useState(false);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const allMods = useAppSelector((state) => state.app.allMods);
   const importedMods = useAppSelector((state) => state.app.importedMods);
   const saves = [...useAppSelector((state) => state.app.saves)];
   saves.sort((first, second) => second.lastChanged - first.lastChanged);
@@ -32,30 +38,37 @@ const ShareMods = memo((props: ShareModsProps) => {
   }, [dispatch]);
 
   const exportModsToClipboard = () => {
-    window.api?.exportModsToClipboard(mods);
+    window.api?.exportModsToClipboard(mods, allMods);
   };
 
   const importMods = () => {
-    const imported: ModIdAndLoadOrder[] = importModsText
-      .trim()
-      .split("|")
-      .map((idAndOrder) => {
-        if (idAndOrder.indexOf(";") > -1) {
-          const [workshopId, loadOrderStr] = idAndOrder.split(";");
-          return { workshopId, loadOrder: Number(loadOrderStr) };
-        }
-        return { workshopId: idAndOrder, loadOrder: undefined };
-      });
-
-    console.log("imported mods:", imported);
-    dispatch(setImportedMods(imported));
-
-    const newMods = imported.filter(
-      (subbedMod) => !mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
+    const imported = parseSharedModList(importModsText);
+    const missingLocalMods = imported.filter(
+      (importedMod) =>
+        importedMod.modName &&
+        !importedMod.workshopId &&
+        !mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)),
     );
-    if (newMods.length > 0) {
+    const importableMods = imported.filter(
+      (importedMod) =>
+        !importedMod.modName ||
+        !!importedMod.workshopId ||
+        mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)),
+    );
+
+    if (missingLocalMods.length > 0) {
+      console.warn(
+        "Skipping shared local mods that are not installed:",
+        missingLocalMods.map((mod) => mod.modName),
+      );
+    }
+    console.log("imported mods:", importableMods);
+    dispatch(setImportedMods(importableMods));
+
+    const missingWorkshopIds = getMissingSharedWorkshopIds(importableMods, allMods);
+    if (missingWorkshopIds.length > 0) {
       setIsSpinnerOpen(true);
-      window.api?.subscribeToMods(newMods.map((mod) => mod.workshopId));
+      window.api?.subscribeToMods(missingWorkshopIds);
     } else {
       setIsOpen(false);
     }
@@ -68,7 +81,9 @@ const ShareMods = memo((props: ShareModsProps) => {
   useEffect(() => {
     if (
       importedMods.length > 0 &&
-      importedMods.every((importedMod) => mods.some((mod) => mod.workshopId == importedMod.workshopId))
+      importedMods.every((importedMod) =>
+        mods.some((mod) => sharedModMatchesInstalledMod(importedMod, mod)),
+      )
     ) {
       dispatch(orderImportedMods());
       setIsSpinnerOpen(false);
@@ -86,7 +101,7 @@ const ShareMods = memo((props: ShareModsProps) => {
             show={
               isSpinnerOpen &&
               !importedMods.every((subbedMod) =>
-                mods.find((iterMod) => iterMod.workshopId === subbedMod.workshopId)
+                mods.some((mod) => sharedModMatchesInstalledMod(subbedMod, mod)),
               )
             }
             size="2xl"
@@ -135,8 +150,8 @@ const ShareMods = memo((props: ShareModsProps) => {
 
               <div className="pt-10 text-lg font-medium text-gray-900 dark:text-white">Import</div>
               <p className="self-center text-base leading-relaxed text-gray-500 dark:text-gray-300 pb-4">
-                Import shared mods. Paste the exported text the other person has shared with you. This will
-                subscribe to, download and enable those mods.
+                Import shared mods. Workshop mods will be subscribed, downloaded, and enabled. Local packs
+                are enabled when a file with the same name is already installed.
               </p>
               <textarea
                 id="message"
