@@ -1,7 +1,7 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
 import { exec, fork, spawn } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
-import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-extension-installer";
+import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-devtools-installer";
 import fetch from "electron-fetch";
 import isDev from "electron-is-dev";
 import * as fs from "fs";
@@ -580,23 +580,26 @@ if (!gotTheLock) {
       });
   });
 
-  app.whenReady().then(() => {
-    installExtension(REACT_DEVELOPER_TOOLS, {
-      loadExtensionOptions: {
-        allowFileAccess: true,
-      },
-    })
-      .then((name) => console.log(`Added Extension:  ${name}`))
-      .catch((err) => console.log("An error occurred: ", err));
+  if (isDev) {
+    app.whenReady().then(() => {
+      const extensions = [
+        ["React Developer Tools", REACT_DEVELOPER_TOOLS],
+        ["Redux DevTools", REDUX_DEVTOOLS],
+      ] as const;
 
-    installExtension(REDUX_DEVTOOLS, {
-      loadExtensionOptions: {
-        allowFileAccess: true,
-      },
-    })
-      .then((name) => console.log(`Added Extension:  ${name}`))
-      .catch((err) => console.log("An error occurred: ", err));
-  });
+      for (const [extensionName, extension] of extensions) {
+        installExtension(extension, {
+          loadExtensionOptions: {
+            allowFileAccess: true,
+          },
+        })
+          .then((installedExtension) =>
+            console.log(`[devtools] Added ${installedExtension.name}`),
+          )
+          .catch((error) => console.log(`[devtools] Failed to install ${extensionName}`, error));
+      }
+    });
+  }
 
   // Quit when all windows are closed, except on macOS. There, it's common
   // for applications and their menu bar to stay active until the user quits

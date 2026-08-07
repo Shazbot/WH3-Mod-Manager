@@ -4804,25 +4804,12 @@ ee-first@1.1.1:
   resolved "https://registry.yarnpkg.com/ee-first/-/ee-first-1.1.1.tgz#590c61156b0ae2f4f0255732a158b266bc56b21d"
   integrity sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==
 
-electron-devtools-installer@^3.2.0:
-  version "3.2.0"
-  resolved "https://registry.yarnpkg.com/electron-devtools-installer/-/electron-devtools-installer-3.2.0.tgz#acc48d24eb7033fe5af284a19667e73b78d406d0"
-  integrity sha512-t3UczsYugm4OAbqvdImMCImIMVdFzJAHgbwHpkl5jmfu1izVgUcP/mnrPqJIpEeCK1uZGpt+yHgWEN+9EwoYhQ==
+electron-devtools-installer@^4.0.0:
+  version "4.0.0"
+  resolved "https://registry.yarnpkg.com/electron-devtools-installer/-/electron-devtools-installer-4.0.0.tgz#6556a6a326cddea18194cb6d97d85c8ae329dedf"
+  integrity sha512-9Tntu/jtfSn0n6N/ZI6IdvRqXpDyLQiDuuIbsBI+dL+1Ef7C8J2JwByw58P3TJiNeuqyV3ZkphpNWuZK5iSY2w==
   dependencies:
-    rimraf "^3.0.2"
-    semver "^7.2.1"
-    tslib "^2.1.0"
     unzip-crx-3 "^0.2.0"
-
-electron-extension-installer@^1.2.0:
-  version "1.2.0"
-  resolved "https://registry.yarnpkg.com/electron-extension-installer/-/electron-extension-installer-1.2.0.tgz#c95844b6dccd2ef87b23e7086303741ea1968428"
-  integrity sha512-NrGe64uN4D3+TqbGVwVvLaegXL5oe7/ccTl4fjNl60w+dSNbSXin4CJ1cuMNEXkYyADcF1ITlEm0nDWTnPzPkQ==
-  dependencies:
-    "@types/jszip" "^3.4.1"
-    fs-jetpack "^5.1.0"
-    jszip "^3.10.1"
-    rimraf "^5.0.0"
 
 electron-fetch@^1.9.1:
   version "1.9.1"
