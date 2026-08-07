@@ -140,6 +140,7 @@ describe("tree display DOM behavior", () => {
       requestOpenTechTreesWindow: vi.fn(),
       requestOpenModInViewer: vi.fn(),
       repairOutdatedWorkshopMods: vi.fn(),
+      cancelWorkshopRepairAndResubscribeMods: vi.fn(),
       forceResubscribeMods: vi.fn(),
     } as NonNullable<Window["api"]>;
   });
@@ -275,6 +276,8 @@ describe("tree display DOM behavior", () => {
       );
     });
     expect(screen.getByText("Update status: downloading (1 GB / 4 GB)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel and Resubscribe" }));
+    expect(window.api?.cancelWorkshopRepairAndResubscribeMods).toHaveBeenCalledWith([mod]);
   });
 
   it("suppresses the outdated warning while Steam is downloading the update", () => {

@@ -56,6 +56,8 @@ const api = {
   forceDownloadMods: (modIds: string[]) => ipcRenderer.send("forceDownloadMods", modIds),
   repairOutdatedWorkshopMods: (requests: WorkshopModRepairRequest[]) =>
     ipcRenderer.send("repairOutdatedWorkshopMods", requests),
+  cancelWorkshopRepairAndResubscribeMods: (mods: Mod[]) =>
+    ipcRenderer.send("cancelWorkshopRepairAndResubscribeMods", mods),
   forceResubscribeMods: (mods: Mod[]) => ipcRenderer.send("forceResubscribeMods", mods),
   mergeMods: (mods: Mod[]) => ipcRenderer.send("mergeMods", mods),
   handleLog: (callback: (event: Electron.IpcRendererEvent, msg: string) => void) =>
