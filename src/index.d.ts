@@ -1005,6 +1005,33 @@ declare global {
     error?: string;
   }
 
+  type WorkshopUpdateCheckStatus =
+    | "requested"
+    | "already-downloading"
+    | "updated"
+    | "request-failed"
+    | "timed-out";
+
+  export interface WorkshopUpdateCheckItem {
+    workshopId: string;
+    initialState: number;
+    finalState: number;
+    status: WorkshopUpdateCheckStatus;
+    requestAccepted: boolean;
+    retryAccepted?: boolean;
+    installTimestampBefore?: number;
+    installTimestampAfter?: number;
+    downloadedBytes?: string;
+    totalBytes?: string;
+    error?: string;
+  }
+
+  export interface WorkshopUpdateCheckMessage {
+    type: "started" | "finished";
+    checkedCount: number;
+    items: WorkshopUpdateCheckItem[];
+  }
+
   interface TreeNode<T> {
     children: TreeNode<T>[];
     key: string;

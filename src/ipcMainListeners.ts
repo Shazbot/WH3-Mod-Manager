@@ -2669,7 +2669,7 @@ export const registerIpcMainListeners = (
         await fetchGameUpdates();
       }
       try {
-        fork(
+        const workshopUpdateChild = fork(
           nodePath.join(__dirname, "sub.js"),
           [
             gameToSteamId[appData.currentGame],
@@ -2686,6 +2686,54 @@ export const registerIpcMainListeners = (
           ],
           {},
         );
+        let receivedWorkshopUpdateResult = false;
+        workshopUpdateChild.on("message", (message: WorkshopUpdateCheckMessage) => {
+          if (message.type === "started") {
+            log(
+              `[Workshop update check] checked=${message.checkedCount} needsUpdate=${message.items.length}`,
+            );
+            return;
+          }
+
+          receivedWorkshopUpdateResult = true;
+          if (message.items.length === 0) {
+            log(`[Workshop update check] all ${message.checkedCount} subscribed mods are up to date`);
+            return;
+          }
+
+          for (const item of message.items) {
+            const mod = mods.find(
+              (iterMod) => isWorkshopMod(iterMod) && iterMod.workshopId === item.workshopId,
+            );
+            const progress =
+              item.downloadedBytes == null
+                ? "unavailable"
+                : `${item.downloadedBytes}/${item.totalBytes ?? "unknown"}`;
+            log(
+              `[Workshop update check] mod=${mod?.humanName || mod?.name || "unknown"}` +
+                ` id=${item.workshopId}` +
+                ` status=${item.status}` +
+                ` initialState=${item.initialState}` +
+                ` finalState=${item.finalState}` +
+                ` requestAccepted=${item.requestAccepted}` +
+                ` retryAccepted=${item.retryAccepted ?? "not-needed"}` +
+                ` installTimestampBefore=${item.installTimestampBefore ?? "unavailable"}` +
+                ` installTimestampAfter=${item.installTimestampAfter ?? "unavailable"}` +
+                ` progress=${progress}` +
+                (item.error ? ` error=${item.error}` : ""),
+            );
+          }
+        });
+        workshopUpdateChild.once("error", (error) => {
+          log(`[Workshop update check] child process error: ${error.message}`);
+        });
+        workshopUpdateChild.once("exit", (code, signal) => {
+          if (!receivedWorkshopUpdateResult) {
+            log(
+              `[Workshop update check] child exited without a final result (code=${code}, signal=${signal})`,
+            );
+          }
+        });
       } catch (e) {
         console.log(e);
       }
