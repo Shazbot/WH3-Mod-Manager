@@ -46,6 +46,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 var steamworks = require("./../steamworks");
 var fs = require("fs");
@@ -350,6 +351,17 @@ if (process.argv[3] == "getModsData") {
 if (process.argv[3] == "checkState") {
     console.log("checkState");
     var ids_3 = parseItemIds(process.argv[4]);
+    var expectedInstallTimestamps_1 = new Map(((_a = process.argv[5]) !== null && _a !== void 0 ? _a : "")
+        .split(";")
+        .map(function (entry) { return entry.split(":"); })
+        .filter(function (entry) {
+        return entry.length === 2 && /^\d+$/.test(entry[0]) && /^\d+$/.test(entry[1]);
+    })
+        .map(function (_a) {
+        var workshopId = _a[0], timestamp = _a[1];
+        return [workshopId, Number(timestamp)];
+    }));
+    var forceDownload_1 = process.argv[6] === "force";
     var client_4 = steamworks.init(Number(process.argv[2]));
     var sendUpdateCheckMessage_1 = function (message) {
         return new Promise(function (resolve) {
@@ -365,7 +377,7 @@ if (process.argv[3] == "checkState") {
         });
     };
     void (function () { return __awaiter(void 0, void 0, void 0, function () {
-        var updateItems, retriedWorkshopIds, _i, ids_4, workshopId, initialState, isAlreadyDownloading, requestAccepted, startedAt, elapsed, _a, updateItems_1, item, workshopId, state, downloadInfo, isDownloadActive, _b, updateItems_2, item;
+        var updateItems, retriedWorkshopIds, _i, ids_4, workshopId, initialState, installTimestampBefore, expectedInstallTimestamp, isExpectedVersionInstalled, isAlreadyDownloading, requestAccepted, startedAt, elapsed, _a, updateItems_1, item, workshopId, state, downloadInfo, installTimestamp, expectedInstallTimestamp, isDownloadActive, _b, updateItems_2, item;
         var _c, _d;
         return __generator(this, function (_e) {
             switch (_e.label) {
@@ -376,8 +388,25 @@ if (process.argv[3] == "checkState") {
                         workshopId = ids_4[_i];
                         try {
                             initialState = client_4.workshop.state(workshopId);
-                            if ((initialState & WORKSHOP_STATE_NEEDS_UPDATE) === 0)
+                            installTimestampBefore = (_c = client_4.workshop.installInfo(workshopId)) === null || _c === void 0 ? void 0 : _c.timestamp;
+                            expectedInstallTimestamp = expectedInstallTimestamps_1.get(workshopId.toString());
+                            isExpectedVersionInstalled = expectedInstallTimestamp != null &&
+                                installTimestampBefore != null &&
+                                installTimestampBefore >= expectedInstallTimestamp;
+                            if (!forceDownload_1 && (initialState & WORKSHOP_STATE_NEEDS_UPDATE) === 0)
                                 continue;
+                            if (forceDownload_1 && isExpectedVersionInstalled) {
+                                updateItems.push({
+                                    workshopId: workshopId.toString(),
+                                    initialState: initialState,
+                                    finalState: initialState,
+                                    status: "updated",
+                                    requestAccepted: true,
+                                    installTimestampBefore: installTimestampBefore,
+                                    installTimestampAfter: installTimestampBefore,
+                                });
+                                continue;
+                            }
                             isAlreadyDownloading = (initialState & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
                             requestAccepted = isAlreadyDownloading || client_4.workshop.download(workshopId, true);
                             updateItems.push({
@@ -390,7 +419,7 @@ if (process.argv[3] == "checkState") {
                                         ? "requested"
                                         : "request-failed",
                                 requestAccepted: requestAccepted,
-                                installTimestampBefore: (_c = client_4.workshop.installInfo(workshopId)) === null || _c === void 0 ? void 0 : _c.timestamp,
+                                installTimestampBefore: installTimestampBefore,
                             });
                         }
                         catch (error) {
@@ -423,15 +452,19 @@ if (process.argv[3] == "checkState") {
                             workshopId = BigInt(item.workshopId);
                             state = client_4.workshop.state(workshopId);
                             downloadInfo = client_4.workshop.downloadInfo(workshopId);
+                            installTimestamp = (_d = client_4.workshop.installInfo(workshopId)) === null || _d === void 0 ? void 0 : _d.timestamp;
+                            expectedInstallTimestamp = expectedInstallTimestamps_1.get(item.workshopId);
                             item.finalState = state;
                             if (downloadInfo) {
                                 item.downloadedBytes = downloadInfo.current.toString();
                                 item.totalBytes = downloadInfo.total.toString();
                             }
                             if ((state & WORKSHOP_STATE_NEEDS_UPDATE) === 0 &&
-                                (state & WORKSHOP_STATE_INSTALLED) !== 0) {
+                                (state & WORKSHOP_STATE_INSTALLED) !== 0 &&
+                                (expectedInstallTimestamp == null ||
+                                    (installTimestamp != null && installTimestamp >= expectedInstallTimestamp))) {
                                 item.status = "updated";
-                                item.installTimestampAfter = (_d = client_4.workshop.installInfo(workshopId)) === null || _d === void 0 ? void 0 : _d.timestamp;
+                                item.installTimestampAfter = installTimestamp;
                                 continue;
                             }
                             isDownloadActive = (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;

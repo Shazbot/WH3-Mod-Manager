@@ -136,6 +136,8 @@ describe("tree display DOM behavior", () => {
       requestOpenSkillsWindow: vi.fn(),
       requestOpenTechTreesWindow: vi.fn(),
       requestOpenModInViewer: vi.fn(),
+      repairOutdatedWorkshopMods: vi.fn(),
+      forceResubscribeMods: vi.fn(),
     } as NonNullable<Window["api"]>;
   });
 
@@ -218,6 +220,13 @@ describe("tree display DOM behavior", () => {
     });
 
     expect(screen.getByText("Workshop mods may be outdated")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Workshop mods may be outdated"));
+    expect(screen.getByText("Repair Workshop Mods")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Force Update" }));
+    expect(window.api?.repairOutdatedWorkshopMods).toHaveBeenCalledWith([
+      { mod, remoteTimestampMs: 200_000 },
+    ]);
   });
 
   it("suppresses the outdated warning while Steam is downloading the update", () => {

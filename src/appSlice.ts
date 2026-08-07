@@ -885,6 +885,13 @@ const appSlice = createSlice({
             installedTimestamp: data.workshopInstallTimestamp,
             state: data.workshopState,
           };
+          if (
+            data.workshopInstallTimestamp != null &&
+            data.lastChanged != null &&
+            data.lastChanged <= data.workshopInstallTimestamp * 1000
+          ) {
+            delete state.workshopUpdateCheckResults[data.workshopId];
+          }
         }
         // Propagate Workshop metadata to whichever same-named source currently wins priority.
         const contentMod = state.allMods.find(

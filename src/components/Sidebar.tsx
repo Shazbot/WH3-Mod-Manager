@@ -24,6 +24,7 @@ import localizationContext from "../localizationContext";
 import Help from "./Help";
 import { gameToPackWithDBTablesName } from "../supportedGames";
 import { isWorkshopMod } from "../modSources";
+import { Modal } from "../flowbite";
 
 type OptionType = {
   value: string;
@@ -68,6 +69,9 @@ const Sidebar = memo(() => {
   const [isWaitingForRelaunch, setIsWaitingForRelaunch] = useState<boolean>(false);
   const [isWaitingForContinueRelaunch, setIsWaitingForContinueRelaunch] = useState<boolean>(false);
   const [isTreeMenuOpen, setIsTreeMenuOpen] = useState(false);
+  const [isWorkshopRepairModalOpen, setIsWorkshopRepairModalOpen] = useState(false);
+  const [workshopRepairCandidateIds, setWorkshopRepairCandidateIds] = useState<string[]>([]);
+  const [selectedWorkshopRepairIds, setSelectedWorkshopRepairIds] = useState<string[]>([]);
 
   const localized: Record<string, string> = useContext(localizationContext);
 
@@ -421,7 +425,13 @@ const Sidebar = memo(() => {
     })
     .filter(({ mod, installedTimestamp, workshopState, updateResult }) => {
       if (installedTimestamp == null || mod.lastChanged == null) return false;
-      if (updateResult?.status === "requested" || updateResult?.status === "already-downloading") return false;
+      if (
+        updateResult?.status === "requested" ||
+        updateResult?.status === "already-downloading" ||
+        updateResult?.status === "resubscribing"
+      ) {
+        return false;
+      }
       if (
         updateResult?.status === "updated" &&
         (updateResult.installTimestampAfter == null ||
@@ -437,6 +447,38 @@ const Sidebar = memo(() => {
       }
       return mod.lastChanged > installedTimestamp * 1000;
     });
+
+  const workshopRepairCandidateMods = enabledMods.filter(
+    (mod) => isWorkshopMod(mod) && workshopRepairCandidateIds.includes(mod.workshopId),
+  );
+  const selectedWorkshopRepairMods = workshopRepairCandidateMods.filter((mod) =>
+    selectedWorkshopRepairIds.includes(mod.workshopId),
+  );
+  const isWorkshopRepairRunning = selectedWorkshopRepairIds.some((workshopId) => {
+    const status = workshopUpdateCheckResults[workshopId]?.status;
+    return status === "requested" || status === "already-downloading" || status === "resubscribing";
+  });
+
+  const openWorkshopRepairModal = () => {
+    const workshopIds = possiblyOutdatedWorkshopMods.map(({ mod }) => mod.workshopId);
+    setWorkshopRepairCandidateIds(workshopIds);
+    setSelectedWorkshopRepairIds(workshopIds);
+    setIsWorkshopRepairModalOpen(true);
+  };
+
+  const repairSelectedWorkshopMods = () => {
+    const requests = selectedWorkshopRepairMods
+      .filter((mod) => mod.lastChanged != null)
+      .map((mod) => ({ mod, remoteTimestampMs: mod.lastChanged as number }));
+    if (requests.length === 0) return;
+    window.api?.repairOutdatedWorkshopMods(requests);
+  };
+
+  const resubscribeSelectedWorkshopMods = () => {
+    if (selectedWorkshopRepairMods.length === 0) return;
+    window.api?.forceResubscribeMods(selectedWorkshopRepairMods);
+    setIsWorkshopRepairModalOpen(false);
+  };
 
   const isDependencyEnabledByPackName = useCallback(
     (reqId: string): boolean => {
@@ -500,6 +542,85 @@ const Sidebar = memo(() => {
 
   return (
     <div>
+      <Modal
+        show={isWorkshopRepairModalOpen}
+        onClose={() => setIsWorkshopRepairModalOpen(false)}
+        size="lg"
+        position="center"
+      >
+        <Modal.Header>
+          {localized.repairWorkshopMods || "Repair Workshop Mods"}
+        </Modal.Header>
+        <Modal.Body>
+          <p className="mb-4 text-gray-500 dark:text-gray-300">
+            {localized.repairWorkshopModsHelp ||
+              "Force Update asks Steam to download and verifies the installed timestamp. If that fails, the mod is automatically unsubscribed and resubscribed."}
+          </p>
+          <div className="max-h-72 overflow-y-auto space-y-2">
+            {workshopRepairCandidateMods.map((mod) => {
+              const updateResult = workshopUpdateCheckResults[mod.workshopId];
+              const isSelected = selectedWorkshopRepairIds.includes(mod.workshopId);
+              return (
+                <label
+                  className="flex items-start gap-3 rounded p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  key={mod.workshopId}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={isSelected}
+                    disabled={isWorkshopRepairRunning}
+                    onChange={(event) => {
+                      setSelectedWorkshopRepairIds((currentIds) =>
+                        event.target.checked
+                          ? [...new Set([...currentIds, mod.workshopId])]
+                          : currentIds.filter((workshopId) => workshopId !== mod.workshopId),
+                      );
+                    }}
+                  />
+                  <span>
+                    <span className="block font-semibold text-gray-900 dark:text-white">
+                      {mod.humanName || mod.name}
+                    </span>
+                    {updateResult && (
+                      <span className="block text-sm text-gray-500 dark:text-gray-300">
+                        {(localized.workshopUpdateStatus || "Update status") + `: ${updateResult.status}`}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            type="button"
+            className="px-4 py-2 bg-gray-500 text-white font-medium text-sm rounded hover:bg-gray-600"
+            onClick={() => setIsWorkshopRepairModalOpen(false)}
+          >
+            {localized.close || "Close"}
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 bg-red-600 text-white font-medium text-sm rounded hover:bg-red-700 disabled:opacity-50"
+            disabled={selectedWorkshopRepairMods.length === 0 || isWorkshopRepairRunning}
+            onClick={resubscribeSelectedWorkshopMods}
+          >
+            {localized.forceResubscribe || "Force Resubscribe"}
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 bg-purple-600 text-white font-medium text-sm rounded hover:bg-purple-700 disabled:opacity-50"
+            disabled={selectedWorkshopRepairMods.length === 0 || isWorkshopRepairRunning}
+            onClick={repairSelectedWorkshopMods}
+          >
+            {isWorkshopRepairRunning
+              ? localized.updating || "Updating…"
+              : localized.forceUpdateWithFallback || "Force Update"}
+          </button>
+        </Modal.Footer>
+      </Modal>
       <SaveGames isOpen={isShowingSavedGames} setIsOpen={setIsShowingSavedGames} />
       <Help></Help>
 
@@ -607,7 +728,11 @@ const Sidebar = memo(() => {
         <div className="absolute w-full bottom-0 z-10">
           {possiblyOutdatedWorkshopMods.length > 0 && (
             <div className="text-center text-amber-500 font-semibold mb-4">
-              <div className="make-tooltip-w-full">
+              <button
+                type="button"
+                className="make-tooltip-w-full w-full"
+                onClick={openWorkshopRepairModal}
+              >
                 <Tooltip
                   placement="left"
                   content={
@@ -643,7 +768,7 @@ const Sidebar = memo(() => {
                     {localized.workshopModsMayBeOutdated || "Workshop mods may be outdated"}
                   </span>
                 </Tooltip>
-              </div>
+              </button>
             </div>
           )}
 

@@ -7809,6 +7809,123 @@ export const registerIpcMainListeners = (
       console.log(e);
     }
   };
+  ipcMain.on("repairOutdatedWorkshopMods", (event, requests: WorkshopModRepairRequest[]) => {
+    const validRequests = requests.flatMap(({ mod, remoteTimestampMs }) => {
+      if (!/^\d+$/.test(mod.workshopId) || !Number.isFinite(remoteTimestampMs) || remoteTimestampMs <= 0) {
+        return [];
+      }
+      const knownWorkshopMod = appData.allMods.find(
+        (knownMod) => isWorkshopMod(knownMod) && knownMod.workshopId === mod.workshopId,
+      );
+      return knownWorkshopMod ? [{ mod: knownWorkshopMod, remoteTimestampMs }] : [];
+    });
+    if (validRequests.length === 0) return;
+
+    const workshopIds = validRequests.map(({ mod }) => mod.workshopId);
+    const expectedTimestamps = validRequests
+      .map(({ mod, remoteTimestampMs }) => `${mod.workshopId}:${Math.floor(remoteTimestampMs / 1000)}`)
+      .join(";");
+    let receivedFinalResult = false;
+    let startedItems: WorkshopUpdateCheckItem[] = [];
+    let didStartFallback = false;
+
+    const fallbackToResubscribe = (items: WorkshopUpdateCheckItem[], reason: string) => {
+      if (didStartFallback) return;
+      didStartFallback = true;
+      const failedIds = new Set(items.map((item) => item.workshopId));
+      const modsToResubscribe = validRequests
+        .filter(({ mod }) => failedIds.has(mod.workshopId))
+        .map(({ mod }) => mod);
+      if (modsToResubscribe.length === 0) return;
+
+      const resubscribingItems = items.map((item) => ({
+        ...item,
+        status: "resubscribing" as const,
+        error: item.error || reason,
+      }));
+      const fallbackMessage: WorkshopUpdateCheckMessage = {
+        type: "finished",
+        checkedCount: validRequests.length,
+        items: resubscribingItems,
+      };
+      mainWindow.webContents.send("workshopUpdateCheck", fallbackMessage);
+      log(
+        `[Workshop repair] force download failed for ${modsToResubscribe.length} mod(s); resubscribing`,
+      );
+      forceResubscribeMods(modsToResubscribe);
+    };
+
+    try {
+      const child = fork(
+        nodePath.join(__dirname, "sub.js"),
+        [
+          gameToSteamId[appData.currentGame],
+          "checkState",
+          workshopIds.join(";"),
+          expectedTimestamps,
+          "force",
+        ],
+        {},
+      );
+      child.on("message", (message: WorkshopUpdateCheckMessage) => {
+        mainWindow.webContents.send("workshopUpdateCheck", message);
+        if (message.type === "started") {
+          startedItems = message.items;
+          log(`[Workshop repair] forcing download for ${message.items.length} mod(s)`);
+          return;
+        }
+
+        receivedFinalResult = true;
+        const failedItems = message.items.filter((item) => item.status !== "updated");
+        if (failedItems.length > 0) {
+          fallbackToResubscribe(failedItems, "Force download did not install the Workshop version.");
+        } else {
+          log(`[Workshop repair] force download updated ${message.items.length} mod(s)`);
+        }
+      });
+      child.once("error", (error) => {
+        const fallbackItems =
+          startedItems.length > 0
+            ? startedItems
+            : validRequests.map(({ mod }): WorkshopUpdateCheckItem => ({
+                workshopId: mod.workshopId,
+                initialState: 0,
+                finalState: 0,
+                status: "request-failed",
+                requestAccepted: false,
+                error: error.message,
+              }));
+        fallbackToResubscribe(fallbackItems, error.message);
+      });
+      child.once("exit", (code, signal) => {
+        if (receivedFinalResult || didStartFallback) return;
+        const fallbackItems =
+          startedItems.length > 0
+            ? startedItems
+            : validRequests.map(({ mod }): WorkshopUpdateCheckItem => ({
+                workshopId: mod.workshopId,
+                initialState: 0,
+                finalState: 0,
+                status: "request-failed",
+                requestAccepted: false,
+              }));
+        fallbackToResubscribe(
+          fallbackItems,
+          `Workshop update worker exited without a result (code=${code}, signal=${signal}).`,
+        );
+      });
+    } catch (error) {
+      const fallbackItems = validRequests.map(({ mod }): WorkshopUpdateCheckItem => ({
+        workshopId: mod.workshopId,
+        initialState: 0,
+        finalState: 0,
+        status: "request-failed",
+        requestAccepted: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+      fallbackToResubscribe(fallbackItems, "Could not start the Workshop update worker.");
+    }
+  });
   ipcMain.on("forceResubscribeMods", async (event, mods: Mod[]) => {
     console.log(
       "in forceResubscribeMods, mods are:",

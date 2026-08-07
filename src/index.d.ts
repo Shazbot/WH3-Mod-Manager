@@ -1019,7 +1019,13 @@ declare global {
     | "already-downloading"
     | "updated"
     | "request-failed"
-    | "timed-out";
+    | "timed-out"
+    | "resubscribing";
+
+  interface WorkshopModRepairRequest {
+    mod: Mod;
+    remoteTimestampMs: number;
+  }
 
   export interface WorkshopUpdateCheckItem {
     workshopId: string;

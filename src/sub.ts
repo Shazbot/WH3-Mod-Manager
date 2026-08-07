@@ -65,7 +65,8 @@ type WorkshopUpdateCheckStatus =
   | "already-downloading"
   | "updated"
   | "request-failed"
-  | "timed-out";
+  | "timed-out"
+  | "resubscribing";
 
 interface WorkshopUpdateCheckItem {
   workshopId: string;
@@ -402,6 +403,17 @@ if (process.argv[3] == "getModsData") {
 if (process.argv[3] == "checkState") {
   console.log("checkState");
   const ids = parseItemIds(process.argv[4]);
+  const expectedInstallTimestamps = new Map(
+    (process.argv[5] ?? "")
+      .split(";")
+      .map((entry) => entry.split(":"))
+      .filter(
+        (entry): entry is [string, string] =>
+          entry.length === 2 && /^\d+$/.test(entry[0]) && /^\d+$/.test(entry[1]),
+      )
+      .map(([workshopId, timestamp]) => [workshopId, Number(timestamp)]),
+  );
+  const forceDownload = process.argv[6] === "force";
   const client = steamworks.init(Number(process.argv[2]));
 
   const sendUpdateCheckMessage = (message: WorkshopUpdateCheckMessage) =>
@@ -423,7 +435,25 @@ if (process.argv[3] == "checkState") {
     for (const workshopId of ids) {
       try {
         const initialState = client.workshop.state(workshopId);
-        if ((initialState & WORKSHOP_STATE_NEEDS_UPDATE) === 0) continue;
+        const installTimestampBefore = client.workshop.installInfo(workshopId)?.timestamp;
+        const expectedInstallTimestamp = expectedInstallTimestamps.get(workshopId.toString());
+        const isExpectedVersionInstalled =
+          expectedInstallTimestamp != null &&
+          installTimestampBefore != null &&
+          installTimestampBefore >= expectedInstallTimestamp;
+        if (!forceDownload && (initialState & WORKSHOP_STATE_NEEDS_UPDATE) === 0) continue;
+        if (forceDownload && isExpectedVersionInstalled) {
+          updateItems.push({
+            workshopId: workshopId.toString(),
+            initialState,
+            finalState: initialState,
+            status: "updated",
+            requestAccepted: true,
+            installTimestampBefore,
+            installTimestampAfter: installTimestampBefore,
+          });
+          continue;
+        }
 
         const isAlreadyDownloading =
           (initialState & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
@@ -438,7 +468,7 @@ if (process.argv[3] == "checkState") {
               ? "requested"
               : "request-failed",
           requestAccepted,
-          installTimestampBefore: client.workshop.installInfo(workshopId)?.timestamp,
+          installTimestampBefore,
         });
       } catch (error) {
         updateItems.push({
@@ -466,6 +496,8 @@ if (process.argv[3] == "checkState") {
           const workshopId = BigInt(item.workshopId);
           const state = client.workshop.state(workshopId);
           const downloadInfo = client.workshop.downloadInfo(workshopId);
+          const installTimestamp = client.workshop.installInfo(workshopId)?.timestamp;
+          const expectedInstallTimestamp = expectedInstallTimestamps.get(item.workshopId);
           item.finalState = state;
           if (downloadInfo) {
             item.downloadedBytes = downloadInfo.current.toString();
@@ -474,10 +506,12 @@ if (process.argv[3] == "checkState") {
 
           if (
             (state & WORKSHOP_STATE_NEEDS_UPDATE) === 0 &&
-            (state & WORKSHOP_STATE_INSTALLED) !== 0
+            (state & WORKSHOP_STATE_INSTALLED) !== 0 &&
+            (expectedInstallTimestamp == null ||
+              (installTimestamp != null && installTimestamp >= expectedInstallTimestamp))
           ) {
             item.status = "updated";
-            item.installTimestampAfter = client.workshop.installInfo(workshopId)?.timestamp;
+            item.installTimestampAfter = installTimestamp;
             continue;
           }
 
