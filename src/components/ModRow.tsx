@@ -124,7 +124,9 @@ const ModRow = memo(
 
     return (
       <div
-        className={`relative grid row-div-paddings row-hover-highlight ${gridClass} ${
+        className={`relative grid row-div-paddings ${
+          isLoadOrderPlacementMode ? "" : "row-hover-highlight"
+        } ${gridClass} ${
           isLoadOrderPlacementSource ? "row-bg-color-manually" : ""
         }`}
         key={mod.name}
@@ -143,7 +145,7 @@ const ModRow = memo(
               rowIndex + 1
             }`}
             className={
-              `drop-ghost h-10 cursor-pointer ${ghostClass} ` +
+              `drop-ghost h-10 cursor-pointer transition-colors hover:bg-blue-700/40 hover:opacity-100 ${ghostClass} ` +
               (activeLoadOrderPosition === rowIndex ? "bg-blue-700/40" : "opacity-70")
             }
             onClick={() => onSelectLoadOrderPosition(rowIndex)}
@@ -363,7 +365,7 @@ const ModRow = memo(
               rowIndex + 2
             }`}
             className={
-              `drop-ghost h-10 cursor-pointer ${ghostClass} ` +
+              `drop-ghost h-10 cursor-pointer transition-colors hover:bg-blue-700/40 hover:opacity-100 ${ghostClass} ` +
               (activeLoadOrderPosition === rowIndex + 1 ? "bg-blue-700/40" : "opacity-70")
             }
             onClick={() => onSelectLoadOrderPosition(rowIndex + 1)}
