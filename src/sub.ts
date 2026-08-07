@@ -63,6 +63,7 @@ interface WorkshopInstallInfoDiagnostic {
 type WorkshopUpdateCheckStatus =
   | "requested"
   | "already-downloading"
+  | "downloading"
   | "updated"
   | "request-failed"
   | "timed-out"
@@ -83,7 +84,7 @@ interface WorkshopUpdateCheckItem {
 }
 
 interface WorkshopUpdateCheckMessage {
-  type: "started" | "finished";
+  type: "started" | "progress" | "finished";
   checkedCount: number;
   items: WorkshopUpdateCheckItem[];
 }
@@ -94,7 +95,7 @@ const WORKSHOP_STATE_DOWNLOADING = 16;
 const WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
 const WORKSHOP_UPDATE_POLL_INTERVAL_MS = 1000;
 const WORKSHOP_UPDATE_RETRY_AFTER_MS = 30_000;
-const WORKSHOP_UPDATE_TIMEOUT_MS = 5 * 60_000;
+const WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS = 5 * 60_000;
 
 const appendSublog = (message: string) => {
   fs.appendFileSync("sublog.txt", `${message}\n`);
@@ -484,13 +485,20 @@ if (process.argv[3] == "checkState") {
 
     await sendUpdateCheckMessage({ type: "started", checkedCount: ids.length, items: updateItems });
     const startedAt = Date.now();
+    let lastActivityAt = startedAt;
 
-    while (updateItems.some((item) => item.status === "requested" || item.status === "already-downloading")) {
+    const isPendingUpdate = (item: WorkshopUpdateCheckItem) =>
+      item.status === "requested" ||
+      item.status === "already-downloading" ||
+      item.status === "downloading";
+
+    while (updateItems.some(isPendingUpdate)) {
       await new Promise((resolve) => setTimeout(resolve, WORKSHOP_UPDATE_POLL_INTERVAL_MS));
       const elapsed = Date.now() - startedAt;
+      let didUpdateProgress = false;
 
       for (const item of updateItems) {
-        if (item.status !== "requested" && item.status !== "already-downloading") continue;
+        if (!isPendingUpdate(item)) continue;
 
         try {
           const workshopId = BigInt(item.workshopId);
@@ -498,10 +506,28 @@ if (process.argv[3] == "checkState") {
           const downloadInfo = client.workshop.downloadInfo(workshopId);
           const installTimestamp = client.workshop.installInfo(workshopId)?.timestamp;
           const expectedInstallTimestamp = expectedInstallTimestamps.get(item.workshopId);
+          const hasMeaningfulDownloadInfo =
+            downloadInfo != null &&
+            (downloadInfo.current > BigInt(0) || downloadInfo.total > BigInt(0));
+          if (item.finalState !== state) {
+            didUpdateProgress = true;
+            lastActivityAt = Date.now();
+          }
           item.finalState = state;
           if (downloadInfo) {
-            item.downloadedBytes = downloadInfo.current.toString();
-            item.totalBytes = downloadInfo.total.toString();
+            const downloadedBytes = downloadInfo.current.toString();
+            const totalBytes = downloadInfo.total.toString();
+            if (
+              hasMeaningfulDownloadInfo &&
+              (item.downloadedBytes !== downloadedBytes || item.totalBytes !== totalBytes)
+            ) {
+              didUpdateProgress = true;
+              lastActivityAt = Date.now();
+            }
+            if (hasMeaningfulDownloadInfo) {
+              item.downloadedBytes = downloadedBytes;
+              item.totalBytes = totalBytes;
+            }
           }
 
           if (
@@ -512,31 +538,49 @@ if (process.argv[3] == "checkState") {
           ) {
             item.status = "updated";
             item.installTimestampAfter = installTimestamp;
+            didUpdateProgress = true;
+            lastActivityAt = Date.now();
             continue;
           }
 
           const isDownloadActive =
             (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+          if (isDownloadActive && item.status !== "downloading") {
+            item.status = "downloading";
+            didUpdateProgress = true;
+            lastActivityAt = Date.now();
+          } else if (!isDownloadActive && item.status === "downloading") {
+            item.status = "requested";
+            didUpdateProgress = true;
+          }
           if (
             elapsed >= WORKSHOP_UPDATE_RETRY_AFTER_MS &&
-            !isDownloadActive &&
+            !hasMeaningfulDownloadInfo &&
             !retriedWorkshopIds.has(item.workshopId)
           ) {
             retriedWorkshopIds.add(item.workshopId);
             item.retryAccepted = client.workshop.download(workshopId, true);
+            didUpdateProgress = true;
+            if (item.retryAccepted) lastActivityAt = Date.now();
           }
         } catch (error) {
           item.status = "request-failed";
           item.error = error instanceof Error ? error.message : String(error);
+          didUpdateProgress = true;
         }
       }
 
-      if (elapsed >= WORKSHOP_UPDATE_TIMEOUT_MS) {
+      if (Date.now() - lastActivityAt >= WORKSHOP_UPDATE_INACTIVITY_TIMEOUT_MS) {
         for (const item of updateItems) {
-          if (item.status === "requested" || item.status === "already-downloading") {
+          if (isPendingUpdate(item)) {
             item.status = "timed-out";
+            didUpdateProgress = true;
           }
         }
+      }
+
+      if (didUpdateProgress) {
+        await sendUpdateCheckMessage({ type: "progress", checkedCount: ids.length, items: updateItems });
       }
     }
 

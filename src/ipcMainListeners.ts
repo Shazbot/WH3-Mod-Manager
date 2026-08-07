@@ -2695,6 +2695,7 @@ export const registerIpcMainListeners = (
             );
             return;
           }
+          if (message.type === "progress") return;
 
           receivedWorkshopUpdateResult = true;
           if (message.items.length === 0) {
@@ -7874,6 +7875,7 @@ export const registerIpcMainListeners = (
           log(`[Workshop repair] forcing download for ${message.items.length} mod(s)`);
           return;
         }
+        if (message.type === "progress") return;
 
         receivedFinalResult = true;
         const failedItems = message.items.filter((item) => item.status !== "updated");

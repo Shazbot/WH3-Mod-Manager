@@ -34,6 +34,46 @@ type OptionType = {
 const WORKSHOP_STATE_DOWNLOADING = 16;
 const WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
 
+const formatWorkshopBytes = (rawBytes: string) => {
+  const bytes = Number(rawBytes);
+  if (!Number.isFinite(bytes) || bytes < 0) return `${rawBytes} bytes`;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unitIndex;
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+};
+
+const formatWorkshopDownloadProgress = (downloadedBytes: string, totalBytes?: string) =>
+  totalBytes == null
+    ? formatWorkshopBytes(downloadedBytes)
+    : `${formatWorkshopBytes(downloadedBytes)} / ${formatWorkshopBytes(totalBytes)}`;
+
+const hasMeaningfulWorkshopDownloadProgress = (updateResult: WorkshopUpdateCheckItem) => {
+  try {
+    return BigInt(updateResult.totalBytes ?? "0") > BigInt(0);
+  } catch {
+    return false;
+  }
+};
+
+const formatWorkshopUpdateStatus = (updateResult: WorkshopUpdateCheckItem) => {
+  const hasProgress = hasMeaningfulWorkshopDownloadProgress(updateResult);
+  let status: string = updateResult.status;
+  if (status === "requested") status = "waiting for Steam";
+  if ((status === "downloading" || status === "already-downloading") && !hasProgress) {
+    status =
+      (updateResult.finalState & WORKSHOP_STATE_DOWNLOAD_PENDING) !== 0
+        ? "queued by Steam"
+        : "preparing download";
+  }
+  return (
+    status +
+    (hasProgress && updateResult.downloadedBytes != null
+      ? ` (${formatWorkshopDownloadProgress(updateResult.downloadedBytes, updateResult.totalBytes)})`
+      : "")
+  );
+};
+
 const Sidebar = memo(() => {
   const dispatch = useAppDispatch();
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
@@ -428,6 +468,7 @@ const Sidebar = memo(() => {
       if (
         updateResult?.status === "requested" ||
         updateResult?.status === "already-downloading" ||
+        updateResult?.status === "downloading" ||
         updateResult?.status === "resubscribing"
       ) {
         return false;
@@ -456,7 +497,12 @@ const Sidebar = memo(() => {
   );
   const isWorkshopRepairRunning = selectedWorkshopRepairIds.some((workshopId) => {
     const status = workshopUpdateCheckResults[workshopId]?.status;
-    return status === "requested" || status === "already-downloading" || status === "resubscribing";
+    return (
+      status === "requested" ||
+      status === "already-downloading" ||
+      status === "downloading" ||
+      status === "resubscribing"
+    );
   });
 
   const openWorkshopRepairModal = () => {
@@ -584,7 +630,8 @@ const Sidebar = memo(() => {
                     </span>
                     {updateResult && (
                       <span className="block text-sm text-gray-500 dark:text-gray-300">
-                        {(localized.workshopUpdateStatus || "Update status") + `: ${updateResult.status}`}
+                        {(localized.workshopUpdateStatus || "Update status") +
+                          `: ${formatWorkshopUpdateStatus(updateResult)}`}
                       </span>
                     )}
                   </span>
