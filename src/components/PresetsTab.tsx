@@ -75,6 +75,7 @@ const isSameOptionalNumber = (first: number | undefined, second: number | undefi
   (first == null && second == null) || first === second;
 
 const stripPackExtension = (name: string) => name.replace(/\.pack$/i, "");
+const RECENTLY_ADDED_HIGHLIGHT_MS = 2400;
 
 const PresetsTab = memo(() => {
   const dispatch = useAppDispatch();
@@ -106,10 +107,13 @@ const PresetsTab = memo(() => {
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
   const [placeMode, setPlaceMode] = useState<PlaceMode>(undefined);
   const [activePlaceholderIndex, setActivePlaceholderIndex] = useState(0);
+  const [recentlyAddedModNames, setRecentlyAddedModNames] = useState<Set<string>>(new Set());
 
   const [baselineEnabledNames, setBaselineEnabledNames] = useState<Set<string>>(new Set());
   const [baselineLoadOrderByName, setBaselineLoadOrderByName] = useState<Map<string, number>>(new Map());
   const didInitializeFromCurrentPresetRef = useRef(false);
+  const recentlyAddedTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const inPresetRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const installedMods = useMemo(() => {
     const mods = withoutDataAndContentDuplicates(currentPresetMods);
@@ -336,12 +340,25 @@ const PresetsTab = memo(() => {
     if (placeMode) return enabledDraftMods;
     let mods = enabledDraftMods;
     if (inPresetCategoryFilter) {
-      mods = mods.filter((mod) => mod.categories?.includes(inPresetCategoryFilter));
+      mods = mods.filter(
+        (mod) =>
+          recentlyAddedModNames.has(mod.name) || mod.categories?.includes(inPresetCategoryFilter),
+      );
     }
     if (!searchInPreset.trim()) return mods;
     const query = searchInPreset.trim().toLowerCase();
-    return mods.filter((mod) => `${mod.humanName} ${mod.name}`.toLowerCase().includes(query));
-  }, [enabledDraftMods, inPresetCategoryFilter, placeMode, searchInPreset]);
+    return mods.filter(
+      (mod) =>
+        recentlyAddedModNames.has(mod.name) ||
+        `${mod.humanName} ${mod.name}`.toLowerCase().includes(query),
+    );
+  }, [
+    enabledDraftMods,
+    inPresetCategoryFilter,
+    placeMode,
+    recentlyAddedModNames,
+    searchInPreset,
+  ]);
 
   const visibleNotInPresetMods = useMemo(() => {
     let mods = notInPresetInstalledMods;
@@ -497,14 +514,46 @@ const PresetsTab = memo(() => {
     [enabledDraftMods, placeMode],
   );
 
-  const addModNamesToPreset = useCallback((modNames: string[]) => {
-    if (modNames.length < 1) return;
-    setDraftEnabledNames((previousEnabledNames) => {
-      const nextEnabledNames = new Set(previousEnabledNames);
-      modNames.forEach((name) => nextEnabledNames.add(name));
-      return nextEnabledNames;
-    });
+  const highlightAddedModNames = useCallback((modNames: string[]) => {
+    const uniqueModNames = new Set(modNames);
+    if (uniqueModNames.size < 1) return;
+    setRecentlyAddedModNames(uniqueModNames);
+    if (recentlyAddedTimeoutRef.current) clearTimeout(recentlyAddedTimeoutRef.current);
+    recentlyAddedTimeoutRef.current = setTimeout(() => {
+      setRecentlyAddedModNames(new Set());
+      recentlyAddedTimeoutRef.current = undefined;
+    }, RECENTLY_ADDED_HIGHLIGHT_MS);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (recentlyAddedTimeoutRef.current) clearTimeout(recentlyAddedTimeoutRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const firstAddedVisibleMod = visibleEnabledDraftMods.find((mod) =>
+      recentlyAddedModNames.has(mod.name),
+    );
+    if (!firstAddedVisibleMod) return;
+    inPresetRowRefs.current
+      .get(firstAddedVisibleMod.name)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [recentlyAddedModNames, visibleEnabledDraftMods]);
+
+  const addModNamesToPreset = useCallback(
+    (modNames: string[]) => {
+      if (modNames.length < 1) return;
+      setDraftEnabledNames((previousEnabledNames) => {
+        const nextEnabledNames = new Set(previousEnabledNames);
+        modNames.forEach((name) => nextEnabledNames.add(name));
+        return nextEnabledNames;
+      });
+      highlightAddedModNames(modNames);
+    },
+    [highlightAddedModNames],
+  );
 
   const removeModNamesFromPreset = useCallback(
     (modNames: string[]) => {
@@ -570,8 +619,16 @@ const PresetsTab = memo(() => {
       setPlaceMode(undefined);
       setSelectedInPresetNames(new Set());
       setSelectedNotInPresetNames(new Set());
+      if (placeMode.kind === "insert") highlightAddedModNames([placeModName]);
     },
-    [draftEnabledNames, draftLoadOrderByName, enabledDraftMods, knownModsByName, placeMode],
+    [
+      draftEnabledNames,
+      draftLoadOrderByName,
+      enabledDraftMods,
+      highlightAddedModNames,
+      knownModsByName,
+      placeMode,
+    ],
   );
 
   useEffect(() => {
@@ -1001,6 +1058,7 @@ const PresetsTab = memo(() => {
             {visibleEnabledDraftMods.map((mod, index) => {
               const isAlwaysEnabled = !!isModAlwaysEnabled(mod, alwaysEnabledMods);
               const isSelected = selectedInPresetNames.has(mod.name);
+              const isRecentlyAdded = recentlyAddedModNames.has(mod.name);
               const modMissingDependencies = missingDependenciesByModName.get(mod.name) ?? [];
               const isMissing = !installedByName.has(mod.name);
               const visualOrder = enabledDraftMods.findIndex((iterMod) => iterMod.name === mod.name);
@@ -1022,9 +1080,18 @@ const PresetsTab = memo(() => {
                     ></div>
                   )}
                   <div
+                    ref={(element) => {
+                      if (element) inPresetRowRefs.current.set(mod.name, element);
+                      else inPresetRowRefs.current.delete(mod.name);
+                    }}
+                    data-preset-mod-name={mod.name}
                     className={
-                      "grid grid-cols-[2.2rem_3rem_2.2rem_1fr_auto] gap-2 px-2 py-1 border-b border-slate-800 items-center " +
-                      (isSelected ? "bg-blue-900/40" : "")
+                      "grid grid-cols-[2.2rem_3rem_2.2rem_1fr_auto] gap-2 px-2 py-1 border-b border-slate-800 items-center transition-colors duration-700 " +
+                      (isRecentlyAdded
+                        ? "bg-emerald-500/30 ring-1 ring-inset ring-emerald-400"
+                        : isSelected
+                          ? "bg-blue-900/40"
+                          : "")
                     }
                     onClick={() => onToggleInPresetSelection(mod.name)}
                     onDoubleClick={() => {
