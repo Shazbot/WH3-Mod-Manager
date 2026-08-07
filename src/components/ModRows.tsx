@@ -48,6 +48,7 @@ import { getModSourceId, getModSourceKind } from "../modSources";
 const defaultModThumbnailSrc = require("../assets/modThumbnail.png");
 
 const noHiddenModNames = new Set<string>();
+const REORDER_HIGHLIGHT_MS = 2400;
 
 const getVisibleMods = (mods: Mod[], hiddenModNames: Set<string>) => {
   const dataPackNames = new Set(mods.filter((mod) => mod.isInData).map((mod) => mod.name));
@@ -107,9 +108,11 @@ const ModRows = memo((props: ModRowsProps) => {
   const [dropdownReferenceElement, setDropdownReferenceElement] = useState<HTMLDivElement>();
   const [loadOrderModName, setLoadOrderModName] = useState<string>();
   const [activeLoadOrderPosition, setActiveLoadOrderPosition] = useState(0);
+  const [recentlyReorderedModNames, setRecentlyReorderedModNames] = useState<Set<string>>(new Set());
   const loadOrderScrollSnapshotRef = useRef<LoadOrderScrollSnapshot>();
   const skipInitialPlaceholderScrollRef = useRef(false);
   const pendingLoadOrderAnchorFramesRef = useRef<number[]>([]);
+  const reorderHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const isCurrentTabEnabledMods = currentTab == "enabledMods";
 
@@ -434,6 +437,12 @@ const ModRows = memo((props: ModRowsProps) => {
         : modsWithoutSelected[boundedPosition];
 
       if (relativeMod) {
+        setRecentlyReorderedModNames(new Set([loadOrderModName]));
+        if (reorderHighlightTimeoutRef.current) clearTimeout(reorderHighlightTimeoutRef.current);
+        reorderHighlightTimeoutRef.current = setTimeout(() => {
+          setRecentlyReorderedModNames(new Set());
+          reorderHighlightTimeoutRef.current = undefined;
+        }, REORDER_HIGHLIGHT_MS);
         dispatch(
           setModLoadOrderRelativeTo({
             modNameToChange: loadOrderModName,
@@ -446,6 +455,13 @@ const ModRows = memo((props: ModRowsProps) => {
       setLoadOrderModName(undefined);
     },
     [dispatch, loadOrderModName, unfilteredVisibleMods]
+  );
+
+  useEffect(
+    () => () => {
+      if (reorderHighlightTimeoutRef.current) clearTimeout(reorderHighlightTimeoutRef.current);
+    },
+    [],
   );
 
   useEffect(() => {
@@ -583,6 +599,7 @@ const ModRows = memo((props: ModRowsProps) => {
               activeLoadOrderPosition,
               isLoadOrderPlacementMode: isCurrentTabEnabledMods && !!loadOrderModName,
               isLoadOrderPlacementSource: row.mod.name === loadOrderModName,
+              isRecentlyReordered: recentlyReorderedModNames.has(row.mod.name),
               onModToggled,
               onModRightClick,
               onCustomizeModClicked,
@@ -843,6 +860,7 @@ const ModRows = memo((props: ModRowsProps) => {
                   activeLoadOrderPosition,
                   isLoadOrderPlacementMode: !!loadOrderModName,
                   isLoadOrderPlacementSource: mod.name === loadOrderModName,
+                  isRecentlyReordered: recentlyReorderedModNames.has(mod.name),
                   onModToggled,
                   onModRightClick,
                   onCustomizeModClicked,

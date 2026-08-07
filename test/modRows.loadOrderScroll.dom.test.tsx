@@ -125,9 +125,15 @@ describe("ModRows load-order scroll anchoring", () => {
     expect(otherLoadOrderButton).toHaveClass("hidden");
 
     await act(async () =>
-      fireEvent.click(document.getElementById("enabled-mod-placeholder-2") as HTMLButtonElement),
+      fireEvent.click(document.getElementById("enabled-mod-placeholder-3") as HTMLButtonElement),
     );
     await waitFor(() => expect(document.getElementById("enabled-mod-placeholder-0")).toBeNull());
+    expect(container.querySelector<HTMLElement>("[id='beta.pack']")).toHaveClass(
+      "recently-reordered-row",
+    );
+    expect(container.querySelector<HTMLElement>("[id='gamma.pack']")).not.toHaveClass(
+      "recently-reordered-row",
+    );
     expect(scrollElement.scrollTop).toBe(100);
     expect(otherLoadOrderButton).toHaveClass("hidden");
   });

@@ -45,6 +45,7 @@ type ModRowProps = {
   activeLoadOrderPosition: number;
   isLoadOrderPlacementMode: boolean;
   isLoadOrderPlacementSource: boolean;
+  isRecentlyReordered: boolean;
   style: CSSProperties;
   gridClass: string;
   registerChild: CellMeasurerChildProps["registerChild"];
@@ -88,6 +89,7 @@ const ModRow = memo(
     activeLoadOrderPosition,
     isLoadOrderPlacementMode,
     isLoadOrderPlacementSource,
+    isRecentlyReordered,
     sortingType,
     currentTab,
     onCustomizeModClicked,
@@ -128,7 +130,7 @@ const ModRow = memo(
           isLoadOrderPlacementMode ? "" : "row-hover-highlight"
         } ${gridClass} ${
           isLoadOrderPlacementSource ? "row-bg-color-manually" : ""
-        }`}
+        } ${isRecentlyReordered ? "recently-reordered-row" : ""}`}
         key={mod.name}
         onMouseEnter={(e) => onRowHoverStart(e)}
         onMouseLeave={(e) => onRowHoverEnd(e)}
