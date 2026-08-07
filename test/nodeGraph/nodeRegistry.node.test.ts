@@ -52,6 +52,19 @@ describe("nodeRegistry", () => {
     ]);
   });
 
+  it("creates save changes nodes with opening the output disabled", () => {
+    const node = createNodeFromDefinition("savechanges", {
+      nodeId: "node_save",
+      position: { x: 0, y: 0 },
+      label: "Save Changes",
+    });
+
+    expect(node.data).toMatchObject({
+      type: "savechanges",
+      openInWindows: false,
+    });
+  });
+
   it("keeps the styled fallback node path for unknown types", () => {
     const node = createFallbackNode("unknown-type", {
       nodeId: "node_3",

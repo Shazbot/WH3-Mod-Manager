@@ -2631,11 +2631,30 @@ async function executeMergeChangesNode(
   };
 }
 
+const openSavedFileForManualRun = async (
+  filePath: string,
+  openInWindows: boolean,
+  executionContext?: FlowExecutionContext,
+) => {
+  if (!openInWindows || executionContext) return;
+
+  try {
+    const shellOutput = await shell.openPath(filePath);
+    if (shellOutput) {
+      console.warn(`Failed to open saved file ${filePath}: ${shellOutput}`);
+    }
+  } catch (error) {
+    console.warn(`Failed to open saved file ${filePath}:`, error);
+  }
+};
+
 async function executeSaveTextNode(
   nodeId: string,
   textContent: string,
   packName: string,
   packedFileName: string,
+  openInWindows: boolean,
+  executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
   console.log(
     `SaveText Node ${nodeId}: Saving text file with packName="${packName}", packedFileName="${packedFileName}"`,
@@ -2674,6 +2693,7 @@ async function executeSaveTextNode(
 
     // Write the pack file
     await writePack([newFile], newPackPath);
+    await openSavedFileForManualRun(newPackPath, openInWindows, executionContext);
 
     console.log(`SaveText Node ${nodeId}: Successfully saved text file to ${newPackPath}`);
 
@@ -2713,18 +2733,21 @@ async function executeSaveChangesNode(
   let packedFileName = "";
   let additionalConfig = "";
   let flowExecutionId = "";
+  let openInWindows = false;
 
   const parsedConfig = getNodeConfig<{
     packName?: string;
     packedFileName?: string;
     additionalConfig?: string;
     flowExecutionId?: string;
+    openInWindows?: boolean;
   }>(config, textValue);
   if (parsedConfig) {
     packName = parsedConfig.packName || "";
     packedFileName = parsedConfig.packedFileName || "";
     additionalConfig = parsedConfig.additionalConfig || "";
     flowExecutionId = parsedConfig.flowExecutionId || "";
+    openInWindows = parsedConfig.openInWindows ?? false;
   } else {
     // If not JSON, treat textValue as additionalConfig
     additionalConfig = textValue.trim();
@@ -2735,7 +2758,14 @@ async function executeSaveChangesNode(
 
   // Handle Text input - save as text file
   if (inputData && inputData.type === "Text") {
-    return await executeSaveTextNode(nodeId, inputData.text || "", packName, packedFileName);
+    return await executeSaveTextNode(
+      nodeId,
+      inputData.text || "",
+      packName,
+      packedFileName,
+      openInWindows,
+      executionContext,
+    );
   }
 
   // Handle TableSelection input - save table data
@@ -2796,6 +2826,7 @@ async function executeSaveChangesNode(
     try {
       const filesToSave = await mergeOutputPackFiles(packFilePath, toSave, executionContext);
       await writePack(filesToSave, packFilePath);
+      await openSavedFileForManualRun(packFilePath, openInWindows, executionContext);
       return {
         success: true,
         data: {
@@ -2897,6 +2928,7 @@ async function executeSaveChangesNode(
   const filesToSave = await mergeOutputPackFiles(newPackPath, toSave, executionContext);
 
   await writePack(filesToSave, newPackPath);
+  await openSavedFileForManualRun(newPackPath, openInWindows, executionContext);
 
   try {
     // Parse save configuration (could be JSON, simple path, or custom format)

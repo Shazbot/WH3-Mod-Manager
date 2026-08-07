@@ -90,6 +90,7 @@ describe("graphSerialization", () => {
           type: "savechanges",
           packName: "{{pack_name}}",
           packedFileName: "output.tsv",
+          openInWindows: true,
           inputType: "TableSelection",
         },
       },
@@ -111,6 +112,7 @@ describe("graphSerialization", () => {
 
     expect(result.nodes[0].data.textValue).toBe("flow-value.pack");
     expect(result.nodes[1].data.packName).toBe("flow-value.pack");
+    expect(result.nodes[1].data.openInWindows).toBe(true);
     expect(result.connections).toEqual([]);
   });
 

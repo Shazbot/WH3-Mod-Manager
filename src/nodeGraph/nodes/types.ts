@@ -54,6 +54,7 @@ export interface SaveChangesNodeData extends NodeData {
   textValue: string;
   packName: string;
   packedFileName: string;
+  openInWindows: boolean;
   inputType: "ChangedColumnSelection" | "Text" | "TableSelection";
 }
 

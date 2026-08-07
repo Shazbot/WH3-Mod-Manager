@@ -1203,6 +1203,7 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         packedFileName: (node.data as any).packedFileName || "",
         additionalConfig: node.data.textValue || "",
         flowExecutionId: (node.data as any).flowExecutionId || "",
+        openInWindows: (node.data as any).openInWindows ?? false,
       };
     case "textsurround":
       return {
