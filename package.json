@@ -32,6 +32,9 @@
   "license": "MIT",
   "config": {
     "forge": {
+      "hooks": {
+        "postMake": "require:./scripts/normalize-zip-paths.cjs"
+      },
       "packagerConfig": {
         "icon": "./src/assets/modmanager.ico"
       },
@@ -172,7 +175,8 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",
     "webpack-bundle-analyzer": "^4.10.2",
-    "webpack-sources": "^3.2.3"
+    "webpack-sources": "^3.2.3",
+    "yauzl": "^2.10.0"
   },
   "resolutions": {
     "node-abi": "^4.26.0",
