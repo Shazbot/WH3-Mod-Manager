@@ -22,7 +22,12 @@ import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
 import { getDefaultTableVersions } from "./ipcMainListeners";
-import { FlowExecutionContext, buildReadPackCacheKey, flowExecutionDebugLog } from "./flowExecutionSupport";
+import {
+  FlowExecutionContext,
+  buildFlowOutputPackBaseName,
+  buildReadPackCacheKey,
+  flowExecutionDebugLog,
+} from "./flowExecutionSupport";
 import { getSchemaForGame } from "./schema";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
@@ -2900,16 +2905,7 @@ async function executeSaveChangesNode(
   if (packName) {
     packFileBaseName = packName;
   } else if (flowExecutionId) {
-    // flowExecutionId is in format like "2025-12-14_23-19-58"
-    // Convert to shorter format: "141225_231958"
-    const parts = flowExecutionId.split("_");
-    if (parts.length === 2) {
-      const datePart = parts[0].split("-").reverse().join("").slice(2); // "141225"
-      const timePart = parts[1].replace(/-/g, ""); // "231958"
-      packFileBaseName = `dbflow_${datePart}_${timePart}`;
-    } else {
-      packFileBaseName = `dbflow_${flowExecutionId.replace(/[-:]/g, "")}`;
-    }
+    packFileBaseName = buildFlowOutputPackBaseName(flowExecutionId);
   } else {
     const timestamp = format(new Date(), "ddMMyy_HHmmss");
     packFileBaseName = `dbflow_${timestamp}`;

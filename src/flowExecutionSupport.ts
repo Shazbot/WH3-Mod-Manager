@@ -15,6 +15,35 @@ export interface FlowExecutionContext {
   outputPackByPath: Map<string, NewPackedFile[]>;
   isDebug: boolean;
 }
+
+const getFileName = (filePath: string) => filePath.replace(/^.*[\\/]/, "");
+
+export const buildAutomaticFlowExecutionId = (packName: string, flowFileName: string): string => {
+  const packBaseName = getFileName(packName).replace(/\.pack$/i, "");
+  const flowBaseName = getFileName(flowFileName).replace(/\.[^.]+$/, "").replace(/\.pack$/i, "");
+
+  if (!packBaseName || packBaseName.toLowerCase() === flowBaseName.toLowerCase()) {
+    return flowBaseName || packBaseName;
+  }
+  if (!flowBaseName) {
+    return packBaseName;
+  }
+
+  return `${packBaseName}_${flowBaseName}`;
+};
+
+export const buildFlowOutputPackBaseName = (flowExecutionId: string): string => {
+  const timestampMatch = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(flowExecutionId);
+  if (timestampMatch) {
+    const [date, time] = flowExecutionId.split("_");
+    const datePart = date.split("-").reverse().join("").slice(2);
+    const timePart = time.replace(/-/g, "");
+    return `dbflow_${datePart}_${timePart}`;
+  }
+
+  return `dbflow_${flowExecutionId.replace(/[-:]/g, "")}`;
+};
+
 export const createFlowExecutionContext = (isDebug = false): FlowExecutionContext => ({
   readPackCache: new Map<string, Promise<Pack>>(),
   tableFilesByPackAndTable: new Map<string, PackedFile[]>(),

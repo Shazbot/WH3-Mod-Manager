@@ -45,6 +45,7 @@ import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
 import {
   PreparedFlow,
+  buildAutomaticFlowExecutionId,
   canReuseFlowSourcePack,
   createFlowExecutionContext,
   flowExecutionDebugLog,
@@ -1293,9 +1294,7 @@ const prepareFlow = (
 ): PreparedFlow => {
   const preparedNodes = deepClone(flowData.nodes);
   const preparedConnections = deepClone(flowData.connections);
-  const flowNameWithoutPath = flowFileName.replace(/^.*[\\/]/, "");
-  const flowNameWithoutExt = flowNameWithoutPath.replace(/\.[^.]+$/, "");
-  const flowExecutionId = `${packName}_${flowNameWithoutExt}`;
+  const flowExecutionId = buildAutomaticFlowExecutionId(packName, flowFileName);
   const currentGameSchema = DBNameToDBVersions[appData.currentGame];
   const nodeConfigs: Record<string, unknown> = {};
   const optionReplacements =
