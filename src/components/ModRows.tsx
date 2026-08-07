@@ -135,8 +135,11 @@ const ModRows = memo((props: ModRowsProps) => {
     () => getVisibleMods(sortByNameAndLoadOrder(enabledMods), noHiddenModNames),
     [enabledMods]
   );
-  const presetMods = currentTab == "enabledMods" ? enabledMods : currentPresetMods;
-  const enabledMergeMods = enabledMods.filter((mod) => mod.mergedModsData);
+  const presetMods = useMemo(
+    () => (currentTab == "enabledMods" ? enabledMods : currentPresetMods),
+    [currentPresetMods, currentTab, enabledMods]
+  );
+  const enabledMergeMods = useMemo(() => enabledMods.filter((mod) => mod.mergedModsData), [enabledMods]);
   const mergedModPaths = useMemo(() => {
     const paths = new Set<string>();
     enabledMergeMods.forEach((mergeMod) => {
@@ -147,28 +150,39 @@ const ModRows = memo((props: ModRowsProps) => {
     return paths;
   }, [enabledMergeMods]);
 
-  const modsToOrder = presetMods.filter(
-    (iterMod) => !hiddenModNames.has(iterMod.name) || alwaysEnabledModNames.has(iterMod.name)
+  const modsToOrder = useMemo(
+    () =>
+      presetMods.filter(
+        (iterMod) => !hiddenModNames.has(iterMod.name) || alwaysEnabledModNames.has(iterMod.name)
+      ),
+    [alwaysEnabledModNames, hiddenModNames, presetMods]
   );
-  const orderedMods = sortByNameAndLoadOrder(modsToOrder);
-  const loadOrderIndexByModName = new Map(orderedMods.map((mod, index) => [mod.name, index]));
+  const orderedMods = useMemo(() => sortByNameAndLoadOrder(modsToOrder), [modsToOrder]);
+  const loadOrderIndexByModName = useMemo(
+    () => new Map(orderedMods.map((mod, index) => [mod.name, index])),
+    [orderedMods]
+  );
 
-  let mods: Mod[] = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
+  const unfilteredMods = useMemo(() => {
+    const sortedMods = modRowSorting.getSortedMods(presetMods, orderedMods, sortingType, customizableMods);
+    if (!isDev) return sortedMods;
 
-  if (isDev) {
     // duplicates happen when we hot-reload in dev
     const seenModNames = new Set<string>();
-    mods = mods.filter((mod) => {
+    return sortedMods.filter((mod) => {
       if (seenModNames.has(mod.name)) return false;
       seenModNames.add(mod.name);
       return true;
     });
-  }
+  }, [customizableMods, isDev, orderedMods, presetMods, sortingType]);
 
-  const unfilteredMods = mods;
-  if (filter !== "" && !loadOrderModName) {
-    mods = getFilteredMods(mods, filter.toLowerCase(), isAuthorEnabled);
-  }
+  const mods = useMemo(
+    () =>
+      filter !== "" && !loadOrderModName
+        ? getFilteredMods(unfilteredMods, filter.toLowerCase(), isAuthorEnabled)
+        : unfilteredMods,
+    [filter, isAuthorEnabled, loadOrderModName, unfilteredMods]
+  );
 
   const onModToggled = useCallback((mod: Mod): void => {
     const modRowsScroll = document.getElementById("mod-rows-scroll");

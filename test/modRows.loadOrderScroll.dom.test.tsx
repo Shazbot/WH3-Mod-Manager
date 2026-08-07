@@ -3,11 +3,16 @@ import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { CellMeasurerCache } from "react-virtualized";
 
 import appReducer from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import ModRows from "../src/components/ModRows";
 import { SortingType } from "../src/utility/modRowSorting";
+
+vi.mock("../src/components/ModDropdown", () => ({
+  default: () => null,
+}));
 
 const createMod = (name: string, loadOrder: number): Mod => ({
   name,
@@ -136,5 +141,42 @@ describe("ModRows load-order scroll anchoring", () => {
     );
     expect(scrollElement.scrollTop).toBe(100);
     expect(otherLoadOrderButton).toHaveClass("hidden");
+  });
+
+  it("does not invalidate measured row heights when opening the context menu", async () => {
+    window.api = {
+      ...window.api,
+      getCustomizableMods: vi.fn(),
+    } as NonNullable<Window["api"]>;
+    const clearAllSpy = vi.spyOn(CellMeasurerCache.prototype, "clearAll");
+    const testStore = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          currentTab: "enabledMods" as MainWindowTab,
+          currentPreset: {
+            name: "",
+            mods: [createMod("long-name.pack", 0)],
+          },
+        },
+      },
+    });
+    const scrollRef = React.createRef<HTMLDivElement>();
+
+    const { getByText } = render(
+      <Provider store={testStore}>
+        <div ref={scrollRef} id="mod-rows-scroll">
+          <ModRows scrollElement={scrollRef} />
+        </div>
+      </Provider>,
+    );
+
+    await waitFor(() => expect(clearAllSpy).toHaveBeenCalled());
+    const callsBeforeContextMenu = clearAllSpy.mock.calls.length;
+
+    await act(async () => fireEvent.contextMenu(getByText("long-name")));
+    await waitFor(() => expect(document.getElementById("modDropdownOverlay")).not.toHaveClass("hidden"));
+    expect(clearAllSpy).toHaveBeenCalledTimes(callsBeforeContextMenu);
   });
 });
