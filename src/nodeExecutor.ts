@@ -86,6 +86,88 @@ const getRowsForPackedFile = (
   return rows;
 };
 
+const getMergeIdentityColumnNames = (
+  existingColumn: DBColumnSelectionTableValues,
+  currentColumn: DBColumnSelectionTableValues,
+): string[] => {
+  const tableFields = currentColumn.sourceTable.tableSchema?.fields ?? existingColumn.sourceTable.tableSchema?.fields ?? [];
+  const keyColumnNames = tableFields.filter((field) => field.is_key).map((field) => field.name);
+  if (keyColumnNames.length > 0) {
+    return keyColumnNames;
+  }
+
+  const changedColumnNames = new Set([...existingColumn.selectedColumns, ...currentColumn.selectedColumns]);
+  return tableFields.filter((field) => !changedColumnNames.has(field.name)).map((field) => field.name);
+};
+
+const getRowMergeIdentity = (row: AmendedSchemaField[], identityColumnNames: string[]): string =>
+  JSON.stringify(
+    identityColumnNames.map((columnName) => {
+      const cell = row.find((candidate) => candidate.name === columnName);
+      return [columnName, cell?.resolvedKeyValue ?? cell?.fields.map((field) => field.val) ?? null];
+    }),
+  );
+
+const mergeChangedColumnRows = (
+  existingColumn: DBColumnSelectionTableValues,
+  currentColumn: DBColumnSelectionTableValues,
+  executionContext?: FlowExecutionContext,
+) => {
+  if (
+    !currentColumn.sourceTable.schemaFields ||
+    !existingColumn.sourceTable.schemaFields ||
+    !currentColumn.sourceTable.tableSchema ||
+    !existingColumn.sourceTable.tableSchema
+  ) {
+    return;
+  }
+
+  const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
+  const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
+  const currentSelectedSet = new Set(currentColumn.selectedColumns);
+  const identityColumnNames = getMergeIdentityColumnNames(existingColumn, currentColumn);
+
+  if (identityColumnNames.length === 0) {
+    for (let rowIndex = 0; rowIndex < currentRows.length; rowIndex++) {
+      if (!existingRows[rowIndex]) {
+        existingRows.push(structuredClone(currentRows[rowIndex]));
+        continue;
+      }
+      for (const currentCell of currentRows[rowIndex]) {
+        if (!currentSelectedSet.has(currentCell.name)) continue;
+        const existingCellIndex = existingRows[rowIndex].findIndex((cell) => cell.name === currentCell.name);
+        if (existingCellIndex !== -1) {
+          existingRows[rowIndex][existingCellIndex] = structuredClone(currentCell);
+        }
+      }
+    }
+  } else {
+    const existingRowsByIdentity = new Map(
+      existingRows.map((row) => [getRowMergeIdentity(row, identityColumnNames), row]),
+    );
+    for (const currentRow of currentRows) {
+      const identity = getRowMergeIdentity(currentRow, identityColumnNames);
+      const existingRow = existingRowsByIdentity.get(identity);
+      if (!existingRow) {
+        const addedRow = structuredClone(currentRow);
+        existingRows.push(addedRow);
+        existingRowsByIdentity.set(identity, addedRow);
+        continue;
+      }
+
+      for (const currentCell of currentRow) {
+        if (!currentSelectedSet.has(currentCell.name)) continue;
+        const existingCellIndex = existingRow.findIndex((cell) => cell.name === currentCell.name);
+        if (existingCellIndex !== -1) {
+          existingRow[existingCellIndex] = structuredClone(currentCell);
+        }
+      }
+    }
+  }
+
+  existingColumn.sourceTable.schemaFields = existingRows.flat();
+};
+
 const getColumnIndexForPackedFile = (
   packedFile: Pick<PackedFile, "tableSchema">,
   columnName: string,
@@ -2227,37 +2309,7 @@ async function executeMathMaxNode(
         );
 
         if (existingColumn) {
-          // Merge the changes from currentColumn into existingColumn
-          if (
-            currentColumn.sourceTable.schemaFields &&
-            existingColumn.sourceTable.schemaFields &&
-            currentColumn.sourceTable.tableSchema &&
-            existingColumn.sourceTable.tableSchema
-          ) {
-            // Merge schemaFields row by row
-            const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
-            const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
-
-            // Use Set for O(1) lookup
-            const currentSelectedSet = new Set(currentColumn.selectedColumns);
-
-            // Update cells in existingRows with values from currentRows if they were changed
-            for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
-              for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
-                const currentCell = currentRows[rowIdx][cellIdx];
-                const existingCell = existingRows[rowIdx][cellIdx];
-
-                // If this column was selected in the current input, update the existing data
-                if (currentSelectedSet.has(currentCell.name)) {
-                  existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
-                  existingCell.fields[0].val = currentCell.fields[0].val;
-                }
-              }
-            }
-
-            // Flatten back to schemaFields
-            existingColumn.sourceTable.schemaFields = existingRows.flat();
-          }
+          mergeChangedColumnRows(existingColumn, currentColumn, executionContext);
 
           // Merge selectedColumns using Set for efficiency
           const existingColsSet = new Set(existingColumn.selectedColumns);
@@ -2403,37 +2455,7 @@ async function executeMathCeilNode(
         );
 
         if (existingColumn) {
-          // Merge the changes from currentColumn into existingColumn
-          if (
-            currentColumn.sourceTable.schemaFields &&
-            existingColumn.sourceTable.schemaFields &&
-            currentColumn.sourceTable.tableSchema &&
-            existingColumn.sourceTable.tableSchema
-          ) {
-            // Merge schemaFields row by row
-            const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
-            const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
-
-            // Use Set for O(1) lookup
-            const currentSelectedSet = new Set(currentColumn.selectedColumns);
-
-            // Update cells in existingRows with values from currentRows if they were changed
-            for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
-              for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
-                const currentCell = currentRows[rowIdx][cellIdx];
-                const existingCell = existingRows[rowIdx][cellIdx];
-
-                // If this column was selected in the current input, update the existing data
-                if (currentSelectedSet.has(currentCell.name)) {
-                  existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
-                  existingCell.fields[0].val = currentCell.fields[0].val;
-                }
-              }
-            }
-
-            // Flatten back to schemaFields
-            existingColumn.sourceTable.schemaFields = existingRows.flat();
-          }
+          mergeChangedColumnRows(existingColumn, currentColumn, executionContext);
 
           // Merge selectedColumns using Set for efficiency
           const existingColsSet = new Set(existingColumn.selectedColumns);
@@ -2564,38 +2586,7 @@ async function executeMergeChangesNode(
       );
 
       if (existingColumn) {
-        // Merge the changes from currentColumn into existingColumn
-        // Update the schemaFields to reflect the changes from the current input
-        if (
-          currentColumn.sourceTable.schemaFields &&
-          existingColumn.sourceTable.schemaFields &&
-          currentColumn.sourceTable.tableSchema &&
-          existingColumn.sourceTable.tableSchema
-        ) {
-          // Merge schemaFields row by row
-          const currentRows = getRowsForPackedFile(currentColumn.sourceTable, executionContext);
-          const existingRows = getRowsForPackedFile(existingColumn.sourceTable, executionContext);
-
-          // Use Set for O(1) lookup
-          const currentSelectedSet = new Set(currentColumn.selectedColumns);
-
-          // Update cells in existingRows with values from currentRows if they were changed
-          for (let rowIdx = 0; rowIdx < currentRows.length && rowIdx < existingRows.length; rowIdx++) {
-            for (let cellIdx = 0; cellIdx < currentRows[rowIdx].length; cellIdx++) {
-              const currentCell = currentRows[rowIdx][cellIdx];
-              const existingCell = existingRows[rowIdx][cellIdx];
-
-              // If this column was selected in the current input, update the existing data
-              if (currentSelectedSet.has(currentCell.name)) {
-                existingCell.resolvedKeyValue = currentCell.resolvedKeyValue;
-                existingCell.fields[0].val = currentCell.fields[0].val;
-              }
-            }
-          }
-
-          // Flatten back to schemaFields
-          existingColumn.sourceTable.schemaFields = existingRows.flat();
-        }
+        mergeChangedColumnRows(existingColumn, currentColumn, executionContext);
 
         // Merge selectedColumns using Set for efficiency
         const existingColsSet = new Set(existingColumn.selectedColumns);
