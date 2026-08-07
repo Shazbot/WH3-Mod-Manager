@@ -880,6 +880,12 @@ const appSlice = createSlice({
       const datas = action.payload;
 
       for (const data of datas) {
+        if (data.workshopInstallTimestamp != null || data.workshopState != null) {
+          state.workshopInstallStatuses[data.workshopId] = {
+            installedTimestamp: data.workshopInstallTimestamp,
+            state: data.workshopState,
+          };
+        }
         // Propagate Workshop metadata to whichever same-named source currently wins priority.
         const contentMod = state.allMods.find(
           (mod) => isWorkshopMod(mod) && mod.workshopId == data.workshopId,
@@ -938,6 +944,17 @@ const appSlice = createSlice({
         //   console.log("subbedTime:", mod.subbedTime, "->", data.subscriptionTime);
         //   mod.subbedTime = data.subscriptionTime;
         // }
+      }
+    },
+    setWorkshopUpdateCheckMessage: (state: AppState, action: PayloadAction<WorkshopUpdateCheckMessage>) => {
+      for (const item of action.payload.items) {
+        state.workshopUpdateCheckResults[item.workshopId] = item;
+        const installedTimestamp = item.installTimestampAfter ?? item.installTimestampBefore;
+        state.workshopInstallStatuses[item.workshopId] = {
+          installedTimestamp:
+            installedTimestamp ?? state.workshopInstallStatuses[item.workshopId]?.installedTimestamp,
+          state: item.finalState,
+        };
       }
     },
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData | PackHeaderData[]>) => {
@@ -1700,6 +1717,7 @@ export const {
   setMods,
   addToast,
   setModData,
+  setWorkshopUpdateCheckMessage,
   setFromConfig,
   enableAll,
   setImportedMods,

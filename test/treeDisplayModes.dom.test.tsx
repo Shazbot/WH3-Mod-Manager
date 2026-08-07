@@ -68,9 +68,10 @@ const localizedStrings = {
   nodeEditorTab: "Node Editor",
   dbViewer: "DB Viewer",
   faqAbbreviated: "FAQ",
+  workshopModsMayBeOutdated: "Workshop mods may be outdated",
 };
 
-const createMod = (): Mod => ({
+const createMod = (overrides: Partial<Mod> = {}): Mod => ({
   humanName: "mod",
   name: "mod.pack",
   path: "/mods/mod.pack",
@@ -94,6 +95,7 @@ const createMod = (): Mod => ({
   categories: [],
   tags: [],
   isInModding: false,
+  ...overrides,
 });
 
 const renderWithState = (ui: React.ReactNode, stateOverrides: Partial<AppState> = {}) => {
@@ -202,5 +204,43 @@ describe("tree display DOM behavior", () => {
     expect(screen.getByRole("button", { name: "Tech Trees" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Trees" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Skill Trees" })).not.toBeInTheDocument();
+  });
+
+  it("warns when an enabled Workshop mod has an older installed timestamp", () => {
+    const mod = createMod({ lastChanged: 200_000 });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [mod] },
+      allMods: [mod],
+      workshopInstallStatuses: {
+        "1": { installedTimestamp: 100, state: 5 },
+      },
+    });
+
+    expect(screen.getByText("Workshop mods may be outdated")).toBeInTheDocument();
+  });
+
+  it("suppresses the outdated warning while Steam is downloading the update", () => {
+    const mod = createMod({ lastChanged: 200_000 });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [mod] },
+      allMods: [mod],
+      workshopInstallStatuses: {
+        "1": { installedTimestamp: 100, state: 21 },
+      },
+      workshopUpdateCheckResults: {
+        "1": {
+          workshopId: "1",
+          initialState: 13,
+          finalState: 21,
+          status: "already-downloading",
+          requestAccepted: true,
+          installTimestampBefore: 100,
+        },
+      },
+    });
+
+    expect(screen.queryByText("Workshop mods may be outdated")).not.toBeInTheDocument();
   });
 });

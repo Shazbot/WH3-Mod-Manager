@@ -30,6 +30,9 @@ type OptionType = {
   label: string;
 };
 
+const WORKSHOP_STATE_DOWNLOADING = 16;
+const WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
+
 const Sidebar = memo(() => {
   const dispatch = useAppDispatch();
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
@@ -70,6 +73,8 @@ const Sidebar = memo(() => {
 
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const allMods = useAppSelector((state) => state.app.allMods);
+  const workshopInstallStatuses = useAppSelector((state) => state.app.workshopInstallStatuses);
+  const workshopUpdateCheckResults = useAppSelector((state) => state.app.workshopUpdateCheckResults);
   const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
   const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
@@ -402,6 +407,37 @@ const Sidebar = memo(() => {
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
   );
 
+  const possiblyOutdatedWorkshopMods = enabledMods
+    .filter((mod) => isWorkshopMod(mod) && mod.lastChanged != null)
+    .map((mod) => {
+      const installStatus = workshopInstallStatuses[mod.workshopId];
+      const updateResult = workshopUpdateCheckResults[mod.workshopId];
+      const installedTimestamp =
+        updateResult?.installTimestampAfter ??
+        updateResult?.installTimestampBefore ??
+        installStatus?.installedTimestamp;
+      const workshopState = updateResult?.finalState ?? installStatus?.state;
+      return { mod, installedTimestamp, workshopState, updateResult };
+    })
+    .filter(({ mod, installedTimestamp, workshopState, updateResult }) => {
+      if (installedTimestamp == null || mod.lastChanged == null) return false;
+      if (updateResult?.status === "requested" || updateResult?.status === "already-downloading") return false;
+      if (
+        updateResult?.status === "updated" &&
+        (updateResult.installTimestampAfter == null ||
+          mod.lastChanged <= updateResult.installTimestampAfter * 1000)
+      ) {
+        return false;
+      }
+      if (
+        workshopState != null &&
+        (workshopState & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0
+      ) {
+        return false;
+      }
+      return mod.lastChanged > installedTimestamp * 1000;
+    });
+
   const isDependencyEnabledByPackName = useCallback(
     (reqId: string): boolean => {
       const modInAllById = allMods.find((mod) => mod.workshopId == reqId);
@@ -569,6 +605,48 @@ const Sidebar = memo(() => {
         </div>
 
         <div className="absolute w-full bottom-0 z-10">
+          {possiblyOutdatedWorkshopMods.length > 0 && (
+            <div className="text-center text-amber-500 font-semibold mb-4">
+              <div className="make-tooltip-w-full">
+                <Tooltip
+                  placement="left"
+                  content={
+                    <>
+                      <p className="cursor-default">
+                        {localized.workshopModsMayBeOutdatedTooltip ||
+                          "The Workshop content is newer than Steam's locally installed version."}
+                      </p>
+                      {possiblyOutdatedWorkshopMods.map(({ mod, installedTimestamp, updateResult }) => (
+                        <div className="mt-2" key={mod.workshopId}>
+                          <div className="font-semibold">{mod.humanName || mod.name}</div>
+                          <div>
+                            {(localized.workshopUpdated || "Workshop updated") +
+                              `: ${new Date(mod.lastChanged as number).toLocaleString()}`}
+                          </div>
+                          <div>
+                            {(localized.installedVersion || "Installed version") +
+                              `: ${new Date((installedTimestamp as number) * 1000).toLocaleString()}`}
+                          </div>
+                          {(updateResult?.status === "request-failed" ||
+                            updateResult?.status === "timed-out") && (
+                            <div className="text-amber-400">
+                              {(localized.workshopUpdateStatus || "Update status") +
+                                `: ${updateResult.status}`}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  }
+                >
+                  <span className="cursor-default">
+                    {localized.workshopModsMayBeOutdated || "Workshop mods may be outdated"}
+                  </span>
+                </Tooltip>
+              </div>
+            </div>
+          )}
+
           {missingModDependencies.length > 0 && (
             <div className="text-center text-red-700 font-semibold mb-4">
               <div

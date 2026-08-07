@@ -31,6 +31,8 @@ const initialState = {
   moddersPrefix: "",
   isCompatCheckingVanillaPacks: false,
   allMods: [],
+  workshopInstallStatuses: {},
+  workshopUpdateCheckResults: {},
   packsData: {},
   unsavedPacksData: {},
   packCollisions: {

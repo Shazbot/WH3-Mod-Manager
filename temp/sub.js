@@ -49,6 +49,13 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 Object.defineProperty(exports, "__esModule", { value: true });
 var steamworks = require("./../steamworks");
 var fs = require("fs");
+var WORKSHOP_STATE_INSTALLED = 4;
+var WORKSHOP_STATE_NEEDS_UPDATE = 8;
+var WORKSHOP_STATE_DOWNLOADING = 16;
+var WORKSHOP_STATE_DOWNLOAD_PENDING = 32;
+var WORKSHOP_UPDATE_POLL_INTERVAL_MS = 1000;
+var WORKSHOP_UPDATE_RETRY_AFTER_MS = 30000;
+var WORKSHOP_UPDATE_TIMEOUT_MS = 5 * 60000;
 var appendSublog = function (message) {
     fs.appendFileSync("sublog.txt", "".concat(message, "\n"));
 };
@@ -61,7 +68,7 @@ var logSteamError = function (operation, error, ids) {
 };
 var parseItemIds = function (rawIds) {
     return (rawIds !== null && rawIds !== void 0 ? rawIds : "")
-        .split(",")
+        .split(/[;,]/)
         .map(function (id) { return id.trim(); })
         .filter(function (id) { return id !== "" && /^\d+$/.test(id); })
         .map(function (id) { return BigInt(id); });
@@ -342,28 +349,144 @@ if (process.argv[3] == "getModsData") {
 }
 if (process.argv[3] == "checkState") {
     console.log("checkState");
-    var ids = process.argv[4].split(";"); //"2856936614";
+    var ids_3 = parseItemIds(process.argv[4]);
     var client_4 = steamworks.init(Number(process.argv[2]));
-    var idsThatNeedUpdates = ids
-        .map(function (id) { return [id, client_4.workshop.state(BigInt(id))]; })
-        .filter(function (num) { return num[1] & 8; })
-        .map(function (num) { return num[0]; });
-    idsThatNeedUpdates.forEach(function (id) { return __awaiter(void 0, void 0, void 0, function () {
+    var sendUpdateCheckMessage_1 = function (message) {
+        return new Promise(function (resolve) {
+            if (!process.send) {
+                resolve();
+                return;
+            }
+            process.send(message, function (error) {
+                if (error)
+                    appendSublog("ERROR checkState.send: ".concat(error.message));
+                resolve();
+            });
+        });
+    };
+    void (function () { return __awaiter(void 0, void 0, void 0, function () {
+        var updateItems, retriedWorkshopIds, _i, ids_4, workshopId, initialState, isAlreadyDownloading, requestAccepted, startedAt, elapsed, _a, updateItems_1, item, workshopId, state, downloadInfo, isDownloadActive, _b, updateItems_2, item;
+        var _c, _d;
+        return __generator(this, function (_e) {
+            switch (_e.label) {
+                case 0:
+                    updateItems = [];
+                    retriedWorkshopIds = new Set();
+                    for (_i = 0, ids_4 = ids_3; _i < ids_4.length; _i++) {
+                        workshopId = ids_4[_i];
+                        try {
+                            initialState = client_4.workshop.state(workshopId);
+                            if ((initialState & WORKSHOP_STATE_NEEDS_UPDATE) === 0)
+                                continue;
+                            isAlreadyDownloading = (initialState & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+                            requestAccepted = isAlreadyDownloading || client_4.workshop.download(workshopId, true);
+                            updateItems.push({
+                                workshopId: workshopId.toString(),
+                                initialState: initialState,
+                                finalState: initialState,
+                                status: isAlreadyDownloading
+                                    ? "already-downloading"
+                                    : requestAccepted
+                                        ? "requested"
+                                        : "request-failed",
+                                requestAccepted: requestAccepted,
+                                installTimestampBefore: (_c = client_4.workshop.installInfo(workshopId)) === null || _c === void 0 ? void 0 : _c.timestamp,
+                            });
+                        }
+                        catch (error) {
+                            updateItems.push({
+                                workshopId: workshopId.toString(),
+                                initialState: 0,
+                                finalState: 0,
+                                status: "request-failed",
+                                requestAccepted: false,
+                                error: error instanceof Error ? error.message : String(error),
+                            });
+                        }
+                    }
+                    return [4 /*yield*/, sendUpdateCheckMessage_1({ type: "started", checkedCount: ids_3.length, items: updateItems })];
+                case 1:
+                    _e.sent();
+                    startedAt = Date.now();
+                    _e.label = 2;
+                case 2:
+                    if (!updateItems.some(function (item) { return item.status === "requested" || item.status === "already-downloading"; })) return [3 /*break*/, 4];
+                    return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, WORKSHOP_UPDATE_POLL_INTERVAL_MS); })];
+                case 3:
+                    _e.sent();
+                    elapsed = Date.now() - startedAt;
+                    for (_a = 0, updateItems_1 = updateItems; _a < updateItems_1.length; _a++) {
+                        item = updateItems_1[_a];
+                        if (item.status !== "requested" && item.status !== "already-downloading")
+                            continue;
+                        try {
+                            workshopId = BigInt(item.workshopId);
+                            state = client_4.workshop.state(workshopId);
+                            downloadInfo = client_4.workshop.downloadInfo(workshopId);
+                            item.finalState = state;
+                            if (downloadInfo) {
+                                item.downloadedBytes = downloadInfo.current.toString();
+                                item.totalBytes = downloadInfo.total.toString();
+                            }
+                            if ((state & WORKSHOP_STATE_NEEDS_UPDATE) === 0 &&
+                                (state & WORKSHOP_STATE_INSTALLED) !== 0) {
+                                item.status = "updated";
+                                item.installTimestampAfter = (_d = client_4.workshop.installInfo(workshopId)) === null || _d === void 0 ? void 0 : _d.timestamp;
+                                continue;
+                            }
+                            isDownloadActive = (state & (WORKSHOP_STATE_DOWNLOADING | WORKSHOP_STATE_DOWNLOAD_PENDING)) !== 0;
+                            if (elapsed >= WORKSHOP_UPDATE_RETRY_AFTER_MS &&
+                                !isDownloadActive &&
+                                !retriedWorkshopIds.has(item.workshopId)) {
+                                retriedWorkshopIds.add(item.workshopId);
+                                item.retryAccepted = client_4.workshop.download(workshopId, true);
+                            }
+                        }
+                        catch (error) {
+                            item.status = "request-failed";
+                            item.error = error instanceof Error ? error.message : String(error);
+                        }
+                    }
+                    if (elapsed >= WORKSHOP_UPDATE_TIMEOUT_MS) {
+                        for (_b = 0, updateItems_2 = updateItems; _b < updateItems_2.length; _b++) {
+                            item = updateItems_2[_b];
+                            if (item.status === "requested" || item.status === "already-downloading") {
+                                item.status = "timed-out";
+                            }
+                        }
+                    }
+                    return [3 /*break*/, 2];
+                case 4: return [4 /*yield*/, sendUpdateCheckMessage_1({ type: "finished", checkedCount: ids_3.length, items: updateItems })];
+                case 5:
+                    _e.sent();
+                    process.exit(0);
+                    return [2 /*return*/];
+            }
+        });
+    }); })().catch(function (error) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
             switch (_a.label) {
-                case 0:
-                    client_4.workshop.download(BigInt(id), false);
-                    return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, 100); })];
+                case 0: return [4 /*yield*/, sendUpdateCheckMessage_1({
+                        type: "finished",
+                        checkedCount: ids_3.length,
+                        items: [
+                            {
+                                workshopId: "unknown",
+                                initialState: 0,
+                                finalState: 0,
+                                status: "request-failed",
+                                requestAccepted: false,
+                                error: error instanceof Error ? error.message : String(error),
+                            },
+                        ],
+                    })];
                 case 1:
                     _a.sent();
+                    process.exit(1);
                     return [2 /*return*/];
             }
         });
     }); });
-    var timeoutValue = (idsThatNeedUpdates.length > 0 && 200) || 0;
-    setTimeout(function () {
-        process.exit();
-    }, timeoutValue);
 }
 if (process.argv[3] == "getItems") {
     console.log("getItems");

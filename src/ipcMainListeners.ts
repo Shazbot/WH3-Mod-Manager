@@ -2688,6 +2688,7 @@ export const registerIpcMainListeners = (
         );
         let receivedWorkshopUpdateResult = false;
         workshopUpdateChild.on("message", (message: WorkshopUpdateCheckMessage) => {
+          mainWindow.webContents.send("workshopUpdateCheck", message);
           if (message.type === "started") {
             log(
               `[Workshop update check] checked=${message.checkedCount} needsUpdate=${message.items.length}`,

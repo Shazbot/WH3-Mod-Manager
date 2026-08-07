@@ -70,6 +70,13 @@ declare global {
     isDeleted: boolean;
     subscriptionTime: number;
     tags: string[];
+    workshopInstallTimestamp?: number;
+    workshopState?: number;
+  }
+
+  interface WorkshopInstallStatus {
+    installedTimestamp?: number;
+    state?: number;
   }
 
   interface PackHeaderData {
@@ -147,6 +154,8 @@ declare global {
     isFeaturesForModdersEnabled: boolean;
     moddersPrefix: string;
     allMods: Mod[];
+    workshopInstallStatuses: Record<string, WorkshopInstallStatus>;
+    workshopUpdateCheckResults: Record<string, WorkshopUpdateCheckItem>;
     packsData: Record<string, PackViewData>;
     unsavedPacksData: Record<string, PackedFile[]>;
     packCollisions: PackCollisions;
