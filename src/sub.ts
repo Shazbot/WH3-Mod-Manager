@@ -50,6 +50,16 @@ interface WorkshopItemStringInsteadOfBigInt {
   children?: string[];
 }
 
+interface WorkshopInstallInfoDiagnostic {
+  workshopId: string;
+  remoteTimestamp: number;
+  installedTimestamp?: number;
+  state?: number;
+  installFolder?: string;
+  sizeOnDisk?: string;
+  error?: string;
+}
+
 const appendSublog = (message: string) => {
   fs.appendFileSync("sublog.txt", `${message}\n`);
 };
@@ -319,10 +329,31 @@ if (process.argv[3] == "getModsData") {
       );
 
       getAuthors(client, dedupedAuthorIds, (authorsMap) => {
+        const installInfoDiagnostics = data.map((item): WorkshopInstallInfoDiagnostic => {
+          try {
+            const workshopId = BigInt(item.publishedFileId);
+            const installInfo = client.workshop.installInfo(workshopId);
+            return {
+              workshopId: item.publishedFileId,
+              remoteTimestamp: item.timeUpdated,
+              installedTimestamp: installInfo?.timestamp,
+              state: client.workshop.state(workshopId),
+              installFolder: installInfo?.folder,
+              sizeOnDisk: installInfo?.sizeOnDisk.toString(),
+            };
+          } catch (error) {
+            return {
+              workshopId: item.publishedFileId,
+              remoteTimestamp: item.timeUpdated,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        });
         const modsData = {
           mods: data,
           dependencies: Object.fromEntries(dependenciesMap),
           authors: Object.fromEntries(authorsMap),
+          installInfoDiagnostics,
         };
         if (process.send) process.send(modsData);
         setTimeout(() => {
