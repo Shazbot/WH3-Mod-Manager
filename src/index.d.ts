@@ -992,6 +992,17 @@ declare global {
     dependencies: Record<string, string[]>;
     authors: Record<string, string>;
     mods: WorkshopItemStringInsteadOfBigInt[];
+    installInfoDiagnostics?: WorkshopInstallInfoDiagnostic[];
+  }
+
+  export interface WorkshopInstallInfoDiagnostic {
+    workshopId: string;
+    remoteTimestamp: number;
+    installedTimestamp?: number;
+    state?: number;
+    installFolder?: string;
+    sizeOnDisk?: string;
+    error?: string;
   }
 
   interface TreeNode<T> {

@@ -304,10 +304,32 @@ if (process.argv[3] == "getModsData") {
                 return BigInt(id);
             });
             getAuthors(client_3, dedupedAuthorIds, function (authorsMap) {
+                var installInfoDiagnostics = data.map(function (item) {
+                    try {
+                        var workshopId = BigInt(item.publishedFileId);
+                        var installInfo = client_3.workshop.installInfo(workshopId);
+                        return {
+                            workshopId: item.publishedFileId,
+                            remoteTimestamp: item.timeUpdated,
+                            installedTimestamp: installInfo === null || installInfo === void 0 ? void 0 : installInfo.timestamp,
+                            state: client_3.workshop.state(workshopId),
+                            installFolder: installInfo === null || installInfo === void 0 ? void 0 : installInfo.folder,
+                            sizeOnDisk: installInfo === null || installInfo === void 0 ? void 0 : installInfo.sizeOnDisk.toString(),
+                        };
+                    }
+                    catch (error) {
+                        return {
+                            workshopId: item.publishedFileId,
+                            remoteTimestamp: item.timeUpdated,
+                            error: error instanceof Error ? error.message : String(error),
+                        };
+                    }
+                });
                 var modsData = {
                     mods: data,
                     dependencies: Object.fromEntries(dependenciesMap),
                     authors: Object.fromEntries(authorsMap),
+                    installInfoDiagnostics: installInfoDiagnostics,
                 };
                 if (process.send)
                     process.send(modsData);
