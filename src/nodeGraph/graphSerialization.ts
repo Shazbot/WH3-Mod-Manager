@@ -1,6 +1,7 @@
 import { Edge, Node } from "@xyflow/react";
 
 import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph } from "./types";
+import { substituteDeepCloneOptionValues } from "./deepCloneOptions";
 
 interface SerializeGraphInput {
   nodes: Node[];
@@ -203,6 +204,15 @@ export const prepareGraphForExecution = ({
             modified = true;
           }
         }
+      }
+
+      if (
+        node.type === "deepclone" &&
+        substituteDeepCloneOptionValues(nodeData, (value) =>
+          replaceFlowOptionPlaceholders(value, flowOptions),
+        )
+      ) {
+        modified = true;
       }
 
       if (Array.isArray(nodeData.transformations)) {

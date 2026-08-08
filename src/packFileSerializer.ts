@@ -29,6 +29,7 @@ import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
 import { getDBName } from "./utility/packFileHelpers";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
+import { substituteDeepCloneOptionValues } from "./nodeGraph/deepCloneOptions";
 import getPackTableData, {
   isSchemaFieldNumber,
   isSchemaFieldNumberInteger,
@@ -1337,6 +1338,16 @@ const prepareFlow = (
           (node.data as any)[fieldName] = modifiedValue;
         }
       }
+    }
+    if (optionReplacements.length > 0 && node.type === "deepclone") {
+      substituteDeepCloneOptionValues(node.data as unknown as Record<string, unknown>, (value) => {
+        let modifiedValue = value;
+        for (const optionReplacement of optionReplacements) {
+          if (!modifiedValue.includes(optionReplacement.placeholder)) continue;
+          modifiedValue = modifiedValue.replace(optionReplacement.matcher, optionReplacement.replacement);
+        }
+        return modifiedValue;
+      });
     }
     if (node.data.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {

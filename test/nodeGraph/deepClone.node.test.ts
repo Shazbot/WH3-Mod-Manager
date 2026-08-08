@@ -7,7 +7,13 @@ import {
   expandVariants,
 } from "../../src/flowDeepClone";
 import { chunkSchemaIntoRows } from "../../src/packFileSerializer";
-import type { AmendedSchemaField, DBField, DBVersion, PackedFile } from "../../src/packFileTypes";
+import type {
+  AmendedSchemaField,
+  DBField,
+  DBVersion,
+  PackedFile,
+  SCHEMA_FIELD_TYPE,
+} from "../../src/packFileTypes";
 import type { DeepCloneTreeNode } from "../../src/nodeGraph/nodes/types";
 
 vi.mock("@mongodb-js/zstd", () => ({
@@ -19,11 +25,11 @@ vi.mock("electron-is-dev", () => ({
 
 const createField = (
   name: string,
-  options: { isKey?: boolean; reference?: [string, string] } = {},
+  options: { isKey?: boolean; reference?: [string, string]; fieldType?: SCHEMA_FIELD_TYPE } = {},
 ): DBField =>
   ({
     name,
-    field_type: "StringU8",
+    field_type: options.fieldType ?? "StringU8",
     is_key: options.isKey ?? false,
     default_value: "",
     is_filename: false,
@@ -41,7 +47,7 @@ const schemas: Record<string, DBVersion> = {
       createField("unit", { isKey: true }),
       createField("land_unit", { reference: ["land_units_tables", "key"] }),
       createField("caste", { reference: ["unit_castes_tables", "caste"] }),
-      createField("cost"),
+      createField("cost", { fieldType: "I32" }),
     ],
     localised_fields: [createField("onscreen_name")],
     localised_key_order: [0],
@@ -122,7 +128,7 @@ const reverseReferencesByTable: Record<string, Record<string, string[][]>> = (()
 const createRow = (tableName: string, values: string[]): AmendedSchemaField[] =>
   schemas[tableName].fields.map((field, index) => ({
     name: field.name,
-    type: "StringU8" as const,
+    type: field.field_type,
     fields: [{ type: "String" as const, val: values[index] ?? "" }],
     resolvedKeyValue: values[index] ?? "",
     isKey: field.is_key,
@@ -638,6 +644,98 @@ describe("Deep clone engine", () => {
       "my_new_unit_unshielded",
       "my_new_unit_unshielded",
     ]);
+  });
+
+  it("evaluates an override formula against the cell's original value", async () => {
+    const result = await runClone(
+      createPlan({
+        columnOverrides: [{ table: "main_units_tables", column: "cost", value: "x*2" }],
+      }),
+    );
+
+    // cost is 500 on the source row.
+    expect(cellValue(getTable(result, "main_units_tables")!.rows[0], "cost")).toBe("1000");
+  });
+
+  it("rounds a formula result on an integer column", async () => {
+    const result = await runClone(
+      createPlan({
+        columnOverrides: [{ table: "main_units_tables", column: "cost", value: "x*1.5+1" }],
+      }),
+    );
+
+    expect(cellValue(getTable(result, "main_units_tables")!.rows[0], "cost")).toBe("751");
+  });
+
+  it("takes a plain number literally and leaves string columns alone", async () => {
+    const result = await runClone(
+      createPlan({
+        columnOverrides: [
+          { table: "main_units_tables", column: "cost", value: "900" },
+          // A string column must never be treated as a formula, even though it contains an x.
+          { table: "main_units_tables", column: "caste", value: "xbow_infantry" },
+        ],
+      }),
+    );
+
+    const mainRow = getTable(result, "main_units_tables")!.rows[0];
+    expect(cellValue(mainRow, "cost")).toBe("900");
+    expect(cellValue(mainRow, "caste")).toBe("xbow_infantry");
+  });
+
+  it("combines a substituted flow option with the original value", async () => {
+    // Flow option placeholders are replaced before execution, so the engine sees the resolved value.
+    const result = await runClone(
+      createPlan({
+        columnOverrides: [{ table: "main_units_tables", column: "cost", value: "1.5*x" }],
+      }),
+    );
+
+    expect(cellValue(getTable(result, "main_units_tables")!.rows[0], "cost")).toBe("750");
+  });
+
+  it("keeps the text and warns when a flow option placeholder was never resolved", async () => {
+    const result = await runClone(
+      createPlan({
+        columnOverrides: [{ table: "main_units_tables", column: "cost", value: "{{missingOption}}*x" }],
+      }),
+    );
+
+    expect(result.warnings.some((warning) => warning.includes("unresolved flow option"))).toBe(true);
+  });
+
+  it("applies formulas from a variant axis override too", async () => {
+    const result = await runClone(
+      createPlan({
+        variantAxes: [
+          {
+            id: "tier",
+            name: "tier",
+            values: [
+              {
+                id: "t1",
+                suffix: "_t1",
+                overrides: [{ table: "main_units_tables", column: "cost", value: "x" }],
+              },
+              {
+                id: "t2",
+                suffix: "_t2",
+                overrides: [{ table: "main_units_tables", column: "cost", value: "x*2" }],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const costByKey = new Map(
+      getTable(result, "main_units_tables")!.rows.map((row) => [
+        cellValue(row, "unit"),
+        cellValue(row, "cost"),
+      ]),
+    );
+    expect(costByKey.get("my_new_unit_t1")).toBe("500");
+    expect(costByKey.get("my_new_unit_t2")).toBe("1000");
   });
 
   it("refuses to run when the variant product exceeds the safety limit", async () => {

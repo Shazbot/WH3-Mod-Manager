@@ -23,6 +23,7 @@ import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
 import { getDefaultTableVersions, getLocsTrie } from "./ipcMainListeners";
 import Trie from "./utility/trie";
+import { evaluateFormula } from "./utility/formulaEvaluation";
 import {
   FlowExecutionContext,
   buildFlowOutputPackBaseName,
@@ -1994,37 +1995,6 @@ async function executeReverseReferenceLookupNode(
   };
 }
 
-// Formula evaluation function
-function evaluateFormula(formula: string, x: number): number {
-  // console.log(`Evaluating formula: "${formula}" with x=${x}`);
-
-  // Sanitize the formula - only allow safe mathematical operations
-  const sanitized = formula
-    .replace(/\s+/g, "") // Remove whitespace
-    .replace(/\^/g, "**") // Convert ^ to ** for exponentiation
-    .replace(/[^x0-9+\-*/().\s]/g, ""); // Remove any unsafe characters
-
-  // Replace 'x' with the actual value
-  const expression = sanitized.replace(/x/g, x.toString());
-
-  // Validate that the expression only contains safe characters
-  if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
-    throw new Error("Invalid formula: contains unsafe characters");
-  }
-
-  try {
-    // Use Function constructor for safe evaluation (better than eval)
-    const result = new Function("return " + expression)();
-
-    if (typeof result !== "number" || isNaN(result) || !isFinite(result)) {
-      throw new Error("Formula evaluation resulted in invalid number");
-    }
-
-    return result;
-  } catch (error) {
-    throw new Error(`Formula evaluation failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-  }
-}
 
 async function executeColumnSelectionDropdownNode(
   nodeId: string,

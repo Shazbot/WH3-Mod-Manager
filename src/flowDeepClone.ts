@@ -1,11 +1,25 @@
 import { typeToBuffer } from "./packFileSerializer";
-import { AmendedSchemaField, DBVersion, LocFields, LocVersion, PackedFile, FIELD_TYPE } from "./packFileTypes";
+import {
+  AmendedSchemaField,
+  DBField,
+  DBVersion,
+  LocFields,
+  LocVersion,
+  PackedFile,
+  FIELD_TYPE,
+} from "./packFileTypes";
 import type {
   DeepCloneOverride,
   DeepCloneTreeNode,
   DeepCloneVariantAxis,
 } from "./nodeGraph/nodes/types";
 import { buildLocKey, getLocKeyColumns } from "./utility/locKeyGeneration";
+import {
+  evaluateFormula,
+  formatFormulaResult,
+  isNumericFieldType,
+  isPlainNumber,
+} from "./utility/formulaEvaluation";
 
 /** Guards against a variant product or a reference closure that would blow up the executor. */
 export const MAX_DEEP_CLONE_VARIANTS = 256;
@@ -129,6 +143,37 @@ const getRenameKey = (tableName: string, columnName: string, value: string) =>
  */
 const getRowIdentity = (row: AmendedSchemaField[]): string =>
   row.map((cell) => cell.resolvedKeyValue).join("\u0001");
+
+/**
+ * Turns an override value into the string to write into the cell.
+ *
+ * A numeric column accepts an arithmetic expression in `x`, the cell's original value — "x*2",
+ * "x+10", "1.5*x". Anything already a plain number, and every non-numeric column, is taken literally,
+ * so a string column may safely contain an "x". A formula that fails to evaluate is reported and the
+ * literal text is kept rather than silently writing a zero.
+ */
+const resolveOverrideValue = (
+  value: string,
+  originalValue: string,
+  field: DBField,
+  warnings: string[],
+): string => {
+  if (!isNumericFieldType(field.field_type) || isPlainNumber(value)) return value;
+
+  if (value.includes("{{")) {
+    warnings.push(
+      `Override for ${field.name} still contains an unresolved flow option placeholder ('${value}'); check the option id`,
+    );
+    return value;
+  }
+
+  try {
+    return formatFormulaResult(evaluateFormula(value, Number(originalValue) || 0), field.field_type);
+  } catch {
+    warnings.push(`Could not evaluate override formula '${value}' for ${field.name}; used it as written`);
+    return value;
+  }
+};
 
 interface CollectedRow {
   tableName: string;
@@ -495,11 +540,17 @@ export const executeDeepClonePlan = async (
           continue;
         }
         const field = entry.tableSchema.fields[cellIndex];
-        const value = applyNameTemplate(override.value, {
-          original: rootOriginal,
-          selfOriginal: getCellValue(entry.sourceRow, override.column) ?? "",
-          variant: variant.suffix,
-        });
+        const originalValue = getCellValue(entry.sourceRow, override.column) ?? "";
+        const value = resolveOverrideValue(
+          applyNameTemplate(override.value, {
+            original: rootOriginal,
+            selfOriginal: originalValue,
+            variant: variant.suffix,
+          }),
+          originalValue,
+          field,
+          warnings,
+        );
         cloned[cellIndex].fields = [
           { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer(field.field_type, value) },
         ];

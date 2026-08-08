@@ -6062,7 +6062,13 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
               )
             }
             placeholder={localized.nodeEditorValuePlaceholder || "value"}
-            className="w-16 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+            title={
+              localized.nodeEditorDeepCloneOverrideValueTooltip ||
+              "A literal value, or on a numeric column an expression in x, the cell's original value: x*2, x+10, 1.5*x.\n\n" +
+                "Flow options work too, on their own ({{myOption}}) or inside an expression ({{myOption}}*x).\n\n" +
+                "Also accepts {original}, {selfOriginal} and {variant}."
+            }
+            className="w-24 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
           />
           <button
             onClick={() => onChange(overrides.filter((_, index) => index !== overrideIndex))}
@@ -6297,7 +6303,8 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
               localized.nodeEditorDeepCloneOverridesTooltip ||
               "Forces a column to a fixed value on every cloned row of the chosen table, for every variant.\n\n" +
                 "Use this for a value that is the same across the whole clone. Put a value that differs per variant on a variant axis instead - a variant's own override wins over one set here.\n\n" +
-                "The table list shows only tables you have checked above. Values accept {original}, {variant}, and {selfOriginal} (this column's original value, so {selfOriginal} keeps it unchanged)."
+                "On a numeric column the value can be an expression in x, the cell's original value - x*2, x+10, 1.5*x. Flow options work on their own ({{myOption}}) or inside an expression ({{myOption}}*x).\n\n" +
+                "The table list shows only tables you have checked above. Values also accept {original}, {variant}, and {selfOriginal} (this column's original value)."
             }
           />
         </label>
