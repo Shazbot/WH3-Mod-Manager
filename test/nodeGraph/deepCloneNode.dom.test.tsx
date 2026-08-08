@@ -4,7 +4,11 @@ import { ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { Provider } from "react-redux";
+import { configureStore } from "@reduxjs/toolkit";
+
 import { reactFlowNodeTypes } from "../../src/nodeGraph/nodeTypes";
+import appSlice from "../../src/appSlice";
 import type { DBField, DBVersion } from "../../src/packFileTypes";
 
 const createField = (
@@ -39,8 +43,16 @@ const DBNameToDBVersions: Record<string, DBVersion[]> = {
   unit_castes_tables: [{ version: 1, fields: [createField("caste", { isKey: true })] }],
 };
 
-const renderDeepCloneNode = (onUpdateNodeData = vi.fn()) => {
+/** The node reads the modders prefix from the app store, so the tree needs a Provider. */
+const createStore = (moddersPrefix: string) => {
+  const store = configureStore({ reducer: { app: appSlice } });
+  store.dispatch({ type: "app/setModdersPrefix", payload: moddersPrefix });
+  return store;
+};
+
+const renderDeepCloneNode = (onUpdateNodeData = vi.fn(), moddersPrefix = "abc_") => {
   const result = render(
+    <Provider store={createStore(moddersPrefix)}>
     <div style={{ width: 800, height: 700 }}>
       <ReactFlowProvider>
         <ReactFlow
@@ -71,7 +83,8 @@ const renderDeepCloneNode = (onUpdateNodeData = vi.fn()) => {
           ]}
         />
       </ReactFlowProvider>
-    </div>,
+    </div>
+    </Provider>,
   );
 
   return { ...result, onUpdateNodeData };
@@ -167,6 +180,34 @@ describe("Deep Clone node", () => {
     // Putting the placeholder back clears it.
     fireEvent.change(templateInput, { target: { value: "my_new_unit{variant}" } });
     expect(queryByText(warningText, { exact: false })).toBeNull();
+  });
+
+  it("saves the author's modders prefix into the flow", () => {
+    const { onUpdateNodeData } = renderDeepCloneNode(vi.fn(), "abc_");
+
+    const patches = onUpdateNodeData.mock.calls.map((call) => call[0]);
+    expect(patches.some((patch) => patch.moddersPrefix === "abc_")).toBe(true);
+  });
+
+  it("warns and saves no prefix when the checkbox is on but no prefix is configured", () => {
+    const { getByText, onUpdateNodeData } = renderDeepCloneNode(vi.fn(), "");
+
+    expect(
+      getByText("Set a modders prefix in the app options, or untick this.", { exact: false }),
+    ).not.toBeNull();
+    const patches = onUpdateNodeData.mock.calls.map((call) => call[0]);
+    expect(patches.some((patch) => patch.moddersPrefix === "")).toBe(true);
+  });
+
+  it("clears the saved prefix and the warning when the checkbox is unticked", () => {
+    const { getByText, queryByText, onUpdateNodeData } = renderDeepCloneNode(vi.fn(), "");
+
+    const prefixCheckbox = getByText("Prepend modders prefix").previousElementSibling as HTMLInputElement;
+    fireEvent.click(prefixCheckbox);
+
+    expect(queryByText("Set a modders prefix in the app options", { exact: false })).toBeNull();
+    const patches = onUpdateNodeData.mock.calls.map((call) => call[0]);
+    expect(patches.some((patch) => patch.useModdersPrefix === false)).toBe(true);
   });
 
   it("adds a variant axis and reports the resulting variant count", () => {

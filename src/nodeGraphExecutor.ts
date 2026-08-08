@@ -186,6 +186,7 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       cloneTree: (node.data as any).cloneTree,
       nameTemplate: (node.data as any).nameTemplate || "{original}{variant}",
       useModdersPrefix: (node.data as any).useModdersPrefix !== false,
+      moddersPrefix: (node.data as any).moddersPrefix || "",
       variantAxes: (node.data as any).variantAxes || [],
       columnOverrides: (node.data as any).columnOverrides || [],
       generateLoc: (node.data as any).generateLoc !== false,

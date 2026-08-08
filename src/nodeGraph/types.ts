@@ -112,6 +112,7 @@ export interface SerializedNode {
     cloneTree?: DeepCloneTreeNode;
     nameTemplate?: string;
     useModdersPrefix?: boolean;
+    moddersPrefix?: string;
     variantAxes?: DeepCloneVariantAxis[];
     columnOverrides?: DeepCloneOverride[];
     generateLoc?: boolean;

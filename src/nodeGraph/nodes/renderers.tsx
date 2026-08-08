@@ -5884,6 +5884,10 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
   const [autoFollowReferences, setAutoFollowReferences] = useState<boolean>(
     data.autoFollowReferences !== false,
   );
+  // Captured from this machine's settings and saved with the flow, so a game-start run elsewhere
+  // still produces the author's keys.
+  const appModdersPrefix = useAppSelector((state) => state.app.moddersPrefix);
+  const savedModdersPrefix = useModdersPrefix ? appModdersPrefix || "" : "";
   const [variantAxes, setVariantAxes] = useState<DeepCloneVariantAxis[]>(data.variantAxes || []);
   const [columnOverrides, setColumnOverrides] = useState<DeepCloneOverride[]>(data.columnOverrides || []);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set([""]));
@@ -5911,10 +5915,11 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
       nodeId: id,
       nameTemplate,
       useModdersPrefix,
+      moddersPrefix: savedModdersPrefix,
       generateLoc,
       autoFollowReferences,
     });
-  }, [nameTemplate, useModdersPrefix, generateLoc, autoFollowReferences, id]);
+  }, [nameTemplate, useModdersPrefix, savedModdersPrefix, generateLoc, autoFollowReferences, id]);
 
   React.useEffect(() => {
     dispatchNodeDataUpdate(data, { nodeId: id, variantAxes });
@@ -6150,6 +6155,12 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
             }
           />
         </label>
+        {useModdersPrefix && !savedModdersPrefix && (
+          <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+            {localized.nodeEditorDeepCloneMissingPrefixWarning ||
+              "Set a modders prefix in the app options, or untick this. The flow will fail to run without one."}
+          </div>
+        )}
       </div>
 
       <div className="mb-3">

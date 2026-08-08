@@ -103,6 +103,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         cloneTree: data.cloneTree as SerializedNode["data"]["cloneTree"],
         nameTemplate: maybeString(data.nameTemplate),
         useModdersPrefix: data.useModdersPrefix as boolean | undefined,
+        moddersPrefix: maybeString(data.moddersPrefix),
         variantAxes: (data.variantAxes || []) as SerializedNode["data"]["variantAxes"],
         columnOverrides: (data.columnOverrides || []) as SerializedNode["data"]["columnOverrides"],
         generateLoc: data.generateLoc as boolean | undefined,

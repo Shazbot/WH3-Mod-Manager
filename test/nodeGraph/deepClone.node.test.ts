@@ -870,6 +870,23 @@ describe("Deep clone engine", () => {
     expect(forMainUnits).toHaveLength(1);
   });
 
+  it("fails rather than silently dropping a prefix the flow was meant to carry", async () => {
+    await expect(
+      runClone(createPlan({ useModdersPrefix: true, moddersPrefix: "" })),
+    ).rejects.toThrow(/no prefix is saved with the flow/);
+
+    // Whitespace is not a prefix.
+    await expect(
+      runClone(createPlan({ useModdersPrefix: true, moddersPrefix: "   " })),
+    ).rejects.toThrow(/no prefix is saved with the flow/);
+  });
+
+  it("runs with an empty prefix when the flow does not ask for one", async () => {
+    const result = await runClone(createPlan({ useModdersPrefix: false, moddersPrefix: "" }));
+
+    expect(cellValue(getTable(result, "main_units_tables")!.rows[0], "unit")).toBe("my_new_unit");
+  });
+
   it("refuses to run when the variant product exceeds the safety limit", async () => {
     const axes = Array.from({ length: 9 }, (_unused, axisIndex) => ({
       id: `axis_${axisIndex}`,

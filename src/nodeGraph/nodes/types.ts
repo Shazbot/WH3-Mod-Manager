@@ -446,6 +446,11 @@ export interface DeepCloneNodeData extends NodeData {
   /** Supports {original}, {selfOriginal} and {variant}. Defaults to "{original}{variant}". */
   nameTemplate: string;
   useModdersPrefix: boolean;
+  /**
+   * Captured from the author's settings and saved with the flow, so a game-start run on someone
+   * else's machine produces the author's keys rather than that machine's prefix (usually empty).
+   */
+  moddersPrefix: string;
   variantAxes: DeepCloneVariantAxis[];
   columnOverrides: DeepCloneOverride[];
   generateLoc: boolean;

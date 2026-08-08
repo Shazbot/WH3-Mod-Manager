@@ -194,7 +194,8 @@ describe("graphSerialization", () => {
           outputType: "TableSelection",
           cloneTree,
           nameTemplate: "my_new_unit{variant}",
-          useModdersPrefix: false,
+          useModdersPrefix: true,
+          moddersPrefix: "abc_",
           variantAxes,
           columnOverrides: [{ table: "main_units_tables", column: "cost", value: "900" }],
           generateLoc: true,
@@ -219,7 +220,12 @@ describe("graphSerialization", () => {
     expect(serializedGraph.nodes[0].data.cloneTree).toEqual(cloneTree);
     expect(deserializedGraph.nodes[0].data.variantAxes).toEqual(variantAxes);
     expect(deserializedGraph.nodes[0].data.nameTemplate).toBe("my_new_unit{variant}");
-    expect(deserializedGraph.nodes[0].data.useModdersPrefix).toBe(false);
+    expect(deserializedGraph.nodes[0].data.useModdersPrefix).toBe(true);
+    // The author's prefix must travel with the flow: a game-start run happens on someone else's
+    // machine, where the local setting is a different prefix or none at all.
+    expect(serializedGraph.nodes[0].data.moddersPrefix).toBe("abc_");
+    expect(deserializedGraph.nodes[0].data.moddersPrefix).toBe("abc_");
+    expect(executionGraph.nodes[0].data.moddersPrefix).toBe("abc_");
     expect(executionGraph.nodes[0].data.cloneTree).toEqual(cloneTree);
     expect(executionGraph.nodes[0].data.columnOverrides).toEqual([
       { table: "main_units_tables", column: "cost", value: "900" },

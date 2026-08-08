@@ -321,6 +321,14 @@ export const executeDeepClonePlan = async (
     throw new Error("No clone plan configured");
   }
 
+  // Failing loudly beats producing keys that silently lack the prefix they were meant to carry: on
+  // someone else's machine that means a mod whose keys collide with everyone else's.
+  if (plan.useModdersPrefix && !plan.moddersPrefix.trim()) {
+    throw new Error(
+      'The deep clone node is set to prepend the modders prefix, but no prefix is saved with the flow. Set a modders prefix in the app options and reopen the flow, or untick "Prepend modders prefix".',
+    );
+  }
+
   // Reported once up front rather than per pass, which would repeat it for every row and variant.
   if (variants.length > 1) {
     for (const tableName of findTemplatesMissingVariant(rootNode, plan.nameTemplate)) {

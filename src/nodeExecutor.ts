@@ -6627,6 +6627,7 @@ interface DeepCloneNodeConfig {
   useModdersPrefix?: boolean;
   variantAxes?: DeepCloneVariantAxis[];
   columnOverrides?: DeepCloneOverride[];
+  moddersPrefix?: string;
   generateLoc?: boolean;
   autoFollowReferences?: boolean;
 }
@@ -6801,7 +6802,9 @@ async function executeDeepCloneNode(
     cloneTree: { ...parsed.cloneTree, table: rootTableName },
     nameTemplate: parsed.nameTemplate || "{original}{variant}",
     useModdersPrefix: parsed.useModdersPrefix !== false,
-    moddersPrefix: appData.moddersPrefix || "",
+    // The flow's own prefix wins: it is the author's, and this may be running on a user's machine.
+    // Flows authored before the prefix was saved fall back to the local setting.
+    moddersPrefix: parsed.moddersPrefix || appData.moddersPrefix || "",
     variantAxes: parsed.variantAxes || [],
     columnOverrides: parsed.columnOverrides || [],
     generateLoc: parsed.generateLoc !== false,

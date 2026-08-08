@@ -694,6 +694,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       cloneTree: undefined,
       nameTemplate: "{original}{variant}",
       useModdersPrefix: true,
+      moddersPrefix: "",
       variantAxes: [],
       columnOverrides: [],
       generateLoc: true,
