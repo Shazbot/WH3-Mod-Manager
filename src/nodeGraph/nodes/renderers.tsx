@@ -6352,9 +6352,24 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
                 />
                 <select
                   value={axis.kind || "list"}
-                  onChange={(event) =>
-                    updateAxis(axis.id, { kind: event.target.value as DeepCloneVariantAxis["kind"] })
-                  }
+                  onChange={(event) => {
+                    const kind = event.target.value as DeepCloneVariantAxis["kind"];
+                    if (kind !== "range") {
+                      updateAxis(axis.id, { kind });
+                      return;
+                    }
+                    // Write the defaults the fields display, and carry the list's overrides across so
+                    // switching does not silently drop them.
+                    updateAxis(axis.id, {
+                      kind,
+                      rangeStart: axis.rangeStart ?? "1",
+                      rangeSuffix: axis.rangeSuffix ?? "_{n}",
+                      rangeOverrides:
+                        axis.rangeOverrides && axis.rangeOverrides.length > 0
+                          ? axis.rangeOverrides
+                          : (axis.values || []).flatMap((value) => value.overrides || []),
+                    });
+                  }}
                   className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                   title={
                     localized.nodeEditorDeepCloneAxisKindTooltip ||
@@ -6374,7 +6389,7 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
                   <div className="flex items-center gap-1 mb-1">
                     <input
                       type="text"
-                      value={axis.rangeStart ?? "1"}
+                      value={axis.rangeStart ?? ""}
                       onChange={(event) => updateAxis(axis.id, { rangeStart: event.target.value })}
                       placeholder={localized.nodeEditorDeepCloneRangeFrom || "from"}
                       className="w-14 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"

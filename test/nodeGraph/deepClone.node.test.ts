@@ -397,10 +397,38 @@ describe("range variant axes", () => {
     ]);
   });
 
+  it("counts from 1 when no start was saved", () => {
+    // The editor shows 1 as a default without writing it, so a saved axis often has no start at all.
+    // Treating that as NaN skipped the axis entirely and produced a single clone.
+    const axis = {
+      id: "index",
+      name: "index",
+      kind: "range" as const,
+      values: [],
+      rangeEnd: "100",
+      rangeStep: "1",
+      rangeSuffix: "_{n}",
+    } as never;
+
+    const variants = expandVariants([axis]);
+
+    expect(variants).toHaveLength(100);
+    expect(variants[0].suffix).toBe("_1");
+    expect(variants[99].suffix).toBe("_100");
+  });
+
+  it("treats an empty start the same as no start", () => {
+    const variants = expandVariants([rangeAxis({ rangeStart: "", rangeEnd: "3" })]);
+
+    expect(variants.map((variant) => variant.suffix)).toEqual(["_1", "_2", "_3"]);
+  });
+
   it("produces nothing from a range that cannot count", () => {
     // A zero step, a missing bound or a backwards range would otherwise spin.
     expect(expandVariants([rangeAxis({ rangeStep: "0" })])).toEqual([{ suffix: "", overrides: [] }]);
+    // No end is the one bound that cannot be guessed.
     expect(expandVariants([rangeAxis({ rangeEnd: "" })])).toEqual([{ suffix: "", overrides: [] }]);
+    expect(expandVariants([rangeAxis({ rangeEnd: "abc" })])).toEqual([{ suffix: "", overrides: [] }]);
     expect(expandVariants([rangeAxis({ rangeStart: "5", rangeEnd: "1" })])).toEqual([
       { suffix: "", overrides: [] },
     ]);

@@ -238,7 +238,9 @@ export const MAX_DEEP_CLONE_RANGE_VALUES = 2000;
  * the check in executeDeepClonePlan rather than exhausting memory here.
  */
 export const expandRangeAxis = (axis: DeepCloneVariantAxis): DeepCloneVariantAxis["values"] => {
-  const start = Number(axis.rangeStart);
+  // Start defaults to 1, matching what the editor shows: the field displays a default rather than
+  // writing one, so a saved axis often carries no start at all.
+  const start = axis.rangeStart === undefined || axis.rangeStart === "" ? 1 : Number(axis.rangeStart);
   const end = Number(axis.rangeEnd);
   const step = axis.rangeStep === undefined || axis.rangeStep === "" ? 1 : Number(axis.rangeStep);
   if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(step) || step === 0) {
