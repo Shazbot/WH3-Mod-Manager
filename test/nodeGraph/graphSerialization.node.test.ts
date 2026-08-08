@@ -171,7 +171,6 @@ describe("graphSerialization", () => {
     const variantAxes = [
       {
         id: "shield",
-        name: "shield",
         values: [
           {
             id: "shielded",

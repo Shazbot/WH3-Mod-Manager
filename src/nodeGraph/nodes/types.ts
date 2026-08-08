@@ -490,7 +490,6 @@ export interface DeepCloneOverride {
  */
 export interface DeepCloneVariantAxis {
   id: string;
-  name: string;
   kind?: "list" | "range";
   values: Array<{
     id: string;

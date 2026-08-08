@@ -293,7 +293,6 @@ describe("expandVariants", () => {
     const variants = expandVariants([
       {
         id: "shield",
-        name: "shield",
         values: [
           { id: "a", suffix: "_shielded", overrides: [] },
           { id: "b", suffix: "_unshielded", overrides: [] },
@@ -301,7 +300,6 @@ describe("expandVariants", () => {
       },
       {
         id: "tier",
-        name: "tier",
         values: [
           { id: "c", suffix: "_t1", overrides: [] },
           { id: "d", suffix: "_t2", overrides: [] },
@@ -322,7 +320,6 @@ describe("range variant axes", () => {
   const rangeAxis = (overrides: Record<string, unknown> = {}) =>
     ({
       id: "index",
-      name: "index",
       kind: "range" as const,
       values: [],
       rangeStart: "1",
@@ -381,7 +378,6 @@ describe("range variant axes", () => {
       rangeAxis({ rangeEnd: "2" }),
       {
         id: "shield",
-        name: "shield",
         values: [
           { id: "a", suffix: "_shielded", overrides: [] },
           { id: "b", suffix: "_unshielded", overrides: [] },
@@ -402,7 +398,6 @@ describe("range variant axes", () => {
     // Treating that as NaN skipped the axis entirely and produced a single clone.
     const axis = {
       id: "index",
-      name: "index",
       kind: "range" as const,
       values: [],
       rangeEnd: "100",
@@ -484,7 +479,6 @@ describe("Deep clone engine", () => {
         variantAxes: [
           {
             id: "shield",
-            name: "shield",
             values: [
               {
                 id: "shielded",
@@ -500,7 +494,6 @@ describe("Deep clone engine", () => {
           },
           {
             id: "tier",
-            name: "tier",
             values: [
               {
                 id: "t1",
@@ -600,7 +593,6 @@ describe("Deep clone engine", () => {
         variantAxes: [
           {
             id: "shield",
-            name: "shield",
             values: [
               { id: "a", suffix: "_shielded", overrides: [] },
               { id: "b", suffix: "_unshielded", overrides: [] },
@@ -763,7 +755,6 @@ describe("Deep clone engine", () => {
         variantAxes: [
           {
             id: "shield",
-            name: "shield",
             values: [
               { id: "a", suffix: "_shielded", overrides: [] },
               { id: "b", suffix: "_unshielded", overrides: [] },
@@ -848,7 +839,6 @@ describe("Deep clone engine", () => {
         variantAxes: [
           {
             id: "tier",
-            name: "tier",
             values: [
               {
                 id: "t1",
@@ -930,7 +920,6 @@ describe("Deep clone engine", () => {
         variantAxes: [
           {
             id: "shield",
-            name: "shield",
             values: [
               { id: "a", suffix: "_shielded", overrides: [] },
               { id: "b", suffix: "_unshielded", overrides: [] },
@@ -987,7 +976,6 @@ describe("Deep clone engine", () => {
 
   const shieldAxis = {
     id: "shield",
-    name: "shield",
     values: [
       { id: "a", suffix: "_shielded", overrides: [] },
       { id: "b", suffix: "_unshielded", overrides: [] },

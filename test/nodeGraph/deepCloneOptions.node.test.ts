@@ -16,7 +16,6 @@ const createDeepCloneNodeData = () => ({
   variantAxes: [
     {
       id: "tier",
-      name: "tier",
       values: [
         {
           id: "t1",

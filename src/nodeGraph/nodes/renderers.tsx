@@ -6110,7 +6110,7 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
   const addAxis = () =>
     setVariantAxes([
       ...variantAxes,
-      { id: `axis_${Date.now()}`, name: `axis_${variantAxes.length + 1}`, values: [] },
+      { id: `axis_${Date.now()}`, values: [] },
     ]);
   const removeAxis = (axisId: string) => setVariantAxes(variantAxes.filter((axis) => axis.id !== axisId));
   const updateAxis = (axisId: string, updates: Partial<DeepCloneVariantAxis>) =>
@@ -6336,20 +6336,12 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
           className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content"
           onWheel={stopWheelPropagation}
         >
-          {variantAxes.map((axis) => (
+          {variantAxes.map((axis, axisIndex) => (
             <div key={axis.id} className="bg-gray-800 p-2 rounded border border-gray-600">
               <div className="flex items-center gap-1 mb-2">
-                <input
-                  type="text"
-                  value={axis.name}
-                  onChange={(event) => updateAxis(axis.id, { name: event.target.value })}
-                  placeholder={localized.nodeEditorDeepCloneAxisNamePlaceholder || "Axis name"}
-                  title={
-                    localized.nodeEditorDeepCloneAxisNameTooltip ||
-                    "A label for you only - it never appears in a key. The suffixes below are what end up in the names."
-                  }
-                  className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
-                />
+                <span className="flex-1 text-xs text-gray-400">
+                  {localized.nodeEditorDeepCloneAxisLabel || "Axis"} {axisIndex + 1}
+                </span>
                 <select
                   value={axis.kind || "list"}
                   onChange={(event) => {
