@@ -227,4 +227,110 @@ describe("applyConnection", () => {
     expect(lookupData.indexedTableName).toBe("unique_agents_tables");
     expect(lookupData.indexedTableColumnNames).toEqual(["agent_subtype", "forename"]);
   });
+
+  /** Mirrors the reported graph: a filter already feeding a dump, plus a branch handle. */
+  const createFanInState = (targetType: string) => ({
+    nodes: [
+      {
+        id: "filter",
+        type: "filter",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Filter",
+          type: "filter",
+          inputType: "TableSelection",
+          outputType: "TableSelection",
+          filters: [],
+          columnNames: [],
+          DBNameToDBVersions: {},
+        },
+      },
+      {
+        id: "branch",
+        type: "conditionalbranch",
+        position: { x: 0, y: 100 },
+        data: {
+          label: "Conditional Branch",
+          type: "conditionalbranch",
+          inputType: "TableSelection",
+          outputType: "TableSelection",
+          selectedFlowOptionId: "useTsv",
+          columnNames: [],
+        },
+      },
+      {
+        id: "target",
+        type: targetType,
+        position: { x: 200, y: 50 },
+        data: {
+          label: targetType,
+          type: targetType,
+          inputType: "TableSelection",
+          filename: "out.tsv",
+        },
+      },
+    ] as any[],
+    edges: [] as any[],
+  });
+
+  it("keeps both sources when a second table selection is connected to dump to tsv", () => {
+    const state = createFanInState("dumptotsv");
+
+    const withFilter = applyConnection(
+      state,
+      { source: "filter", target: "target", sourceHandle: "match" },
+      {} as any,
+    );
+    expect(withFilter.accepted).toBe(true);
+
+    const withBranch = applyConnection(
+      { nodes: withFilter.nodes, edges: withFilter.edges },
+      { source: "branch", target: "target", sourceHandle: "output-false" },
+      {} as any,
+    );
+
+    // The executor merges multiple table selections for dumptotsv, so neither edge may be dropped.
+    expect(withBranch.accepted).toBe(true);
+    expect(withBranch.edges).toHaveLength(2);
+    expect(withBranch.edges.map((edge) => edge.source).toSorted()).toEqual(["branch", "filter"]);
+  });
+
+  it("still replaces the previous edge for a node that takes a single input", () => {
+    const state = createFanInState("columnselectiondropdown");
+
+    const withFilter = applyConnection(
+      state,
+      { source: "filter", target: "target", sourceHandle: "match" },
+      {} as any,
+    );
+    const withBranch = applyConnection(
+      { nodes: withFilter.nodes, edges: withFilter.edges },
+      { source: "branch", target: "target", sourceHandle: "output-false" },
+      {} as any,
+    );
+
+    expect(withBranch.edges).toHaveLength(1);
+    expect(withBranch.edges[0].source).toBe("branch");
+  });
+
+  it("accepts both conditional branch handles into separate targets", () => {
+    const state = createFanInState("dumptotsv");
+
+    const withTrue = applyConnection(
+      state,
+      { source: "branch", target: "target", sourceHandle: "output-true" },
+      {} as any,
+    );
+    const withFalse = applyConnection(
+      { nodes: withTrue.nodes, edges: withTrue.edges },
+      { source: "branch", target: "target", sourceHandle: "output-false" },
+      {} as any,
+    );
+
+    expect(withFalse.edges).toHaveLength(2);
+    expect(withFalse.edges.map((edge) => edge.sourceHandle).toSorted()).toEqual([
+      "output-false",
+      "output-true",
+    ]);
+  });
 });

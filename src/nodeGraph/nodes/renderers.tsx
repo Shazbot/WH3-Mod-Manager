@@ -6459,16 +6459,37 @@ export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; 
         </div>
       )}
 
-      <div className="mt-3 text-xs text-gray-300">
-        <div className="flex items-center justify-end gap-1 h-6">
+      {/*
+        Each handle is rendered inside its own label row and centred on it, so the dot always lines
+        up with the text. Absolute offsets from the node edge drift as soon as a warning or a longer
+        option name changes the node's height.
+      */}
+      <div className="mt-3 text-xs">
+        <div className="relative flex items-center justify-end h-6">
           <span className="text-green-400">
             {localized.nodeEditorConditionalBranchChecked || "checked"}
           </span>
+          <Handle
+            id="output-true"
+            type="source"
+            position={Position.Right}
+            className="w-3 h-3 bg-green-500"
+            data-output-type="TableSelection"
+            style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+          />
         </div>
-        <div className="flex items-center justify-end gap-1 h-6">
+        <div className="relative flex items-center justify-end h-6">
           <span className="text-red-400">
             {localized.nodeEditorConditionalBranchUnchecked || "unchecked"}
           </span>
+          <Handle
+            id="output-false"
+            type="source"
+            position={Position.Right}
+            className="w-3 h-3 bg-red-500"
+            data-output-type="TableSelection"
+            style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+          />
         </div>
       </div>
 
@@ -6476,23 +6497,6 @@ export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; 
         {localized.nodeEditorConditionalBranchHelp ||
           "Only the matching branch runs; nodes on the other branch are skipped entirely."}
       </div>
-
-      <Handle
-        id="output-true"
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-green-500"
-        data-output-type="TableSelection"
-        style={{ top: "auto", bottom: 58 }}
-      />
-      <Handle
-        id="output-false"
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-red-500"
-        data-output-type="TableSelection"
-        style={{ top: "auto", bottom: 34 }}
-      />
     </div>
   );
 };

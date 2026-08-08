@@ -583,11 +583,15 @@ export const applyConnection = (
 
     if (
       targetNode.type === "generaterows" ||
+      targetNode.type === "generaterowsschema" ||
       targetNode.type === "mergechanges" ||
       targetNode.type === "savechanges" ||
       targetNode.type === "numericadjustment" ||
       targetNode.type === "mathmax" ||
-      targetNode.type === "mathceil"
+      targetNode.type === "mathceil" ||
+      // The executor merges multiple table selections for these (buildInputDataForTarget), so
+      // replacing the existing edge here silently threw away a connection the run supports.
+      targetNode.type === "dumptotsv"
     ) {
       return [...edges, newEdge];
     }

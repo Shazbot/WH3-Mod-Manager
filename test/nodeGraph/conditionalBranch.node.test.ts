@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { executeNodeAction } from "../../src/nodeExecutor";
+import {
+  CONDITIONAL_BRANCH_FALSE_HANDLE,
+  CONDITIONAL_BRANCH_TRUE_HANDLE,
+  executeNodeAction,
+} from "../../src/nodeExecutor";
 import {
   deserializeNodeGraph,
   prepareGraphForExecution,
@@ -92,6 +96,27 @@ describe("conditional branch node", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Expected TableSelection");
+  });
+});
+
+describe("conditional branch handles", () => {
+  it("uses the handle ids the executor gates on", async () => {
+    const checked = await runBranch({ selectedFlowOptionId: "useTsv", flowOptionChecked: true });
+    const unchecked = await runBranch({ selectedFlowOptionId: "useTsv", flowOptionChecked: false });
+
+    // These strings are the contract between the renderer's Handle ids, the saved connections'
+    // sourceHandle, and the executor's activeOutputHandles check.
+    expect(checked.activeOutputHandles).toEqual([CONDITIONAL_BRANCH_TRUE_HANDLE]);
+    expect(unchecked.activeOutputHandles).toEqual([CONDITIONAL_BRANCH_FALSE_HANDLE]);
+    expect(CONDITIONAL_BRANCH_TRUE_HANDLE).toBe("output-true");
+    expect(CONDITIONAL_BRANCH_FALSE_HANDLE).toBe("output-false");
+  });
+
+  it("activates exactly one handle, never both or neither", async () => {
+    for (const flowOptionChecked of [true, false]) {
+      const result = await runBranch({ selectedFlowOptionId: "useTsv", flowOptionChecked });
+      expect(result.activeOutputHandles).toHaveLength(1);
+    }
   });
 });
 
