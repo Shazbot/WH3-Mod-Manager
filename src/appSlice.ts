@@ -1119,6 +1119,7 @@ const appSlice = createSlice({
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
+      state.nodeEditorFavorites = fromConfigAppState.nodeEditorFavorites || [];
       state.modRowsSortingType = fromConfigAppState.modRowsSortingType || state.modRowsSortingType;
       // state.currentLanguage = fromConfigAppState.currentLanguage || "en"; // handled elsewhere
       state.packDataOverwrites = fromConfigAppState.packDataOverwrites || {};
@@ -1444,6 +1445,10 @@ const appSlice = createSlice({
       state.isFeaturesForModdersEnabled = action.payload;
       reconcileCurrentPresetModSources(state);
     },
+    /** Replaces the whole list, since both toggling and reordering rewrite the order. */
+    setNodeEditorFavorites: (state: AppState, action: PayloadAction<FlowNodeType[]>) => {
+      state.nodeEditorFavorites = action.payload;
+    },
     setModdersPrefix: (state: AppState, action: PayloadAction<string>) => {
       state.moddersPrefix = action.payload;
     },
@@ -1764,6 +1769,7 @@ export const {
   toggleIsFeaturesForModdersEnabled,
   setIsFeaturesForModdersEnabled,
   setModdersPrefix,
+  setNodeEditorFavorites,
   orderImportedMods,
   addMod,
   removeMod,

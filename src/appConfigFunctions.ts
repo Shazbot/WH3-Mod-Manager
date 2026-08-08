@@ -45,6 +45,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     currentGame: appState.currentGame,
     packDataOverwrites: appState.packDataOverwrites,
     userFlowOptions: appState.userFlowOptions,
+    nodeEditorFavorites: appState.nodeEditorFavorites,
     isShowingSkillNodeSetNames: appState.isShowingSkillNodeSetNames,
     isShowingHiddenSkills: appState.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,

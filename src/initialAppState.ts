@@ -29,6 +29,7 @@ const initialState = {
   isChangingGameProcessPriority: false,
   isFeaturesForModdersEnabled: false,
   moddersPrefix: "",
+  nodeEditorFavorites: [],
   isCompatCheckingVanillaPacks: false,
   allMods: [],
   workshopInstallStatuses: {},

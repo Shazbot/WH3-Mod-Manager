@@ -196,6 +196,8 @@ declare global {
     skillsData?: SkillsData;
     packSearchResults?: string[];
     userFlowOptions: UserFlowOptions;
+    /** Node types pinned to the top of the node editor sidebar, in the user's own order. */
+    nodeEditorFavorites: FlowNodeType[];
 
     // DB viewer
     deepCloneTarget?: DeepCloneTarget;
@@ -248,6 +250,7 @@ declare global {
     | "packDataOverwrites"
     | "isCompatCheckingVanillaPacks"
     | "userFlowOptions"
+    | "nodeEditorFavorites"
     | "isShowingSkillNodeSetNames"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"

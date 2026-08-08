@@ -11,7 +11,8 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { addToast } from "../appSlice";
+import {
+  setNodeEditorFavorites, addToast } from "../appSlice";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { DBVersion } from "../packFileTypes";
@@ -25,6 +26,12 @@ import {
 } from "../nodeGraph/editorState";
 import { FlowOptionsModal } from "../nodeGraph/FlowOptionsModal";
 import { buildQuickConnectionCandidates, hasDirectedConnection } from "../nodeGraph/quickConnect";
+import {
+  NodeGraphClipboard,
+  copySelectedNodes,
+  isTextEntryTarget,
+  pasteNodes,
+} from "../nodeGraph/clipboard";
 import {
   deserializeNodeGraph,
   prepareGraphForExecution,
@@ -45,6 +52,11 @@ import {
   stopWheelPropagation,
 } from "../nodeGraph/nodes/shared";
 import { reactFlowNodeTypes } from "../nodeGraph/nodeTypes";
+import {
+  moveFavoriteNodeType,
+  toggleFavoriteNodeType,
+  withFavoritesSection,
+} from "../nodeGraph/favorites";
 import { FlowNodeDataPatch, FlowOption, SerializedNode, SerializedNodeGraph } from "../nodeGraph/types";
 
 interface NodeExecutionResult {
@@ -132,8 +144,31 @@ const NodeSidebar: React.FC<{
 }> = ({ onDragStart }) => {
   const localized = useLocalizations();
   const localizationMap = localized as Record<string, string | undefined>;
+  const dispatch = useAppDispatch();
+  const favorites = useAppSelector((state) => state.app.nodeEditorFavorites);
   const [filterText, setFilterText] = useState("");
   const [useCompactView, setUseCompactView] = useState(true);
+  const [contextMenu, setContextMenu] = useState<
+    { nodeType: FlowNodeType; x: number; y: number } | undefined
+  >(undefined);
+  /** The favorite currently being dragged within the list, so a drop knows what to move. */
+  const reorderingFavorite = useRef<FlowNodeType | undefined>(undefined);
+
+  const setFavorites = useCallback(
+    (nextFavorites: FlowNodeType[]) => dispatch(setNodeEditorFavorites(nextFavorites)),
+    [dispatch],
+  );
+
+  const toggleFavorite = useCallback(
+    (nodeType: FlowNodeType) => setFavorites(toggleFavoriteNodeType(favorites, nodeType)),
+    [favorites, setFavorites],
+  );
+
+  const moveFavoriteTo = useCallback(
+    (dragged: FlowNodeType, target: FlowNodeType) =>
+      setFavorites(moveFavoriteNodeType(favorites, dragged, target)),
+    [favorites, setFavorites],
+  );
 
   const nodeTypeSections: NodeTypeSection[] = useMemo(() => {
     return nodeTypeSectionDefinitions.map((section) => ({
@@ -146,8 +181,18 @@ const NodeSidebar: React.FC<{
     }));
   }, [localizationMap]);
 
+  const sectionsWithFavorites = useMemo(
+    () =>
+      withFavoritesSection(
+        nodeTypeSections,
+        favorites,
+        localized.nodeEditorSectionFavorites || "Favorites",
+      ),
+    [favorites, nodeTypeSections, localized],
+  );
+
   // Filter nodes based on search text
-  const filteredSections = nodeTypeSections
+  const filteredSections = sectionsWithFavorites
     .map((section) => ({
       ...section,
       nodes: section.nodes.filter(
@@ -191,8 +236,31 @@ const NodeSidebar: React.FC<{
         </label>
       </div>
 
+      {contextMenu && (
+        <>
+          {/* A click anywhere else dismisses the menu. */}
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(undefined)} />
+          <div
+            className="fixed z-50 bg-gray-700 border border-gray-500 rounded shadow-lg text-xs text-white"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button
+              className="block w-full text-left px-3 py-2 hover:bg-gray-600"
+              onClick={() => {
+                toggleFavorite(contextMenu.nodeType);
+                setContextMenu(undefined);
+              }}
+            >
+              {favorites.includes(contextMenu.nodeType)
+                ? localized.nodeEditorRemoveFromFavorites || "Remove from favorites"
+                : localized.nodeEditorAddToFavorites || "Add to favorites"}
+            </button>
+          </div>
+        </>
+      )}
+
       <div className="space-y-4">
-        {filteredSections.map((section) => (
+        {filteredSections.map((section, sectionIndex) => (
           <div key={section.title} className="space-y-2">
             <h4 className="font-semibold text-sm text-gray-300 uppercase tracking-wide border-b border-gray-600 pb-1">
               {section.title}
@@ -202,6 +270,30 @@ const NodeSidebar: React.FC<{
                 <div
                   key={nodeType.type}
                   draggable
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setContextMenu({ nodeType: nodeType.type, x: event.clientX, y: event.clientY });
+                  }}
+                  onDragEnd={() => {
+                    reorderingFavorite.current = undefined;
+                  }}
+                  {...(sectionIndex === 0 && favorites.length > 0
+                    ? {
+                        // Dragging a favorite onto another reorders the list. The drag still carries
+                        // its node type, so dropping on the canvas creates a node as before.
+                        onDragOver: (event: DragEvent) => {
+                          if (reorderingFavorite.current) event.preventDefault();
+                        },
+                        onDrop: (event: DragEvent) => {
+                          const dragged = reorderingFavorite.current;
+                          if (!dragged) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          moveFavoriteTo(dragged, nodeType.type);
+                          reorderingFavorite.current = undefined;
+                        },
+                      }
+                    : {})}
                   onMouseDown={(event) => {
                     const r = event.currentTarget.getBoundingClientRect();
                     sidebarNodeLastClickedTopLeftCorner = {
@@ -209,7 +301,11 @@ const NodeSidebar: React.FC<{
                       top: r.top,
                     };
                   }}
-                  onDragStart={(event) => onDragStart(event, nodeType)}
+                  onDragStart={(event) => {
+                    reorderingFavorite.current =
+                      sectionIndex === 0 && favorites.length > 0 ? nodeType.type : undefined;
+                    onDragStart(event, nodeType);
+                  }}
                   className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm transition-colors duration-150"
                 >
                   <div className="font-medium text-sm text-white">{nodeType.label}</div>
@@ -250,6 +346,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
    * survives into the new one and gets written back into its node data.
    */
   const [graphInstanceKey, setGraphInstanceKey] = useState(0);
+  /** Copied nodes live for the session rather than in the system clipboard, which holds text. */
+  const nodeClipboardRef = useRef<NodeGraphClipboard | undefined>(undefined);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
@@ -722,17 +820,46 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     [loadNodeGraphFile],
   );
 
-  // Handle keyboard events for node deletion
+  const copySelection = useCallback(() => {
+    const copied = copySelectedNodes(nodesRef.current, edges);
+    if (!copied) return;
+    nodeClipboardRef.current = copied;
+    nodeEditorDebugLog(`Copied ${copied.nodes.length} node(s) and ${copied.edges.length} edge(s)`);
+  }, [edges]);
+
+  const pasteSelection = useCallback(() => {
+    const clipboard = nodeClipboardRef.current;
+    if (!clipboard) return;
+
+    const nextGraph = pasteNodes({ nodes: nodesRef.current, edges }, clipboard, getNodeId);
+    setNodes(nextGraph.nodes);
+    setEdges(nextGraph.edges);
+    nodeEditorDebugLog(`Pasted ${clipboard.nodes.length} node(s)`);
+  }, [edges, setNodes, setEdges]);
+
+  // Handle keyboard events for node deletion, copy and paste
   React.useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
-      // Delete or Backspace key
+      // Everything here acts on the graph, so it must not fire while the user is typing in a field.
+      if (isTextEntryTarget(event.target)) return;
+
       if (event.key === "Delete" || event.key === "Backspace") {
-        // Prevent default behavior if we're not in a text input
-        const target = event.target as HTMLElement;
-        if (target.tagName !== "TEXTAREA" && target.tagName !== "INPUT") {
-          event.preventDefault();
-          deleteSelectedNodes();
-        }
+        event.preventDefault();
+        deleteSelectedNodes();
+        return;
+      }
+
+      if (!event.ctrlKey && !event.metaKey) return;
+
+      if (event.key === "c" || event.key === "C") {
+        event.preventDefault();
+        copySelection();
+        return;
+      }
+
+      if (event.key === "v" || event.key === "V") {
+        event.preventDefault();
+        pasteSelection();
       }
     };
 
@@ -740,7 +867,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     return () => {
       document.removeEventListener("keydown", handleKeyPress);
     };
-  }, [deleteSelectedNodes]);
+  }, [deleteSelectedNodes, copySelection, pasteSelection]);
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
