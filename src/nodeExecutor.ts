@@ -6661,6 +6661,37 @@ interface DeepCloneNodeConfig {
 /** Strips the "db\" prefix a TableSelection payload carries, leaving the bare table name. */
 const toBareTableName = (name: string) => name.replace(/^db\\/, "").replace(/\\.*$/, "");
 
+/**
+ * Every table the run can touch: the clone tree itself, plus the tables that reference each renamed
+ * key when auto-follow is on. Derived from the schema, so it is known before any row is read.
+ *
+ * Auto-follow does not recurse - copied rows keep their own key, so no new key is registered - which
+ * is why one level of reverse references is the whole set.
+ */
+export const collectPlannedTables = (
+  cloneTree: DeepCloneTreeNode | undefined,
+  reverseReferencesByTable: Record<string, Record<string, string[][]>>,
+  ignoredTables: string[],
+): string[] => {
+  const tables = new Set<string>();
+  const walk = (node: DeepCloneTreeNode) => {
+    const bareName = toBareTableName(node.table);
+    tables.add(bareName);
+
+    if (node.keyColumn) {
+      for (const [referencingTable] of reverseReferencesByTable[bareName]?.[node.keyColumn] ?? []) {
+        if (!ignoredTables.includes(referencingTable)) tables.add(referencingTable);
+      }
+    }
+    for (const child of node.children || []) {
+      if (child.selected) walk(child);
+    }
+  };
+  if (cloneTree) walk(cloneTree);
+
+  return [...tables];
+};
+
 /** Whether the plan clones the given table, so its key-addressed art needs indexing. */
 const cloneTreeContainsTable = (node: DeepCloneTreeNode | undefined, tableName: string): boolean => {
   if (!node) return false;
@@ -6720,29 +6751,58 @@ async function executeDeepCloneNode(
       packPath: table.sourceFile?.path ?? "",
     }));
 
-  const loadTable = async (tableName: string): Promise<LoadedTableFile[]> => {
-    const bareName = toBareTableName(tableName);
-    const searchName = `db\\${bareName}`;
-    const loaded: LoadedTableFile[] = [];
+  /**
+   * Tables already read by the prefetch below, and by the on-demand fallback.
+   *
+   * Reading one table at a time re-parses the whole pack index per call, which dominated the node's
+   * runtime, so the planned tables are read in a single pass per pack instead.
+   */
+  const loadedTablesByName = new Map<string, LoadedTableFile[]>();
+
+  const readTablesFromPacks = async (bareNames: string[]): Promise<void> => {
+    if (bareNames.length === 0) return;
+    const searchNames = bareNames.map((bareName) => `db\\${bareName}`);
+    // Recorded even when a table has no rows anywhere, so a miss is not retried on every lookup.
+    for (const bareName of bareNames) {
+      if (!loadedTablesByName.has(bareName)) loadedTablesByName.set(bareName, []);
+    }
 
     for (const searchPack of searchPacks) {
       if (!searchPack.loaded) continue;
       try {
         const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
           searchPack.path,
-          [searchName],
+          searchNames,
           executionContext,
         );
-        for (const packedFile of matchingTablesByName.get(searchName) || []) {
-          if (!packedFile.tableSchema || !packedFile.schemaFields) continue;
-          loaded.push({ tableName: bareName, packedFile, packName: pack.name, packPath: pack.path });
+        for (let index = 0; index < bareNames.length; index++) {
+          for (const packedFile of matchingTablesByName.get(searchNames[index]) || []) {
+            if (!packedFile.tableSchema || !packedFile.schemaFields) continue;
+            // Pack order is preserved, so an input pack still shadows the base game.
+            loadedTablesByName.get(bareNames[index])!.push({
+              tableName: bareNames[index],
+              packedFile,
+              packName: pack.name,
+              packPath: pack.path,
+            });
+          }
         }
       } catch (error) {
-        console.error(`Deep Clone Node ${nodeId}: Error reading ${searchPack.path} for ${bareName}:`, error);
+        console.error(`Deep Clone Node ${nodeId}: Error reading ${searchPack.path}:`, error);
       }
     }
+  };
 
-    return loaded;
+  const loadTable = async (tableName: string): Promise<LoadedTableFile[]> => {
+    const bareName = toBareTableName(tableName);
+    const alreadyLoaded = loadedTablesByName.get(bareName);
+    if (alreadyLoaded) return alreadyLoaded;
+
+    // Not in the planned set: the plan is derived from the schema, so this only happens if the graph
+    // reaches somewhere unexpected. Reading it here keeps that a slow path, never a wrong result.
+    hotPathLog(executionContext, `Deep Clone Node ${nodeId}: reading ${bareName} outside the prefetch`);
+    await readTablesFromPacks([bareName]);
+    return loadedTablesByName.get(bareName) ?? [];
   };
 
   let lookupLocText: ((locKey: string) => string | undefined) | undefined;
@@ -6840,6 +6900,17 @@ async function executeDeepCloneNode(
   // Both reference indexes are built lazily per game; make sure they exist before the engine reads them.
   const referencedColumnsByTable = await getReferencesForGame(appData.currentGame);
   const reverseReferencesByTable = await getDBFieldsReferencedByForGame(appData.currentGame);
+
+  const plannedTables = collectPlannedTables(
+    plan.cloneTree,
+    plan.autoFollowReferences ? reverseReferencesByTable : {},
+    tablesToIgnore,
+  );
+  const prefetchStartedAt = Date.now();
+  await readTablesFromPacks(plannedTables);
+  console.log(
+    `Deep Clone Node ${nodeId}: prefetched ${plannedTables.length} table(s) from ${searchPacks.length} pack(s) in ${Date.now() - prefetchStartedAt}ms`,
+  );
 
   let result;
   try {
