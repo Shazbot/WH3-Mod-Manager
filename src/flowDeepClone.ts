@@ -364,13 +364,29 @@ export const executeDeepClonePlan = async (
      * mentions it. The rows are collected here and the foreign key rewrite during materialization
      * repoints them, because the rename map already holds the mapping.
      *
-     * Auto-followed rows keep their own key untouched. In practice these are junction tables whose
-     * key is the composite of all their columns, so rewriting the foreign key already makes the row
-     * unique; inventing a name for a key the user never asked about would be worse.
+     * Auto-followed rows keep their own key untouched, so a row is only safe to copy when rewriting
+     * the foreign key actually changes its identity. That holds for junction tables, whose key is
+     * the composite of all their columns including the reference. It does not hold when the
+     * reference is merely an attribute: copying main_units_tables because it points at a renamed
+     * land_units_tables key would emit a second row under the original unit key, overriding the real
+     * unit instead of cloning it. Those rows are skipped and reported.
      */
     const autoFollowReferences = async (): Promise<void> => {
       const reverseReferences = deps.reverseReferencesByTable ?? {};
       const ignored = deps.tablesToIgnore ?? [];
+
+      /**
+       * The columns that give a row of this table an identity: the ones other tables reference, plus
+       * the schema's is_key columns. Composite-key junction tables list every column here, which is
+       * exactly what makes rewriting one of them enough to keep the copy distinct.
+       */
+      const getIdentityColumns = (tableName: string, schema: DBVersion): string[] => {
+        const identityColumns = new Set(deps.referencedColumnsByTable[tableName] ?? []);
+        for (const field of schema.fields) {
+          if (field.is_key) identityColumns.add(field.name);
+        }
+        return [...identityColumns];
+      };
 
       for (const renamed of renamedKeys) {
         const referencingPairs = reverseReferences[renamed.table]?.[renamed.column] ?? [];
@@ -383,8 +399,33 @@ export const executeDeepClonePlan = async (
             const refSchema = refTableFile.packedFile.tableSchema;
             if (!refSchema) continue;
 
+            const identityColumns = getIdentityColumns(refTable, refSchema);
+            // A synthetic numeric id is regenerated during materialization, so it makes the copy
+            // distinct just as rewriting the reference would.
+            const numericIdField = deps.numericIdFieldByTable[refTable];
+            // No identity of its own, or something that changes is part of it: the copy cannot
+            // collide with the original, so every matching row can be taken.
+            const referenceIsPartOfIdentity =
+              identityColumns.length === 0 ||
+              identityColumns.includes(refColumn) ||
+              (numericIdField !== undefined && identityColumns.includes(numericIdField));
+
             for (const refRow of deps.getRows(refTableFile.packedFile)) {
               if (getCellValue(refRow, refColumn) !== renamed.originalValue) continue;
+
+              // Otherwise the copy only stays distinct if its own identity is being renamed too,
+              // which happens when the row is already part of the clone.
+              if (!referenceIsPartOfIdentity) {
+                const identityIsRenamed = identityColumns.some((columnName) => {
+                  const value = getCellValue(refRow, columnName);
+                  return value !== undefined && renames.has(getRenameKey(refTable, columnName, value));
+                });
+                if (!identityIsRenamed) {
+                  const warning = `Skipped ${refTable} rows that reference ${renamed.table}.${renamed.column} through ${refColumn}: copying them would reuse their existing ${identityColumns.join("/")} and override the original rows. Add ${refTable} to the clone plan if it should be cloned.`;
+                  if (!warnings.includes(warning)) warnings.push(warning);
+                  continue;
+                }
+              }
 
               const identity = `${refTable}|${getRowIdentity(refRow)}`;
               if (seenInPass.has(identity)) continue;
@@ -403,16 +444,6 @@ export const executeDeepClonePlan = async (
                 sourceRow: refRow,
               });
             }
-          }
-
-          // A table with a key of its own that other tables point at would need that key renamed
-          // too, which auto-follow deliberately does not do. Say so rather than emit it silently.
-          const ownReferencedColumns = (deps.referencedColumnsByTable[refTable] ?? []).filter(
-            (columnName) => columnName !== refColumn,
-          );
-          if (ownReferencedColumns.length > 0) {
-            const warning = `Auto-followed rows in ${refTable} keep their original ${ownReferencedColumns.join("/")} value; add it to the clone plan if it needs a new key`;
-            if (!warnings.includes(warning)) warnings.push(warning);
           }
         }
       }

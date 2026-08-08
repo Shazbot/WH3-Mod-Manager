@@ -75,6 +75,25 @@ const schemas: Record<string, DBVersion> = {
       createField("faction"),
     ],
   },
+  // Composite-key junction hanging off land_units_tables, to cover auto-follow on a key renamed
+  // deeper in the plan than the root.
+  land_units_to_abilities_tables: {
+    version: 1,
+    fields: [
+      createField("land_unit", { isKey: true, reference: ["land_units_tables", "key"] }),
+      createField("ability", { isKey: true }),
+    ],
+  },
+  // Identified by a synthetic numeric id rather than by the reference, like
+  // building_units_allowed_tables. The regenerated id is what keeps the copy distinct.
+  building_units_allowed_tables: {
+    version: 1,
+    fields: [
+      createField("key", { isKey: true }),
+      createField("unit", { reference: ["main_units_tables", "unit"] }),
+      createField("building"),
+    ],
+  },
   // Stands in for the DLC ownership junctions that are always skipped.
   ownership_junctions_tables: {
     version: 1,
@@ -128,6 +147,9 @@ const createTableFiles = (): Record<string, LoadedTableFile> => ({
   main_units_tables: createTableFile("main_units_tables", [
     ["emp_spearmen", "emp_spearmen_land", "melee_infantry", "500"],
     ["other_unit", "other_land", "melee_infantry", "300"],
+    // Shares emp_spearmen_land with the clone source. Reachable from the renamed land_units key, but
+    // it is an unrelated unit and must never be emitted.
+    ["emp_spearmen_veteran", "emp_spearmen_land", "melee_infantry", "700"],
   ]),
   land_units_tables: createTableFile("land_units_tables", [
     ["emp_spearmen_land", "0", "emp_spearmen_stats"],
@@ -148,6 +170,13 @@ const createTableFiles = (): Record<string, LoadedTableFile> => ({
   ]),
   ownership_junctions_tables: createTableFile("ownership_junctions_tables", [
     ["emp_spearmen", "base_game"],
+  ]),
+  land_units_to_abilities_tables: createTableFile("land_units_to_abilities_tables", [
+    ["emp_spearmen_land", "wall_defence"],
+    ["other_land", "charge_defence"],
+  ]),
+  building_units_allowed_tables: createTableFile("building_units_allowed_tables", [
+    ["12345", "emp_spearmen", "emp_barracks"],
   ]),
 });
 
@@ -493,13 +522,48 @@ describe("Deep clone engine", () => {
   });
 
   it("follows keys renamed deeper in the plan, not just the root key", async () => {
-    // land_units_tables.key is renamed by the tree, and main_units_tables.land_unit references it.
     const result = await runClone(createPlan({ autoFollowReferences: true }));
 
-    const mainRows = getTable(result, "main_units_tables")!.rows;
-    // The unrelated other_unit row points at other_land, so it must not be dragged in.
-    expect(mainRows).toHaveLength(1);
-    expect(cellValue(mainRows[0], "land_unit")).toBe("my_new_unit");
+    // land_units_tables.key is renamed by the tree, so its own junction rows are followed too.
+    const abilities = getTable(result, "land_units_to_abilities_tables")!;
+    expect(abilities.rows).toHaveLength(1);
+    expect(cellValue(abilities.rows[0], "land_unit")).toBe("my_new_unit");
+    expect(cellValue(abilities.rows[0], "ability")).toBe("wall_defence");
+  });
+
+  it("follows a table identified by a regenerated numeric id", async () => {
+    const tableFiles = createTableFiles();
+    const rootFile = createTableFile("main_units_tables", [
+      ["emp_spearmen", "emp_spearmen_land", "melee_infantry", "500"],
+    ]);
+
+    // The reference is not part of this table's identity, but its key is a synthetic numeric id that
+    // gets regenerated, so the copy cannot collide with the original.
+    const result = await executeDeepClonePlan([rootFile], createPlan({ autoFollowReferences: true }), {
+      loadTable: async (tableName) => (tableFiles[tableName] ? [tableFiles[tableName]] : []),
+      getRows: (packedFile) =>
+        chunkSchemaIntoRows(packedFile.schemaFields!, packedFile.tableSchema!) as AmendedSchemaField[][],
+      referencedColumnsByTable: {},
+      numericIdFieldByTable: { building_units_allowed_tables: "key" },
+      reverseReferencesByTable,
+      tablesToIgnore: ["ownership_junctions_tables"],
+    });
+
+    const allowed = getTable(result, "building_units_allowed_tables")!;
+    expect(allowed.rows).toHaveLength(1);
+    expect(cellValue(allowed.rows[0], "unit")).toBe("my_new_unit");
+    expect(cellValue(allowed.rows[0], "building")).toBe("emp_barracks");
+    expect(cellValue(allowed.rows[0], "key")).not.toBe("12345");
+  });
+
+  it("skips a table whose identity would be reused, and says so", async () => {
+    // Same table, but without the numeric id registration there is nothing to make the copy unique.
+    const result = await runClone(createPlan({ autoFollowReferences: true }));
+
+    expect(getTable(result, "building_units_allowed_tables")).toBeUndefined();
+    expect(result.warnings.some((warning) => warning.includes("building_units_allowed_tables"))).toBe(
+      true,
+    );
   });
 
   it("skips ignored ownership junction tables", async () => {
@@ -527,6 +591,16 @@ describe("Deep clone engine", () => {
 
     expect(getTable(result, "units_to_groupings_tables")?.rows).toHaveLength(1);
     expect(getTable(result, "unit_permissions_tables")?.rows).toHaveLength(2);
+  });
+
+  it("never emits a row that would keep its original key and overwrite the vanilla row", async () => {
+    const result = await runClone(createPlan({ autoFollowReferences: true }));
+
+    const mainRows = getTable(result, "main_units_tables")!.rows;
+    // emp_spearmen_veteran also points at emp_spearmen_land, so following the renamed land_units key
+    // reaches it. Copying it would emit a second wh3-style duplicate under the original key, with a
+    // rewritten land_unit - an override of the real unit rather than a clone.
+    expect(mainRows.map((row) => cellValue(row, "unit"))).toEqual(["my_new_unit"]);
   });
 
   it("does not emit a checked reverse table twice when auto-follow also reaches it", async () => {
