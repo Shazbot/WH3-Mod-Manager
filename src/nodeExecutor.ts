@@ -40,6 +40,8 @@ import {
 import {
   DeepClonePlan,
   LoadedTableFile,
+  buildFileCopyOutputs,
+  deepCloneImagePathsByTable,
   executeDeepClonePlan,
 } from "./flowDeepClone";
 import type {
@@ -2767,6 +2769,17 @@ async function executeSaveChangesNode(
     const toSave = [] as NewPackedFile[];
 
     for (const table of inputData.tables || []) {
+      // A raw payload whose path is meaningful to the game (art keyed by a unit name) is written
+      // verbatim, not under a generated db\ name.
+      if (table.outputFileName && table.table.buffer) {
+        toSave.push({
+          name: table.outputFileName,
+          buffer: table.table.buffer,
+          file_size: table.table.buffer.length,
+        });
+        continue;
+      }
+
       if (!table.table.schemaFields || !table.table.tableSchema) continue;
 
       toSave.push({
@@ -2797,6 +2810,9 @@ async function executeSaveChangesNode(
     // A table carrying outputPathPrefix is not a db table (e.g. a generated loc) and supplies its
     // own folder and extension instead.
     for (const file of toSave) {
+      // Already named verbatim above.
+      if (file.name) continue;
+
       const randomSuffix = Math.random().toString(36).substring(2, 8);
       // Producers are inconsistent about whether name carries the "db\" prefix; strip it so we
       // never build a doubled db\db\... path.
@@ -6618,6 +6634,13 @@ interface DeepCloneNodeConfig {
 /** Strips the "db\" prefix a TableSelection payload carries, leaving the bare table name. */
 const toBareTableName = (name: string) => name.replace(/^db\\/, "").replace(/\\.*$/, "");
 
+/** Whether the plan clones the given table, so its key-addressed art needs indexing. */
+const cloneTreeContainsTable = (node: DeepCloneTreeNode | undefined, tableName: string): boolean => {
+  if (!node) return false;
+  if (toBareTableName(node.table) === tableName) return true;
+  return (node.children || []).some((child) => child.selected && cloneTreeContainsTable(child, tableName));
+};
+
 async function executeDeepCloneNode(
   nodeId: string,
   textValue: string,
@@ -6727,6 +6750,53 @@ async function executeDeepCloneNode(
     };
   }
 
+  // Art addressed by a unit key is not reachable through the schema, so it is found by name. Index
+  // just the relevant folders, across the input packs first (a mod may override a vanilla porthole)
+  // and then every vanilla pack.
+  const imageSources = Object.entries(deepCloneImagePathsByTable)
+    .filter(([tableName]) => cloneTreeContainsTable(parsed.cloneTree, tableName))
+    .flatMap(([, sources]) => sources);
+  const imageFolders = [...new Set(imageSources.map((imageSource) => imageSource.folder))];
+  const packPathByFileName = new Map<string, string>();
+  if (imageFolders.length > 0) {
+    // Only the packs declared to hold this art, never the whole vanilla set: indexing a pack parses
+    // its entire file list, and all but one of them would be parsed for nothing.
+    const vanillaPackPaths = baseGameFolder
+      ? [...new Set(imageSources.flatMap((imageSource) => imageSource.vanillaPacks))]
+          .map((vanillaPackName) => path.join(baseGameFolder, vanillaPackName))
+          .filter((vanillaPackPath) => fs.existsSync(vanillaPackPath))
+      : [];
+    const indexPackPaths = [
+      ...searchPacks.filter((searchPack) => searchPack.loaded).map((searchPack) => searchPack.path),
+      ...vanillaPackPaths,
+    ];
+
+    for (const indexPackPath of new Set(indexPackPaths)) {
+      try {
+        const indexedPack = await readPackCached(indexPackPath, { skipParsingTables: true }, executionContext);
+        for (const packedFile of indexedPack.packedFiles) {
+          if (!imageFolders.some((folder) => packedFile.name.startsWith(folder))) continue;
+          // First pack wins, so an input pack's override beats the vanilla file.
+          if (!packPathByFileName.has(packedFile.name)) {
+            packPathByFileName.set(packedFile.name, indexPackPath);
+          }
+        }
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Could not index ${indexPackPath}:`, error);
+      }
+    }
+    // Always logged, not debug-gated: silently copying no art is the failure mode that looks like
+    // the feature is missing entirely.
+    console.log(
+      `Deep Clone Node ${nodeId}: indexed ${packPathByFileName.size} art file(s) under ${imageFolders.join(", ")} from ${indexPackPaths.length} pack(s)`,
+    );
+    if (packPathByFileName.size === 0) {
+      console.warn(
+        `Deep Clone Node ${nodeId}: no art indexed - checked ${vanillaPackPaths.length} declared vanilla pack(s) (${imageSources.flatMap((imageSource) => imageSource.vanillaPacks).join(", ")}) under ${baseGameFolder ?? "<no data folder>"}`,
+      );
+    }
+  }
+
   const plan: DeepClonePlan = {
     cloneTree: { ...parsed.cloneTree, table: rootTableName },
     nameTemplate: parsed.nameTemplate || "{original}{variant}",
@@ -6752,6 +6822,7 @@ async function executeDeepCloneNode(
       numericIdFieldByTable: gameToTablesWithNumericIds[appData.currentGame] || {},
       reverseReferencesByTable,
       tablesToIgnore,
+      hasPackedFile: packPathByFileName.size > 0 ? (name) => packPathByFileName.has(name) : undefined,
       log: (...args) => hotPathLog(executionContext, `Deep Clone Node ${nodeId}:`, ...args),
     });
   } catch (error) {
@@ -6789,9 +6860,32 @@ async function executeDeepCloneNode(
     outputPathSuffix: table.outputPathSuffix,
   }));
 
-  hotPathLog(
-    executionContext,
-    `Deep Clone Node ${nodeId}: ${result.clonedRowCount} row(s) across ${outputTables.length} output table(s)`,
+  // Art addressed by a unit key: read the bytes and hand each file to the save node under its new
+  // name. Kept as a separate step because the engine only decides *which* files, never reads them.
+  if (result.fileCopies.length > 0) {
+    outputTables.push(
+      ...(await buildFileCopyOutputs(
+        result.fileCopies,
+        packPathByFileName,
+        async (sourcePackPath, names) => {
+          const sourcePack = await readPack(sourcePackPath, {
+            skipParsingTables: true,
+            filesToRead: names,
+          });
+          return new Map(
+            sourcePack.packedFiles
+              .filter((packedFile) => names.includes(packedFile.name))
+              .map((packedFile) => [packedFile.name, packedFile.buffer]),
+          );
+        },
+        inputData.tables[0]?.sourceFile,
+        (message) => console.warn(`Deep Clone Node ${nodeId}: ${message}`),
+      )),
+    );
+  }
+
+  console.log(
+    `Deep Clone Node ${nodeId}: ${result.clonedRowCount} row(s) across ${outputTables.length} output entr(ies), including ${result.fileCopies.length} art file(s)`,
   );
 
   return {

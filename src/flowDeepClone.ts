@@ -5,6 +5,7 @@ import {
   DBVersion,
   LocFields,
   LocVersion,
+  Pack,
   PackedFile,
   FIELD_TYPE,
 } from "./packFileTypes";
@@ -24,6 +25,107 @@ import {
 /** Guards against a variant product or a reference closure that would blow up the executor. */
 export const MAX_DEEP_CLONE_VARIANTS = 256;
 export const MAX_DEEP_CLONE_ROWS = 200000;
+/** Stops a malformed mask sequence from probing forever. */
+export const MAX_DEEP_CLONE_IMAGE_MASKS = 64;
+
+export interface DeepCloneImageSource {
+  /** Pack-relative folder, including the trailing separator. */
+  folder: string;
+  /**
+   * Vanilla packs known to hold this folder. Indexing a pack means parsing its whole file list, and
+   * a Warhammer III install has ~260 vanilla packs totalling ~84GB, of which exactly one (ui.pack)
+   * contains the portholes. Naming them keeps the lookup to that pack plus the flow's own input
+   * packs, which are also searched so a mod can override or add art.
+   */
+  vanillaPacks: string[];
+}
+
+/**
+ * Art that is addressed by a table's key rather than by a database reference, so nothing in the
+ * schema points at it and the clone has to bring it along by name.
+ *
+ * Add an entry here to have a folder copied for that table's new keys.
+ */
+export const deepCloneImagePathsByTable: Record<string, DeepCloneImageSource[]> = {
+  main_units_tables: [{ folder: "ui\\units\\minspec_portholes\\", vanillaPacks: ["ui.pack"] }],
+};
+
+/** A file to copy verbatim under a new name alongside the cloned rows. */
+export interface DeepCloneFileCopy {
+  sourceName: string;
+  targetName: string;
+}
+
+/** Reads the named files out of one pack, returning their bytes by name. */
+export type PackedFileReader = (
+  packPath: string,
+  names: string[],
+) => Promise<Map<string, Buffer | undefined>>;
+
+/**
+ * Turns the engine's file copy list into save-node entries carrying the source bytes.
+ *
+ * Grouped by source pack so each pack is opened once, the way loadIconsFromPacks does. Entries carry
+ * `outputFileName` so the save node writes them at exactly that path rather than under a generated
+ * db name — the game finds this art by unit key.
+ */
+export const buildFileCopyOutputs = async (
+  fileCopies: DeepCloneFileCopy[],
+  packPathByFileName: Map<string, string>,
+  readPackedFiles: PackedFileReader,
+  sourceFile: Pack | undefined,
+  onWarn: (message: string) => void,
+): Promise<DBTablesNodeTable[]> => {
+  const copiesByPackPath = new Map<string, DeepCloneFileCopy[]>();
+  for (const fileCopy of fileCopies) {
+    const sourcePackPath = packPathByFileName.get(fileCopy.sourceName);
+    if (!sourcePackPath) {
+      onWarn(`No pack holds ${fileCopy.sourceName}`);
+      continue;
+    }
+    const packCopies = copiesByPackPath.get(sourcePackPath) ?? [];
+    packCopies.push(fileCopy);
+    copiesByPackPath.set(sourcePackPath, packCopies);
+  }
+
+  const outputs: DBTablesNodeTable[] = [];
+  for (const [sourcePackPath, packCopies] of copiesByPackPath) {
+    let bytesByName: Map<string, Buffer | undefined>;
+    try {
+      bytesByName = await readPackedFiles(
+        sourcePackPath,
+        packCopies.map((fileCopy) => fileCopy.sourceName),
+      );
+    } catch (error) {
+      onWarn(
+        `Could not read art from ${sourcePackPath}: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
+      continue;
+    }
+
+    for (const fileCopy of packCopies) {
+      const buffer = bytesByName.get(fileCopy.sourceName);
+      if (!buffer) {
+        onWarn(`No content for ${fileCopy.sourceName}`);
+        continue;
+      }
+      outputs.push({
+        name: fileCopy.targetName,
+        fileName: fileCopy.targetName,
+        sourceFile: sourceFile as Pack,
+        table: {
+          name: fileCopy.targetName,
+          file_size: buffer.length,
+          start_pos: 0,
+          buffer,
+        } as PackedFile,
+        outputFileName: fileCopy.targetName,
+      });
+    }
+  }
+
+  return outputs;
+};
 
 export interface DeepClonePlan {
   cloneTree: DeepCloneTreeNode;
@@ -55,6 +157,11 @@ export interface DeepCloneDependencies {
   reverseReferencesByTable?: Record<string, Record<string, string[][]>>;
   /** Ownership/content-pack junctions that are never worth following. */
   tablesToIgnore?: string[];
+  /**
+   * Whether a pack-relative file exists across the search packs. Supplied only when key-addressed art
+   * should be copied; without it no file copies are produced.
+   */
+  hasPackedFile?: (name: string) => boolean;
   log?: (...args: unknown[]) => void;
 }
 
@@ -79,6 +186,8 @@ export interface DeepCloneOutputTable {
 
 export interface DeepCloneResult {
   tables: DeepCloneOutputTable[];
+  /** Key-addressed art to copy under the new keys; the caller supplies the bytes. */
+  fileCopies: DeepCloneFileCopy[];
   clonedRowCount: number;
   /** New keys that already exist in the search packs. Reported, not fatal. */
   collisions: string[];
@@ -315,6 +424,34 @@ export const executeDeepClonePlan = async (
     return matches;
   };
 
+  /**
+   * Collects the art that goes with a renamed key: `<folder><key>.png`, plus its mask sequence
+   * `<key>_mask1.png`, `<key>_mask2.png`, … which is walked until one is missing.
+   */
+  const fileCopiesByTarget = new Map<string, DeepCloneFileCopy>();
+  const collectImageCopies = (tableName: string, originalKey: string, newKey: string): void => {
+    const hasPackedFile = deps.hasPackedFile;
+    if (!hasPackedFile) return;
+
+    for (const { folder } of deepCloneImagePathsByTable[tableName] ?? []) {
+      const addCopy = (suffix: string): boolean => {
+        const sourceName = `${folder}${originalKey}${suffix}.png`;
+        if (!hasPackedFile(sourceName)) return false;
+        const targetName = `${folder}${newKey}${suffix}.png`;
+        if (!fileCopiesByTarget.has(targetName)) {
+          fileCopiesByTarget.set(targetName, { sourceName, targetName });
+        }
+        return true;
+      };
+
+      // A unit with no porthole of its own is fine, but then it has no masks either.
+      if (!addCopy("")) continue;
+      for (let maskIndex = 1; maskIndex <= MAX_DEEP_CLONE_IMAGE_MASKS; maskIndex++) {
+        if (!addCopy(`_mask${maskIndex}`)) break;
+      }
+    }
+  };
+
   const outputTables = new Map<string, DeepCloneOutputTable>();
   /** Cloned rows kept alongside their source, so loc keys can be derived from both. */
   const clonedPairsByTable = new Map<
@@ -376,6 +513,7 @@ export const executeDeepClonePlan = async (
           );
           renames.set(getRenameKey(node.table, node.keyColumn, selfOriginal), newKey);
           renamedKeys.push({ table: node.table, column: node.keyColumn, originalValue: selfOriginal });
+          collectImageCopies(node.table, selfOriginal, newKey);
 
           const existing = await getExistingColumnValues(node.table, node.keyColumn);
           if (existing.has(newKey)) {
@@ -621,7 +759,12 @@ export const executeDeepClonePlan = async (
     if (locTable) tables.push(locTable);
   }
 
-  return { tables, clonedRowCount, collisions, warnings };
+  const fileCopies = [...fileCopiesByTarget.values()];
+  if (fileCopies.length > 0) {
+    log(`Deep clone: ${fileCopies.length} file(s) to copy alongside the cloned rows`);
+  }
+
+  return { tables, fileCopies, clonedRowCount, collisions, warnings };
 };
 
 /**

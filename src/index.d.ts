@@ -1272,6 +1272,12 @@ declare global {
     outputPathPrefix?: string;
     /** Appended after the generated file name, e.g. ".loc". Only meaningful with outputPathPrefix. */
     outputPathSuffix?: string;
+    /**
+     * Exact output path, used verbatim instead of any generated name. For payloads whose name is
+     * meaningful to the game, such as art addressed by a unit key. Paired with a raw buffer on
+     * `table` rather than schemaFields.
+     */
+    outputFileName?: string;
   }
 
   interface DBTablesNodeData {

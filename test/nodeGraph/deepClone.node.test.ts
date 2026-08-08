@@ -243,7 +243,7 @@ const createPlan = (overrides: Partial<DeepClonePlan> = {}): DeepClonePlan => ({
 
 const runClone = async (
   plan: DeepClonePlan,
-  options: { locTexts?: Record<string, string> } = {},
+  options: { locTexts?: Record<string, string>; existingFiles?: string[] } = {},
 ) => {
   const tableFiles = createTableFiles();
   // Only the emp_spearmen row is the clone source; the second row stands in for unrelated data.
@@ -260,6 +260,9 @@ const runClone = async (
     numericIdFieldByTable: {},
     reverseReferencesByTable,
     tablesToIgnore: ["ownership_junctions_tables"],
+    hasPackedFile: options.existingFiles
+      ? (name) => options.existingFiles!.includes(name)
+      : undefined,
   });
 };
 
@@ -736,6 +739,87 @@ describe("Deep clone engine", () => {
     );
     expect(costByKey.get("my_new_unit_t1")).toBe("500");
     expect(costByKey.get("my_new_unit_t2")).toBe("1000");
+  });
+
+  const portholes = "ui\\units\\minspec_portholes\\";
+
+  it("copies the porthole for a new unit key", async () => {
+    const result = await runClone(createPlan(), {
+      existingFiles: [`${portholes}emp_spearmen.png`],
+    });
+
+    expect(result.fileCopies).toEqual([
+      { sourceName: `${portholes}emp_spearmen.png`, targetName: `${portholes}my_new_unit.png` },
+    ]);
+  });
+
+  it("walks the mask sequence and stops at the first gap", async () => {
+    const result = await runClone(createPlan(), {
+      existingFiles: [
+        `${portholes}emp_spearmen.png`,
+        `${portholes}emp_spearmen_mask1.png`,
+        `${portholes}emp_spearmen_mask2.png`,
+        // mask3 is missing, so mask4 must never be picked up even though it exists.
+        `${portholes}emp_spearmen_mask4.png`,
+      ],
+    });
+
+    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName)).toEqual([
+      `${portholes}my_new_unit.png`,
+      `${portholes}my_new_unit_mask1.png`,
+      `${portholes}my_new_unit_mask2.png`,
+    ]);
+  });
+
+  it("copies nothing when the unit has no porthole", async () => {
+    const result = await runClone(createPlan(), {
+      // Masks without a base image are not a real case; without the base there is nothing to copy.
+      existingFiles: [`${portholes}emp_spearmen_mask1.png`],
+    });
+
+    expect(result.fileCopies).toEqual([]);
+  });
+
+  it("copies the porthole once per variant, named after each new key", async () => {
+    const result = await runClone(
+      createPlan({
+        variantAxes: [
+          {
+            id: "shield",
+            name: "shield",
+            values: [
+              { id: "a", suffix: "_shielded", overrides: [] },
+              { id: "b", suffix: "_unshielded", overrides: [] },
+            ],
+          },
+        ],
+      }),
+      { existingFiles: [`${portholes}emp_spearmen.png`, `${portholes}emp_spearmen_mask1.png`] },
+    );
+
+    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName)).toEqual([
+      `${portholes}my_new_unit_shielded.png`,
+      `${portholes}my_new_unit_shielded_mask1.png`,
+      `${portholes}my_new_unit_unshielded.png`,
+      `${portholes}my_new_unit_unshielded_mask1.png`,
+    ]);
+  });
+
+  it("only copies art for tables that have a configured folder", async () => {
+    // land_units_tables is cloned too, but no art is addressed by its key.
+    const result = await runClone(createPlan(), {
+      existingFiles: [`${portholes}emp_spearmen.png`, `${portholes}emp_spearmen_land.png`],
+    });
+
+    expect(result.fileCopies.map((fileCopy) => fileCopy.sourceName)).toEqual([
+      `${portholes}emp_spearmen.png`,
+    ]);
+  });
+
+  it("produces no copies when the caller cannot look files up", async () => {
+    const result = await runClone(createPlan());
+
+    expect(result.fileCopies).toEqual([]);
   });
 
   it("refuses to run when the variant product exceeds the safety limit", async () => {

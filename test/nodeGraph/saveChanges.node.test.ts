@@ -154,4 +154,46 @@ describe("save changes node", () => {
       true,
     );
   });
+
+  it("writes a raw payload at its exact path when the table names one", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const artPath = "ui\\units\\minspec_portholes\\my_new_unit.png";
+    const artBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    const result = await executeNodeAction({
+      nodeId: "save_changes_3",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "art-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          {
+            name: artPath,
+            fileName: artPath,
+            sourceFile: {} as Pack,
+            table: { name: artPath, file_size: artBytes.length, start_pos: 0, buffer: artBytes } as PackedFile,
+            outputFileName: artPath,
+          },
+        ],
+        sourceFiles: [],
+        tableCount: 1,
+      },
+    });
+
+    expect(result.success).toBe(true);
+
+    const savedPack = await readPack(path.join(outputDirectory, "data", "art-output.pack"), {
+      skipParsingTables: true,
+      filesToRead: [artPath],
+    });
+    const savedFile = savedPack.packedFiles.find((packedFile) => packedFile.name === artPath);
+
+    // The name must survive verbatim: the game finds this file by the unit key, not by a generated name.
+    expect(savedFile).toBeDefined();
+    expect(savedFile?.buffer).toEqual(artBytes);
+  });
 });
