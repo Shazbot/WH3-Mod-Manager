@@ -35,19 +35,32 @@ export const substituteDeepCloneOptionValues = (
   if (Array.isArray(nodeData.variantAxes)) {
     nodeData.variantAxes = nodeData.variantAxes.map((axis) => {
       if (!axis || typeof axis !== "object") return axis;
-      const values = (axis as Record<string, unknown>).values;
-      if (!Array.isArray(values)) return axis;
+      const axisRecord = axis as Record<string, unknown>;
+      const nextAxis: Record<string, unknown> = { ...axisRecord };
 
-      return {
-        ...(axis as Record<string, unknown>),
-        values: values.map((axisValue) => {
+      // A range axis carries its bounds as strings so an end user can choose how many clones to make.
+      for (const fieldName of ["rangeStart", "rangeEnd", "rangeStep", "rangeSuffix"]) {
+        const value = nextAxis[fieldName];
+        if (typeof value !== "string" || !value) continue;
+        const nextValue = replace(value);
+        if (nextValue === value) continue;
+        nextAxis[fieldName] = nextValue;
+        modified = true;
+      }
+      nextAxis.rangeOverrides = replaceOverrides(axisRecord.rangeOverrides);
+
+      const values = axisRecord.values;
+      if (Array.isArray(values)) {
+        nextAxis.values = values.map((axisValue) => {
           if (!axisValue || typeof axisValue !== "object") return axisValue;
           return {
             ...(axisValue as Record<string, unknown>),
             overrides: replaceOverrides((axisValue as Record<string, unknown>).overrides),
           };
-        }),
-      };
+        });
+      }
+
+      return nextAxis;
     });
   }
 

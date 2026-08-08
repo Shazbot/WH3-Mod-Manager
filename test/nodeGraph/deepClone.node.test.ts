@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DeepClonePlan,
   LoadedTableFile,
+  MAX_DEEP_CLONE_VARIANTS,
   executeDeepClonePlan,
   expandVariants,
 } from "../../src/flowDeepClone";
@@ -303,6 +304,101 @@ describe("expandVariants", () => {
       "_unshielded_t1",
       "_unshielded_t2",
     ]);
+  });
+});
+
+describe("range variant axes", () => {
+  const rangeAxis = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: "index",
+      name: "index",
+      kind: "range" as const,
+      values: [],
+      rangeStart: "1",
+      rangeEnd: "5",
+      ...overrides,
+    }) as never;
+
+  it("generates one variant per counter value", () => {
+    const variants = expandVariants([rangeAxis()]);
+
+    expect(variants.map((variant) => variant.suffix)).toEqual(["_1", "_2", "_3", "_4", "_5"]);
+  });
+
+  it("scales to the hundreds a hand-written list could not", () => {
+    const variants = expandVariants([rangeAxis({ rangeEnd: "500" })]);
+
+    expect(variants).toHaveLength(500);
+    expect(variants[0].suffix).toBe("_1");
+    expect(variants[499].suffix).toBe("_500");
+  });
+
+  it("takes a custom suffix pattern", () => {
+    const variants = expandVariants([rangeAxis({ rangeEnd: "3", rangeSuffix: "_variant{n}b" })]);
+
+    expect(variants.map((variant) => variant.suffix)).toEqual([
+      "_variant1b",
+      "_variant2b",
+      "_variant3b",
+    ]);
+  });
+
+  it("honours a step, including a descending one", () => {
+    expect(expandVariants([rangeAxis({ rangeEnd: "9", rangeStep: "3" })]).map((v) => v.suffix)).toEqual([
+      "_1",
+      "_4",
+      "_7",
+    ]);
+    expect(
+      expandVariants([rangeAxis({ rangeStart: "3", rangeEnd: "1", rangeStep: "-1" })]).map((v) => v.suffix),
+    ).toEqual(["_3", "_2", "_1"]);
+  });
+
+  it("substitutes the counter into its overrides", () => {
+    const variants = expandVariants([
+      rangeAxis({
+        rangeEnd: "3",
+        rangeOverrides: [{ table: "main_units_tables", column: "cost", value: "{n}00" }],
+      }),
+    ]);
+
+    expect(variants.map((variant) => variant.overrides[0].value)).toEqual(["100", "200", "300"]);
+  });
+
+  it("multiplies with a list axis like any other", () => {
+    const variants = expandVariants([
+      rangeAxis({ rangeEnd: "2" }),
+      {
+        id: "shield",
+        name: "shield",
+        values: [
+          { id: "a", suffix: "_shielded", overrides: [] },
+          { id: "b", suffix: "_unshielded", overrides: [] },
+        ],
+      },
+    ]);
+
+    expect(variants.map((variant) => variant.suffix)).toEqual([
+      "_1_shielded",
+      "_1_unshielded",
+      "_2_shielded",
+      "_2_unshielded",
+    ]);
+  });
+
+  it("produces nothing from a range that cannot count", () => {
+    // A zero step, a missing bound or a backwards range would otherwise spin.
+    expect(expandVariants([rangeAxis({ rangeStep: "0" })])).toEqual([{ suffix: "", overrides: [] }]);
+    expect(expandVariants([rangeAxis({ rangeEnd: "" })])).toEqual([{ suffix: "", overrides: [] }]);
+    expect(expandVariants([rangeAxis({ rangeStart: "5", rangeEnd: "1" })])).toEqual([
+      { suffix: "", overrides: [] },
+    ]);
+  });
+
+  it("stops a runaway range at the limit instead of exhausting memory", () => {
+    const variants = expandVariants([rangeAxis({ rangeEnd: "100000000" })]);
+
+    expect(variants.length).toBeLessThanOrEqual(MAX_DEEP_CLONE_VARIANTS + 1);
   });
 });
 
@@ -888,7 +984,8 @@ describe("Deep clone engine", () => {
   });
 
   it("refuses to run when the variant product exceeds the safety limit", async () => {
-    const axes = Array.from({ length: 9 }, (_unused, axisIndex) => ({
+    // 2^11 = 2048, just past the limit.
+    const axes = Array.from({ length: 11 }, (_unused, axisIndex) => ({
       id: `axis_${axisIndex}`,
       name: `axis_${axisIndex}`,
       values: [

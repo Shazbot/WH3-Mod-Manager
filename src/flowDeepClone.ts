@@ -14,7 +14,7 @@ import type {
   DeepCloneTreeNode,
   DeepCloneVariantAxis,
 } from "./nodeGraph/nodes/types";
-import { findTemplatesMissingVariant } from "./nodeGraph/deepCloneTree";
+import { expandRangeAxis, findTemplatesMissingVariant } from "./nodeGraph/deepCloneTree";
 import { buildLocKey, getLocKeyColumns } from "./utility/locKeyGeneration";
 import {
   evaluateFormula,
@@ -24,7 +24,9 @@ import {
 } from "./utility/formulaEvaluation";
 
 /** Guards against a variant product or a reference closure that would blow up the executor. */
-export const MAX_DEEP_CLONE_VARIANTS = 256;
+// A range axis makes large variant counts a normal thing to ask for; the limit is here to catch a
+// runaway range, not to cap deliberate use.
+export const MAX_DEEP_CLONE_VARIANTS = 2000;
 export const MAX_DEEP_CLONE_ROWS = 200000;
 /** Stops a malformed mask sequence from probing forever. */
 export const MAX_DEEP_CLONE_IMAGE_MASKS = 64;
@@ -224,7 +226,8 @@ export const expandVariants = (axes: DeepCloneVariantAxis[]): DeepCloneVariant[]
   let variants: DeepCloneVariant[] = [{ suffix: "", overrides: [] }];
 
   for (const axis of axes || []) {
-    const values = (axis.values || []).filter((value) => value);
+    const values =
+      axis.kind === "range" ? expandRangeAxis(axis) : (axis.values || []).filter((value) => value);
     if (values.length === 0) continue;
 
     const expanded: DeepCloneVariant[] = [];

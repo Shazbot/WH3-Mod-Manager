@@ -8,6 +8,7 @@ import { SupportedGames } from "../../supportedGames";
 import { getTableVersion } from "../connectionRules";
 import {
   createRootTreeNode,
+  expandRangeAxis,
   expandTreeNode,
   findTemplatesMissingVariant,
   getSelectedCloneTables,
@@ -6084,15 +6085,21 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
   const getColumnsForTable = (tableName: string) =>
     DBNameToDBVersions?.[tableName]?.[0]?.fields.map((field) => field.name) || [];
 
+  // The preview has to expand a range axis the same way execution does, or it would report one
+  // variant for an axis that generates hundreds.
+  const axisValues = (axis: DeepCloneVariantAxis) =>
+    axis.kind === "range" ? expandRangeAxis(axis) : axis.values || [];
   const variantCount = variantAxes.reduce(
-    (total, axis) => total * Math.max(1, (axis.values || []).length),
+    (total, axis) => total * Math.max(1, axisValues(axis).length),
     1,
   );
   const variantSuffixes = variantAxes.reduce<string[]>(
     (suffixes, axis) =>
-      (axis.values || []).length === 0
+      axisValues(axis).length === 0
         ? suffixes
-        : suffixes.flatMap((suffix) => axis.values.map((value) => `${suffix}${value.suffix || ""}`)),
+        : suffixes.flatMap((suffix) =>
+            axisValues(axis).map((value: { suffix: string }) => `${suffix}${value.suffix || ""}`),
+          ),
     [""],
   );
 
@@ -6343,12 +6350,69 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
                   }
                   className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                 />
+                <select
+                  value={axis.kind || "list"}
+                  onChange={(event) =>
+                    updateAxis(axis.id, { kind: event.target.value as DeepCloneVariantAxis["kind"] })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                  title={
+                    localized.nodeEditorDeepCloneAxisKindTooltip ||
+                    "A list axis has the variants you type out. A range axis generates them from a counter, which is how you make hundreds of numbered clones without typing every suffix."
+                  }
+                >
+                  <option value="list">{localized.nodeEditorDeepCloneAxisKindList || "list"}</option>
+                  <option value="range">{localized.nodeEditorDeepCloneAxisKindRange || "range"}</option>
+                </select>
                 <button onClick={() => removeAxis(axis.id)} className="text-xs text-red-400 hover:text-red-300">
                   ✕
                 </button>
               </div>
 
-              {(axis.values || []).map((value) => (
+              {axis.kind === "range" && (
+                <div className="mb-2 pl-2 border-l border-gray-600">
+                  <div className="flex items-center gap-1 mb-1">
+                    <input
+                      type="text"
+                      value={axis.rangeStart ?? "1"}
+                      onChange={(event) => updateAxis(axis.id, { rangeStart: event.target.value })}
+                      placeholder={localized.nodeEditorDeepCloneRangeFrom || "from"}
+                      className="w-14 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                    <input
+                      type="text"
+                      value={axis.rangeEnd ?? ""}
+                      onChange={(event) => updateAxis(axis.id, { rangeEnd: event.target.value })}
+                      placeholder={localized.nodeEditorDeepCloneRangeTo || "to"}
+                      className="w-14 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                    <input
+                      type="text"
+                      value={axis.rangeStep ?? ""}
+                      onChange={(event) => updateAxis(axis.id, { rangeStep: event.target.value })}
+                      placeholder={localized.nodeEditorDeepCloneRangeStep || "step"}
+                      className="w-14 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                    <input
+                      type="text"
+                      value={axis.rangeSuffix ?? ""}
+                      onChange={(event) => updateAxis(axis.id, { rangeSuffix: event.target.value })}
+                      placeholder="_{n}"
+                      className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500 mb-1">
+                    {localized.nodeEditorDeepCloneRangeHelp ||
+                      "{n} is the counter. Bounds accept flow options."}
+                  </div>
+                  {renderOverrideEditor(axis.rangeOverrides || [], (next) =>
+                    updateAxis(axis.id, { rangeOverrides: next }),
+                  )}
+                </div>
+              )}
+
+              {axis.kind !== "range" &&
+                (axis.values || []).map((value) => (
                 <div key={value.id} className="mb-2 pl-2 border-l border-gray-600">
                   <div className="flex items-center gap-1 mb-1">
                     <input
@@ -6390,12 +6454,14 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
                 </div>
               ))}
 
-              <button
-                onClick={() => addAxisValue(axis.id)}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                + {localized.nodeEditorDeepCloneAddVariant || "Add variant"}
-              </button>
+              {axis.kind !== "range" && (
+                <button
+                  onClick={() => addAxisValue(axis.id)}
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                >
+                  + {localized.nodeEditorDeepCloneAddVariant || "Add variant"}
+                </button>
+              )}
             </div>
           ))}
         </div>

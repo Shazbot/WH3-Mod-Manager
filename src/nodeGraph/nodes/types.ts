@@ -482,15 +482,29 @@ export interface DeepCloneOverride {
   value: string;
 }
 
-/** One dimension of the variant product, e.g. "shield" with _shielded / _unshielded. */
+/**
+ * One dimension of the variant product, e.g. "shield" with _shielded / _unshielded.
+ *
+ * A "range" axis generates its values from a counter instead of listing them, which is how you get
+ * hundreds of numbered clones without typing every suffix.
+ */
 export interface DeepCloneVariantAxis {
   id: string;
   name: string;
+  kind?: "list" | "range";
   values: Array<{
     id: string;
     suffix: string;
     overrides: DeepCloneOverride[];
   }>;
+  /** Range bounds are strings so they can carry a flow option placeholder. */
+  rangeStart?: string;
+  rangeEnd?: string;
+  rangeStep?: string;
+  /** Suffix pattern for a generated value; {n} is the counter. Defaults to "_{n}". */
+  rangeSuffix?: string;
+  /** Applied to every generated value, with {n} available in the value. */
+  rangeOverrides?: DeepCloneOverride[];
 }
 
 export interface DeepCloneNodeData extends NodeData {

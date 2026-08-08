@@ -1,5 +1,5 @@
 import type { DBVersion } from "../packFileTypes";
-import type { DeepCloneTreeNode } from "./nodes/types";
+import type { DeepCloneTreeNode, DeepCloneVariantAxis } from "./nodes/types";
 
 /**
  * Junction tables that describe DLC ownership rather than unit data. Following them explodes the
@@ -226,4 +226,41 @@ export const getSelectedCloneTables = (node: DeepCloneTreeNode | undefined): str
   };
   walk(node);
   return tables;
+};
+
+/** Matches the engine's variant limit; generation stops one past it so the run reports the problem. */
+export const MAX_DEEP_CLONE_RANGE_VALUES = 2000;
+
+/**
+ * Generates a range axis's values from its counter.
+ *
+ * Stops one past the variant limit so a runaway range - a typo'd end, a step of zero - is caught by
+ * the check in executeDeepClonePlan rather than exhausting memory here.
+ */
+export const expandRangeAxis = (axis: DeepCloneVariantAxis): DeepCloneVariantAxis["values"] => {
+  const start = Number(axis.rangeStart);
+  const end = Number(axis.rangeEnd);
+  const step = axis.rangeStep === undefined || axis.rangeStep === "" ? 1 : Number(axis.rangeStep);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(step) || step === 0) {
+    return [];
+  }
+  if (step > 0 ? end < start : end > start) return [];
+
+  const suffixPattern = axis.rangeSuffix || "_{n}";
+  const values: DeepCloneVariantAxis["values"] = [];
+
+  for (let counter = start; step > 0 ? counter <= end : counter >= end; counter += step) {
+    const counterText = String(counter);
+    values.push({
+      id: `${axis.id}_${counterText}`,
+      suffix: suffixPattern.split("{n}").join(counterText),
+      overrides: (axis.rangeOverrides || []).map((override) => ({
+        ...override,
+        value: (override.value ?? "").split("{n}").join(counterText),
+      })),
+    });
+    if (values.length > MAX_DEEP_CLONE_RANGE_VALUES) break;
+  }
+
+  return values;
 };

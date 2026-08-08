@@ -42,7 +42,6 @@ import {
   DeepClonePlan,
   LoadedTableFile,
   buildFileCopyOutputs,
-  deepCloneImagePathsByTable,
   deepCloneVanillaPacksByFolder,
   executeDeepClonePlan,
   parseFilenameRelativePaths,
@@ -6773,13 +6772,6 @@ export const collectPlannedTables = (
   return [...tables];
 };
 
-/** Whether the plan clones the given table, so its key-addressed art needs indexing. */
-const cloneTreeContainsTable = (node: DeepCloneTreeNode | undefined, tableName: string): boolean => {
-  if (!node) return false;
-  if (toBareTableName(node.table) === tableName) return true;
-  return (node.children || []).some((child) => child.selected && cloneTreeContainsTable(child, tableName));
-};
-
 async function executeDeepCloneNode(
   nodeId: string,
   textValue: string,
@@ -6965,23 +6957,15 @@ async function executeDeepCloneNode(
     }
   }
 
-  const imageSources = Object.entries(deepCloneImagePathsByTable)
-    .filter(([tableName]) => cloneTreeContainsTable(parsed.cloneTree, tableName))
-    .flatMap(([, sources]) => sources);
-  const imageFolders = [
-    ...new Set([...imageSources.map((imageSource) => imageSource.folder), ...schemaFolders]),
-  ];
+  const imageFolders = [...schemaFolders];
   const packPathByFileName = new Map<string, string>();
   if (imageFolders.length > 0) {
     // Only the packs declared to hold this art, never the whole vanilla set: indexing a pack parses
     // its entire file list, and all but one of them would be parsed for nothing.
-    const declaredVanillaPacks = [
-      ...imageSources.flatMap((imageSource) => imageSource.vanillaPacks),
-      ...imageFolders.flatMap((folder) => deepCloneVanillaPacksByFolder[folder] ?? []),
-    ];
-    const undeclaredFolders = imageFolders.filter(
-      (folder) => !deepCloneVanillaPacksByFolder[folder] && !imageSources.some((s) => s.folder === folder),
+    const declaredVanillaPacks = imageFolders.flatMap(
+      (folder) => deepCloneVanillaPacksByFolder[folder] ?? [],
     );
+    const undeclaredFolders = imageFolders.filter((folder) => !deepCloneVanillaPacksByFolder[folder]);
     if (undeclaredFolders.length > 0) {
       console.warn(
         `Deep Clone Node ${nodeId}: no vanilla pack declared for ${undeclaredFolders.join(", ")}; only the flow's input packs are searched there`,
@@ -7018,7 +7002,7 @@ async function executeDeepCloneNode(
     );
     if (packPathByFileName.size === 0) {
       console.warn(
-        `Deep Clone Node ${nodeId}: no art indexed - checked ${vanillaPackPaths.length} declared vanilla pack(s) (${imageSources.flatMap((imageSource) => imageSource.vanillaPacks).join(", ")}) under ${baseGameFolder ?? "<no data folder>"}`,
+        `Deep Clone Node ${nodeId}: no art indexed - checked ${vanillaPackPaths.length} declared vanilla pack(s) (${declaredVanillaPacks.join(", ")}) under ${baseGameFolder ?? "<no data folder>"}`,
       );
     }
   }
