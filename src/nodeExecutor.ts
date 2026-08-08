@@ -37,6 +37,7 @@ import {
   gameToTablesWithNumericIds,
   tablesToIgnore,
 } from "./schema";
+import { splitMultilineOptionValue } from "./nodeGraph/types";
 import {
   DeepClonePlan,
   LoadedTableFile,
@@ -67,6 +68,25 @@ const hotPathLog = (executionContext: FlowExecutionContext | undefined, ...args:
   }
 
   console.log(...args);
+};
+
+/**
+ * Compares a cell against a filter value, case-insensitively.
+ *
+ * A value containing newlines is a list and the row matches if the cell equals any entry — that is
+ * how a multiline flow option substituted into the value behaves. A single-line value keeps the
+ * original exact-match behaviour.
+ */
+const matchesFilterValue = (cellValue: string, filterValue: string): boolean => {
+  const loweredCell = cellValue.toLowerCase();
+  if (!filterValue.includes("\n") && !filterValue.includes("\r")) {
+    return loweredCell === filterValue.toLowerCase();
+  }
+
+  const candidates = splitMultilineOptionValue(filterValue);
+  // A list that resolved to nothing matches nothing, rather than silently matching everything.
+  if (candidates.length === 0) return false;
+  return candidates.some((candidate) => candidate.toLowerCase() === loweredCell);
 };
 
 const getNodeConfig = <T>(config: unknown, textValue: string): T | undefined => {
@@ -1111,8 +1131,8 @@ async function executeFilterNode(
         const cellValue = cell.resolvedKeyValue || "";
         const filterValue = filter.value;
 
-        // Perform the comparison (case-insensitive contains)
-        let matches = String(cellValue).toLowerCase() == filterValue.toLowerCase();
+        // Case-insensitive exact match, or any-of when the value is a multiline list.
+        let matches = matchesFilterValue(String(cellValue), filterValue);
 
         // Apply NOT if specified
         if (filter.not) {
@@ -1198,8 +1218,8 @@ async function executeFilterNode(
         const cellValue = cell.resolvedKeyValue || "";
         const filterValue = filter.value;
 
-        // Perform the comparison (case-insensitive contains)
-        let matches = String(cellValue).toLowerCase() == filterValue.toLowerCase();
+        // Case-insensitive exact match, or any-of when the value is a multiline list.
+        let matches = matchesFilterValue(String(cellValue), filterValue);
 
         // Apply NOT if specified
         if (filter.not) {

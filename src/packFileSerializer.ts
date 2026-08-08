@@ -29,7 +29,10 @@ import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
 import { getDBName } from "./utility/packFileHelpers";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
-import { substituteDeepCloneOptionValues } from "./nodeGraph/deepCloneOptions";
+import {
+  substituteDeepCloneOptionValues,
+  substituteFilterOptionValues,
+} from "./nodeGraph/deepCloneOptions";
 import getPackTableData, {
   isSchemaFieldNumber,
   isSchemaFieldNumberInteger,
@@ -1340,15 +1343,18 @@ const prepareFlow = (
         }
       }
     }
-    if (optionReplacements.length > 0 && node.type === "deepclone") {
-      substituteDeepCloneOptionValues(node.data as unknown as Record<string, unknown>, (value) => {
+    if (optionReplacements.length > 0 && (node.type === "deepclone" || node.type === "filter")) {
+      const replace = (value: string) => {
         let modifiedValue = value;
         for (const optionReplacement of optionReplacements) {
           if (!modifiedValue.includes(optionReplacement.placeholder)) continue;
           modifiedValue = modifiedValue.replace(optionReplacement.matcher, optionReplacement.replacement);
         }
         return modifiedValue;
-      });
+      };
+      const nestedData = node.data as unknown as Record<string, unknown>;
+      if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
+      else substituteDeepCloneOptionValues(nestedData, replace);
     }
     if (node.data.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {

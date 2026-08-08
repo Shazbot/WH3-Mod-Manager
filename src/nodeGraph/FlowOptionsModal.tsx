@@ -29,7 +29,7 @@ export const FlowOptionsModal: React.FC<{
   const localized = useLocalizations();
   const [editingOption, setEditingOption] = useState<FlowOption | null>(null);
   const [isAddingOption, setIsAddingOption] = useState(false);
-  const [newOptionType, setNewOptionType] = useState<"textbox" | "range" | "checkbox">("textbox");
+  const [newOptionType, setNewOptionType] = useState<FlowOption["type"]>("textbox");
 
   const [formData, setFormData] = useState({
     id: "",
@@ -99,13 +99,22 @@ export const FlowOptionsModal: React.FC<{
               max: formData.max,
               step: formData.step,
             }
-          : {
-              id: formData.id.trim(),
-              type: "checkbox",
-              name: formData.name,
-              description: formData.description || undefined,
-              value: formData.checked,
-            };
+          : newOptionType === "multiline"
+            ? {
+                id: formData.id.trim(),
+                type: "multiline",
+                name: formData.name,
+                description: formData.description || undefined,
+                value: formData.value,
+                placeholder: formData.placeholder || undefined,
+              }
+            : {
+                id: formData.id.trim(),
+                type: "checkbox",
+                name: formData.name,
+                description: formData.description || undefined,
+                value: formData.checked,
+              };
 
     onOptionsChange([...options, newOption]);
     resetForm();
@@ -118,8 +127,13 @@ export const FlowOptionsModal: React.FC<{
       name: option.name,
       description: option.description || "",
       value:
-        option.type === "textbox" ? option.value : option.type === "range" ? option.value.toString() : "",
-      placeholder: option.type === "textbox" ? option.placeholder || "" : "",
+        option.type === "textbox" || option.type === "multiline"
+          ? option.value
+          : option.type === "range"
+            ? option.value.toString()
+            : "",
+      placeholder:
+        option.type === "textbox" || option.type === "multiline" ? option.placeholder || "" : "",
       min: option.type === "range" ? option.min : 0,
       max: option.type === "range" ? option.max : 100,
       step: option.type === "range" ? option.step : 1,
@@ -168,13 +182,22 @@ export const FlowOptionsModal: React.FC<{
               max: formData.max,
               step: formData.step,
             }
-          : {
-              ...editingOption,
-              id: formData.id.trim(),
-              name: formData.name,
-              description: formData.description || undefined,
-              value: formData.checked,
-            };
+          : editingOption.type === "multiline"
+            ? {
+                ...editingOption,
+                id: formData.id.trim(),
+                name: formData.name,
+                description: formData.description || undefined,
+                value: formData.value,
+                placeholder: formData.placeholder || undefined,
+              }
+            : {
+                ...editingOption,
+                id: formData.id.trim(),
+                name: formData.name,
+                description: formData.description || undefined,
+                value: formData.checked,
+              };
 
     onOptionsChange(options.map((opt) => (opt.id === editingOption.id ? updatedOption : opt)));
     resetForm();
@@ -195,6 +218,7 @@ export const FlowOptionsModal: React.FC<{
   const getOptionTypeLabel = (type: FlowOption["type"]) => {
     if (type === "textbox") return localized.nodeEditorOptionTypeTextbox || "Textbox";
     if (type === "range") return localized.nodeEditorOptionTypeRangeSlider || "Range Slider";
+    if (type === "multiline") return localized.nodeEditorOptionTypeMultiline || "Multiline List";
     return localized.nodeEditorOptionTypeCheckbox || "Checkbox";
   };
 
@@ -313,6 +337,14 @@ export const FlowOptionsModal: React.FC<{
                         <span>{option.max}</span>
                       </div>
                     </div>
+                  ) : option.type === "multiline" ? (
+                    <textarea
+                      value={option.value}
+                      onChange={(e) => handleOptionValueChange(option.id, e.target.value)}
+                      placeholder={option.placeholder}
+                      rows={4}
+                      className="w-full p-2 bg-gray-600 text-white rounded text-sm font-mono"
+                    />
                   ) : (
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -349,12 +381,15 @@ export const FlowOptionsModal: React.FC<{
                 </label>
                 <select
                   value={newOptionType}
-                  onChange={(e) => setNewOptionType(e.target.value as "textbox" | "range" | "checkbox")}
+                  onChange={(e) => setNewOptionType(e.target.value as FlowOption["type"])}
                   className="w-full p-2 bg-gray-600 text-white rounded"
                 >
                   <option value="textbox">{localized.nodeEditorOptionTypeTextbox || "Textbox"}</option>
                   <option value="range">{localized.nodeEditorOptionTypeRangeSlider || "Range Slider"}</option>
                   <option value="checkbox">{localized.nodeEditorOptionTypeCheckbox || "Checkbox"}</option>
+                  <option value="multiline">
+                    {localized.nodeEditorOptionTypeMultiline || "Multiline List"}
+                  </option>
                 </select>
               </div>
             )}
@@ -402,7 +437,26 @@ export const FlowOptionsModal: React.FC<{
               </div>
             </div>
 
-            {newOptionType === "textbox" ? (
+            {newOptionType === "multiline" ? (
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">
+                  {localized.nodeEditorDefaultValue || "Default Value"}
+                </label>
+                <textarea
+                  value={formData.value}
+                  onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                  rows={5}
+                  className="w-full p-2 bg-gray-600 text-white rounded font-mono"
+                  placeholder={
+                    localized.nodeEditorOptionMultilinePlaceholder || "One value per line"
+                  }
+                />
+                <div className="text-xs text-gray-400 mt-1">
+                  {localized.nodeEditorOptionMultilineHelp ||
+                    "Each line is a separate value. Use {{optionId}} in a filter node's value to match any of them."}
+                </div>
+              </div>
+            ) : newOptionType === "textbox" ? (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-white text-sm font-medium mb-2">

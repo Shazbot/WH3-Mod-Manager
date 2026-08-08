@@ -172,6 +172,18 @@ const UserFlowOptionsModal: React.FC<{
                           />
                         )}
 
+                        {option.type === "multiline" && (
+                          <textarea
+                            value={getUserValue(flow.flowName, option.id, option.value)}
+                            onChange={(e) =>
+                              handleOptionValueChange(flow.flowName, option.id, e.target.value)
+                            }
+                            placeholder={option.placeholder}
+                            rows={5}
+                            className="w-full p-2 bg-gray-700 text-white rounded text-sm font-mono"
+                          />
+                        )}
+
                         {option.type === "range" && (
                           <div>
                             <input

@@ -28,7 +28,28 @@ export interface CheckboxFlowOption extends BaseFlowOption {
   value: boolean;
 }
 
-export type FlowOption = TextboxFlowOption | RangeSliderFlowOption | CheckboxFlowOption;
+/**
+ * A textarea whose value is a list: one entry per line. Substituted into a node field as the raw
+ * newline-separated text, which the filter node reads as a set of values to match against.
+ */
+export interface MultilineTextboxFlowOption extends BaseFlowOption {
+  type: "multiline";
+  value: string;
+  placeholder?: string;
+}
+
+export type FlowOption =
+  | TextboxFlowOption
+  | RangeSliderFlowOption
+  | CheckboxFlowOption
+  | MultilineTextboxFlowOption;
+
+/** Splits a multiline option value into its entries, ignoring blank lines and surrounding spaces. */
+export const splitMultilineOptionValue = (value: string): string[] =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 
 export interface SerializedNode {
   id: string;

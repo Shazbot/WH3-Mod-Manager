@@ -1,7 +1,7 @@
 import { Edge, Node } from "@xyflow/react";
 
 import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph } from "./types";
-import { substituteDeepCloneOptionValues } from "./deepCloneOptions";
+import { substituteDeepCloneOptionValues, substituteFilterOptionValues } from "./deepCloneOptions";
 
 interface SerializeGraphInput {
   nodes: Node[];
@@ -205,6 +205,15 @@ export const prepareGraphForExecution = ({
             modified = true;
           }
         }
+      }
+
+      if (
+        node.type === "filter" &&
+        substituteFilterOptionValues(nodeData, (value) =>
+          replaceFlowOptionPlaceholders(value, flowOptions),
+        )
+      ) {
+        modified = true;
       }
 
       if (

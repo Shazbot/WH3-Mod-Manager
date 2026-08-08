@@ -53,3 +53,30 @@ export const substituteDeepCloneOptionValues = (
 
   return modified;
 };
+
+/**
+ * Substitutes placeholders into the filter node's rows, whose values are nested inside `filters` and
+ * so are skipped by the top-level field substitution. This is what lets a filter match against a
+ * multiline option: "{{myUnits}}" becomes the newline-separated list, which the filter reads as a set.
+ */
+export const substituteFilterOptionValues = (
+  nodeData: Record<string, unknown>,
+  replace: (value: string) => string,
+): boolean => {
+  if (!Array.isArray(nodeData.filters)) return false;
+
+  let modified = false;
+  nodeData.filters = nodeData.filters.map((filterRow) => {
+    if (!filterRow || typeof filterRow !== "object") return filterRow;
+    const value = (filterRow as Record<string, unknown>).value;
+    if (typeof value !== "string" || !value) return filterRow;
+
+    const nextValue = replace(value);
+    if (nextValue === value) return filterRow;
+
+    modified = true;
+    return { ...(filterRow as Record<string, unknown>), value: nextValue };
+  });
+
+  return modified;
+};
