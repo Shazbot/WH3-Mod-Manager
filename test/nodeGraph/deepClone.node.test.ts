@@ -26,14 +26,20 @@ vi.mock("electron-is-dev", () => ({
 
 const createField = (
   name: string,
-  options: { isKey?: boolean; reference?: [string, string]; fieldType?: SCHEMA_FIELD_TYPE } = {},
+  options: {
+    isKey?: boolean;
+    reference?: [string, string];
+    fieldType?: SCHEMA_FIELD_TYPE;
+    filenamePath?: string;
+  } = {},
 ): DBField =>
   ({
     name,
     field_type: options.fieldType ?? "StringU8",
     is_key: options.isKey ?? false,
     default_value: "",
-    is_filename: false,
+    is_filename: options.filenamePath !== undefined,
+    filename_relative_path: options.filenamePath ?? null,
     is_reference: options.reference ?? [],
     description: "",
     ca_order: 0,
@@ -45,7 +51,12 @@ const schemas: Record<string, DBVersion> = {
   main_units_tables: {
     version: 1,
     fields: [
-      createField("unit", { isKey: true }),
+      // The real schema addresses portholes off this key, listing only _mask1 and _mask2.
+      createField("unit", {
+        isKey: true,
+        filenamePath:
+          "ui/units/minspec_portholes/%.png;ui/units/minspec_portholes/%_mask1.png;ui/units/minspec_portholes/%_mask2.png",
+      }),
       createField("land_unit", { reference: ["land_units_tables", "key"] }),
       createField("caste", { reference: ["unit_castes_tables", "caste"] }),
       createField("cost", { fieldType: "I32" }),
@@ -849,7 +860,7 @@ describe("Deep clone engine", () => {
     ]);
   });
 
-  it("walks the mask sequence and stops at the first gap", async () => {
+  it("stops extending the mask sequence at the first gap", async () => {
     const result = await runClone(createPlan(), {
       existingFiles: [
         `${portholes}emp_spearmen.png`,
@@ -860,20 +871,29 @@ describe("Deep clone engine", () => {
       ],
     });
 
-    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName)).toEqual([
+    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName).toSorted()).toEqual([
       `${portholes}my_new_unit.png`,
       `${portholes}my_new_unit_mask1.png`,
       `${portholes}my_new_unit_mask2.png`,
     ]);
   });
 
-  it("copies nothing when the unit has no porthole", async () => {
+  it("copies nothing when the unit has no art at all", async () => {
+    const result = await runClone(createPlan(), { existingFiles: [] });
+
+    expect(result.fileCopies).toEqual([]);
+  });
+
+  it("treats each declared pattern independently", async () => {
+    // The schema names the porthole and its masks as separate files, so a unit that somehow has a
+    // mask but no base porthole still gets that mask copied rather than nothing.
     const result = await runClone(createPlan(), {
-      // Masks without a base image are not a real case; without the base there is nothing to copy.
       existingFiles: [`${portholes}emp_spearmen_mask1.png`],
     });
 
-    expect(result.fileCopies).toEqual([]);
+    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName)).toEqual([
+      `${portholes}my_new_unit_mask1.png`,
+    ]);
   });
 
   it("copies the porthole once per variant, named after each new key", async () => {
@@ -893,7 +913,7 @@ describe("Deep clone engine", () => {
       { existingFiles: [`${portholes}emp_spearmen.png`, `${portholes}emp_spearmen_mask1.png`] },
     );
 
-    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName)).toEqual([
+    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName).toSorted()).toEqual([
       `${portholes}my_new_unit_shielded.png`,
       `${portholes}my_new_unit_shielded_mask1.png`,
       `${portholes}my_new_unit_unshielded.png`,
@@ -901,14 +921,33 @@ describe("Deep clone engine", () => {
     ]);
   });
 
-  it("only copies art for tables that have a configured folder", async () => {
-    // land_units_tables is cloned too, but no art is addressed by its key.
+  it("only copies art for tables whose schema addresses it", async () => {
+    // land_units_tables is cloned too, but nothing in its schema names a file.
     const result = await runClone(createPlan(), {
       existingFiles: [`${portholes}emp_spearmen.png`, `${portholes}emp_spearmen_land.png`],
     });
 
     expect(result.fileCopies.map((fileCopy) => fileCopy.sourceName)).toEqual([
       `${portholes}emp_spearmen.png`,
+    ]);
+  });
+
+  it("keeps counting masks past the two the schema lists", async () => {
+    const result = await runClone(createPlan(), {
+      existingFiles: [
+        `${portholes}emp_spearmen.png`,
+        `${portholes}emp_spearmen_mask1.png`,
+        `${portholes}emp_spearmen_mask2.png`,
+        // Not declared in the schema, but real units have one.
+        `${portholes}emp_spearmen_mask3.png`,
+      ],
+    });
+
+    expect(result.fileCopies.map((fileCopy) => fileCopy.targetName).toSorted()).toEqual([
+      `${portholes}my_new_unit.png`,
+      `${portholes}my_new_unit_mask1.png`,
+      `${portholes}my_new_unit_mask2.png`,
+      `${portholes}my_new_unit_mask3.png`,
     ]);
   });
 

@@ -31,28 +31,6 @@ export const MAX_DEEP_CLONE_ROWS = 200000;
 /** Stops a malformed mask sequence from probing forever. */
 export const MAX_DEEP_CLONE_IMAGE_MASKS = 64;
 
-export interface DeepCloneImageSource {
-  /** Pack-relative folder, including the trailing separator. */
-  folder: string;
-  /**
-   * Vanilla packs known to hold this folder. Indexing a pack means parsing its whole file list, and
-   * a Warhammer III install has ~260 vanilla packs totalling ~84GB, of which exactly one (ui.pack)
-   * contains the portholes. Naming them keeps the lookup to that pack plus the flow's own input
-   * packs, which are also searched so a mod can override or add art.
-   */
-  vanillaPacks: string[];
-}
-
-/**
- * Art that is addressed by a table's key rather than by a database reference, so nothing in the
- * schema points at it and the clone has to bring it along by name.
- *
- * Add an entry here to have a folder copied for that table's new keys.
- */
-export const deepCloneImagePathsByTable: Record<string, DeepCloneImageSource[]> = {
-  main_units_tables: [{ folder: "ui\\units\\minspec_portholes\\", vanillaPacks: ["ui.pack"] }],
-};
-
 /**
  * Which vanilla pack holds each folder reached through the schema's filename_relative_path.
  *
@@ -481,48 +459,8 @@ export const executeDeepClonePlan = async (
     return matches;
   };
 
-  /**
-   * Collects the art that goes with a renamed key: `<folder><key>.png`, plus its mask sequence
-   * `<key>_mask1.png`, `<key>_mask2.png`, … which is walked until one is missing.
-   */
+  /** Art to copy under the new keys, keyed by target so a file is never queued twice. */
   const fileCopiesByTarget = new Map<string, DeepCloneFileCopy>();
-  const collectImageCopies = (tableName: string, originalKey: string, newKey: string): void => {
-    const hasPackedFile = deps.hasPackedFile;
-    if (!hasPackedFile) return;
-
-    for (const { folder } of deepCloneImagePathsByTable[tableName] ?? []) {
-      const addCopy = (suffix: string): boolean => {
-        const sourceName = `${folder}${originalKey}${suffix}.png`;
-        if (!hasPackedFile(sourceName)) return false;
-        const targetName = `${folder}${newKey}${suffix}.png`;
-        if (!fileCopiesByTarget.has(targetName)) {
-          fileCopiesByTarget.set(targetName, { sourceName, targetName });
-        }
-        return true;
-      };
-
-      // A unit with no porthole of its own is fine, but then it has no masks either.
-      if (!addCopy("")) continue;
-      for (let maskIndex = 1; maskIndex <= MAX_DEEP_CLONE_IMAGE_MASKS; maskIndex++) {
-        if (!addCopy(`_mask${maskIndex}`)) break;
-      }
-    }
-  };
-
-  /**
-   * Resolves the files a filename_relative_path field points at and queues copies under the new key.
-   *
-   * Two pattern forms:
-   *  - a concrete path, "variantmeshes/variantmeshdefinitions/%.variantmeshdefinition", where % is
-   *    the cell's value. The copy takes the new key in place of %.
-   *  - a wildcard, "%/*", where the cell already holds a path. There the new path comes from the
-   *    cell's own value with the row's key swapped inside it, and everything under the old folder is
-   *    copied across.
-   *
-   * Returns the value the cell should take, or undefined to leave the cell pointing at the original -
-   * which is what happens when no source file exists, since renaming to a file that is not there
-   * would be worse than sharing the original.
-   */
   const collectFileCopiesForCell = (
     tableName: string,
     field: DBField,
@@ -568,6 +506,23 @@ export const executeDeepClonePlan = async (
         fileCopiesByTarget.set(targetName, { sourceName, targetName });
       }
       concreteCopyMade = true;
+
+      // The schema's mask list is not exhaustive - main_units_tables declares _mask1 and _mask2
+      // while units in the game data have a _mask3 - so once a numbered mask matches, keep counting
+      // until one is missing.
+      const maskMatch = pattern.match(/^(.*_mask)(\d+)(\..*)$/);
+      if (!maskMatch) continue;
+      const [, maskPrefix, maskNumber, maskExtension] = maskMatch;
+      for (let maskIndex = Number(maskNumber) + 1; maskIndex <= MAX_DEEP_CLONE_IMAGE_MASKS; maskIndex++) {
+        const nextPattern = `${maskPrefix}${maskIndex}${maskExtension}`;
+        const nextSource = nextPattern.split("%").join(cellValue);
+        if (!hasPackedFile(nextSource)) break;
+        const nextTarget = nextPattern.split("%").join(renamedKey.newKey);
+        if (nextTarget === nextSource) break;
+        if (!fileCopiesByTarget.has(nextTarget)) {
+          fileCopiesByTarget.set(nextTarget, { sourceName: nextSource, targetName: nextTarget });
+        }
+      }
     }
 
     if (concreteCopyMade) return renamedKey.newKey;
@@ -638,7 +593,6 @@ export const executeDeepClonePlan = async (
           );
           renames.set(getRenameKey(node.table, node.keyColumn, selfOriginal), newKey);
           renamedKeys.push({ table: node.table, column: node.keyColumn, originalValue: selfOriginal });
-          collectImageCopies(node.table, selfOriginal, newKey);
 
           const existing = await getExistingColumnValues(node.table, node.keyColumn);
           if (existing.has(newKey)) {
