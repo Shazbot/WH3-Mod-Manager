@@ -241,6 +241,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [quickConnectSourceNodeId, setQuickConnectSourceNodeId] = useState<string | null>(null);
+  /**
+   * Bumped on every full graph load to force the node components to remount.
+   *
+   * Node ids restart at node_0 in every graph, so loading a second graph often reuses an id at the
+   * same type - node_2 being a table dropdown in both. React then keeps the existing component
+   * instance, and with it the local state behind its text fields, so a value from the previous graph
+   * survives into the new one and gets written back into its node data.
+   */
+  const [graphInstanceKey, setGraphInstanceKey] = useState(0);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(
@@ -648,6 +657,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
         nodeId = nextNodeId;
 
+        setGraphInstanceKey((previousKey) => previousKey + 1);
         setNodes(hydratedGraph.nodes);
         setEdges(hydratedGraph.edges);
 
@@ -675,6 +685,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     [
       setNodes,
       setEdges,
+      setGraphInstanceKey,
       DBNameToDBVersions,
       setFlowOptions,
       setIsGraphEnabled,
@@ -941,7 +952,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       <div className="flex-1 relative" ref={reactFlowWrapper}>
         <DefaultTableVersionsContext.Provider value={defaultTableVersions}>
         <FlowOptionsContext.Provider value={flowOptions}>
-          <ReactFlowProvider>
+          {/* Keyed on the provider, not the flow: React Flow's node store lives in the provider, so
+              remounting only the inner flow would leave the previous graph's state behind. */}
+          <ReactFlowProvider key={graphInstanceKey}>
             <ReactFlow
               className="node-editor-flow"
               nodes={nodesWithEditorActions}
