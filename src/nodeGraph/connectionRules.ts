@@ -49,6 +49,7 @@ const TABLE_SELECTION_SOURCES = new Set([
   "customrowsinput",
   "readtsvfrompack",
   "deepclone",
+  "conditionalbranch",
 ]);
 
 const TABLE_METADATA_TARGETS = new Set([
@@ -67,6 +68,7 @@ const TABLE_METADATA_TARGETS = new Set([
   "generaterowsschema",
   "getcountercolumn",
   "deepclone",
+  "conditionalbranch",
 ]);
 
 type NodeWithData<TData extends Record<string, unknown>> = Node<TData>;

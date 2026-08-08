@@ -9,6 +9,7 @@ import type {
   ColumnSelectionDropdownNodeData,
   ColumnSelectionNodeData,
   CustomRowsInputNodeData,
+  ConditionalBranchNodeData,
   CustomSchemaNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
@@ -701,6 +702,22 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       autoFollowReferences: true,
     }),
   }),
+  conditionalbranch: createNodeDefinition<ConditionalBranchNodeData>({
+    type: "conditionalbranch",
+    labelKey: "nodeEditorNodeConditionalBranchLabel",
+    labelFallback: "Conditional Branch",
+    descriptionKey: "nodeEditorNodeConditionalBranchDescription",
+    descriptionFallback: "Sends rows down one of two branches based on a checkbox flow option",
+    createData: ({ label }) => ({
+      label,
+      type: "conditionalbranch",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      selectedFlowOptionId: "",
+      columnNames: [],
+      connectedTableName: "",
+    }),
+  }),
 };
 
 const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
@@ -717,7 +734,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionTableRowsFiltering",
     titleFallback: "Table Rows Filtering",
-    nodes: ["deduplicate", "filter", "multifilter"],
+    nodes: ["conditionalbranch", "deduplicate", "filter", "multifilter"],
   },
   {
     titleKey: "nodeEditorSectionColumnSelection",

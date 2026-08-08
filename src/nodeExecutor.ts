@@ -89,6 +89,9 @@ const matchesFilterValue = (cellValue: string, filterValue: string): boolean => 
   return candidates.some((candidate) => candidate.toLowerCase() === loweredCell);
 };
 
+export const CONDITIONAL_BRANCH_TRUE_HANDLE = "output-true";
+export const CONDITIONAL_BRANCH_FALSE_HANDLE = "output-false";
+
 const getNodeConfig = <T>(config: unknown, textValue: string): T | undefined => {
   if (config !== undefined) {
     return config as T;
@@ -492,6 +495,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "deepclone":
         return await executeDeepCloneNode(nodeId, textValue, inputData, config, executionContext);
+
+      case "conditionalbranch":
+        return executeConditionalBranchNode(nodeId, textValue, inputData, config);
 
       default:
         return {
@@ -6919,5 +6925,45 @@ async function executeDeepCloneNode(
       sourceFiles: inputData.sourceFiles || [],
       tableCount: outputTables.length,
     } as DBTablesNodeData,
+  };
+}
+
+/**
+ * Control-flow gate: passes its input straight through, out of one of two handles depending on a
+ * checkbox flow option. The handle not taken is reported as inactive, so the executor never runs the
+ * nodes behind it — a save or dump on the branch not taken writes nothing at all.
+ */
+function executeConditionalBranchNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+): NodeExecutionResult {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<{ selectedFlowOptionId?: string; flowOptionChecked?: boolean }>(
+    config,
+    textValue,
+  );
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+  if (!parsed.selectedFlowOptionId) {
+    return { success: false, error: "No flow option selected: pick the checkbox that decides the branch" };
+  }
+
+  const isChecked = parsed.flowOptionChecked === true;
+  const activeHandle = isChecked ? CONDITIONAL_BRANCH_TRUE_HANDLE : CONDITIONAL_BRANCH_FALSE_HANDLE;
+
+  console.log(
+    `Conditional Branch Node ${nodeId}: '${parsed.selectedFlowOptionId}' is ${isChecked}, continuing through ${activeHandle}`,
+  );
+
+  return {
+    success: true,
+    data: inputData,
+    activeOutputHandles: [activeHandle],
   };
 }

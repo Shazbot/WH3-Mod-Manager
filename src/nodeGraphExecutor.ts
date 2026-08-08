@@ -22,6 +22,7 @@ interface NodeExecutionResult {
   data?: any;
   elseData?: any;
   multiOutputs?: Record<string, any>;
+  activeOutputHandles?: string[];
   error?: string;
 }
 const isMultiOutputNodeType = (nodeType?: string): boolean =>
@@ -179,6 +180,12 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
     return JSON.stringify({
       customRows: (node.data as any).customRows || [],
       tableName: (node.data as any).tableName || "",
+    });
+  }
+  if (node.type === "conditionalbranch") {
+    return JSON.stringify({
+      selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",
+      flowOptionChecked: (node.data as any).flowOptionChecked === true,
     });
   }
   if (node.type === "deepclone") {
@@ -406,6 +413,20 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
         }
         const outgoingConnections = outgoingConnectionsBySource.get(node.id) || [];
         for (const connection of outgoingConnections) {
+          // A control-flow node reports which of its handles the run continues through. Targets on
+          // the other handle are never enqueued, and because they never execute successfully their
+          // own downstream nodes fail the dependency check below - so the whole branch is skipped,
+          // rather than running with empty data and writing empty packs or files.
+          if (
+            result.activeOutputHandles &&
+            !result.activeOutputHandles.includes(connection.sourceHandle ?? "")
+          ) {
+            flowExecutionDebugLog(
+              executionContext,
+              `Skipping branch ${node.id}:${connection.sourceHandle} -> ${connection.targetId}`,
+            );
+            continue;
+          }
           const targetNode = nodeMap.get(connection.targetId);
           if (!targetNode || executed.has(targetNode.id)) {
             continue;

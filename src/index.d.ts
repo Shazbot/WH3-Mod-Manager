@@ -1213,7 +1213,8 @@ declare global {
     | "multifilter"
     | "addnewcolumn"
     | "deduplicate"
-    | "deepclone";
+    | "deepclone"
+    | "conditionalbranch";
 
   // FlowNodeData = "string"|
 
@@ -1243,6 +1244,11 @@ declare global {
       | CustomSchemaData;
     elseData?: DBTablesNodeData; // For filter node's "else" output handle
     multiOutputs?: Record<string, any>; // For multi-output nodes like generaterows and multifilter
+    /**
+     * Control-flow gate: when set, only connections leaving these handles are followed, so the
+     * branch not taken never runs. Absent means every outgoing connection is followed as usual.
+     */
+    activeOutputHandles?: string[];
     error?: string;
   }
 

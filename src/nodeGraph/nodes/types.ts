@@ -400,6 +400,20 @@ export interface MultiFilterNodeData extends NodeData {
   DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
+export interface ConditionalBranchNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  /** Id of the checkbox flow option that decides which branch runs. */
+  selectedFlowOptionId: string;
+  /**
+   * Resolved from the option at prepare time, so the executor never needs the option list. Undefined
+   * until then; treated as false.
+   */
+  flowOptionChecked?: boolean;
+  columnNames: string[];
+  connectedTableName?: string;
+}
+
 /** One hop of the deep clone plan: a table reached from its parent by a schema reference. */
 export interface DeepCloneTreeNode {
   /** Table reached by this hop, e.g. "land_units_tables". Root node uses the input table. */

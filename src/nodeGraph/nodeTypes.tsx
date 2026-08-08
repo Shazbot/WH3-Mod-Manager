@@ -5,6 +5,7 @@ import {
   AppendTextNode,
   ColumnSelectionDropdownNode,
   ColumnSelectionNode,
+  ConditionalBranchNode,
   CustomRowsInputNode,
   CustomSchemaNode,
   DeduplicateNode,
@@ -76,4 +77,5 @@ export const reactFlowNodeTypes = {
   readtsvfrompack: ReadTSVFromPackNode,
   customrowsinput: CustomRowsInputNode,
   deepclone: DeepCloneNode,
+  conditionalbranch: ConditionalBranchNode,
 };

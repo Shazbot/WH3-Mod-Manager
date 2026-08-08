@@ -38,7 +38,12 @@ import {
   nodeTypeSectionDefinitions,
   NodeTypeSection,
 } from "../nodeGraph/nodeRegistry";
-import { DefaultTableVersionsContext, nodeEditorDebugLog, stopWheelPropagation } from "../nodeGraph/nodes/shared";
+import {
+  DefaultTableVersionsContext,
+  FlowOptionsContext,
+  nodeEditorDebugLog,
+  stopWheelPropagation,
+} from "../nodeGraph/nodes/shared";
 import { reactFlowNodeTypes } from "../nodeGraph/nodeTypes";
 import { FlowNodeDataPatch, FlowOption, SerializedNode, SerializedNodeGraph } from "../nodeGraph/types";
 
@@ -935,6 +940,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       <NodeSidebar onDragStart={onDragStart} />
       <div className="flex-1 relative" ref={reactFlowWrapper}>
         <DefaultTableVersionsContext.Provider value={defaultTableVersions}>
+        <FlowOptionsContext.Provider value={flowOptions}>
           <ReactFlowProvider>
             <ReactFlow
               className="node-editor-flow"
@@ -1152,6 +1158,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
               </button>
             </div>
           </ReactFlowProvider>
+        </FlowOptionsContext.Provider>
         </DefaultTableVersionsContext.Provider>
       </div>
 

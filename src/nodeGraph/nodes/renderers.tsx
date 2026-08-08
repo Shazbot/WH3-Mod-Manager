@@ -18,6 +18,7 @@ import {
   nodeEditorDebugLog,
   stopWheelPropagation,
   useDefaultTableVersions,
+  useFlowOptions,
 } from "./shared";
 import type {
   AddColumnTransformation,
@@ -29,6 +30,7 @@ import type {
   ColumnSelectionNodeData,
   ColumnTransformation,
   CustomRowsInputNodeData,
+  ConditionalBranchNodeData,
   CustomSchemaNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
@@ -6384,6 +6386,112 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
         position={Position.Right}
         className="w-3 h-3 bg-orange-500"
         data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; id: string }> = ({
+  data,
+  id,
+}) => {
+  const localized = useLocalizations();
+  const flowOptions = useFlowOptions();
+  const [selectedFlowOptionId, setSelectedFlowOptionId] = useState<string>(
+    data.selectedFlowOptionId || "",
+  );
+
+  // Only a checkbox can decide a branch; the other option types are not offered.
+  const checkboxOptions = flowOptions.filter((option) => option.type === "checkbox");
+  const selectedOption = checkboxOptions.find((option) => option.id === selectedFlowOptionId);
+
+  React.useEffect(() => {
+    if (data.selectedFlowOptionId !== undefined && data.selectedFlowOptionId !== selectedFlowOptionId) {
+      setSelectedFlowOptionId(data.selectedFlowOptionId);
+    }
+  }, [data.selectedFlowOptionId]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, selectedFlowOptionId });
+  }, [selectedFlowOptionId, id]);
+
+  return (
+    <div className="bg-gray-700 border-2 border-teal-500 rounded-lg p-4 min-w-[260px] max-w-[340px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorConditionalBranchTitle || "Conditional Branch"}
+      </div>
+
+      <label className="text-xs text-gray-300 block mb-1">
+        {localized.nodeEditorConditionalBranchOptionLabel || "Checkbox option:"}
+      </label>
+      <select
+        value={selectedFlowOptionId}
+        onChange={(event) => setSelectedFlowOptionId(event.target.value)}
+        className="w-full p-1 text-xs bg-gray-800 text-white border border-gray-600 rounded"
+      >
+        <option value="">
+          {localized.nodeEditorConditionalBranchSelectOption || "Select a checkbox option..."}
+        </option>
+        {checkboxOptions.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.name} ({option.id})
+          </option>
+        ))}
+      </select>
+
+      {checkboxOptions.length === 0 && (
+        <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+          {localized.nodeEditorConditionalBranchNoOptions ||
+            "This flow has no checkbox options. Add one in Flow Options first."}
+        </div>
+      )}
+      {checkboxOptions.length > 0 && selectedFlowOptionId && !selectedOption && (
+        <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+          {localized.nodeEditorConditionalBranchMissingOption ||
+            "The selected option no longer exists; the false branch will run."}
+        </div>
+      )}
+
+      <div className="mt-3 text-xs text-gray-300">
+        <div className="flex items-center justify-end gap-1 h-6">
+          <span className="text-green-400">
+            {localized.nodeEditorConditionalBranchChecked || "checked"}
+          </span>
+        </div>
+        <div className="flex items-center justify-end gap-1 h-6">
+          <span className="text-red-400">
+            {localized.nodeEditorConditionalBranchUnchecked || "unchecked"}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorConditionalBranchHelp ||
+          "Only the matching branch runs; nodes on the other branch are skipped entirely."}
+      </div>
+
+      <Handle
+        id="output-true"
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-green-500"
+        data-output-type="TableSelection"
+        style={{ top: "auto", bottom: 58 }}
+      />
+      <Handle
+        id="output-false"
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-red-500"
+        data-output-type="TableSelection"
+        style={{ top: "auto", bottom: 34 }}
       />
     </div>
   );

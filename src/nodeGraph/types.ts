@@ -138,6 +138,8 @@ export interface SerializedNode {
     columnOverrides?: DeepCloneOverride[];
     generateLoc?: boolean;
     autoFollowReferences?: boolean;
+    selectedFlowOptionId?: string;
+    flowOptionChecked?: boolean;
   };
 }
 

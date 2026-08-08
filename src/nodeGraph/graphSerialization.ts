@@ -108,6 +108,8 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         columnOverrides: (data.columnOverrides || []) as SerializedNode["data"]["columnOverrides"],
         generateLoc: data.generateLoc as boolean | undefined,
         autoFollowReferences: data.autoFollowReferences as boolean | undefined,
+        selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
+        flowOptionChecked: data.flowOptionChecked as boolean | undefined,
       },
     };
   });
@@ -181,6 +183,17 @@ export const prepareGraphForExecution = ({
     if (node.type === "savechanges") {
       nodeData.flowExecutionId = flowExecutionId;
       modified = true;
+    }
+
+    // Resolved outside the flowOptions guard on purpose: a gate whose option was deleted must fall
+    // back to false rather than keep whatever boolean was last saved with the flow.
+    if (node.type === "conditionalbranch") {
+      const selectedOption = flowOptions.find((option) => option.id === currentData.selectedFlowOptionId);
+      const isChecked = selectedOption?.type === "checkbox" ? selectedOption.value === true : false;
+      if (nodeData.flowOptionChecked !== isChecked) {
+        nodeData.flowOptionChecked = isChecked;
+        modified = true;
+      }
     }
 
     if (currentPackName && currentData.useCurrentPack === true) {

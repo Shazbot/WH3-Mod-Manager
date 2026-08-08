@@ -1286,6 +1286,11 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         customRows: (node.data as any).customRows || [],
         tableName: (node.data as any).tableName || "",
       };
+    case "conditionalbranch":
+      return {
+        selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",
+        flowOptionChecked: (node.data as any).flowOptionChecked === true,
+      };
     case "deepclone":
       return {
         cloneTree: (node.data as any).cloneTree,
@@ -1355,6 +1360,16 @@ const prepareFlow = (
       const nestedData = node.data as unknown as Record<string, unknown>;
       if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
       else substituteDeepCloneOptionValues(nestedData, replace);
+    }
+    // Same resolution as the manual run, but against the values the end user actually set.
+    if (node.type === "conditionalbranch") {
+      const selectedOption = flowData.options?.find(
+        (option) => option.id === (node.data as any).selectedFlowOptionId,
+      );
+      const userValue = selectedOption ? flowOptions?.optionValues?.[selectedOption.id] : undefined;
+      const effectiveValue = userValue !== undefined ? userValue : selectedOption?.value;
+      (node.data as any).flowOptionChecked =
+        selectedOption?.type === "checkbox" ? effectiveValue === true : false;
     }
     if (node.data.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {
