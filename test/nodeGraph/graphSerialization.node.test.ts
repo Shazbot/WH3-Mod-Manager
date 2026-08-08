@@ -198,6 +198,7 @@ describe("graphSerialization", () => {
           variantAxes,
           columnOverrides: [{ table: "main_units_tables", column: "cost", value: "900" }],
           generateLoc: true,
+          autoFollowReferences: false,
         },
       },
     ] as any[];
@@ -223,6 +224,9 @@ describe("graphSerialization", () => {
     expect(executionGraph.nodes[0].data.columnOverrides).toEqual([
       { table: "main_units_tables", column: "cost", value: "900" },
     ]);
+    // false must survive: a truthiness-based serializer would silently flip it back to the default.
+    expect(deserializedGraph.nodes[0].data.autoFollowReferences).toBe(false);
+    expect(executionGraph.nodes[0].data.autoFollowReferences).toBe(false);
   });
 
   it("preserves the anti-join lookup mode for execution", () => {

@@ -449,4 +449,6 @@ export interface DeepCloneNodeData extends NodeData {
   variantAxes: DeepCloneVariantAxis[];
   columnOverrides: DeepCloneOverride[];
   generateLoc: boolean;
+  /** Also clone every row that referenced a renamed key, re-pointed at the new key. */
+  autoFollowReferences: boolean;
 }

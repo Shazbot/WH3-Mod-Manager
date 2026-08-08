@@ -697,6 +697,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       variantAxes: [],
       columnOverrides: [],
       generateLoc: true,
+      autoFollowReferences: true,
     }),
   }),
 };

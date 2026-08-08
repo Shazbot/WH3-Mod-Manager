@@ -66,7 +66,39 @@ const schemas: Record<string, DBVersion> = {
     version: 1,
     fields: [createField("unit", { reference: ["main_units_tables", "unit"] }), createField("grouping")],
   },
+  // Reverse-references main_units_tables but is deliberately absent from the clone tree, so only
+  // auto-follow can reach it.
+  unit_permissions_tables: {
+    version: 1,
+    fields: [
+      createField("unit", { reference: ["main_units_tables", "unit"] }),
+      createField("faction"),
+    ],
+  },
+  // Stands in for the DLC ownership junctions that are always skipped.
+  ownership_junctions_tables: {
+    version: 1,
+    fields: [
+      createField("unit", { reference: ["main_units_tables", "unit"] }),
+      createField("content_pack"),
+    ],
+  },
 };
+
+/** Same inversion schema.ts performs to build gameToDBFieldsReferencedBy. */
+const reverseReferencesByTable: Record<string, Record<string, string[][]>> = (() => {
+  const index: Record<string, Record<string, string[][]>> = {};
+  for (const [tableName, schema] of Object.entries(schemas)) {
+    for (const field of schema.fields) {
+      if (!field.is_reference || field.is_reference.length < 2) continue;
+      const [referencedTable, referencedColumn] = field.is_reference;
+      index[referencedTable] = index[referencedTable] || {};
+      index[referencedTable][referencedColumn] = index[referencedTable][referencedColumn] || [];
+      index[referencedTable][referencedColumn].push([tableName, field.name]);
+    }
+  }
+  return index;
+})();
 
 const createRow = (tableName: string, values: string[]): AmendedSchemaField[] =>
   schemas[tableName].fields.map((field, index) => ({
@@ -108,6 +140,14 @@ const createTableFiles = (): Record<string, LoadedTableFile> => ({
   unit_castes_tables: createTableFile("unit_castes_tables", [["melee_infantry", "Melee Infantry"]]),
   units_to_groupings_tables: createTableFile("units_to_groupings_tables", [
     ["emp_spearmen", "empire_core"],
+  ]),
+  unit_permissions_tables: createTableFile("unit_permissions_tables", [
+    ["emp_spearmen", "emp_empire"],
+    ["emp_spearmen", "emp_secessionists"],
+    ["other_unit", "emp_empire"],
+  ]),
+  ownership_junctions_tables: createTableFile("ownership_junctions_tables", [
+    ["emp_spearmen", "base_game"],
   ]),
 });
 
@@ -162,6 +202,7 @@ const createPlan = (overrides: Partial<DeepClonePlan> = {}): DeepClonePlan => ({
   variantAxes: [],
   columnOverrides: [],
   generateLoc: false,
+  autoFollowReferences: false,
   ...overrides,
 });
 
@@ -182,6 +223,8 @@ const runClone = async (
     lookupLocText: (locKey) => options.locTexts?.[locKey],
     referencedColumnsByTable: {},
     numericIdFieldByTable: {},
+    reverseReferencesByTable,
+    tablesToIgnore: ["ownership_junctions_tables"],
   });
 };
 
@@ -425,6 +468,102 @@ describe("Deep clone engine", () => {
     const groupingValue = cellValue(getTable(result, "units_to_groupings_tables")!.rows[0], "grouping");
     expect(groupingValue).not.toBe("empire_core");
     expect(Number.isNaN(Number(groupingValue))).toBe(false);
+  });
+
+  it("does not reach tables outside the clone plan when auto-follow is off", async () => {
+    const result = await runClone(createPlan({ autoFollowReferences: false }));
+
+    expect(getTable(result, "unit_permissions_tables")).toBeUndefined();
+  });
+
+  it("copies every row referencing a renamed key and re-points it at the new key", async () => {
+    const result = await runClone(createPlan({ autoFollowReferences: true }));
+
+    // Two rows referenced emp_spearmen; the third belongs to another unit and must be left alone.
+    const permissions = getTable(result, "unit_permissions_tables")!;
+    expect(permissions.rows).toHaveLength(2);
+    expect(permissions.rows.map((row) => cellValue(row, "unit"))).toEqual([
+      "my_new_unit",
+      "my_new_unit",
+    ]);
+    expect(permissions.rows.map((row) => cellValue(row, "faction")).toSorted()).toEqual([
+      "emp_empire",
+      "emp_secessionists",
+    ]);
+  });
+
+  it("follows keys renamed deeper in the plan, not just the root key", async () => {
+    // land_units_tables.key is renamed by the tree, and main_units_tables.land_unit references it.
+    const result = await runClone(createPlan({ autoFollowReferences: true }));
+
+    const mainRows = getTable(result, "main_units_tables")!.rows;
+    // The unrelated other_unit row points at other_land, so it must not be dragged in.
+    expect(mainRows).toHaveLength(1);
+    expect(cellValue(mainRows[0], "land_unit")).toBe("my_new_unit");
+  });
+
+  it("skips ignored ownership junction tables", async () => {
+    const result = await runClone(createPlan({ autoFollowReferences: true }));
+
+    expect(getTable(result, "ownership_junctions_tables")).toBeUndefined();
+  });
+
+  it("follows reverse references that sit unchecked in the tree", async () => {
+    // The editor materializes every one-hop reference as an unchecked child, so almost every reverse
+    // reference is present-but-unchecked. That is the default state, not a decision to skip it.
+    const cloneTree = createCloneTree();
+    const groupings = cloneTree.children.find((child) => child.table === "units_to_groupings_tables")!;
+    groupings.selected = false;
+    cloneTree.children.push({
+      table: "unit_permissions_tables",
+      keyColumn: "",
+      linkColumn: "unit",
+      direction: "reverse",
+      selected: false,
+      children: [],
+    });
+
+    const result = await runClone(createPlan({ cloneTree, autoFollowReferences: true }));
+
+    expect(getTable(result, "units_to_groupings_tables")?.rows).toHaveLength(1);
+    expect(getTable(result, "unit_permissions_tables")?.rows).toHaveLength(2);
+  });
+
+  it("does not emit a checked reverse table twice when auto-follow also reaches it", async () => {
+    const result = await runClone(createPlan({ autoFollowReferences: true }));
+
+    // units_to_groupings_tables is checked in the tree, so the walk already collected its row.
+    expect(getTable(result, "units_to_groupings_tables")!.rows).toHaveLength(1);
+    // The root row is reachable again through land_units_tables.key; it must not be duplicated.
+    expect(getTable(result, "main_units_tables")!.rows).toHaveLength(1);
+  });
+
+  it("produces one copy of each referencing row per variant", async () => {
+    const result = await runClone(
+      createPlan({
+        autoFollowReferences: true,
+        variantAxes: [
+          {
+            id: "shield",
+            name: "shield",
+            values: [
+              { id: "a", suffix: "_shielded", overrides: [] },
+              { id: "b", suffix: "_unshielded", overrides: [] },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const permissions = getTable(result, "unit_permissions_tables")!;
+    // 2 source rows x 2 variants.
+    expect(permissions.rows).toHaveLength(4);
+    expect(permissions.rows.map((row) => cellValue(row, "unit")).toSorted()).toEqual([
+      "my_new_unit_shielded",
+      "my_new_unit_shielded",
+      "my_new_unit_unshielded",
+      "my_new_unit_unshielded",
+    ]);
   });
 
   it("refuses to run when the variant product exceeds the safety limit", async () => {

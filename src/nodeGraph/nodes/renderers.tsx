@@ -5880,6 +5880,9 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
   const [nameTemplate, setNameTemplate] = useState<string>(data.nameTemplate || "{original}{variant}");
   const [useModdersPrefix, setUseModdersPrefix] = useState<boolean>(data.useModdersPrefix !== false);
   const [generateLoc, setGenerateLoc] = useState<boolean>(data.generateLoc !== false);
+  const [autoFollowReferences, setAutoFollowReferences] = useState<boolean>(
+    data.autoFollowReferences !== false,
+  );
   const [variantAxes, setVariantAxes] = useState<DeepCloneVariantAxis[]>(data.variantAxes || []);
   const [columnOverrides, setColumnOverrides] = useState<DeepCloneOverride[]>(data.columnOverrides || []);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set([""]));
@@ -5903,8 +5906,14 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
   }, [cloneTree, id]);
 
   React.useEffect(() => {
-    dispatchNodeDataUpdate(data, { nodeId: id, nameTemplate, useModdersPrefix, generateLoc });
-  }, [nameTemplate, useModdersPrefix, generateLoc, id]);
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      nameTemplate,
+      useModdersPrefix,
+      generateLoc,
+      autoFollowReferences,
+    });
+  }, [nameTemplate, useModdersPrefix, generateLoc, autoFollowReferences, id]);
 
   React.useEffect(() => {
     dispatchNodeDataUpdate(data, { nodeId: id, variantAxes });
@@ -6294,6 +6303,27 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
         </label>
         {renderOverrideEditor(columnOverrides, setColumnOverrides)}
       </div>
+
+      <label className="flex items-center gap-2 cursor-pointer mb-2">
+        <input
+          type="checkbox"
+          checked={autoFollowReferences}
+          onChange={(event) => setAutoFollowReferences(event.target.checked)}
+          className="w-3 h-3"
+        />
+        <span className="text-xs text-white">
+          {localized.nodeEditorDeepCloneAutoFollow || "Also clone rows that reference the new keys"}
+        </span>
+        <DeepCloneHelp
+          text={
+            localized.nodeEditorDeepCloneAutoFollowTooltip ||
+            "After the clone, every table that references a key you renamed is checked for rows pointing at the original key, and each of those rows is copied with the reference re-pointed at the new key.\n\n" +
+              "Cloning main_units_tables key xxx this way also copies the rows in the junction tables that mention xxx, so the new unit is recruitable, grouped and permitted exactly like the original.\n\n" +
+              "This covers the whole tree above, checked or not: checking a table means \"clone it and give it a new key\", while auto-follow repoints everything else that pointed at what you renamed. Copied rows keep their own key; only the reference changes.\n\n" +
+              "Turn this off to emit only the tables you checked."
+          }
+        />
+      </label>
 
       <label className="flex items-center gap-2 cursor-pointer mb-2">
         <input

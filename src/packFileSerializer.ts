@@ -1290,6 +1290,7 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         variantAxes: (node.data as any).variantAxes || [],
         columnOverrides: (node.data as any).columnOverrides || [],
         generateLoc: (node.data as any).generateLoc !== false,
+        autoFollowReferences: (node.data as any).autoFollowReferences !== false,
       };
     default:
       return node.data.textValue;

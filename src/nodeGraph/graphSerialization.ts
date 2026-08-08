@@ -105,6 +105,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         variantAxes: (data.variantAxes || []) as SerializedNode["data"]["variantAxes"],
         columnOverrides: (data.columnOverrides || []) as SerializedNode["data"]["columnOverrides"],
         generateLoc: data.generateLoc as boolean | undefined,
+        autoFollowReferences: data.autoFollowReferences as boolean | undefined,
       },
     };
   });

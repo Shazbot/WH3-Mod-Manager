@@ -29,7 +29,13 @@ import {
   buildReadPackCacheKey,
   flowExecutionDebugLog,
 } from "./flowExecutionSupport";
-import { getSchemaForGame, gameToReferences, gameToTablesWithNumericIds } from "./schema";
+import {
+  getSchemaForGame,
+  getReferencesForGame,
+  getDBFieldsReferencedByForGame,
+  gameToTablesWithNumericIds,
+  tablesToIgnore,
+} from "./schema";
 import {
   DeepClonePlan,
   LoadedTableFile,
@@ -6636,6 +6642,7 @@ interface DeepCloneNodeConfig {
   variantAxes?: DeepCloneVariantAxis[];
   columnOverrides?: DeepCloneOverride[];
   generateLoc?: boolean;
+  autoFollowReferences?: boolean;
 }
 
 /** Strips the "db\" prefix a TableSelection payload carries, leaving the bare table name. */
@@ -6758,7 +6765,12 @@ async function executeDeepCloneNode(
     variantAxes: parsed.variantAxes || [],
     columnOverrides: parsed.columnOverrides || [],
     generateLoc: parsed.generateLoc !== false,
+    autoFollowReferences: parsed.autoFollowReferences !== false,
   };
+
+  // Both reference indexes are built lazily per game; make sure they exist before the engine reads them.
+  const referencedColumnsByTable = await getReferencesForGame(appData.currentGame);
+  const reverseReferencesByTable = await getDBFieldsReferencedByForGame(appData.currentGame);
 
   let result;
   try {
@@ -6766,8 +6778,10 @@ async function executeDeepCloneNode(
       loadTable,
       getRows: (packedFile) => getRowsForPackedFile(packedFile, executionContext),
       lookupLocText,
-      referencedColumnsByTable: gameToReferences[appData.currentGame] || {},
+      referencedColumnsByTable,
       numericIdFieldByTable: gameToTablesWithNumericIds[appData.currentGame] || {},
+      reverseReferencesByTable,
+      tablesToIgnore,
       log: (...args) => hotPathLog(executionContext, `Deep Clone Node ${nodeId}:`, ...args),
     });
   } catch (error) {

@@ -115,6 +115,7 @@ export interface SerializedNode {
     variantAxes?: DeepCloneVariantAxis[];
     columnOverrides?: DeepCloneOverride[];
     generateLoc?: boolean;
+    autoFollowReferences?: boolean;
   };
 }
 

@@ -127,6 +127,24 @@ describe("Deep Clone node", () => {
     expect(patches.some((patch) => patch.nameTemplate === "{selfOriginal}_clone{variant}")).toBe(true);
   });
 
+  it("follows references by default and can be turned off", () => {
+    const { container, getByText, onUpdateNodeData } = renderDeepCloneNode();
+
+    const autoFollowLabel = getByText("Also clone rows that reference the new keys")
+      .previousElementSibling as HTMLInputElement;
+    expect(autoFollowLabel.type).toBe("checkbox");
+    expect(autoFollowLabel.checked).toBe(true);
+
+    expect(
+      getHelpTooltips(container).some((title) => title.includes("re-pointed at the new key")),
+    ).toBe(true);
+
+    fireEvent.click(autoFollowLabel);
+
+    const patches = onUpdateNodeData.mock.calls.map((call) => call[0]);
+    expect(patches.some((patch) => patch.autoFollowReferences === false)).toBe(true);
+  });
+
   it("adds a variant axis and reports the resulting variant count", () => {
     const { container, getByText } = renderDeepCloneNode();
 

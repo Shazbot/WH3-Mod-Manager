@@ -20,6 +20,11 @@ export interface DeepClonePlan {
   variantAxes: DeepCloneVariantAxis[];
   columnOverrides: DeepCloneOverride[];
   generateLoc: boolean;
+  /**
+   * After the explicit plan has run, pull in every row that referenced a key we renamed and re-point
+   * it at the new key. Without it a cloned unit exists but nothing in the game refers to it.
+   */
+  autoFollowReferences: boolean;
 }
 
 export interface DeepCloneDependencies {
@@ -32,6 +37,10 @@ export interface DeepCloneDependencies {
   referencedColumnsByTable: Record<string, string[]>;
   /** gameToTablesWithNumericIds for the current game: table -> synthetic id column. */
   numericIdFieldByTable: Record<string, string>;
+  /** gameToDBFieldsReferencedBy: table -> column -> [[referencingTable, referencingColumn], ...] */
+  reverseReferencesByTable?: Record<string, Record<string, string[][]>>;
+  /** Ownership/content-pack junctions that are never worth following. */
+  tablesToIgnore?: string[];
   log?: (...args: unknown[]) => void;
 }
 
@@ -113,14 +122,13 @@ const getCellValue = (row: AmendedSchemaField[], columnName: string): string | u
 const getRenameKey = (tableName: string, columnName: string, value: string) =>
   `${tableName}|${columnName}|${value}`;
 
-/** Stable identity for a source row, so the same row is never collected twice in one pass. */
-const getRowIdentity = (row: AmendedSchemaField[], keyColumn: string): string => {
-  if (keyColumn) {
-    const value = getCellValue(row, keyColumn);
-    if (value !== undefined) return `${keyColumn}=${value}`;
-  }
-  return row.map((cell) => cell.resolvedKeyValue).join("");
-};
+/**
+ * Stable identity for a source row, so the same row is never collected twice in one pass.
+ * Uses every cell rather than the key column, so the walk and the auto-follow pass produce the
+ * same identity for a table both of them reach.
+ */
+const getRowIdentity = (row: AmendedSchemaField[]): string =>
+  row.map((cell) => cell.resolvedKeyValue).join("\u0001");
 
 interface CollectedRow {
   tableName: string;
@@ -281,7 +289,14 @@ export const executeDeepClonePlan = async (
 
     const rootOriginal = rootNode.keyColumn ? getCellValue(rootRow, rootNode.keyColumn) ?? "" : "";
     const renames = new Map<string, string>();
+    /** Renamed keys in walk order, so the auto-follow pass knows what to search for. */
+    const renamedKeys: Array<{ table: string; column: string; originalValue: string }> = [];
     const collected: CollectedRow[] = [];
+    /**
+     * Rows already collected this pass, keyed on the full source row. The whole row is used rather
+     * than its key column so that the walk and the auto-follow pass agree: a table reached by both
+     * must be collected once, and only the walk's copy gets its key renamed.
+     */
     const seenInPass = new Set<string>();
 
     const walk = async (
@@ -292,7 +307,7 @@ export const executeDeepClonePlan = async (
       const schema = tableFile.packedFile.tableSchema;
       if (!schema) return;
 
-      const identity = `${node.table}|${getRowIdentity(row, node.keyColumn)}`;
+      const identity = `${node.table}|${getRowIdentity(row)}`;
       if (seenInPass.has(identity)) return;
       seenInPass.add(identity);
 
@@ -315,6 +330,7 @@ export const executeDeepClonePlan = async (
             plan.useModdersPrefix,
           );
           renames.set(getRenameKey(node.table, node.keyColumn, selfOriginal), newKey);
+          renamedKeys.push({ table: node.table, column: node.keyColumn, originalValue: selfOriginal });
 
           const existing = await getExistingColumnValues(node.table, node.keyColumn);
           if (existing.has(newKey)) {
@@ -332,6 +348,9 @@ export const executeDeepClonePlan = async (
       });
 
       for (const child of node.children || []) {
+        // An unchecked child is the tree's default state, not a decision to skip the table: the
+        // editor materializes every one-hop reference unchecked. Checking one means "clone it and
+        // give it a new key"; auto-follow still reaches the rest to repoint their references.
         if (!child.selected) continue;
         for (const match of await resolveChildRows(child, schema, row)) {
           await walk(child, match.tableFile, match.row);
@@ -339,7 +358,73 @@ export const executeDeepClonePlan = async (
       }
     };
 
+    /**
+     * Every row that pointed at a key we just renamed needs a copy pointing at the new key,
+     * otherwise the clone is orphaned: the unit exists but no grouping, permission or junction row
+     * mentions it. The rows are collected here and the foreign key rewrite during materialization
+     * repoints them, because the rename map already holds the mapping.
+     *
+     * Auto-followed rows keep their own key untouched. In practice these are junction tables whose
+     * key is the composite of all their columns, so rewriting the foreign key already makes the row
+     * unique; inventing a name for a key the user never asked about would be worse.
+     */
+    const autoFollowReferences = async (): Promise<void> => {
+      const reverseReferences = deps.reverseReferencesByTable ?? {};
+      const ignored = deps.tablesToIgnore ?? [];
+
+      for (const renamed of renamedKeys) {
+        const referencingPairs = reverseReferences[renamed.table]?.[renamed.column] ?? [];
+
+        for (const [refTable, refColumn] of referencingPairs) {
+          if (ignored.includes(refTable)) continue;
+
+          const refTableFiles = await loadTable(refTable);
+          for (const refTableFile of refTableFiles) {
+            const refSchema = refTableFile.packedFile.tableSchema;
+            if (!refSchema) continue;
+
+            for (const refRow of deps.getRows(refTableFile.packedFile)) {
+              if (getCellValue(refRow, refColumn) !== renamed.originalValue) continue;
+
+              const identity = `${refTable}|${getRowIdentity(refRow)}`;
+              if (seenInPass.has(identity)) continue;
+              seenInPass.add(identity);
+
+              if (collected.length >= MAX_DEEP_CLONE_ROWS) {
+                throw new Error(
+                  `Deep clone exceeded ${MAX_DEEP_CLONE_ROWS} rows while following references. Turn off "Also clone rows that reference the new keys" or narrow the clone plan.`,
+                );
+              }
+
+              collected.push({
+                tableName: refTable,
+                tableSchema: refSchema,
+                version: refTableFile.packedFile.version,
+                sourceRow: refRow,
+              });
+            }
+          }
+
+          // A table with a key of its own that other tables point at would need that key renamed
+          // too, which auto-follow deliberately does not do. Say so rather than emit it silently.
+          const ownReferencedColumns = (deps.referencedColumnsByTable[refTable] ?? []).filter(
+            (columnName) => columnName !== refColumn,
+          );
+          if (ownReferencedColumns.length > 0) {
+            const warning = `Auto-followed rows in ${refTable} keep their original ${ownReferencedColumns.join("/")} value; add it to the clone plan if it needs a new key`;
+            if (!warnings.includes(warning)) warnings.push(warning);
+          }
+        }
+      }
+    };
+
     await walk(rootNode, rootTableFile, rootRow);
+
+    // Runs after the walk so every renamed key is known, and before materialization so the collected
+    // rows go through the same foreign key rewrite as the rest.
+    if (plan.autoFollowReferences) {
+      await autoFollowReferences();
+    }
 
     // Materialize once the rename map is complete, so a row cloned early can still pick up a key
     // registered later in the walk.
