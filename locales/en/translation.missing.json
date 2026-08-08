@@ -1,4 +1,10 @@
 {
   "customFolderModLabel": "customFolderModLabel",
-  "nodeEditorDeepCloneMissingVariantWarning": "nodeEditorDeepCloneMissingVariantWarning"
+  "nodeEditorDeepCloneMissingVariantWarning": "nodeEditorDeepCloneMissingVariantWarning",
+  "nodeEditorNodeRemoveTablesLabel": "nodeEditorNodeRemoveTablesLabel",
+  "nodeEditorNodeRemoveTablesDescription": "nodeEditorNodeRemoveTablesDescription",
+  "nodeEditorRemoveTablesTitle": "nodeEditorRemoveTablesTitle",
+  "nodeEditorRemoveTablesLabel": "nodeEditorRemoveTablesLabel",
+  "nodeEditorRemoveTablesPlaceholder": "nodeEditorRemoveTablesPlaceholder",
+  "nodeEditorRemoveTablesEmpty": "nodeEditorRemoveTablesEmpty"
 }

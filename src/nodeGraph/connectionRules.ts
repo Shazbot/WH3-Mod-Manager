@@ -50,6 +50,7 @@ const TABLE_SELECTION_SOURCES = new Set([
   "readtsvfrompack",
   "deepclone",
   "conditionalbranch",
+  "removetables",
 ]);
 
 const TABLE_METADATA_TARGETS = new Set([
@@ -69,6 +70,7 @@ const TABLE_METADATA_TARGETS = new Set([
   "getcountercolumn",
   "deepclone",
   "conditionalbranch",
+  "removetables",
 ]);
 
 type NodeWithData<TData extends Record<string, unknown>> = Node<TData>;

@@ -11,6 +11,7 @@ import type {
   CustomRowsInputNodeData,
   ConditionalBranchNodeData,
   CustomSchemaNodeData,
+  RemoveTablesNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
   DumpToTSVNodeData,
@@ -702,6 +703,23 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       autoFollowReferences: true,
     }),
   }),
+  removetables: createNodeDefinition<RemoveTablesNodeData>({
+    type: "removetables",
+    labelKey: "nodeEditorNodeRemoveTablesLabel",
+    labelFallback: "Remove Tables",
+    descriptionKey: "nodeEditorNodeRemoveTablesDescription",
+    descriptionFallback: "Passes its input through with the named tables dropped",
+    createData: ({ label, sortedTableNames }) => ({
+      label,
+      type: "removetables",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      tablesToRemove: [],
+      tableNames: sortedTableNames,
+      columnNames: [],
+      connectedTableName: "",
+    }),
+  }),
   conditionalbranch: createNodeDefinition<ConditionalBranchNodeData>({
     type: "conditionalbranch",
     labelKey: "nodeEditorNodeConditionalBranchLabel",
@@ -734,7 +752,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionTableRowsFiltering",
     titleFallback: "Table Rows Filtering",
-    nodes: ["conditionalbranch", "deduplicate", "filter", "multifilter"],
+    nodes: ["conditionalbranch", "deduplicate", "filter", "multifilter", "removetables"],
   },
   {
     titleKey: "nodeEditorSectionColumnSelection",

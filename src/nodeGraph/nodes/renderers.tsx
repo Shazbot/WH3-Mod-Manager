@@ -32,6 +32,7 @@ import type {
   CustomRowsInputNodeData,
   ConditionalBranchNodeData,
   CustomSchemaNodeData,
+  RemoveTablesNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
   DeepCloneOverride,
@@ -6497,6 +6498,119 @@ export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; 
         {localized.nodeEditorConditionalBranchHelp ||
           "Only the matching branch runs; nodes on the other branch are skipped entirely."}
       </div>
+    </div>
+  );
+};
+
+export const RemoveTablesNode: React.FC<{ data: RemoveTablesNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const [tablesToRemove, setTablesToRemove] = useState<string[]>(data.tablesToRemove || []);
+  const [draftTable, setDraftTable] = useState("");
+  const tableNames = data.tableNames || [];
+  const datalistId = `remove-tables-${id}`;
+
+  React.useEffect(() => {
+    if (
+      data.tablesToRemove !== undefined &&
+      JSON.stringify(data.tablesToRemove) !== JSON.stringify(tablesToRemove)
+    ) {
+      setTablesToRemove(data.tablesToRemove);
+    }
+  }, [data.tablesToRemove]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, tablesToRemove });
+  }, [tablesToRemove, id]);
+
+  const addTable = () => {
+    const tableName = draftTable.trim();
+    if (!tableName || tablesToRemove.includes(tableName)) return;
+    setTablesToRemove([...tablesToRemove, tableName]);
+    setDraftTable("");
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-rose-500 rounded-lg p-4 min-w-[300px] max-w-[380px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorRemoveTablesTitle || "Remove Tables"}
+      </div>
+
+      <label className="text-xs text-gray-300 block mb-1">
+        {localized.nodeEditorRemoveTablesLabel || "Tables to remove:"}
+      </label>
+
+      <div className="flex items-center gap-1 mb-2">
+        {/* A free-text box with schema autocomplete: the input can also carry entries that are not
+            schema tables, such as a generated loc or a copied art file. */}
+        <input
+          type="text"
+          list={datalistId}
+          value={draftTable}
+          onChange={(event) => setDraftTable(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addTable();
+            }
+          }}
+          placeholder={localized.nodeEditorRemoveTablesPlaceholder || "Table name..."}
+          className="flex-1 p-1 text-xs bg-gray-800 text-white border border-gray-600 rounded"
+        />
+        <datalist id={datalistId}>
+          {tableNames.map((tableName) => (
+            <option key={tableName} value={tableName} />
+          ))}
+        </datalist>
+        <button
+          onClick={addTable}
+          className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded"
+        >
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div
+        className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
+        onWheel={stopWheelPropagation}
+      >
+        {tablesToRemove.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorRemoveTablesEmpty || "Nothing removed; input passes through"}
+          </div>
+        ) : (
+          tablesToRemove.map((tableName) => (
+            <div key={tableName} className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-xs text-white truncate" title={tableName}>
+                {tableName}
+              </span>
+              <button
+                onClick={() => setTablesToRemove(tablesToRemove.filter((name) => name !== tableName))}
+                className="text-xs text-red-400 hover:text-red-300"
+              >
+                ✕
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
     </div>
   );
 };

@@ -1286,6 +1286,8 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         customRows: (node.data as any).customRows || [],
         tableName: (node.data as any).tableName || "",
       };
+    case "removetables":
+      return { tablesToRemove: (node.data as any).tablesToRemove || [] };
     case "conditionalbranch":
       return {
         selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",

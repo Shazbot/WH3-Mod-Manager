@@ -1214,7 +1214,8 @@ declare global {
     | "addnewcolumn"
     | "deduplicate"
     | "deepclone"
-    | "conditionalbranch";
+    | "conditionalbranch"
+    | "removetables";
 
   // FlowNodeData = "string"|
 

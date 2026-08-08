@@ -108,6 +108,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         columnOverrides: (data.columnOverrides || []) as SerializedNode["data"]["columnOverrides"],
         generateLoc: data.generateLoc as boolean | undefined,
         autoFollowReferences: data.autoFollowReferences as boolean | undefined,
+        tablesToRemove: data.tablesToRemove || [],
         selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
         flowOptionChecked: data.flowOptionChecked as boolean | undefined,
       },

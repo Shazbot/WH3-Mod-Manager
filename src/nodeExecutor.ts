@@ -501,6 +501,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "conditionalbranch":
         return executeConditionalBranchNode(nodeId, textValue, inputData, config);
 
+      case "removetables":
+        return executeRemoveTablesNode(nodeId, textValue, inputData, config);
+
       default:
         return {
           success: false,
@@ -7072,5 +7075,57 @@ function executeConditionalBranchNode(
     success: true,
     data: inputData,
     activeOutputHandles: [activeHandle],
+  };
+}
+
+/**
+ * Drops the named entries from a table selection and passes the rest through.
+ *
+ * Matching is on the entry's name, with or without the "db\\" prefix and case-insensitively, so a
+ * name typed from the schema list works whichever convention the upstream node used. Non-table
+ * payloads carry their own name too - the generated loc, or an art file's path - so they can be
+ * dropped the same way.
+ */
+function executeRemoveTablesNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+): NodeExecutionResult {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<{ tablesToRemove?: string[] }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  const removalNames = new Set(
+    (parsed.tablesToRemove || [])
+      .map((tableName) => toBareTableName(tableName).toLowerCase())
+      .filter((tableName) => tableName.length > 0),
+  );
+  if (removalNames.size === 0) {
+    return { success: true, data: inputData };
+  }
+
+  const keptTables = (inputData.tables || []).filter((table) => {
+    const bareName = toBareTableName(table.name).toLowerCase();
+    return !removalNames.has(bareName) && !removalNames.has((table.name || "").toLowerCase());
+  });
+
+  const removedCount = (inputData.tables || []).length - keptTables.length;
+  console.log(
+    `Remove Tables Node ${nodeId}: dropped ${removedCount} of ${(inputData.tables || []).length} entr(ies) matching ${[...removalNames].join(", ")}`,
+  );
+
+  return {
+    success: true,
+    data: {
+      ...inputData,
+      tables: keptTables,
+      tableCount: keptTables.length,
+    } as DBTablesNodeData,
   };
 }

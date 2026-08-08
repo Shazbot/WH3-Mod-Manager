@@ -140,6 +140,7 @@ export interface SerializedNode {
     autoFollowReferences?: boolean;
     selectedFlowOptionId?: string;
     flowOptionChecked?: boolean;
+    tablesToRemove?: string[];
   };
 }
 

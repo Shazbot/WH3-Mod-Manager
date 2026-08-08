@@ -187,6 +187,9 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       tableName: (node.data as any).tableName || "",
     });
   }
+  if (node.type === "removetables") {
+    return JSON.stringify({ tablesToRemove: (node.data as any).tablesToRemove || [] });
+  }
   if (node.type === "conditionalbranch") {
     return JSON.stringify({
       selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",

@@ -30,6 +30,7 @@ import {
   PackFilesDropdownNode,
   PackFilesNode,
   ReadTSVFromPackNode,
+  RemoveTablesNode,
   ReferenceTableLookupNode,
   ReverseReferenceLookupNode,
   SaveChangesNode,
@@ -78,4 +79,5 @@ export const reactFlowNodeTypes = {
   customrowsinput: CustomRowsInputNode,
   deepclone: DeepCloneNode,
   conditionalbranch: ConditionalBranchNode,
+  removetables: RemoveTablesNode,
 };

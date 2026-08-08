@@ -400,6 +400,17 @@ export interface MultiFilterNodeData extends NodeData {
   DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
+export interface RemoveTablesNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  /** Entries to drop, matched against each table's name. */
+  tablesToRemove: string[];
+  /** Every table in the game schema, for autocomplete only. */
+  tableNames: string[];
+  columnNames: string[];
+  connectedTableName?: string;
+}
+
 export interface ConditionalBranchNodeData extends NodeData {
   inputType: "TableSelection";
   outputType: "TableSelection";
