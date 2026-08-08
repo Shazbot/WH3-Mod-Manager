@@ -18,6 +18,18 @@ interface PrepareGraphForExecutionInput {
   flowOptions?: FlowOption[];
 }
 
+/** Transformation fields that accept a flow option placeholder. */
+export const transformationOptionFields = [
+  "rangeStart",
+  "endNumber",
+  "rangeIncrement",
+  "prefix",
+  "suffix",
+  "filterValue",
+  "conditionValue",
+  "replaceValue",
+] as const;
+
 const escapeForRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const maybeString = (value: unknown) => (value ? String(value) : "");
@@ -248,7 +260,7 @@ export const prepareGraphForExecution = ({
           let transformationModified = false;
           const nextTransformation = { ...(transformation as Record<string, unknown>) };
 
-          for (const fieldName of ["rangeStart", "endNumber", "rangeIncrement", "prefix", "suffix", "filterValue"]) {
+          for (const fieldName of transformationOptionFields) {
             const fieldValue = nextTransformation[fieldName];
             if (typeof fieldValue === "string" && fieldValue) {
               const nextValue = replaceFlowOptionPlaceholders(fieldValue, flowOptions);

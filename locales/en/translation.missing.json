@@ -6,5 +6,12 @@
   "nodeEditorRemoveTablesTitle": "nodeEditorRemoveTablesTitle",
   "nodeEditorRemoveTablesLabel": "nodeEditorRemoveTablesLabel",
   "nodeEditorRemoveTablesPlaceholder": "nodeEditorRemoveTablesPlaceholder",
-  "nodeEditorRemoveTablesEmpty": "nodeEditorRemoveTablesEmpty"
+  "nodeEditorRemoveTablesEmpty": "nodeEditorRemoveTablesEmpty",
+  "nodeEditorOverwriteSourceColumn": "nodeEditorOverwriteSourceColumn",
+  "nodeEditorTransformConditionAlways": "nodeEditorTransformConditionAlways",
+  "nodeEditorTransformConditionTooltip": "nodeEditorTransformConditionTooltip",
+  "nodeEditorConditionStartsWith": "nodeEditorConditionStartsWith",
+  "nodeEditorConditionEquals": "nodeEditorConditionEquals",
+  "nodeEditorConditionNotEquals": "nodeEditorConditionNotEquals",
+  "nodeEditorConditionContains": "nodeEditorConditionContains"
 }

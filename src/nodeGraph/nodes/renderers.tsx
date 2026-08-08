@@ -4880,7 +4880,9 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
             return (
               <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-400">→ {trans.outputColumnName}</span>
+                  <span className="text-xs text-gray-400">
+                    → {trans.overwriteSource ? trans.sourceColumn || "?" : trans.outputColumnName}
+                  </span>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => moveTransformationUp(trans.id)}
@@ -4914,6 +4916,74 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                       ✕
                     </button>
                   </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer mb-1">
+                  <input
+                    type="checkbox"
+                    checked={trans.overwriteSource === true}
+                    onChange={(e) => updateTransformation(trans.id, { overwriteSource: e.target.checked })}
+                    className="w-3 h-3"
+                  />
+                  <span className="text-xs text-white">
+                    {localized.nodeEditorOverwriteSourceColumn || "Overwrite the source column"}
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-1 mb-1">
+                  <select
+                    value={trans.conditionColumn || ""}
+                    onChange={(e) =>
+                      updateTransformation(trans.id, {
+                        conditionColumn: e.target.value,
+                        conditionOperator: trans.conditionOperator || "startsWith",
+                      })
+                    }
+                    className="flex-1 bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                    title={
+                      localized.nodeEditorTransformConditionTooltip ||
+                      "Apply this transformation only to rows where the condition holds. Other rows keep their value - unlike a filter transformation, which removes the row entirely."
+                    }
+                  >
+                    <option value="">{localized.nodeEditorTransformConditionAlways || "always"}</option>
+                    {(data.inputColumnNames || columnNames || []).map((col: string) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  {trans.conditionColumn && (
+                    <>
+                      <select
+                        value={trans.conditionOperator || "startsWith"}
+                        onChange={(e) =>
+                          updateTransformation(trans.id, {
+                            conditionOperator: e.target
+                              .value as AddColumnTransformation["conditionOperator"],
+                          })
+                        }
+                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                      >
+                        <option value="startsWith">
+                          {localized.nodeEditorConditionStartsWith || "starts with"}
+                        </option>
+                        <option value="equals">{localized.nodeEditorConditionEquals || "equals"}</option>
+                        <option value="notEquals">
+                          {localized.nodeEditorConditionNotEquals || "not equals"}
+                        </option>
+                        <option value="contains">
+                          {localized.nodeEditorConditionContains || "contains"}
+                        </option>
+                      </select>
+                      <input
+                        type="text"
+                        value={trans.conditionValue || ""}
+                        onChange={(e) => updateTransformation(trans.id, { conditionValue: e.target.value })}
+                        placeholder={localized.nodeEditorValuePlaceholder || "value"}
+                        className="w-20 bg-gray-700 border border-gray-600 text-white text-xs rounded p-1"
+                      />
+                    </>
+                  )}
                 </div>
 
                 <select

@@ -33,6 +33,7 @@ import {
   substituteDeepCloneOptionValues,
   substituteFilterOptionValues,
 } from "./nodeGraph/deepCloneOptions";
+import { transformationOptionFields } from "./nodeGraph/graphSerialization";
 import getPackTableData, {
   isSchemaFieldNumber,
   isSchemaFieldNumberInteger,
@@ -1363,6 +1364,28 @@ const prepareFlow = (
       if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
       else substituteDeepCloneOptionValues(nestedData, replace);
     }
+    // The manual run substitutes into transformation fields too; without this the same flow behaves
+    // differently at game start.
+    if (optionReplacements.length > 0 && Array.isArray((node.data as any).transformations)) {
+      (node.data as any).transformations = (node.data as any).transformations.map(
+        (transformation: Record<string, unknown>) => {
+          if (!transformation || typeof transformation !== "object") return transformation;
+          const nextTransformation = { ...transformation };
+          for (const fieldName of transformationOptionFields) {
+            const fieldValue = nextTransformation[fieldName];
+            if (typeof fieldValue !== "string" || fieldValue.length === 0) continue;
+            let modifiedValue = fieldValue;
+            for (const optionReplacement of optionReplacements) {
+              if (!modifiedValue.includes(optionReplacement.placeholder)) continue;
+              modifiedValue = modifiedValue.replace(optionReplacement.matcher, optionReplacement.replacement);
+            }
+            nextTransformation[fieldName] = modifiedValue;
+          }
+          return nextTransformation;
+        },
+      );
+    }
+
     // Same resolution as the manual run, but against the values the end user actually set.
     if (node.type === "conditionalbranch") {
       const selectedOption = flowData.options?.find(

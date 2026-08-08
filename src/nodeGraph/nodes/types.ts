@@ -308,6 +308,18 @@ export interface AddColumnTransformation {
   regexPattern?: string; // For regex_replace
   regexReplacement?: string; // For regex_replace
   outputColumnName: string;
+  /**
+   * Write the result back into sourceColumn instead of appending a column, leaving the table's shape
+   * untouched. Needed wherever the columns are fixed, such as a loc's key/text/tooltip.
+   */
+  overwriteSource?: boolean;
+  /**
+   * Apply this transformation only to rows where the condition holds; other rows keep their value.
+   * Distinct from the filter transformations, which remove the row from the output altogether.
+   */
+  conditionColumn?: string;
+  conditionOperator?: "startsWith" | "equals" | "notEquals" | "contains";
+  conditionValue?: string;
 }
 
 export interface AddNewColumnNodeData extends NodeData {

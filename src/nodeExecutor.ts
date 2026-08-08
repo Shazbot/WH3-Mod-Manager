@@ -5552,6 +5552,12 @@ async function executeAddNewColumnNode(
       regexPattern?: string;
       regexReplacement?: string;
       outputColumnName: string;
+      /** Write the result back into sourceColumn instead of appending a column. */
+      overwriteSource?: boolean;
+      /** Apply this transformation only to rows where the condition holds. */
+      conditionColumn?: string;
+      conditionOperator?: "startsWith" | "equals" | "notEquals" | "contains";
+      conditionValue?: string;
     }>;
     DBNameToDBVersions?: Record<string, DBVersion[]>;
   };
@@ -5629,13 +5635,51 @@ async function executeAddNewColumnNode(
     return trans.transformationType === "filterequal" || trans.transformationType === "filternotequal";
   }
 
+  /** An overwriting transformation replaces its source column, so it adds no field to the schema. */
+  function isOverwriteTransformation(trans: (typeof config.transformations)[0]): boolean {
+    return trans.overwriteSource === true && !isFilterTransformation(trans);
+  }
+
+  /**
+   * Whether a transformation applies to this row.
+   *
+   * This is separate from the filter transformations, which drop the row from the output entirely.
+   * A condition leaves the row alone and only skips this one transformation, which is what lets a
+   * single node hold several rules - append one suffix to the land unit names, another to the main
+   * unit names - each matching on a different column from the one it writes.
+   */
+  function conditionHolds(
+    trans: (typeof config.transformations)[0],
+    row: AmendedSchemaField[],
+  ): boolean {
+    if (!trans.conditionColumn || !trans.conditionOperator) return true;
+    const conditionValue = trans.conditionValue ?? "";
+    const cellValue = row.find((cell) => cell.name === trans.conditionColumn)?.resolvedKeyValue ?? "";
+
+    switch (trans.conditionOperator) {
+      case "startsWith":
+        return cellValue.startsWith(conditionValue);
+      case "equals":
+        return cellValue === conditionValue;
+      case "notEquals":
+        return cellValue !== conditionValue;
+      case "contains":
+        return cellValue.includes(conditionValue);
+      default:
+        return true;
+    }
+  }
+
   // 3. Process each row and apply transformations
-  const transformedData = new Map<string, any[]>(); // outputColumnName -> array of values for each row
+  // Keyed by the transformation's position, not its output column: in overwrite mode several
+  // transformations legitimately target the same column, and sharing one array would interleave
+  // their values and shift every later row.
+  const transformedData = new Map<number, any[]>();
   const filteredRowIndices = new Set<number>(); // Track which rows to exclude
 
-  for (const trans of config.transformations) {
-    transformedData.set(trans.outputColumnName, []);
-  }
+  config.transformations.forEach((_transformation, transformationIndex) => {
+    transformedData.set(transformationIndex, []);
+  });
 
   for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
     const row = rows[rowIdx];
@@ -5651,6 +5695,15 @@ async function executeAddNewColumnNode(
       } else {
         const sourceCell = row.find((c) => c.name === transformation.sourceColumn);
         outputValue = sourceCell?.resolvedKeyValue ?? "";
+      }
+
+      // A row the condition excludes keeps its source value: an overwriting transformation leaves
+      // the cell alone, and an appending one copies the source across untransformed. Only the
+      // per-row map is set here; the loop below is what pushes one entry per row into
+      // transformedData, and pushing again here would shift every later row's value.
+      if (!isFilterTransformation(transformation) && !conditionHolds(transformation, row)) {
+        rowTransformedValues.set(transformation.outputColumnName, outputValue);
+        continue;
       }
 
       // Apply transformation
@@ -5748,16 +5801,18 @@ async function executeAddNewColumnNode(
       rowTransformedValues.set(transformation.outputColumnName, outputValue);
     }
 
-    // Store all transformed values for this row
-    for (const transformation of config.transformations) {
-      const value = rowTransformedValues.get(transformation.outputColumnName);
-      transformedData.get(transformation.outputColumnName)!.push(value);
-    }
+    // Store all transformed values for this row, one entry per transformation per row
+    config.transformations.forEach((transformation, transformationIndex) => {
+      transformedData.get(transformationIndex)!.push(
+        rowTransformedValues.get(transformation.outputColumnName),
+      );
+    });
   }
 
   console.log(`Add New Column Node ${nodeId}: Filtered out ${filteredRowIndices.size} rows`);
 
   // 4. Build output table with original columns + new columns
+  const inputSchemaFields = sourceTable.table.tableSchema?.fields ?? [];
   const outputRows: AmendedSchemaField[] = [];
   let outputRowIdx = 0;
 
@@ -5769,16 +5824,36 @@ async function executeAddNewColumnNode(
 
     const row = rows[rowIdx];
 
-    // Copy all original columns
-    for (const cell of row) {
+    // Copy the original columns, applying any overwriting transformation in place. The column keeps
+    // its own field type, so a table whose shape matters - a loc is exactly key/text/tooltip - comes
+    // out with the same columns it went in with.
+    const overwrittenRow = row.map((cell) => ({ ...cell }));
+    for (const [transformationIndex, transformation] of config.transformations.entries()) {
+      if (!isOverwriteTransformation(transformation)) continue;
+
+      const cellIndex = overwrittenRow.findIndex((cell) => cell.name === transformation.sourceColumn);
+      if (cellIndex === -1) continue;
+
+      const value = String(transformedData.get(transformationIndex)?.[rowIdx] ?? "");
+      if (value === overwrittenRow[cellIndex].resolvedKeyValue) continue;
+
+      const fieldType = inputSchemaFields[cellIndex]?.field_type ?? "StringU8";
+      overwrittenRow[cellIndex] = {
+        ...overwrittenRow[cellIndex],
+        resolvedKeyValue: value,
+        type: "Buffer",
+        fields: [{ type: "Buffer", val: await typeToBuffer(fieldType, value) }],
+      };
+    }
+    for (const cell of overwrittenRow) {
       outputRows.push(cell);
     }
 
-    // Append new transformed columns (excluding filter transformations)
-    for (const transformation of config.transformations) {
-      if (isFilterTransformation(transformation)) continue;
+    // Append new transformed columns (excluding filters and in-place overwrites)
+    for (const [transformationIndex, transformation] of config.transformations.entries()) {
+      if (isFilterTransformation(transformation) || isOverwriteTransformation(transformation)) continue;
 
-      const value = transformedData.get(transformation.outputColumnName)?.[rowIdx];
+      const value = transformedData.get(transformationIndex)?.[rowIdx];
 
       // Create schema field for the new column
       const fieldBuffer = await typeToBuffer("StringU8", String(value ?? ""));
@@ -5806,7 +5881,7 @@ async function executeAddNewColumnNode(
     fields: [
       ...inputSchema.fields,
       ...config.transformations
-        .filter((t) => !isFilterTransformation(t))
+        .filter((t) => !isFilterTransformation(t) && !isOverwriteTransformation(t))
         .map((t) => ({
           name: t.outputColumnName,
           field_type: "StringU8" as SCHEMA_FIELD_TYPE,
