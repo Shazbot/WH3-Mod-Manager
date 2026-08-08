@@ -51,6 +51,7 @@ const TABLE_SELECTION_SOURCES = new Set([
   "deepclone",
   "conditionalbranch",
   "removetables",
+  "editloctext",
 ]);
 
 const TABLE_METADATA_TARGETS = new Set([
@@ -71,6 +72,7 @@ const TABLE_METADATA_TARGETS = new Set([
   "deepclone",
   "conditionalbranch",
   "removetables",
+  "editloctext",
 ]);
 
 type NodeWithData<TData extends Record<string, unknown>> = Node<TData>;
@@ -320,7 +322,8 @@ const needsSchemaContext = (node: Node) =>
   node.type === "getcountercolumn" ||
   node.type === "generaterows" ||
   node.type === "generaterowsschema" ||
-  node.type === "deepclone";
+  node.type === "deepclone" ||
+  node.type === "editloctext";
 
 export const getTableVersion = (
   tableName: string,

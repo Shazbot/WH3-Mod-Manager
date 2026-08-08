@@ -51,6 +51,7 @@ import type {
   DeepCloneOverride,
   DeepCloneTreeNode,
   DeepCloneVariantAxis,
+  LocTextRule,
 } from "./nodeGraph/nodes/types";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
@@ -503,6 +504,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "removetables":
         return executeRemoveTablesNode(nodeId, textValue, inputData, config);
+
+      case "editloctext":
+        return await executeEditLocTextNode(nodeId, textValue, inputData, config, executionContext);
 
       default:
         return {
@@ -5593,38 +5597,6 @@ async function executeAddNewColumnNode(
     };
   }
 
-  // Collect rows from all input tables
-  const rows: AmendedSchemaField[][] = [];
-  const sourceTable = inputData.tables[0]; // Keep first table for metadata
-
-  for (const table of inputData.tables) {
-    if (!table.table.tableSchema) {
-      console.warn(`Add New Column Node ${nodeId}: Skipping table ${table.name} - no schema information`);
-      continue;
-    }
-
-    const tableRows = table.table.schemaFields ? getRowsForPackedFile(table.table) : [];
-
-    rows.push(...tableRows);
-  }
-
-  console.log(
-    `Add New Column Node ${nodeId}: Collected ${rows.length} rows from ${inputData.tables.length} input tables`,
-  );
-
-  if (rows.length === 0) {
-    // Return empty output
-    return {
-      success: true,
-      data: {
-        type: "TableSelection",
-        tables: [],
-        sourceFiles: inputData.sourceFiles || [],
-        tableCount: 0,
-      },
-    };
-  }
-
   // Helper function to escape regex special characters
   function escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -5670,14 +5642,44 @@ async function executeAddNewColumnNode(
     }
   }
 
-  // 3. Process each row and apply transformations
+  /**
+   * A transformation is scoped to the tables that actually have its source column. Without this a
+   * multi-table input - a deep clone's output, say - would give every unrelated table a column of
+   * empty values. A transformation with no source column is a constant and applies everywhere.
+   */
+  function appliesToTable(trans: (typeof config.transformations)[0], schema: DBVersion): boolean {
+    if (!trans.sourceColumn) return true;
+    return schema.fields.some((field) => field.name === trans.sourceColumn);
+  }
+
+  // 3. Process every input table on its own terms. Merging their rows would interpret one table's
+  // data against another's schema and collapse the whole selection into a single mangled table.
+  const outputTables: DBTablesNodeTable[] = [];
+
+  for (const sourceTable of inputData.tables) {
+  const tableSchemaForRun = sourceTable.table.tableSchema;
+  if (!tableSchemaForRun || !sourceTable.table.schemaFields) {
+    console.warn(`Add New Column Node ${nodeId}: Passing through ${sourceTable.name} - no schema`);
+    outputTables.push(sourceTable);
+    continue;
+  }
+
+  const transformationsForTable = config.transformations.filter((trans) =>
+    appliesToTable(trans, tableSchemaForRun),
+  );
+  const rows = getRowsForPackedFile(sourceTable.table);
+  if (transformationsForTable.length === 0 || rows.length === 0) {
+    outputTables.push(sourceTable);
+    continue;
+  }
+
   // Keyed by the transformation's position, not its output column: in overwrite mode several
   // transformations legitimately target the same column, and sharing one array would interleave
   // their values and shift every later row.
   const transformedData = new Map<number, any[]>();
   const filteredRowIndices = new Set<number>(); // Track which rows to exclude
 
-  config.transformations.forEach((_transformation, transformationIndex) => {
+  transformationsForTable.forEach((_transformation, transformationIndex) => {
     transformedData.set(transformationIndex, []);
   });
 
@@ -5686,7 +5688,7 @@ async function executeAddNewColumnNode(
     const rowTransformedValues = new Map<string, any>(); // Per-row transformation outputs for chaining
 
     // Process transformations in order (to support chaining)
-    for (const transformation of config.transformations) {
+    for (const transformation of transformationsForTable) {
       let outputValue: any;
 
       // Get source value - either from original row or previous transformation (chaining)
@@ -5802,7 +5804,7 @@ async function executeAddNewColumnNode(
     }
 
     // Store all transformed values for this row, one entry per transformation per row
-    config.transformations.forEach((transformation, transformationIndex) => {
+    transformationsForTable.forEach((transformation, transformationIndex) => {
       transformedData.get(transformationIndex)!.push(
         rowTransformedValues.get(transformation.outputColumnName),
       );
@@ -5828,7 +5830,7 @@ async function executeAddNewColumnNode(
     // its own field type, so a table whose shape matters - a loc is exactly key/text/tooltip - comes
     // out with the same columns it went in with.
     const overwrittenRow = row.map((cell) => ({ ...cell }));
-    for (const [transformationIndex, transformation] of config.transformations.entries()) {
+    for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
       if (!isOverwriteTransformation(transformation)) continue;
 
       const cellIndex = overwrittenRow.findIndex((cell) => cell.name === transformation.sourceColumn);
@@ -5850,7 +5852,7 @@ async function executeAddNewColumnNode(
     }
 
     // Append new transformed columns (excluding filters and in-place overwrites)
-    for (const [transformationIndex, transformation] of config.transformations.entries()) {
+    for (const [transformationIndex, transformation] of transformationsForTable.entries()) {
       if (isFilterTransformation(transformation) || isOverwriteTransformation(transformation)) continue;
 
       const value = transformedData.get(transformationIndex)?.[rowIdx];
@@ -5875,12 +5877,12 @@ async function executeAddNewColumnNode(
   console.log(`Add New Column Node ${nodeId}: Created ${outputRowIdx} output rows with added columns`);
 
   // 5. Create extended schema (original fields + new fields)
-  const inputSchema = sourceTable.table.tableSchema!;
+  const inputSchema = tableSchemaForRun;
   const extendedSchema: DBVersion = {
     ...inputSchema,
     fields: [
       ...inputSchema.fields,
-      ...config.transformations
+      ...transformationsForTable
         .filter((t) => !isFilterTransformation(t) && !isOverwriteTransformation(t))
         .map((t) => ({
           name: t.outputColumnName,
@@ -5897,27 +5899,26 @@ async function executeAddNewColumnNode(
     ],
   };
 
-  // 6. Create output table
-  const outputTable: DBTablesNodeTable = {
-    name: sourceTable.name,
-    fileName: sourceTable.fileName,
-    sourceFile: sourceTable.sourceFile,
+  // 6. Emit this table, keeping its own schema and identity
+  outputTables.push({
+    ...sourceTable,
     table: {
       ...sourceTable.table,
       tableSchema: extendedSchema,
       schemaFields: outputRows,
       version: extendedSchema.version,
     },
-  };
+  });
+  }
 
-  // 7. Return single TableSelection output
+  // 7. One output entry per input entry, in the same order
   return {
     success: true,
     data: {
       type: "TableSelection",
-      tables: [outputTable],
+      tables: outputTables,
       sourceFiles: inputData.sourceFiles || [],
-      tableCount: 1,
+      tableCount: outputTables.length,
     },
   };
 }
@@ -7202,5 +7203,105 @@ function executeRemoveTablesNode(
       tables: keptTables,
       tableCount: keptTables.length,
     } as DBTablesNodeData,
+  };
+}
+
+/** A loc table is recognised by its columns rather than its name, so any loc source works. */
+const isLocTable = (table: DBTablesNodeTable): boolean => {
+  const fields = table.table.tableSchema?.fields;
+  if (!fields) return false;
+  return fields.some((field) => field.name === "key") && fields.some((field) => field.name === "text");
+};
+
+/**
+ * Rewrites the text of localisation rows whose key starts with a given prefix.
+ *
+ * Matching is on a prefix because the rest of a generated loc key is only known at run time: it
+ * carries the cloned row's new key, which depends on which rows the run touched, the modders prefix
+ * and the variant suffix. The prefix - "<table>_<localised field>_" - comes from the schema and is
+ * fixed while authoring, so it is the one part a rule can rely on.
+ *
+ * Every rule that matches is applied, in order. Rows and tables that match nothing pass through
+ * untouched, which is normal: whether a table contributes locs at all depends on the run.
+ */
+async function executeEditLocTextNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<{ locRules?: LocTextRule[] }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  const locRules = (parsed.locRules || []).filter((rule) => rule && rule.keyPrefix);
+  if (locRules.length === 0) {
+    return { success: true, data: inputData };
+  }
+
+  let changedRowCount = 0;
+  const outputTables: DBTablesNodeTable[] = [];
+
+  for (const table of inputData.tables || []) {
+    if (!isLocTable(table) || !table.table.schemaFields) {
+      outputTables.push(table);
+      continue;
+    }
+
+    const tableSchema = table.table.tableSchema!;
+    const keyIndex = tableSchema.fields.findIndex((field) => field.name === "key");
+    const textIndex = tableSchema.fields.findIndex((field) => field.name === "text");
+    const textField = tableSchema.fields[textIndex];
+
+    const rows = getRowsForPackedFile(table.table, executionContext);
+    const updatedRows: AmendedSchemaField[][] = [];
+
+    for (const row of rows) {
+      const locKey = (row[keyIndex]?.resolvedKeyValue ?? "").toLowerCase();
+      const originalText = row[textIndex]?.resolvedKeyValue ?? "";
+      let nextText = originalText;
+
+      for (const rule of locRules) {
+        if (!locKey.startsWith(rule.keyPrefix.toLowerCase())) continue;
+        if (rule.find) {
+          nextText = nextText.split(rule.find).join(rule.replaceWith ?? "");
+        }
+        if (rule.prepend) nextText = `${rule.prepend}${nextText}`;
+        if (rule.append) nextText = `${nextText}${rule.append}`;
+      }
+
+      if (nextText === originalText) {
+        updatedRows.push(row);
+        continue;
+      }
+
+      const updatedRow = row.map((cell) => ({ ...cell }));
+      updatedRow[textIndex] = {
+        ...updatedRow[textIndex],
+        resolvedKeyValue: nextText,
+        type: "Buffer",
+        fields: [{ type: "Buffer", val: await typeToBuffer(textField.field_type, nextText) }],
+      };
+      updatedRows.push(updatedRow);
+      changedRowCount++;
+    }
+
+    outputTables.push({
+      ...table,
+      table: { ...table.table, schemaFields: updatedRows.flat() },
+    });
+  }
+
+  console.log(`Edit Loc Text Node ${nodeId}: changed ${changedRowCount} localisation row(s)`);
+
+  return {
+    success: true,
+    data: { ...inputData, tables: outputTables, tableCount: outputTables.length } as DBTablesNodeData,
   };
 }

@@ -187,6 +187,9 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       tableName: (node.data as any).tableName || "",
     });
   }
+  if (node.type === "editloctext") {
+    return JSON.stringify({ locRules: (node.data as any).locRules || [] });
+  }
   if (node.type === "removetables") {
     return JSON.stringify({ tablesToRemove: (node.data as any).tablesToRemove || [] });
   }

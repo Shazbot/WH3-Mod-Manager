@@ -412,6 +412,27 @@ export interface MultiFilterNodeData extends NodeData {
   DBNameToDBVersions: Record<string, DBVersion[]>;
 }
 
+/** One text change applied to the loc rows whose key starts with keyPrefix. */
+export interface LocTextRule {
+  id: string;
+  keyPrefix: string;
+  find?: string;
+  replaceWith?: string;
+  prepend?: string;
+  append?: string;
+}
+
+export interface EditLocTextNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  locRules: LocTextRule[];
+  /** Every prefix the schema can produce, for autocomplete only. */
+  locKeyPrefixes: string[];
+  columnNames: string[];
+  connectedTableName?: string;
+  DBNameToDBVersions?: Record<string, DBVersion[]>;
+}
+
 export interface RemoveTablesNodeData extends NodeData {
   inputType: "TableSelection";
   outputType: "TableSelection";

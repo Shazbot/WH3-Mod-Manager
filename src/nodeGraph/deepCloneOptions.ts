@@ -80,3 +80,34 @@ export const substituteFilterOptionValues = (
 
   return modified;
 };
+
+/** Fields of a loc rule that accept a flow option placeholder. */
+const locRuleOptionFields = ["keyPrefix", "find", "replaceWith", "prepend", "append"] as const;
+
+/**
+ * Substitutes placeholders into the loc rules, which are nested inside `locRules` and so are skipped
+ * by the top-level field substitution. Lets the wording of an appended suffix be a user-set option.
+ */
+export const substituteLocRuleValues = (
+  nodeData: Record<string, unknown>,
+  replace: (value: string) => string,
+): boolean => {
+  if (!Array.isArray(nodeData.locRules)) return false;
+
+  let modified = false;
+  nodeData.locRules = nodeData.locRules.map((rule) => {
+    if (!rule || typeof rule !== "object") return rule;
+    const nextRule = { ...(rule as Record<string, unknown>) };
+    for (const fieldName of locRuleOptionFields) {
+      const value = nextRule[fieldName];
+      if (typeof value !== "string" || !value) continue;
+      const nextValue = replace(value);
+      if (nextValue === value) continue;
+      nextRule[fieldName] = nextValue;
+      modified = true;
+    }
+    return nextRule;
+  });
+
+  return modified;
+};

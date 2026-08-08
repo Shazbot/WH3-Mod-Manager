@@ -11,6 +11,7 @@ import type {
   CustomRowsInputNodeData,
   ConditionalBranchNodeData,
   CustomSchemaNodeData,
+  EditLocTextNodeData,
   RemoveTablesNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
@@ -75,6 +76,27 @@ interface NodeDefinition {
   descriptionFallback: string;
   createData: (context: NodeFactoryContext) => Record<string, unknown>;
 }
+
+/**
+ * Every loc key prefix the schema can produce: "<table without _tables>_<localised field>_".
+ *
+ * Only the prefix is knowable while authoring - what follows it is the cloned row's new key, which
+ * depends on which rows the run actually touches - so this is offered as autocomplete rather than as
+ * a closed list to pick from.
+ */
+export const buildLocKeyPrefixes = (
+  DBNameToDBVersions: Record<string, DBVersion[]> | undefined,
+): string[] => {
+  const prefixes = new Set<string>();
+  for (const [tableName, versions] of Object.entries(DBNameToDBVersions || {})) {
+    for (const field of versions?.[0]?.localised_fields ?? []) {
+      const indexOfSuffix = tableName.lastIndexOf("_tables");
+      const bareName = indexOfSuffix > -1 ? tableName.substring(0, indexOfSuffix) : tableName;
+      prefixes.add(`${bareName}_${field.name}_`);
+    }
+  }
+  return [...prefixes].toSorted();
+};
 
 const createDefaultNodeStyle = () => ({
   border: "2px solid #3b82f6",
@@ -435,9 +457,10 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
   addnewcolumn: createNodeDefinition<AddNewColumnNodeData>({
     type: "addnewcolumn",
     labelKey: "nodeEditorNodeAddNewColumnLabel",
-    labelFallback: "Add New Column",
+    labelFallback: "Add Or Transform Columns",
     descriptionKey: "nodeEditorNodeAddNewColumnDescription",
-    descriptionFallback: "Add transformed columns while preserving all original columns",
+    descriptionFallback:
+      "Adds derived columns, or transforms existing ones in place, optionally only on matching rows",
     createData: ({ label }) => ({
       label,
       type: "addnewcolumn",
@@ -703,6 +726,24 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       autoFollowReferences: true,
     }),
   }),
+  editloctext: createNodeDefinition<EditLocTextNodeData>({
+    type: "editloctext",
+    labelKey: "nodeEditorNodeEditLocTextLabel",
+    labelFallback: "Edit Loc Text",
+    descriptionKey: "nodeEditorNodeEditLocTextDescription",
+    descriptionFallback: "Changes the text of localisation rows whose key starts with a given prefix",
+    createData: ({ label, DBNameToDBVersions }) => ({
+      label,
+      type: "editloctext",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      locRules: [],
+      locKeyPrefixes: buildLocKeyPrefixes(DBNameToDBVersions),
+      columnNames: [],
+      connectedTableName: "",
+      DBNameToDBVersions: DBNameToDBVersions || {},
+    }),
+  }),
   removetables: createNodeDefinition<RemoveTablesNodeData>({
     type: "removetables",
     labelKey: "nodeEditorNodeRemoveTablesLabel",
@@ -753,6 +794,11 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
     titleKey: "nodeEditorSectionTableRowsFiltering",
     titleFallback: "Table Rows Filtering",
     nodes: ["conditionalbranch", "deduplicate", "filter", "multifilter", "removetables"],
+  },
+  {
+    titleKey: "nodeEditorSectionLocalisation",
+    titleFallback: "Localisation",
+    nodes: ["editloctext"],
   },
   {
     titleKey: "nodeEditorSectionColumnSelection",

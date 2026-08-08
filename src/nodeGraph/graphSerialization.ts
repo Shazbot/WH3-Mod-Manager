@@ -1,7 +1,11 @@
 import { Edge, Node } from "@xyflow/react";
 
 import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph } from "./types";
-import { substituteDeepCloneOptionValues, substituteFilterOptionValues } from "./deepCloneOptions";
+import {
+  substituteDeepCloneOptionValues,
+  substituteFilterOptionValues,
+  substituteLocRuleValues,
+} from "./deepCloneOptions";
 
 interface SerializeGraphInput {
   nodes: Node[];
@@ -121,6 +125,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         generateLoc: data.generateLoc as boolean | undefined,
         autoFollowReferences: data.autoFollowReferences as boolean | undefined,
         tablesToRemove: data.tablesToRemove || [],
+        locRules: (data.locRules || []) as SerializedNode["data"]["locRules"],
         selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
         flowOptionChecked: data.flowOptionChecked as boolean | undefined,
       },
@@ -231,6 +236,13 @@ export const prepareGraphForExecution = ({
             modified = true;
           }
         }
+      }
+
+      if (
+        node.type === "editloctext" &&
+        substituteLocRuleValues(nodeData, (value) => replaceFlowOptionPlaceholders(value, flowOptions))
+      ) {
+        modified = true;
       }
 
       if (

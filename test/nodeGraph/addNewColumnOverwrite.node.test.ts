@@ -205,3 +205,152 @@ describe("addnewcolumn overwrite mode", () => {
     ]);
   });
 });
+
+describe("addnewcolumn with several input tables", () => {
+  const dbSchema: DBVersion = {
+    version: 1,
+    fields: [createField("unit"), createField("caste")],
+  };
+
+  const createMultiTableInput = () => ({
+    type: "TableSelection" as const,
+    tables: [
+      {
+        name: "main_units_tables",
+        fileName: "db\\main_units_tables\\x",
+        sourceFile: {} as Pack,
+        table: {
+          name: "main_units_tables",
+          file_size: 0,
+          start_pos: 0,
+          tableSchema: dbSchema,
+          schemaFields: dbSchema.fields.map((field, index) => ({
+            name: field.name,
+            type: field.field_type,
+            fields: [{ type: "String" as const, val: ["pj_x", "melee"][index] }],
+            resolvedKeyValue: ["pj_x", "melee"][index],
+          })),
+        } as PackedFile,
+      },
+      {
+        name: "deepclone_loc",
+        fileName: "text\\db\\deepclone_loc",
+        sourceFile: {} as Pack,
+        table: {
+          name: "deepclone_loc",
+          file_size: 0,
+          start_pos: 0,
+          tableSchema: locSchema,
+          schemaFields: createRow(["land_units_onscreen_name_pj_x", "Greatswords", "0"]),
+        } as PackedFile,
+      },
+    ],
+    sourceFiles: [],
+    tableCount: 2,
+  });
+
+  const runMulti = (transformations: Record<string, unknown>[]) =>
+    executeNodeAction({
+      nodeId: "addcol_multi",
+      nodeType: "addnewcolumn",
+      textValue: "",
+      config: { transformations },
+      inputData: createMultiTableInput(),
+    });
+
+  it("emits one entry per input entry instead of collapsing them into one", async () => {
+    const result = await runMulti([
+      {
+        id: "t1",
+        sourceColumn: "text",
+        transformationType: "suffix",
+        suffix: " (Big)",
+        outputColumnName: "text",
+        overwriteSource: true,
+      },
+    ]);
+    const tables = (result.data as any).tables;
+
+    expect(tables.map((table: { name: string }) => table.name)).toEqual([
+      "main_units_tables",
+      "deepclone_loc",
+    ]);
+    expect((result.data as any).tableCount).toBe(2);
+  });
+
+  it("applies a transformation only to the tables that have its source column", async () => {
+    const result = await runMulti([
+      {
+        id: "t1",
+        sourceColumn: "text",
+        transformationType: "suffix",
+        suffix: " (Big)",
+        outputColumnName: "text",
+        overwriteSource: true,
+      },
+    ]);
+    const tables = (result.data as any).tables;
+
+    // The loc has a text column and is transformed.
+    const locFields = tables[1].table.schemaFields as AmendedSchemaField[];
+    expect(locFields.find((c) => c.name === "text")?.resolvedKeyValue).toBe("Greatswords (Big)");
+
+    // main_units_tables has no text column, so it is passed through untouched - not given an
+    // empty column, and certainly not interpreted against the loc's schema.
+    expect(tables[0].table.tableSchema.fields.map((f: DBField) => f.name)).toEqual(["unit", "caste"]);
+    const dbFields = tables[0].table.schemaFields as AmendedSchemaField[];
+    expect(dbFields.map((c) => c.resolvedKeyValue)).toEqual(["pj_x", "melee"]);
+  });
+
+  it("keeps each table on its own schema when adding a column", async () => {
+    const result = await runMulti([
+      {
+        id: "t1",
+        sourceColumn: "unit",
+        transformationType: "suffix",
+        suffix: "_tagged",
+        outputColumnName: "tagged",
+      },
+    ]);
+    const tables = (result.data as any).tables;
+
+    expect(tables[0].table.tableSchema.fields.map((f: DBField) => f.name)).toEqual([
+      "unit",
+      "caste",
+      "tagged",
+    ]);
+    // The loc has no unit column, so it keeps its three columns.
+    expect(tables[1].table.tableSchema.fields.map((f: DBField) => f.name)).toEqual([
+      "key",
+      "text",
+      "tooltip",
+    ]);
+  });
+});
+
+describe("the node's identity after the rename", () => {
+  it("keeps the saved node type, so existing flows still load", async () => {
+    const { getNodeDefinition, isRegisteredNodeType } = await import("../../src/nodeGraph/nodeRegistry");
+
+    // Renaming is label-only: the type is written into saved flows and must not move.
+    expect(isRegisteredNodeType("addnewcolumn")).toBe(true);
+    const definition = getNodeDefinition("addnewcolumn");
+    expect(definition.type).toBe("addnewcolumn");
+    expect(definition.labelFallback).toBe("Add Or Transform Columns");
+  });
+
+  it("still executes under the old type name", async () => {
+    const result = await run([
+      {
+        id: "t1",
+        sourceColumn: "text",
+        transformationType: "suffix",
+        suffix: "!",
+        outputColumnName: "text",
+        overwriteSource: true,
+      },
+    ]);
+
+    expect(result.success).toBe(true);
+  });
+});

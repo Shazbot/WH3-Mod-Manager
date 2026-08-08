@@ -141,6 +141,7 @@ export interface SerializedNode {
     selectedFlowOptionId?: string;
     flowOptionChecked?: boolean;
     tablesToRemove?: string[];
+    locRules?: Array<Record<string, unknown>>;
   };
 }
 

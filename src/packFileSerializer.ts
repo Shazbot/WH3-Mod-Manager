@@ -32,6 +32,7 @@ import type { SerializedNodeGraph } from "./nodeGraph/types";
 import {
   substituteDeepCloneOptionValues,
   substituteFilterOptionValues,
+  substituteLocRuleValues,
 } from "./nodeGraph/deepCloneOptions";
 import { transformationOptionFields } from "./nodeGraph/graphSerialization";
 import getPackTableData, {
@@ -1287,6 +1288,8 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         customRows: (node.data as any).customRows || [],
         tableName: (node.data as any).tableName || "",
       };
+    case "editloctext":
+      return { locRules: (node.data as any).locRules || [] };
     case "removetables":
       return { tablesToRemove: (node.data as any).tablesToRemove || [] };
     case "conditionalbranch":
@@ -1351,7 +1354,10 @@ const prepareFlow = (
         }
       }
     }
-    if (optionReplacements.length > 0 && (node.type === "deepclone" || node.type === "filter")) {
+    if (
+      optionReplacements.length > 0 &&
+      (node.type === "deepclone" || node.type === "filter" || node.type === "editloctext")
+    ) {
       const replace = (value: string) => {
         let modifiedValue = value;
         for (const optionReplacement of optionReplacements) {
@@ -1362,6 +1368,7 @@ const prepareFlow = (
       };
       const nestedData = node.data as unknown as Record<string, unknown>;
       if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
+      else if (node.type === "editloctext") substituteLocRuleValues(nestedData, replace);
       else substituteDeepCloneOptionValues(nestedData, replace);
     }
     // The manual run substitutes into transformation fields too; without this the same flow behaves

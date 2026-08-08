@@ -32,6 +32,8 @@ import type {
   CustomRowsInputNodeData,
   ConditionalBranchNodeData,
   CustomSchemaNodeData,
+  EditLocTextNodeData,
+  LocTextRule,
   RemoveTablesNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
@@ -4779,13 +4781,32 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
   React.useEffect(() => {
     // Calculate extended column names (original + new columns from transformations)
     // Use inputColumnNames (from source) as base, not data.columnNames (which may already include previous new columns)
-    const originalColumns = data.inputColumnNames || data.columnNames || [];
     const newColumns = transformations
-      .filter((t) => t.transformationType !== "filterequal" && t.transformationType !== "filternotequal")
+      .filter(
+        (t) =>
+          t.transformationType !== "filterequal" &&
+          t.transformationType !== "filternotequal" &&
+          t.overwriteSource !== true,
+      )
       .map((t) => t.outputColumnName)
       .filter((name) => name && name.trim() !== "");
 
+    // Without inputColumnNames the base has to come from columnNames, which already holds the
+    // columns this effect appended last time. Stripping them first makes the result idempotent -
+    // otherwise each run appends again, columnNames grows without bound, and the effect retriggers
+    // itself through its own dependency.
+    const newColumnNames = new Set(newColumns);
+    const originalColumns =
+      data.inputColumnNames && data.inputColumnNames.length > 0
+        ? data.inputColumnNames
+        : (data.columnNames || []).filter((name) => !newColumnNames.has(name));
+
     const extendedColumnNames = [...originalColumns, ...newColumns];
+
+    if (JSON.stringify(extendedColumnNames) === JSON.stringify(data.columnNames)) {
+      dispatchNodeDataUpdate(data, { nodeId: id, transformations });
+      return;
+    }
 
     dispatchNodeDataUpdate(data, {
           nodeId: id,
@@ -4846,7 +4867,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
       />
 
       <div className="text-sm font-bold text-white mb-3">
-        {data.label || localized.nodeEditorNodeAddNewColumnLabel || "Add New Column"}
+        {data.label || localized.nodeEditorNodeAddNewColumnLabel || "Add Or Transform Columns"}
       </div>
 
       {/* Transformations Section */}
@@ -4871,11 +4892,15 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
             // Build available source columns for this transformation
             // Include original INPUT columns (not including new columns from transformations)
             // + output columns from PREVIOUS transformations only
-            const inputColumns = data.inputColumnNames || columnNames || [];
-            const previousTransformationColumns = transformations
-              .slice(0, transIndex)
-              .map((t) => t.outputColumnName)
-              .filter((name) => name && name.trim() !== "");
+            const inputColumns = [...new Set(data.inputColumnNames || columnNames || [])];
+            const previousTransformationColumns = [
+              ...new Set(
+                transformations
+                  .slice(0, transIndex)
+                  .map((t) => t.outputColumnName)
+                  .filter((name) => name && name.trim() !== "" && !inputColumns.includes(name)),
+              ),
+            ];
 
             return (
               <div key={trans.id} className="bg-gray-800 p-2 rounded border border-gray-600">
@@ -4946,7 +4971,7 @@ export const AddNewColumnNode: React.FC<{ data: AddNewColumnNodeData; id: string
                     }
                   >
                     <option value="">{localized.nodeEditorTransformConditionAlways || "always"}</option>
-                    {(data.inputColumnNames || columnNames || []).map((col: string) => (
+                    {inputColumns.map((col: string) => (
                       <option key={col} value={col}>
                         {col}
                       </option>
@@ -6670,6 +6695,148 @@ export const RemoveTablesNode: React.FC<{ data: RemoveTablesNodeData; id: string
           ))
         )}
       </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+export const EditLocTextNode: React.FC<{ data: EditLocTextNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const [locRules, setLocRules] = useState<LocTextRule[]>(data.locRules || []);
+  const datalistId = `loc-prefixes-${id}`;
+  const locKeyPrefixes = data.locKeyPrefixes || [];
+
+  React.useEffect(() => {
+    if (data.locRules !== undefined && JSON.stringify(data.locRules) !== JSON.stringify(locRules)) {
+      setLocRules(data.locRules);
+    }
+  }, [data.locRules]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      locRules: locRules as unknown as Record<string, unknown>[],
+    });
+  }, [locRules, id]);
+
+  const addRule = () =>
+    setLocRules([...locRules, { id: `loc_${Date.now()}`, keyPrefix: "", append: "" }]);
+  const updateRule = (ruleId: string, updates: Partial<LocTextRule>) =>
+    setLocRules(locRules.map((rule) => (rule.id === ruleId ? { ...rule, ...updates } : rule)));
+
+  return (
+    <div className="bg-gray-700 border-2 border-amber-500 rounded-lg p-4 min-w-[320px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-white">
+          {localized.nodeEditorEditLocTextTitle || "Edit Loc Text"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorEditLocTextTooltip ||
+              "Changes the text of localisation rows whose key starts with a prefix.\n\n" +
+                "A generated loc key reads <table>_<localised field>_<the row's new key>. Only the prefix is known while authoring - the rest depends on which rows the run actually clones - so rules match on that prefix.\n\n" +
+                "Every matching rule is applied in order. Rows and tables that match nothing pass through untouched, which is normal: whether a table produces locs at all depends on the run."
+            }
+          />
+        </div>
+        <button
+          onClick={addRule}
+          className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded"
+        >
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div
+        className="space-y-2 max-h-72 overflow-y-auto scrollable-node-content"
+        onWheel={stopWheelPropagation}
+      >
+        {locRules.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorEditLocTextEmpty || "No rules; localisation passes through unchanged"}
+          </div>
+        ) : (
+          locRules.map((rule) => (
+            <div key={rule.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-400">
+                  {localized.nodeEditorEditLocTextKeyPrefix || "key starts with"}
+                </span>
+                <button
+                  onClick={() => setLocRules(locRules.filter((candidate) => candidate.id !== rule.id))}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <input
+                type="text"
+                list={datalistId}
+                value={rule.keyPrefix}
+                onChange={(event) => updateRule(rule.id, { keyPrefix: event.target.value })}
+                placeholder={
+                  localized.nodeEditorEditLocTextPrefixPlaceholder || "land_units_onscreen_name_"
+                }
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+              />
+
+              <div className="grid grid-cols-2 gap-1">
+                <input
+                  type="text"
+                  value={rule.prepend || ""}
+                  onChange={(event) => updateRule(rule.id, { prepend: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextPrepend || "prepend..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <input
+                  type="text"
+                  value={rule.append || ""}
+                  onChange={(event) => updateRule(rule.id, { append: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextAppend || "append..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <input
+                  type="text"
+                  value={rule.find || ""}
+                  onChange={(event) => updateRule(rule.id, { find: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextFind || "find..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <input
+                  type="text"
+                  value={rule.replaceWith || ""}
+                  onChange={(event) => updateRule(rule.id, { replaceWith: event.target.value })}
+                  placeholder={localized.nodeEditorEditLocTextReplaceWith || "replace with..."}
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <datalist id={datalistId}>
+        {locKeyPrefixes.map((prefix) => (
+          <option key={prefix} value={prefix} />
+        ))}
+      </datalist>
 
       <div className="mt-2 text-xs text-gray-400">
         {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
