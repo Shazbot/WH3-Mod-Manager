@@ -5,6 +5,7 @@ import ModRows from "./ModRows";
 import Categories from "./Categories";
 import ModTagPicker from "./ModTagPicker";
 import NodeEditor from "./NodeEditor";
+import { useKeepMountedOnceActive } from "./useKeepMountedOnceActive";
 import VisualsTab from "./VisualsTab";
 import PresetsTab from "./PresetsTab";
 import TechTreesTab from "./techTrees/TechTreesTab";
@@ -22,6 +23,9 @@ const Main = (props: MainProps) => {
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const isTechnologyTreesSupported = currentGame === "wh3";
+  const isNodeEditorTab = currentTab == "nodeEditor";
+  // Once opened the node editor stays mounted, so switching tabs does not discard an unsaved graph.
+  const isNodeEditorMounted = useKeepMountedOnceActive(isNodeEditorTab);
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =
@@ -31,10 +35,16 @@ const Main = (props: MainProps) => {
 
   return (
     <>
-      {(currentTab == "nodeEditor" && (
-        <NodeEditor currentFile={currentFlowFileSelection} currentPack={currentPack}></NodeEditor>
-      )) ||
-        (currentTab == "skills" && <SkillsTab />) ||
+      {isNodeEditorMounted && (
+        // Hidden rather than unmounted: React Flow keeps its nodes, edges and viewport, so the tab
+        // comes back exactly as it was left.
+        <div className={isNodeEditorTab ? undefined : "hidden"}>
+          <NodeEditor currentFile={currentFlowFileSelection} currentPack={currentPack}></NodeEditor>
+        </div>
+      )}
+
+      {!isNodeEditorTab &&
+        ((currentTab == "skills" && <SkillsTab />) ||
         (currentTab == "techTrees" && isTechnologyTreesSupported && <TechTreesTab />) ||
         (currentTab == "visuals" && isFeaturesForModdersEnabled && <VisualsTab />) ||
         (currentTab == "presets" && <PresetsTab />) ||
@@ -48,7 +58,7 @@ const Main = (props: MainProps) => {
             </div>
             <ModTagPicker></ModTagPicker>
           </div>
-        )}
+        ))}
     </>
   );
 };
