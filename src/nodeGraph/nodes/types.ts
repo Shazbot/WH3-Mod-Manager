@@ -399,3 +399,54 @@ export interface MultiFilterNodeData extends NodeData {
   connectedTableName?: string;
   DBNameToDBVersions: Record<string, DBVersion[]>;
 }
+
+/** One hop of the deep clone plan: a table reached from its parent by a schema reference. */
+export interface DeepCloneTreeNode {
+  /** Table reached by this hop, e.g. "land_units_tables". Root node uses the input table. */
+  table: string;
+  /** Identity column of `table`; empty for keyless junction tables (nothing to rename). */
+  keyColumn: string;
+  /** Forward hops: the referencing column on the PARENT. Reverse hops: the referencing column on `table`. */
+  linkColumn: string;
+  /** "forward" follows the parent's is_reference; "reverse" finds rows pointing back at the parent. */
+  direction: "forward" | "reverse";
+  /** When false the reference is left pointing at the original row instead of being cloned. */
+  selected: boolean;
+  /** Overrides the node-level nameTemplate for this table only. */
+  nameTemplate?: string;
+  children: DeepCloneTreeNode[];
+}
+
+/** Forces a single column of a single cloned table to a literal value. */
+export interface DeepCloneOverride {
+  table: string;
+  column: string;
+  value: string;
+}
+
+/** One dimension of the variant product, e.g. "shield" with _shielded / _unshielded. */
+export interface DeepCloneVariantAxis {
+  id: string;
+  name: string;
+  values: Array<{
+    id: string;
+    suffix: string;
+    overrides: DeepCloneOverride[];
+  }>;
+}
+
+export interface DeepCloneNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  connectedTableName?: string;
+  columnNames: string[];
+  DBNameToDBVersions?: Record<string, DBVersion[]>;
+  /** Root of the clone plan; root.table matches connectedTableName. */
+  cloneTree?: DeepCloneTreeNode;
+  /** Supports {original}, {selfOriginal} and {variant}. Defaults to "{original}{variant}". */
+  nameTemplate: string;
+  useModdersPrefix: boolean;
+  variantAxes: DeepCloneVariantAxis[];
+  columnOverrides: DeepCloneOverride[];
+  generateLoc: boolean;
+}

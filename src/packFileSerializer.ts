@@ -1158,6 +1158,7 @@ const schemaAwareFlowNodeTypes = new Set([
   "generaterows",
   "generaterowsschema",
   "addnewcolumn",
+  "deepclone",
 ]);
 const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
   switch (node.type) {
@@ -1280,6 +1281,15 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
       return {
         customRows: (node.data as any).customRows || [],
         tableName: (node.data as any).tableName || "",
+      };
+    case "deepclone":
+      return {
+        cloneTree: (node.data as any).cloneTree,
+        nameTemplate: (node.data as any).nameTemplate || "{original}{variant}",
+        useModdersPrefix: (node.data as any).useModdersPrefix !== false,
+        variantAxes: (node.data as any).variantAxes || [],
+        columnOverrides: (node.data as any).columnOverrides || [],
+        generateLoc: (node.data as any).generateLoc !== false,
       };
     default:
       return node.data.textValue;

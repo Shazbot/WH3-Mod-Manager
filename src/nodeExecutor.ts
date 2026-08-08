@@ -21,14 +21,25 @@ import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
-import { getDefaultTableVersions } from "./ipcMainListeners";
+import { getDefaultTableVersions, getLocsTrie } from "./ipcMainListeners";
+import Trie from "./utility/trie";
 import {
   FlowExecutionContext,
   buildFlowOutputPackBaseName,
   buildReadPackCacheKey,
   flowExecutionDebugLog,
 } from "./flowExecutionSupport";
-import { getSchemaForGame } from "./schema";
+import { getSchemaForGame, gameToReferences, gameToTablesWithNumericIds } from "./schema";
+import {
+  DeepClonePlan,
+  LoadedTableFile,
+  executeDeepClonePlan,
+} from "./flowDeepClone";
+import type {
+  DeepCloneOverride,
+  DeepCloneTreeNode,
+  DeepCloneVariantAxis,
+} from "./nodeGraph/nodes/types";
 
 // Global tracking for counter transformations to ensure uniqueness across the entire flow
 // Map structure: sourceColumnId -> Set of used numbers
@@ -449,6 +460,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "customrowsinput":
         return await executeCustomRowsInputNode(nodeId, textValue, inputData, config);
+
+      case "deepclone":
+        return await executeDeepCloneNode(nodeId, textValue, inputData, config, executionContext);
 
       default:
         return {
@@ -2785,6 +2799,8 @@ async function executeSaveChangesNode(
         version: table.table.version,
         tableSchema: table.table.tableSchema,
         tableName: table.name, // Store table name for later use
+        outputPathPrefix: table.outputPathPrefix,
+        outputPathSuffix: table.outputPathSuffix,
       } as any);
     }
 
@@ -2802,12 +2818,21 @@ async function executeSaveChangesNode(
     }
 
     // Now set the proper db file paths: db\tablename\packname_randomsuffix
+    // A table carrying outputPathPrefix is not a db table (e.g. a generated loc) and supplies its
+    // own folder and extension instead.
     for (const file of toSave) {
       const randomSuffix = Math.random().toString(36).substring(2, 8);
-      const tableName = (file as any).tableName || "unknown_table";
+      // Producers are inconsistent about whether name carries the "db\" prefix; strip it so we
+      // never build a doubled db\db\... path.
+      const tableName = ((file as any).tableName || "unknown_table").replace(/^db\\/, "");
       const fileName = `${packFileBaseName}_${randomSuffix}`;
-      file.name = `db\\${tableName}\\${fileName}`;
-      delete (file as any).tableName; // Remove temporary property
+      const outputPathPrefix = (file as any).outputPathPrefix as string | undefined;
+      file.name = outputPathPrefix
+        ? `${outputPathPrefix}${fileName}${((file as any).outputPathSuffix as string) ?? ""}`
+        : `db\\${tableName}\\${fileName}`;
+      delete (file as any).tableName; // Remove temporary properties
+      delete (file as any).outputPathPrefix;
+      delete (file as any).outputPathSuffix;
     }
 
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string;
@@ -6600,6 +6625,198 @@ async function executeCustomRowsInputNode(
       tables: resultTables,
       sourceFiles: [],
       tableCount: 1,
+    } as DBTablesNodeData,
+  };
+}
+
+interface DeepCloneNodeConfig {
+  cloneTree?: DeepCloneTreeNode;
+  nameTemplate?: string;
+  useModdersPrefix?: boolean;
+  variantAxes?: DeepCloneVariantAxis[];
+  columnOverrides?: DeepCloneOverride[];
+  generateLoc?: boolean;
+}
+
+/** Strips the "db\" prefix a TableSelection payload carries, leaving the bare table name. */
+const toBareTableName = (name: string) => name.replace(/^db\\/, "").replace(/\\.*$/, "");
+
+async function executeDeepCloneNode(
+  nodeId: string,
+  textValue: string,
+  inputData: DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || inputData.type !== "TableSelection") {
+    return { success: false, error: "Invalid input: Expected TableSelection data" };
+  }
+
+  const parsed = getNodeConfig<DeepCloneNodeConfig>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+  if (!parsed.cloneTree || !parsed.cloneTree.table) {
+    return { success: false, error: "No clone plan configured: pick which referenced tables to clone" };
+  }
+  if (inputData.tables.length === 0) {
+    hotPathLog(executionContext, `Deep Clone Node ${nodeId}: No input tables, returning empty result`);
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: inputData.sourceFiles || [],
+        tableCount: 0,
+      } as DBTablesNodeData,
+    };
+  }
+
+  // Search the input packs plus the base game pack, so references into vanilla data resolve.
+  const searchPacks = [...(inputData.sourceFiles || [])];
+  const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+  const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+  if (baseGamePackName && baseGameFolder) {
+    const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
+    if (!searchPacks.some((searchPack) => searchPack.path === baseGamePackPath) && fs.existsSync(baseGamePackPath)) {
+      searchPacks.push({ name: baseGamePackName, path: baseGamePackPath, loaded: true });
+    }
+  }
+
+  const rootTableName = toBareTableName(parsed.cloneTree.table);
+  const rootTableFiles: LoadedTableFile[] = inputData.tables
+    .filter((table) => table.table.tableSchema && table.table.schemaFields)
+    .map((table) => ({
+      tableName: rootTableName,
+      packedFile: table.table,
+      packName: table.sourceFile?.name ?? "",
+      packPath: table.sourceFile?.path ?? "",
+    }));
+
+  const loadTable = async (tableName: string): Promise<LoadedTableFile[]> => {
+    const bareName = toBareTableName(tableName);
+    const searchName = `db\\${bareName}`;
+    const loaded: LoadedTableFile[] = [];
+
+    for (const searchPack of searchPacks) {
+      if (!searchPack.loaded) continue;
+      try {
+        const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
+          searchPack.path,
+          [searchName],
+          executionContext,
+        );
+        for (const packedFile of matchingTablesByName.get(searchName) || []) {
+          if (!packedFile.tableSchema || !packedFile.schemaFields) continue;
+          loaded.push({ tableName: bareName, packedFile, packName: pack.name, packPath: pack.path });
+        }
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Error reading ${searchPack.path} for ${bareName}:`, error);
+      }
+    }
+
+    return loaded;
+  };
+
+  let lookupLocText: ((locKey: string) => string | undefined) | undefined;
+  if (parsed.generateLoc !== false) {
+    const locTries: Trie<string>[] = [];
+    const localePath = baseGameFolder ? path.join(baseGameFolder, "local_en.pack") : undefined;
+    const locPackPaths = [
+      ...(localePath && fs.existsSync(localePath) ? [localePath] : []),
+      ...searchPacks.filter((searchPack) => searchPack.loaded).map((searchPack) => searchPack.path),
+    ];
+
+    for (const locPackPath of new Set(locPackPaths)) {
+      try {
+        const locPack = await readPackCached(
+          locPackPath,
+          { skipParsingTables: true, readLocs: true },
+          executionContext,
+        );
+        const trie = getLocsTrie(locPack);
+        if (trie) locTries.push(trie);
+      } catch (error) {
+        console.error(`Deep Clone Node ${nodeId}: Could not read locs from ${locPackPath}:`, error);
+      }
+    }
+
+    lookupLocText = (locKey: string) => {
+      for (const trie of locTries) {
+        const value = trie.get(locKey);
+        if (value) return value;
+      }
+      return undefined;
+    };
+  }
+
+  const plan: DeepClonePlan = {
+    cloneTree: { ...parsed.cloneTree, table: rootTableName },
+    nameTemplate: parsed.nameTemplate || "{original}{variant}",
+    useModdersPrefix: parsed.useModdersPrefix !== false,
+    moddersPrefix: appData.moddersPrefix || "",
+    variantAxes: parsed.variantAxes || [],
+    columnOverrides: parsed.columnOverrides || [],
+    generateLoc: parsed.generateLoc !== false,
+  };
+
+  let result;
+  try {
+    result = await executeDeepClonePlan(rootTableFiles, plan, {
+      loadTable,
+      getRows: (packedFile) => getRowsForPackedFile(packedFile, executionContext),
+      lookupLocText,
+      referencedColumnsByTable: gameToReferences[appData.currentGame] || {},
+      numericIdFieldByTable: gameToTablesWithNumericIds[appData.currentGame] || {},
+      log: (...args) => hotPathLog(executionContext, `Deep Clone Node ${nodeId}:`, ...args),
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: `Deep clone failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+
+  // Collisions are reported rather than fatal: flows also run unattended at game launch, where
+  // aborting the whole flow over a pre-existing key would be worse than writing the row.
+  for (const collision of result.collisions) {
+    console.warn(`Deep Clone Node ${nodeId}: Key collision - ${collision}`);
+  }
+  for (const warning of result.warnings) {
+    console.warn(`Deep Clone Node ${nodeId}: ${warning}`);
+  }
+
+  const sourcePack = rootTableFiles[0]?.packedFile;
+  const outputTables: DBTablesNodeTable[] = result.tables.map((table) => ({
+    name: table.tableName,
+    fileName: `db\\${table.tableName}\\deepclone`,
+    sourceFile: inputData.tables[0]?.sourceFile,
+    table: {
+      ...(sourcePack ?? ({} as PackedFile)),
+      name: `db\\${table.tableName}\\deepclone`,
+      file_size: 0,
+      start_pos: 0,
+      tableSchema: table.tableSchema,
+      schemaFields: table.rows.flat(),
+      version: table.version,
+      entryCount: table.rows.length,
+    },
+    outputPathPrefix: table.outputPathPrefix,
+    outputPathSuffix: table.outputPathSuffix,
+  }));
+
+  hotPathLog(
+    executionContext,
+    `Deep Clone Node ${nodeId}: ${result.clonedRowCount} row(s) across ${outputTables.length} output table(s)`,
+  );
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: outputTables,
+      sourceFiles: inputData.sourceFiles || [],
+      tableCount: outputTables.length,
     } as DBTablesNodeData,
   };
 }

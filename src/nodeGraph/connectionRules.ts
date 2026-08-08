@@ -48,6 +48,7 @@ const TABLE_SELECTION_SOURCES = new Set([
   "getcountercolumn",
   "customrowsinput",
   "readtsvfrompack",
+  "deepclone",
 ]);
 
 const TABLE_METADATA_TARGETS = new Set([
@@ -65,6 +66,7 @@ const TABLE_METADATA_TARGETS = new Set([
   "addnewcolumn",
   "generaterowsschema",
   "getcountercolumn",
+  "deepclone",
 ]);
 
 type NodeWithData<TData extends Record<string, unknown>> = Node<TData>;
@@ -313,7 +315,8 @@ const needsSchemaContext = (node: Node) =>
   node.type === "aggregatenested" ||
   node.type === "getcountercolumn" ||
   node.type === "generaterows" ||
-  node.type === "generaterowsschema";
+  node.type === "generaterowsschema" ||
+  node.type === "deepclone";
 
 export const getTableVersion = (
   tableName: string,

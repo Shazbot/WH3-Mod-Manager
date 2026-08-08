@@ -150,6 +150,81 @@ describe("graphSerialization", () => {
     expect(executionGraph.nodes[0].data.filename).toBe("agent_subtypes.tsv");
   });
 
+  it("preserves the deep clone plan through serialization and loading", () => {
+    const cloneTree = {
+      table: "main_units_tables",
+      keyColumn: "unit",
+      linkColumn: "",
+      direction: "forward",
+      selected: true,
+      children: [
+        {
+          table: "land_units_tables",
+          keyColumn: "key",
+          linkColumn: "land_unit",
+          direction: "forward",
+          selected: true,
+          children: [],
+        },
+      ],
+    };
+    const variantAxes = [
+      {
+        id: "shield",
+        name: "shield",
+        values: [
+          {
+            id: "shielded",
+            suffix: "_shielded",
+            overrides: [{ table: "land_units_tables", column: "shield", value: "1" }],
+          },
+        ],
+      },
+    ];
+
+    const nodes = [
+      {
+        id: "node_0",
+        type: "deepclone",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Deep Clone",
+          type: "deepclone",
+          inputType: "TableSelection",
+          outputType: "TableSelection",
+          cloneTree,
+          nameTemplate: "my_new_unit{variant}",
+          useModdersPrefix: false,
+          variantAxes,
+          columnOverrides: [{ table: "main_units_tables", column: "cost", value: "900" }],
+          generateLoc: true,
+        },
+      },
+    ] as any[];
+
+    const serializedGraph = serializeNodeGraphState({
+      nodes,
+      edges: [],
+      flowOptions: [],
+      isGraphEnabled: true,
+      graphStartsEnabled: true,
+    });
+    const deserializedGraph = deserializeNodeGraph(JSON.stringify(serializedGraph));
+    const executionGraph = prepareGraphForExecution({
+      nodes: deserializedGraph.nodes,
+      edges: deserializedGraph.edges,
+    });
+
+    expect(serializedGraph.nodes[0].data.cloneTree).toEqual(cloneTree);
+    expect(deserializedGraph.nodes[0].data.variantAxes).toEqual(variantAxes);
+    expect(deserializedGraph.nodes[0].data.nameTemplate).toBe("my_new_unit{variant}");
+    expect(deserializedGraph.nodes[0].data.useModdersPrefix).toBe(false);
+    expect(executionGraph.nodes[0].data.cloneTree).toEqual(cloneTree);
+    expect(executionGraph.nodes[0].data.columnOverrides).toEqual([
+      { table: "main_units_tables", column: "cost", value: "900" },
+    ]);
+  });
+
   it("preserves the anti-join lookup mode for execution", () => {
     const nodes = [
       {

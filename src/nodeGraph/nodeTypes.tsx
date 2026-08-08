@@ -8,6 +8,7 @@ import {
   CustomRowsInputNode,
   CustomSchemaNode,
   DeduplicateNode,
+  DeepCloneNode,
   DumpToTSVNode,
   ExtractTableNode,
   FilterNode,
@@ -74,4 +75,5 @@ export const reactFlowNodeTypes = {
   customschema: CustomSchemaNode,
   readtsvfrompack: ReadTSVFromPackNode,
   customrowsinput: CustomRowsInputNode,
+  deepclone: DeepCloneNode,
 };

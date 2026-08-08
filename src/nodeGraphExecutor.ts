@@ -181,6 +181,16 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       tableName: (node.data as any).tableName || "",
     });
   }
+  if (node.type === "deepclone") {
+    return JSON.stringify({
+      cloneTree: (node.data as any).cloneTree,
+      nameTemplate: (node.data as any).nameTemplate || "{original}{variant}",
+      useModdersPrefix: (node.data as any).useModdersPrefix !== false,
+      variantAxes: (node.data as any).variantAxes || [],
+      columnOverrides: (node.data as any).columnOverrides || [],
+      generateLoc: (node.data as any).generateLoc !== false,
+    });
+  }
   return node.data.textValue || "";
 };
 const extractConnectionData = (

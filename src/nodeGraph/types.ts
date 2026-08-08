@@ -1,6 +1,7 @@
 import type { XYPosition } from "@xyflow/react";
 
 import { DBVersion } from "../packFileTypes";
+import type { DeepCloneOverride, DeepCloneTreeNode, DeepCloneVariantAxis } from "./nodes/types";
 
 export interface BaseFlowOption {
   id: string;
@@ -108,6 +109,12 @@ export interface SerializedNode {
     openInWindows?: boolean;
     customSchemaColumns?: string[];
     customSchemaData?: unknown;
+    cloneTree?: DeepCloneTreeNode;
+    nameTemplate?: string;
+    useModdersPrefix?: boolean;
+    variantAxes?: DeepCloneVariantAxis[];
+    columnOverrides?: DeepCloneOverride[];
+    generateLoc?: boolean;
   };
 }
 

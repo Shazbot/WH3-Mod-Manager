@@ -11,6 +11,7 @@ import type {
   CustomRowsInputNodeData,
   CustomSchemaNodeData,
   DeduplicateNodeData,
+  DeepCloneNodeData,
   DumpToTSVNodeData,
   ExtractTableNodeData,
   FilterNodeData,
@@ -676,6 +677,28 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       outputType: "TableSelection",
     }),
   }),
+  deepclone: createNodeDefinition<DeepCloneNodeData>({
+    type: "deepclone",
+    labelKey: "nodeEditorNodeDeepCloneLabel",
+    labelFallback: "Deep Clone",
+    descriptionKey: "nodeEditorNodeDeepCloneDescription",
+    descriptionFallback: "Clones rows and their referenced tables, optionally into several variants",
+    createData: ({ label }) => ({
+      label,
+      type: "deepclone",
+      inputType: "TableSelection",
+      outputType: "TableSelection",
+      connectedTableName: "",
+      columnNames: [],
+      DBNameToDBVersions: {},
+      cloneTree: undefined,
+      nameTemplate: "{original}{variant}",
+      useModdersPrefix: true,
+      variantAxes: [],
+      columnOverrides: [],
+      generateLoc: true,
+    }),
+  }),
 };
 
 const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
@@ -715,6 +738,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
     nodes: [
       "addnewcolumn",
       "aggregatenested",
+      "deepclone",
       "dumptotsv",
       "extracttable",
       "flattennested",

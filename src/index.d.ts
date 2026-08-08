@@ -1212,7 +1212,8 @@ declare global {
     | "customrowsinput"
     | "multifilter"
     | "addnewcolumn"
-    | "deduplicate";
+    | "deduplicate"
+    | "deepclone";
 
   // FlowNodeData = "string"|
 
@@ -1264,6 +1265,13 @@ declare global {
     fileName: string;
     sourceFile: Pack;
     table: PackedFile;
+    /**
+     * Overrides the default `db\<tableName>\` output folder when this table is written by the save
+     * changes node. Used for non-db payloads such as generated loc files ("text\\db\\").
+     */
+    outputPathPrefix?: string;
+    /** Appended after the generated file name, e.g. ".loc". Only meaningful with outputPathPrefix. */
+    outputPathSuffix?: string;
   }
 
   interface DBTablesNodeData {

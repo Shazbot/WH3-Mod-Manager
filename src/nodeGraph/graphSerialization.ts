@@ -99,6 +99,12 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         openInWindows: data.openInWindows,
         customSchemaColumns: data.customSchemaColumns || [],
         customSchemaData: data.customSchemaData || null,
+        cloneTree: data.cloneTree as SerializedNode["data"]["cloneTree"],
+        nameTemplate: maybeString(data.nameTemplate),
+        useModdersPrefix: data.useModdersPrefix as boolean | undefined,
+        variantAxes: (data.variantAxes || []) as SerializedNode["data"]["variantAxes"],
+        columnOverrides: (data.columnOverrides || []) as SerializedNode["data"]["columnOverrides"],
+        generateLoc: data.generateLoc as boolean | undefined,
       },
     };
   });

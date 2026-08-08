@@ -6,6 +6,11 @@ import { useLocalizations } from "../../localizationContext";
 import { SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { SupportedGames } from "../../supportedGames";
 import { getTableVersion } from "../connectionRules";
+import {
+  createRootTreeNode,
+  expandTreeNode,
+  getSelectedCloneTables,
+} from "../deepCloneTree";
 import { validateLookupSchemaReference } from "../lookupSchemaValidation";
 import {
   dispatchNodeDataUpdate,
@@ -25,6 +30,10 @@ import type {
   CustomRowsInputNodeData,
   CustomSchemaNodeData,
   DeduplicateNodeData,
+  DeepCloneNodeData,
+  DeepCloneOverride,
+  DeepCloneTreeNode,
+  DeepCloneVariantAxis,
   DumpToTSVNodeData,
   ExtractTableNodeData,
   FilterNodeData,
@@ -5744,6 +5753,491 @@ export const MultiFilterNode: React.FC<{ data: MultiFilterNodeData; id: string }
           />
         );
       })}
+    </div>
+  );
+};
+
+interface DeepCloneTreeRowProps {
+  node: DeepCloneTreeNode;
+  path: number[];
+  depth: number;
+  ancestorTables: string[];
+  expandedPaths: Set<string>;
+  onToggleExpanded: (pathKey: string) => void;
+  onToggleSelected: (path: number[]) => void;
+  onChangeTemplate: (path: number[], template: string) => void;
+  localized: ReturnType<typeof useLocalizations>;
+}
+
+const DeepCloneTreeRow: React.FC<DeepCloneTreeRowProps> = ({
+  node,
+  path,
+  depth,
+  ancestorTables,
+  expandedPaths,
+  onToggleExpanded,
+  onToggleSelected,
+  onChangeTemplate,
+  localized,
+}) => {
+  const pathKey = path.join(".");
+  const isExpanded = expandedPaths.has(pathKey);
+  const isRoot = path.length === 0;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 10}px` }}>
+        <button
+          onClick={() => onToggleExpanded(pathKey)}
+          className="text-xs text-gray-400 hover:text-white w-3"
+          title={localized.nodeEditorDeepCloneExpand || "Show referenced tables"}
+        >
+          {isExpanded ? "▾" : "▸"}
+        </button>
+        {isRoot ? (
+          <span className="w-3" />
+        ) : (
+          <input
+            type="checkbox"
+            checked={node.selected}
+            onChange={() => onToggleSelected(path)}
+            className="w-3 h-3"
+            title={localized.nodeEditorDeepCloneCloneToggle || "Clone this table too"}
+          />
+        )}
+        <span
+          className={`text-xs ${node.selected ? "text-white" : "text-gray-500"} ${
+            node.direction === "reverse" ? "italic" : ""
+          }`}
+          title={
+            node.direction === "reverse"
+              ? `${node.table}.${node.linkColumn} → ${localized.nodeEditorDeepCloneReverseRef || "points back at this row"}`
+              : `${node.linkColumn} → ${node.table}.${node.keyColumn}`
+          }
+        >
+          {node.table}
+          {node.keyColumn ? `.${node.keyColumn}` : ""}
+        </span>
+      </div>
+
+      {isExpanded && !isRoot && node.selected && (
+        <div className="flex items-center gap-1 mt-1" style={{ paddingLeft: `${(depth + 1) * 10}px` }}>
+          <input
+            type="text"
+            value={node.nameTemplate || ""}
+            onChange={(event) => onChangeTemplate(path, event.target.value)}
+            placeholder={localized.nodeEditorDeepCloneNameTemplatePlaceholder || "Name template (inherits)"}
+            className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          />
+        </div>
+      )}
+
+      {isExpanded &&
+        (node.children || []).map((child, childIndex) => (
+          <DeepCloneTreeRow
+            key={`${child.direction}|${child.table}|${child.linkColumn}`}
+            node={child}
+            path={[...path, childIndex]}
+            depth={depth + 1}
+            ancestorTables={[...ancestorTables, node.table]}
+            expandedPaths={expandedPaths}
+            onToggleExpanded={onToggleExpanded}
+            onToggleSelected={onToggleSelected}
+            onChangeTemplate={onChangeTemplate}
+            localized={localized}
+          />
+        ))}
+    </div>
+  );
+};
+
+export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const DBNameToDBVersions = data.DBNameToDBVersions;
+  const connectedTableName = (data.connectedTableName || "").replace(/^db\\/, "").replace(/\\.*$/, "");
+
+  const [cloneTree, setCloneTree] = useState<DeepCloneTreeNode | undefined>(data.cloneTree);
+  const [nameTemplate, setNameTemplate] = useState<string>(data.nameTemplate || "{original}{variant}");
+  const [useModdersPrefix, setUseModdersPrefix] = useState<boolean>(data.useModdersPrefix !== false);
+  const [generateLoc, setGenerateLoc] = useState<boolean>(data.generateLoc !== false);
+  const [variantAxes, setVariantAxes] = useState<DeepCloneVariantAxis[]>(data.variantAxes || []);
+  const [columnOverrides, setColumnOverrides] = useState<DeepCloneOverride[]>(data.columnOverrides || []);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set([""]));
+
+  // Rebuild the root whenever the upstream table changes; keep the existing plan if it still matches.
+  React.useEffect(() => {
+    if (!connectedTableName) return;
+    if (cloneTree && cloneTree.table === connectedTableName) return;
+    setCloneTree(expandTreeNode(DBNameToDBVersions, createRootTreeNode(DBNameToDBVersions, connectedTableName)));
+    setExpandedPaths(new Set([""]));
+  }, [connectedTableName, DBNameToDBVersions]);
+
+  React.useEffect(() => {
+    if (data.cloneTree !== undefined && JSON.stringify(data.cloneTree) !== JSON.stringify(cloneTree)) {
+      setCloneTree(data.cloneTree);
+    }
+  }, [data.cloneTree]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, cloneTree });
+  }, [cloneTree, id]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, nameTemplate, useModdersPrefix, generateLoc });
+  }, [nameTemplate, useModdersPrefix, generateLoc, id]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, variantAxes });
+  }, [variantAxes, id]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, { nodeId: id, columnOverrides });
+  }, [columnOverrides, id]);
+
+  /** Replaces the node at `path` with the result of `update`, rebuilding the spine immutably. */
+  const updateNodeAtPath = (
+    path: number[],
+    update: (node: DeepCloneTreeNode, ancestorTables: string[]) => DeepCloneTreeNode,
+  ) => {
+    setCloneTree((previous) => {
+      if (!previous) return previous;
+      const apply = (
+        node: DeepCloneTreeNode,
+        remaining: number[],
+        ancestorTables: string[],
+      ): DeepCloneTreeNode => {
+        if (remaining.length === 0) return update(node, ancestorTables);
+        const [childIndex, ...rest] = remaining;
+        const children = [...(node.children || [])];
+        if (!children[childIndex]) return node;
+        children[childIndex] = apply(children[childIndex], rest, [...ancestorTables, node.table]);
+        return { ...node, children };
+      };
+      return apply(previous, path, []);
+    });
+  };
+
+  const toggleExpanded = (pathKey: string) => {
+    const path = pathKey === "" ? [] : pathKey.split(".").map(Number);
+    const nextExpanded = new Set(expandedPaths);
+    if (nextExpanded.has(pathKey)) {
+      nextExpanded.delete(pathKey);
+    } else {
+      nextExpanded.add(pathKey);
+      // Children are only materialized on expand — the full closure is far too large to build eagerly.
+      updateNodeAtPath(path, (node, ancestorTables) =>
+        (node.children || []).length > 0 ? node : expandTreeNode(DBNameToDBVersions, node, ancestorTables),
+      );
+    }
+    setExpandedPaths(nextExpanded);
+  };
+
+  const toggleSelected = (path: number[]) => {
+    updateNodeAtPath(path, (node, ancestorTables) => {
+      const selected = !node.selected;
+      // Selecting a node immediately populates its children so it can be drilled into.
+      if (selected && (node.children || []).length === 0) {
+        return { ...expandTreeNode(DBNameToDBVersions, node, ancestorTables), selected };
+      }
+      return { ...node, selected };
+    });
+  };
+
+  const changeTemplate = (path: number[], template: string) => {
+    updateNodeAtPath(path, (node) => ({ ...node, nameTemplate: template || undefined }));
+  };
+
+  const selectedTables = getSelectedCloneTables(cloneTree);
+  const getColumnsForTable = (tableName: string) =>
+    DBNameToDBVersions?.[tableName]?.[0]?.fields.map((field) => field.name) || [];
+
+  const variantCount = variantAxes.reduce(
+    (total, axis) => total * Math.max(1, (axis.values || []).length),
+    1,
+  );
+  const variantSuffixes = variantAxes.reduce<string[]>(
+    (suffixes, axis) =>
+      (axis.values || []).length === 0
+        ? suffixes
+        : suffixes.flatMap((suffix) => axis.values.map((value) => `${suffix}${value.suffix || ""}`)),
+    [""],
+  );
+
+  const addAxis = () =>
+    setVariantAxes([
+      ...variantAxes,
+      { id: `axis_${Date.now()}`, name: `axis_${variantAxes.length + 1}`, values: [] },
+    ]);
+  const removeAxis = (axisId: string) => setVariantAxes(variantAxes.filter((axis) => axis.id !== axisId));
+  const updateAxis = (axisId: string, updates: Partial<DeepCloneVariantAxis>) =>
+    setVariantAxes(variantAxes.map((axis) => (axis.id === axisId ? { ...axis, ...updates } : axis)));
+  const addAxisValue = (axisId: string) => {
+    const axis = variantAxes.find((candidate) => candidate.id === axisId);
+    if (!axis) return;
+    updateAxis(axisId, {
+      values: [...(axis.values || []), { id: `value_${Date.now()}`, suffix: "", overrides: [] }],
+    });
+  };
+
+  const renderOverrideEditor = (
+    overrides: DeepCloneOverride[],
+    onChange: (next: DeepCloneOverride[]) => void,
+  ) => (
+    <div className="space-y-1">
+      {overrides.map((override, overrideIndex) => (
+        <div key={overrideIndex} className="flex items-center gap-1">
+          <select
+            value={override.table}
+            onChange={(event) =>
+              onChange(
+                overrides.map((candidate, index) =>
+                  index === overrideIndex ? { ...candidate, table: event.target.value, column: "" } : candidate,
+                ),
+              )
+            }
+            className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          >
+            <option value="">{localized.nodeEditorSelectTable || "Select a table..."}</option>
+            {selectedTables.map((tableName) => (
+              <option key={tableName} value={tableName}>
+                {tableName}
+              </option>
+            ))}
+          </select>
+          <select
+            value={override.column}
+            onChange={(event) =>
+              onChange(
+                overrides.map((candidate, index) =>
+                  index === overrideIndex ? { ...candidate, column: event.target.value } : candidate,
+                ),
+              )
+            }
+            className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          >
+            <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
+            {getColumnsForTable(override.table).map((columnName) => (
+              <option key={columnName} value={columnName}>
+                {columnName}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={override.value}
+            onChange={(event) =>
+              onChange(
+                overrides.map((candidate, index) =>
+                  index === overrideIndex ? { ...candidate, value: event.target.value } : candidate,
+                ),
+              )
+            }
+            placeholder={localized.nodeEditorValuePlaceholder || "value"}
+            className="w-16 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          />
+          <button
+            onClick={() => onChange(overrides.filter((_, index) => index !== overrideIndex))}
+            className="text-xs text-red-400 hover:text-red-300"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...overrides, { table: selectedTables[0] || "", column: "", value: "" }])}
+        className="text-xs text-blue-400 hover:text-blue-300"
+      >
+        + {localized.nodeEditorDeepCloneAddOverride || "Add override"}
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="bg-gray-700 border-2 border-purple-500 rounded-lg p-4 min-w-[340px] max-w-[440px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-orange-500"
+        data-input-type="TableSelection"
+      />
+
+      <div className="text-sm font-bold text-white mb-3">
+        {localized.nodeEditorDeepCloneTitle || "Deep Clone"}
+      </div>
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorDeepCloneNameTemplateLabel || "New key template:"}
+        </label>
+        <input
+          type="text"
+          value={nameTemplate}
+          onChange={(event) => setNameTemplate(event.target.value)}
+          placeholder="{original}{variant}"
+          className="w-full p-1 text-xs bg-gray-800 text-white border border-gray-600 rounded"
+        />
+        <div className="text-xs text-gray-500 mt-1">
+          {localized.nodeEditorDeepCloneNameTemplateHelp ||
+            "{original} = source key, {selfOriginal} = this table's key, {variant} = variant suffix"}
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer mt-1">
+          <input
+            type="checkbox"
+            checked={useModdersPrefix}
+            onChange={(event) => setUseModdersPrefix(event.target.checked)}
+            className="w-3 h-3"
+          />
+          <span className="text-xs text-white">
+            {localized.nodeEditorDeepCloneUseModdersPrefix || "Prepend modders prefix"}
+          </span>
+        </label>
+      </div>
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorDeepCloneTreeLabel || "Tables to clone:"}
+        </label>
+        <div
+          className="max-h-48 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {!cloneTree ? (
+            <div className="text-xs text-gray-500">
+              {localized.nodeEditorDeepCloneNoTable || "Connect a table selection to start"}
+            </div>
+          ) : (
+            <DeepCloneTreeRow
+              node={cloneTree}
+              path={[]}
+              depth={0}
+              ancestorTables={[]}
+              expandedPaths={expandedPaths}
+              onToggleExpanded={toggleExpanded}
+              onToggleSelected={toggleSelected}
+              onChangeTemplate={changeTemplate}
+              localized={localized}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-300">
+            {localized.nodeEditorDeepCloneVariantAxesLabel || "Variant axes:"}
+          </label>
+          <button
+            onClick={addAxis}
+            className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded"
+          >
+            + {localized.add || "Add"}
+          </button>
+        </div>
+
+        <div
+          className="space-y-2 max-h-64 overflow-y-auto scrollable-node-content"
+          onWheel={stopWheelPropagation}
+        >
+          {variantAxes.map((axis) => (
+            <div key={axis.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center gap-1 mb-2">
+                <input
+                  type="text"
+                  value={axis.name}
+                  onChange={(event) => updateAxis(axis.id, { name: event.target.value })}
+                  placeholder={localized.nodeEditorDeepCloneAxisNamePlaceholder || "Axis name"}
+                  className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <button onClick={() => removeAxis(axis.id)} className="text-xs text-red-400 hover:text-red-300">
+                  ✕
+                </button>
+              </div>
+
+              {(axis.values || []).map((value) => (
+                <div key={value.id} className="mb-2 pl-2 border-l border-gray-600">
+                  <div className="flex items-center gap-1 mb-1">
+                    <input
+                      type="text"
+                      value={value.suffix}
+                      onChange={(event) =>
+                        updateAxis(axis.id, {
+                          values: axis.values.map((candidate) =>
+                            candidate.id === value.id ? { ...candidate, suffix: event.target.value } : candidate,
+                          ),
+                        })
+                      }
+                      placeholder={localized.nodeEditorDeepCloneSuffixPlaceholder || "_suffix"}
+                      className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                    <button
+                      onClick={() =>
+                        updateAxis(axis.id, {
+                          values: axis.values.filter((candidate) => candidate.id !== value.id),
+                        })
+                      }
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {renderOverrideEditor(value.overrides || [], (next) =>
+                    updateAxis(axis.id, {
+                      values: axis.values.map((candidate) =>
+                        candidate.id === value.id ? { ...candidate, overrides: next } : candidate,
+                      ),
+                    }),
+                  )}
+                </div>
+              ))}
+
+              <button
+                onClick={() => addAxisValue(axis.id)}
+                className="text-xs text-blue-400 hover:text-blue-300"
+              >
+                + {localized.nodeEditorDeepCloneAddVariant || "Add variant"}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {variantAxes.length > 0 && (
+          <div className="text-xs text-gray-400 mt-1">
+            {variantCount} {localized.nodeEditorDeepCloneVariantsLabel || "variants"}:{" "}
+            {variantSuffixes.slice(0, 4).join(", ")}
+            {variantSuffixes.length > 4 ? ", …" : ""}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-3">
+        <label className="text-xs text-gray-300 block mb-1">
+          {localized.nodeEditorDeepCloneOverridesLabel || "Column overrides (all variants):"}
+        </label>
+        {renderOverrideEditor(columnOverrides, setColumnOverrides)}
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer mb-2">
+        <input
+          type="checkbox"
+          checked={generateLoc}
+          onChange={(event) => setGenerateLoc(event.target.checked)}
+          className="w-3 h-3"
+        />
+        <span className="text-xs text-white">
+          {localized.nodeEditorDeepCloneGenerateLoc || "Generate localisation entries"}
+        </span>
+      </label>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
     </div>
   );
 };
