@@ -25,6 +25,11 @@ interface NodeExecutionResult {
   activeOutputHandles?: string[];
   error?: string;
 }
+/** Connections are not guaranteed to carry an id, so identity falls back to their endpoints. */
+const getConnectionKey = (connection: SerializedConnection): string =>
+  connection.id ||
+  `${connection.sourceId}|${connection.sourceHandle ?? ""}|${connection.targetId}|${connection.targetHandle ?? ""}`;
+
 const isMultiOutputNodeType = (nodeType?: string): boolean =>
   nodeType === "generaterows" || nodeType === "generaterowsschema" || nodeType === "multifilter";
 const serializeNodeConfigForExecution = (node: SerializedNode): string => {
@@ -380,6 +385,44 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
     );
     const executionResults = new Map<string, NodeExecutionResult>();
     const executed = new Set<string>();
+    /** Edges pruned by a control-flow node, plus every edge leaving a node they made unreachable. */
+    const deadConnectionKeys = new Set<string>();
+    /** Nodes that can never run because every path into them was pruned. */
+    const skippedNodes = new Set<string>();
+
+    /**
+     * Marks an edge dead and, when that leaves its target with no live way in, marks the target
+     * skipped and kills its own outgoing edges too. That is what prunes a whole branch.
+     *
+     * A node fed by both branches keeps a live edge, so it still runs once that edge's source
+     * completes - a join must not be blocked forever by the branch that was not taken.
+     */
+    const markConnectionDead = (connection: SerializedConnection) => {
+      const connectionKey = getConnectionKey(connection);
+      if (deadConnectionKeys.has(connectionKey)) return;
+      deadConnectionKeys.add(connectionKey);
+
+      const targetId = connection.targetId;
+      if (skippedNodes.has(targetId) || executed.has(targetId)) return;
+
+      const targetIncoming = incomingConnectionsByTarget.get(targetId) || [];
+      const hasLiveWayIn = targetIncoming.some(
+        (incomingConnection) => !deadConnectionKeys.has(getConnectionKey(incomingConnection)),
+      );
+      if (hasLiveWayIn) return;
+
+      skippedNodes.add(targetId);
+      flowExecutionDebugLog(executionContext, `Skipping unreachable node ${targetId}`);
+      for (const outgoing of outgoingConnectionsBySource.get(targetId) || []) {
+        markConnectionDead(outgoing);
+      }
+    };
+
+    /** A dependency is satisfied when it succeeded, or when its edge was pruned and carries nothing. */
+    const isDependencySatisfied = (incomingConnection: SerializedConnection) =>
+      deadConnectionKeys.has(getConnectionKey(incomingConnection)) ||
+      (executed.has(incomingConnection.sourceId) &&
+        executionResults.get(incomingConnection.sourceId)?.success === true);
     const executionQueue = startingNodes.map((node) => ({ node, inputData: null as any }));
     let queueIndex = 0;
     while (queueIndex < executionQueue.length) {
@@ -412,36 +455,41 @@ export const executeNodeGraph = async (request: NodeGraphExecutionRequest): Prom
           continue;
         }
         const outgoingConnections = outgoingConnectionsBySource.get(node.id) || [];
-        for (const connection of outgoingConnections) {
-          // A control-flow node reports which of its handles the run continues through. Targets on
-          // the other handle are never enqueued, and because they never execute successfully their
-          // own downstream nodes fail the dependency check below - so the whole branch is skipped,
-          // rather than running with empty data and writing empty packs or files.
-          if (
-            result.activeOutputHandles &&
-            !result.activeOutputHandles.includes(connection.sourceHandle ?? "")
-          ) {
+
+        // A control-flow node reports which of its handles the run continues through. Prune the
+        // other handles first, so the dependency check below already knows those edges are dead.
+        if (result.activeOutputHandles) {
+          for (const connection of outgoingConnections) {
+            if (result.activeOutputHandles.includes(connection.sourceHandle ?? "")) continue;
             flowExecutionDebugLog(
               executionContext,
               `Skipping branch ${node.id}:${connection.sourceHandle} -> ${connection.targetId}`,
             );
+            markConnectionDead(connection);
+          }
+        }
+
+        for (const connection of outgoingConnections) {
+          if (deadConnectionKeys.has(getConnectionKey(connection))) {
             continue;
           }
           const targetNode = nodeMap.get(connection.targetId);
-          if (!targetNode || executed.has(targetNode.id)) {
+          if (!targetNode || executed.has(targetNode.id) || skippedNodes.has(targetNode.id)) {
             continue;
           }
           const targetIncomingConnections = incomingConnectionsByTarget.get(targetNode.id) || [];
-          const allDependenciesCompleted = targetIncomingConnections.every(
-            (incomingConnection) =>
-              executed.has(incomingConnection.sourceId) && executionResults.get(incomingConnection.sourceId)?.success,
-          );
+          const allDependenciesCompleted = targetIncomingConnections.every(isDependencySatisfied);
           if (!allDependenciesCompleted) {
             continue;
           }
+          // Dead edges carry no data, and counting them would push a join node down the
+          // multiple-inputs path with a null in the list.
+          const liveIncomingConnections = targetIncomingConnections.filter(
+            (incomingConnection) => !deadConnectionKeys.has(getConnectionKey(incomingConnection)),
+          );
           executionQueue.push({
             node: targetNode,
-            inputData: buildInputDataForTarget(targetNode, targetIncomingConnections, executionResults, nodeMap),
+            inputData: buildInputDataForTarget(targetNode, liveIncomingConnections, executionResults, nodeMap),
           });
         }
       } catch (error) {

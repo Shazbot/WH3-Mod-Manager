@@ -195,6 +195,82 @@ describe("node graph execution", () => {
       );
     });
 
+
+    /**
+     * The reported graph: the true branch goes through a filter into the dump, the false branch
+     * goes straight into the same dump. The dump is a join of both branches.
+     */
+    const buildJoinGraph = () => {
+      const gate = {
+        ...createNode("gate"),
+        type: "conditionalbranch",
+        data: { ...createNode("gate").data, type: "conditionalbranch" },
+      };
+      const dump = {
+        ...createNode("dump"),
+        type: "dumptotsv",
+        data: { ...createNode("dump").data, type: "dumptotsv" },
+      };
+      return {
+        nodes: [gate, createNode("filter"), dump],
+        connections: [
+          { id: "gate-filter", sourceId: "gate", targetId: "filter", sourceHandle: "output-true" },
+          { id: "gate-dump", sourceId: "gate", targetId: "dump", sourceHandle: "output-false" },
+          { id: "filter-dump", sourceId: "filter", targetId: "dump", sourceHandle: "match" },
+        ],
+      };
+    };
+
+    const runJoinWithActiveHandle = async (activeHandle: string) => {
+      nodeExecutorMocks.executeNodeAction.mockImplementation(async ({ nodeId }: { nodeId: string }) =>
+        nodeId === "gate"
+          ? { success: true, data: { type: "TableSelection" }, activeOutputHandles: [activeHandle] }
+          : { success: true, data: { type: "TableSelection" } },
+      );
+      const result = await executeNodeGraph(buildJoinGraph());
+      const ranNodeIds = nodeExecutorMocks.executeNodeAction.mock.calls.map((call) => call[0].nodeId);
+      return { result, ranNodeIds };
+    };
+
+    it("still runs a node joined to both branches when the false branch is taken", async () => {
+      const { ranNodeIds } = await runJoinWithActiveHandle("output-false");
+
+      // The filter sits on the dead branch, but it must not block the dump forever.
+      expect(ranNodeIds).not.toContain("filter");
+      expect(ranNodeIds).toContain("dump");
+    });
+
+    it("runs the join through the filter when the true branch is taken", async () => {
+      const { ranNodeIds } = await runJoinWithActiveHandle("output-true");
+
+      expect(ranNodeIds).toContain("filter");
+      expect(ranNodeIds).toContain("dump");
+    });
+
+    it("gives the join only the live branch's data, not a null for the pruned edge", async () => {
+      const branchData = { type: "TableSelection", tables: [], sourceFiles: [], tableCount: 0 };
+      nodeExecutorMocks.executeNodeAction.mockImplementation(async ({ nodeId }: { nodeId: string }) =>
+        nodeId === "gate"
+          ? { success: true, data: branchData, activeOutputHandles: ["output-false"] }
+          : { success: true, data: branchData },
+      );
+
+      await executeNodeGraph(buildJoinGraph());
+
+      // Two incoming edges but one is dead, so the dump must not take the merge-many path.
+      expect(nodeExecutorMocks.executeNodeAction).toHaveBeenCalledWith(
+        expect.objectContaining({ nodeId: "dump", inputData: branchData }),
+      );
+    });
+
+    it("counts the join in the run totals", async () => {
+      const { result } = await runJoinWithActiveHandle("output-false");
+
+      // gate + dump; the filter is pruned rather than failed.
+      expect(result.totalExecuted).toBe(2);
+      expect(result.success).toBe(true);
+    });
+
     it("follows every connection when a node reports no active handles", async () => {
       nodeExecutorMocks.executeNodeAction.mockResolvedValue({ success: true, data: {} });
 
