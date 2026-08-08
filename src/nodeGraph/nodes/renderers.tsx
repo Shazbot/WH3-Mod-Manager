@@ -5757,6 +5757,19 @@ export const MultiFilterNode: React.FC<{ data: MultiFilterNodeData; id: string }
   );
 };
 
+/**
+ * A hover-help marker. The node editor has no tooltip component, so this is a native title
+ * attribute paired with a visible affordance — an invisible hover target helps nobody.
+ */
+const DeepCloneHelp: React.FC<{ text: string }> = ({ text }) => (
+  <span
+    className="ml-1 px-1 text-[10px] leading-none text-gray-300 border border-gray-500 rounded-full cursor-help select-none align-middle"
+    title={text}
+  >
+    ?
+  </span>
+);
+
 interface DeepCloneTreeRowProps {
   node: DeepCloneTreeNode;
   path: number[];
@@ -5828,6 +5841,13 @@ const DeepCloneTreeRow: React.FC<DeepCloneTreeRowProps> = ({
             onChange={(event) => onChangeTemplate(path, event.target.value)}
             placeholder={localized.nodeEditorDeepCloneNameTemplatePlaceholder || "Name template (inherits)"}
             className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          />
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneRowTemplateTooltip ||
+              `Key template for ${node.table} only. Leave empty to inherit the node's template above.\n\n` +
+                "Same placeholders: {original}, {selfOriginal}, {variant}."
+            }
           />
         </div>
       )}
@@ -6068,6 +6088,18 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-1">
           {localized.nodeEditorDeepCloneNameTemplateLabel || "New key template:"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneNameTemplateTooltip ||
+              "The key given to every cloned row, in every cloned table.\n\n" +
+                "{original} - the key of the row you are cloning, the same value in every table\n" +
+                "{selfOriginal} - this table's own original key\n" +
+                "{variant} - the variant suffix, empty when there are no axes\n\n" +
+                "Example: my_new_unit{variant} gives main_units_tables and land_units_tables the same new key, so they stay linked.\n" +
+                "Use {selfOriginal}_clone{variant} instead to keep each table's own naming.\n\n" +
+                "Include {variant} whenever you use variant axes, or every variant produces the same key."
+            }
+          />
         </label>
         <input
           type="text"
@@ -6090,12 +6122,30 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
           <span className="text-xs text-white">
             {localized.nodeEditorDeepCloneUseModdersPrefix || "Prepend modders prefix"}
           </span>
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneUseModdersPrefixTooltip ||
+              "Prepends the modders prefix from your app settings to every new key, so your keys cannot collide with another mod's.\n\n" +
+                "Skipped for a key that already starts with the prefix, so it is never applied twice."
+            }
+          />
         </label>
       </div>
 
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-1">
           {localized.nodeEditorDeepCloneTreeLabel || "Tables to clone:"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneTreeTooltip ||
+              "Every table reachable from the input table by a schema reference.\n\n" +
+                "Checked - the referenced row is cloned too, and the clone points at the new copy.\n" +
+                "Unchecked - the reference is left alone, so the clone keeps pointing at the original shared row (what you usually want for things like unit_castes_tables).\n\n" +
+                "Upright rows are forward references: a column of this table points at them.\n" +
+                "Italic rows are reverse references: they point back at this table.\n\n" +
+                "Foreign keys between cloned rows are rewritten for you. Expand a checked row to give that table its own key template."
+            }
+          />
         </label>
         <div
           className="max-h-48 overflow-y-auto bg-gray-800 border border-gray-600 rounded p-2 scrollable-node-content"
@@ -6125,6 +6175,18 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs text-gray-300">
             {localized.nodeEditorDeepCloneVariantAxesLabel || "Variant axes:"}
+            <DeepCloneHelp
+              text={
+                localized.nodeEditorDeepCloneVariantAxesTooltip ||
+                "Each axis is one dimension of variation. The variants produced are the cross product of all axes, with the suffixes joined in axis order.\n\n" +
+                  "axis \"shield\": _shielded, _unshielded\n" +
+                  "axis \"tier\":   _t1, _t2\n" +
+                  "= 4 variants: _shielded_t1, _shielded_t2, _unshielded_t1, _unshielded_t2\n\n" +
+                  "Every variant is a full clone of the whole checked tree, so 4 variants means 4 new rows in each cloned table, each properly cross-linked to its own copies.\n\n" +
+                  "A value's overrides apply to that variant only and can target any checked table, which is how one axis sets land_units_tables.shield while another sets main_units_tables cost.\n\n" +
+                  "No axes means one plain clone. Limit is 256 variants."
+              }
+            />
           </label>
           <button
             onClick={addAxis}
@@ -6146,6 +6208,10 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
                   value={axis.name}
                   onChange={(event) => updateAxis(axis.id, { name: event.target.value })}
                   placeholder={localized.nodeEditorDeepCloneAxisNamePlaceholder || "Axis name"}
+                  title={
+                    localized.nodeEditorDeepCloneAxisNameTooltip ||
+                    "A label for you only - it never appears in a key. The suffixes below are what end up in the names."
+                  }
                   className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                 />
                 <button onClick={() => removeAxis(axis.id)} className="text-xs text-red-400 hover:text-red-300">
@@ -6167,6 +6233,11 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
                         })
                       }
                       placeholder={localized.nodeEditorDeepCloneSuffixPlaceholder || "_suffix"}
+                      title={
+                        localized.nodeEditorDeepCloneSuffixTooltip ||
+                        "Substituted into {variant} for this variant, and joined with the other axes' suffixes.\n\n" +
+                          "The overrides below it apply to this variant only."
+                      }
                       className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                     />
                     <button
@@ -6212,6 +6283,14 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
       <div className="mb-3">
         <label className="text-xs text-gray-300 block mb-1">
           {localized.nodeEditorDeepCloneOverridesLabel || "Column overrides (all variants):"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorDeepCloneOverridesTooltip ||
+              "Forces a column to a fixed value on every cloned row of the chosen table, for every variant.\n\n" +
+                "Use this for a value that is the same across the whole clone. Put a value that differs per variant on a variant axis instead - a variant's own override wins over one set here.\n\n" +
+                "The table list shows only tables you have checked above. Values accept {original}, {variant}, and {selfOriginal} (this column's original value, so {selfOriginal} keeps it unchanged)."
+            }
+          />
         </label>
         {renderOverrideEditor(columnOverrides, setColumnOverrides)}
       </div>
@@ -6226,6 +6305,13 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
         <span className="text-xs text-white">
           {localized.nodeEditorDeepCloneGenerateLoc || "Generate localisation entries"}
         </span>
+        <DeepCloneHelp
+          text={
+            localized.nodeEditorDeepCloneGenerateLocTooltip ||
+            "Adds a text\\db\\*.loc file to the output for every cloned row of a table that has localised fields, copying the original row's English text.\n\n" +
+              "Without this your cloned units show their raw keys in game instead of a name."
+          }
+        />
       </label>
 
       <div className="mt-2 text-xs text-gray-400">
