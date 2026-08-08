@@ -43,7 +43,9 @@ import {
   LoadedTableFile,
   buildFileCopyOutputs,
   deepCloneImagePathsByTable,
+  deepCloneVanillaPacksByFolder,
   executeDeepClonePlan,
+  parseFilenameRelativePaths,
 } from "./flowDeepClone";
 import type {
   DeepCloneOverride,
@@ -6840,16 +6842,74 @@ async function executeDeepCloneNode(
   // Art addressed by a unit key is not reachable through the schema, so it is found by name. Index
   // just the relevant folders, across the input packs first (a mod may override a vanilla porthole)
   // and then every vanilla pack.
+  const plan: DeepClonePlan = {
+    cloneTree: { ...parsed.cloneTree, table: rootTableName },
+    nameTemplate: parsed.nameTemplate || "{original}{variant}",
+    useModdersPrefix: parsed.useModdersPrefix !== false,
+    // The flow's own prefix wins: it is the author's, and this may be running on a user's machine.
+    // Flows authored before the prefix was saved fall back to the local setting.
+    moddersPrefix: parsed.moddersPrefix || appData.moddersPrefix || "",
+    variantAxes: parsed.variantAxes || [],
+    columnOverrides: parsed.columnOverrides || [],
+    generateLoc: parsed.generateLoc !== false,
+    autoFollowReferences: parsed.autoFollowReferences !== false,
+  };
+
+  // Both reference indexes are built lazily per game; make sure they exist before the engine reads them.
+  const referencedColumnsByTable = await getReferencesForGame(appData.currentGame);
+  const reverseReferencesByTable = await getDBFieldsReferencedByForGame(appData.currentGame);
+
+  const plannedTables = collectPlannedTables(
+    plan.cloneTree,
+    plan.autoFollowReferences ? reverseReferencesByTable : {},
+    tablesToIgnore,
+  );
+  const prefetchStartedAt = Date.now();
+  await readTablesFromPacks(plannedTables);
+  console.log(
+    `Deep Clone Node ${nodeId}: prefetched ${plannedTables.length} table(s) from ${searchPacks.length} pack(s) in ${Date.now() - prefetchStartedAt}ms`,
+  );
+
+  // Folders named by filename_relative_path on the tables being cloned. Derived from the schema, so
+  // a table gaining a new file column needs no change here.
+  const schemaFolders = new Set<string>();
+  const gameSchema = await getSchemaForGame(appData.currentGame);
+  for (const tableName of plannedTables) {
+    for (const field of gameSchema[tableName]?.[0]?.fields ?? []) {
+      for (const pattern of parseFilenameRelativePaths(field.filename_relative_path)) {
+        // Everything before the first placeholder or wildcard is the fixed folder to index.
+        const fixedPrefix = pattern.split(/[%*]/)[0];
+        if (fixedPrefix.includes("\\")) {
+          schemaFolders.add(fixedPrefix.slice(0, fixedPrefix.lastIndexOf("\\") + 1));
+        }
+      }
+    }
+  }
+
   const imageSources = Object.entries(deepCloneImagePathsByTable)
     .filter(([tableName]) => cloneTreeContainsTable(parsed.cloneTree, tableName))
     .flatMap(([, sources]) => sources);
-  const imageFolders = [...new Set(imageSources.map((imageSource) => imageSource.folder))];
+  const imageFolders = [
+    ...new Set([...imageSources.map((imageSource) => imageSource.folder), ...schemaFolders]),
+  ];
   const packPathByFileName = new Map<string, string>();
   if (imageFolders.length > 0) {
     // Only the packs declared to hold this art, never the whole vanilla set: indexing a pack parses
     // its entire file list, and all but one of them would be parsed for nothing.
+    const declaredVanillaPacks = [
+      ...imageSources.flatMap((imageSource) => imageSource.vanillaPacks),
+      ...imageFolders.flatMap((folder) => deepCloneVanillaPacksByFolder[folder] ?? []),
+    ];
+    const undeclaredFolders = imageFolders.filter(
+      (folder) => !deepCloneVanillaPacksByFolder[folder] && !imageSources.some((s) => s.folder === folder),
+    );
+    if (undeclaredFolders.length > 0) {
+      console.warn(
+        `Deep Clone Node ${nodeId}: no vanilla pack declared for ${undeclaredFolders.join(", ")}; only the flow's input packs are searched there`,
+      );
+    }
     const vanillaPackPaths = baseGameFolder
-      ? [...new Set(imageSources.flatMap((imageSource) => imageSource.vanillaPacks))]
+      ? [...new Set(declaredVanillaPacks)]
           .map((vanillaPackName) => path.join(baseGameFolder, vanillaPackName))
           .filter((vanillaPackPath) => fs.existsSync(vanillaPackPath))
       : [];
@@ -6884,34 +6944,6 @@ async function executeDeepCloneNode(
     }
   }
 
-  const plan: DeepClonePlan = {
-    cloneTree: { ...parsed.cloneTree, table: rootTableName },
-    nameTemplate: parsed.nameTemplate || "{original}{variant}",
-    useModdersPrefix: parsed.useModdersPrefix !== false,
-    // The flow's own prefix wins: it is the author's, and this may be running on a user's machine.
-    // Flows authored before the prefix was saved fall back to the local setting.
-    moddersPrefix: parsed.moddersPrefix || appData.moddersPrefix || "",
-    variantAxes: parsed.variantAxes || [],
-    columnOverrides: parsed.columnOverrides || [],
-    generateLoc: parsed.generateLoc !== false,
-    autoFollowReferences: parsed.autoFollowReferences !== false,
-  };
-
-  // Both reference indexes are built lazily per game; make sure they exist before the engine reads them.
-  const referencedColumnsByTable = await getReferencesForGame(appData.currentGame);
-  const reverseReferencesByTable = await getDBFieldsReferencedByForGame(appData.currentGame);
-
-  const plannedTables = collectPlannedTables(
-    plan.cloneTree,
-    plan.autoFollowReferences ? reverseReferencesByTable : {},
-    tablesToIgnore,
-  );
-  const prefetchStartedAt = Date.now();
-  await readTablesFromPacks(plannedTables);
-  console.log(
-    `Deep Clone Node ${nodeId}: prefetched ${plannedTables.length} table(s) from ${searchPacks.length} pack(s) in ${Date.now() - prefetchStartedAt}ms`,
-  );
-
   let result;
   try {
     result = await executeDeepClonePlan(rootTableFiles, plan, {
@@ -6923,6 +6955,10 @@ async function executeDeepCloneNode(
       reverseReferencesByTable,
       tablesToIgnore,
       hasPackedFile: packPathByFileName.size > 0 ? (name) => packPathByFileName.has(name) : undefined,
+      listPackedFiles:
+        packPathByFileName.size > 0
+          ? (prefix) => [...packPathByFileName.keys()].filter((name) => name.startsWith(prefix))
+          : undefined,
       log: (...args) => hotPathLog(executionContext, `Deep Clone Node ${nodeId}:`, ...args),
     });
   } catch (error) {

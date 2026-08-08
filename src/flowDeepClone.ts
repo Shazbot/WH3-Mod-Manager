@@ -51,6 +51,20 @@ export const deepCloneImagePathsByTable: Record<string, DeepCloneImageSource[]> 
   main_units_tables: [{ folder: "ui\\units\\minspec_portholes\\", vanillaPacks: ["ui.pack"] }],
 };
 
+/**
+ * Which vanilla pack holds each folder reached through the schema's filename_relative_path.
+ *
+ * Indexing a pack parses its whole file list, and a Warhammer III install has ~260 of them, so the
+ * lookup is pointed at the one that actually holds the folder. A folder with no entry here is still
+ * searched in the flow's own input packs, and a miss is logged rather than guessed at.
+ */
+export const deepCloneVanillaPacksByFolder: Record<string, string[]> = {
+  "ui\\units\\minspec_portholes\\": ["ui.pack"],
+  "ui\\units\\icons\\": ["ui.pack"],
+  "ui\\units\\mask\\": ["ui.pack"],
+  "variantmeshes\\variantmeshdefinitions\\": ["variants.pack"],
+};
+
 /** A file to copy verbatim under a new name alongside the cloned rows. */
 export interface DeepCloneFileCopy {
   sourceName: string;
@@ -163,6 +177,8 @@ export interface DeepCloneDependencies {
    * should be copied; without it no file copies are produced.
    */
   hasPackedFile?: (name: string) => boolean;
+  /** Every indexed file name under a folder, for the wildcard form of filename_relative_path. */
+  listPackedFiles?: (prefix: string) => string[];
   log?: (...args: unknown[]) => void;
 }
 
@@ -284,6 +300,26 @@ const resolveOverrideValue = (
     return value;
   }
 };
+
+/**
+ * Splits the schema's filename_relative_path into its patterns. One field can name several files -
+ * a unit card plus its masks, say - separated by semicolons, and the schema writes them with forward
+ * slashes while pack paths use backslashes.
+ */
+export const parseFilenameRelativePaths = (filenameRelativePath: unknown): string[] => {
+  if (typeof filenameRelativePath !== "string" || !filenameRelativePath.trim()) return [];
+  return filenameRelativePath
+    .split(";")
+    .map((pattern) => pattern.trim().replace(/\//g, "\\"))
+    .filter((pattern) => pattern.length > 0);
+};
+
+/**
+ * Rewrites a value that embeds the row's key, used for the wildcard patterns where the cell already
+ * holds a path rather than a bare name: swapping the key inside it gives the path of the copy.
+ */
+export const replaceKeyInValue = (value: string, originalKey: string, newKey: string): string =>
+  originalKey && value.includes(originalKey) ? value.split(originalKey).join(newKey) : value;
 
 interface CollectedRow {
   tableName: string;
@@ -468,6 +504,74 @@ export const executeDeepClonePlan = async (
         if (!addCopy(`_mask${maskIndex}`)) break;
       }
     }
+  };
+
+  /**
+   * Resolves the files a filename_relative_path field points at and queues copies under the new key.
+   *
+   * Two pattern forms:
+   *  - a concrete path, "variantmeshes/variantmeshdefinitions/%.variantmeshdefinition", where % is
+   *    the cell's value. The copy takes the new key in place of %.
+   *  - a wildcard, "%/*", where the cell already holds a path. There the new path comes from the
+   *    cell's own value with the row's key swapped inside it, and everything under the old folder is
+   *    copied across.
+   *
+   * Returns the value the cell should take, or undefined to leave the cell pointing at the original -
+   * which is what happens when no source file exists, since renaming to a file that is not there
+   * would be worse than sharing the original.
+   */
+  const collectFileCopiesForCell = (
+    tableName: string,
+    field: DBField,
+    patterns: string[],
+    cellValue: string,
+    renamedKey: { originalKey: string; newKey: string },
+  ): string | undefined => {
+    const hasPackedFile = deps.hasPackedFile;
+    if (!hasPackedFile) return undefined;
+
+    // A concrete pattern names the file after the key, so the copy simply takes the new key.
+    let concreteCopyMade = false;
+    // A wildcard pattern has the cell holding a path, so the copy's path comes from swapping the key
+    // inside that value.
+    let wildcardCellValue: string | undefined;
+
+    for (const pattern of patterns) {
+      if (pattern.includes("*")) {
+        const listPackedFiles = deps.listPackedFiles;
+        if (!listPackedFiles) continue;
+
+        const swappedValue = replaceKeyInValue(cellValue, renamedKey.originalKey, renamedKey.newKey);
+        if (swappedValue === cellValue) continue;
+
+        const sourcePrefix = pattern.replace("%", cellValue).replace(/\*.*$/, "");
+        const targetPrefix = pattern.replace("%", swappedValue).replace(/\*.*$/, "");
+        for (const sourceName of listPackedFiles(sourcePrefix)) {
+          const targetName = `${targetPrefix}${sourceName.slice(sourcePrefix.length)}`;
+          if (targetName === sourceName) continue;
+          if (!fileCopiesByTarget.has(targetName)) {
+            fileCopiesByTarget.set(targetName, { sourceName, targetName });
+          }
+          wildcardCellValue = swappedValue;
+        }
+        continue;
+      }
+
+      const sourceName = pattern.split("%").join(cellValue);
+      if (!hasPackedFile(sourceName)) continue;
+      const targetName = pattern.split("%").join(renamedKey.newKey);
+      if (targetName === sourceName) continue;
+      if (!fileCopiesByTarget.has(targetName)) {
+        fileCopiesByTarget.set(targetName, { sourceName, targetName });
+      }
+      concreteCopyMade = true;
+    }
+
+    if (concreteCopyMade) return renamedKey.newKey;
+    if (wildcardCellValue !== undefined) return wildcardCellValue;
+
+    log(`No file found for ${tableName}.${field.name} '${cellValue}'; left pointing at the original`);
+    return undefined;
   };
 
   const outputTables = new Map<string, DeepCloneOutputTable>();
@@ -663,6 +767,9 @@ export const executeDeepClonePlan = async (
     for (const entry of collected) {
       const cloned = structuredClone(entry.sourceRow);
 
+      // Only a row that gets a key of its own should get its own copies of the files that key names.
+      let renamedKeyOnRow: { originalKey: string; newKey: string } | undefined;
+
       for (let cellIndex = 0; cellIndex < cloned.length; cellIndex++) {
         const cell = cloned[cellIndex];
         const field = entry.tableSchema.fields[cellIndex];
@@ -678,12 +785,43 @@ export const executeDeepClonePlan = async (
         }
         // The row's own key.
         if (newValue === undefined) {
-          newValue = renames.get(getRenameKey(entry.tableName, cell.name, cell.resolvedKeyValue));
+          const ownKeyRename = renames.get(getRenameKey(entry.tableName, cell.name, cell.resolvedKeyValue));
+          if (ownKeyRename !== undefined) {
+            renamedKeyOnRow = { originalKey: cell.resolvedKeyValue, newKey: ownKeyRename };
+            newValue = ownKeyRename;
+          }
         }
 
         if (newValue !== undefined) {
           cell.fields = [{ type: "Buffer" as FIELD_TYPE, val: await typeToBuffer(field.field_type, newValue) }];
           cell.resolvedKeyValue = newValue;
+        }
+      }
+
+      // Files the schema addresses through this row's key: copy them under the new key and point the
+      // cell at the copy. Done after the key rewrite so the new key is known.
+      if (renamedKeyOnRow) {
+        for (let cellIndex = 0; cellIndex < cloned.length; cellIndex++) {
+          const field = entry.tableSchema.fields[cellIndex];
+          const sourceCell = entry.sourceRow[cellIndex];
+          if (!field || !sourceCell) continue;
+
+          const patterns = parseFilenameRelativePaths(field.filename_relative_path);
+          if (patterns.length === 0 || !sourceCell.resolvedKeyValue) continue;
+
+          const newCellValue = collectFileCopiesForCell(
+            entry.tableName,
+            field,
+            patterns,
+            sourceCell.resolvedKeyValue,
+            renamedKeyOnRow,
+          );
+          if (newCellValue === undefined) continue;
+
+          cloned[cellIndex].fields = [
+            { type: "Buffer" as FIELD_TYPE, val: await typeToBuffer(field.field_type, newCellValue) },
+          ];
+          cloned[cellIndex].resolvedKeyValue = newCellValue;
         }
       }
 
