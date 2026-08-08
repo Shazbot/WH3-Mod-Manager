@@ -9,6 +9,7 @@ import { getTableVersion } from "../connectionRules";
 import {
   createRootTreeNode,
   expandTreeNode,
+  findTemplatesMissingVariant,
   getSelectedCloneTables,
 } from "../deepCloneTree";
 import { validateLookupSchemaReference } from "../lookupSchemaValidation";
@@ -5992,6 +5993,10 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
     [""],
   );
 
+  // Axes configured but no {variant} in the template means every variant lands on the same key.
+  const templatesMissingVariant =
+    variantCount > 1 ? findTemplatesMissingVariant(cloneTree, nameTemplate) : [];
+
   const addAxis = () =>
     setVariantAxes([
       ...variantAxes,
@@ -6291,6 +6296,14 @@ export const DeepCloneNode: React.FC<{ data: DeepCloneNodeData; id: string }> = 
             {variantCount} {localized.nodeEditorDeepCloneVariantsLabel || "variants"}:{" "}
             {variantSuffixes.slice(0, 4).join(", ")}
             {variantSuffixes.length > 4 ? ", …" : ""}
+          </div>
+        )}
+
+        {templatesMissingVariant.length > 0 && (
+          <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
+            {localized.nodeEditorDeepCloneMissingVariantWarning ||
+              "Add {variant} to the key template, or every variant produces the same key:"}{" "}
+            {templatesMissingVariant.join(", ")}
           </div>
         )}
       </div>

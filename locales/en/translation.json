@@ -918,6 +918,7 @@
   "nodeEditorDeepCloneSuffixPlaceholder": "_suffix",
   "nodeEditorDeepCloneAddVariant": "Add variant",
   "nodeEditorDeepCloneVariantsLabel": "variants",
+  "nodeEditorDeepCloneMissingVariantWarning": "Add {variant} to the key template, or every variant produces the same key:",
   "nodeEditorDeepCloneOverridesLabel": "Column overrides (all variants):",
   "nodeEditorDeepCloneAddOverride": "Add override",
   "nodeEditorDeepCloneGenerateLoc": "Generate localisation entries",

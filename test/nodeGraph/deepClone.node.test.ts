@@ -822,6 +822,54 @@ describe("Deep clone engine", () => {
     expect(result.fileCopies).toEqual([]);
   });
 
+  const shieldAxis = {
+    id: "shield",
+    name: "shield",
+    values: [
+      { id: "a", suffix: "_shielded", overrides: [] },
+      { id: "b", suffix: "_unshielded", overrides: [] },
+    ],
+  };
+
+  it("warns when variant axes are configured but the template ignores {variant}", async () => {
+    const result = await runClone(
+      createPlan({ nameTemplate: "my_new_unit", variantAxes: [shieldAxis] }),
+    );
+
+    // The collision check cannot catch this: my_new_unit does not exist in the packs, so nothing
+    // looks wrong until two rows share the key.
+    expect(result.collisions).toEqual([]);
+    const missingVariantWarnings = result.warnings.filter((warning) => warning.includes("{variant}"));
+    expect(missingVariantWarnings.length).toBeGreaterThan(0);
+    expect(missingVariantWarnings[0]).toContain("main_units_tables");
+    expect(missingVariantWarnings[0]).toContain("2 variants");
+  });
+
+  it("stays quiet when the template uses {variant}", async () => {
+    const result = await runClone(
+      createPlan({ nameTemplate: "my_new_unit{variant}", variantAxes: [shieldAxis] }),
+    );
+
+    expect(result.warnings.filter((warning) => warning.includes("{variant}"))).toEqual([]);
+  });
+
+  it("stays quiet when there is only one variant, whatever the template", async () => {
+    const result = await runClone(createPlan({ nameTemplate: "my_new_unit" }));
+
+    expect(result.warnings.filter((warning) => warning.includes("{variant}"))).toEqual([]);
+  });
+
+  it("reports the warning once, not once per row and variant", async () => {
+    const result = await runClone(
+      createPlan({ nameTemplate: "my_new_unit", variantAxes: [shieldAxis] }),
+    );
+
+    const forMainUnits = result.warnings.filter(
+      (warning) => warning.includes("{variant}") && warning.includes("main_units_tables"),
+    );
+    expect(forMainUnits).toHaveLength(1);
+  });
+
   it("refuses to run when the variant product exceeds the safety limit", async () => {
     const axes = Array.from({ length: 9 }, (_unused, axisIndex) => ({
       id: `axis_${axisIndex}`,

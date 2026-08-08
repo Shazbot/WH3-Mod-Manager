@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createRootTreeNode,
   expandTreeNode,
+  findTemplatesMissingVariant,
   getReferenceOptions,
   getSelectedCloneTables,
   getTableKeyColumn,
@@ -108,6 +109,37 @@ describe("deepCloneTree", () => {
     const reExpanded = expandTreeNode(DBNameToDBVersions, root);
     expect(reExpanded.children[0].selected).toBe(true);
     expect(reExpanded.children[0].nameTemplate).toBe("custom{variant}");
+  });
+
+  it("flags a template that never substitutes the variant suffix", () => {
+    const root = expandTreeNode(DBNameToDBVersions, createRootTreeNode(DBNameToDBVersions, "main_units_tables"));
+    root.children.find((child) => child.table === "land_units_tables")!.selected = true;
+
+    expect(findTemplatesMissingVariant(root, "my_new_unit")).toEqual([
+      "main_units_tables",
+      "land_units_tables",
+    ]);
+    expect(findTemplatesMissingVariant(root, "my_new_unit{variant}")).toEqual([]);
+  });
+
+  it("flags only the table whose own template override drops the suffix", () => {
+    const root = expandTreeNode(DBNameToDBVersions, createRootTreeNode(DBNameToDBVersions, "main_units_tables"));
+    const land = root.children.find((child) => child.table === "land_units_tables")!;
+    land.selected = true;
+    land.nameTemplate = "fixed_land_unit";
+
+    expect(findTemplatesMissingVariant(root, "{original}{variant}")).toEqual(["land_units_tables"]);
+  });
+
+  it("ignores unchecked branches and keyless junction nodes", () => {
+    const root = expandTreeNode(DBNameToDBVersions, createRootTreeNode(DBNameToDBVersions, "main_units_tables"));
+    // Left unchecked, so it is never cloned and its template is irrelevant.
+    root.children.find((child) => child.table === "land_units_tables")!.selected = false;
+    const junction = root.children.find((child) => child.table === "units_to_groupings_tables")!;
+    junction.selected = true;
+    junction.keyColumn = "";
+
+    expect(findTemplatesMissingVariant(root, "my_new_unit")).toEqual(["main_units_tables"]);
   });
 
   it("lists only the tables the plan will actually clone", () => {

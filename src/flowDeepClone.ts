@@ -14,6 +14,7 @@ import type {
   DeepCloneTreeNode,
   DeepCloneVariantAxis,
 } from "./nodeGraph/nodes/types";
+import { findTemplatesMissingVariant } from "./nodeGraph/deepCloneTree";
 import { buildLocKey, getLocKeyColumns } from "./utility/locKeyGeneration";
 import {
   evaluateFormula,
@@ -318,6 +319,15 @@ export const executeDeepClonePlan = async (
   const rootNode = plan.cloneTree;
   if (!rootNode || !rootNode.table) {
     throw new Error("No clone plan configured");
+  }
+
+  // Reported once up front rather than per pass, which would repeat it for every row and variant.
+  if (variants.length > 1) {
+    for (const tableName of findTemplatesMissingVariant(rootNode, plan.nameTemplate)) {
+      warnings.push(
+        `${tableName} has a key template without {variant}, so all ${variants.length} variants would share one key. Add {variant} to the template.`,
+      );
+    }
   }
 
   // --- table loading, memoized per table name -------------------------------------------------

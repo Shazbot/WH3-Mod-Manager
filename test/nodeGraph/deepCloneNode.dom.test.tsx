@@ -145,6 +145,30 @@ describe("Deep Clone node", () => {
     expect(patches.some((patch) => patch.autoFollowReferences === false)).toBe(true);
   });
 
+  it("warns in the editor when variant axes are set but the template ignores {variant}", () => {
+    const { container, getByText, queryByText } = renderDeepCloneNode();
+
+    const templateInput = container.querySelector(
+      'input[placeholder="{original}{variant}"]',
+    ) as HTMLInputElement;
+    const warningText = "Add {variant} to the key template, or every variant produces the same key:";
+
+    // One variant, so nothing to warn about yet however the template is written.
+    fireEvent.change(templateInput, { target: { value: "my_new_unit" } });
+    expect(queryByText(warningText, { exact: false })).toBeNull();
+
+    // Two variants that would now collapse onto the same key.
+    fireEvent.click(getByText("+ Add"));
+    fireEvent.click(getByText("+ Add variant"));
+    fireEvent.click(getByText("+ Add variant"));
+    expect(queryByText(warningText, { exact: false })).not.toBeNull();
+    expect(container.textContent).toContain("main_units_tables");
+
+    // Putting the placeholder back clears it.
+    fireEvent.change(templateInput, { target: { value: "my_new_unit{variant}" } });
+    expect(queryByText(warningText, { exact: false })).toBeNull();
+  });
+
   it("adds a variant axis and reports the resulting variant count", () => {
     const { container, getByText } = renderDeepCloneNode();
 

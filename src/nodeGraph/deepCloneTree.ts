@@ -180,6 +180,40 @@ export const expandTreeNode = (
   return { ...node, children };
 };
 
+/**
+ * Tables whose key template never substitutes the variant suffix.
+ *
+ * The suffix only lands where {variant} appears, so with variant axes configured but no {variant} in
+ * the template every variant produces the same key — and since each variant still applies its own
+ * overrides, the rows differ while sharing that key. The collision check cannot see this: it only
+ * compares against keys that already exist in the packs, never variants against each other.
+ *
+ * Configuring axes and then ignoring them is never deliberate, so this is safe to warn on.
+ */
+export const findTemplatesMissingVariant = (
+  cloneTree: DeepCloneTreeNode | undefined,
+  nameTemplate: string,
+): string[] => {
+  if (!cloneTree) return [];
+
+  const tables: string[] = [];
+  const walk = (node: DeepCloneTreeNode) => {
+    // Only a node that gets a new key of its own uses a template.
+    if (node.keyColumn) {
+      const template = node.nameTemplate || nameTemplate || "{original}{variant}";
+      if (!template.includes("{variant}") && !tables.includes(node.table)) {
+        tables.push(node.table);
+      }
+    }
+    for (const child of node.children || []) {
+      if (child.selected) walk(child);
+    }
+  };
+  walk(cloneTree);
+
+  return tables;
+};
+
 /** Every table the plan will clone, for populating the override editor's table dropdown. */
 export const getSelectedCloneTables = (node: DeepCloneTreeNode | undefined): string[] => {
   if (!node) return [];
