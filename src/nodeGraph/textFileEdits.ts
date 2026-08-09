@@ -11,6 +11,7 @@ export type TextFileEditOperation =
   | "replace"
   | "insertBefore"
   | "insertAfter"
+  | "insertBetween"
   | "delete"
   | "setAttribute";
 
@@ -22,9 +23,24 @@ export interface TextFileEditRule {
   mode: TextFileEditMode;
   /** A CSS selector for xml, a function name or literal text for lua, literal text for plain text. */
   selector: string;
+  /**
+   * The closing snippet for insertBetween: the value goes in the gap after `selector` and before
+   * this. Ignored by every other operation.
+   */
+  selectorEnd?: string;
   operation: TextFileEditOperation;
   attributeName?: string;
   value?: string;
+  /**
+   * Leave the file alone if it already contains this text.
+   *
+   * A rule matching by name or regex sweeps every pack it is given, and some of those files may
+   * already carry the snippet - shipped that way, or edited by hand. The guard lets one rule cover
+   * the files that need it without doubling up on the ones that do not. Checked against the file as
+   * earlier rules in the same run have left it, so two rules writing the same marker do not both
+   * fire.
+   */
+  skipIfContains?: string;
   /** Report a rule that matched nothing even on an unattended run. */
   required?: boolean;
 }
@@ -42,6 +58,8 @@ export interface TextFileEditResult {
   text: string;
   /** How many places each rule changed, keyed by rule id. Zero means the rule found nothing. */
   matchCountByRuleId: Record<string, number>;
+  /** Rules that stood down because the file already contained their guard text. */
+  skippedRuleIds: string[];
   errors: string[];
 }
 
@@ -99,6 +117,9 @@ const rangeForOperation = (
   switch (rule.operation) {
     case "delete":
       return { start, end };
+    // Handled by applyBetweenRule, which needs both snippets; alone, the opening one behaves as
+    // insert-after so a half-configured rule still does something predictable.
+    case "insertBetween":
     case "insertBefore":
       return { start, end: start, replacement: value };
     case "insertAfter":
@@ -206,6 +227,37 @@ const applyLuaRule = (text: string, rule: TextFileEditRule): { ranges: MatchedRa
   return { ranges };
 };
 
+/**
+ * Inserts into the gap between two literal snippets.
+ *
+ * Each opening snippet pairs with the first closing snippet after it, so overlapping pairs cannot
+ * both claim the same region. The text lands right after the opening snippet, leaving whatever is
+ * already between them in place.
+ */
+const applyBetweenRule = (text: string, rule: TextFileEditRule): { ranges: MatchedRange[]; error?: string } => {
+  const opening = rule.selector;
+  const closing = rule.selectorEnd ?? "";
+  if (!opening || !closing) {
+    return { ranges: [], error: "needs both an opening and a closing snippet to insert between" };
+  }
+
+  const ranges: MatchedRange[] = [];
+  let searchFrom = 0;
+  for (;;) {
+    const openingIndex = text.indexOf(opening, searchFrom);
+    if (openingIndex === -1) break;
+
+    const gapStart = openingIndex + opening.length;
+    const closingIndex = text.indexOf(closing, gapStart);
+    if (closingIndex === -1) break;
+
+    ranges.push({ start: gapStart, end: gapStart, replacement: rule.value ?? "" });
+    searchFrom = closingIndex + closing.length;
+  }
+
+  return { ranges };
+};
+
 /** Every occurrence of the selector, taken literally. */
 const applyLiteralRule = (text: string, rule: TextFileEditRule): MatchedRange[] => {
   const needle = rule.selector;
@@ -234,18 +286,29 @@ export const applyTextFileEdits = (
   rules: TextFileEditRule[],
 ): TextFileEditResult => {
   const matchCountByRuleId: Record<string, number> = {};
+  const skippedRuleIds = new Set<string>();
   const errors: string[] = [];
   let edited = text;
 
   for (const rule of rules) {
     if (!matchesTextFileTarget(filePath, rule)) continue;
 
+    // A file that already carries the rule's marker is left alone, so one rule can sweep a set of
+    // files where only some of them need the edit.
+    if (rule.skipIfContains && edited.includes(rule.skipIfContains)) {
+      skippedRuleIds.add(rule.id);
+      matchCountByRuleId[rule.id] = matchCountByRuleId[rule.id] ?? 0;
+      continue;
+    }
+
     const { ranges, error } =
-      rule.mode === "xml"
-        ? applyXmlRule(edited, rule)
-        : rule.mode === "lua"
-          ? applyLuaRule(edited, rule)
-          : { ranges: applyLiteralRule(edited, rule), error: undefined };
+      rule.operation === "insertBetween"
+        ? applyBetweenRule(edited, rule)
+        : rule.mode === "xml"
+          ? applyXmlRule(edited, rule)
+          : rule.mode === "lua"
+            ? applyLuaRule(edited, rule)
+            : { ranges: applyLiteralRule(edited, rule), error: undefined };
 
     if (error) {
       errors.push(`${filePath} ${error}`);
@@ -257,5 +320,5 @@ export const applyTextFileEdits = (
     edited = applyRanges(edited, ranges);
   }
 
-  return { text: edited, matchCountByRuleId, errors };
+  return { text: edited, matchCountByRuleId, skippedRuleIds: [...skippedRuleIds], errors };
 };

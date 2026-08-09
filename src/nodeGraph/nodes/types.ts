@@ -439,6 +439,17 @@ export interface EditTextFileNodeData extends NodeData {
   textFileRules: TextFileEditRuleData[];
 }
 
+/**
+ * Whether a target names a path while the rule only matches on the file name.
+ *
+ * Name matching compares the last path segment, so a target with a separator in it can never match
+ * anything - the rule silently does nothing. Shared by every node that targets files this way.
+ */
+export const targetHasPathButMatchesName = (
+  targetMatch: "path" | "name" | "regex",
+  target: string,
+): boolean => targetMatch === "name" && /[\\/]/.test(target.trim());
+
 /** Mirrors TextFileEditRule in textFileEdits.ts, which the renderer must not import. */
 export interface TextFileEditRuleData {
   id: string;
@@ -446,9 +457,13 @@ export interface TextFileEditRuleData {
   target: string;
   mode: "xml" | "lua" | "text";
   selector: string;
-  operation: "replace" | "insertBefore" | "insertAfter" | "delete" | "setAttribute";
+  /** Closing snippet for insertBetween; the value goes in the gap after `selector`. */
+  selectorEnd?: string;
+  operation: "replace" | "insertBefore" | "insertAfter" | "insertBetween" | "delete" | "setAttribute";
   attributeName?: string;
   value?: string;
+  /** Leave the file alone if it already contains this, so one rule can skip the files that have it. */
+  skipIfContains?: string;
   required?: boolean;
 }
 

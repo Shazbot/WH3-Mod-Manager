@@ -130,7 +130,14 @@ export const substituteLocRuleValues = (
 };
 
 /** Fields of a text file edit rule that accept a flow option placeholder. */
-const textFileRuleOptionFields = ["target", "selector", "attributeName", "value"] as const;
+const textFileRuleOptionFields = [
+  "target",
+  "selector",
+  "selectorEnd",
+  "attributeName",
+  "value",
+  "skipIfContains",
+] as const;
 
 /**
  * Substitutes placeholders into the text file edit rules, which are nested inside `textFileRules` and

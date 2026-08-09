@@ -6,6 +6,7 @@ import {
   matchesTextFileTarget,
 } from "../../src/nodeGraph/textFileEdits";
 import { substituteTextFileRuleValues } from "../../src/nodeGraph/nestedOptionValues";
+import { targetHasPathButMatchesName } from "../../src/nodeGraph/nodes/types";
 import { prepareGraphForExecution } from "../../src/nodeGraph/graphSerialization";
 
 const rule = (overrides: Partial<TextFileEditRule>): TextFileEditRule => ({
@@ -317,5 +318,177 @@ describe("flow options in text file rules", () => {
     const edited = applyTextFileEdits("emp.variantmeshdefinition", variantMesh, [prepared[0]]);
     expect(edited.text).toContain('<MESH model="new.rigid_model_v2"/>');
     expect(edited.matchCountByRuleId.r1).toBe(1);
+  });
+});
+
+const luaScript = `-- mod bootstrap
+local function setup()
+  core:add_listener("a", "b")
+end
+
+-- WHMM ANCHOR START
+-- WHMM ANCHOR END
+
+setup()`;
+
+describe("insert between two snippets", () => {
+  const between = (overrides: Partial<TextFileEditRule> = {}) =>
+    rule({
+      targetMatch: "name",
+      target: "boot.lua",
+      mode: "text",
+      operation: "insertBetween",
+      selector: "-- WHMM ANCHOR START",
+      selectorEnd: "-- WHMM ANCHOR END",
+      value: "\nmy_mod.init()\n",
+      ...overrides,
+    });
+
+  it("puts the value in the gap, leaving both snippets in place", () => {
+    const result = applyTextFileEdits("boot.lua", luaScript, [between()]);
+
+    expect(result.text).toContain("-- WHMM ANCHOR START\nmy_mod.init()\n\n-- WHMM ANCHOR END");
+    expect(result.matchCountByRuleId.r1).toBe(1);
+    // Nothing outside the gap is touched.
+    expect(result.text).toContain('core:add_listener("a", "b")');
+  });
+
+  it("keeps what is already between the snippets", () => {
+    const withContent = "START\nexisting()\nEND";
+    const result = applyTextFileEdits(
+      "boot.lua",
+      withContent,
+      [between({ selector: "START", selectorEnd: "END", value: "\nadded()" })],
+    );
+
+    expect(result.text).toBe("START\nadded()\nexisting()\nEND");
+  });
+
+  it("handles several pairs, matching each opening with the closing that follows it", () => {
+    const twoPairs = "A x B  A y B";
+    const result = applyTextFileEdits(
+      "boot.lua",
+      twoPairs,
+      [between({ selector: "A", selectorEnd: "B", value: "!" })],
+    );
+
+    expect(result.text).toBe("A! x B  A! y B");
+    expect(result.matchCountByRuleId.r1).toBe(2);
+  });
+
+  it("does nothing when the closing snippet never turns up", () => {
+    const result = applyTextFileEdits("boot.lua", "START only", [between({ selector: "START", selectorEnd: "END" })]);
+
+    expect(result.text).toBe("START only");
+    expect(result.matchCountByRuleId.r1).toBe(0);
+  });
+
+  it("reports a rule missing one of its two snippets rather than guessing", () => {
+    const result = applyTextFileEdits("boot.lua", luaScript, [between({ selectorEnd: "" })]);
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("opening and a closing snippet");
+    expect(result.text).toBe(luaScript);
+  });
+});
+
+describe("skipIfContains", () => {
+  const insert = (overrides: Partial<TextFileEditRule> = {}) =>
+    rule({
+      targetMatch: "name",
+      target: "boot.lua",
+      mode: "text",
+      operation: "insertAfter",
+      selector: "setup()",
+      value: "\nmy_mod.init()",
+      ...overrides,
+    });
+
+  it("leaves the file alone when the guard text is already there", () => {
+    const already = "setup()\nmy_mod.init()";
+    const result = applyTextFileEdits("boot.lua", already, [insert({ skipIfContains: "my_mod.init()" })]);
+
+    expect(result.text).toBe(already);
+    expect(result.skippedRuleIds).toEqual(["r1"]);
+    expect(result.matchCountByRuleId.r1).toBe(0);
+  });
+
+  it("still edits when the guard text is absent", () => {
+    const result = applyTextFileEdits("boot.lua", "setup()", [insert({ skipIfContains: "my_mod.init()" })]);
+
+    expect(result.text).toBe("setup()\nmy_mod.init()");
+    expect(result.skippedRuleIds).toEqual([]);
+  });
+
+  it("edits one file and skips its neighbour that already has the text", () => {
+    // The usual shape: one rule, matched by name across several packs, where only some files need it.
+    const guarded = [insert({ skipIfContains: "my_mod.init()" })];
+
+    const needsIt = applyTextFileEdits("boot.lua", "setup()", guarded);
+    const alreadyHasIt = applyTextFileEdits("boot.lua", needsIt.text, guarded);
+
+    expect(needsIt.text).toBe("setup()\nmy_mod.init()");
+    expect(alreadyHasIt.text).toBe(needsIt.text);
+  });
+
+  it("without the guard a file that already has the text gets a second copy", () => {
+    const unguarded = [insert()];
+    const first = applyTextFileEdits("boot.lua", "setup()", unguarded);
+    const second = applyTextFileEdits("boot.lua", first.text, unguarded);
+
+    expect(second.text).not.toBe(first.text);
+  });
+
+  it("sees what an earlier rule in the same run wrote", () => {
+    const result = applyTextFileEdits("boot.lua", "setup()", [
+      insert({ id: "first" }),
+      insert({ id: "second", skipIfContains: "my_mod.init()" }),
+    ]);
+
+    expect(result.skippedRuleIds).toEqual(["second"]);
+    expect(result.text).toBe("setup()\nmy_mod.init()");
+  });
+});
+
+describe("flow options in the new rule fields", () => {
+  it("substitutes into the closing snippet and the guard", () => {
+    const nodeData: Record<string, unknown> = {
+      textFileRules: [
+        { id: "r1", selectorEnd: "{{endMarker}}", skipIfContains: "{{marker}}" },
+      ],
+    };
+
+    substituteTextFileRuleValues(nodeData, (value) =>
+      value.replace("{{endMarker}}", "-- END").replace("{{marker}}", "my_mod"),
+    );
+
+    const [substituted] = nodeData.textFileRules as Array<Record<string, string>>;
+    expect(substituted.selectorEnd).toBe("-- END");
+    expect(substituted.skipIfContains).toBe("my_mod");
+  });
+});
+
+describe("targetHasPathButMatchesName", () => {
+  it("flags a path typed against name matching, which can never match", () => {
+    expect(targetHasPathButMatchesName("name", "ui/campaign ui/objectives.twui.xml")).toBe(true);
+    expect(targetHasPathButMatchesName("name", "ui\\campaign ui\\objectives.twui.xml")).toBe(true);
+
+    // The matcher agrees: name matching compares the last segment only.
+    const path = "ui\\campaign ui\\objectives.twui.xml";
+    expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: path }))).toBe(false);
+    expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: "objectives.twui.xml" }))).toBe(
+      true,
+    );
+  });
+
+  it("says nothing about a bare file name", () => {
+    expect(targetHasPathButMatchesName("name", "objectives.twui.xml")).toBe(false);
+    expect(targetHasPathButMatchesName("name", "  boot.lua  ")).toBe(false);
+    expect(targetHasPathButMatchesName("name", "")).toBe(false);
+  });
+
+  it("leaves the other match kinds alone, where a path or a slash is expected", () => {
+    expect(targetHasPathButMatchesName("path", "ui/campaign ui/objectives.twui.xml")).toBe(false);
+    expect(targetHasPathButMatchesName("regex", "ui\\\\.*\\.twui\\.xml$")).toBe(false);
   });
 });

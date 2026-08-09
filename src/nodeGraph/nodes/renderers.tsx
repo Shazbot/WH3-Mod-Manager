@@ -76,6 +76,7 @@ import type {
   TextJoinNodeData,
   TextSurroundNodeData,
 } from "./types";
+import { targetHasPathButMatchesName } from "./types";
 
 const collator = new Intl.Collator("en");
 
@@ -6978,7 +6979,7 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
         id: `edit_${Date.now()}`,
         targetMatch: "name",
         target: "",
-        mode: "xml",
+        mode: "text",
         selector: "",
         operation: "replace",
         value: "",
@@ -6993,6 +6994,14 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
       : mode === "lua"
         ? "function my_mod.setup"
         : localized.nodeEditorEditTextFileFindPlaceholder || "text to find...";
+
+  // Each way of matching wants a different shape of input, so show what one looks like.
+  const targetPlaceholder = (targetMatch: TextFileEditRuleData["targetMatch"]) =>
+    targetMatch === "name"
+      ? localized.nodeEditorEditTextFileTargetNamePlaceholder || "unit_card.twui.xml"
+      : targetMatch === "path"
+        ? localized.nodeEditorEditTextFileTargetPathPlaceholder || "ui/campaign ui/objectives.twui.xml"
+        : localized.nodeEditorEditTextFileTargetRegexPlaceholder || "ui\\.*\\.twui\\.xml$";
 
   return (
     <div className="bg-gray-700 border-2 border-sky-500 rounded-lg p-4 min-w-[340px] max-w-[420px]">
@@ -7013,6 +7022,8 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 "XML rules use a CSS selector - SLOT[name=\"head\"] MESH - which targets elements structurally instead of matching raw text. Only the matched span is rewritten, so the rest of the file stays byte-identical.\n\n" +
                 "The edited file goes into the output pack at its original path, and the output pack loads after every mod, so it wins over the pack the file came from. When two enabled mods carry the same file the higher-priority one is edited - the copy the game would have loaded.\n\n" +
                 "Lua rules take \"function name\" to find a declaration, or any other text to match literally.\n\n" +
+                "Insert between takes two snippets and puts the text in the gap between them, pairing each opening snippet with the first closing one after it.\n\n" +
+                "Skip if contains leaves a file alone when it already holds that text, so one rule can sweep a set of files and edit only the ones that need it.\n\n" +
                 "A rule that matches nothing is reported when you run the flow yourself. On the unattended run at game start it stays quiet unless you tick required, since a flow spanning many packs will have rules that do not apply to each one."
             }
           />
@@ -7054,7 +7065,7 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                   type="text"
                   value={rule.target}
                   onChange={(event) => updateRule(rule.id, { target: event.target.value })}
-                  placeholder={localized.nodeEditorEditTextFileTargetPlaceholder || "file to edit..."}
+                  placeholder={targetPlaceholder(rule.targetMatch)}
                   className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                 />
                 <button
@@ -7065,6 +7076,13 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 </button>
               </div>
 
+              {targetHasPathButMatchesName(rule.targetMatch, rule.target) && (
+                <div className="text-xs text-amber-400 mb-1">
+                  {localized.nodeEditorTargetNameHasPath ||
+                    "Matching by name compares only the file name, so a path never matches. Switch to path or drop the folders."}
+                </div>
+              )}
+
               <div className="flex items-center gap-1 mb-1">
                 <select
                   value={rule.mode}
@@ -7073,9 +7091,9 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                   }
                   className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                 >
+                  <option value="text">{localized.nodeEditorEditTextFileModeText || "plain text"}</option>
                   <option value="xml">{localized.nodeEditorEditTextFileModeXml || "xml selector"}</option>
                   <option value="lua">{localized.nodeEditorEditTextFileModeLua || "lua"}</option>
-                  <option value="text">{localized.nodeEditorEditTextFileModeText || "plain text"}</option>
                 </select>
                 <select
                   value={rule.operation}
@@ -7093,6 +7111,11 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                   <option value="insertAfter">
                     {localized.nodeEditorEditTextFileInsertAfter || "insert after"}
                   </option>
+                  {rule.mode !== "xml" && (
+                    <option value="insertBetween">
+                      {localized.nodeEditorEditTextFileInsertBetween || "insert between"}
+                    </option>
+                  )}
                   <option value="delete">{localized.nodeEditorEditTextFileDelete || "delete"}</option>
                   {rule.mode === "xml" && (
                     <option value="setAttribute">
@@ -7109,6 +7132,18 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 placeholder={selectorPlaceholder(rule.mode)}
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
               />
+
+              {rule.operation === "insertBetween" && (
+                <input
+                  type="text"
+                  value={rule.selectorEnd || ""}
+                  onChange={(event) => updateRule(rule.id, { selectorEnd: event.target.value })}
+                  placeholder={
+                    localized.nodeEditorEditTextFileSelectorEndPlaceholder || "...and before this text"
+                  }
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+                />
+              )}
 
               {rule.operation === "setAttribute" && (
                 <input
@@ -7129,6 +7164,17 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                   className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
                 />
               )}
+
+              <input
+                type="text"
+                value={rule.skipIfContains || ""}
+                onChange={(event) => updateRule(rule.id, { skipIfContains: event.target.value })}
+                placeholder={
+                  localized.nodeEditorEditTextFileSkipIfContainsPlaceholder ||
+                  "skip the file if it already contains..."
+                }
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+              />
 
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -7283,6 +7329,13 @@ export const PackFileOperationsNode: React.FC<{ data: PackFileOperationsNodeData
                 placeholder={localized.nodeEditorPackFileSourcePlaceholder || "file to act on..."}
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
               />
+
+              {targetHasPathButMatchesName(rule.targetMatch, rule.target) && (
+                <div className="text-xs text-amber-400 mb-1">
+                  {localized.nodeEditorTargetNameHasPath ||
+                    "Matching by name compares only the file name, so a path never matches. Switch to path or drop the folders."}
+                </div>
+              )}
 
               {rule.operation !== "delete" && (
                 <>

@@ -34,5 +34,6 @@
   "nodeEditorEditTextFileAttributePlaceholder": "nodeEditorEditTextFileAttributePlaceholder",
   "nodeEditorEditTextFileValuePlaceholder": "nodeEditorEditTextFileValuePlaceholder",
   "nodeEditorEditTextFileFindPlaceholder": "nodeEditorEditTextFileFindPlaceholder",
-  "nodeEditorEditTextFileRequired": "nodeEditorEditTextFileRequired"
+  "nodeEditorEditTextFileRequired": "nodeEditorEditTextFileRequired",
+  "nodeEditorTargetNameHasPath": "nodeEditorTargetNameHasPath"
 }

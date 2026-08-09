@@ -7390,6 +7390,8 @@ async function executeEditTextFileNode(
 
   const isUnattendedRun = executionContext !== undefined;
   const matchCountByRuleId: Record<string, number> = {};
+  /** Rules that found their guard text already in place - a deliberate no-op, not a miss. */
+  const guardSkippedRuleIds = new Set<string>();
   const outputTables: DBTablesNodeTable[] = [];
   const warnings: string[] = [];
 
@@ -7448,6 +7450,7 @@ async function executeEditTextFileNode(
         for (const [ruleId, count] of Object.entries(result.matchCountByRuleId)) {
           matchCountByRuleId[ruleId] = (matchCountByRuleId[ruleId] ?? 0) + count;
         }
+        for (const skippedRuleId of result.skippedRuleIds) guardSkippedRuleIds.add(skippedRuleId);
         for (const error of result.errors) warnings.push(error);
 
         const editedText = hasBom ? UTF8_BOM + result.text : result.text;
@@ -7469,6 +7472,8 @@ async function executeEditTextFileNode(
 
   for (const rule of rules) {
     if ((matchCountByRuleId[rule.id] ?? 0) > 0) continue;
+    // A rule that stood down because its text was already there did what it was asked to do.
+    if (guardSkippedRuleIds.has(rule.id)) continue;
     if (isUnattendedRun && !rule.required) continue;
     warnings.push(`Rule targeting '${rule.target}' with selector '${rule.selector}' matched nothing`);
   }
