@@ -32,10 +32,11 @@ const BIG_TABLE_ROW_THRESHOLD = 20000;
 const BIG_TABLE_CELL_THRESHOLD = 2000000;
 const BIG_TABLE_ROW_HEIGHT = 23 + 8;
 const NORMAL_TABLE_ROW_HEIGHT = 28 + 8;
-const BIG_TABLE_NUMERIC_COL_WIDTH = 96;
+/** Floor for a numeric column; above this they are sized to their widest value like text ones. */
+const NUMERIC_COLUMN_MIN_WIDTH_PX = 56;
 const BIG_TABLE_CHECKBOX_COL_WIDTH = 36;
 const FIXED_SIZING_ROW_THRESHOLD = 1000;
-const TABLE_PREP_CACHE_VERSION = 4;
+const TABLE_PREP_CACHE_VERSION = 5;
 const ROW_INDEX_COLUMN_MIN_WIDTH = 50;
 const ROW_INDEX_COLUMN_PADDING_PX = 20;
 const SELECTION_AUTO_SCROLL_EDGE_PX = 32;
@@ -48,7 +49,16 @@ const ROW_INDEX_GRID_CELL_FONT = GRID_CELL_FONT;
 /** Upper bound on one glyph's advance at GRID_CELL_FONT, generous enough to cover full-width ones. */
 const GRID_CELL_MAX_GLYPH_WIDTH_PX = 24;
 const TEXT_COLUMN_WIDTH_CHAR_PX = 9;
-const TEXT_COLUMN_WIDTH_PADDING_PX = 52;
+/**
+ * Space a cell needs around its value: twice the `--ag-cell-horizontal-padding` set on the grid in
+ * index.css, plus the cell's 1px borders and a little slack.
+ */
+const CELL_CONTENT_PADDING_PX = 24;
+/**
+ * Space a header needs around its text. Larger than the cell's, because headers keep the theme's
+ * wider gutters for the sort indicator and the filter button, which sit inside them.
+ */
+const HEADER_CHROME_PADDING_PX = 52;
 const TEXT_COLUMN_WIDTH_MIN_PX = 110;
 const GRID_HEADER_FONT = "500 14px Roboto, Arial, sans-serif";
 const KEY_HEADER_ICON_WIDTH_PX = 22;
@@ -327,22 +337,26 @@ const getDisplayColumnHeader = (headerName: string): string => {
   return COLUMN_HEADER_DISPLAY_NAMES[headerName] ?? headerName;
 };
 
+/**
+ * What the header alone needs, with no floor of its own.
+ *
+ * A floor here would apply to every column type, which is what made a checkbox column as wide as a
+ * column of text. The per-type floor belongs with the content width instead.
+ */
 const getHeaderMinWidth = (headerName: string, hasKeyIcon: boolean): number => {
-  const minHeaderWidth = TEXT_COLUMN_WIDTH_MIN_PX * 1;
-  if (headerName.length === 0) return minHeaderWidth;
+  const iconWidth = hasKeyIcon ? KEY_HEADER_ICON_WIDTH_PX : 0;
+  if (headerName.length === 0) return HEADER_CHROME_PADDING_PX + iconWidth;
 
   const words = headerName.split(/\s+/).filter(Boolean);
+  // The header wraps onto two lines, so it has to fit whichever is wider: its longest single word,
+  // or half of the whole thing.
   const longestWordWidth = words.reduce((maxWidth, word) => {
     return Math.max(maxWidth, measureTextWidth(word, GRID_HEADER_FONT));
   }, 0);
   const fullHeaderWidth = measureTextWidth(headerName, GRID_HEADER_FONT);
   const twoLineWidth = Math.ceil(fullHeaderWidth / 2);
-  const iconWidth = hasKeyIcon ? KEY_HEADER_ICON_WIDTH_PX : 0;
 
-  return Math.max(
-    minHeaderWidth,
-    Math.ceil(Math.max(longestWordWidth, twoLineWidth) + TEXT_COLUMN_WIDTH_PADDING_PX + iconWidth),
-  );
+  return Math.ceil(Math.max(longestWordWidth, twoLineWidth) + HEADER_CHROME_PADDING_PX + iconWidth);
 };
 
 const buildTableCacheKey = (
@@ -411,7 +425,8 @@ const prepareTableData = (
       data[rowIndex][getColumnFieldKey(colIndex)] = cellValue;
       lowerCaseColumnValues[colIndex][rowIndex] = String(cell.resolvedKeyValue).toLowerCase();
 
-      if (columns[colIndex]?.type !== "text") continue;
+      // Checkboxes are a fixed size; everything else is sized from its values.
+      if (columns[colIndex]?.type === "checkbox") continue;
       const value = String(cellValue ?? "");
       if (value.length === 0) continue;
 
@@ -438,7 +453,7 @@ const prepareTableData = (
   }
 
   const columnWidthHints: Array<ColumnWidthHint | undefined> = columns.map((column, colIndex) => {
-    if (column.type !== "text") return undefined;
+    if (column.type === "checkbox") return undefined;
 
     const nonEmptyCount = textNonEmptyCounts[colIndex];
     const maxLength = textMaxLengths[colIndex];
@@ -467,12 +482,12 @@ const getUpdatedTextColumnWidthHint = (
   preparedTableData: PreparedTableData,
   columnIndex: number,
 ): ColumnWidthHint | undefined => {
-  if (preparedTableData.columns[columnIndex]?.type !== "text") return undefined;
+  if (preparedTableData.columns[columnIndex]?.type === "checkbox") return undefined;
 
   // Both lists hold the space-separated display name, so this is the same test prepareTableData makes.
-  const isKeyColumn = preparedTableData.keyColumnNames.includes(
-    preparedTableData.columnHeaders[columnIndex] ?? "",
-  );
+  const isKeyTextColumn =
+    preparedTableData.columns[columnIndex]?.type === "text" &&
+    preparedTableData.keyColumnNames.includes(preparedTableData.columnHeaders[columnIndex] ?? "");
 
   let nonEmptyCount = 0;
   let widest: WidestValue = { value: "", width: 0 };
@@ -483,7 +498,7 @@ const getUpdatedTextColumnWidthHint = (
     const value = rawValue == null ? "" : String(rawValue);
     if (value.length === 0) continue;
     nonEmptyCount++;
-    if (isKeyColumn) {
+    if (isKeyTextColumn) {
       // By width rather than length, so an edited key column still fits exactly.
       widest = pickWidestValue(widest, value, measureGridCellText, GRID_CELL_MAX_GLYPH_WIDTH_PX);
       maxLength = Math.max(maxLength, value.length);
@@ -697,28 +712,31 @@ const AgGridWrapper = memo(
       return currentSchema.fields.findIndex((field) => keyColumnSet.has(field.name));
     }, [currentSchema.fields, keyColumnSet]);
 
-    const getTextColumnWidth = useCallback(
+    /**
+     * What the column's values need. The header is not considered here - getHeaderMinWidth covers
+     * it, and it knows the header wraps onto two lines, so folding the unwrapped header width in
+     * here as well would size every column for a header that is never drawn on one line.
+     */
+    const getContentWidth = useCallback(
       (columnIndex: number) => {
-        const headerText = getDisplayColumnHeader(columnHeaders[columnIndex] ?? "");
-        const hint = columnWidthHints[columnIndex];
-        const widestValue = hint?.widestValue ?? "";
-        const headerWidth = measureTextWidth(headerText, GRID_HEADER_FONT);
-        const contentWidth = measureTextWidth(widestValue, GRID_CELL_FONT);
-        const targetWidth = Math.max(headerWidth, contentWidth);
-        const widthPx = Math.ceil(targetWidth + TEXT_COLUMN_WIDTH_PADDING_PX);
-        return Math.max(TEXT_COLUMN_WIDTH_MIN_PX, widthPx);
+        const widestValue = columnWidthHints[columnIndex]?.widestValue ?? "";
+        if (widestValue.length === 0) return 0;
+        return Math.ceil(measureTextWidth(widestValue, GRID_CELL_FONT) + CELL_CONTENT_PADDING_PX);
       },
-      [columnHeaders, columnWidthHints],
+      [columnWidthHints],
     );
 
     const getColumnWidth = useCallback(
       (columnIndex: number) => {
         const columnType = columns[columnIndex]?.type;
+        // A checkbox is the same size whatever the value, so its content width is a constant.
         if (columnType === "checkbox") return BIG_TABLE_CHECKBOX_COL_WIDTH;
-        if (columnType === "numeric") return BIG_TABLE_NUMERIC_COL_WIDTH;
-        return getTextColumnWidth(columnIndex);
+        if (columnType === "numeric") {
+          return Math.max(NUMERIC_COLUMN_MIN_WIDTH_PX, getContentWidth(columnIndex));
+        }
+        return Math.max(TEXT_COLUMN_WIDTH_MIN_PX, getContentWidth(columnIndex));
       },
-      [columns, getTextColumnWidth],
+      [columns, getContentWidth],
     );
 
     const defaultColDef = useMemo<ColDef<RowData>>(

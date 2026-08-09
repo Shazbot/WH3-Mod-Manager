@@ -672,6 +672,23 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   --ag-header-column-separator-height: 100%;
   --ag-header-column-separator-width: 1px;
   --ag-header-column-separator-color: rgba(148, 163, 184, 0.32);
+
+  /*
+   * Material reserves 24px each side of every cell, so a column of single digits still spends 48px
+   * on empty space. These tables are dense and read column by column, so the gutters buy little.
+   * CELL_CONTENT_PADDING_PX in PackTablesTableView.tsx has to stay in step with this.
+   */
+  --ag-cell-horizontal-padding: 10px;
+}
+
+/*
+ * Headers keep the theme's original gutters. The sort indicator and the filter button are absolutely
+ * positioned into them by the rules above, so narrowing them here would put those icons on top of
+ * the header text. HEADER_CHROME_PADDING_PX is the width calculation's view of this.
+ */
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell {
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 .pack-tables-grid .pack-table-row-index-cell {
