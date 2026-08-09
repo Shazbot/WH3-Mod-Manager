@@ -24,6 +24,7 @@ import {
   TableCellValue,
 } from "./tablePrepCache";
 import type { ShowViewerDialog } from "./viewerDialogs";
+import { pickWidestValue, type WidestValue } from "./viewerHelpers";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import { vanillaPackNames } from "@/src/supportedGames";
 
@@ -34,16 +35,21 @@ const NORMAL_TABLE_ROW_HEIGHT = 28 + 8;
 const BIG_TABLE_NUMERIC_COL_WIDTH = 96;
 const BIG_TABLE_CHECKBOX_COL_WIDTH = 36;
 const FIXED_SIZING_ROW_THRESHOLD = 1000;
-const TABLE_PREP_CACHE_VERSION = 3;
+const TABLE_PREP_CACHE_VERSION = 4;
 const ROW_INDEX_COLUMN_MIN_WIDTH = 50;
 const ROW_INDEX_COLUMN_PADDING_PX = 20;
 const SELECTION_AUTO_SCROLL_EDGE_PX = 32;
 const SELECTION_AUTO_SCROLL_MAX_STEP_PX = 24;
-const ROW_INDEX_GRID_CELL_FONT = "400 17.6px Roboto, Arial, sans-serif";
-const TEXT_COLUMN_WIDTH_CHAR_PX = 7;
+// Cells render at `.ag-cell { font-size: 1.1rem }` from index.css, which is 17.6px. Measuring them
+// at anything smaller makes every column narrower than its contents, which shows up as ellipsised
+// values in whichever column holds the longest text - usually a key column.
+const GRID_CELL_FONT = "400 17.6px Roboto, Arial, sans-serif";
+const ROW_INDEX_GRID_CELL_FONT = GRID_CELL_FONT;
+/** Upper bound on one glyph's advance at GRID_CELL_FONT, generous enough to cover full-width ones. */
+const GRID_CELL_MAX_GLYPH_WIDTH_PX = 24;
+const TEXT_COLUMN_WIDTH_CHAR_PX = 9;
 const TEXT_COLUMN_WIDTH_PADDING_PX = 52;
 const TEXT_COLUMN_WIDTH_MIN_PX = 110;
-const GRID_CELL_FONT = "400 14px Roboto, Arial, sans-serif";
 const GRID_HEADER_FONT = "500 14px Roboto, Arial, sans-serif";
 const KEY_HEADER_ICON_WIDTH_PX = 22;
 const COLUMN_HEADER_DISPLAY_NAMES: Record<string, string> = {
@@ -93,6 +99,8 @@ const measureTextWidth = (text: string, font: string): number => {
   textMeasureContext.font = font;
   return Math.ceil(textMeasureContext.measureText(text).width);
 };
+
+const measureGridCellText = (text: string): number => measureTextWidth(text, GRID_CELL_FONT);
 
 const fieldTypeToCellType = (fieldType: SCHEMA_FIELD_TYPE): "numeric" | "checkbox" | "text" => {
   switch (fieldType) {
@@ -387,6 +395,10 @@ const prepareTableData = (
   const textNonEmptyCounts = new Array(columnCount).fill(0);
   const textMaxLengths = new Array(columnCount).fill(0);
   const textWidestValues = new Array<string>(columnCount).fill("");
+  const textWidestWidths = new Array<number>(columnCount).fill(0);
+  const isKeyTextColumn = currentSchema.fields.map(
+    (field, colIndex) => columns[colIndex]?.type === "text" && keyColumnNamesUnderscore.includes(field.name),
+  );
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
     for (let colIndex = 0; colIndex < columnCount; colIndex++) {
@@ -400,13 +412,27 @@ const prepareTableData = (
       lowerCaseColumnValues[colIndex][rowIndex] = String(cell.resolvedKeyValue).toLowerCase();
 
       if (columns[colIndex]?.type !== "text") continue;
-      const valueLength = String(cellValue ?? "").length;
-      if (valueLength === 0) continue;
+      const value = String(cellValue ?? "");
+      if (value.length === 0) continue;
 
       textNonEmptyCounts[colIndex]++;
-      if (valueLength > textMaxLengths[colIndex]) {
-        textMaxLengths[colIndex] = valueLength;
-        textWidestValues[colIndex] = String(cellValue ?? "");
+      if (isKeyTextColumn[colIndex]) {
+        // A key column has to fit exactly, so it is sized off its widest value rather than its
+        // longest one.
+        const widest = pickWidestValue(
+          { value: textWidestValues[colIndex], width: textWidestWidths[colIndex] },
+          value,
+          measureGridCellText,
+          GRID_CELL_MAX_GLYPH_WIDTH_PX,
+        );
+        textWidestValues[colIndex] = widest.value;
+        textWidestWidths[colIndex] = widest.width;
+        textMaxLengths[colIndex] = Math.max(textMaxLengths[colIndex], value.length);
+      } else if (value.length > textMaxLengths[colIndex]) {
+        // Every other column goes by the longest value, which costs one measurement per column
+        // rather than one per cell.
+        textMaxLengths[colIndex] = value.length;
+        textWidestValues[colIndex] = value;
       }
     }
   }
@@ -443,8 +469,13 @@ const getUpdatedTextColumnWidthHint = (
 ): ColumnWidthHint | undefined => {
   if (preparedTableData.columns[columnIndex]?.type !== "text") return undefined;
 
+  // Both lists hold the space-separated display name, so this is the same test prepareTableData makes.
+  const isKeyColumn = preparedTableData.keyColumnNames.includes(
+    preparedTableData.columnHeaders[columnIndex] ?? "",
+  );
+
   let nonEmptyCount = 0;
-  let widestValue = "";
+  let widest: WidestValue = { value: "", width: 0 };
   let maxLength = 0;
 
   for (const row of preparedTableData.data) {
@@ -452,13 +483,17 @@ const getUpdatedTextColumnWidthHint = (
     const value = rawValue == null ? "" : String(rawValue);
     if (value.length === 0) continue;
     nonEmptyCount++;
-    if (value.length > maxLength) {
+    if (isKeyColumn) {
+      // By width rather than length, so an edited key column still fits exactly.
+      widest = pickWidestValue(widest, value, measureGridCellText, GRID_CELL_MAX_GLYPH_WIDTH_PX);
+      maxLength = Math.max(maxLength, value.length);
+    } else if (value.length > maxLength) {
       maxLength = value.length;
-      widestValue = value;
+      widest = { value, width: 0 };
     }
   }
 
-  return { maxLength, nonEmptyCount, widestValue };
+  return { maxLength, nonEmptyCount, widestValue: widest.value };
 };
 
 const updatePreparedTableDataCell = (

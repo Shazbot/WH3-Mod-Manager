@@ -5,6 +5,33 @@ import {
   getPackNameFromPath,
 } from "../../utility/packFileHelpers";
 
+export interface WidestValue {
+  value: string;
+  width: number;
+}
+
+/**
+ * Keeps the value a column has to be wide enough to display, comparing by rendered width.
+ *
+ * The longest value by character count is not the widest one in a proportional font, and for a key
+ * column that difference is what puts an ellipsis on the value you most need to read in full.
+ *
+ * `maxGlyphWidthPx` is an upper bound on a single glyph's advance in the measured font. A candidate
+ * whose length times that bound cannot reach the incumbent is skipped without measuring, which keeps
+ * this affordable when it runs once per cell.
+ */
+export const pickWidestValue = (
+  current: WidestValue,
+  candidate: string,
+  measure: (text: string) => number,
+  maxGlyphWidthPx: number,
+): WidestValue => {
+  if (candidate.length * maxGlyphWidthPx < current.width) return current;
+
+  const width = measure(candidate);
+  return width > current.width ? { value: candidate, width } : current;
+};
+
 const MEMORY_PACK_PREFIX = "memory://";
 
 /**

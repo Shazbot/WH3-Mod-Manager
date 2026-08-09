@@ -652,6 +652,28 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   text-align: right;
 }
 
+/*
+ * Column separators. The theme rules rows but not columns, so wide tables of similar-looking values
+ * run together and it is easy to read a cell against the wrong header.
+ *
+ * Done through the theme's own variables rather than a border rule of our own: ag-grid already
+ * declares `.ag-ltr .ag-cell { border-right: var(--ag-cell-horizontal-border) }`, defaulting to
+ * `solid transparent` at 1px - the space is reserved and only the colour is missing.
+ *
+ * Both class names are needed. index.css is imported before ag-grid's stylesheets, so anything of
+ * ours at the same specificity loses on source order - which is what made a plain
+ * `.pack-tables-grid .ag-cell` border rule invisible against `.ag-ltr .ag-cell`, and would equally
+ * sink these variables against ag-grid's own `[class*=ag-theme-]` defaults. Two classes on the one
+ * element outrank both whatever the order.
+ */
+.ag-theme-material-dark.pack-tables-grid {
+  --ag-cell-horizontal-border: solid rgba(148, 163, 184, 0.32);
+  --ag-header-column-separator-display: block;
+  --ag-header-column-separator-height: 100%;
+  --ag-header-column-separator-width: 1px;
+  --ag-header-column-separator-color: rgba(148, 163, 184, 0.32);
+}
+
 .pack-tables-grid .pack-table-row-index-cell {
   overflow: visible;
   padding-left: 0.5rem !important;
