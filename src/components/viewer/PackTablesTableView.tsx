@@ -9,7 +9,11 @@ import type {
   ColDef,
 } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import { getDBPackedFilePath, getPackNameFromPath } from "../../utility/packFileHelpers";
+import {
+  getDBPackedFilePath,
+  getPackNameFromPath,
+  isLocPackedFilePath,
+} from "../../utility/packFileHelpers";
 import { AmendedSchemaField, DBVersion, Field, PackedFile, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import { setDeepCloneTarget } from "@/src/appSlice";
 import { dataFromBackend } from "./packDataStore";
@@ -1366,7 +1370,10 @@ const PackTablesTableView = memo(({ showDialog }: { showDialog: ShowViewerDialog
 
   const currentSchema = selectedPackFile?.tableSchema;
   const packName = getPackNameFromPath(packPath) ?? packPath;
-  const canEditTable = isFeaturesForModdersEnabled && !vanillaPackNames.includes(packName);
+  // Loc files are read-only here: saving goes through the db table serializer, which would write a
+  // db-format buffer over a .loc and destroy it. Viewing is safe; editing needs a loc writer first.
+  const isLocTable = isLocPackedFilePath(packedFilePath);
+  const canEditTable = isFeaturesForModdersEnabled && !vanillaPackNames.includes(packName) && !isLocTable;
   const openedTableKey = packedFilePath ? `${packPath}|${packedFilePath}` : "";
 
   const tableCacheKey = useMemo(() => {

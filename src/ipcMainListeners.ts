@@ -1,5 +1,5 @@
 import assert from "assert";
-import { getDBPackedFilePath, parseLiveDBTablePath } from "./utility/packFileHelpers";
+import { getDBPackedFilePath, isLocPackedFilePath, parseLiveDBTablePath } from "./utility/packFileHelpers";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
@@ -7126,6 +7126,8 @@ export const registerIpcMainListeners = (
   };
   const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
     console.log(`getPackData ${packPath}`);
+    // A loc is parsed by the loc reader, not the db one, so asking for it has to turn that on.
+    if (table && isLocPackedFilePath(dbTableToString(table))) getLocs = true;
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (table) console.log("GETTING TABLE ", table.dbName, table.dbSubname);
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {

@@ -7,6 +7,7 @@ import {
   getDBGroupName,
   getDBPackedFilePath,
   groupDBTablePaths,
+  isLocPackedFilePath,
   parseDBGroupName,
   parseDBTablePath,
   parseLiveDBTablePath,
@@ -165,5 +166,51 @@ describe("creating a table outside db\\", () => {
     // be created, and the tree keeps them apart.
     expect(live).not.toBe(spare);
     expect(groupDBTablePaths([live, spare]).size).toBe(2);
+  });
+});
+
+describe("loc files as tables", () => {
+  const LOC = "text\\db\\my_mod.loc";
+
+  it("reads a loc's own folder as its table folder, so it needs no special casing", () => {
+    expect(parseDBTablePath(LOC)).toEqual({
+      dbFolder: "text",
+      dbName: "db",
+      dbSubname: "my_mod.loc",
+    });
+  });
+
+  it("round-trips back to the same path", () => {
+    const packPath = "C:\\game\\data\\my_mod.pack";
+    expect(getDBPackedFilePath({ packPath, ...parseDBTablePath(LOC) } as never)).toBe(LOC);
+  });
+
+  it("handles a loc only one folder deep, where the folder part is empty", () => {
+    const shallow = "text\\my_mod.loc";
+    const parsed = parseDBTablePath(shallow);
+
+    expect(parsed).toEqual({ dbFolder: "", dbName: "text", dbSubname: "my_mod.loc" });
+    // An empty folder must not be mistaken for "no folder given", which would mean db\.
+    expect(getDBPackedFilePath({ packPath: "p", ...parsed } as never)).toBe(shallow);
+  });
+
+  it("leaves a loc at the pack root alone rather than inventing a folder", () => {
+    expect(parseDBTablePath("my_mod.loc")).toBeUndefined();
+  });
+
+  it("groups locs by their folder, apart from the db tables", () => {
+    const groups = groupDBTablePaths([LIVE, LOC]);
+
+    expect([...groups.keys()].toSorted()).toEqual(["main_units_tables", "text\\db"]);
+  });
+
+  it("still does not count as a table the game loads, so locs are not collision-checked here", () => {
+    expect(parseLiveDBTablePath(LOC)).toBeUndefined();
+  });
+
+  it("recognises the extension whatever the casing", () => {
+    expect(isLocPackedFilePath("text\\db\\x.LOC")).toBe(true);
+    expect(isLocPackedFilePath("text\\db\\x.locx")).toBe(false);
+    expect(isLocPackedFilePath("db\\main_units_tables\\x")).toBe(false);
   });
 });

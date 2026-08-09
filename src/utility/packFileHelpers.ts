@@ -54,9 +54,33 @@ const parseDBTablePathInRoots = (packFileName: string, roots: string[]): ParsedD
   return undefined;
 };
 
-/** Table files the viewer can show and edit, including the spare-copy folders. */
+export const isLocPackedFilePath = (packFileName: string) => packFileName.toLowerCase().endsWith(".loc");
+
+/**
+ * Loc files are DB tables too - a fixed schema rather than one looked up by table name - so the
+ * viewer lists them beside the rest instead of stranding them among the raw files.
+ *
+ * A loc has no table folder of its own, so its own folder plays that part: `text\db\mymod.loc` reads
+ * as folder `text`, table `db`, file `mymod.loc`. That round-trips through getDBPackedFilePath and
+ * groups in the tree with no special casing anywhere else.
+ */
+const parseLocPath = (packFileName: string): ParsedDBTablePath | undefined => {
+  if (!isLocPackedFilePath(packFileName)) return undefined;
+
+  const lastSeparator = packFileName.lastIndexOf("\\");
+  if (lastSeparator < 1) return undefined;
+
+  const previousSeparator = packFileName.lastIndexOf("\\", lastSeparator - 1);
+  return {
+    dbFolder: previousSeparator < 0 ? "" : packFileName.slice(0, previousSeparator),
+    dbName: packFileName.slice(previousSeparator + 1, lastSeparator),
+    dbSubname: packFileName.slice(lastSeparator + 1),
+  };
+};
+
+/** Table files the viewer can show, including the spare-copy folders and loc files. */
 export const parseDBTablePath = (packFileName: string) =>
-  parseDBTablePathInRoots(packFileName, DB_TABLE_ROOTS);
+  parseDBTablePathInRoots(packFileName, DB_TABLE_ROOTS) ?? parseLocPath(packFileName);
 
 /**
  * Table files the game actually loads.
@@ -127,9 +151,11 @@ export const getPackNameFromPath = (packPath: string) => {
 };
 
 export const getDBPackedFilePath = (dbTableSelection: DBTableSelection) => {
-  // A selection made before spare folders existed has no dbFolder and means the live table.
-  const dbFolder = dbTableSelection.dbFolder || DEFAULT_DB_TABLE_ROOT;
-  return `${dbFolder}\\${dbTableSelection.dbName}\\${dbTableSelection.dbSubname}`;
+  // Absent means a selection made before spare folders existed, which means the live table. An empty
+  // string is different: a loc sitting one folder deep, whose table folder is the pack root's child.
+  const dbFolder = dbTableSelection.dbFolder ?? DEFAULT_DB_TABLE_ROOT;
+  const tablePath = `${dbTableSelection.dbName}\\${dbTableSelection.dbSubname}`;
+  return dbFolder ? `${dbFolder}\\${tablePath}` : tablePath;
 };
 
 export const tableNameWithDBPrefix = (tableName: string) =>
