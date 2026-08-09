@@ -1454,6 +1454,8 @@ export const executeFlowsForPack = async (
   userFlowOptions: UserFlowOptions,
   packName: string,
   sourcePack?: Pick<Pack, "packedFiles" | "lastChangedLocal" | "size">,
+  /** Packs whose data overwrites were written to a copy, so flows read that copy instead. */
+  packPathSubstitutes?: Map<string, string>,
 ): Promise<{ createdPackPaths: string[]; replacedPackPaths: string[]; hadErrors: boolean }> => {
   void pathTarget;
   const createdPackPaths = new Set<string>();
@@ -1463,6 +1465,11 @@ export const executeFlowsForPack = async (
   const packStartTime = performance.now();
   const isDebug = isFlowExecutionDebugEnabled();
   const executionContext = createFlowExecutionContext(isDebug);
+  if (packPathSubstitutes) {
+    for (const [originalPath, substitutePath] of packPathSubstitutes) {
+      executionContext.packPathSubstitutes.set(originalPath, substitutePath);
+    }
+  }
   try {
     console.log("Executing flows for pack:", packName);
     // Note: Counter tracking is NOT reset here - it's reset once at game launch level

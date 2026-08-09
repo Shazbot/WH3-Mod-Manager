@@ -13,6 +13,14 @@ export interface FlowExecutionContext {
   rowsByPackedFile: WeakMap<PackedFile, AmendedSchemaField[][]>;
   columnIndexesByPackedFile: WeakMap<PackedFile, Map<string, number>>;
   outputPackByPath: Map<string, NewPackedFile[]>;
+  /**
+   * Packs that must be read from somewhere other than their own path, keyed by the original path.
+   *
+   * A pack the user gave data overwrites is rewritten into whmm_overwrites/ before the game starts,
+   * and that copy - not the original - is what the game would have loaded. A flow reading the
+   * original would quietly work from pre-overwrite data.
+   */
+  packPathSubstitutes: Map<string, string>;
   isDebug: boolean;
 }
 
@@ -50,8 +58,15 @@ export const createFlowExecutionContext = (isDebug = false): FlowExecutionContex
   rowsByPackedFile: new WeakMap<PackedFile, AmendedSchemaField[][]>(),
   columnIndexesByPackedFile: new WeakMap<PackedFile, Map<string, number>>(),
   outputPackByPath: new Map<string, NewPackedFile[]>(),
+  packPathSubstitutes: new Map<string, string>(),
   isDebug,
 });
+
+/** The path a flow should actually read for `packPath`, honouring any overwrite copy. */
+export const resolveFlowSourcePackPath = (
+  packPath: string,
+  executionContext?: Pick<FlowExecutionContext, "packPathSubstitutes">,
+): string => executionContext?.packPathSubstitutes.get(packPath) ?? packPath;
 export const isFlowExecutionDebugEnabled = (): boolean =>
   process.env.NODE_ENV === "development" && process.env.WHMM_VERBOSE_FLOW_EXECUTION === "1";
 export const flowExecutionDebugLog = (context: Pick<FlowExecutionContext, "isDebug"> | undefined, ...args: any[]) => {

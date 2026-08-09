@@ -29,6 +29,7 @@ import {
   buildFlowOutputPackBaseName,
   buildReadPackCacheKey,
   flowExecutionDebugLog,
+  resolveFlowSourcePackPath,
 } from "./flowExecutionSupport";
 import {
   getSchemaForGame,
@@ -7528,9 +7529,16 @@ async function executePackFileOperationsNode(
   const totalMatchCountByRuleId: Record<string, number> = {};
   for (const packFile of (inputData as PackFilesNodeData).files || []) {
     if (!packFile.loaded) continue;
+    // The output stands in for the pack it copied, and a vanilla pack cannot be stood in for - it is
+    // not a mod, so it cannot be taken out of the mod list. Pack nodes hand us the base game pack
+    // alongside the selected mod, so this is the normal case rather than a strange one.
+    if (appData.allVanillaPackNames.has(packFile.name)) continue;
 
     try {
-      const indexedPack = await readPackCached(packFile.path, { skipParsingTables: true }, executionContext);
+      // Overwrites are applied to a copy of the pack before launch, and that copy is what the game
+      // would load, so it is what we have to copy from.
+      const sourcePackPath = resolveFlowSourcePackPath(packFile.path, executionContext);
+      const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true }, executionContext);
       const plan = planPackFileOperations(
         indexedPack.packedFiles.map((indexedFile) => indexedFile.name),
         rules,
@@ -7561,7 +7569,7 @@ async function executePackFileOperationsNode(
         };
       }
 
-      const packWithFiles = await readPack(packFile.path, {
+      const packWithFiles = await readPack(sourcePackPath, {
         skipParsingTables: true,
         filesToRead: [...namesToRead],
       });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createFlowExecutionContext, resolveFlowSourcePackPath } from "../../src/flowExecutionSupport";
 import {
   PackFileOperationRule,
   planPackCopy,
@@ -256,5 +257,27 @@ describe("planPackCopy", () => {
     const copy = copyOf([rule({ target: "missing.lua", operation: "delete" })]);
 
     expect(copy).toEqual(files.map((name) => ({ targetPath: name, sourcePath: name })));
+  });
+});
+
+describe("resolveFlowSourcePackPath", () => {
+  const original = "C:\\game\\data\\my_mod.pack";
+  const overwriteCopy = "C:\\game\\whmm_overwrites\\my_mod.pack";
+
+  it("reads the overwrite copy, so a pack copy keeps the user's data edits", () => {
+    const executionContext = createFlowExecutionContext();
+    executionContext.packPathSubstitutes.set(original, overwriteCopy);
+
+    expect(resolveFlowSourcePackPath(original, executionContext)).toBe(overwriteCopy);
+  });
+
+  it("reads the pack itself when it has no overwrites, and on a manual run with no context", () => {
+    const executionContext = createFlowExecutionContext();
+    executionContext.packPathSubstitutes.set(original, overwriteCopy);
+
+    expect(resolveFlowSourcePackPath("C:\\game\\data\\other.pack", executionContext)).toBe(
+      "C:\\game\\data\\other.pack",
+    );
+    expect(resolveFlowSourcePackPath(original, undefined)).toBe(original);
   });
 });

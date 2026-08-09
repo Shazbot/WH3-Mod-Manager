@@ -372,6 +372,8 @@ declare global {
     rowsByPackedFile: WeakMap<PackedFile, AmendedSchemaField[][]>;
     columnIndexesByPackedFile: WeakMap<PackedFile, Map<string, number>>;
     outputPackByPath: Map<string, NewPackedFile[]>;
+    /** Packs to read from somewhere other than their own path, keyed by original path. */
+    packPathSubstitutes: Map<string, string>;
     isDebug: boolean;
   }
 

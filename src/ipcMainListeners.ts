@@ -3131,7 +3131,9 @@ export const registerIpcMainListeners = (
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
-  const FLOW_EXECUTION_CACHE_VERSION = 3;
+  // 4: entries carry replacedPackPaths; an older entry would silently load a replaced pack alongside
+  // its replacement.
+  const FLOW_EXECUTION_CACHE_VERSION = 4;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
@@ -8439,6 +8441,8 @@ export const registerIpcMainListeners = (
         );
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
         const overwriteModEntries: Array<{ sourcePath: string; name: string }> = [];
+        /** Original pack path -> the overwrite copy a flow should read in its place. */
+        const packPathSubstitutes = new Map<string, string>();
         /** Packs a flow wrote a whole replacement for; the original must not be loaded alongside it. */
         const replacedPackPaths = new Set<string>();
         if (enabledModsWithOverwrites.length > 0) {
@@ -8462,6 +8466,9 @@ export const registerIpcMainListeners = (
             // Held back rather than appended, because a flow may still replace this pack outright -
             // and that decision is only known once flows have run, further down.
             overwriteModEntries.push({ sourcePath: pack.path, name: pack.name });
+            // Flows must read this copy, not the original, or they would work from data the user
+            // has already edited away.
+            packPathSubstitutes.set(pack.path, nodePath.join(overwritesDirPath, pack.name));
           }
         }
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
@@ -8607,6 +8614,7 @@ export const registerIpcMainListeners = (
                 startGameOptions.userFlowOptions,
                 pack.name,
                 sourcePackForFlowExecution,
+                packPathSubstitutes,
               );
               createdFlowPacks.push(...createdPackPaths);
               for (const replacedPath of flowReplacedPackPaths) replacedPackPaths.add(replacedPath);
