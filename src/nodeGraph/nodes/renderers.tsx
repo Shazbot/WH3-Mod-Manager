@@ -142,8 +142,7 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
 
   return (
     <div className="bg-gray-700 border-2 border-cyan-500 rounded-lg p-4 min-w-[200px]">
-      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-cyan-500" />
-
+      {/* No input handle: this node reads a pack by name, so nothing upstream feeds it. */}
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <select
@@ -340,8 +339,7 @@ export const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = 
 
   return (
     <div className="bg-gray-700 border-2 border-blue-500 rounded-lg p-4 min-w-[200px]">
-      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-blue-500" />
-
+      {/* No input handle: this node reads a pack by name, so nothing upstream feeds it. */}
       <div className="text-white font-medium text-sm mb-2">{data.label}</div>
 
       <textarea
