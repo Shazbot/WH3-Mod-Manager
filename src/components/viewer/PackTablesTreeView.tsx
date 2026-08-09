@@ -482,6 +482,38 @@ const PackTablesTreeView = React.memo(
       });
     };
 
+    /** Opens after a short delay so a double click can cancel it and open in a new tab instead. */
+    const scheduleOpenForElement = (element: INode, treeTab: "db" | "files") => {
+      if (pendingOpenTimeoutRef.current != null) {
+        window.clearTimeout(pendingOpenTimeoutRef.current);
+        pendingOpenTimeoutRef.current = null;
+      }
+
+      if (treeTab === "db") {
+        const dbSelection = getDBSelectionForElement(element);
+        if (!dbSelection) return;
+        pendingOpenTimeoutRef.current = window.setTimeout(() => {
+          pendingOpenTimeoutRef.current = null;
+          props.onOpenDBTable(dbSelection);
+        }, 180);
+        return;
+      }
+
+      if (!packData) return;
+      const filePath = getPackedFilePathForElement(element);
+      if (!filePath) return;
+      const openPackPath = packData.packPath;
+      pendingOpenTimeoutRef.current = window.setTimeout(() => {
+        pendingOpenTimeoutRef.current = null;
+        if (filePath.startsWith("whmmflows\\")) {
+          props.onOpenFlowFile({ flowFile: filePath, packPath: openPackPath });
+          return;
+        }
+        if (!isOpenablePackedFilePath(filePath)) return;
+        props.onOpenPackedFile({ filePath, packPath: openPackPath });
+      }, 180);
+    };
+
     const onDBTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
       if (lastLabelSelectionModeRef.current === "single") {
         setDbSelectedNodeIds([selectionProps.element.id as string | number]);
@@ -491,16 +523,7 @@ const PackTablesTreeView = React.memo(
       lastLabelSelectionModeRef.current = null;
 
       if (!selectionProps.isSelected) return;
-
-      const dbSelection = getDBSelectionForElement(selectionProps.element);
-      if (!dbSelection) return;
-      if (pendingOpenTimeoutRef.current != null) {
-        window.clearTimeout(pendingOpenTimeoutRef.current);
-      }
-      pendingOpenTimeoutRef.current = window.setTimeout(() => {
-        pendingOpenTimeoutRef.current = null;
-        props.onOpenDBTable(dbSelection);
-      }, 180);
+      scheduleOpenForElement(selectionProps.element, "db");
     };
 
     const onFileTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
@@ -512,21 +535,7 @@ const PackTablesTreeView = React.memo(
       lastLabelSelectionModeRef.current = null;
 
       if (!packData || !selectionProps.isSelected) return;
-
-      const filePath = getPackedFilePathForElement(selectionProps.element);
-      if (!filePath) return;
-      if (pendingOpenTimeoutRef.current != null) {
-        window.clearTimeout(pendingOpenTimeoutRef.current);
-      }
-      pendingOpenTimeoutRef.current = window.setTimeout(() => {
-        pendingOpenTimeoutRef.current = null;
-        if (filePath.startsWith("whmmflows\\")) {
-          props.onOpenFlowFile({ flowFile: filePath, packPath: packData.packPath });
-          return;
-        }
-        if (!isOpenablePackedFilePath(filePath)) return;
-        props.onOpenPackedFile({ filePath, packPath: packData.packPath });
-      }, 180);
+      scheduleOpenForElement(selectionProps.element, "files");
     };
 
     const handleOpenInNewTab = (element: INode, treeTab: "db" | "files") => {

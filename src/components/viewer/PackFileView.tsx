@@ -22,9 +22,17 @@ type PackFileViewProps = {
   showDialog: ShowViewerDialog;
 };
 
+/**
+ * A loaded payload names the file it came from.
+ *
+ * Switching files leaves the previous file's content in state until the load effect resolves, and
+ * effects for one render all see that stale value. Without an identity on it, the hydration below
+ * would copy the previous file's text into the editor and mark the new file as done - which is what
+ * made the viewer show one file behind.
+ */
 type LoadState =
   | { status: "idle" | "loading" }
-  | { status: "loaded"; text?: string; imageSrc?: string }
+  | { status: "loaded"; fileKey: string; text?: string; imageSrc?: string }
   | { status: "error"; error: string };
 
 const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps) => {
@@ -39,7 +47,9 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   const [isPersisting, setIsPersisting] = useState(false);
 
   const viewerKind = useMemo(() => getPackedFileViewerKind(filePath), [filePath]);
-  const openedTextFileKey = viewerKind === "text" ? `${packPath}|${filePath}` : "";
+  /** Identifies the file currently open, for every viewer kind. */
+  const openedFileKey = `${packPath}|${filePath}`;
+  const openedTextFileKey = viewerKind === "text" ? openedFileKey : "";
   const packName = getPackNameFromPath(packPath) ?? packPath;
   const canEditTextFile = viewerKind === "text" && isFeaturesForModdersEnabled && !vanillaPackNames.includes(packName);
   const hydratedTextFileKeyRef = useRef<string | null>(null);
@@ -76,6 +86,8 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   useEffect(() => {
     let isCancelled = false;
 
+    const fileKey = openedFileKey;
+
     const load = async () => {
       if (!viewerKind) {
         setLoadState({ status: "error", error: `Unsupported file type: ${filePath}` });
@@ -84,11 +96,11 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
 
       if (viewerKind === "text") {
         if (packedFile?.text != null) {
-          setLoadState({ status: "loaded", text: packedFile.text });
+          setLoadState({ status: "loaded", fileKey, text: packedFile.text });
           return;
         }
         if (packedFile?.buffer) {
-          setLoadState({ status: "loaded", text: decodePackedTextBuffer(packedFile.buffer) });
+          setLoadState({ status: "loaded", fileKey, text: decodePackedTextBuffer(packedFile.buffer) });
           return;
         }
       }
@@ -110,18 +122,18 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
           return;
         }
         const mimeType = result.mimeType || getPackedFileMimeType(filePath) || "application/octet-stream";
-        setLoadState({ status: "loaded", imageSrc: `data:${mimeType};base64,${result.base64}` });
+        setLoadState({ status: "loaded", fileKey, imageSrc: `data:${mimeType};base64,${result.base64}` });
         return;
       }
 
-      setLoadState({ status: "loaded", text: result.text || "" });
+      setLoadState({ status: "loaded", fileKey, text: result.text || "" });
     };
 
     void load();
     return () => {
       isCancelled = true;
     };
-  }, [filePath, packPath, packedFile?.buffer, packedFile?.text, showDialog, viewerKind]);
+  }, [filePath, openedFileKey, packPath, packedFile?.buffer, packedFile?.text, showDialog, viewerKind]);
 
   useEffect(() => {
     latestWorkingTextRef.current = workingText;
@@ -133,6 +145,8 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
 
   useEffect(() => {
     if (viewerKind !== "text" || loadState.status !== "loaded") return;
+    // Still holding the previous file's content; wait for this file's load to land.
+    if (loadState.fileKey !== openedFileKey) return;
 
     const nextText = loadState.text || "";
     const shouldHydrate = hydratedTextFileKeyRef.current !== openedTextFileKey || workingText == null;
@@ -143,7 +157,7 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
     setPersistedText(nextText);
     setIsPersisting(false);
     latestWorkingTextRef.current = nextText;
-  }, [loadState, openedTextFileKey, viewerKind, workingText]);
+  }, [loadState, openedFileKey, openedTextFileKey, viewerKind, workingText]);
 
   const persistText = useCallback(
     async (nextText: string, options?: { suppressDialog?: boolean }) => {
@@ -217,7 +231,12 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
     return <div className="h-full flex items-center justify-center text-sm text-gray-400">Unsupported file type.</div>;
   }
 
-  if (loadState.status === "loading" || loadState.status === "idle") {
+  if (
+    loadState.status === "loading" ||
+    loadState.status === "idle" ||
+    // Loaded, but it is the file we just navigated away from.
+    (loadState.status === "loaded" && loadState.fileKey !== openedFileKey)
+  ) {
     return <div className="h-full flex items-center justify-center text-sm text-gray-400">Loading file...</div>;
   }
 
@@ -226,7 +245,11 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   }
 
   const loadedState = loadState as Extract<LoadState, { status: "loaded" }>;
-  const displayedText = workingText ?? loadedState.text ?? "";
+  // workingText belongs to whichever file was hydrated last. Until this file has been hydrated -
+  // one render after its content lands - show what was loaded rather than the last file's edits.
+  const isWorkingTextForThisFile =
+    hydratedTextFileKeyRef.current === openedTextFileKey && workingText != null;
+  const displayedText = isWorkingTextForThisFile ? workingText : (loadedState.text ?? "");
   const hasPendingTextChanges = canEditTextFile && displayedText !== persistedText;
 
   if (viewerKind === "image") {
