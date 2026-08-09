@@ -55,10 +55,16 @@ const TEXT_COLUMN_WIDTH_CHAR_PX = 9;
  */
 const CELL_CONTENT_PADDING_PX = 24;
 /**
- * Space a header needs around its text. Larger than the cell's, because headers keep the theme's
- * wider gutters for the sort indicator and the filter button, which sit inside them.
+ * Space a header needs around its text, in the usual unsorted state: the cell's own padding on the
+ * left, and the filter button's gutter on the right.
+ *
+ * No allowance for the sort arrow - index.css widens the left side only for a column that is
+ * actually sorted, so a sorted header takes that room from its own text rather than every column
+ * reserving it up front.
  */
-const HEADER_CHROME_PADDING_PX = 52;
+const HEADER_CHROME_PADDING_LEFT_PX = 10;
+const HEADER_CHROME_PADDING_RIGHT_PX = 32;
+const HEADER_CHROME_PADDING_PX = HEADER_CHROME_PADDING_LEFT_PX + HEADER_CHROME_PADDING_RIGHT_PX;
 const TEXT_COLUMN_WIDTH_MIN_PX = 110;
 const GRID_HEADER_FONT = "500 14px Roboto, Arial, sans-serif";
 const KEY_HEADER_ICON_WIDTH_PX = 22;

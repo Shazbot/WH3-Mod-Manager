@@ -691,6 +691,29 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   padding-right: 24px;
 }
 
+/*
+ * The left gutter exists for the sort arrow, so a column that is not sorted does not need one - and
+ * most columns are not sorted most of the time. ag-grid keeps `ag-header-cell-sorted-none` on every
+ * header with no sort applied, so this follows the arrow rather than reserving for it.
+ *
+ * HEADER_CHROME_PADDING_PX is sized for this narrower, usual case. Sorting a column pulls the wider
+ * gutter back and takes that room from the header text, which can ellipsise until the sort is
+ * cleared; the full name stays on the header's tooltip.
+ */
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell.ag-header-cell-sorted-none {
+  padding-left: 10px;
+}
+
+/*
+ * The gutter is built from two pieces, and dropping only the header cell's padding left the other
+ * one behind. The label above pulls itself 0.75rem outside the cell and then indents its text by
+ * 1.25rem, so 0.5rem of arrow gutter survives inside the label itself. Cancelling the pull exactly
+ * puts unsorted header text at the cell's padding edge.
+ */
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell.ag-header-cell-sorted-none .ag-header-cell-label {
+  padding-left: 0.75rem;
+}
+
 .pack-tables-grid .pack-table-row-index-cell {
   overflow: visible;
   padding-left: 0.5rem !important;
