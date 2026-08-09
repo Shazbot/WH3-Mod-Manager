@@ -31,6 +31,12 @@ import {
   flowExecutionDebugLog,
   resolveFlowSourcePackPath,
 } from "./flowExecutionSupport";
+import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import {
+  buildPackPriority,
+  resolveFileSourcePacks,
+  sortPacksByAscendingPriority,
+} from "./nodeGraph/packPriority";
 import {
   getSchemaForGame,
   getReferencesForGame,
@@ -7387,18 +7393,45 @@ async function executeEditTextFileNode(
   const outputTables: DBTablesNodeTable[] = [];
   const warnings: string[] = [];
 
+  // Two enabled mods can both carry the same file, and only the higher-priority one is what the
+  // game loads - so that is the copy to edit. Editing both would put whichever happened to be read
+  // last into the output, which is not necessarily the one the player is running.
+  const priority = buildPackPriority(sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path));
+  const indexedPacks = new Map<string, Pack>();
+  const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
+
   for (const packFile of inputData.files || []) {
     if (!packFile.loaded) continue;
-
     try {
       // The index first, so only the files a rule actually targets are read.
-      const indexedPack = await readPackCached(packFile.path, { skipParsingTables: true }, executionContext);
-      const targetedNames = indexedPack.packedFiles
-        .map((indexedFile) => indexedFile.name)
-        .filter((name) => rules.some((rule) => matchesTextFileTarget(name, rule)));
-      if (targetedNames.length === 0) continue;
+      const sourcePackPath = resolveFlowSourcePackPath(packFile.path, executionContext);
+      const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true }, executionContext);
+      indexedPacks.set(packFile.path, indexedPack);
+      targetedNamesByPack.push({
+        packPath: packFile.path,
+        fileNames: indexedPack.packedFiles
+          .map((indexedFile) => indexedFile.name)
+          .filter((name) => rules.some((rule) => matchesTextFileTarget(name, rule))),
+      });
+    } catch (error) {
+      console.error(`Edit Text File Node ${nodeId}: Error reading ${packFile.path}:`, error);
+    }
+  }
 
-      const packWithFiles = await readPack(packFile.path, {
+  const sourcePackByFileName = resolveFileSourcePacks(targetedNamesByPack, priority);
+  const namesByWinningPack = new Map<string, string[]>();
+  for (const [fileName, packPath] of sourcePackByFileName) {
+    const names = namesByWinningPack.get(packPath);
+    if (names) names.push(fileName);
+    else namesByWinningPack.set(packPath, [fileName]);
+  }
+
+  for (const [packPath, targetedNames] of namesByWinningPack) {
+    const indexedPack = indexedPacks.get(packPath);
+    if (!indexedPack || targetedNames.length === 0) continue;
+
+    try {
+      const packWithFiles = await readPack(resolveFlowSourcePackPath(packPath, executionContext), {
         skipParsingTables: true,
         filesToRead: targetedNames,
       });
@@ -7430,7 +7463,7 @@ async function executeEditTextFileNode(
         });
       }
     } catch (error) {
-      console.error(`Edit Text File Node ${nodeId}: Error reading ${packFile.path}:`, error);
+      console.error(`Edit Text File Node ${nodeId}: Error reading ${packPath}:`, error);
     }
   }
 
@@ -7527,7 +7560,14 @@ async function executePackFileOperationsNode(
   }
 
   const totalMatchCountByRuleId: Record<string, number> = {};
-  for (const packFile of (inputData as PackFilesNodeData).files || []) {
+  // Lowest priority first, so where two packs carry the same file the higher-priority pack is
+  // written last and is the one that survives into the output - the same copy the game would load.
+  const inputPacks = sortPacksByAscendingPriority(
+    (inputData as PackFilesNodeData).files || [],
+    (packFile) => packFile.path,
+    buildPackPriority(sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path)),
+  );
+  for (const packFile of inputPacks) {
     if (!packFile.loaded) continue;
     // The output stands in for the pack it copied, and a vanilla pack cannot be stood in for - it is
     // not a mod, so it cannot be taken out of the mod list. Pack nodes hand us the base game pack
