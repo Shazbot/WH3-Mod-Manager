@@ -281,3 +281,50 @@ describe("resolveFlowSourcePackPath", () => {
     expect(resolveFlowSourcePackPath(original, undefined)).toBe(original);
   });
 });
+
+describe("overwriting a db table from another folder", () => {
+  const packFiles = [
+    "db\\main_units_tables\\pj_my_table",
+    "unusedtables\\main_units_tables\\pj_my_tablex",
+    "script\\mod.lua",
+  ];
+
+  it("copies a table file over the live one, renaming it on the way", () => {
+    const plan = planPackFileOperations(packFiles, [
+      rule({
+        targetMatch: "path",
+        target: "unusedtables\\main_units_tables\\pj_my_tablex",
+        operation: "copy",
+        destination: "db\\main_units_tables\\pj_my_table",
+      }),
+    ]);
+
+    expect(plan.entries).toHaveLength(1);
+    expect(plan.entries[0].sourcePath).toBe("unusedtables\\main_units_tables\\pj_my_tablex");
+    expect(plan.entries[0].targetPath).toBe("db\\main_units_tables\\pj_my_table");
+
+    // The copy takes the live table's place in the output, and the spare is still carried along.
+    const copy = planPackCopy(packFiles, plan);
+    const live = copy.filter((entry) => entry.targetPath === "db\\main_units_tables\\pj_my_table");
+    expect(live).toHaveLength(1);
+    expect(live[0].sourcePath).toBe("unusedtables\\main_units_tables\\pj_my_tablex");
+    expect(copy.map((entry) => entry.targetPath)).toContain("unusedtables\\main_units_tables\\pj_my_tablex");
+  });
+
+  it("can move it instead, leaving no spare behind", () => {
+    const plan = planPackFileOperations(packFiles, [
+      rule({
+        targetMatch: "path",
+        target: "unusedtables\\main_units_tables\\pj_my_tablex",
+        operation: "move",
+        destination: "db\\main_units_tables\\pj_my_table",
+      }),
+    ]);
+
+    const copy = planPackCopy(packFiles, plan);
+    expect(copy.map((entry) => entry.targetPath).toSorted()).toEqual([
+      "db\\main_units_tables\\pj_my_table",
+      "script\\mod.lua",
+    ]);
+  });
+});

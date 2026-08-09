@@ -6,7 +6,14 @@ import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-acce
 import Select, { SingleValue } from "react-select";
 import cx from "classnames";
 import "@silevis/reactgrid/styles.css";
-import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
+import {
+  DEFAULT_DB_TABLE_ROOT,
+  UNUSED_DB_TABLE_ROOT,
+  getDBPackedFilePath,
+  groupDBTablePaths,
+  parseDBGroupName,
+  parseDBTablePath,
+} from "../../utility/packFileHelpers";
 import { gameToPackWithDBTablesName, vanillaPackNames } from "../../supportedGames";
 import selectStyle from "../../styles/selectStyle";
 import { dataFromBackend } from "./packDataStore";
@@ -38,8 +45,16 @@ export type PackTablesTreeViewHandle = {
   openNewFlowDialog: () => void;
 };
 
-const isDBPackedFileName = (packFileName: string): boolean =>
-  Boolean(getDBNameFromString(packFileName) && getDBSubnameFromString(packFileName));
+const isDBPackedFileName = (packFileName: string): boolean => parseDBTablePath(packFileName) != undefined;
+
+const HelpBadge: React.FC<{ text: string }> = ({ text }) => (
+  <span
+    className="px-1 text-[10px] leading-none text-gray-300 border border-gray-500 rounded-full cursor-help select-none"
+    title={text}
+  >
+    ?
+  </span>
+);
 
 const buildPathTree = (filePaths: string[]): TreeData => {
   const root: TreeData = { name: "", children: [] };
@@ -176,6 +191,8 @@ const PackTablesTreeView = React.memo(
     const [isNewTableDialogOpen, setIsNewTableDialogOpen] = React.useState(false);
     const [newTableName, setNewTableName] = React.useState("");
     const [newTableSuffix, setNewTableSuffix] = React.useState("");
+    /** Create the table parked outside db\, where the game will not load it. */
+    const [newTableIsUnused, setNewTableIsUnused] = React.useState(false);
     const [availableTableVersions, setAvailableTableVersions] = React.useState<Record<string, DBVersion[]>>({});
     const [defaultTableVersions, setDefaultTableVersions] = React.useState<Record<string, number>>({});
     const [isLoadingNewTableOptions, setIsLoadingNewTableOptions] = React.useState(false);
@@ -230,37 +247,17 @@ const PackTablesTreeView = React.memo(
       }
 
       const root: TreeData = { name: "", children: [] };
-      const dbEntriesByName = new Map<string, Set<string>>();
-      const addDbEntry = (packFileName: string) => {
-        const dbName = getDBNameFromString(packFileName);
-        const dbSubname = getDBSubnameFromString(packFileName);
-        if (!dbName || !dbSubname) return;
-        let subnames = dbEntriesByName.get(dbName);
-        if (!subnames) {
-          subnames = new Set<string>();
-          dbEntriesByName.set(dbName, subnames);
-        }
-        subnames.add(dbSubname);
-      };
+      const dbEntriesByName = groupDBTablePaths([
+        ...packData.tables,
+        ...unsavedFiles.toReversed().map((unsavedFile) => unsavedFile.name),
+      ]);
 
-      for (const packFileName of packData.tables) {
-        addDbEntry(packFileName);
-      }
-
-      if (unsavedFiles.length > 0) {
-        for (const unsavedFile of unsavedFiles.toReversed()) {
-          const dbName = getDBNameFromString(unsavedFile.name);
-          const dbSubname = getDBSubnameFromString(unsavedFile.name);
-          if (dbName && dbSubname) {
-            addDbEntry(unsavedFile.name);
-          }
-        }
-      }
-
-      for (const dbName of [...dbEntriesByName.keys()].toSorted((first, second) => first.localeCompare(second))) {
-        const subnames = dbEntriesByName.get(dbName);
+      for (const groupName of [...dbEntriesByName.keys()].toSorted((first, second) =>
+        first.localeCompare(second),
+      )) {
+        const subnames = dbEntriesByName.get(groupName);
         root.children?.push({
-          name: dbName,
+          name: groupName,
           children: [...(subnames || [])]
             .toSorted((first, second) => first.localeCompare(second))
             .map((dbSubname) => ({ name: dbSubname, children: [] })),
@@ -342,22 +339,24 @@ const PackTablesTreeView = React.memo(
       if (element.children && element.children.length > 0) return;
 
       // Root-level DB entries (e.g. unsaved files) may contain the full path in the node name.
-      const rootLevelDBName = getDBNameFromString(element.name);
-      const rootLevelDBSubname = getDBSubnameFromString(element.name);
-      if (rootLevelDBName && rootLevelDBSubname) {
+      const rootLevelTable = parseDBTablePath(element.name);
+      if (rootLevelTable) {
         return {
           packPath: packData!.packPath,
-          dbName: rootLevelDBName,
-          dbSubname: rootLevelDBSubname,
+          dbFolder: rootLevelTable.dbFolder,
+          dbName: rootLevelTable.dbName,
+          dbSubname: rootLevelTable.dbSubname,
         } as DBTableSelection;
       }
 
       if (!element.parent) return;
       const parentLeaf = dbNodeById.get(element.parent);
       if (!parentLeaf || !parentLeaf.name) return;
+      const { dbFolder, dbName } = parseDBGroupName(parentLeaf.name);
       return {
         packPath: packData!.packPath,
-        dbName: parentLeaf.name,
+        dbFolder,
+        dbName,
         dbSubname: element.name,
       } as DBTableSelection;
     };
@@ -368,7 +367,7 @@ const PackTablesTreeView = React.memo(
     };
 
     const getPackedFileForDBSelection = (selection: DBTableSelection): PackedFile | undefined => {
-      const packedFilePath = `db\\${selection.dbName}\\${selection.dbSubname}`;
+      const packedFilePath = getDBPackedFilePath(selection);
       const unsavedFile =
         unsavedFiles.find((file) => file.name === packedFilePath) ||
         unsavedFiles.find((file) => file.name.startsWith(packedFilePath));
@@ -411,7 +410,9 @@ const PackTablesTreeView = React.memo(
         }, []) || [];
 
       const columnNames = schema.fields.map((field) => field.name);
-      const packedFilePathForward = `db/${selection.dbName}/${selection.dbSubname}`;
+      // The header path tells an importer where the table came from, so it has to name the real
+      // folder - a spare exported as db/... would be re-imported over the live table.
+      const packedFilePathForward = getDBPackedFilePath(selection).replaceAll("\\", "/");
       const version = packedFile.version ?? schema.version ?? 0;
 
       const tsvLines: string[] = [];
@@ -440,7 +441,7 @@ const PackTablesTreeView = React.memo(
         if (!node) continue;
         const selection = getDBSelectionForElement(node);
         if (!selection) continue;
-        dedupedSelections.set(`${selection.packPath}|${selection.dbName}|${selection.dbSubname}`, selection);
+        dedupedSelections.set(`${selection.packPath}|${getDBPackedFilePath(selection)}`, selection);
       }
 
       return Array.from(dedupedSelections.values()).filter((selection) => {
@@ -606,6 +607,7 @@ const PackTablesTreeView = React.memo(
       setIsNewTableDialogOpen(false);
       setNewTableName("");
       setNewTableSuffix("");
+      setNewTableIsUnused(false);
       setIsCreatingNewTable(false);
     };
 
@@ -665,7 +667,7 @@ const PackTablesTreeView = React.memo(
             const content = buildTsvContentForDBSelection(selection);
             if (!content) return undefined;
             return {
-              relativePath: `db/${selection.dbName}/${selection.dbSubname}.tsv`,
+              relativePath: `${getDBPackedFilePath(selection).replaceAll("\\", "/")}.tsv`,
               content,
             };
           })
@@ -756,13 +758,14 @@ const PackTablesTreeView = React.memo(
         return;
       }
 
-      const packedFileName = `db\\${trimmedTableName}\\${trimmedSuffix}`;
+      const dbFolder = newTableIsUnused ? UNUSED_DB_TABLE_ROOT : DEFAULT_DB_TABLE_ROOT;
+      const packedFileName = `${dbFolder}\\${trimmedTableName}\\${trimmedSuffix}`;
       const alreadyExistsInPack =
         packData.tables.includes(packedFileName) ||
         Boolean(packData.packedFiles?.[packedFileName]) ||
         unsavedFiles.some((file) => file.name === packedFileName);
       if (alreadyExistsInPack) {
-        props.showDialog(`A table already exists at db/${trimmedTableName}/${trimmedSuffix}`, {
+        props.showDialog(`A table already exists at ${packedFileName.replaceAll("\\", "/")}`, {
           title: "Table Exists",
         });
         return;
@@ -792,6 +795,7 @@ const PackTablesTreeView = React.memo(
         );
         props.onOpenDBTable({
           packPath: packData.packPath,
+          dbFolder,
           dbName: trimmedTableName,
           dbSubname: trimmedSuffix,
         });
@@ -1087,8 +1091,35 @@ const PackTablesTreeView = React.memo(
                 />
               </div>
 
+              <div className="mb-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newTableIsUnused}
+                    onChange={(event) => setNewTableIsUnused(event.target.checked)}
+                    className="w-4 h-4 shrink-0"
+                  />
+                  <span className="text-sm text-white">Create it under {UNUSED_DB_TABLE_ROOT}/</span>
+                  <HelpBadge
+                    text={
+                      `The game only reads tables out of db/, so a table kept in ${UNUSED_DB_TABLE_ROOT}/ is inert: ` +
+                      "it does not load, does not override anything, and is not reported as a conflict with other mods.\n\n" +
+                      "Use it to keep a variant beside the live table - a reworked balance pass, a version for a " +
+                      "different submod - and edit it here like any other table.\n\n" +
+                      "A flow can copy it over the live table with the Move Or Copy Files node, so which variant " +
+                      "ships becomes a flow option rather than a manual file swap."
+                    }
+                  />
+                </label>
+              </div>
+
               <div className="mb-4 text-sm text-gray-300">
-                <div>Path: {newTableName ? `db/${newTableName}/${newTableSuffix || "xxx"}` : "db/.../xxx"}</div>
+                <div>
+                  Path:{" "}
+                  {newTableName
+                    ? `${newTableIsUnused ? UNUSED_DB_TABLE_ROOT : DEFAULT_DB_TABLE_ROOT}/${newTableName}/${newTableSuffix || "xxx"}`
+                    : `${newTableIsUnused ? UNUSED_DB_TABLE_ROOT : DEFAULT_DB_TABLE_ROOT}/.../xxx`}
+                </div>
                 <div>Version: {selectedNewTableSchema?.version ?? "Unknown"}</div>
               </div>
 

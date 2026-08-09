@@ -1,4 +1,5 @@
 import assert from "assert";
+import { getDBPackedFilePath, parseLiveDBTablePath } from "./utility/packFileHelpers";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
@@ -533,7 +534,6 @@ export const getLocsTrie = (pack: Pack) => {
   }
   return trie;
 };
-const matchDBFileRegex = /^db\\(.*?)\\/;
 const gameToDefaultTableVersions = {} as Record<SupportedGames, Record<string, number>>;
 export const getDefaultTableVersions = async () => {
   const cachedGameToDefaultTableVersions = gameToDefaultTableVersions[appData.currentGame];
@@ -551,15 +551,11 @@ export const getDefaultTableVersions = async () => {
     tablesToRead: pack.packedFiles.filter((pf) => pf.name.startsWith("db\\")).map((pf) => pf.name),
   });
   const tableNameToVersion = {} as Record<string, number>;
-  for (const packedFile of dataPackData.packedFiles.filter((pf) => pf.name.startsWith("db\\"))) {
-    const dbNameMatch = packedFile.name.match(matchDBFileRegex);
-    if (dbNameMatch != null && dbNameMatch.length > 0) {
-      if (packedFile.version != undefined) {
-        tableNameToVersion[dbNameMatch[1]] = packedFile.version;
-      } else {
-        tableNameToVersion[dbNameMatch[1]] = 0;
-      }
-    }
+  // Default versions come from the game's own tables, so the live db folder alone.
+  for (const packedFile of dataPackData.packedFiles) {
+    const dbName = parseLiveDBTablePath(packedFile.name)?.dbName;
+    if (dbName == undefined) continue;
+    tableNameToVersion[dbName] = packedFile.version ?? 0;
   }
   gameToDefaultTableVersions[appData.currentGame] = tableNameToVersion;
   return tableNameToVersion;
@@ -7125,7 +7121,8 @@ export const registerIpcMainListeners = (
     terminateCurrentGame();
   });
   const dbTableToString = (dbTable: DBTable) => {
-    return `db\\${dbTable.dbName}\\${dbTable.dbSubname}`;
+    // Honours dbFolder so a spare copy is read from where it actually lives, not from db\.
+    return getDBPackedFilePath(dbTable as DBTableSelection);
   };
   const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
     console.log(`getPackData ${packPath}`);

@@ -15,7 +15,12 @@ import { selectDBTable, selectFlowFile, setDeepCloneTarget, setPacksData } from 
 import NodeEditor from "../NodeEditor";
 import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
-import { getPackNameFromPath } from "@/src/utility/packFileHelpers";
+import {
+  DEFAULT_DB_TABLE_ROOT,
+  getDBGroupName,
+  getDBPackedFilePath,
+  getPackNameFromPath,
+} from "@/src/utility/packFileHelpers";
 import { getPackFileInventory } from "./viewerHelpers";
 
 type ViewerTabKind = "db" | "flow" | "file";
@@ -28,6 +33,8 @@ type ViewerTab = {
   packPath: string;
   dbName?: string;
   dbSubname?: string;
+  /** Absent means the live "db" folder, matching DBTable. */
+  dbFolder?: string;
   flowFile?: string;
   filePath?: string;
 };
@@ -141,11 +148,15 @@ const ModsViewer = memo(() => {
 
   const buildDbTabCandidate = useCallback((selection: DBTableSelection): ViewerTabCandidate => {
     const packLabel = getPackNameFromPath(selection.packPath) ?? selection.packPath;
+    // The folder belongs in both: without it a spare copy and the live table are the same tab, and
+    // the titles would be indistinguishable even if they were not.
+    const groupName = getDBGroupName(selection.dbFolder || DEFAULT_DB_TABLE_ROOT, selection.dbName);
     return {
-      fileKey: `db|${selection.packPath}|${selection.dbName}|${selection.dbSubname}`,
-      title: `${selection.dbName}/${selection.dbSubname}${packLabel ? ` | ${packLabel}` : ""}`,
+      fileKey: `db|${selection.packPath}|${getDBPackedFilePath(selection)}`,
+      title: `${groupName}/${selection.dbSubname}${packLabel ? ` | ${packLabel}` : ""}`,
       kind: "db",
       packPath: selection.packPath,
+      dbFolder: selection.dbFolder,
       dbName: selection.dbName,
       dbSubname: selection.dbSubname,
     };
@@ -239,6 +250,7 @@ const ModsViewer = memo(() => {
       lastActionRef.current = { fileKey: candidate.fileKey, at: now, openedNew, tabId: tabToActivate.id };
       if (tabToActivate.kind === "db" && tabToActivate.dbName && tabToActivate.dbSubname) {
         window.api?.getPackData(tabToActivate.packPath, {
+          dbFolder: tabToActivate.dbFolder,
           dbName: tabToActivate.dbName,
           dbSubname: tabToActivate.dbSubname,
         });
@@ -344,6 +356,8 @@ const ModsViewer = memo(() => {
       const isAlreadySelected =
         !currentFlowSelection &&
         currentDBSelection?.packPath === activeTab.packPath &&
+        (currentDBSelection?.dbFolder || DEFAULT_DB_TABLE_ROOT) ===
+          (activeTab.dbFolder || DEFAULT_DB_TABLE_ROOT) &&
         currentDBSelection?.dbName === activeTab.dbName &&
         currentDBSelection?.dbSubname === activeTab.dbSubname;
       if (isAlreadySelected) {
@@ -357,6 +371,7 @@ const ModsViewer = memo(() => {
       dispatch(
         selectDBTable({
           packPath: activeTab.packPath,
+          dbFolder: activeTab.dbFolder,
           dbName: activeTab.dbName,
           dbSubname: activeTab.dbSubname,
         }),

@@ -1,7 +1,7 @@
 import { diff } from "deep-object-diff";
-import { getDBVersion, getDBVersionByTableName, matchDBFileRegex } from "../packFileSerializer";
+import { getDBVersion, getDBVersionByTableName } from "../packFileSerializer";
 import { Pack, PackTableCollision, PackedFile } from "../packFileTypes";
-import { getDBName } from "../utility/packFileHelpers";
+import { getDBName, parseLiveDBTablePath } from "../utility/packFileHelpers";
 import { collator } from "../utility/packFileSorting";
 import * as fs from "fs";
 import appData from "../appData";
@@ -15,22 +15,16 @@ export function findPackTableCollisionsBetweenPacks(
     if (!packFile.schemaFields) continue;
     if (packFile.name.endsWith(".rpfm_reserved")) continue;
 
-    const dbNameMatch1 = packFile.name.match(matchDBFileRegex);
-    // console.log("dbNameMatch1", dbNameMatch1);
-    if (dbNameMatch1 == null) continue;
-    const dbName1 = dbNameMatch1[1];
-    // console.log("dbName1", dbName1);
+    // Only the live db folder: a spare copy elsewhere in a pack is not loaded by the game, so it
+    // cannot collide with anything and must not be reported as a conflict.
+    const dbName1 = parseLiveDBTablePath(packFile.name)?.dbName;
     if (dbName1 == null) continue;
 
     for (const packTwoFile of packTwo.packedFiles) {
       if (!packTwoFile.schemaFields) continue;
       if (packTwoFile.name.endsWith(".rpfm_reserved")) continue;
 
-      const dbNameMatch2 = packTwoFile.name.match(matchDBFileRegex);
-      // console.log("dbNameMatch2", dbNameMatch2);
-      if (dbNameMatch2 == null) continue;
-      const dbName2 = dbNameMatch2[1];
-      // console.log("dbName2", dbName2);
+      const dbName2 = parseLiveDBTablePath(packTwoFile.name)?.dbName;
       if (dbName2 == null) continue;
 
       try {

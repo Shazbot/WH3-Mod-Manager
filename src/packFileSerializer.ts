@@ -27,7 +27,7 @@ import { Blob } from "buffer";
 import * as fsExtra from "fs-extra";
 import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
-import { getDBName } from "./utility/packFileHelpers";
+import { getDBName, getDBPackedFilePath, parseDBTablePath } from "./utility/packFileHelpers";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
 import { resolveRadioChoiceId } from "./nodeGraph/types";
 import {
@@ -799,9 +799,8 @@ export const getPacksTableData = (packs: Pack[], tables: (DBTable | string)[], g
       if (typeof table === "string") {
         packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(table));
       } else {
-        packedFiles = pack.packedFiles.filter((packedFile) =>
-          packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`),
-        );
+        const tablePath = getDBPackedFilePath(table as DBTableSelection);
+        packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(tablePath));
       }
       // console.log("getpackviewdata packedFiles:", packedFiles);
       for (const packedFile of packedFiles) {
@@ -861,9 +860,8 @@ export const getPackViewData = (pack: Pack, table?: DBTable | string, getLocs?: 
     if (typeof table === "string") {
       packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name == table);
     } else {
-      packedFiles = pack.packedFiles.filter((packedFile) =>
-        packedFile.name.startsWith(`db\\${table.dbName}\\${table.dbSubname}`),
-      );
+      const tablePath = getDBPackedFilePath(table as DBTableSelection);
+      packedFiles = pack.packedFiles.filter((packedFile) => packedFile.name.startsWith(tablePath));
     }
   }
   if (getLocs) {
@@ -2736,10 +2734,7 @@ export const readFromExistingPack = async (
     }
     const dbPackFiles = packReadingOptions.skipParsingTables
       ? []
-      : pack_files.filter((packFile) => {
-          const dbNameMatch = packFile.name.match(matchDBFileRegex);
-          return dbNameMatch != null && dbNameMatch[1];
-        });
+      : pack_files.filter((packFile) => parseDBTablePath(packFile.name) != undefined);
     if (packReadingOptions.skipParsingTables || dbPackFiles.length < 1) {
       return {
         name: nodePath.basename(modPath),
@@ -2806,10 +2801,9 @@ const readDBPackedFiles = async (
     //   console.log("READING TABLE ", pack_file.name);
     // }
     currentPos = pack_file.start_pos - startPos;
-    const dbNameMatch = pack_file.name.match(matchDBFileRegex);
-    if (dbNameMatch == null) continue;
-    const dbName = dbNameMatch[1];
-    if (dbName == null) continue;
+    const parsedTablePath = parseDBTablePath(pack_file.name);
+    if (parsedTablePath == undefined) continue;
+    const dbName = parsedTablePath.dbName;
     const dbversions = DBNameToDBVersions[appData.currentGame][dbName];
     if (!dbversions) continue;
     let packBuffer = buffer.subarray(currentPos, currentPos + pack_file.file_size);
@@ -3015,6 +3009,11 @@ const readLoc = async (
     console.log(`cannot read ${locPackFile.name} in ${modPath}, skipping it`);
   }
 };
+/**
+ * @deprecated Prefer parseDBTablePath / parseLiveDBTablePath from utility/packFileHelpers.
+ *
+ * Kept only because it is exported; it matches the live db folder alone.
+ */
 export const matchDBFileRegex = /^db\\(.*?)\\/;
 export const readPack = async (
   modPath: string,
@@ -3280,10 +3279,7 @@ export const readPack = async (
         dependencyPacks,
       } as Pack;
     }
-    const dbPackFiles = pack_files.filter((packFile) => {
-      const dbNameMatch = packFile.name.match(matchDBFileRegex);
-      return dbNameMatch != null && dbNameMatch[1];
-    });
+    const dbPackFiles = pack_files.filter((packFile) => parseDBTablePath(packFile.name) != undefined);
     if (packReadingOptions.tablesToRead) {
       if (dbPackFiles.length < 1) console.log(`NO DB TABLES PRESENT IN PACK:`, modPath);
       else console.log(`readPack: TABLES TO READ:`, packReadingOptions.tablesToRead.join(", "));

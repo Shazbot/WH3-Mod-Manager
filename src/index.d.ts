@@ -343,6 +343,12 @@ declare global {
   interface DBTable {
     dbName: string;
     dbSubname: string;
+    /**
+     * Folder the table file sits in, e.g. "unusedtables". Absent means "db", so a selection made
+     * before spare folders existed - including one restored from persisted state - still means the
+     * live table.
+     */
+    dbFolder?: string;
   }
 
   interface DBTableSelection extends DBTable {
