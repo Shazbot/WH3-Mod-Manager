@@ -12,6 +12,7 @@ import {
   DeepCloneNode,
   DumpToTSVNode,
   EditLocTextNode,
+  EditTextFileNode,
   ExtractTableNode,
   FilterNode,
   FlattenNestedNode,
@@ -82,4 +83,5 @@ export const reactFlowNodeTypes = {
   conditionalbranch: ConditionalBranchNode,
   removetables: RemoveTablesNode,
   editloctext: EditLocTextNode,
+  edittextfile: EditTextFileNode,
 };

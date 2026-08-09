@@ -52,6 +52,7 @@ const TABLE_SELECTION_SOURCES = new Set([
   "conditionalbranch",
   "removetables",
   "editloctext",
+  "edittextfile",
 ]);
 
 const TABLE_METADATA_TARGETS = new Set([

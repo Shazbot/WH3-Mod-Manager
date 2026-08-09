@@ -39,6 +39,11 @@ import {
 } from "./schema";
 import { splitMultilineOptionValue } from "./nodeGraph/types";
 import {
+  TextFileEditRule,
+  applyTextFileEdits,
+  matchesTextFileTarget,
+} from "./nodeGraph/textFileEdits";
+import {
   DeepClonePlan,
   LoadedTableFile,
   buildFileCopyOutputs,
@@ -509,6 +514,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "removetables":
         return executeRemoveTablesNode(nodeId, textValue, inputData, config);
+
+      case "edittextfile":
+        return await executeEditTextFileNode(nodeId, textValue, inputData, config, executionContext);
 
       case "editloctext":
         return await executeEditLocTextNode(nodeId, textValue, inputData, config, executionContext);
@@ -7308,5 +7316,113 @@ async function executeEditLocTextNode(
   return {
     success: true,
     data: { ...inputData, tables: outputTables, tableCount: outputTables.length } as DBTablesNodeData,
+  };
+}
+
+const UTF8_BOM = "\uFEFF";
+
+/**
+ * Edits text files inside packs - lua scripts, variantmeshdefinitions, twui - and hands the results
+ * to the save node to write.
+ *
+ * A rule that matches nothing is reported on a manual run, where the author is watching, but stays
+ * quiet on the unattended run at game start unless it is marked required: a flow that edits files
+ * across many packs will routinely have rules that do not apply to the current one.
+ */
+async function executeEditTextFileNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  if (!inputData || inputData.type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles data" };
+  }
+
+  const parsed = getNodeConfig<{ textFileRules?: TextFileEditRule[] }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+
+  const rules = (parsed.textFileRules || []).filter((rule) => rule && rule.target && rule.selector);
+  if (rules.length === 0) {
+    return {
+      success: true,
+      data: { type: "TableSelection", tables: [], sourceFiles: inputData.files || [], tableCount: 0 } as DBTablesNodeData,
+    };
+  }
+
+  const isUnattendedRun = executionContext !== undefined;
+  const matchCountByRuleId: Record<string, number> = {};
+  const outputTables: DBTablesNodeTable[] = [];
+  const warnings: string[] = [];
+
+  for (const packFile of inputData.files || []) {
+    if (!packFile.loaded) continue;
+
+    try {
+      // The index first, so only the files a rule actually targets are read.
+      const indexedPack = await readPackCached(packFile.path, { skipParsingTables: true }, executionContext);
+      const targetedNames = indexedPack.packedFiles
+        .map((indexedFile) => indexedFile.name)
+        .filter((name) => rules.some((rule) => matchesTextFileTarget(name, rule)));
+      if (targetedNames.length === 0) continue;
+
+      const packWithFiles = await readPack(packFile.path, {
+        skipParsingTables: true,
+        filesToRead: targetedNames,
+      });
+
+      for (const name of targetedNames) {
+        const buffer = packWithFiles.packedFiles.find((candidate) => candidate.name === name)?.buffer;
+        if (!buffer) continue;
+
+        // A BOM is kept exactly as it was found; the game's parsers care.
+        const raw = buffer.toString("utf8");
+        const hasBom = raw.startsWith(UTF8_BOM);
+        const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, rules);
+
+        for (const [ruleId, count] of Object.entries(result.matchCountByRuleId)) {
+          matchCountByRuleId[ruleId] = (matchCountByRuleId[ruleId] ?? 0) + count;
+        }
+        for (const error of result.errors) warnings.push(error);
+
+        const editedText = hasBom ? UTF8_BOM + result.text : result.text;
+        if (editedText === raw) continue;
+
+        const editedBuffer = Buffer.from(editedText, "utf8");
+        outputTables.push({
+          name,
+          fileName: name,
+          sourceFile: indexedPack,
+          table: { name, file_size: editedBuffer.length, start_pos: 0, buffer: editedBuffer } as PackedFile,
+          outputFileName: name,
+        });
+      }
+    } catch (error) {
+      console.error(`Edit Text File Node ${nodeId}: Error reading ${packFile.path}:`, error);
+    }
+  }
+
+  for (const rule of rules) {
+    if ((matchCountByRuleId[rule.id] ?? 0) > 0) continue;
+    if (isUnattendedRun && !rule.required) continue;
+    warnings.push(`Rule targeting '${rule.target}' with selector '${rule.selector}' matched nothing`);
+  }
+
+  for (const warning of warnings) {
+    console.warn(`Edit Text File Node ${nodeId}: ${warning}`);
+  }
+  console.log(`Edit Text File Node ${nodeId}: edited ${outputTables.length} file(s)`);
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: outputTables,
+      sourceFiles: inputData.files || [],
+      tableCount: outputTables.length,
+    } as DBTablesNodeData,
   };
 }

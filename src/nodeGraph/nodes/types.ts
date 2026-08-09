@@ -433,6 +433,25 @@ export interface EditLocTextNodeData extends NodeData {
   DBNameToDBVersions?: Record<string, DBVersion[]>;
 }
 
+export interface EditTextFileNodeData extends NodeData {
+  inputType: "PackFiles";
+  outputType: "TableSelection";
+  textFileRules: TextFileEditRuleData[];
+}
+
+/** Mirrors TextFileEditRule in textFileEdits.ts, which the renderer must not import. */
+export interface TextFileEditRuleData {
+  id: string;
+  targetMatch: "path" | "name" | "regex";
+  target: string;
+  mode: "xml" | "lua" | "text";
+  selector: string;
+  operation: "replace" | "insertBefore" | "insertAfter" | "delete" | "setAttribute";
+  attributeName?: string;
+  value?: string;
+  required?: boolean;
+}
+
 export interface RemoveTablesNodeData extends NodeData {
   inputType: "TableSelection";
   outputType: "TableSelection";

@@ -34,7 +34,9 @@ import type {
   ConditionalBranchNodeData,
   CustomSchemaNodeData,
   EditLocTextNodeData,
+  EditTextFileNodeData,
   LocTextRule,
+  TextFileEditRuleData,
   RemoveTablesNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
@@ -6937,6 +6939,211 @@ export const EditLocTextNode: React.FC<{ data: EditLocTextNodeData; id: string }
           <option key={prefix} value={prefix} />
         ))}
       </datalist>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const [rules, setRules] = useState<TextFileEditRuleData[]>(data.textFileRules || []);
+
+  React.useEffect(() => {
+    if (data.textFileRules !== undefined && JSON.stringify(data.textFileRules) !== JSON.stringify(rules)) {
+      setRules(data.textFileRules);
+    }
+  }, [data.textFileRules]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      textFileRules: rules as unknown as Record<string, unknown>[],
+    });
+  }, [rules, id]);
+
+  const addRule = () =>
+    setRules([
+      ...rules,
+      {
+        id: `edit_${Date.now()}`,
+        targetMatch: "name",
+        target: "",
+        mode: "xml",
+        selector: "",
+        operation: "replace",
+        value: "",
+      },
+    ]);
+  const updateRule = (ruleId: string, updates: Partial<TextFileEditRuleData>) =>
+    setRules(rules.map((rule) => (rule.id === ruleId ? { ...rule, ...updates } : rule)));
+
+  const selectorPlaceholder = (mode: TextFileEditRuleData["mode"]) =>
+    mode === "xml"
+      ? 'SLOT[name="head"] MESH'
+      : mode === "lua"
+        ? "function my_mod.setup"
+        : localized.nodeEditorEditTextFileFindPlaceholder || "text to find...";
+
+  return (
+    <div className="bg-gray-700 border-2 border-sky-500 rounded-lg p-4 min-w-[340px] max-w-[420px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-blue-500"
+        data-input-type="PackFiles"
+      />
+
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-white">
+          {localized.nodeEditorEditTextFileTitle || "Edit Text File"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorEditTextFileTooltip ||
+              "Edits lua scripts and xml files (variantmeshdefinition, twui) inside the input packs.\n\n" +
+                "XML rules use a CSS selector - SLOT[name=\"head\"] MESH - which targets elements structurally instead of matching raw text. Only the matched span is rewritten, so the rest of the file stays byte-identical.\n\n" +
+                "Lua rules take \"function name\" to find a declaration, or any other text to match literally.\n\n" +
+                "A rule that matches nothing is reported when you run the flow yourself. On the unattended run at game start it stays quiet unless you tick required, since a flow spanning many packs will have rules that do not apply to each one."
+            }
+          />
+        </div>
+        <button
+          onClick={addRule}
+          className="text-xs bg-sky-600 hover:bg-sky-700 text-white px-2 py-1 rounded"
+        >
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div
+        className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content"
+        onWheel={stopWheelPropagation}
+      >
+        {rules.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorEditTextFileEmpty || "No rules; files pass through unchanged"}
+          </div>
+        ) : (
+          rules.map((rule) => (
+            <div key={rule.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center gap-1 mb-1">
+                <select
+                  value={rule.targetMatch}
+                  onChange={(event) =>
+                    updateRule(rule.id, {
+                      targetMatch: event.target.value as TextFileEditRuleData["targetMatch"],
+                    })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="name">{localized.nodeEditorEditTextFileByName || "name"}</option>
+                  <option value="path">{localized.nodeEditorEditTextFileByPath || "path"}</option>
+                  <option value="regex">{localized.nodeEditorEditTextFileByRegex || "regex"}</option>
+                </select>
+                <input
+                  type="text"
+                  value={rule.target}
+                  onChange={(event) => updateRule(rule.id, { target: event.target.value })}
+                  placeholder={localized.nodeEditorEditTextFileTargetPlaceholder || "file to edit..."}
+                  className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                />
+                <button
+                  onClick={() => setRules(rules.filter((candidate) => candidate.id !== rule.id))}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1 mb-1">
+                <select
+                  value={rule.mode}
+                  onChange={(event) =>
+                    updateRule(rule.id, { mode: event.target.value as TextFileEditRuleData["mode"] })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="xml">{localized.nodeEditorEditTextFileModeXml || "xml selector"}</option>
+                  <option value="lua">{localized.nodeEditorEditTextFileModeLua || "lua"}</option>
+                  <option value="text">{localized.nodeEditorEditTextFileModeText || "plain text"}</option>
+                </select>
+                <select
+                  value={rule.operation}
+                  onChange={(event) =>
+                    updateRule(rule.id, {
+                      operation: event.target.value as TextFileEditRuleData["operation"],
+                    })
+                  }
+                  className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="replace">{localized.nodeEditorEditTextFileReplace || "replace"}</option>
+                  <option value="insertBefore">
+                    {localized.nodeEditorEditTextFileInsertBefore || "insert before"}
+                  </option>
+                  <option value="insertAfter">
+                    {localized.nodeEditorEditTextFileInsertAfter || "insert after"}
+                  </option>
+                  <option value="delete">{localized.nodeEditorEditTextFileDelete || "delete"}</option>
+                  {rule.mode === "xml" && (
+                    <option value="setAttribute">
+                      {localized.nodeEditorEditTextFileSetAttribute || "set attribute"}
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              <input
+                type="text"
+                value={rule.selector}
+                onChange={(event) => updateRule(rule.id, { selector: event.target.value })}
+                placeholder={selectorPlaceholder(rule.mode)}
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+              />
+
+              {rule.operation === "setAttribute" && (
+                <input
+                  type="text"
+                  value={rule.attributeName || ""}
+                  onChange={(event) => updateRule(rule.id, { attributeName: event.target.value })}
+                  placeholder={localized.nodeEditorEditTextFileAttributePlaceholder || "attribute name..."}
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1"
+                />
+              )}
+
+              {rule.operation !== "delete" && (
+                <textarea
+                  value={rule.value || ""}
+                  onChange={(event) => updateRule(rule.id, { value: event.target.value })}
+                  placeholder={localized.nodeEditorEditTextFileValuePlaceholder || "new text..."}
+                  rows={2}
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+                />
+              )}
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rule.required === true}
+                  onChange={(event) => updateRule(rule.id, { required: event.target.checked })}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-gray-300">
+                  {localized.nodeEditorEditTextFileRequired || "report if it matches nothing at game start"}
+                </span>
+              </label>
+            </div>
+          ))
+        )}
+      </div>
 
       <div className="mt-2 text-xs text-gray-400">
         {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}

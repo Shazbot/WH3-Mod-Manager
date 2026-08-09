@@ -1219,7 +1219,8 @@ declare global {
     | "deepclone"
     | "conditionalbranch"
     | "removetables"
-    | "editloctext";
+    | "editloctext"
+    | "edittextfile";
 
   // FlowNodeData = "string"|
 

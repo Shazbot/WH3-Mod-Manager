@@ -173,6 +173,7 @@ export interface SerializedNode {
     flowOptionChoices?: Array<{ id: string; label: string }>;
     tablesToRemove?: string[];
     locRules?: Array<Record<string, unknown>>;
+    textFileRules?: Array<Record<string, unknown>>;
   };
 }
 

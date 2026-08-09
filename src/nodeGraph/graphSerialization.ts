@@ -132,6 +132,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         autoFollowReferences: data.autoFollowReferences as boolean | undefined,
         tablesToRemove: data.tablesToRemove || [],
         locRules: (data.locRules || []) as SerializedNode["data"]["locRules"],
+        textFileRules: (data.textFileRules || []) as SerializedNode["data"]["textFileRules"],
         selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
         flowOptionChecked: data.flowOptionChecked as boolean | undefined,
         flowOptionKind: data.flowOptionKind as SerializedNode["data"]["flowOptionKind"],

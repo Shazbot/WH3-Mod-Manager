@@ -1289,6 +1289,8 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         customRows: (node.data as any).customRows || [],
         tableName: (node.data as any).tableName || "",
       };
+    case "edittextfile":
+      return { textFileRules: (node.data as any).textFileRules || [] };
     case "editloctext":
       return { locRules: (node.data as any).locRules || [] };
     case "removetables":

@@ -12,6 +12,7 @@ import type {
   ConditionalBranchNodeData,
   CustomSchemaNodeData,
   EditLocTextNodeData,
+  EditTextFileNodeData,
   RemoveTablesNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
@@ -726,6 +727,20 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       autoFollowReferences: true,
     }),
   }),
+  edittextfile: createNodeDefinition<EditTextFileNodeData>({
+    type: "edittextfile",
+    labelKey: "nodeEditorNodeEditTextFileLabel",
+    labelFallback: "Edit Text File",
+    descriptionKey: "nodeEditorNodeEditTextFileDescription",
+    descriptionFallback: "Edits lua and xml files inside packs by selector rather than by regex",
+    createData: ({ label }) => ({
+      label,
+      type: "edittextfile",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      textFileRules: [],
+    }),
+  }),
   editloctext: createNodeDefinition<EditLocTextNodeData>({
     type: "editloctext",
     labelKey: "nodeEditorNodeEditLocTextLabel",
@@ -798,7 +813,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionLocalisation",
     titleFallback: "Localisation",
-    nodes: ["editloctext"],
+    nodes: ["editloctext", "edittextfile"],
   },
   {
     titleKey: "nodeEditorSectionColumnSelection",
