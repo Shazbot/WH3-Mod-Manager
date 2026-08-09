@@ -187,6 +187,9 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       tableName: (node.data as any).tableName || "",
     });
   }
+  if (node.type === "packfileoperations") {
+    return JSON.stringify({ fileOperations: (node.data as any).fileOperations || [] });
+  }
   if (node.type === "edittextfile") {
     return JSON.stringify({ textFileRules: (node.data as any).textFileRules || [] });
   }

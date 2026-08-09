@@ -452,6 +452,23 @@ export interface TextFileEditRuleData {
   required?: boolean;
 }
 
+export interface PackFileOperationsNodeData extends NodeData {
+  inputType: "PackFiles" | "TableSelection";
+  outputType: "TableSelection";
+  fileOperations: PackFileOperationRuleData[];
+}
+
+/** Mirrors PackFileOperationRule in packFileOperations.ts, which the renderer must not import. */
+export interface PackFileOperationRuleData {
+  id: string;
+  operation: "copy" | "move" | "rename" | "delete";
+  targetMatch: "path" | "name" | "regex";
+  target: string;
+  destination?: string;
+  overwrite?: boolean;
+  required?: boolean;
+}
+
 export interface RemoveTablesNodeData extends NodeData {
   inputType: "TableSelection";
   outputType: "TableSelection";

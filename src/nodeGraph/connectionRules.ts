@@ -487,6 +487,11 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     targetNode.type === "textjoin" &&
     (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
 
+  // Works on packs or on files already flowing through the graph, so it takes either.
+  const isPackFileOperationsCompatible =
+    targetNode.type === "packfileoperations" &&
+    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
     (sourceOutputType === "ChangedColumnSelection" ||
@@ -498,6 +503,7 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     isTextSurroundCompatible ||
     isAppendTextCompatible ||
     isTextJoinCompatible ||
+    isPackFileOperationsCompatible ||
     isSaveChangesCompatible
   );
 };
@@ -543,6 +549,11 @@ export const applyConnection = (
   const isTextJoinCompatible =
     targetNode.type === "textjoin" &&
     (sourceOutputType === "Text Lines" || sourceOutputType === "GroupedText");
+  // Works on packs or on files already flowing through the graph, so it takes either.
+  const isPackFileOperationsCompatible =
+    targetNode.type === "packfileoperations" &&
+    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
     (sourceOutputType === "ChangedColumnSelection" ||
@@ -555,6 +566,7 @@ export const applyConnection = (
       isTextSurroundCompatible ||
       isAppendTextCompatible ||
       isTextJoinCompatible ||
+      isPackFileOperationsCompatible ||
       isSaveChangesCompatible
     )
   ) {
@@ -618,6 +630,11 @@ export const applyConnection = (
 
   if (targetNode.type === "textjoin" && sourceOutputType === "GroupedText") {
     setNodes((nodes) => updateNode(nodes, params.target!, { inputType: "GroupedText" }));
+  }
+
+  // Remember which kind of input it was wired to, so the executor knows how to read it.
+  if (targetNode.type === "packfileoperations" && sourceOutputType) {
+    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
   }
 
   if (targetNode.type === "savechanges" && sourceOutputType) {

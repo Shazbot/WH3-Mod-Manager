@@ -13,6 +13,7 @@ import type {
   CustomSchemaNodeData,
   EditLocTextNodeData,
   EditTextFileNodeData,
+  PackFileOperationsNodeData,
   RemoveTablesNodeData,
   DeduplicateNodeData,
   DeepCloneNodeData,
@@ -727,6 +728,20 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       autoFollowReferences: true,
     }),
   }),
+  packfileoperations: createNodeDefinition<PackFileOperationsNodeData>({
+    type: "packfileoperations",
+    labelKey: "nodeEditorNodePackFileOperationsLabel",
+    labelFallback: "Move Or Copy Files",
+    descriptionKey: "nodeEditorNodePackFileOperationsDescription",
+    descriptionFallback: "Copies, moves, renames or drops files on their way into the output pack",
+    createData: ({ label }) => ({
+      label,
+      type: "packfileoperations",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      fileOperations: [],
+    }),
+  }),
   edittextfile: createNodeDefinition<EditTextFileNodeData>({
     type: "edittextfile",
     labelKey: "nodeEditorNodeEditTextFileLabel",
@@ -798,7 +813,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionPackFiles",
     titleFallback: "Pack Files",
-    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles"],
+    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles", "packfileoperations"],
   },
   {
     titleKey: "nodeEditorSectionTableSelection",

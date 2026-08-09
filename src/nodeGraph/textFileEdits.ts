@@ -54,7 +54,10 @@ const normalizePackPath = (filePath: string) => filePath.replace(/\//g, "\\").to
  * lives, and "regex" is tested against the whole path for anything else. Slashes are normalized so a
  * target written either way matches.
  */
-export const matchesTextFileTarget = (filePath: string, rule: TextFileEditRule): boolean => {
+export const matchesTextFileTarget = (
+  filePath: string,
+  rule: Pick<TextFileEditRule, "targetMatch" | "target">,
+): boolean => {
   const target = (rule.target || "").trim();
   if (!target) return false;
 

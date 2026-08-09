@@ -36,6 +36,8 @@ import type {
   EditLocTextNodeData,
   EditTextFileNodeData,
   LocTextRule,
+  PackFileOperationRuleData,
+  PackFileOperationsNodeData,
   TextFileEditRuleData,
   RemoveTablesNodeData,
   DeduplicateNodeData,
@@ -7134,6 +7136,186 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                   type="checkbox"
                   checked={rule.required === true}
                   onChange={(event) => updateRule(rule.id, { required: event.target.checked })}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs text-gray-300">
+                  {localized.nodeEditorEditTextFileRequired || "report if it matches nothing at game start"}
+                </span>
+              </label>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorOutput || "Output:"} {localized.nodeEditorTableSelection || "TableSelection"}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-orange-500"
+        data-output-type="TableSelection"
+      />
+    </div>
+  );
+};
+
+export const PackFileOperationsNode: React.FC<{ data: PackFileOperationsNodeData; id: string }> = ({
+  data,
+  id,
+}) => {
+  const localized = useLocalizations();
+  const [operations, setOperations] = useState<PackFileOperationRuleData[]>(data.fileOperations || []);
+
+  React.useEffect(() => {
+    if (
+      data.fileOperations !== undefined &&
+      JSON.stringify(data.fileOperations) !== JSON.stringify(operations)
+    ) {
+      setOperations(data.fileOperations);
+    }
+  }, [data.fileOperations]);
+
+  React.useEffect(() => {
+    dispatchNodeDataUpdate(data, {
+      nodeId: id,
+      fileOperations: operations as unknown as Record<string, unknown>[],
+    });
+  }, [operations, id]);
+
+  const addOperation = () =>
+    setOperations([
+      ...operations,
+      {
+        id: `op_${Date.now()}`,
+        operation: "copy",
+        targetMatch: "name",
+        target: "",
+        destination: "",
+        overwrite: true,
+      },
+    ]);
+  const updateOperation = (operationId: string, updates: Partial<PackFileOperationRuleData>) =>
+    setOperations(operations.map((rule) => (rule.id === operationId ? { ...rule, ...updates } : rule)));
+
+  return (
+    <div className="bg-gray-700 border-2 border-indigo-500 rounded-lg p-4 min-w-[320px] max-w-[400px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-blue-500"
+        data-input-type="PackFiles"
+      />
+
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-white">
+          {localized.nodeEditorPackFileOperationsTitle || "Move Or Copy Files"}
+          <DeepCloneHelp
+            text={
+              localized.nodeEditorPackFileOperationsTooltip ||
+              "Copies, moves, renames or drops files on their way into the output pack.\n\n" +
+                "Given packs it reads from them; given files from an earlier node it works on those and passes the rest along.\n\n" +
+                "Rename changes the file name and keeps the folder. Move and copy take a whole path, and accept {name}, {dir} and, when targeting by regex, the capture groups as $1.\n\n" +
+                "The flow writes a new pack rather than editing the input, so delete means the file is not carried into the output - it cannot remove a file from someone else's pack."
+            }
+          />
+        </div>
+        <button
+          onClick={addOperation}
+          className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded"
+        >
+          + {localized.add || "Add"}
+        </button>
+      </div>
+
+      <div
+        className="space-y-2 max-h-80 overflow-y-auto scrollable-node-content"
+        onWheel={stopWheelPropagation}
+      >
+        {operations.length === 0 ? (
+          <div className="text-xs text-gray-500">
+            {localized.nodeEditorPackFileOperationsEmpty || "No operations; files pass through unchanged"}
+          </div>
+        ) : (
+          operations.map((rule) => (
+            <div key={rule.id} className="bg-gray-800 p-2 rounded border border-gray-600">
+              <div className="flex items-center gap-1 mb-1">
+                <select
+                  value={rule.operation}
+                  onChange={(event) =>
+                    updateOperation(rule.id, {
+                      operation: event.target.value as PackFileOperationRuleData["operation"],
+                    })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="copy">{localized.nodeEditorPackFileCopy || "copy"}</option>
+                  <option value="move">{localized.nodeEditorPackFileMove || "move"}</option>
+                  <option value="rename">{localized.nodeEditorPackFileRename || "rename"}</option>
+                  <option value="delete">{localized.nodeEditorPackFileDelete || "delete"}</option>
+                </select>
+                <select
+                  value={rule.targetMatch}
+                  onChange={(event) =>
+                    updateOperation(rule.id, {
+                      targetMatch: event.target.value as PackFileOperationRuleData["targetMatch"],
+                    })
+                  }
+                  className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                >
+                  <option value="name">{localized.nodeEditorEditTextFileByName || "name"}</option>
+                  <option value="path">{localized.nodeEditorEditTextFileByPath || "path"}</option>
+                  <option value="regex">{localized.nodeEditorEditTextFileByRegex || "regex"}</option>
+                </select>
+                <button
+                  onClick={() => setOperations(operations.filter((candidate) => candidate.id !== rule.id))}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <input
+                type="text"
+                value={rule.target}
+                onChange={(event) => updateOperation(rule.id, { target: event.target.value })}
+                placeholder={localized.nodeEditorPackFileSourcePlaceholder || "file to act on..."}
+                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+              />
+
+              {rule.operation !== "delete" && (
+                <>
+                  <input
+                    type="text"
+                    value={rule.destination || ""}
+                    onChange={(event) => updateOperation(rule.id, { destination: event.target.value })}
+                    placeholder={
+                      rule.operation === "rename"
+                        ? localized.nodeEditorPackFileNewNamePlaceholder || "new file name..."
+                        : localized.nodeEditorPackFileNewPathPlaceholder || "new path..."
+                    }
+                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
+                  />
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rule.overwrite !== false}
+                      onChange={(event) => updateOperation(rule.id, { overwrite: event.target.checked })}
+                      className="w-3 h-3"
+                    />
+                    <span className="text-xs text-gray-300">
+                      {localized.nodeEditorPackFileOverwrite || "overwrite a file already there"}
+                    </span>
+                  </label>
+                </>
+              )}
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rule.required === true}
+                  onChange={(event) => updateOperation(rule.id, { required: event.target.checked })}
                   className="w-3 h-3"
                 />
                 <span className="text-xs text-gray-300">

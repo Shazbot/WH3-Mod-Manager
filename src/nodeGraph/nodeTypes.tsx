@@ -29,6 +29,7 @@ import {
   MergeChangesNode,
   MultiFilterNode,
   NumericAdjustmentNode,
+  PackFileOperationsNode,
   PackFilesDropdownNode,
   PackFilesNode,
   ReadTSVFromPackNode,
@@ -84,4 +85,5 @@ export const reactFlowNodeTypes = {
   removetables: RemoveTablesNode,
   editloctext: EditLocTextNode,
   edittextfile: EditTextFileNode,
+  packfileoperations: PackFileOperationsNode,
 };

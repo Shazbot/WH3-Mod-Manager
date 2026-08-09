@@ -1290,6 +1290,8 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         customRows: (node.data as any).customRows || [],
         tableName: (node.data as any).tableName || "",
       };
+    case "packfileoperations":
+      return { fileOperations: (node.data as any).fileOperations || [] };
     case "edittextfile":
       return { textFileRules: (node.data as any).textFileRules || [] };
     case "editloctext":

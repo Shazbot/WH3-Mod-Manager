@@ -43,6 +43,7 @@ import {
   applyTextFileEdits,
   matchesTextFileTarget,
 } from "./nodeGraph/textFileEdits";
+import { PackFileOperationRule, planPackFileOperations } from "./nodeGraph/packFileOperations";
 import {
   DeepClonePlan,
   LoadedTableFile,
@@ -514,6 +515,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
 
       case "removetables":
         return executeRemoveTablesNode(nodeId, textValue, inputData, config);
+
+      case "packfileoperations":
+        return await executePackFileOperationsNode(nodeId, textValue, inputData, config, executionContext);
 
       case "edittextfile":
         return await executeEditTextFileNode(nodeId, textValue, inputData, config, executionContext);
@@ -7422,6 +7426,133 @@ async function executeEditTextFileNode(
       type: "TableSelection",
       tables: outputTables,
       sourceFiles: inputData.files || [],
+      tableCount: outputTables.length,
+    } as DBTablesNodeData,
+  };
+}
+
+/**
+ * Moves, copies, renames and deletes files, writing the result into the flow's output pack.
+ *
+ * Given PackFiles it reads from those packs; given a table selection it works on the files already
+ * flowing through the graph and passes the rest along. That second form is what makes delete exact:
+ * the flow writes a new pack rather than editing the input, so deleting can only mean "do not carry
+ * this file into the output".
+ */
+async function executePackFileOperationsNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData | DBTablesNodeData,
+  config?: unknown,
+  executionContext?: FlowExecutionContext,
+): Promise<NodeExecutionResult> {
+  const parsed = getNodeConfig<{ fileOperations?: PackFileOperationRule[] }>(config, textValue);
+  if (!parsed) {
+    return { success: false, error: "Invalid node configuration" };
+  }
+  const rules = (parsed.fileOperations || []).filter((rule) => rule && rule.target);
+
+  const isUnattendedRun = executionContext !== undefined;
+  const warnings: string[] = [];
+  const outputTables: DBTablesNodeTable[] = [];
+
+  const reportRules = (matchCountByRuleId: Record<string, number>) => {
+    for (const rule of rules) {
+      if ((matchCountByRuleId[rule.id] ?? 0) > 0) continue;
+      if (isUnattendedRun && !rule.required) continue;
+      warnings.push(`Rule targeting '${rule.target}' matched nothing`);
+    }
+  };
+
+  // Working on the files already in the graph: rename by renaming the entry, delete by dropping it.
+  if (inputData && (inputData as DBTablesNodeData).type === "TableSelection") {
+    const tables = (inputData as DBTablesNodeData).tables || [];
+    const pathOf = (table: DBTablesNodeTable) => table.outputFileName || table.name;
+    const plan = planPackFileOperations(tables.map(pathOf), rules);
+
+    const sourceByPath = new Map(tables.map((table) => [pathOf(table), table]));
+    for (const table of tables) {
+      if (plan.removedPaths.has(pathOf(table))) continue;
+      outputTables.push(table);
+    }
+    for (const entry of plan.entries) {
+      const source = sourceByPath.get(entry.sourcePath);
+      if (!source) continue;
+      outputTables.push({ ...source, name: entry.targetPath, outputFileName: entry.targetPath });
+    }
+
+    reportRules(plan.matchCountByRuleId);
+    for (const skipped of plan.skippedOverwrites) warnings.push(`Left '${skipped}' as it was`);
+    for (const warning of warnings) console.warn(`Pack File Operations Node ${nodeId}: ${warning}`);
+    console.log(`Pack File Operations Node ${nodeId}: ${outputTables.length} file(s) out`);
+
+    return {
+      success: true,
+      data: {
+        type: "TableSelection",
+        tables: outputTables,
+        sourceFiles: (inputData as DBTablesNodeData).sourceFiles || [],
+        tableCount: outputTables.length,
+      } as DBTablesNodeData,
+    };
+  }
+
+  if (!inputData || (inputData as PackFilesNodeData).type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles or TableSelection data" };
+  }
+
+  const totalMatchCountByRuleId: Record<string, number> = {};
+  for (const packFile of (inputData as PackFilesNodeData).files || []) {
+    if (!packFile.loaded) continue;
+
+    try {
+      const indexedPack = await readPackCached(packFile.path, { skipParsingTables: true }, executionContext);
+      const plan = planPackFileOperations(
+        indexedPack.packedFiles.map((indexedFile) => indexedFile.name),
+        rules,
+      );
+      for (const [ruleId, count] of Object.entries(plan.matchCountByRuleId)) {
+        totalMatchCountByRuleId[ruleId] = (totalMatchCountByRuleId[ruleId] ?? 0) + count;
+      }
+      for (const skipped of plan.skippedOverwrites) warnings.push(`Left '${skipped}' as it was`);
+      if (plan.entries.length === 0) continue;
+
+      const packWithFiles = await readPack(packFile.path, {
+        skipParsingTables: true,
+        filesToRead: [...new Set(plan.entries.map((entry) => entry.sourcePath))],
+      });
+
+      for (const entry of plan.entries) {
+        const buffer = packWithFiles.packedFiles.find(
+          (candidate) => candidate.name === entry.sourcePath,
+        )?.buffer;
+        if (!buffer) {
+          warnings.push(`No content for '${entry.sourcePath}'`);
+          continue;
+        }
+        outputTables.push({
+          name: entry.targetPath,
+          fileName: entry.targetPath,
+          sourceFile: indexedPack,
+          table: { name: entry.targetPath, file_size: buffer.length, start_pos: 0, buffer } as PackedFile,
+          outputFileName: entry.targetPath,
+        });
+      }
+    } catch (error) {
+      console.error(`Pack File Operations Node ${nodeId}: Error reading ${packFile.path}:`, error);
+    }
+  }
+
+  reportRules(totalMatchCountByRuleId);
+  for (const warning of warnings) console.warn(`Pack File Operations Node ${nodeId}: ${warning}`);
+  console.log(`Pack File Operations Node ${nodeId}: ${outputTables.length} file(s) out`);
+
+  return {
+    success: true,
+    data: {
+      type: "TableSelection",
+      tables: outputTables,
+      sourceFiles: (inputData as PackFilesNodeData).files || [],
       tableCount: outputTables.length,
     } as DBTablesNodeData,
   };

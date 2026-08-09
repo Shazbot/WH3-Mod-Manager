@@ -174,6 +174,7 @@ export interface SerializedNode {
     tablesToRemove?: string[];
     locRules?: Array<Record<string, unknown>>;
     textFileRules?: Array<Record<string, unknown>>;
+    fileOperations?: Array<Record<string, unknown>>;
   };
 }
 

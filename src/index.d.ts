@@ -1220,7 +1220,8 @@ declare global {
     | "conditionalbranch"
     | "removetables"
     | "editloctext"
-    | "edittextfile";
+    | "edittextfile"
+    | "packfileoperations";
 
   // FlowNodeData = "string"|
 
