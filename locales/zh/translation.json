@@ -738,7 +738,6 @@
   "nodeEditorRun": "运行",
   "nodeEditorLoadGraph": "加载流程图",
   "nodeEditorSaveGraph": "保存流程图",
-  "nodeEditorSectionPackFiles": "打包文件",
   "nodeEditorSectionTableSelection": "餐桌选择",
   "nodeEditorSectionTableRowsFiltering": "表行过滤",
   "nodeEditorSectionColumnSelection": "色谱柱选择",

@@ -816,7 +816,6 @@
   "nodeEditorRun": "실행",
   "nodeEditorLoadGraph": "그래프 불러오기",
   "nodeEditorSaveGraph": "그래프 저장",
-  "nodeEditorSectionPackFiles": "파일 팩",
   "nodeEditorSectionTableSelection": "테이블 선택",
   "nodeEditorSectionTableRowsFiltering": "테이블 행 필터링",
   "nodeEditorSectionColumnSelection": "열 선택",

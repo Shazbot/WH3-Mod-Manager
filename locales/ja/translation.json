@@ -816,7 +816,6 @@
   "nodeEditorRun": "実行",
   "nodeEditorLoadGraph": "グラフを読み込む",
   "nodeEditorSaveGraph": "グラフを保存",
-  "nodeEditorSectionPackFiles": "ファイルをパックする",
   "nodeEditorSectionTableSelection": "テーブルの選択",
   "nodeEditorSectionTableRowsFiltering": "テーブル行のフィルタリング",
   "nodeEditorSectionColumnSelection": "列の選択",

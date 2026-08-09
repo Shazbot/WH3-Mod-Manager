@@ -934,7 +934,6 @@
   "nodeEditorRun": "Run",
   "nodeEditorLoadGraph": "Load Graph",
   "nodeEditorSaveGraph": "Save Graph",
-  "nodeEditorSectionPackFiles": "Pack Files",
   "nodeEditorSectionTableSelection": "Table Selection",
   "nodeEditorSectionTableRowsFiltering": "Table Rows Filtering",
   "nodeEditorSectionColumnSelection": "Column Selection",
@@ -1071,5 +1070,8 @@
   "customFolderModLegend": "= mod is from a custom folder.",
   "customFolderModLabel": "Custom folder",
   "nodeEditorNewGraph": "New",
-  "nodeEditorNewGraphTooltip": "Clears the editor and starts an empty flow. Save the current one first if you want to keep it."
+  "nodeEditorNewGraphTooltip": "Clears the editor and starts an empty flow. Save the current one first if you want to keep it.",
+  "nodeEditorSectionPackedFiles": "Packed Files",
+  "nodeEditorSectionPackSources": "Pack Sources",
+  "nodeEditorSectionControlFlow": "Control Flow"
 }

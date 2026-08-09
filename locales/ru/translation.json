@@ -816,7 +816,6 @@
   "nodeEditorRun": "Выполнить",
   "nodeEditorLoadGraph": "Загрузить граф",
   "nodeEditorSaveGraph": "Сохранить граф",
-  "nodeEditorSectionPackFiles": "Упаковать файлы",
   "nodeEditorSectionTableSelection": "Выбор стола",
   "nodeEditorSectionTableRowsFiltering": "Фильтрация строк таблицы",
   "nodeEditorSectionColumnSelection": "Выбор столбца",

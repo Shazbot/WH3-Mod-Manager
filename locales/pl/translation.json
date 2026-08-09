@@ -816,7 +816,6 @@
   "nodeEditorRun": "Uruchom",
   "nodeEditorLoadGraph": "Wczytaj graf",
   "nodeEditorSaveGraph": "Zapisz graf",
-  "nodeEditorSectionPackFiles": "Pakuj pliki",
   "nodeEditorSectionTableSelection": "Wybór stołu",
   "nodeEditorSectionTableRowsFiltering": "Filtrowanie wierszy tabeli",
   "nodeEditorSectionColumnSelection": "Wybór kolumny",

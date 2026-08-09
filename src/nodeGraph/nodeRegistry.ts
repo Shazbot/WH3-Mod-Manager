@@ -811,9 +811,15 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
 
 const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
-    titleKey: "nodeEditorSectionPackFiles",
-    titleFallback: "Pack Files",
-    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles", "packfileoperations"],
+    titleKey: "nodeEditorSectionPackSources",
+    titleFallback: "Pack Sources",
+    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles"],
+  },
+  {
+    // Files inside a pack, as opposed to the packs themselves above.
+    titleKey: "nodeEditorSectionPackedFiles",
+    titleFallback: "Packed Files",
+    nodes: ["edittextfile", "packfileoperations"],
   },
   {
     titleKey: "nodeEditorSectionTableSelection",
@@ -823,12 +829,18 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionTableRowsFiltering",
     titleFallback: "Table Rows Filtering",
-    nodes: ["conditionalbranch", "deduplicate", "filter", "multifilter", "removetables"],
+    nodes: ["deduplicate", "filter", "multifilter", "removetables"],
+  },
+  {
+    // Nodes that decide what runs, rather than changing the data flowing through.
+    titleKey: "nodeEditorSectionControlFlow",
+    titleFallback: "Control Flow",
+    nodes: ["conditionalbranch"],
   },
   {
     titleKey: "nodeEditorSectionLocalisation",
     titleFallback: "Localisation",
-    nodes: ["editloctext", "edittextfile"],
+    nodes: ["editloctext"],
   },
   {
     titleKey: "nodeEditorSectionColumnSelection",

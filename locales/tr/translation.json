@@ -816,7 +816,6 @@
   "nodeEditorRun": "Çalıştır",
   "nodeEditorLoadGraph": "Grafiği Yükle",
   "nodeEditorSaveGraph": "Grafiği Kaydet",
-  "nodeEditorSectionPackFiles": "Dosyaları Paketle",
   "nodeEditorSectionTableSelection": "Tablo Seçimi",
   "nodeEditorSectionTableRowsFiltering": "Tablo Satırlarını Filtreleme",
   "nodeEditorSectionColumnSelection": "Sütun Seçimi",

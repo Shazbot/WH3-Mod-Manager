@@ -816,7 +816,6 @@
   "nodeEditorRun": "Ausführen",
   "nodeEditorLoadGraph": "Graph laden",
   "nodeEditorSaveGraph": "Graph speichern",
-  "nodeEditorSectionPackFiles": "Dateien packen",
   "nodeEditorSectionTableSelection": "Tischauswahl",
   "nodeEditorSectionTableRowsFiltering": "Filtern von Tabellenzeilen",
   "nodeEditorSectionColumnSelection": "Spaltenauswahl",

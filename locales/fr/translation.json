@@ -822,7 +822,6 @@
   "nodeEditorRun": "Exécuter",
   "nodeEditorLoadGraph": "Charger le graphe",
   "nodeEditorSaveGraph": "Enregistrer le graphe",
-  "nodeEditorSectionPackFiles": "Emballer des fichiers",
   "nodeEditorSectionTableSelection": "Sélection de tableaux",
   "nodeEditorSectionTableRowsFiltering": "Filtrage des lignes du tableau",
   "nodeEditorSectionColumnSelection": "Sélection de colonne",
