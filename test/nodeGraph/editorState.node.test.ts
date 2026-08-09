@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applyNodeDataPatch,
   getNodesDisabledByUpstream,
+  selectAllNodes,
   toggleSelectedNodesDisabled,
   withNodeEditorActions,
 } from "../../src/nodeGraph/editorState";
@@ -268,5 +269,41 @@ describe("getNodesDisabledByUpstream", () => {
     expect(disabledByUpstream.has("manual-root")).toBe(false);
     expect(disabledByUpstream.has("manual-middle")).toBe(false);
     expect(disabledByUpstream.has("unrelated")).toBe(false);
+  });
+});
+
+describe("selectAllNodes", () => {
+  const graph = () =>
+    [
+      { id: "node_0", type: "packedfiles", position: { x: 0, y: 0 }, data: {}, selected: true },
+      { id: "node_1", type: "filter", position: { x: 0, y: 0 }, data: {} },
+      { id: "node_2", type: "savechanges", position: { x: 0, y: 0 }, data: {} },
+    ] as any[];
+
+  it("selects every node, including the ones already selected", () => {
+    const result = selectAllNodes(graph());
+
+    expect(result.changed).toBe(true);
+    expect(result.nodes.every((node) => node.selected)).toBe(true);
+  });
+
+  it("leaves node data alone, so selecting cannot disturb what a node holds", () => {
+    const nodes = [
+      { id: "node_0", type: "filter", position: { x: 0, y: 0 }, data: { textValue: "keep me" } },
+    ] as any[];
+
+    expect(selectAllNodes(nodes).nodes[0].data).toEqual({ textValue: "keep me" });
+  });
+
+  it("reports no change when everything is already selected, so no needless re-render", () => {
+    const selected = graph().map((node) => ({ ...node, selected: true }));
+    const result = selectAllNodes(selected);
+
+    expect(result.changed).toBe(false);
+    expect(result.nodes).toBe(selected);
+  });
+
+  it("reports no change on an empty graph", () => {
+    expect(selectAllNodes([]).changed).toBe(false);
   });
 });

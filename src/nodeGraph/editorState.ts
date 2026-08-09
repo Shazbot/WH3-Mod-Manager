@@ -287,6 +287,23 @@ export const deleteSelectedNodesFromGraph = (nodes: Node[], edges: Edge[]) => {
   };
 };
 
+/**
+ * Marks every node selected, for ctrl+A.
+ *
+ * Edges are left alone: an edge only exists between two nodes, and every operation that acts on a
+ * selection - delete, copy, disable - already brings along the edges between the nodes it touches.
+ */
+export const selectAllNodes = (nodes: Node[]) => {
+  if (nodes.length === 0 || nodes.every((node) => node.selected)) {
+    return { nodes, changed: false };
+  }
+
+  return {
+    nodes: nodes.map((node) => (node.selected ? node : { ...node, selected: true })),
+    changed: true,
+  };
+};
+
 export const getNodesDisabledByUpstream = (nodes: Node[], edges: Edge[]) => {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const manuallyDisabledNodeIds = new Set(

@@ -21,6 +21,7 @@ import {
   applyNodeDataPatchFromRef,
   deleteSelectedNodesFromGraph,
   getNodesDisabledByUpstream,
+  selectAllNodes,
   toggleSelectedNodesDisabled,
   withNodeEditorActions,
 } from "../nodeGraph/editorState";
@@ -820,6 +821,30 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     [loadNodeGraphFile],
   );
 
+  const newNodeGraph = useCallback(() => {
+    // Everything a graph can leave behind is reset here. The instance key is the important one:
+    // node ids restart at node_0, so without a remount React reuses the component behind an id and
+    // the local state behind its text fields comes back in the blank graph.
+    setGraphInstanceKey((previousKey) => previousKey + 1);
+    nodeId = 0;
+    nodesRef.current = [];
+    setNodes([]);
+    setEdges([]);
+    setFlowOptions([]);
+    setIsGraphEnabled(false);
+    setGraphStartsEnabled(true);
+    setQuickConnectSourceNodeId(null);
+    nodeEditorDebugLog("Started a blank graph");
+  }, [setNodes, setEdges]);
+
+  const selectAll = useCallback(() => {
+    const nextGraph = selectAllNodes(nodesRef.current);
+    if (!nextGraph.changed) return;
+
+    nodesRef.current = nextGraph.nodes;
+    setNodes(nextGraph.nodes);
+  }, [setNodes]);
+
   const copySelection = useCallback(() => {
     const copied = copySelectedNodes(nodesRef.current, edges);
     if (!copied) return;
@@ -851,6 +876,12 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
       if (!event.ctrlKey && !event.metaKey) return;
 
+      if (event.key === "a" || event.key === "A") {
+        event.preventDefault();
+        selectAll();
+        return;
+      }
+
       if (event.key === "c" || event.key === "C") {
         event.preventDefault();
         copySelection();
@@ -867,7 +898,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     return () => {
       document.removeEventListener("keydown", handleKeyPress);
     };
-  }, [deleteSelectedNodes, copySelection, pasteSelection]);
+  }, [deleteSelectedNodes, selectAll, copySelection, pasteSelection]);
 
   // Execution state
   const [isExecuting, setIsExecuting] = useState(false);
@@ -1263,6 +1294,26 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                   />
                 </svg>
                 {localized.delete || "Delete"}
+              </button>
+
+              {/* New button */}
+              <button
+                onClick={newNodeGraph}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                title={
+                  localized.nodeEditorNewGraphTooltip ||
+                  "Clears the editor and starts an empty flow. Save the current one first if you want to keep it."
+                }
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                {localized.nodeEditorNewGraph || "New"}
               </button>
 
               {/* Load button */}

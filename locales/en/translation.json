@@ -1069,5 +1069,7 @@
   "modFolderPriorityHelp": "Priority: If a mod exists in multiple folders, the copy from the highest-priority folder is used.",
   "customFolderModTooltip": "Custom folder: {{path}}",
   "customFolderModLegend": "= mod is from a custom folder.",
-  "customFolderModLabel": "Custom folder"
+  "customFolderModLabel": "Custom folder",
+  "nodeEditorNewGraph": "New",
+  "nodeEditorNewGraphTooltip": "Clears the editor and starts an empty flow. Save the current one first if you want to keep it."
 }
