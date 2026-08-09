@@ -454,6 +454,12 @@ export interface ConditionalBranchNodeData extends NodeData {
    * until then; treated as false.
    */
   flowOptionChecked?: boolean;
+  /** "checkbox" gives two outputs, "radio" one per choice. Resolved alongside the value. */
+  flowOptionKind?: "checkbox" | "radio";
+  /** The radio choice that won, as a choice id. */
+  flowOptionChoiceId?: string;
+  /** The radio's choices, so the node can draw a handle for each without the option list. */
+  flowOptionChoices?: Array<{ id: string; label: string }>;
   columnNames: string[];
   connectedTableName?: string;
 }

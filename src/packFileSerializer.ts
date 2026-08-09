@@ -29,6 +29,7 @@ import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
 import { getDBName } from "./utility/packFileHelpers";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
+import { resolveRadioChoiceId } from "./nodeGraph/types";
 import {
   substituteDeepCloneOptionValues,
   substituteFilterOptionValues,
@@ -1296,6 +1297,8 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
       return {
         selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",
         flowOptionChecked: (node.data as any).flowOptionChecked === true,
+        flowOptionKind: (node.data as any).flowOptionKind || "checkbox",
+        flowOptionChoiceId: (node.data as any).flowOptionChoiceId || "",
       };
     case "deepclone":
       return {
@@ -1400,8 +1403,15 @@ const prepareFlow = (
       );
       const userValue = selectedOption ? flowOptions?.optionValues?.[selectedOption.id] : undefined;
       const effectiveValue = userValue !== undefined ? userValue : selectedOption?.value;
+      const isRadio = selectedOption?.type === "radio";
+
       (node.data as any).flowOptionChecked =
         selectedOption?.type === "checkbox" ? effectiveValue === true : false;
+      (node.data as any).flowOptionKind = isRadio ? "radio" : "checkbox";
+      (node.data as any).flowOptionChoices = isRadio ? selectedOption.choices : [];
+      (node.data as any).flowOptionChoiceId = isRadio
+        ? resolveRadioChoiceId(selectedOption, userValue)
+        : "";
     }
     if (node.data.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {

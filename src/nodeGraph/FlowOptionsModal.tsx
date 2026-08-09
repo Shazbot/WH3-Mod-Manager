@@ -4,7 +4,7 @@ import { addToast } from "../appSlice";
 import { useAppDispatch } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { stopWheelPropagation } from "./nodes/shared";
-import { FlowOption } from "./types";
+import { FlowOption, RadioFlowOptionChoice } from "./types";
 
 export const FlowOptionsModal: React.FC<{
   isOpen: boolean;
@@ -37,6 +37,7 @@ export const FlowOptionsModal: React.FC<{
     description: "",
     value: "",
     placeholder: "",
+    choices: [] as RadioFlowOptionChoice[],
     min: 0,
     max: 100,
     step: 1,
@@ -50,6 +51,7 @@ export const FlowOptionsModal: React.FC<{
       description: "",
       value: "",
       placeholder: "",
+      choices: [],
       min: 0,
       max: 100,
       step: 1,
@@ -99,7 +101,17 @@ export const FlowOptionsModal: React.FC<{
               max: formData.max,
               step: formData.step,
             }
-          : newOptionType === "multiline"
+          : newOptionType === "radio"
+            ? {
+                id: formData.id.trim(),
+                type: "radio",
+                name: formData.name,
+                description: formData.description || undefined,
+                choices: formData.choices,
+                // Default to the first choice, so a radio always resolves to something.
+                value: formData.choices[0]?.id ?? "",
+              }
+            : newOptionType === "multiline"
             ? {
                 id: formData.id.trim(),
                 type: "multiline",
@@ -138,6 +150,7 @@ export const FlowOptionsModal: React.FC<{
       max: option.type === "range" ? option.max : 100,
       step: option.type === "range" ? option.step : 1,
       checked: option.type === "checkbox" ? option.value : false,
+      choices: option.type === "radio" ? option.choices : [],
     });
     setNewOptionType(option.type);
   };
@@ -182,7 +195,18 @@ export const FlowOptionsModal: React.FC<{
               max: formData.max,
               step: formData.step,
             }
-          : editingOption.type === "multiline"
+          : editingOption.type === "radio"
+            ? {
+                ...editingOption,
+                id: formData.id.trim(),
+                name: formData.name,
+                description: formData.description || undefined,
+                choices: formData.choices,
+                value: formData.choices.some((choice) => choice.id === editingOption.value)
+                  ? editingOption.value
+                  : (formData.choices[0]?.id ?? ""),
+              }
+            : editingOption.type === "multiline"
             ? {
                 ...editingOption,
                 id: formData.id.trim(),
@@ -219,6 +243,7 @@ export const FlowOptionsModal: React.FC<{
     if (type === "textbox") return localized.nodeEditorOptionTypeTextbox || "Textbox";
     if (type === "range") return localized.nodeEditorOptionTypeRangeSlider || "Range Slider";
     if (type === "multiline") return localized.nodeEditorOptionTypeMultiline || "Multiline List";
+    if (type === "radio") return localized.nodeEditorOptionTypeRadio || "Radio Buttons";
     return localized.nodeEditorOptionTypeCheckbox || "Checkbox";
   };
 
@@ -345,6 +370,21 @@ export const FlowOptionsModal: React.FC<{
                       rows={4}
                       className="w-full p-2 bg-gray-600 text-white rounded text-sm font-mono"
                     />
+                  ) : option.type === "radio" ? (
+                    <div className="space-y-1">
+                      {(option.choices || []).map((choice) => (
+                        <label key={choice.id} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`flow-option-${option.id}`}
+                            checked={option.value === choice.id}
+                            onChange={() => handleOptionValueChange(option.id, choice.id)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm text-gray-300">{choice.label || choice.id}</span>
+                        </label>
+                      ))}
+                    </div>
                   ) : (
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -390,6 +430,7 @@ export const FlowOptionsModal: React.FC<{
                   <option value="multiline">
                     {localized.nodeEditorOptionTypeMultiline || "Multiline List"}
                   </option>
+                  <option value="radio">{localized.nodeEditorOptionTypeRadio || "Radio Buttons"}</option>
                 </select>
               </div>
             )}
@@ -437,7 +478,74 @@ export const FlowOptionsModal: React.FC<{
               </div>
             </div>
 
-            {newOptionType === "multiline" ? (
+            {newOptionType === "radio" ? (
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">
+                  {localized.nodeEditorOptionChoices || "Choices"}
+                </label>
+                {formData.choices.map((choice, choiceIndex) => (
+                  <div key={choiceIndex} className="flex items-center gap-2 mb-1">
+                    <input
+                      type="text"
+                      value={choice.id}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          choices: formData.choices.map((candidate, index) =>
+                            index === choiceIndex ? { ...candidate, id: e.target.value } : candidate,
+                          ),
+                        })
+                      }
+                      placeholder={localized.nodeEditorOptionChoiceIdPlaceholder || "id"}
+                      className="w-40 p-2 bg-gray-600 text-white rounded text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={choice.label}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          choices: formData.choices.map((candidate, index) =>
+                            index === choiceIndex ? { ...candidate, label: e.target.value } : candidate,
+                          ),
+                        })
+                      }
+                      placeholder={localized.nodeEditorOptionChoiceLabelPlaceholder || "label"}
+                      className="flex-1 p-2 bg-gray-600 text-white rounded text-sm"
+                    />
+                    <button
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          choices: formData.choices.filter((_, index) => index !== choiceIndex),
+                        })
+                      }
+                      className="text-sm text-red-400 hover:text-red-300"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      choices: [
+                        ...formData.choices,
+                        { id: `choice_${formData.choices.length + 1}`, label: "" },
+                      ],
+                    })
+                  }
+                  className="text-sm text-blue-400 hover:text-blue-300"
+                >
+                  + {localized.nodeEditorOptionAddChoice || "Add choice"}
+                </button>
+                <div className="text-xs text-gray-400 mt-1">
+                  {localized.nodeEditorOptionChoicesHelp ||
+                    "A conditional branch bound to this option gets one output per choice. Ids are what the branch binds to, so labels can change freely."}
+                </div>
+              </div>
+            ) : newOptionType === "multiline" ? (
               <div>
                 <label className="block text-white text-sm font-medium mb-2">
                   {localized.nodeEditorDefaultValue || "Default Value"}

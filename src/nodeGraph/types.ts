@@ -38,11 +38,39 @@ export interface MultilineTextboxFlowOption extends BaseFlowOption {
   placeholder?: string;
 }
 
+/** One choice of a radio option. Ids are what nodes bind to, so a label can change freely. */
+export interface RadioFlowOptionChoice {
+  id: string;
+  label: string;
+}
+
+/** A set of mutually exclusive choices, of which exactly one is selected. */
+export interface RadioFlowOption extends BaseFlowOption {
+  type: "radio";
+  /** The id of the selected choice. */
+  value: string;
+  choices: RadioFlowOptionChoice[];
+}
+
 export type FlowOption =
   | TextboxFlowOption
   | RangeSliderFlowOption
   | CheckboxFlowOption
-  | MultilineTextboxFlowOption;
+  | MultilineTextboxFlowOption
+  | RadioFlowOption;
+
+/**
+ * The choice a radio option resolves to: the selected one, falling back to the first.
+ *
+ * A stored selection can point at a choice the author has since removed, and a branch that activates
+ * nothing would silently skip every path, so the first choice stands in.
+ */
+export const resolveRadioChoiceId = (option: RadioFlowOption, userValue?: unknown): string => {
+  const choices = option.choices || [];
+  const selected = typeof userValue === "string" ? userValue : option.value;
+  if (choices.some((choice) => choice.id === selected)) return selected;
+  return choices[0]?.id ?? "";
+};
 
 /** Splits a multiline option value into its entries, ignoring blank lines and surrounding spaces. */
 export const splitMultilineOptionValue = (value: string): string[] =>
@@ -140,6 +168,9 @@ export interface SerializedNode {
     autoFollowReferences?: boolean;
     selectedFlowOptionId?: string;
     flowOptionChecked?: boolean;
+    flowOptionKind?: "checkbox" | "radio";
+    flowOptionChoiceId?: string;
+    flowOptionChoices?: Array<{ id: string; label: string }>;
     tablesToRemove?: string[];
     locRules?: Array<Record<string, unknown>>;
   };

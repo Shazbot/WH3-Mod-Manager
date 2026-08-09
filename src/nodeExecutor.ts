@@ -94,6 +94,12 @@ const matchesFilterValue = (cellValue: string, filterValue: string): boolean => 
 export const CONDITIONAL_BRANCH_TRUE_HANDLE = "output-true";
 export const CONDITIONAL_BRANCH_FALSE_HANDLE = "output-false";
 
+/**
+ * The handle a radio choice drives. Built from the choice id, which is why a choice's label can be
+ * renamed without breaking the connections leaving the node.
+ */
+export const conditionalBranchChoiceHandle = (choiceId: string) => `output-choice-${choiceId}`;
+
 const getNodeConfig = <T>(config: unknown, textValue: string): T | undefined => {
   if (config !== undefined) {
     return config as T;
@@ -7113,23 +7119,38 @@ function executeConditionalBranchNode(
     return { success: false, error: "Invalid input: Expected TableSelection data" };
   }
 
-  const parsed = getNodeConfig<{ selectedFlowOptionId?: string; flowOptionChecked?: boolean }>(
-    config,
-    textValue,
-  );
+  const parsed = getNodeConfig<{
+    selectedFlowOptionId?: string;
+    flowOptionChecked?: boolean;
+    flowOptionKind?: "checkbox" | "radio";
+    flowOptionChoiceId?: string;
+  }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid node configuration" };
   }
   if (!parsed.selectedFlowOptionId) {
-    return { success: false, error: "No flow option selected: pick the checkbox that decides the branch" };
+    return { success: false, error: "No flow option selected: pick the option that decides the branch" };
   }
 
-  const isChecked = parsed.flowOptionChecked === true;
-  const activeHandle = isChecked ? CONDITIONAL_BRANCH_TRUE_HANDLE : CONDITIONAL_BRANCH_FALSE_HANDLE;
-
-  console.log(
-    `Conditional Branch Node ${nodeId}: '${parsed.selectedFlowOptionId}' is ${isChecked}, continuing through ${activeHandle}`,
-  );
+  let activeHandle: string;
+  if (parsed.flowOptionKind === "radio") {
+    if (!parsed.flowOptionChoiceId) {
+      return {
+        success: false,
+        error: `The radio option '${parsed.selectedFlowOptionId}' has no choices, so no branch can run`,
+      };
+    }
+    activeHandle = conditionalBranchChoiceHandle(parsed.flowOptionChoiceId);
+    console.log(
+      `Conditional Branch Node ${nodeId}: '${parsed.selectedFlowOptionId}' is '${parsed.flowOptionChoiceId}', continuing through ${activeHandle}`,
+    );
+  } else {
+    const isChecked = parsed.flowOptionChecked === true;
+    activeHandle = isChecked ? CONDITIONAL_BRANCH_TRUE_HANDLE : CONDITIONAL_BRANCH_FALSE_HANDLE;
+    console.log(
+      `Conditional Branch Node ${nodeId}: '${parsed.selectedFlowOptionId}' is ${isChecked}, continuing through ${activeHandle}`,
+    );
+  }
 
   return {
     success: true,

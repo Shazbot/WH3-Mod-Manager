@@ -6570,9 +6570,18 @@ export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; 
     data.selectedFlowOptionId || "",
   );
 
-  // Only a checkbox can decide a branch; the other option types are not offered.
-  const checkboxOptions = flowOptions.filter((option) => option.type === "checkbox");
-  const selectedOption = checkboxOptions.find((option) => option.id === selectedFlowOptionId);
+  // A checkbox gives two branches, a radio one per choice; the other option types cannot decide one.
+  const branchableOptions = flowOptions.filter(
+    (option) => option.type === "checkbox" || option.type === "radio",
+  );
+  const selectedOption = branchableOptions.find((option) => option.id === selectedFlowOptionId);
+  const radioChoices = selectedOption?.type === "radio" ? selectedOption.choices || [] : [];
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  // React Flow caches a node's handles, so it has to be told when their number changes.
+  React.useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, radioChoices.length, selectedOption?.type, updateNodeInternals]);
 
   React.useEffect(() => {
     if (data.selectedFlowOptionId !== undefined && data.selectedFlowOptionId !== selectedFlowOptionId) {
@@ -6608,20 +6617,20 @@ export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; 
         <option value="">
           {localized.nodeEditorConditionalBranchSelectOption || "Select a checkbox option..."}
         </option>
-        {checkboxOptions.map((option) => (
+        {branchableOptions.map((option) => (
           <option key={option.id} value={option.id}>
             {option.name} ({option.id})
           </option>
         ))}
       </select>
 
-      {checkboxOptions.length === 0 && (
+      {branchableOptions.length === 0 && (
         <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
           {localized.nodeEditorConditionalBranchNoOptions ||
-            "This flow has no checkbox options. Add one in Flow Options first."}
+            "This flow has no checkbox or radio options. Add one in Flow Options first."}
         </div>
       )}
-      {checkboxOptions.length > 0 && selectedFlowOptionId && !selectedOption && (
+      {branchableOptions.length > 0 && selectedFlowOptionId && !selectedOption && (
         <div className="text-xs text-amber-400 mt-1 border border-amber-500 rounded p-1">
           {localized.nodeEditorConditionalBranchMissingOption ||
             "The selected option no longer exists; the false branch will run."}
@@ -6634,32 +6643,50 @@ export const ConditionalBranchNode: React.FC<{ data: ConditionalBranchNodeData; 
         option name changes the node's height.
       */}
       <div className="mt-3 text-xs">
-        <div className="relative flex items-center justify-end h-6">
-          <span className="text-green-400">
-            {localized.nodeEditorConditionalBranchChecked || "checked"}
-          </span>
-          <Handle
-            id="output-true"
-            type="source"
-            position={Position.Right}
-            className="w-3 h-3 bg-green-500"
-            data-output-type="TableSelection"
-            style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
-          />
-        </div>
-        <div className="relative flex items-center justify-end h-6">
-          <span className="text-red-400">
-            {localized.nodeEditorConditionalBranchUnchecked || "unchecked"}
-          </span>
-          <Handle
-            id="output-false"
-            type="source"
-            position={Position.Right}
-            className="w-3 h-3 bg-red-500"
-            data-output-type="TableSelection"
-            style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
-          />
-        </div>
+        {selectedOption?.type === "radio"
+          ? radioChoices.map((choice) => (
+              <div key={choice.id} className="relative flex items-center justify-end h-6">
+                <span className="text-teal-300 truncate" title={choice.id}>
+                  {choice.label || choice.id}
+                </span>
+                <Handle
+                  id={`output-choice-${choice.id}`}
+                  type="source"
+                  position={Position.Right}
+                  className="w-3 h-3 bg-teal-400"
+                  data-output-type="TableSelection"
+                  style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+                />
+              </div>
+            ))
+          : [
+              <div key="true" className="relative flex items-center justify-end h-6">
+                <span className="text-green-400">
+                  {localized.nodeEditorConditionalBranchChecked || "checked"}
+                </span>
+                <Handle
+                  id="output-true"
+                  type="source"
+                  position={Position.Right}
+                  className="w-3 h-3 bg-green-500"
+                  data-output-type="TableSelection"
+                  style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+                />
+              </div>,
+              <div key="false" className="relative flex items-center justify-end h-6">
+                <span className="text-red-400">
+                  {localized.nodeEditorConditionalBranchUnchecked || "unchecked"}
+                </span>
+                <Handle
+                  id="output-false"
+                  type="source"
+                  position={Position.Right}
+                  className="w-3 h-3 bg-red-500"
+                  data-output-type="TableSelection"
+                  style={{ top: "50%", right: -22, transform: "translateY(-50%)" }}
+                />
+              </div>,
+            ]}
       </div>
 
       <div className="mt-2 text-xs text-gray-400">

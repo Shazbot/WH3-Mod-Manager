@@ -197,6 +197,8 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
     return JSON.stringify({
       selectedFlowOptionId: (node.data as any).selectedFlowOptionId || "",
       flowOptionChecked: (node.data as any).flowOptionChecked === true,
+      flowOptionKind: (node.data as any).flowOptionKind || "checkbox",
+      flowOptionChoiceId: (node.data as any).flowOptionChoiceId || "",
     });
   }
   if (node.type === "deepclone") {

@@ -172,6 +172,29 @@ const UserFlowOptionsModal: React.FC<{
                           />
                         )}
 
+                        {option.type === "radio" && (
+                          <div className="space-y-1">
+                            {(option.choices || []).map((choice) => (
+                              <label key={choice.id} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`${flow.flowName}-${option.id}`}
+                                  checked={
+                                    getUserValue(flow.flowName, option.id, option.value) === choice.id
+                                  }
+                                  onChange={() =>
+                                    handleOptionValueChange(flow.flowName, option.id, choice.id)
+                                  }
+                                  className="w-4 h-4"
+                                />
+                                <span className="text-sm text-gray-300">
+                                  {choice.label || choice.id}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+
                         {option.type === "multiline" && (
                           <textarea
                             value={getUserValue(flow.flowName, option.id, option.value)}

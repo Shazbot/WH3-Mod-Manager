@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CONDITIONAL_BRANCH_FALSE_HANDLE,
   CONDITIONAL_BRANCH_TRUE_HANDLE,
+  conditionalBranchChoiceHandle,
   executeNodeAction,
 } from "../../src/nodeExecutor";
 import {
@@ -117,6 +118,108 @@ describe("conditional branch handles", () => {
       const result = await runBranch({ selectedFlowOptionId: "useTsv", flowOptionChecked });
       expect(result.activeOutputHandles).toHaveLength(1);
     }
+  });
+});
+
+const radioOption = (id: string, choiceIds: string[], value = choiceIds[0]) => ({
+  id,
+  name: id,
+  type: "radio" as const,
+  value,
+  choices: choiceIds.map((choiceId) => ({ id: choiceId, label: choiceId })),
+});
+
+describe("conditional branch on a radio option", () => {
+  const runRadio = (flowOptionChoiceId: string) =>
+    runBranch({
+      selectedFlowOptionId: "mode",
+      flowOptionKind: "radio",
+      flowOptionChoiceId,
+    });
+
+  it("continues through the handle of the chosen option", async () => {
+    const result = await runRadio("fast");
+
+    expect(result.success).toBe(true);
+    expect(result.activeOutputHandles).toEqual([conditionalBranchChoiceHandle("fast")]);
+    expect(conditionalBranchChoiceHandle("fast")).toBe("output-choice-fast");
+  });
+
+  it("activates exactly one handle, whichever choice won", async () => {
+    for (const choiceId of ["slow", "fast", "custom"]) {
+      const result = await runRadio(choiceId);
+      expect(result.activeOutputHandles).toEqual([`output-choice-${choiceId}`]);
+    }
+  });
+
+  it("passes its input through untouched, like the checkbox form", async () => {
+    const result = await runRadio("fast");
+
+    expect(result.data).toBe(tableSelection);
+  });
+
+  it("fails when the radio has no choices at all", async () => {
+    // Activating nothing would silently skip every branch.
+    const result = await runRadio("");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("no choices");
+  });
+});
+
+describe("resolving a radio option for execution", () => {
+  const createRadioGate = (selectedFlowOptionId: string) =>
+    ({
+      id: "node_0",
+      type: "conditionalbranch",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Conditional Branch",
+        type: "conditionalbranch",
+        inputType: "TableSelection",
+        outputType: "TableSelection",
+        selectedFlowOptionId,
+      },
+    }) as any;
+
+  it("resolves the selected choice and carries the choice list", () => {
+    const result = prepareGraphForExecution({
+      nodes: [createRadioGate("mode")],
+      edges: [],
+      flowOptions: [radioOption("mode", ["slow", "fast"], "fast")],
+    });
+
+    const data = result.nodes[0].data as any;
+    expect(data.flowOptionKind).toBe("radio");
+    expect(data.flowOptionChoiceId).toBe("fast");
+    expect(data.flowOptionChoices.map((choice: { id: string }) => choice.id)).toEqual(["slow", "fast"]);
+  });
+
+  it("falls back to the first choice when the stored one was removed", () => {
+    const result = prepareGraphForExecution({
+      nodes: [createRadioGate("mode")],
+      edges: [],
+      flowOptions: [radioOption("mode", ["slow", "fast"], "deleted_choice")],
+    });
+
+    expect((result.nodes[0].data as any).flowOptionChoiceId).toBe("slow");
+  });
+
+  it("marks a checkbox-bound branch as a checkbox, leaving no stale radio state", () => {
+    const node = createRadioGate("useTsv");
+    node.data.flowOptionKind = "radio";
+    node.data.flowOptionChoiceId = "fast";
+
+    const result = prepareGraphForExecution({
+      nodes: [node],
+      edges: [],
+      flowOptions: [checkboxOption("useTsv", true)],
+    });
+
+    const data = result.nodes[0].data as any;
+    expect(data.flowOptionKind).toBe("checkbox");
+    expect(data.flowOptionChoiceId).toBe("");
+    expect(data.flowOptionChecked).toBe(true);
   });
 });
 

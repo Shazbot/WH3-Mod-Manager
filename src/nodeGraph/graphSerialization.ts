@@ -1,6 +1,12 @@
 import { Edge, Node } from "@xyflow/react";
 
-import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph } from "./types";
+import {
+  FlowOption,
+  SerializedConnection,
+  SerializedNode,
+  SerializedNodeGraph,
+  resolveRadioChoiceId,
+} from "./types";
 import {
   substituteDeepCloneOptionValues,
   substituteFilterOptionValues,
@@ -128,6 +134,9 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         locRules: (data.locRules || []) as SerializedNode["data"]["locRules"],
         selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
         flowOptionChecked: data.flowOptionChecked as boolean | undefined,
+        flowOptionKind: data.flowOptionKind as SerializedNode["data"]["flowOptionKind"],
+        flowOptionChoiceId: maybeString(data.flowOptionChoiceId),
+        flowOptionChoices: data.flowOptionChoices as SerializedNode["data"]["flowOptionChoices"],
       },
     };
   });
@@ -208,10 +217,15 @@ export const prepareGraphForExecution = ({
     if (node.type === "conditionalbranch") {
       const selectedOption = flowOptions.find((option) => option.id === currentData.selectedFlowOptionId);
       const isChecked = selectedOption?.type === "checkbox" ? selectedOption.value === true : false;
+      const isRadio = selectedOption?.type === "radio";
+
+      nodeData.flowOptionKind = isRadio ? "radio" : "checkbox";
+      nodeData.flowOptionChoices = isRadio ? selectedOption.choices : [];
+      nodeData.flowOptionChoiceId = isRadio ? resolveRadioChoiceId(selectedOption) : "";
       if (nodeData.flowOptionChecked !== isChecked) {
         nodeData.flowOptionChecked = isChecked;
-        modified = true;
       }
+      modified = true;
     }
 
     if (currentPackName && currentData.useCurrentPack === true) {
