@@ -5,6 +5,8 @@ import {
   applyTextFileEdits,
   matchesTextFileTarget,
 } from "../../src/nodeGraph/textFileEdits";
+import { substituteTextFileRuleValues } from "../../src/nodeGraph/nestedOptionValues";
+import { prepareGraphForExecution } from "../../src/nodeGraph/graphSerialization";
 
 const rule = (overrides: Partial<TextFileEditRule>): TextFileEditRule => ({
   id: "r1",
@@ -219,5 +221,101 @@ describe("several rules on one file", () => {
 
     expect(result.text).toBe(variantMesh);
     expect(result.matchCountByRuleId.a).toBeUndefined();
+  });
+});
+
+describe("flow options in text file rules", () => {
+  const nodeData = () =>
+    ({
+      textFileRules: [
+        {
+          id: "r1",
+          targetMatch: "name",
+          target: "{{whichFile}}",
+          mode: "xml",
+          selector: 'SLOT[name="{{whichSlot}}"] MESH',
+          operation: "setAttribute",
+          attributeName: "model",
+          value: "{{newModel}}",
+        },
+        {
+          id: "r2",
+          targetMatch: "name",
+          target: "untouched.xml",
+          mode: "text",
+          selector: "a",
+          operation: "replace",
+          value: "b",
+        },
+      ],
+    }) as Record<string, unknown>;
+
+  it("substitutes into the value, the selector and the target", () => {
+    const data = nodeData();
+
+    const modified = substituteTextFileRuleValues(data, (value) =>
+      value
+        .replace("{{whichFile}}", "emp.variantmeshdefinition")
+        .replace("{{whichSlot}}", "head")
+        .replace("{{newModel}}", "new.rigid_model_v2"),
+    );
+
+    expect(modified).toBe(true);
+    const rules = data.textFileRules as TextFileEditRule[];
+    // The target is included so a user can choose which file the flow edits, not just its contents.
+    expect(rules[0].target).toBe("emp.variantmeshdefinition");
+    expect(rules[0].selector).toBe('SLOT[name="head"] MESH');
+    expect(rules[0].value).toBe("new.rigid_model_v2");
+    expect(rules[1].value).toBe("b");
+  });
+
+  it("substitutes into the attribute name too", () => {
+    const data = { textFileRules: [{ id: "r1", attributeName: "{{whichAttribute}}" }] } as Record<string, unknown>;
+
+    substituteTextFileRuleValues(data, (value) => value.replace("{{whichAttribute}}", "model"));
+
+    expect((data.textFileRules as TextFileEditRule[])[0].attributeName).toBe("model");
+  });
+
+  it("reports no change when nothing matched", () => {
+    expect(substituteTextFileRuleValues(nodeData(), (value) => value)).toBe(false);
+  });
+
+  it("leaves a node without rules alone", () => {
+    expect(substituteTextFileRuleValues({ label: "x" }, () => "replaced")).toBe(false);
+  });
+
+  it("carries an option through prepareGraphForExecution into a working rule", () => {
+    const result = prepareGraphForExecution({
+      nodes: [
+        {
+          id: "node_0",
+          type: "edittextfile",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Edit Text File",
+            type: "edittextfile",
+            inputType: "PackFiles",
+            outputType: "TableSelection",
+            ...nodeData(),
+          },
+        },
+      ] as never[],
+      edges: [],
+      flowOptions: [
+        { id: "whichFile", name: "File", type: "textbox", value: "emp.variantmeshdefinition" },
+        { id: "whichSlot", name: "Slot", type: "textbox", value: "head" },
+        { id: "whichAttribute", name: "Attr", type: "textbox", value: "model" },
+        { id: "newModel", name: "Model", type: "textbox", value: "new.rigid_model_v2" },
+      ],
+    });
+
+    const prepared = (result.nodes[0].data as { textFileRules: TextFileEditRule[] }).textFileRules;
+    expect(prepared[0].target).toBe("emp.variantmeshdefinition");
+
+    // The resolved rule is a real rule: it targets and edits the file it now names.
+    const edited = applyTextFileEdits("emp.variantmeshdefinition", variantMesh, [prepared[0]]);
+    expect(edited.text).toContain('<MESH model="new.rigid_model_v2"/>');
+    expect(edited.matchCountByRuleId.r1).toBe(1);
   });
 });

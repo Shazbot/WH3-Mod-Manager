@@ -34,7 +34,8 @@ import {
   substituteDeepCloneOptionValues,
   substituteFilterOptionValues,
   substituteLocRuleValues,
-} from "./nodeGraph/deepCloneOptions";
+  substituteTextFileRuleValues,
+} from "./nodeGraph/nestedOptionValues";
 import { transformationOptionFields } from "./nodeGraph/graphSerialization";
 import getPackTableData, {
   isSchemaFieldNumber,
@@ -1361,7 +1362,10 @@ const prepareFlow = (
     }
     if (
       optionReplacements.length > 0 &&
-      (node.type === "deepclone" || node.type === "filter" || node.type === "editloctext")
+      (node.type === "deepclone" ||
+        node.type === "filter" ||
+        node.type === "editloctext" ||
+        node.type === "edittextfile")
     ) {
       const replace = (value: string) => {
         let modifiedValue = value;
@@ -1374,6 +1378,7 @@ const prepareFlow = (
       const nestedData = node.data as unknown as Record<string, unknown>;
       if (node.type === "filter") substituteFilterOptionValues(nestedData, replace);
       else if (node.type === "editloctext") substituteLocRuleValues(nestedData, replace);
+      else if (node.type === "edittextfile") substituteTextFileRuleValues(nestedData, replace);
       else substituteDeepCloneOptionValues(nestedData, replace);
     }
     // The manual run substitutes into transformation fields too; without this the same flow behaves

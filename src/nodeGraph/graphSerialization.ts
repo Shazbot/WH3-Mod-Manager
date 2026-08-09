@@ -11,7 +11,8 @@ import {
   substituteDeepCloneOptionValues,
   substituteFilterOptionValues,
   substituteLocRuleValues,
-} from "./deepCloneOptions";
+  substituteTextFileRuleValues,
+} from "./nestedOptionValues";
 
 interface SerializeGraphInput {
   nodes: Node[];
@@ -251,6 +252,15 @@ export const prepareGraphForExecution = ({
             modified = true;
           }
         }
+      }
+
+      if (
+        node.type === "edittextfile" &&
+        substituteTextFileRuleValues(nodeData, (value) =>
+          replaceFlowOptionPlaceholders(value, flowOptions),
+        )
+      ) {
+        modified = true;
       }
 
       if (

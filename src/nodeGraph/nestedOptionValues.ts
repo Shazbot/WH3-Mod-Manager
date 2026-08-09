@@ -1,11 +1,15 @@
 /**
- * Flow option placeholders are substituted per top-level string field of a node's data, but the deep
- * clone node keeps its values nested inside columnOverrides and variantAxes. This walks those two
- * structures so "{{myOption}}" works in an override value as well.
+ * Flow option substitution for values a node keeps nested inside its data.
  *
- * Both execution paths call it with their own replacer: the editor's manual run and the automatic run
- * at game launch substitute placeholders differently, but the shape of the data is the same.
+ * Placeholders are substituted per top-level string field, so anything held in an array of rules -
+ * deep clone overrides, filter rows, loc rules, text file edits - is skipped unless something walks
+ * it. Each helper here walks one node type's structure.
+ *
+ * Both execution paths call them with their own replacer: the editor's manual run and the automatic
+ * run at game launch substitute placeholders differently, but the shape of the data is the same.
  */
+
+/** Walks the deep clone node's columnOverrides and variantAxes. */
 export const substituteDeepCloneOptionValues = (
   nodeData: Record<string, unknown>,
   replace: (value: string) => string,
@@ -112,6 +116,40 @@ export const substituteLocRuleValues = (
     if (!rule || typeof rule !== "object") return rule;
     const nextRule = { ...(rule as Record<string, unknown>) };
     for (const fieldName of locRuleOptionFields) {
+      const value = nextRule[fieldName];
+      if (typeof value !== "string" || !value) continue;
+      const nextValue = replace(value);
+      if (nextValue === value) continue;
+      nextRule[fieldName] = nextValue;
+      modified = true;
+    }
+    return nextRule;
+  });
+
+  return modified;
+};
+
+/** Fields of a text file edit rule that accept a flow option placeholder. */
+const textFileRuleOptionFields = ["target", "selector", "attributeName", "value"] as const;
+
+/**
+ * Substitutes placeholders into the text file edit rules, which are nested inside `textFileRules` and
+ * so are skipped by the top-level field substitution.
+ *
+ * The target is included as well as the value, so an end user can choose which file a flow edits, not
+ * just what it writes into it.
+ */
+export const substituteTextFileRuleValues = (
+  nodeData: Record<string, unknown>,
+  replace: (value: string) => string,
+): boolean => {
+  if (!Array.isArray(nodeData.textFileRules)) return false;
+
+  let modified = false;
+  nodeData.textFileRules = nodeData.textFileRules.map((rule) => {
+    if (!rule || typeof rule !== "object") return rule;
+    const nextRule = { ...(rule as Record<string, unknown>) };
+    for (const fieldName of textFileRuleOptionFields) {
       const value = nextRule[fieldName];
       if (typeof value !== "string" || !value) continue;
       const nextValue = replace(value);

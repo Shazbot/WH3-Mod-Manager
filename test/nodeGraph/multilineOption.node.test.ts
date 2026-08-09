@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { executeNodeAction } from "../../src/nodeExecutor";
 import { prepareGraphForExecution } from "../../src/nodeGraph/graphSerialization";
-import { substituteFilterOptionValues } from "../../src/nodeGraph/deepCloneOptions";
+import { substituteFilterOptionValues } from "../../src/nodeGraph/nestedOptionValues";
 import { splitMultilineOptionValue } from "../../src/nodeGraph/types";
 import type { AmendedSchemaField, DBField, DBVersion, Pack, PackedFile } from "../../src/packFileTypes";
 

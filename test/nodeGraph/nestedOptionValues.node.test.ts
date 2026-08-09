@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { substituteDeepCloneOptionValues } from "../../src/nodeGraph/deepCloneOptions";
+import { substituteDeepCloneOptionValues } from "../../src/nodeGraph/nestedOptionValues";
 import { prepareGraphForExecution } from "../../src/nodeGraph/graphSerialization";
 
 const createDeepCloneNodeData = () => ({

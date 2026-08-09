@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { executeNodeAction } from "../../src/nodeExecutor";
 import { buildLocKeyPrefixes } from "../../src/nodeGraph/nodeRegistry";
-import { substituteLocRuleValues } from "../../src/nodeGraph/deepCloneOptions";
+import { substituteLocRuleValues } from "../../src/nodeGraph/nestedOptionValues";
 import { LocFields, LocVersion } from "../../src/packFileTypes";
 import type { AmendedSchemaField, DBField, DBVersion, Pack, PackedFile } from "../../src/packFileTypes";
 
