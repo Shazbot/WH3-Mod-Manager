@@ -32,7 +32,8 @@ const getConnectionKey = (connection: SerializedConnection): string =>
 
 const isMultiOutputNodeType = (nodeType?: string): boolean =>
   nodeType === "generaterows" || nodeType === "generaterowsschema" || nodeType === "multifilter";
-const serializeNodeConfigForExecution = (node: SerializedNode): string => {
+/** Exported for tests: every save-node option has to survive this hop on a manual run. */
+export const serializeNodeConfigForExecution = (node: SerializedNode): string => {
   if (node.type === "packfilesdropdown") {
     return node.data.selectedPack || "";
   }
@@ -85,6 +86,7 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
       additionalConfig: node.data.textValue || "",
       flowExecutionId: (node.data as any).flowExecutionId || "",
       openInWindows: (node.data as any).openInWindows ?? false,
+      openInViewer: (node.data as any).openInViewer ?? false,
     });
   }
   if (node.type === "textsurround") {
@@ -162,6 +164,7 @@ const serializeNodeConfigForExecution = (node: SerializedNode): string => {
     return JSON.stringify({
       filename: (node.data as any).filename || "",
       openInWindows: (node.data as any).openInWindows ?? false,
+      openInViewer: (node.data as any).openInViewer ?? false,
     });
   }
   if (node.type === "getcountercolumn") {

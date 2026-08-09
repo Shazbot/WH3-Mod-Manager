@@ -1444,6 +1444,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
   const [packName, setPackName] = useState(data.packName || "");
   const [packedFileName, setPackedFileName] = useState(data.packedFileName || "");
   const [openInWindows, setOpenInWindows] = useState(!!data.openInWindows);
+  const [openInViewer, setOpenInViewer] = useState(!!data.openInViewer);
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
@@ -1556,6 +1557,22 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             />
             <span className="text-xs text-gray-300">
               {localized.nodeEditorOpenFileInWindows || "Open file in Windows"}
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={openInViewer}
+              onChange={(event) => {
+                const newValue = event.target.checked;
+                setOpenInViewer(newValue);
+                dispatchNodeDataUpdate(data, { nodeId: id, openInViewer: newValue });
+              }}
+              className="w-4 h-4"
+            />
+            <span className="text-xs text-gray-300">
+              {localized.nodeEditorOpenFileInViewer || "Open pack in the viewer"}
             </span>
           </label>
         </div>

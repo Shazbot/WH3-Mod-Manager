@@ -1168,7 +1168,8 @@ const schemaAwareFlowNodeTypes = new Set([
   "addnewcolumn",
   "deepclone",
 ]);
-const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
+/** Exported for tests: the same hop as serializeNodeConfigForExecution, for the game-start run. */
+export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
   switch (node.type) {
     case "packfilesdropdown":
       return { selectedPack: node.data.selectedPack || "" };
@@ -1214,6 +1215,7 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
         additionalConfig: node.data.textValue || "",
         flowExecutionId: (node.data as any).flowExecutionId || "",
         openInWindows: (node.data as any).openInWindows ?? false,
+        openInViewer: (node.data as any).openInViewer ?? false,
       };
     case "textsurround":
       return {
@@ -1274,6 +1276,7 @@ const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown 
       return {
         filename: (node.data as any).filename || "",
         openInWindows: (node.data as any).openInWindows ?? false,
+        openInViewer: (node.data as any).openInViewer ?? false,
       };
     case "getcountercolumn":
       return {

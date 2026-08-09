@@ -1311,6 +1311,7 @@ declare global {
 
   interface DumpToTSVNodeData extends DBTablesNodeData {
     openInWindows: boolean;
+    openInViewer?: boolean;
   }
 
   interface DBColumnSelectionTableValues {

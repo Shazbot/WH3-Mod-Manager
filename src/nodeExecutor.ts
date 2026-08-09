@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
-import { getDefaultTableVersions, getLocsTrie } from "./ipcMainListeners";
+import { getDefaultTableVersions, getLocsTrie, openModInViewer } from "./ipcMainListeners";
 import Trie from "./utility/trie";
 import { evaluateFormula } from "./utility/formulaEvaluation";
 import {
@@ -2682,12 +2682,29 @@ async function executeMergeChangesNode(
   };
 }
 
+/**
+ * Shows the pack the save node just wrote.
+ *
+ * Only on a manual run - an executionContext means the flow is running unattended at game start,
+ * where opening a window or an explorer would be an ambush.
+ */
 const openSavedFileForManualRun = async (
   filePath: string,
   openInWindows: boolean,
   executionContext?: FlowExecutionContext,
+  openInViewer = false,
 ) => {
-  if (!openInWindows || executionContext) return;
+  if (executionContext) return;
+
+  if (openInViewer) {
+    try {
+      openModInViewer(filePath);
+    } catch (error) {
+      console.warn(`Failed to open saved file ${filePath} in the viewer:`, error);
+    }
+  }
+
+  if (!openInWindows) return;
 
   try {
     const shellOutput = await shell.openPath(filePath);
@@ -2706,6 +2723,7 @@ async function executeSaveTextNode(
   packedFileName: string,
   openInWindows: boolean,
   executionContext?: FlowExecutionContext,
+  openInViewer = false,
 ): Promise<NodeExecutionResult> {
   console.log(
     `SaveText Node ${nodeId}: Saving text file with packName="${packName}", packedFileName="${packedFileName}"`,
@@ -2744,7 +2762,7 @@ async function executeSaveTextNode(
 
     // Write the pack file
     await writePack([newFile], newPackPath);
-    await openSavedFileForManualRun(newPackPath, openInWindows, executionContext);
+    await openSavedFileForManualRun(newPackPath, openInWindows, executionContext, openInViewer);
 
     console.log(`SaveText Node ${nodeId}: Successfully saved text file to ${newPackPath}`);
 
@@ -2793,6 +2811,7 @@ async function executeSaveChangesNode(
   let additionalConfig = "";
   let flowExecutionId = "";
   let openInWindows = false;
+  let openInViewer = false;
 
   const parsedConfig = getNodeConfig<{
     packName?: string;
@@ -2800,6 +2819,7 @@ async function executeSaveChangesNode(
     additionalConfig?: string;
     flowExecutionId?: string;
     openInWindows?: boolean;
+    openInViewer?: boolean;
   }>(config, textValue);
   if (parsedConfig) {
     packName = parsedConfig.packName || "";
@@ -2807,6 +2827,7 @@ async function executeSaveChangesNode(
     additionalConfig = parsedConfig.additionalConfig || "";
     flowExecutionId = parsedConfig.flowExecutionId || "";
     openInWindows = parsedConfig.openInWindows ?? false;
+    openInViewer = parsedConfig.openInViewer ?? false;
   } else {
     // If not JSON, treat textValue as additionalConfig
     additionalConfig = textValue.trim();
@@ -2824,6 +2845,7 @@ async function executeSaveChangesNode(
       packedFileName,
       openInWindows,
       executionContext,
+      openInViewer,
     );
   }
 
@@ -2914,7 +2936,7 @@ async function executeSaveChangesNode(
     try {
       const filesToSave = await mergeOutputPackFiles(packFilePath, toSave, executionContext);
       await writePack(filesToSave, packFilePath);
-      await openSavedFileForManualRun(packFilePath, openInWindows, executionContext);
+      await openSavedFileForManualRun(packFilePath, openInWindows, executionContext, openInViewer);
       return {
         success: true,
         data: {
@@ -3015,7 +3037,7 @@ async function executeSaveChangesNode(
   const filesToSave = await mergeOutputPackFiles(newPackPath, toSave, executionContext);
 
   await writePack(filesToSave, newPackPath);
-  await openSavedFileForManualRun(newPackPath, openInWindows, executionContext);
+  await openSavedFileForManualRun(newPackPath, openInWindows, executionContext, openInViewer);
 
   try {
     // Parse save configuration (could be JSON, simple path, or custom format)

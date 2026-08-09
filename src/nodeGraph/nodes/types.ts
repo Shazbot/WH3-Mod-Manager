@@ -55,6 +55,8 @@ export interface SaveChangesNodeData extends NodeData {
   packName: string;
   packedFileName: string;
   openInWindows: boolean;
+  /** Open the written pack in the viewer window after a manual run. */
+  openInViewer?: boolean;
   inputType: "ChangedColumnSelection" | "Text" | "TableSelection";
 }
 

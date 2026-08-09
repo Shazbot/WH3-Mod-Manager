@@ -192,6 +192,22 @@ let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
 let customModFoldersWatcher: chokidar.FSWatcher | undefined;
+/**
+ * Opens a pack in the viewer, published by registerIpcMainListeners.
+ *
+ * The viewer is normally opened by an IPC message from the renderer. Flows run in the main process
+ * and have no renderer to send one, so they need a way in from this side.
+ */
+let openModInViewerFromMainProcess: ((modPath: string) => void) | undefined;
+
+export const openModInViewer = (modPath: string) => {
+  if (!openModInViewerFromMainProcess) {
+    console.warn(`Cannot open ${modPath} in the viewer: main process listeners are not registered`);
+    return;
+  }
+  openModInViewerFromMainProcess(modPath);
+};
+
 export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
@@ -6988,7 +7004,7 @@ export const registerIpcMainListeners = (
       windows.techTreesWindow = undefined;
     });
   };
-  ipcMain.on("requestOpenModInViewer", (event, modPath: string) => {
+  const openModInViewerWindow = (modPath: string) => {
     for (const vanillaPackData of gameToVanillaPacksData[appData.currentGame]) {
       const baseVanillaPackName = vanillaPackData.name;
       if (modPath == baseVanillaPackName) {
@@ -7013,7 +7029,9 @@ export const registerIpcMainListeners = (
     } else if (viewerWindow) {
       viewerWindow.focus();
     }
-  });
+  };
+  openModInViewerFromMainProcess = openModInViewerWindow;
+  ipcMain.on("requestOpenModInViewer", (_event, modPath: string) => openModInViewerWindow(modPath));
   ipcMain.on("requestOpenSkillsWindow", async (event, mods: Mod[]) => {
     console.log("ON requestOpenSkillsWindow");
     const enabledMods = mods.filter((mod) => mod.isEnabled);

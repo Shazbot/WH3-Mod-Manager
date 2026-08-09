@@ -156,6 +156,7 @@ export interface SerializedNode {
     sourceInputColumns?: string[] | null;
     indexedTableColumns?: string[] | null;
     openInWindows?: boolean;
+    openInViewer?: boolean;
     customSchemaColumns?: string[];
     customSchemaData?: unknown;
     cloneTree?: DeepCloneTreeNode;

@@ -378,6 +378,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       packName: "",
       packedFileName: "",
       openInWindows: false,
+      openInViewer: false,
       inputType: "ChangedColumnSelection",
     }),
   }),

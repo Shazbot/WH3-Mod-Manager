@@ -121,6 +121,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         sourceInputColumns: data.sourceInputColumns || null,
         indexedTableColumns: data.indexedTableColumns || null,
         openInWindows: data.openInWindows,
+        openInViewer: data.openInViewer,
         customSchemaColumns: data.customSchemaColumns || [],
         customSchemaData: data.customSchemaData || null,
         cloneTree: data.cloneTree as SerializedNode["data"]["cloneTree"],
