@@ -3123,6 +3123,8 @@ export const registerIpcMainListeners = (
     createdAt: number;
     modsWithFlows: Array<{ path: string; name: string }>;
     createdFlowPackFileNames: string[];
+    /** Packs a flow wrote a full replacement for, which are left out of the mod list. */
+    replacedPackPaths?: string[];
   }
   interface FlowExecutionCache {
     version: number;
@@ -8436,6 +8438,9 @@ export const registerIpcMainListeners = (
           (iterMod) => !startGameOptions.packDataOverwrites[iterMod.path],
         );
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
+        const overwriteModEntries: Array<{ sourcePath: string; name: string }> = [];
+        /** Packs a flow wrote a whole replacement for; the original must not be loaded alongside it. */
+        const replacedPackPaths = new Set<string>();
         if (enabledModsWithOverwrites.length > 0) {
           const overwritesDirPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
@@ -8454,7 +8459,9 @@ export const registerIpcMainListeners = (
               nodePath.join(overwritesDirPath, pack.name),
               startGameOptions.packDataOverwrites[pack.path],
             );
-            extraEnabledMods += `\nmod "${pack.name}";`;
+            // Held back rather than appended, because a flow may still replace this pack outright -
+            // and that decision is only known once flows have run, further down.
+            overwriteModEntries.push({ sourcePath: pack.path, name: pack.name });
           }
         }
         console.log("userFlowOptions:", startGameOptions.userFlowOptions);
@@ -8491,6 +8498,9 @@ export const registerIpcMainListeners = (
                 enabledModsWithFlows = sortedMods.filter((mod) =>
                   cachedEntry.modsWithFlows.some((cachedMod) => cachedMod.path === mod.path),
                 );
+                for (const replacedPath of cachedEntry.replacedPackPaths ?? []) {
+                  replacedPackPaths.add(replacedPath);
+                }
                 mainWindow?.webContents.send("addToast", {
                   type: "info",
                   messages: ["Using cached flow output..."],
@@ -8587,7 +8597,11 @@ export const registerIpcMainListeners = (
               console.log(
                 `Executing flows for pack: ${pack.name} (using ${hasOverwrites ? "overwritten" : "original"} pack)`,
               );
-              const { createdPackPaths, hadErrors } = await executeFlowsForPack(
+              const {
+                createdPackPaths,
+                replacedPackPaths: flowReplacedPackPaths,
+                hadErrors,
+              } = await executeFlowsForPack(
                 packPathToUse,
                 "", // No target path needed
                 startGameOptions.userFlowOptions,
@@ -8595,6 +8609,7 @@ export const registerIpcMainListeners = (
                 sourcePackForFlowExecution,
               );
               createdFlowPacks.push(...createdPackPaths);
+              for (const replacedPath of flowReplacedPackPaths) replacedPackPaths.add(replacedPath);
               flowExecutionHadErrors = flowExecutionHadErrors || hadErrors;
             }
             console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
@@ -8617,12 +8632,25 @@ export const registerIpcMainListeners = (
                 createdFlowPackFileNames: [
                   ...new Set(createdFlowPacks.map((path) => nodePath.basename(path))),
                 ],
+                replacedPackPaths: [...replacedPackPaths],
               };
               await saveFlowExecutionCache();
             } else {
               console.log("Skipping flow execution cache update because at least one flow failed.");
             }
           }
+        }
+        // A flow that copied a pack wholesale wrote a replacement for it, so the original is dropped
+        // from the mod list - loading both would put the files the flow removed back in.
+        if (replacedPackPaths.size > 0) {
+          console.log("Packs replaced by flow output:", [...replacedPackPaths]);
+          enabledModsWithoutMergedInMods = enabledModsWithoutMergedInMods.filter(
+            (iterMod) => !replacedPackPaths.has(iterMod.path),
+          );
+        }
+        for (const overwriteEntry of overwriteModEntries) {
+          if (replacedPackPaths.has(overwriteEntry.sourcePath)) continue;
+          extraEnabledMods += `\nmod "${overwriteEntry.name}";`;
         }
         // Add flow packs to the mod list
         if (createdFlowPacks.length > 0) {

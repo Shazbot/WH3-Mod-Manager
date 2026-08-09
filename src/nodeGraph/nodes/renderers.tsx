@@ -7216,6 +7216,7 @@ export const PackFileOperationsNode: React.FC<{ data: PackFileOperationsNodeData
               localized.nodeEditorPackFileOperationsTooltip ||
               "Copies, moves, renames or deletes files, writing out a copy of the pack with the changes applied.\n\n" +
                 "Given packs, each pack a rule changes is carried into the output pack with the operations applied - so a deleted file is simply not in the copy. A pack no rule touches is left alone entirely.\n\n" +
+                "The original pack is never edited. When the game starts it loads the output pack in place of the pack that was copied, so removals and renames take effect. Running manually writes the pack to data/ and you disable the original yourself.\n\n" +
                 "Given files from an earlier node it works on those and passes the rest along.\n\n" +
                 "Rename changes the file name and keeps the folder. Move and copy take a whole path, and accept {name}, {dir} and, when targeting by regex, the capture groups as $1."
             }

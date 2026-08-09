@@ -1454,9 +1454,11 @@ export const executeFlowsForPack = async (
   userFlowOptions: UserFlowOptions,
   packName: string,
   sourcePack?: Pick<Pack, "packedFiles" | "lastChangedLocal" | "size">,
-): Promise<{ createdPackPaths: string[]; hadErrors: boolean }> => {
+): Promise<{ createdPackPaths: string[]; replacedPackPaths: string[]; hadErrors: boolean }> => {
   void pathTarget;
   const createdPackPaths = new Set<string>();
+  /** Packs a flow wrote a full replacement for, which must not also be loaded. */
+  const replacedPackPaths = new Set<string>();
   let hadErrors = false;
   const packStartTime = performance.now();
   const isDebug = isFlowExecutionDebugEnabled();
@@ -1474,7 +1476,11 @@ export const executeFlowsForPack = async (
     const flowFiles = sourceMod.packedFiles.filter((file) => file.name.startsWith("whmmflows\\"));
     if (flowFiles.length === 0) {
       console.log("No flow files found in pack");
-      return { createdPackPaths: Array.from(createdPackPaths), hadErrors };
+      return {
+        createdPackPaths: Array.from(createdPackPaths),
+        replacedPackPaths: Array.from(replacedPackPaths),
+        hadErrors,
+      };
     }
     console.log(`Found ${flowFiles.length} flow files in pack`);
     // Get user options for this pack
@@ -1528,6 +1534,9 @@ export const executeFlowsForPack = async (
               if (savedPath) {
                 createdPackPaths.add(savedPath);
               }
+              for (const replacedPath of nodeResult.data.replacedPackPaths ?? []) {
+                replacedPackPaths.add(replacedPath);
+              }
             }
           }
         } else {
@@ -1547,7 +1556,11 @@ export const executeFlowsForPack = async (
     console.error("Error in executeFlowsForPack:", error);
     hadErrors = true;
   }
-  return { createdPackPaths: Array.from(createdPackPaths), hadErrors };
+  return {
+    createdPackPaths: Array.from(createdPackPaths),
+    replacedPackPaths: Array.from(replacedPackPaths),
+    hadErrors,
+  };
 };
 export const writeCopyPack = async (
   pathSource: string,

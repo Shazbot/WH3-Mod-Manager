@@ -196,4 +196,85 @@ describe("save changes node", () => {
     expect(savedFile).toBeDefined();
     expect(savedFile?.buffer).toEqual(artBytes);
   });
+
+  it("reports the packs it replaces, so the mod list can leave the originals out", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const copiedFile = (name: string, replacesSourcePackPath?: string) => ({
+      name,
+      fileName: name,
+      sourceFile: {} as Pack,
+      table: {
+        name,
+        file_size: 4,
+        start_pos: 0,
+        buffer: Buffer.from("data"),
+      } as PackedFile,
+      outputFileName: name,
+      replacesSourcePackPath,
+    });
+
+    const result = await executeNodeAction({
+      nodeId: "save_changes_4",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "replacement-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          copiedFile("script\\a.lua", "C:\\game\\data\\my_mod.pack"),
+          copiedFile("script\\b.lua", "C:\\game\\data\\my_mod.pack"),
+          copiedFile("script\\c.lua", "C:\\game\\data\\other_mod.pack"),
+          // Not part of any pack copy, so it must not make a pack look replaced.
+          copiedFile("ui\\generated.png"),
+        ],
+        sourceFiles: [],
+        tableCount: 4,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    expect(saveData.replacedPackPaths?.toSorted()).toEqual([
+      "C:\\game\\data\\my_mod.pack",
+      "C:\\game\\data\\other_mod.pack",
+    ]);
+    // A manual run has no mod list to fix up, so the message has to say it.
+    expect(saveData.message).toContain("disable the original");
+  });
+
+  it("reports nothing replaced when no table claims to stand in for a pack", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const artPath = "ui\\generated.png";
+    const result = await executeNodeAction({
+      nodeId: "save_changes_5",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "plain-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          {
+            name: artPath,
+            fileName: artPath,
+            sourceFile: {} as Pack,
+            table: { name: artPath, file_size: 4, start_pos: 0, buffer: Buffer.from("data") } as PackedFile,
+            outputFileName: artPath,
+          },
+        ],
+        sourceFiles: [],
+        tableCount: 1,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    expect(saveData.replacedPackPaths).toEqual([]);
+    expect(saveData.message).not.toContain("Replaces");
+  });
 });

@@ -1291,6 +1291,13 @@ declare global {
      * `table` rather than schemaFields.
      */
     outputFileName?: string;
+    /**
+     * Path of a pack this entry is a copy of a file from, when the flow is producing a whole
+     * replacement for that pack. The save node collects these so the game can be launched with the
+     * output pack in place of the original - without that, a file the flow removed would still load
+     * from the pack it came from.
+     */
+    replacesSourcePackPath?: string;
   }
 
   interface DBTablesNodeData {
@@ -1333,6 +1340,8 @@ declare global {
     format: string;
     fileName?: string;
     message: string;
+    /** Packs this output was written as a replacement for, so they can be left out of the mod list. */
+    replacedPackPaths?: string[];
   }
 
   interface GroupedTextNodeData {

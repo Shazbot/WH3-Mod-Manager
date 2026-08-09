@@ -2823,6 +2823,7 @@ async function executeSaveChangesNode(
   // Handle TableSelection input - save table data
   if (inputData && inputData.type === "TableSelection") {
     const toSave = [] as NewPackedFile[];
+    const replacedPackPaths = new Set<string>();
 
     for (const table of inputData.tables || []) {
       // A raw payload whose path is meaningful to the game (art keyed by a unit name) is written
@@ -2833,6 +2834,9 @@ async function executeSaveChangesNode(
           buffer: table.table.buffer,
           file_size: table.table.buffer.length,
         });
+        // Only what actually reaches the output counts as replacing a pack, so a copy the flow
+        // built but never wired here leaves the original in the mod list.
+        if (table.replacesSourcePackPath) replacedPackPaths.add(table.replacesSourcePackPath);
         continue;
       }
 
@@ -2910,7 +2914,15 @@ async function executeSaveChangesNode(
           type: "SaveResult",
           savedTo: packFilePath,
           format: "pack",
-          message: `Successfully saved ${filesToSave.length} table(s) to ${packFilePath}`,
+          message:
+            `Successfully saved ${filesToSave.length} table(s) to ${packFilePath}` +
+            // At game start the mod list drops these automatically; a manual run has no mod list, so
+            // say it, otherwise the original keeps supplying the files the flow removed.
+            (replacedPackPaths.size > 0
+              ? `. Replaces ${[...replacedPackPaths].map((path) => nodePath.basename(path)).join(", ")}` +
+                (flowExecutionId ? "" : " - disable the original when loading this pack manually")
+              : ""),
+          replacedPackPaths: [...replacedPackPaths],
         },
       };
     } catch (error) {
@@ -7574,6 +7586,9 @@ async function executePackFileOperationsNode(
             buffer,
           } as PackedFile,
           outputFileName: copy.targetPath,
+          // Marks the output as standing in for this pack, so the game loads it instead of the
+          // original - otherwise a deleted file would still be found in the pack it came from.
+          replacesSourcePackPath: packFile.path,
         });
       }
     } catch (error) {
