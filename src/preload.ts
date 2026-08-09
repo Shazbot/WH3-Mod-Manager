@@ -418,11 +418,22 @@ const api = {
     packPath: string,
     newPackName: string,
     newPackDirectory: string,
+    overwriteExisting?: boolean,
   ): Promise<{
     success: boolean;
     savedPath?: string;
+    /** A pack is already at savedPath and overwriteExisting was not set. Nothing was written. */
+    alreadyExists?: boolean;
+    warning?: string;
     error?: string;
-  }> => ipcRenderer.invoke("savePackAsWithUnsavedFiles", packPath, newPackName, newPackDirectory),
+  }> =>
+    ipcRenderer.invoke(
+      "savePackAsWithUnsavedFiles",
+      packPath,
+      newPackName,
+      newPackDirectory,
+      overwriteExisting,
+    ),
 
   getVisualsUnitsData: (
     enabledMods: Mod[],

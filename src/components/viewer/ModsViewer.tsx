@@ -69,6 +69,8 @@ const ModsViewer = memo(() => {
   const [saveAsPackName, setSaveAsPackName] = React.useState("");
   const [saveAsDirectory, setSaveAsDirectory] = React.useState<string | undefined>(undefined);
   const [isSaveAsProcessing, setIsSaveAsProcessing] = React.useState(false);
+  /** Path of the pack Save As would replace, while we ask whether to. */
+  const [overwriteConfirmPath, setOverwriteConfirmPath] = React.useState<string | null>(null);
   const [isNewPackModalOpen, setIsNewPackModalOpen] = React.useState(false);
   const [newPackName, setNewPackName] = React.useState("");
   const [isNewPackProcessing, setIsNewPackProcessing] = React.useState(false);
@@ -315,6 +317,9 @@ const ModsViewer = memo(() => {
   );
 
   const hasUnsavedFiles = unsavedFiles.length > 0;
+  // Save As works on any pack that exists on disk, changed or not - it saves a copy. A memory pack
+  // has no file to copy, so it needs something unsaved in it before there is anything to write.
+  const canSavePackAs = !packPath.startsWith("memory://") || hasUnsavedFiles;
 
   useEffect(() => {
     if (!activeTabId) return;
@@ -510,9 +515,10 @@ const ModsViewer = memo(() => {
   }, [hasUnsavedFiles, packPath, showDialog, showToast]);
 
   const handleSavePackAs = useCallback(async () => {
-    if (!hasUnsavedFiles) return;
+    // Deliberately not gated on unsaved changes: Save As on an untouched pack saves a copy of it.
     setSaveAsPackName(getDefaultSaveAsPackName(packPath));
     setSaveAsDirectory(undefined);
+    setOverwriteConfirmPath(null);
     setIsSaveAsModalOpen(true);
 
     // The data folder is where the game reads packs from, so it is the useful default. Fetched per
@@ -520,41 +526,55 @@ const ModsViewer = memo(() => {
     const dataFolder = await window.api?.getDataFolder();
     // Only fills a still-empty field: Browse may already have won the race.
     if (dataFolder) setSaveAsDirectory((currentDirectory) => currentDirectory ?? dataFolder);
-  }, [hasUnsavedFiles, packPath]);
+  }, [packPath]);
 
-  const handleSaveAsConfirm = useCallback(async () => {
-    if (!saveAsPackName.trim() || !saveAsDirectory) {
-      showDialog("Please enter a pack name and select a directory", { title: "Missing Information" });
-      return;
-    }
-
-    setIsSaveAsProcessing(true);
-
-    try {
-      const result = await window.api?.savePackAsWithUnsavedFiles(
-        packPath,
-        saveAsPackName.trim(),
-        saveAsDirectory,
-      );
-      if (result?.success) {
-        console.log("Pack saved as successfully:", result.savedPath);
-        setIsSaveAsModalOpen(false);
-        setSaveAsPackName("");
-        setSaveAsDirectory(undefined);
-        showToast(`Pack saved to: ${result.savedPath}`);
-      } else {
-        console.error("Failed to save pack as:", result?.error);
-        showDialog(`Failed to save pack as: ${result?.error || "Unknown error"}`, { title: "Save Failed" });
+  const handleSaveAsConfirm = useCallback(
+    async (overwriteExisting = false) => {
+      if (!saveAsPackName.trim() || !saveAsDirectory) {
+        showDialog("Please enter a pack name and select a directory", { title: "Missing Information" });
+        return;
       }
-    } catch (error) {
-      console.error("Error saving pack as:", error);
-      showDialog(`Error saving pack as: ${error instanceof Error ? error.message : "Unknown error"}`, {
-        title: "Save Failed",
-      });
-    } finally {
-      setIsSaveAsProcessing(false);
-    }
-  }, [packPath, saveAsDirectory, saveAsPackName, showDialog, showToast]);
+
+      setIsSaveAsProcessing(true);
+
+      try {
+        const result = await window.api?.savePackAsWithUnsavedFiles(
+          packPath,
+          saveAsPackName.trim(),
+          saveAsDirectory,
+          overwriteExisting,
+        );
+        if (result?.alreadyExists) {
+          // Nothing was written; ask before replacing what is there.
+          setOverwriteConfirmPath(result.savedPath ?? "");
+        } else if (result?.success) {
+          console.log("Pack saved as successfully:", result.savedPath);
+          setIsSaveAsModalOpen(false);
+          setOverwriteConfirmPath(null);
+          setSaveAsPackName("");
+          setSaveAsDirectory(undefined);
+          if (result.warning) {
+            showDialog(`${result.warning}\n\nPack: ${result.savedPath}`, { title: "Pack Saved" });
+          } else {
+            showToast(`Pack saved to: ${result.savedPath}`);
+          }
+        } else {
+          console.error("Failed to save pack as:", result?.error);
+          showDialog(`Failed to save pack as: ${result?.error || "Unknown error"}`, {
+            title: "Save Failed",
+          });
+        }
+      } catch (error) {
+        console.error("Error saving pack as:", error);
+        showDialog(`Error saving pack as: ${error instanceof Error ? error.message : "Unknown error"}`, {
+          title: "Save Failed",
+        });
+      } finally {
+        setIsSaveAsProcessing(false);
+      }
+    },
+    [packPath, saveAsDirectory, saveAsPackName, showDialog, showToast],
+  );
 
   const handleSelectSaveAsDirectory = useCallback(async () => {
     try {
@@ -759,11 +779,45 @@ const ModsViewer = memo(() => {
             Cancel
           </button>
           <button
-            onClick={handleSaveAsConfirm}
+            // Not passed directly: the click event would arrive as the overwrite argument.
+            onClick={() => void handleSaveAsConfirm()}
             disabled={isSaveAsProcessing || !saveAsPackName.trim() || !saveAsDirectory}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaveAsProcessing ? "Saving..." : "Save"}
+          </button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Overwrite confirmation, shown over the Save As modal so Cancel goes back to it */}
+      <Modal
+        onClose={() => setOverwriteConfirmPath(null)}
+        show={!!overwriteConfirmPath}
+        size="md"
+        position="center"
+      >
+        <Modal.Header>Pack Already Exists</Modal.Header>
+        <Modal.Body>
+          <div className="text-sm text-gray-200">
+            A pack already exists at:
+            <div className="mt-2 mb-3 break-all text-gray-400">{overwriteConfirmPath}</div>
+            Overwrite it? The existing pack will be replaced and cannot be recovered.
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            onClick={() => setOverwriteConfirmPath(null)}
+            disabled={isSaveAsProcessing}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void handleSaveAsConfirm(true)}
+            disabled={isSaveAsProcessing}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaveAsProcessing ? "Overwriting..." : "Overwrite"}
           </button>
         </Modal.Footer>
       </Modal>
@@ -839,8 +893,8 @@ const ModsViewer = memo(() => {
       <div className="dark:text-gray-300 explicit-height-without-topbar-and-padding flex flex-col">
         {isOpen && (
           <>
-            {/* Toolbar */}
-            {(isFeaturesForModdersEnabled || hasUnsavedFiles) && (
+            {/* Toolbar - Save As needs no unsaved changes, so it can be the only thing in here */}
+            {(isFeaturesForModdersEnabled || hasUnsavedFiles || canSavePackAs) && (
               <div className="flex justify-between items-center p-2 bg-gray-800 border-b border-gray-600">
                 <div className="flex gap-2">
                   {isFeaturesForModdersEnabled && (
@@ -868,9 +922,9 @@ const ModsViewer = memo(() => {
                   )}
                 </div>
 
-                {hasUnsavedFiles && (
+                {(hasUnsavedFiles || canSavePackAs) && (
                   <div className="flex gap-2">
-                    {!activeViewerPackPath.startsWith("memory://") && (
+                    {hasUnsavedFiles && !activeViewerPackPath.startsWith("memory://") && (
                       <button
                         onClick={handleSavePack}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
@@ -886,20 +940,22 @@ const ModsViewer = memo(() => {
                         Save Pack
                       </button>
                     )}
-                    <button
-                      onClick={() => void handleSavePackAs()}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 19l9 2-9-18-9 18 9-2m0 0v-8m0 8l-6-4m6 4l6-4"
-                        />
-                      </svg>
-                      Save As
-                    </button>
+                    {canSavePackAs && (
+                      <button
+                        onClick={() => void handleSavePackAs()}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 19l9 2-9-18-9 18 9-2m0 0v-8m0 8l-6-4m6 4l6-4"
+                          />
+                        </svg>
+                        Save As
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

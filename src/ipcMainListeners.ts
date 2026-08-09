@@ -1,5 +1,6 @@
 import assert from "assert";
 import { getDBPackedFilePath, isLocPackedFilePath, parseLiveDBTablePath } from "./utility/packFileHelpers";
+import { planSaveAs } from "./utility/saveAsPlan";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
@@ -3773,6 +3774,22 @@ export const registerIpcMainListeners = (
       }
     },
   );
+  /**
+   * Drops everything read from a pack file that has just been written over, so the next read sees
+   * the new contents instead of the old ones.
+   */
+  const invalidateCachedPackData = async (packPath: string) => {
+    appData.packsData = appData.packsData.filter((packData) => packData.path !== packPath);
+    delete appData.packMetaData[packPath];
+    if (packHeaderCache) {
+      delete packHeaderCache[packPath];
+      await savePackHeaderCache();
+    }
+    if (flowExecutionCache) {
+      delete flowExecutionCache.byGame[appData.currentGame];
+      await saveFlowExecutionCache();
+    }
+  };
   ipcMain.handle("savePackWithUnsavedFiles", async (event, packPath: string) => {
     try {
       console.log("savePackWithUnsavedFiles:", packPath);
@@ -3827,16 +3844,7 @@ export const registerIpcMainListeners = (
         }
       }
       if (replacedOriginal) {
-        appData.packsData = appData.packsData.filter((packData) => packData.path !== packPath);
-        delete appData.packMetaData[packPath];
-        if (packHeaderCache) {
-          delete packHeaderCache[packPath];
-          await savePackHeaderCache();
-        }
-        if (flowExecutionCache) {
-          delete flowExecutionCache.byGame[appData.currentGame];
-          await saveFlowExecutionCache();
-        }
+        await invalidateCachedPackData(savePath);
       }
       // Clear unsaved files for this pack
       delete appData.unsavedPacksData[packPath];
@@ -3858,28 +3866,62 @@ export const registerIpcMainListeners = (
   });
   ipcMain.handle(
     "savePackAsWithUnsavedFiles",
-    async (event, packPath: string, newPackName: string, newPackDirectory: string) => {
+    async (
+      event,
+      packPath: string,
+      newPackName: string,
+      newPackDirectory: string,
+      overwriteExisting?: boolean,
+    ) => {
       try {
         console.log("savePackAsWithUnsavedFiles:", packPath, newPackName, newPackDirectory);
-        const unsavedFiles = appData.unsavedPacksData[packPath];
-        if (!unsavedFiles || unsavedFiles.length === 0) {
+        // No unsaved files is not an error: Save As on an untouched pack means "save a copy of it".
+        const unsavedFiles = appData.unsavedPacksData[packPath] ?? [];
+        const isMemoryPack = packPath.startsWith("memory://");
+        // Create new pack path with user-provided name and directory
+        const savePath = nodePath.join(newPackDirectory, `${newPackName}.pack`);
+        const plan = planSaveAs({
+          isMemoryPack,
+          unsavedFileCount: unsavedFiles.length,
+          targetExists: fsExtra.existsSync(savePath),
+          targetIsSourcePack: !isMemoryPack && nodePath.resolve(savePath) === nodePath.resolve(packPath),
+          overwriteExisting: !!overwriteExisting,
+        });
+
+        if (plan.action === "reject") return { success: false, error: plan.reason };
+        if (plan.action === "confirmOverwrite") {
+          // Its own outcome rather than a plain error, so the caller can offer to overwrite instead
+          // of making the user pick another name. Nothing has been written at this point.
           return {
             success: false,
-            error: "No unsaved files found for this pack",
+            alreadyExists: true,
+            savedPath: savePath,
+            error: `Pack file already exists at: ${savePath}`,
           };
         }
-        // Check if this is a memory pack (created with "New Pack" button)
-        const isMemoryPack = packPath.startsWith("memory://");
-        let pack;
-        let useFastAppendMode = true;
-        if (isMemoryPack) {
-          // For memory packs, we don't have a source pack to clone, so don't use fast append mode
-          useFastAppendMode = false;
-          pack = undefined;
-        } else {
-          // For disk packs, read the original pack
-          pack = await readPack(packPath, { skipParsingTables: true });
+        if (plan.action === "leaveAsIs") {
+          return {
+            success: true,
+            savedPath: savePath,
+            warning: "There were no unsaved changes, so the pack was left as it is.",
+          };
         }
+        if (plan.action === "copyPack") {
+          await fsExtra.copy(packPath, savePath, { overwrite: true });
+          // A file copy carries the source's last-modified time over on Windows, so a pack saved
+          // just now shows up as however old the pack it came from was. The written path gets a
+          // current timestamp for free, and mod load order and update checks read this date, so the
+          // copy is stamped to match.
+          const savedAt = new Date();
+          await fsExtra.utimes(savePath, savedAt, savedAt);
+          console.log(`Pack copied to: ${savePath}`);
+          if (overwriteExisting) await invalidateCachedPackData(savePath);
+          return { success: true, savedPath: savePath };
+        }
+
+        // For memory packs, don't use fast append mode since there's no source pack to clone
+        const pack = isMemoryPack ? undefined : await readPack(packPath, { skipParsingTables: true });
+        const useFastAppendMode = !isMemoryPack;
         // Convert unsaved files to format for writePack (similar to DBClone.ts)
         const filesToSave = unsavedFiles.map((file) => {
           const buffer = file.buffer || Buffer.from(file.text || "");
@@ -3893,19 +3935,11 @@ export const registerIpcMainListeners = (
         const sortedFilesToSave = filesToSave.toSorted((firstPf, secondPf) => {
           return firstPf.name.localeCompare(secondPf.name);
         });
-        // Create new pack path with user-provided name and directory
-        const savePath = nodePath.join(newPackDirectory, `${newPackName}.pack`);
-        // Check if file already exists
-        if (fsExtra.existsSync(savePath)) {
-          return {
-            success: false,
-            error: `Pack file already exists at: ${savePath}`,
-          };
-        }
         // Write the pack with unsaved files appended/overwritten (as done in DBClone.ts)
-        // For memory packs, don't use fast append mode since there's no source pack
         await writePack(sortedFilesToSave, savePath, pack, useFastAppendMode);
         console.log(`Pack saved to: ${savePath}`);
+        // Whatever was read from the pack we just wrote over describes the old file now.
+        if (overwriteExisting) await invalidateCachedPackData(savePath);
         // Clear unsaved files for this pack
         delete appData.unsavedPacksData[packPath];
         windows.viewerWindow?.webContents.send("setUnsavedPacksData", packPath, []);
