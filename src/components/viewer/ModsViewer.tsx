@@ -21,7 +21,7 @@ import {
   getDBPackedFilePath,
   getPackNameFromPath,
 } from "@/src/utility/packFileHelpers";
-import { getPackFileInventory } from "./viewerHelpers";
+import { getDefaultSaveAsPackName, getPackFileInventory } from "./viewerHelpers";
 
 type ViewerTabKind = "db" | "flow" | "file";
 
@@ -75,6 +75,7 @@ const ModsViewer = memo(() => {
   const [openTabs, setOpenTabs] = useState<ViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [messageDialog, setMessageDialog] = useState<{ title: string; message: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const activeTab = useMemo(() => openTabs.find((tab) => tab.id === activeTabId) ?? null, [openTabs, activeTabId]);
   const activeViewerPackPath = activeTab?.packPath ?? packPath;
   const currentPackData = useAppSelector((state) => selectCurrentPackData(state, activeViewerPackPath));
@@ -104,6 +105,17 @@ const ModsViewer = memo(() => {
     setMessageDialog({ title: options?.title ?? "Message", message });
   }, []);
 
+  /** For outcomes worth confirming but not worth a click to dismiss, like a successful save. */
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [toast]);
+
   useEffect(() => {
     currentDBTableSelectionRef.current = currentDBTableSelection;
     currentFlowFileSelectionRef.current = currentFlowFileSelection;
@@ -116,6 +128,9 @@ const ModsViewer = memo(() => {
       window.focus();
       setTimeout(() => {
         saveAsPackNameInputRef.current?.focus();
+        // The field arrives prefilled with the open pack's name, so select it: typing replaces it,
+        // and clicking puts the caret where you clicked.
+        saveAsPackNameInputRef.current?.select();
       }, 0);
     }
   }, [isSaveAsModalOpen]);
@@ -476,10 +491,12 @@ const ModsViewer = memo(() => {
       const result = await window.api?.savePackWithUnsavedFiles(packPath);
       if (result?.success) {
         console.log("Pack saved successfully:", result.savedPath);
-        const message = result.warning
-          ? `${result.warning}\n\nSaved to: ${result.savedPath}`
-          : `Pack saved successfully to: ${result.savedPath}`;
-        showDialog(message, { title: "Pack Saved" });
+        // A warning is something to read, so it keeps the dialog; a plain success does not.
+        if (result.warning) {
+          showDialog(`${result.warning}\n\nSaved to: ${result.savedPath}`, { title: "Pack Saved" });
+        } else {
+          showToast(`Pack saved to: ${result.savedPath}`);
+        }
       } else {
         console.error("Failed to save pack:", result?.error);
         showDialog(`Failed to save pack: ${result?.error || "Unknown error"}`, { title: "Save Failed" });
@@ -490,14 +507,20 @@ const ModsViewer = memo(() => {
         title: "Save Failed",
       });
     }
-  }, [hasUnsavedFiles, packPath, showDialog]);
+  }, [hasUnsavedFiles, packPath, showDialog, showToast]);
 
-  const handleSavePackAs = () => {
+  const handleSavePackAs = useCallback(async () => {
     if (!hasUnsavedFiles) return;
-    setSaveAsPackName("");
+    setSaveAsPackName(getDefaultSaveAsPackName(packPath));
     setSaveAsDirectory(undefined);
     setIsSaveAsModalOpen(true);
-  };
+
+    // The data folder is where the game reads packs from, so it is the useful default. Fetched per
+    // open rather than cached because the selected game can change while the viewer stays up.
+    const dataFolder = await window.api?.getDataFolder();
+    // Only fills a still-empty field: Browse may already have won the race.
+    if (dataFolder) setSaveAsDirectory((currentDirectory) => currentDirectory ?? dataFolder);
+  }, [hasUnsavedFiles, packPath]);
 
   const handleSaveAsConfirm = useCallback(async () => {
     if (!saveAsPackName.trim() || !saveAsDirectory) {
@@ -515,10 +538,10 @@ const ModsViewer = memo(() => {
       );
       if (result?.success) {
         console.log("Pack saved as successfully:", result.savedPath);
-        showDialog(`Pack saved successfully to: ${result.savedPath}`, { title: "Pack Saved" });
         setIsSaveAsModalOpen(false);
         setSaveAsPackName("");
         setSaveAsDirectory(undefined);
+        showToast(`Pack saved to: ${result.savedPath}`);
       } else {
         console.error("Failed to save pack as:", result?.error);
         showDialog(`Failed to save pack as: ${result?.error || "Unknown error"}`, { title: "Save Failed" });
@@ -531,21 +554,25 @@ const ModsViewer = memo(() => {
     } finally {
       setIsSaveAsProcessing(false);
     }
-  }, [packPath, saveAsDirectory, saveAsPackName, showDialog]);
+  }, [packPath, saveAsDirectory, saveAsPackName, showDialog, showToast]);
 
   const handleSelectSaveAsDirectory = useCallback(async () => {
     try {
-      const selectedDirectory = await window.api?.selectDirectory();
+      const selectedDirectory = await window.api?.selectDirectory(saveAsDirectory);
       if (selectedDirectory) {
         setSaveAsDirectory(selectedDirectory);
       }
+      // The folder dialog is parented on this window, but focus can still land on the main window
+      // when it closes, leaving the half-filled modal behind another window.
+      window.focus();
+      saveAsPackNameInputRef.current?.focus();
     } catch (error) {
       console.error("Error selecting directory:", error);
       showDialog(`Error selecting directory: ${error instanceof Error ? error.message : "Unknown error"}`, {
         title: "Directory Selection Failed",
       });
     }
-  }, [showDialog]);
+  }, [saveAsDirectory, showDialog]);
 
   const handleNewPack = () => {
     if (!isFeaturesForModdersEnabled) return;
@@ -707,7 +734,7 @@ const ModsViewer = memo(() => {
                 <input
                   type="text"
                   value={saveAsDirectory || ""}
-                  placeholder="Click Browse to select directory"
+                  placeholder="Loading data folder, or click Browse to pick another"
                   readOnly
                   className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-none"
                 />
@@ -783,6 +810,17 @@ const ModsViewer = memo(() => {
         </Modal.Footer>
       </Modal>
 
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <button
+            onClick={() => setToast(null)}
+            className="pointer-events-auto max-w-[80vw] px-6 py-3 rounded-lg bg-green-700 text-white text-sm shadow-lg break-all text-left"
+          >
+            {toast}
+          </button>
+        </div>
+      )}
+
       <Modal onClose={() => setMessageDialog(null)} show={!!messageDialog} size="md" position="center">
         <Modal.Header>{messageDialog?.title ?? "Message"}</Modal.Header>
         <Modal.Body>
@@ -849,7 +887,7 @@ const ModsViewer = memo(() => {
                       </button>
                     )}
                     <button
-                      onClick={handleSavePackAs}
+                      onClick={() => void handleSavePackAs()}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

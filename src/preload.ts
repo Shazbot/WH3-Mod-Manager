@@ -506,7 +506,10 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("writeTextFilesToDirectory", baseDirectory, files),
 
-  selectDirectory: (): Promise<string | undefined> => ipcRenderer.invoke("selectDirectory"),
+  selectDirectory: (defaultPath?: string): Promise<string | undefined> =>
+    ipcRenderer.invoke("selectDirectory", defaultPath),
+
+  getDataFolder: (): Promise<string | undefined> => ipcRenderer.invoke("getDataFolder"),
 
   updateCustomModSources: (data: {
     game: SupportedGames;

@@ -1,5 +1,22 @@
 import type { DBVersion, SchemaField, AmendedSchemaField, PackedFile } from "@/src/packFileTypes";
-import { getDBNameFromString, getDBSubnameFromString } from "../../utility/packFileHelpers";
+import {
+  getDBNameFromString,
+  getDBSubnameFromString,
+  getPackNameFromPath,
+} from "../../utility/packFileHelpers";
+
+const MEMORY_PACK_PREFIX = "memory://";
+
+/**
+ * Name to offer in Save As: the open pack's own, so saving a copy is a one-word edit rather than
+ * retyping. Memory packs carry their name in the path instead of a file name.
+ */
+export const getDefaultSaveAsPackName = (packPath: string): string => {
+  const fileName = packPath.startsWith(MEMORY_PACK_PREFIX)
+    ? packPath.slice(MEMORY_PACK_PREFIX.length)
+    : (getPackNameFromPath(packPath) ?? packPath.split(/[\\/]/).pop() ?? "");
+  return fileName.toLowerCase().endsWith(".pack") ? fileName.slice(0, -".pack".length) : fileName;
+};
 
 export const getPackFileInventory = (
   packData: Pick<PackViewData, "tables" | "packedFiles">,

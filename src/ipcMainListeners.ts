@@ -8335,6 +8335,10 @@ export const registerIpcMainListeners = (
   ipcMain.handle("getDefaultTableVersions", async (event) => {
     return await getDefaultTableVersions();
   });
+  /** The current game's data folder, so windows other than the main one can offer it as a default. */
+  ipcMain.handle("getDataFolder", async (event) => {
+    return appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+  });
   ipcMain.on(
     "startGame",
     async (
@@ -8807,10 +8811,14 @@ export const registerIpcMainListeners = (
       }
     },
   );
-  ipcMain.handle("selectDirectory", async () => {
+  ipcMain.handle("selectDirectory", async (event, defaultPath?: string) => {
+    // Parent the dialog on whichever window asked, not always the main one: parenting it elsewhere
+    // moves focus to that window, and the caller is left behind when the dialog closes.
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
-      const result = await dialog.showOpenDialog(mainWindow || new BrowserWindow(), {
+      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
         properties: ["openDirectory"],
+        ...(defaultPath ? { defaultPath } : {}),
       });
       if (!result.canceled && result.filePaths.length > 0) {
         return result.filePaths[0];
@@ -8819,6 +8827,9 @@ export const registerIpcMainListeners = (
     } catch (error) {
       console.error("Error selecting directory:", error);
       return undefined;
+    } finally {
+      // A modal dialog on Windows can hand focus back to the main window rather than its own parent.
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
     }
   });
   ipcMain.handle(
