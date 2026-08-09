@@ -14,6 +14,7 @@ import {
   parseDBGroupName,
   parseDBTablePath,
 } from "../../utility/packFileHelpers";
+import { getAutoExpandedDBGroupIds } from "../../utility/dbTreeExpansion";
 import { gameToPackWithDBTablesName, vanillaPackNames } from "../../supportedGames";
 import selectStyle from "../../styles/selectStyle";
 import { dataFromBackend } from "./packDataStore";
@@ -288,6 +289,7 @@ const PackTablesTreeView = React.memo(
     }, [packData, unsavedFiles]);
 
     const dbNodeById = useMemo(() => buildNodeById(dbData), [dbData]);
+    const dbDefaultExpandedIds = useMemo(() => getAutoExpandedDBGroupIds(dbData), [dbData]);
     const fileNodeById = useMemo(() => buildNodeById(fileData), [fileData]);
     const safeDbSelectedNodeIds = useMemo(
       () => dbSelectedNodeIds.filter((selectedId) => dbNodeById.has(selectedId)),
@@ -816,11 +818,13 @@ const PackTablesTreeView = React.memo(
       setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
       nodeById: Map<INode["id"], INode>,
       onSelect: (selectionProps: ITreeViewOnSelectProps) => void,
+      defaultExpandedIds?: Array<string | number>,
     ) => (
       <TreeView
         key={`${treeTab}|${packPath}|${data.length}`}
         data={data}
         aria-label={treeTab === "db" ? "DB files tree" : "Packed files tree"}
+        defaultExpandedIds={defaultExpandedIds}
         multiSelect={true}
         selectedIds={selectedIds}
         onSelect={onSelect}
@@ -947,7 +951,15 @@ const PackTablesTreeView = React.memo(
         </div>
 
         {activeTreeTab === "db"
-          ? renderTree("db", dbData, safeDbSelectedNodeIds, setDbSelectedNodeIds, dbNodeById, onDBTreeSelect)
+          ? renderTree(
+              "db",
+              dbData,
+              safeDbSelectedNodeIds,
+              setDbSelectedNodeIds,
+              dbNodeById,
+              onDBTreeSelect,
+              dbDefaultExpandedIds,
+            )
           : renderTree(
               "files",
               fileData,
