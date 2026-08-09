@@ -2393,6 +2393,18 @@ const serializeFieldToBuffer = (field: { type: string; val: any }): Buffer => {
 };
 // Serialize an entire schema field to buffer
 const serializeSchemaFieldToBuffer = (schemaField: SchemaField): Buffer => {
+  // StringU16 is parsed into a single already-decoded string, its length prefix dropped - unlike
+  // StringU8, which keeps the prefix as a field of its own and so round-trips field by field. Written
+  // the generic way a StringU16 would lose its prefix and come back out as utf8, which is how loc
+  // files (three StringU16-family fields) were unwritable.
+  if (schemaField.type === "StringU16" && schemaField.fields.length === 1) {
+    const value = String(schemaField.fields[0]?.val ?? "");
+    const lengthBuffer = Buffer.allocUnsafe(2);
+    // The reader takes this as a count of utf16 code units and reads twice as many bytes.
+    lengthBuffer.writeInt16LE(value.length, 0);
+    return Buffer.concat([lengthBuffer, Buffer.from(value, "utf16le")]);
+  }
+
   const fieldBuffers: Buffer[] = [];
   for (const field of schemaField.fields) {
     const buffer = serializeFieldToBuffer(field);
