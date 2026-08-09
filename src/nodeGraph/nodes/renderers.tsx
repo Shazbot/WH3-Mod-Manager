@@ -7214,10 +7214,10 @@ export const PackFileOperationsNode: React.FC<{ data: PackFileOperationsNodeData
           <DeepCloneHelp
             text={
               localized.nodeEditorPackFileOperationsTooltip ||
-              "Copies, moves, renames or drops files on their way into the output pack.\n\n" +
-                "Given packs it reads from them; given files from an earlier node it works on those and passes the rest along.\n\n" +
-                "Rename changes the file name and keeps the folder. Move and copy take a whole path, and accept {name}, {dir} and, when targeting by regex, the capture groups as $1.\n\n" +
-                "The flow writes a new pack rather than editing the input, so delete means the file is not carried into the output - it cannot remove a file from someone else's pack."
+              "Copies, moves, renames or deletes files, writing out a copy of the pack with the changes applied.\n\n" +
+                "Given packs, each pack a rule changes is carried into the output pack with the operations applied - so a deleted file is simply not in the copy. A pack no rule touches is left alone entirely.\n\n" +
+                "Given files from an earlier node it works on those and passes the rest along.\n\n" +
+                "Rename changes the file name and keeps the folder. Move and copy take a whole path, and accept {name}, {dir} and, when targeting by regex, the capture groups as $1."
             }
           />
         </div>

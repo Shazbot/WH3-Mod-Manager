@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PackFileOperationRule,
+  planPackCopy,
   planPackFileOperations,
   resolvePackFileDestination,
 } from "../../src/nodeGraph/packFileOperations";
@@ -200,5 +201,60 @@ describe("planPackFileOperations", () => {
     const plan = planPackFileOperations(files, [rule({ target: "alpha.lua", operation: "copy" })]);
 
     expect(plan.entries).toEqual([]);
+  });
+});
+
+describe("planPackCopy", () => {
+  const copyOf = (rules: PackFileOperationRule[]) => planPackCopy(files, planPackFileOperations(files, rules));
+
+  it("carries the untouched files across, so the output is a whole pack and not a fragment", () => {
+    const copy = copyOf([rule({ target: "alpha.lua", operation: "copy", destination: "backup\\alpha.lua" })]);
+
+    expect(copy.map((entry) => entry.targetPath).toSorted()).toEqual([
+      "backup\\alpha.lua",
+      ...files.toSorted(),
+    ]);
+    // The new file takes its bytes from the file it was copied from.
+    expect(copy.find((entry) => entry.targetPath === "backup\\alpha.lua")?.sourcePath).toBe(
+      "script\\campaign\\mod\\alpha.lua",
+    );
+  });
+
+  it("leaves a deleted file out of the copy, which is the only way a delete can bite", () => {
+    const copy = copyOf([rule({ target: "alpha.lua", operation: "delete" })]);
+
+    expect(copy.map((entry) => entry.targetPath).toSorted()).toEqual([
+      "script\\campaign\\mod\\beta.lua",
+      "ui\\units\\icons\\emp_spearmen.png",
+    ]);
+  });
+
+  it("moves a file by dropping the old path and adding the new one", () => {
+    const copy = copyOf([
+      rule({ target: "alpha.lua", operation: "move", destination: "script\\moved\\alpha.lua" }),
+    ]);
+
+    expect(copy.map((entry) => entry.targetPath)).not.toContain("script\\campaign\\mod\\alpha.lua");
+    expect(copy.find((entry) => entry.targetPath === "script\\moved\\alpha.lua")?.sourcePath).toBe(
+      "script\\campaign\\mod\\alpha.lua",
+    );
+    expect(copy).toHaveLength(files.length);
+  });
+
+  it("gives an overwriting copy the new bytes rather than listing the path twice", () => {
+    const copy = copyOf([
+      rule({ target: "alpha.lua", operation: "copy", destination: "script\\campaign\\mod\\beta.lua" }),
+    ]);
+
+    const beta = copy.filter((entry) => entry.targetPath === "script\\campaign\\mod\\beta.lua");
+    expect(beta).toHaveLength(1);
+    expect(beta[0].sourcePath).toBe("script\\campaign\\mod\\alpha.lua");
+    expect(copy).toHaveLength(files.length);
+  });
+
+  it("reproduces the pack as it was when the rules changed nothing", () => {
+    const copy = copyOf([rule({ target: "missing.lua", operation: "delete" })]);
+
+    expect(copy).toEqual(files.map((name) => ({ targetPath: name, sourcePath: name })));
   });
 });

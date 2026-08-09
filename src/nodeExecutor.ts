@@ -43,7 +43,11 @@ import {
   applyTextFileEdits,
   matchesTextFileTarget,
 } from "./nodeGraph/textFileEdits";
-import { PackFileOperationRule, planPackFileOperations } from "./nodeGraph/packFileOperations";
+import {
+  PackFileOperationRule,
+  planPackCopy,
+  planPackFileOperations,
+} from "./nodeGraph/packFileOperations";
 import {
   DeepClonePlan,
   LoadedTableFile,
@@ -7326,6 +7330,14 @@ async function executeEditLocTextNode(
 const UTF8_BOM = "\uFEFF";
 
 /**
+ * How much of a pack the file operations node will carry into the output.
+ *
+ * Copying a pack means holding its files in memory, and a flow pointed at every enabled mod would
+ * otherwise try to copy the base game's packs.
+ */
+const MAX_PACK_COPY_BYTES = 512 * 1024 * 1024;
+
+/**
  * Edits text files inside packs - lua scripts, variantmeshdefinitions, twui - and hands the results
  * to the save node to write.
  *
@@ -7515,27 +7527,53 @@ async function executePackFileOperationsNode(
         totalMatchCountByRuleId[ruleId] = (totalMatchCountByRuleId[ruleId] ?? 0) + count;
       }
       for (const skipped of plan.skippedOverwrites) warnings.push(`Left '${skipped}' as it was`);
-      if (plan.entries.length === 0) continue;
+      // A pack no rule touched is left alone entirely, so pointing this at every enabled mod does
+      // not copy the ones it has nothing to do with.
+      if (plan.entries.length === 0 && plan.removedPaths.size === 0) continue;
+
+      // The output is a copy of this pack with the operations applied, so every file it keeps has to
+      // be carried across - a delete is only real if the rest of the pack comes with it.
+      const copies = planPackCopy(
+        indexedPack.packedFiles.map((indexedFile) => indexedFile.name),
+        plan,
+      );
+      const namesToRead = new Set(copies.map((copy) => copy.sourcePath));
+
+      const bytesToCopy = indexedPack.packedFiles
+        .filter((indexedFile) => namesToRead.has(indexedFile.name))
+        .reduce((total, indexedFile) => total + (indexedFile.file_size || 0), 0);
+      if (bytesToCopy > MAX_PACK_COPY_BYTES) {
+        return {
+          success: false,
+          error: `Copying ${packFile.name} would carry ${Math.round(bytesToCopy / 1024 / 1024)}MB into the output pack, above the ${Math.round(MAX_PACK_COPY_BYTES / 1024 / 1024)}MB limit. Point this node at the pack you are changing rather than at every enabled mod.`,
+        };
+      }
 
       const packWithFiles = await readPack(packFile.path, {
         skipParsingTables: true,
-        filesToRead: [...new Set(plan.entries.map((entry) => entry.sourcePath))],
+        filesToRead: [...namesToRead],
       });
+      const bufferByName = new Map(
+        packWithFiles.packedFiles.map((packedFile) => [packedFile.name, packedFile.buffer]),
+      );
 
-      for (const entry of plan.entries) {
-        const buffer = packWithFiles.packedFiles.find(
-          (candidate) => candidate.name === entry.sourcePath,
-        )?.buffer;
+      for (const copy of copies) {
+        const buffer = bufferByName.get(copy.sourcePath);
         if (!buffer) {
-          warnings.push(`No content for '${entry.sourcePath}'`);
+          warnings.push(`No content for '${copy.sourcePath}'`);
           continue;
         }
         outputTables.push({
-          name: entry.targetPath,
-          fileName: entry.targetPath,
+          name: copy.targetPath,
+          fileName: copy.targetPath,
           sourceFile: indexedPack,
-          table: { name: entry.targetPath, file_size: buffer.length, start_pos: 0, buffer } as PackedFile,
-          outputFileName: entry.targetPath,
+          table: {
+            name: copy.targetPath,
+            file_size: buffer.length,
+            start_pos: 0,
+            buffer,
+          } as PackedFile,
+          outputFileName: copy.targetPath,
         });
       }
     } catch (error) {

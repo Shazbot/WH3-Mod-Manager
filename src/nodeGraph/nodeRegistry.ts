@@ -733,7 +733,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
     labelKey: "nodeEditorNodePackFileOperationsLabel",
     labelFallback: "Move Or Copy Files",
     descriptionKey: "nodeEditorNodePackFileOperationsDescription",
-    descriptionFallback: "Copies, moves, renames or drops files on their way into the output pack",
+    descriptionFallback: "Copies, moves, renames or deletes files, writing out a copy of the pack with the changes",
     createData: ({ label }) => ({
       label,
       type: "packfileoperations",

@@ -154,3 +154,24 @@ export const planPackFileOperations = (
     skippedOverwrites,
   };
 };
+
+/**
+ * The contents of the output copy of a pack, as (target, source) pairs.
+ *
+ * The node writes a copy of the pack rather than editing it in place, so the copy has to list every
+ * file the pack keeps, not only the ones the rules produced - that is what makes a delete real.
+ */
+export const planPackCopy = (
+  allNames: string[],
+  plan: PackFileOperationPlan,
+): Array<{ targetPath: string; sourcePath: string }> => {
+  const producedTargets = new Set(plan.entries.map((entry) => entry.targetPath));
+  const carried = allNames
+    .filter((name) => !plan.removedPaths.has(name) && !producedTargets.has(name))
+    .map((name) => ({ targetPath: name, sourcePath: name }));
+
+  return [
+    ...carried,
+    ...plan.entries.map((entry) => ({ targetPath: entry.targetPath, sourcePath: entry.sourcePath })),
+  ];
+};
