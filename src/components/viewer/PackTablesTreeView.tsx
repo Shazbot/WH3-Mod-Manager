@@ -199,9 +199,12 @@ const PackTablesTreeView = React.memo(
     const [isLoadingNewTableOptions, setIsLoadingNewTableOptions] = React.useState(false);
     const [isCreatingNewTable, setIsCreatingNewTable] = React.useState(false);
     const pendingOpenTimeoutRef = React.useRef<number | null>(null);
+    /** A node the tree opened by itself, whose selection should not be read as a click on it. */
+    const autoOpenedDbNodeIdRef = React.useRef<INode["id"] | null>(null);
     const [dbSelectedNodeIds, setDbSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const [fileSelectedNodeIds, setFileSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
+    const clearLabelSelectionModeTimeoutRef = React.useRef<number | null>(null);
     const [isExportingSelection, setIsExportingSelection] = React.useState(false);
 
     useEffect(() => {
@@ -494,14 +497,30 @@ const PackTablesTreeView = React.memo(
      * Anything already pending is cancelled only once there is something to replace it with. An
      * element with nothing to open - a group - leaves the queue alone, because selecting a group is
      * how expanding one gets here, and that expansion may have just queued its lone table.
+     *
+     * `alsoSelect` moves the tree's selection onto the element as it opens. Done here rather than at
+     * the call site because the tree fires its own onSelect from an effect, which lands first and
+     * would put the selection back where the click was.
      */
-    const scheduleOpenForElement = (element: INode, treeTab: "db" | "files") => {
+    const scheduleOpenForElement = (
+      element: INode,
+      treeTab: "db" | "files",
+      { alsoSelect = false }: { alsoSelect?: boolean } = {},
+    ) => {
       if (treeTab === "db") {
         const dbSelection = getDBSelectionForElement(element);
         if (!dbSelection) return;
         cancelPendingOpen();
         pendingOpenTimeoutRef.current = window.setTimeout(() => {
           pendingOpenTimeoutRef.current = null;
+          if (alsoSelect) {
+            // Selecting it feeds back in as another onSelect for this node. It is already opening,
+            // so mark it for onDBTreeSelect to let through without opening it a second time, and
+            // treat the events as one plain selection so they do not pick the group back up.
+            autoOpenedDbNodeIdRef.current = element.id;
+            beginSingleLabelSelection();
+            setDbSelectedNodeIds([element.id as string | number]);
+          }
           props.onOpenDBTable(dbSelection);
         }, 180);
         return;
@@ -540,28 +559,71 @@ const PackTablesTreeView = React.memo(
 
       const loneTable = getLoneTableToOpen(element, nodeById);
       if (!loneTable) return;
-      scheduleOpenForElement(loneTable, treeTab);
+      // Select the table, not the group that was clicked: the table is what ends up open.
+      scheduleOpenForElement(loneTable, treeTab, { alsoSelect: true });
+    };
+
+    /**
+     * Marks the select events that follow as belonging to one plain click.
+     *
+     * Cleared on a timeout rather than by the handler, because a single click can produce several
+     * select events - one for the node picked up, one for each node put down - and they arrive from
+     * an effect, after this returns. Clearing on the first event left the rest to be treated as if
+     * the tree had selected them on its own.
+     */
+    const beginSingleLabelSelection = () => {
+      lastLabelSelectionModeRef.current = "single";
+      if (clearLabelSelectionModeTimeoutRef.current != null) {
+        window.clearTimeout(clearLabelSelectionModeTimeoutRef.current);
+      }
+      clearLabelSelectionModeTimeoutRef.current = window.setTimeout(() => {
+        clearLabelSelectionModeTimeoutRef.current = null;
+        lastLabelSelectionModeRef.current = null;
+      }, 0);
+    };
+
+    /**
+     * Folds one of the tree's select events into our own selection state.
+     *
+     * A plain click means exactly the clicked node, so it replaces the selection and the deselect
+     * events that come with it are ignored - taking `element.id` from one of those would select the
+     * node being left behind.
+     *
+     * Only when we did not originate the click do we mirror the tree's own set, which is how
+     * keyboard selection arrives. That set is additive: the grid runs with multiSelect on, so the
+     * library's plain select adds rather than replaces, and adopting it wholesale is how rows that
+     * were merely passed through stay highlighted.
+     */
+    const applySelectionFromTree = (
+      selectionProps: ITreeViewOnSelectProps,
+      setSelectedNodeIds: React.Dispatch<React.SetStateAction<Array<string | number>>>,
+    ) => {
+      if (lastLabelSelectionModeRef.current === "single") {
+        if (selectionProps.isSelected) {
+          setSelectedNodeIds([selectionProps.element.id as string | number]);
+        }
+        return;
+      }
+      if (lastLabelSelectionModeRef.current != null) return;
+
+      setSelectedNodeIds([...selectionProps.treeState.selectedIds]);
     };
 
     const onDBTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
-      if (lastLabelSelectionModeRef.current === "single") {
-        setDbSelectedNodeIds([selectionProps.element.id as string | number]);
-      } else if (lastLabelSelectionModeRef.current == null) {
-        setDbSelectedNodeIds([...selectionProps.treeState.selectedIds]);
-      }
-      lastLabelSelectionModeRef.current = null;
+      applySelectionFromTree(selectionProps, setDbSelectedNodeIds);
 
       if (!selectionProps.isSelected) return;
+      if (autoOpenedDbNodeIdRef.current === selectionProps.element.id) {
+        // This selection is the auto-open moving the highlight onto the table it just opened, not a
+        // click on it. Opening again here would read as a second click and land in a new tab.
+        autoOpenedDbNodeIdRef.current = null;
+        return;
+      }
       scheduleOpenForElement(selectionProps.element, "db");
     };
 
     const onFileTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
-      if (lastLabelSelectionModeRef.current === "single") {
-        setFileSelectedNodeIds([selectionProps.element.id as string | number]);
-      } else if (lastLabelSelectionModeRef.current == null) {
-        setFileSelectedNodeIds([...selectionProps.treeState.selectedIds]);
-      }
-      lastLabelSelectionModeRef.current = null;
+      applySelectionFromTree(selectionProps, setFileSelectedNodeIds);
 
       if (!packData || !selectionProps.isSelected) return;
       scheduleOpenForElement(selectionProps.element, "files");
@@ -596,6 +658,9 @@ const PackTablesTreeView = React.memo(
       return () => {
         if (pendingOpenTimeoutRef.current != null) {
           window.clearTimeout(pendingOpenTimeoutRef.current);
+        }
+        if (clearLabelSelectionModeTimeoutRef.current != null) {
+          window.clearTimeout(clearLabelSelectionModeTimeoutRef.current);
         }
       };
     }, []);
@@ -911,7 +976,7 @@ const PackTablesTreeView = React.memo(
               return;
             }
 
-            lastLabelSelectionModeRef.current = "single";
+            beginSingleLabelSelection();
             setSelectedNodeIds([element.id as string | number]);
             handleSelect(e);
             if (isBranch) {
