@@ -14,11 +14,12 @@ import {
   FileToFileReference,
   PackFileCollision,
   PackName,
+  PackCollisions,
   PackTableCollision,
   ScriptListenerCollision,
   UniqueIdsCollision,
 } from "../packFileTypes";
-import { setPackCollisions } from "../appSlice";
+import { setPackCollisions, setPackCollisionsCheckProgress } from "../appSlice";
 import { formatCompatReport } from "../modCompat/compatReportExport";
 import groupBy from "object.groupby";
 import { useLocalizations } from "../localizationContext";
@@ -45,12 +46,13 @@ const CompatScreen = memo(() => {
   const sortedMods = sortByNameAndLoadOrder(mods);
   const enabledMods = sortedMods.filter((iterMod) => iterMod.isEnabled);
 
-  const [lastPackCollisionCheckProgressIndex, setLastPackCollisionCheckProgressIndex] = React.useState(-1);
   const [isCompatOpen, setIsCompatOpen] = React.useState(false);
   const [isSpinnerClosed, setIsSpinnerClosed] = React.useState(true);
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
   const [selectedModFilter, setSelectedModFilter] = React.useState("");
   const wasCompatOpenRef = React.useRef(false);
+  /** The collisions in state when a check was requested, so its arrival can be told from a stale one. */
+  const awaitedCollisionsRef = React.useRef<PackCollisions | null>(null);
   const [isExportingReport, setIsExportingReport] = React.useState(false);
 
   /**
@@ -85,6 +87,21 @@ const CompatScreen = memo(() => {
         "Compat Panel is opened, getCompatData called with useEnabledModsOnly:",
         useEnabledModsOnly
       );
+      // The spinner tracks the request, not the progress events. A cached result answers in
+      // milliseconds without emitting any progress at all, which used to leave no spinner and a panel
+      // that looked frozen while the report rendered.
+      awaitedCollisionsRef.current = packCollisions;
+      setIsSpinnerClosed(false);
+      // Cleared so the spinner does not open showing the last run's pack names and 100%.
+      dispatch(
+        setPackCollisionsCheckProgress({
+          currentIndex: -1,
+          maxIndex: 0,
+          firstPackName: "",
+          secondPackName: "",
+          type: "Files",
+        })
+      );
       if (useEnabledModsOnly) {
         window.api?.getCompatData(enabledMods);
       } else {
@@ -106,38 +123,29 @@ const CompatScreen = memo(() => {
       );
     }
     wasCompatOpenRef.current = isCompatOpen;
-  }, [dispatch, enabledMods, isCompatOpen, mods, useEnabledModsOnly]);
+    // packCollisions is read when a check is requested. Re-running on it is a no-op: wasCompatOpenRef
+    // already matches isCompatOpen by then, so neither branch fires again.
+  }, [dispatch, enabledMods, isCompatOpen, mods, packCollisions, useEnabledModsOnly]);
 
+  /**
+   * Closes the spinner when the results land, whatever produced them.
+   *
+   * Keyed on the collisions object changing identity rather than on progress reaching its maximum: a
+   * cached answer arrives without a single progress event, and the previous run leaves the progress
+   * sitting at its maximum, so a progress-based rule could neither open nor close for it.
+   */
   useEffect(() => {
     if (!isCompatOpen) {
+      awaitedCollisionsRef.current = null;
       setIsSpinnerClosed(true);
-      setLastPackCollisionCheckProgressIndex(-1);
       return;
     }
+    if (awaitedCollisionsRef.current === null) return;
+    if (packCollisions === awaitedCollisionsRef.current) return;
 
-    if (
-      lastPackCollisionCheckProgressIndex == -1 &&
-      lastPackCollisionCheckProgressIndex != packCollisionsCheckProgress.currentIndex &&
-      packCollisionsCheckProgress.currentIndex != packCollisionsCheckProgress.maxIndex
-    ) {
-      setLastPackCollisionCheckProgressIndex(packCollisionsCheckProgress.currentIndex);
-      setIsSpinnerClosed(false);
-      return;
-    }
-
-    if (
-      lastPackCollisionCheckProgressIndex != -1 &&
-      packCollisionsCheckProgress.currentIndex == packCollisionsCheckProgress.maxIndex
-    ) {
-      setIsSpinnerClosed(true);
-      setLastPackCollisionCheckProgressIndex(-1);
-    }
-  }, [
-    isCompatOpen,
-    lastPackCollisionCheckProgressIndex,
-    packCollisionsCheckProgress.currentIndex,
-    packCollisionsCheckProgress.maxIndex,
-  ]);
+    awaitedCollisionsRef.current = null;
+    setIsSpinnerClosed(true);
+  }, [isCompatOpen, packCollisions]);
 
   const localized = useLocalizations();
   const compatHelpTwo = ((localized.compatHelpTwo ?? "").includes("STAR_ICON") &&
