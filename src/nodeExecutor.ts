@@ -2,11 +2,13 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   chunkSchemaIntoRows,
+  getDBVersion,
   getPacksTableData,
   readPack,
   typeToBuffer,
   writePack,
 } from "./packFileSerializer";
+import { readVanillaPackFromCache } from "./vanillaDbCache/store";
 import appData from "./appData";
 import {
   AmendedSchemaField,
@@ -266,14 +268,21 @@ const readPackCached = async (
   packReadingOptions: PackReadingOptions,
   executionContext?: FlowExecutionContext,
 ): Promise<Pack> => {
+  // The vanilla DB cache stands in for the parse when the request is only for db tables of the game's
+  // own pack. getDBVersion is what getPacksTableData resolves with downstream, so passing it here is
+  // what lets the cache refuse rather than hand back rows chunked by a different field count.
+  const readOrServe = async () =>
+    (await readVanillaPackFromCache(packPath, packReadingOptions, getDBVersion)) ??
+    (await readPack(packPath, packReadingOptions));
+
   if (!executionContext) {
-    return readPack(packPath, packReadingOptions);
+    return readOrServe();
   }
 
   const cacheKey = buildReadPackCacheKey(packPath, packReadingOptions);
   let cachedPackPromise = executionContext.readPackCache.get(cacheKey);
   if (!cachedPackPromise) {
-    cachedPackPromise = readPack(packPath, packReadingOptions);
+    cachedPackPromise = readOrServe();
     executionContext.readPackCache.set(cacheKey, cachedPackPromise);
   }
 

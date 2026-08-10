@@ -1,6 +1,18 @@
 import assert from "assert";
-import { getDBPackedFilePath, isLocPackedFilePath, parseLiveDBTablePath } from "./utility/packFileHelpers";
+import {
+  getDBName,
+  getDBPackedFilePath,
+  isLocPackedFilePath,
+  parseLiveDBTablePath,
+} from "./utility/packFileHelpers";
 import { planSaveAs } from "./utility/saveAsPlan";
+import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
+import {
+  canUseVanillaDbCacheForPack,
+  closeVanillaDbCacheReaders,
+  fillPackedFileFromVanillaCache,
+  fillVanillaTablesFromCache,
+} from "./vanillaDbCache/store";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
@@ -61,6 +73,7 @@ import {
   createOverwritePack,
   executeFlowsForPack,
   getDBVersion,
+  getDBVersionByTableName,
   getPacksInSave,
   getPacksTableData,
   getPackViewData,
@@ -536,6 +549,17 @@ export const getLocsTrie = (pack: Pack) => {
   return trie;
 };
 const gameToDefaultTableVersions = {} as Record<SupportedGames, Record<string, number>>;
+interface DefaultTableVersionsCacheEntry {
+  dbPackSize: number;
+  dbPackMtimeMs: number;
+  tableNameToVersion: Record<string, number>;
+}
+const DEFAULT_TABLE_VERSIONS_CACHE_FILE = "default-table-versions-cache.bin";
+/**
+ * One integer per table, and getting it costs a full parse of every table in the game's db pack -
+ * the version only exists in the parsed output. Worth keeping across restarts, keyed like the other
+ * vanilla caches on the pack's size and mtime.
+ */
 export const getDefaultTableVersions = async () => {
   const cachedGameToDefaultTableVersions = gameToDefaultTableVersions[appData.currentGame];
   if (cachedGameToDefaultTableVersions) return cachedGameToDefaultTableVersions;
@@ -543,6 +567,28 @@ export const getDefaultTableVersions = async () => {
   const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
   if (!dataFolder) return;
   const dbPackPath = nodePath.join(dataFolder, dbPackName);
+
+  const cacheFilePath = nodePath.join(app.getPath("userData"), DEFAULT_TABLE_VERSIONS_CACHE_FILE);
+  let dbPackStats: fs.Stats | undefined;
+  try {
+    dbPackStats = await fs.promises.stat(dbPackPath);
+  } catch {
+    // No pack to key the cache on, so fall through and let the read below fail as it did before.
+  }
+
+  type DefaultTableVersionsCache = Partial<Record<SupportedGames, DefaultTableVersionsCacheEntry>>;
+  const diskCache = (await readJsonDiskCache<DefaultTableVersionsCache>(cacheFilePath)) ?? {};
+  const cacheEntry = diskCache[appData.currentGame];
+  if (
+    dbPackStats &&
+    cacheEntry &&
+    cacheEntry.dbPackSize === dbPackStats.size &&
+    cacheEntry.dbPackMtimeMs === dbPackStats.mtimeMs
+  ) {
+    gameToDefaultTableVersions[appData.currentGame] = cacheEntry.tableNameToVersion;
+    return cacheEntry.tableNameToVersion;
+  }
+
   let pack = appData.packsData.find((packData) => packData.path == dbPackPath);
   if (!pack || (pack && pack.packedFiles.length == 0)) {
     pack = await readPack(dbPackPath, { skipParsingTables: true });
@@ -559,6 +605,15 @@ export const getDefaultTableVersions = async () => {
     tableNameToVersion[dbName] = packedFile.version ?? 0;
   }
   gameToDefaultTableVersions[appData.currentGame] = tableNameToVersion;
+
+  if (dbPackStats) {
+    diskCache[appData.currentGame] = {
+      dbPackSize: dbPackStats.size,
+      dbPackMtimeMs: dbPackStats.mtimeMs,
+      tableNameToVersion,
+    };
+    await writeJsonDiskCache(cacheFilePath, diskCache);
+  }
   return tableNameToVersion;
 };
 export const readModsByPath = async (
@@ -2343,6 +2398,9 @@ export const registerIpcMainListeners = (
   };
   const setCurrentGame = async (newGame: SupportedGames) => {
     try {
+      // Readers hold an open handle and only check the pack and schema when they open, so drop them
+      // here: coming back to this game later should revalidate rather than serve what was true before.
+      closeVanillaDbCacheReaders();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);
       }
@@ -4637,10 +4695,37 @@ export const registerIpcMainListeners = (
       true,
     );
     const lazyVanillaReadPlan = getLazyCompatVanillaReadPlan(mods, vanillaPackPaths);
-    if (lazyVanillaReadPlan.packPaths.length > 0 && lazyVanillaReadPlan.tablesToRead.length > 0) {
+    // Whatever the cache already holds is filled in place, so the reference scan below runs on the
+    // same rows from a cheaper source. Only what it cannot serve is read from the packs.
+    let tablesStillToRead = lazyVanillaReadPlan.tablesToRead;
+    const cachedVanillaPack = appData.packsData.find((pack) =>
+      lazyVanillaReadPlan.packPaths.some(
+        (packPath) => nodePath.resolve(packPath) === nodePath.resolve(pack.path),
+      ),
+    );
+    if (cachedVanillaPack && tablesStillToRead.length > 0) {
+      const { servedTablePaths, unservedPrefixes } = await fillVanillaTablesFromCache(
+        cachedVanillaPack,
+        tablesStillToRead,
+        // getDBVersionByTableName is what findPackTableReferencesOptimized resolves with, so the
+        // layout check inside compares against the same answer the scan will get.
+        (packedFile: PackedFile) => {
+          const dbName = getDBName(packedFile);
+          return dbName ? getDBVersionByTableName(packedFile, dbName) : undefined;
+        },
+      );
+      if (servedTablePaths.length > 0) {
+        console.log(
+          `vanilla db cache served ${servedTablePaths.length} tables to the compat check,` +
+            ` ${unservedPrefixes.length} of ${tablesStillToRead.length} still to read`,
+        );
+      }
+      tablesStillToRead = unservedPrefixes;
+    }
+    if (lazyVanillaReadPlan.packPaths.length > 0 && tablesStillToRead.length > 0) {
       await readModsByPath(
         lazyVanillaReadPlan.packPaths,
-        { skipParsingTables: false, tablesToRead: lazyVanillaReadPlan.tablesToRead },
+        { skipParsingTables: false, tablesToRead: tablesStillToRead },
         true,
       );
     }
@@ -7220,10 +7305,35 @@ export const registerIpcMainListeners = (
     ) {
       appData.currentlyReadingModPaths.push(packPath);
       console.log(`READING ${packPath}`);
-      const newPack = await readPack(
-        packPath,
-        table && { tablesToRead: [dbTableToString(table)], readLocs: getLocs },
-      );
+      // The pack's file index is cheap and the viewer needs all of it for its tree, but parsing the
+      // requested table is the expensive part and the vanilla cache already has it. Locs are left to
+      // the pack: the cache holds db tables, and getPackViewData would find their rows unparsed.
+      const cacheableTablePath = table && !getLocs ? dbTableToString(table) : undefined;
+
+      const readFromCache = async () => {
+        if (!cacheableTablePath || !canUseVanillaDbCacheForPack(packPath)) return undefined;
+        const indexOnly = await readPack(packPath, { skipParsingTables: true });
+        const packedFile = indexOnly.packedFiles.find((file) => file.name === cacheableTablePath);
+        if (!packedFile) return undefined;
+        // getDBVersion is the same resolver getPackViewData uses below, so a disagreement about the
+        // layout is caught here rather than chunking the rows by the wrong field count.
+        const filled = await fillPackedFileFromVanillaCache(
+          packPath,
+          cacheableTablePath,
+          packedFile,
+          getDBVersion,
+        );
+        if (!filled) return undefined;
+        // Left as readPack would have left it for the same request, so nothing downstream can tell
+        // the two apart - skipParsingTables sets this to [], which would understate what is parsed.
+        indexOnly.readTables = [cacheableTablePath];
+        console.log(`vanilla db cache served ${cacheableTablePath}`);
+        return indexOnly;
+      };
+
+      const newPack =
+        (await readFromCache()) ??
+        (await readPack(packPath, table && { tablesToRead: [dbTableToString(table)], readLocs: getLocs }));
       appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != packPath);
       if (appData.packsData.every((pack) => pack.path != packPath)) {
         console.log("APPENDING packsData", packPath);

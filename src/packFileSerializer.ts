@@ -27,7 +27,13 @@ import { Blob } from "buffer";
 import * as fsExtra from "fs-extra";
 import { Worker } from "node:worker_threads";
 import { compareModNames } from "./modSortingHelpers";
-import { getDBName, getDBPackedFilePath, parseDBTablePath } from "./utility/packFileHelpers";
+import {
+  getDBName,
+  getDBPackedFilePath,
+  parseDBTablePath,
+  resolveParsedDBVersion,
+} from "./utility/packFileHelpers";
+import { groupPackedFilesIntoReadRuns } from "./utility/packedFileReadRuns";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
 import { resolveRadioChoiceId } from "./nodeGraph/types";
 import {
@@ -2866,11 +2872,8 @@ const readDBPackedFiles = async (
     //   console.log(pack_file.start_pos);
     // }
     // if (version == null) continue;
-    const dbversion =
-      dbversions.find((dbversion) => dbversion.version == version) ||
-      dbversions.find((dbversion) => dbversion.version == 0);
+    const dbversion = resolveParsedDBVersion(version, dbversions);
     if (!dbversion) continue;
-    if (version != null && dbversion.version < version) continue;
     // if (version == null) {
     //   console.log("USING VERSION", dbversion.version, dbName, pack_file.name, modPath);
     // }
@@ -3309,19 +3312,36 @@ export const readPack = async (
         dependencyPacks,
       } as Pack;
     }
-    let startPos = Number.MAX_SAFE_INTEGER;
-    let endPos = -1;
-    for (const dbFile of dbPackFiles) {
-      if (dbFile.start_pos < startPos) startPos = dbFile.start_pos;
-      const fileEnd = dbFile.start_pos + dbFile.file_size;
-      if (fileEnd > endPos) endPos = fileEnd;
+    // Narrow to the requested tables before working out what to read, using the same prefix test
+    // readDBPackedFiles applies. Without this the span below covers every db file in the pack, so
+    // opening one table in the viewer reads the whole DB region of db.pack - hundreds of megabytes -
+    // to parse a few kilobytes of it.
+    const tablesToRead = packReadingOptions.tablesToRead;
+    const dbPackFilesToRead = tablesToRead
+      ? dbPackFiles.filter((dbFile) => tablesToRead.some((tableToRead) => dbFile.name.startsWith(tableToRead)))
+      : dbPackFiles;
+
+    const readRuns = groupPackedFilesIntoReadRuns(dbPackFilesToRead);
+    const dbReadStartedAt = performance.now();
+    let dbBytesRead = 0;
+
+    for (const run of readRuns) {
+      const buffer = Buffer.allocUnsafe(run.endPos - run.startPos);
+      dbBytesRead += buffer.length;
+      fs.readSync(fileId, buffer, 0, buffer.length, run.startPos);
+      await readDBPackedFiles(packReadingOptions, run.packedFiles, buffer, run.startPos, modPath);
     }
-    // const buffer = await file.read(endPos - startPos, startPos);
-    const buffer = Buffer.allocUnsafe(endPos - startPos);
-    fs.readSync(fileId, buffer, 0, buffer.length, startPos);
-    // console.log("len:", endPos - startPos);
-    // console.log("startPos:", startPos);
-    await readDBPackedFiles(packReadingOptions, dbPackFiles, buffer, startPos, modPath);
+
+    if (dbPackFilesToRead.length > 0) {
+      // Bytes read is the number worth watching: it is what narrowing to the requested tables
+      // changes, and reading the whole DB region of db.pack to parse one table does not otherwise
+      // show up anywhere.
+      console.log(
+        `[readPack] ${nodePath.basename(modPath)}: ${dbPackFilesToRead.length}/${dbPackFiles.length} db files` +
+          ` in ${readRuns.length} read(s), ${(dbBytesRead / 1048576).toFixed(1)} MB` +
+          ` in ${(performance.now() - dbReadStartedAt).toFixed(0)}ms`,
+      );
+    }
   } catch (e) {
     console.log(e);
   } finally {

@@ -34,7 +34,8 @@ const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
   secondVersion.version - firstVersion.version;
 
 // Schema loading functions
-const getSchemaFileName = (game: SupportedGames): string => {
+/** Exported so anything keyed on the schema can hash the same bundled file this loads. */
+export const getSchemaFileName = (game: SupportedGames): string => {
   const schemaMap: Record<SupportedGames, string> = {
     wh3: "schema_wh3.json.zst",
     wh2: "schema_wh2.json.zst",

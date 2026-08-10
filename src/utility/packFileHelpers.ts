@@ -161,6 +161,28 @@ export const getDBPackedFilePath = (dbTableSelection: DBTableSelection) => {
 export const tableNameWithDBPrefix = (tableName: string) =>
   (tableName.startsWith("db") && tableName) || `db\\${tableName}`;
 
+/**
+ * The DBVersion a packed file's rows were actually parsed with.
+ *
+ * Deliberately not `getDBVersion` below. That one ends its chain with `dbversions[0]`, falling back to
+ * the newest layout when nothing matches, where the parser instead skips the table. Anything
+ * reconstructing parsed rows - the vanilla DB cache, most of all - has to make the same choice the
+ * parse made, or it would decode against a field list the bytes were never read with.
+ */
+export const resolveParsedDBVersion = (
+  packedFileVersion: number | undefined,
+  dbversions: DBVersion[] | undefined,
+): DBVersion | undefined => {
+  if (!dbversions) return undefined;
+
+  const dbversion =
+    dbversions.find((candidate) => candidate.version == packedFileVersion) ||
+    dbversions.find((candidate) => candidate.version == 0);
+  if (!dbversion) return undefined;
+  if (packedFileVersion != null && dbversion.version < packedFileVersion) return undefined;
+  return dbversion;
+};
+
 export const getDBVersion = (packFile: PackedFile, DBNameToDBVersions: Record<string, DBVersion[]>) => {
   // console.log("GETTING DB VERSION FOR", packFile.name);
   const dbName = getDBName(packFile);
