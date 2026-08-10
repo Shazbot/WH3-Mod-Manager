@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_AUTO_EXPANDED_DB_TABLES,
   getAutoExpandedDBGroupIds,
+  getLoneTableToOpen,
 } from "../src/utility/dbTreeExpansion";
 
 const treeWith = (groupCount: number) =>
@@ -52,5 +53,47 @@ describe("getAutoExpandedDBGroupIds", () => {
 
     expect(expanded).toHaveLength(1);
     expect(groupNameById(data).get(expanded[0])).toBe("main_units_tables");
+  });
+});
+
+describe("getLoneTableToOpen", () => {
+  const treeFrom = (groups: Array<{ name: string; children: Array<{ name: string; children?: [] }> }>) => {
+    const data = flattenTree({ name: "", children: groups.map((group) => ({ ...group })) });
+    const nodeById = new Map(data.map((node) => [node.id, node]));
+    const groupNamed = (name: string) => data.find((node) => node.name === name)!;
+    return { nodeById, groupNamed };
+  };
+
+  it("returns the single table in a group, so expanding opens it", () => {
+    const { nodeById, groupNamed } = treeFrom([
+      { name: "kv_morale_tables", children: [{ name: "data__" }] },
+    ]);
+
+    expect(getLoneTableToOpen(groupNamed("kv_morale_tables"), nodeById)?.name).toBe("data__");
+  });
+
+  it("returns nothing when the group holds more than one table", () => {
+    const { nodeById, groupNamed } = treeFrom([
+      { name: "main_units_tables", children: [{ name: "data__" }, { name: "mod_units" }] },
+    ]);
+
+    expect(getLoneTableToOpen(groupNamed("main_units_tables"), nodeById)).toBeUndefined();
+  });
+
+  it("returns nothing for an empty group", () => {
+    const { nodeById, groupNamed } = treeFrom([{ name: "empty_tables", children: [] }]);
+
+    expect(getLoneTableToOpen(groupNamed("empty_tables"), nodeById)).toBeUndefined();
+  });
+
+  it("returns nothing when the only child is another group, which has nothing to open", () => {
+    const { nodeById, groupNamed } = treeFrom([
+      { name: "unusedtables", children: [{ name: "main_units_tables", children: [] }] },
+    ]);
+    // Give the child a child of its own so it reads as a group rather than a table.
+    const child = nodeById.get(groupNamed("unusedtables").children[0])!;
+    child.children = ["some-descendant"];
+
+    expect(getLoneTableToOpen(groupNamed("unusedtables"), nodeById)).toBeUndefined();
   });
 });

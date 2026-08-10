@@ -14,7 +14,7 @@ import {
   parseDBGroupName,
   parseDBTablePath,
 } from "../../utility/packFileHelpers";
-import { getAutoExpandedDBGroupIds } from "../../utility/dbTreeExpansion";
+import { getAutoExpandedDBGroupIds, getLoneTableToOpen } from "../../utility/dbTreeExpansion";
 import { gameToPackWithDBTablesName, vanillaPackNames } from "../../supportedGames";
 import selectStyle from "../../styles/selectStyle";
 import { dataFromBackend } from "./packDataStore";
@@ -482,16 +482,24 @@ const PackTablesTreeView = React.memo(
       });
     };
 
-    /** Opens after a short delay so a double click can cancel it and open in a new tab instead. */
-    const scheduleOpenForElement = (element: INode, treeTab: "db" | "files") => {
-      if (pendingOpenTimeoutRef.current != null) {
-        window.clearTimeout(pendingOpenTimeoutRef.current);
-        pendingOpenTimeoutRef.current = null;
-      }
+    const cancelPendingOpen = () => {
+      if (pendingOpenTimeoutRef.current == null) return;
+      window.clearTimeout(pendingOpenTimeoutRef.current);
+      pendingOpenTimeoutRef.current = null;
+    };
 
+    /**
+     * Opens after a short delay so a double click can cancel it and open in a new tab instead.
+     *
+     * Anything already pending is cancelled only once there is something to replace it with. An
+     * element with nothing to open - a group - leaves the queue alone, because selecting a group is
+     * how expanding one gets here, and that expansion may have just queued its lone table.
+     */
+    const scheduleOpenForElement = (element: INode, treeTab: "db" | "files") => {
       if (treeTab === "db") {
         const dbSelection = getDBSelectionForElement(element);
         if (!dbSelection) return;
+        cancelPendingOpen();
         pendingOpenTimeoutRef.current = window.setTimeout(() => {
           pendingOpenTimeoutRef.current = null;
           props.onOpenDBTable(dbSelection);
@@ -503,6 +511,7 @@ const PackTablesTreeView = React.memo(
       const filePath = getPackedFilePathForElement(element);
       if (!filePath) return;
       const openPackPath = packData.packPath;
+      cancelPendingOpen();
       pendingOpenTimeoutRef.current = window.setTimeout(() => {
         pendingOpenTimeoutRef.current = null;
         if (filePath.startsWith("whmmflows\\")) {
@@ -512,6 +521,26 @@ const PackTablesTreeView = React.memo(
         if (!isOpenablePackedFilePath(filePath)) return;
         props.onOpenPackedFile({ filePath, packPath: openPackPath });
       }, 180);
+    };
+
+    /**
+     * Expanding a table group that holds a single table is only ever a step towards opening that
+     * table, so save the second click and open it.
+     *
+     * Only on the way open - collapsing a group must not open anything - and only for a child that
+     * is a table itself, since a lone sub-group has nothing to open.
+     */
+    const openLoneChildOnExpand = (
+      element: INode,
+      willExpand: boolean,
+      treeTab: "db" | "files",
+      nodeById: Map<INode["id"], INode>,
+    ) => {
+      if (treeTab !== "db" || !willExpand) return;
+
+      const loneTable = getLoneTableToOpen(element, nodeById);
+      if (!loneTable) return;
+      scheduleOpenForElement(loneTable, treeTab);
     };
 
     const onDBTreeSelect = (selectionProps: ITreeViewOnSelectProps) => {
@@ -887,6 +916,10 @@ const PackTablesTreeView = React.memo(
             handleSelect(e);
             if (isBranch) {
               handleExpand(e);
+              // handleSelect above only queues a state update - the tree fires onSelect from an
+              // effect, so it lands after this. That is why the open queued here has to survive a
+              // later onSelect for the group itself.
+              openLoneChildOnExpand(element, !isExpanded, treeTab, nodeById);
             }
           };
 
@@ -896,6 +929,7 @@ const PackTablesTreeView = React.memo(
                 onClick: (e) => {
                   e.stopPropagation();
                   handleExpand(e);
+                  openLoneChildOnExpand(element, !isExpanded, treeTab, nodeById);
                 },
               })}
               style={{
