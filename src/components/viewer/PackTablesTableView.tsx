@@ -766,8 +766,10 @@ const AgGridWrapper = memo(
       };
     }, []);
 
-    const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
-    const rowHeight = useFixedSizing ? BIG_TABLE_ROW_HEIGHT : NORMAL_TABLE_ROW_HEIGHT;
+    // Only the row height still varies with table size; column widths come from the contents either
+    // way now.
+    const isDenseTable = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
+    const rowHeight = isDenseTable ? BIG_TABLE_ROW_HEIGHT : NORMAL_TABLE_ROW_HEIGHT;
     const rowIndexColumnWidth = useMemo(() => {
       const maxRowNumberWidth = measureTextWidth(String(Math.max(rowCount, 1)), ROW_INDEX_GRID_CELL_FONT);
       return Math.max(ROW_INDEX_COLUMN_MIN_WIDTH, Math.ceil(maxRowNumberWidth + ROW_INDEX_COLUMN_PADDING_PX));
@@ -906,9 +908,10 @@ const AgGridWrapper = memo(
           colId: String(colIndex),
           cellDataType: colType === "checkbox" ? "boolean" : undefined,
           editable: canEditTable,
-          width: useFixedSizing || colType === "numeric" || colType === "checkbox" ? width : undefined,
-          minWidth: !useFixedSizing && colType === "text" ? width : undefined,
-          flex: !useFixedSizing && colType === "text" ? 1 : undefined,
+          // Sized to its contents, never stretched to fill the window. Text columns used to take a
+          // flex share of the leftover space, which on a two-column table made one column as wide as
+          // the window with its values stranded at the far left of it.
+          width,
           cellRenderer: colType === "checkbox" ? "agCheckboxCellRenderer" : undefined,
           cellEditor: colType === "checkbox" ? "agCheckboxCellEditor" : undefined,
           field: getColumnFieldKey(colIndex),
@@ -944,7 +947,6 @@ const AgGridWrapper = memo(
       canEditTable,
       keyColumnSet,
       rowIndexColumnWidth,
-      useFixedSizing,
       isCellSelected,
       isRowSelected,
     ]);
