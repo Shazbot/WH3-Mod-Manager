@@ -6,6 +6,7 @@ import {
   parseLiveDBTablePath,
 } from "./utility/packFileHelpers";
 import { planSaveAs } from "./utility/saveAsPlan";
+import { selectPacksToCheck } from "./modCompat/compatScope";
 import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
 import {
   canUseVanillaDbCacheForPack,
@@ -4729,8 +4730,25 @@ export const registerIpcMainListeners = (
         true,
       );
     }
+    // Only the packs this check was asked about, plus vanilla, which the reference resolution needs.
+    //
+    // appData.packsData accumulates every pack read at any point in the session - browsing a mod in
+    // the viewer, a mod enabled and later disabled - and scanning all of it reported conflicts between
+    // packs the user had not selected. It also made the result depend on session history, so the same
+    // mods could produce different reports, and made compatCheckCache unsound: its key covers `mods`
+    // and the vanilla packs, while the answer depended on whatever else happened to be loaded.
+    const packPathsToCheck = new Set(
+      [...mods.map((mod) => mod.path), ...vanillaPackPaths].map((packPath) => nodePath.resolve(packPath)),
+    );
+    const packsToCheck = appData.packsData.filter((pack) =>
+      packPathsToCheck.has(nodePath.resolve(pack.path)),
+    );
+    console.log(
+      `getCompatData: checking ${packsToCheck.length} packs of ${appData.packsData.length} loaded`,
+    );
+
     const packCollisions = getCompatData(
-      appData.packsData,
+      packsToCheck,
       (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
         mainWindow?.webContents.send("setPackCollisionsCheckProgress", {
           currentIndex,
