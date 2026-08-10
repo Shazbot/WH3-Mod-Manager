@@ -522,6 +522,12 @@ const api = {
 
   getDataFolder: (): Promise<string | undefined> => ipcRenderer.invoke("getDataFolder"),
 
+  exportCompatReport: (
+    reportText: string,
+    suggestedName: string,
+  ): Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }> =>
+    ipcRenderer.invoke("exportCompatReport", reportText, suggestedName),
+
   updateCustomModSources: (data: {
     game: SupportedGames;
     customModFolders: CustomModFolder[];

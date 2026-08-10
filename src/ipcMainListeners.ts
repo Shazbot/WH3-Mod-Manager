@@ -8955,6 +8955,30 @@ export const registerIpcMainListeners = (
       }
     },
   );
+  /**
+   * Writes a compatibility report to a file the user picks.
+   *
+   * For comparing what two builds report over the same mods. The renderer has already canonicalised
+   * the text, so this only chooses a path and writes it.
+   */
+  ipcMain.handle("exportCompatReport", async (event, reportText: string, suggestedName: string) => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const result = await dialog.showSaveDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        defaultPath: nodePath.join(app.getPath("documents"), suggestedName),
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false, canceled: true };
+
+      await fs.promises.writeFile(result.filePath, reportText, "utf8");
+      return { success: true, savedPath: result.filePath };
+    } catch (error) {
+      console.error("Error exporting compat report:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+    } finally {
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
   ipcMain.handle("selectDirectory", async (event, defaultPath?: string) => {
     // Parent the dialog on whichever window asked, not always the main one: parenting it elsewhere
     // moves focus to that window, and the caller is left behind when the dialog closes.

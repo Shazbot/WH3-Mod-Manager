@@ -19,6 +19,7 @@ import {
   UniqueIdsCollision,
 } from "../packFileTypes";
 import { setPackCollisions } from "../appSlice";
+import { formatCompatReport } from "../modCompat/compatReportExport";
 import groupBy from "object.groupby";
 import { useLocalizations } from "../localizationContext";
 import { vanillaPackNames } from "../supportedGames";
@@ -50,6 +51,33 @@ const CompatScreen = memo(() => {
   const [useEnabledModsOnly, setUseEnabledModsOnly] = React.useState(true);
   const [selectedModFilter, setSelectedModFilter] = React.useState("");
   const wasCompatOpenRef = React.useRef(false);
+  const [isExportingReport, setIsExportingReport] = React.useState(false);
+
+  /**
+   * Writes the current report out for comparing against another build.
+   *
+   * The mod set recorded is the one the check actually ran over, so a report from a run with
+   * "enabled mods only" ticked cannot be mistaken for one over everything.
+   */
+  const exportReport = useCallback(async () => {
+    setIsExportingReport(true);
+    try {
+      const modsChecked = useEnabledModsOnly ? enabledMods : sortedMods;
+      const reportText = formatCompatReport(
+        packCollisions,
+        modsChecked.map((mod) => ({
+          name: mod.name,
+          isEnabled: mod.isEnabled,
+          loadOrder: mod.loadOrder ?? null,
+        })),
+      );
+      const result = await window.api?.exportCompatReport(reportText, "compat-report.json");
+      if (result?.success) console.log("compat report written to", result.savedPath);
+      else if (result && !result.canceled) console.error("compat report export failed:", result.error);
+    } finally {
+      setIsExportingReport(false);
+    }
+  }, [packCollisions, enabledMods, sortedMods, useEnabledModsOnly]);
 
   useEffect(() => {
     if (!wasCompatOpenRef.current && isCompatOpen) {
@@ -402,6 +430,17 @@ const CompatScreen = memo(() => {
         >
           <Modal.Header>{localized.modCompatibility}</Modal.Header>
           <Modal.Body>
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={() => void exportReport()}
+                disabled={isExportingReport}
+                className="px-3 py-1.5 text-xs bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                type="button"
+                title="Write this report to a file, in a form two builds can be compared against"
+              >
+                {isExportingReport ? "Exporting..." : "Export report"}
+              </button>
+            </div>
             <Tabs.Group style="underline">
               <Tabs.Item active={true} title={`${localized.files} (${numPackFileCollisions})`}>
                 <div className="leading-relaxed dark:text-gray-300 relative">
