@@ -55,16 +55,17 @@ const TEXT_COLUMN_WIDTH_CHAR_PX = 9;
  */
 const CELL_CONTENT_PADDING_PX = 24;
 /**
- * Space a header needs around its text, in the usual unsorted state: the cell's own padding on the
- * left, and the filter button's gutter on the right.
+ * Fallback for the space a header puts around its text, used for the first paint only - after that
+ * the real figure is measured off a rendered header. Deliberately generous: too small clips headers,
+ * too large only wastes width for one frame.
  *
- * No allowance for the sort arrow - index.css widens the left side only for a column that is
- * actually sorted, so a sorted header takes that room from its own text rather than every column
- * reserving it up front.
+ * It is not worth deriving by hand. The gutters come from the header cell's padding, a negative
+ * margin and a padding on the label inside it, and whatever the theme adds around those, and every
+ * attempt to add that up from the stylesheets got a different answer than the browser did.
  */
-const HEADER_CHROME_PADDING_LEFT_PX = 10;
-const HEADER_CHROME_PADDING_RIGHT_PX = 32;
-const HEADER_CHROME_PADDING_PX = HEADER_CHROME_PADDING_LEFT_PX + HEADER_CHROME_PADDING_RIGHT_PX;
+const HEADER_CHROME_FALLBACK_PX = 64;
+/** Ignore a measurement outside this range: the grid was not laid out yet, or the DOM moved on. */
+const HEADER_CHROME_PLAUSIBLE_RANGE_PX = { min: 4, max: 200 };
 const TEXT_COLUMN_WIDTH_MIN_PX = 110;
 const GRID_HEADER_FONT = "500 14px Roboto, Arial, sans-serif";
 const KEY_HEADER_ICON_WIDTH_PX = 22;
@@ -117,6 +118,36 @@ const measureTextWidth = (text: string, font: string): number => {
 };
 
 const measureGridCellText = (text: string): number => measureTextWidth(text, GRID_CELL_FONT);
+
+/**
+ * Measured once per session, then reused: the header chrome is the same for every grid.
+ */
+let measuredHeaderChromePx: number | undefined;
+
+/**
+ * How much of a header cell's width is taken by everything other than its text, read off the
+ * rendered grid.
+ *
+ * An unsorted header specifically, because a sorted one widens its left gutter for the arrow and
+ * would have every column reserving space for a sort that is not there. Spelled as "not sorted
+ * either way" rather than looking for `ag-header-cell-sorted-none`, which ag-grid does not put on a
+ * header until that header has been sorted once.
+ */
+const measureHeaderChrome = (gridRoot: HTMLElement): number | undefined => {
+  const headerCell = gridRoot.querySelector<HTMLElement>(
+    ".pack-table-header:not(.ag-header-cell-sorted-asc):not(.ag-header-cell-sorted-desc)",
+  );
+  // The text element is flex-sized to whatever the label leaves it, so the difference is the chrome.
+  const headerText = headerCell?.querySelector<HTMLElement>(".ag-header-cell-text");
+  if (!headerCell || !headerText) return undefined;
+
+  const chrome = Math.ceil(
+    headerCell.getBoundingClientRect().width - headerText.getBoundingClientRect().width,
+  );
+  if (chrome < HEADER_CHROME_PLAUSIBLE_RANGE_PX.min) return undefined;
+  if (chrome > HEADER_CHROME_PLAUSIBLE_RANGE_PX.max) return undefined;
+  return chrome;
+};
 
 const fieldTypeToCellType = (fieldType: SCHEMA_FIELD_TYPE): "numeric" | "checkbox" | "text" => {
   switch (fieldType) {
@@ -349,9 +380,9 @@ const getDisplayColumnHeader = (headerName: string): string => {
  * A floor here would apply to every column type, which is what made a checkbox column as wide as a
  * column of text. The per-type floor belongs with the content width instead.
  */
-const getHeaderMinWidth = (headerName: string, hasKeyIcon: boolean): number => {
+const getHeaderMinWidth = (headerName: string, hasKeyIcon: boolean, chromePx: number): number => {
   const iconWidth = hasKeyIcon ? KEY_HEADER_ICON_WIDTH_PX : 0;
-  if (headerName.length === 0) return HEADER_CHROME_PADDING_PX + iconWidth;
+  if (headerName.length === 0) return chromePx + iconWidth;
 
   const words = headerName.split(/\s+/).filter(Boolean);
   // The header wraps onto two lines, so it has to fit whichever is wider: its longest single word,
@@ -362,7 +393,7 @@ const getHeaderMinWidth = (headerName: string, hasKeyIcon: boolean): number => {
   const fullHeaderWidth = measureTextWidth(headerName, GRID_HEADER_FONT);
   const twoLineWidth = Math.ceil(fullHeaderWidth / 2);
 
-  return Math.ceil(Math.max(longestWordWidth, twoLineWidth) + HEADER_CHROME_PADDING_PX + iconWidth);
+  return Math.ceil(Math.max(longestWordWidth, twoLineWidth) + chromePx + iconWidth);
 };
 
 const buildTableCacheKey = (
@@ -706,6 +737,35 @@ const AgGridWrapper = memo(
     const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
     const autoScrollFrameRef = useRef<number | null>(null);
 
+    const [headerChromePx, setHeaderChromePx] = useState(
+      measuredHeaderChromePx ?? HEADER_CHROME_FALLBACK_PX,
+    );
+
+    // Read the real header chrome off the grid once it has been laid out, and size columns from that
+    // instead of a constant. Two frames because the first one can land before ag-grid has drawn the
+    // header, and the measurement is cached, so this settles on the first table opened.
+    useEffect(() => {
+      if (measuredHeaderChromePx != null) return;
+
+      let secondFrame = 0;
+      const firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(() => {
+          const gridRoot = gridRootRef.current;
+          if (!gridRoot) return;
+
+          const measured = measureHeaderChrome(gridRoot);
+          if (measured == null) return;
+          measuredHeaderChromePx = measured;
+          setHeaderChromePx(measured);
+        });
+      });
+
+      return () => {
+        cancelAnimationFrame(firstFrame);
+        cancelAnimationFrame(secondFrame);
+      };
+    }, []);
+
     const useFixedSizing = isBigTable || rowCount >= FIXED_SIZING_ROW_THRESHOLD;
     const rowHeight = useFixedSizing ? BIG_TABLE_ROW_HEIGHT : NORMAL_TABLE_ROW_HEIGHT;
     const rowIndexColumnWidth = useMemo(() => {
@@ -833,7 +893,10 @@ const AgGridWrapper = memo(
         const displayHeaderName = getDisplayColumnHeader(fullHeaderName);
         const headerName = (isKey ? "🔑 " : "") + displayHeaderName;
 
-        const width = Math.max(getColumnWidth(colIndex), getHeaderMinWidth(displayHeaderName, isKey));
+        const width = Math.max(
+          getColumnWidth(colIndex),
+          getHeaderMinWidth(displayHeaderName, isKey, headerChromePx),
+        );
         defs.push({
           headerName,
           headerTooltip: fullHeaderName,
@@ -877,6 +940,7 @@ const AgGridWrapper = memo(
       columns,
       currentSchema.fields,
       getColumnWidth,
+      headerChromePx,
       canEditTable,
       keyColumnSet,
       rowIndexColumnWidth,

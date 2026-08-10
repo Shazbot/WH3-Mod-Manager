@@ -587,7 +587,9 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   width: calc(100% + 1.5rem);
   margin-left: -0.75rem;
   margin-right: -0.75rem;
-  padding-left: 1.25rem;
+  /* Left is only 0.75rem - exactly cancelling the pull above - because the arrow gutter it used to
+     hold is now added back by the sorted rules further down, and only when there is an arrow. */
+  padding-left: 0.75rem;
   padding-right: 1.25rem;
   white-space: normal;
 }
@@ -682,36 +684,38 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 }
 
 /*
- * Headers keep the theme's original gutters. The sort indicator and the filter button are absolutely
- * positioned into them by the rules above, so narrowing them here would put those icons on top of
- * the header text. HEADER_CHROME_PADDING_PX is the width calculation's view of this.
+ * Headers keep the theme's wide gutter on the right, where the filter button sits, but not on the
+ * left: that one exists for the sort arrow, and most columns are not sorted.
+ *
+ * Stated as "narrow by default, widened when sorted" rather than the other way round. ag-grid only
+ * puts `ag-header-cell-sorted-none` on a header once its sort has been set and cleared again - a
+ * column that has never been sorted carries no sorted-* class at all - so a rule keyed on that
+ * class never fires for the columns this is meant to help.
  */
 .ag-theme-material-dark.pack-tables-grid .ag-header-cell {
-  padding-left: 24px;
+  padding-left: 10px;
   padding-right: 24px;
 }
 
 /*
- * The left gutter exists for the sort arrow, so a column that is not sorted does not need one - and
- * most columns are not sorted most of the time. ag-grid keeps `ag-header-cell-sorted-none` on every
- * header with no sort applied, so this follows the arrow rather than reserving for it.
- *
- * HEADER_CHROME_PADDING_PX is sized for this narrower, usual case. Sorting a column pulls the wider
- * gutter back and takes that room from the header text, which can ellipsise until the sort is
- * cleared; the full name stays on the header's tooltip.
+ * Sorted: give the arrow back the gutter it is drawn into, on the cell and in the label. That room
+ * comes out of the header text, which can ellipsise while the sort is applied - the whole point is
+ * that the other columns are not paying for it. The full name stays on the header's tooltip.
  */
-.ag-theme-material-dark.pack-tables-grid .ag-header-cell.ag-header-cell-sorted-none {
-  padding-left: 10px;
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-asc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-desc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-asc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-desc,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-mixed {
+  padding-left: 24px;
 }
 
-/*
- * The gutter is built from two pieces, and dropping only the header cell's padding left the other
- * one behind. The label above pulls itself 0.75rem outside the cell and then indents its text by
- * 1.25rem, so 0.5rem of arrow gutter survives inside the label itself. Cancelling the pull exactly
- * puts unsorted header text at the cell's padding edge.
- */
-.ag-theme-material-dark.pack-tables-grid .ag-header-cell.ag-header-cell-sorted-none .ag-header-cell-label {
-  padding-left: 0.75rem;
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-asc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-desc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-asc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-abs-desc .ag-header-cell-label,
+.ag-theme-material-dark.pack-tables-grid .ag-header-cell-sorted-mixed .ag-header-cell-label {
+  padding-left: 1.25rem;
 }
 
 .pack-tables-grid .pack-table-row-index-cell {
