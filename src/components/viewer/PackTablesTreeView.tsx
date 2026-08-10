@@ -205,6 +205,7 @@ const PackTablesTreeView = React.memo(
     const [fileSelectedNodeIds, setFileSelectedNodeIds] = React.useState<Array<string | number>>([]);
     const lastLabelSelectionModeRef = React.useRef<"single" | "shift" | "ctrl" | null>(null);
     const clearLabelSelectionModeTimeoutRef = React.useRef<number | null>(null);
+    const contextMenuRef = React.useRef<HTMLDivElement | null>(null);
     const [isExportingSelection, setIsExportingSelection] = React.useState(false);
 
     useEffect(() => {
@@ -693,13 +694,27 @@ const PackTablesTreeView = React.memo(
       setContextMenu({ x: e.clientX, y: e.clientY, treeTab });
     };
 
-    // Close context menu when clicking outside
+    /**
+     * A click outside the open context menu dismisses it, and does nothing else.
+     *
+     * On the capture phase at the document, so it runs before React delivers the click to whatever
+     * is underneath - otherwise dismissing the menu also selects and opens the node it happened to
+     * be covering.
+     */
     useEffect(() => {
-      const handleClick = () => setContextMenu(null);
-      if (contextMenu) {
-        document.addEventListener("click", handleClick);
-        return () => document.removeEventListener("click", handleClick);
-      }
+      if (!contextMenu) return;
+
+      const dismissContextMenu = (event: MouseEvent) => {
+        // Not the menu's own buttons, which need their click.
+        if (contextMenuRef.current?.contains(event.target as Node)) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenu(null);
+      };
+
+      document.addEventListener("click", dismissContextMenu, true);
+      return () => document.removeEventListener("click", dismissContextMenu, true);
     }, [contextMenu]);
 
     const handleAddNewFlow = () => {
@@ -1080,6 +1095,7 @@ const PackTablesTreeView = React.memo(
         {/* Context Menu */}
         {contextMenu && (
           <div
+            ref={contextMenuRef}
             className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[150px]"
             style={{ top: contextMenu.y, left: contextMenu.x }}
           >
