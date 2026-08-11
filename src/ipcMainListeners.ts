@@ -70,7 +70,7 @@ import fetch from "node-fetch";
 import * as nodePath from "path";
 import { version } from "react";
 import { readAppConfig, setStartingConfig, writeAppConfig } from "./appConfigFunctions";
-import { getEnabledMods } from "./modsHelpers";
+import { applyConfigSavePayloadToAppData } from "./config/applyConfigSavePayload";
 import appData, { GameFolderPaths } from "./appData";
 import type { SerializedNode, SerializedConnection } from "./nodeGraph/types";
 import { packDataStore } from "./components/viewer/packDataStore";
@@ -5809,15 +5809,7 @@ export const registerIpcMainListeners = (
     console.log("saveConfig");
     const { config } = payload;
 
-    // the mod lists only ride along when they changed, so keep the last ones otherwise
-    if (payload.mods) {
-      appData.allMods = payload.mods.allMods;
-      appData.enabledMods = getEnabledMods(payload.mods.currentPresetMods, config.alwaysEnabledModNames);
-    }
-    appData.isCompatCheckingVanillaPacks = config.isCompatCheckingVanillaPacks;
-    appData.isChangingGameProcessPriority = config.isChangingGameProcessPriority;
-    appData.skillTreesDisplayMode = config.skillTreesDisplayMode;
-    appData.technologyTreesDisplayMode = config.technologyTreesDisplayMode;
+    applyConfigSavePayloadToAppData(payload);
 
     const hiddenModNames = new Set(config.hiddenModNames);
     const hiddenAndEnabledCount = appData.enabledMods.filter((mod) => hiddenModNames.has(mod.name)).length;
@@ -7939,6 +7931,7 @@ export const registerIpcMainListeners = (
       console.log(`Current game is ${payload.currentGame}`);
       // Capture even a not-yet-debounced edit before leaving. writeAppConfig updates gameToConfig
       // synchronously before its queued disk write, so returning later uses this exact state.
+      applyConfigSavePayloadToAppData(payload);
       writeAppConfig(payload);
       const didSwitchGame = await setCurrentGame(game);
       // Until the requested game's folders are configured, main and renderer both remain on the old
