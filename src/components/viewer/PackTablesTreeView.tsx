@@ -1,5 +1,5 @@
 import React, { useEffect, useImperativeHandle, useMemo } from "react";
-import { setUnsavedPacksData } from "@/src/appSlice";
+import { setUnsavedPacksData } from "../../appSlice";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
@@ -21,7 +21,7 @@ import { dataFromBackend } from "./packDataStore";
 import type { ShowViewerDialog } from "./viewerDialogs";
 import { makeSelectCurrentPackData, makeSelectCurrentPackUnsavedFiles } from "./viewerSelectors";
 import type { DBVersion, PackedFile } from "../../packFileTypes";
-import { isOpenablePackedFilePath } from "@/src/utility/packFileViewing";
+import { isOpenablePackedFilePath } from "../../utility/packFileViewing";
 
 type PackTablesTreeViewProps = {
   packPath: string;
@@ -944,6 +944,7 @@ const PackTablesTreeView = React.memo(
         aria-label={treeTab === "db" ? "DB files tree" : "Packed files tree"}
         defaultExpandedIds={defaultExpandedIds}
         multiSelect={true}
+        clickAction="EXCLUSIVE_SELECT"
         selectedIds={selectedIds}
         onSelect={onSelect}
         nodeRenderer={({
@@ -991,16 +992,19 @@ const PackTablesTreeView = React.memo(
               return;
             }
 
-            beginSingleLabelSelection();
-            setSelectedNodeIds([element.id as string | number]);
-            handleSelect(e);
             if (isBranch) {
               handleExpand(e);
-              // handleSelect above only queues a state update - the tree fires onSelect from an
-              // effect, so it lands after this. That is why the open queued here has to survive a
-              // later onSelect for the group itself.
+              // A group has nothing useful to select. Matching the arrow's expand-only path avoids
+              // a second full tree reconciliation before the expanded children can paint.
               openLoneChildOnExpand(element, !isExpanded, treeTab, nodeById);
+              return;
             }
+
+            // Let the tree update its own selection first so the highlight can paint immediately.
+            // onSelect mirrors it into our state after that paint; writing both states here made the
+            // controlled tree reconcile the entire node set twice for one click.
+            beginSingleLabelSelection();
+            handleSelect(e);
           };
 
           return (
