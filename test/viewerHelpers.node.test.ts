@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getDefaultSaveAsPackName,
   getPackFileInventory,
+  hasLoadedDBTable,
   pickWidestValue,
 } from "../src/components/viewer/viewerHelpers";
 
@@ -45,6 +46,32 @@ describe("viewer pack inventory", () => {
       hasDBTables: true,
       hasFiles: true,
     });
+  });
+});
+
+describe("loaded DB table detection", () => {
+  const selection: DBTableSelection = {
+    packPath: "K:\\game\\data\\db.pack",
+    dbName: "units_tables",
+    dbSubname: "data__",
+  };
+  const loaded = {
+    name: "db\\units_tables\\data__",
+    schemaFields: [],
+    tableSchema: { version: 1, fields: [] },
+  } as PackedFile;
+
+  it("accepts a parsed table already held by the renderer, including an empty table", () => {
+    expect(hasLoadedDBTable({ packedFiles: { [loaded.name]: loaded } }, [], selection)).toBe(true);
+  });
+
+  it("accepts unsaved data before the disk-backed copy", () => {
+    expect(hasLoadedDBTable(undefined, [loaded], selection)).toBe(true);
+  });
+
+  it("does not mistake an index-only descriptor for loaded rows", () => {
+    const indexed = { name: loaded.name, schemaFields: [] } as PackedFile;
+    expect(hasLoadedDBTable({ packedFiles: { [indexed.name]: indexed } }, [], selection)).toBe(false);
   });
 });
 

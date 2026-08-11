@@ -1,5 +1,6 @@
 import type { DBVersion, SchemaField, AmendedSchemaField, PackedFile } from "@/src/packFileTypes";
 import {
+  getDBPackedFilePath,
   getDBNameFromString,
   getDBSubnameFromString,
   getPackNameFromPath,
@@ -65,6 +66,23 @@ export const getPackFileInventory = (
       (fileName) => !getDBNameFromString(fileName) || !getDBSubnameFromString(fileName),
     ),
   };
+};
+
+/** True when switching to this table can be satisfied entirely from renderer memory. */
+export const hasLoadedDBTable = (
+  packData: Pick<PackViewData, "packedFiles"> | undefined,
+  unsavedFiles: readonly PackedFile[],
+  selection: DBTableSelection,
+): boolean => {
+  const packedFilePath = getDBPackedFilePath(selection);
+  const candidates = [...unsavedFiles, ...Object.values(packData?.packedFiles ?? {})];
+  const packedFile =
+    candidates.find((file) => file.name === packedFilePath) ??
+    candidates.find((file) => file.name.startsWith(packedFilePath));
+
+  // tableSchema is installed only after parsing and amendment. An empty table legitimately has no
+  // schemaFields, so array length cannot distinguish it from an index-only descriptor.
+  return packedFile?.tableSchema != undefined && packedFile.schemaFields != undefined;
 };
 
 export const chunkTableIntoRows = (schemaFields: SchemaField[], currentSchema: DBVersion) => {

@@ -21,7 +21,7 @@ import {
   getDBPackedFilePath,
   getPackNameFromPath,
 } from "@/src/utility/packFileHelpers";
-import { getDefaultSaveAsPackName, getPackFileInventory } from "./viewerHelpers";
+import { getDefaultSaveAsPackName, getPackFileInventory, hasLoadedDBTable } from "./viewerHelpers";
 
 type ViewerTabKind = "db" | "flow" | "file";
 
@@ -61,6 +61,8 @@ const ModsViewer = memo(() => {
     (gameToPackWithDBTablesName[currentGame] || "db.pack");
   const deepCloneTarget = useAppSelector((state) => state.app.deepCloneTarget);
   const startArgs = useAppSelector((state) => state.app.startArgs);
+  const packsDataByPath = useAppSelector((state) => state.app.packsData);
+  const unsavedPacksDataByPath = useAppSelector((state) => state.app.unsavedPacksData);
   const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
   const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
 
@@ -266,14 +268,23 @@ const ModsViewer = memo(() => {
       setActiveTabId(tabToActivate.id);
       lastActionRef.current = { fileKey: candidate.fileKey, at: now, openedNew, tabId: tabToActivate.id };
       if (tabToActivate.kind === "db" && tabToActivate.dbName && tabToActivate.dbSubname) {
-        window.api?.getPackData(tabToActivate.packPath, {
+        const selection = {
           dbFolder: tabToActivate.dbFolder,
           dbName: tabToActivate.dbName,
           dbSubname: tabToActivate.dbSubname,
-        });
+          packPath: tabToActivate.packPath,
+        };
+        const isLoaded = hasLoadedDBTable(
+          packsDataByPath[tabToActivate.packPath],
+          unsavedPacksDataByPath[tabToActivate.packPath] ?? [],
+          selection,
+        );
+        if (!isLoaded) {
+          window.api?.getPackData(tabToActivate.packPath, selection);
+        }
       }
     },
-    [activeTabId, createTabId, openTabs],
+    [activeTabId, createTabId, openTabs, packsDataByPath, unsavedPacksDataByPath],
   );
 
   const handleOpenDBTable = useCallback(

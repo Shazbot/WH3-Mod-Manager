@@ -6,6 +6,8 @@ import {
   parseLiveDBTablePath,
 } from "./utility/packFileHelpers";
 import { planSaveAs } from "./utility/saveAsPlan";
+import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
+import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
 import { selectPacksToCheck } from "./modCompat/compatScope";
 import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
 import {
@@ -7274,6 +7276,39 @@ export const registerIpcMainListeners = (
     // Honours dbFolder so a spare copy is read from where it actually lives, not from db\.
     return getDBPackedFilePath(dbTable as DBTableSelection);
   };
+  const viewerTableRequests = createInFlightTableRequests();
+  const sendPackViewData = (packViewData: PackViewData | undefined) => {
+    if (!packViewData) return;
+    const toSend = [packViewData];
+    mainWindow?.webContents.send("setPacksData", toSend);
+    windows.viewerWindow?.webContents.send("setPacksData", toSend);
+    if (!appData.isViewerReady) {
+      console.log("VIEWER NOT READY, QUEUEING");
+      appData.queuedViewerData = toSend;
+    }
+  };
+
+  const getLoadedPackViewData = (
+    pack: Pack,
+    table: DBTable,
+  ): PackViewData | undefined => {
+    const packedFilePath = dbTableToString(table);
+    const packedFiles = pack.packedFiles.filter(
+      (packedFile) =>
+        packedFile.name.startsWith(packedFilePath) &&
+        packedFile.tableSchema != undefined &&
+        packedFile.schemaFields != undefined,
+    );
+    if (packedFiles.length === 0) return undefined;
+
+    return {
+      packName: pack.name,
+      packPath: pack.path,
+      tables: pack.packedFiles.map((packedFile) => packedFile.name),
+      packedFiles: Object.fromEntries(packedFiles.map((packedFile) => [packedFile.name, packedFile])),
+    };
+  };
+
   const getPackData = async (packPath: string, table?: DBTable, getLocs?: boolean) => {
     console.log(`getPackData ${packPath}`);
     // A loc is parsed by the loc reader, not the db one, so asking for it has to turn that on.
@@ -7309,93 +7344,58 @@ export const registerIpcMainListeners = (
       }
       packPath = nodePath.join(dataFolder as string, packPath);
     }
-    const packData = appData.packsData.find((pack) => pack.path === packPath);
-    // console.log("packsdata is", appData.packsData);
-    // console.log("to read:", packPath);
-    // console.log("found packs for reading:", packData);
-    console.log(
-      "getPackData:",
-      appData.currentlyReadingModPaths.every((path) => path != packPath),
-    );
-    console.log("getPackData:", !packData);
-    console.log("getPackData:", table);
-    if (packData && table)
-      console.log(
-        "getPackData:",
-        packData.packedFiles
-          .filter((packedFile) => packedFile.schemaFields)
-          .every((packedFile) => packedFile.name != dbTableToString(table)),
-      );
-    if (
-      appData.currentlyReadingModPaths.every((path) => path != packPath) &&
-      (!packData ||
-        (table &&
-          packData.packedFiles
-            .filter((packedFile) => packedFile.schemaFields)
-            .every((packedFile) => packedFile.name != dbTableToString(table))))
-    ) {
-      appData.currentlyReadingModPaths.push(packPath);
-      console.log(`READING ${packPath}`);
-      // The pack's file index is cheap and the viewer needs all of it for its tree, but parsing the
-      // requested table is the expensive part and the vanilla cache already has it. Locs are left to
-      // the pack: the cache holds db tables, and getPackViewData would find their rows unparsed.
-      const cacheableTablePath = table && !getLocs ? dbTableToString(table) : undefined;
+    const packedFilePath = table ? dbTableToString(table) : "";
+    const requestKey = JSON.stringify([packPath, packedFilePath, Boolean(getLocs)]);
+    await viewerTableRequests.run(requestKey, async () => {
+      const packData = appData.packsData.find((pack) => pack.path === packPath);
 
+      if (packData && !table) {
+        sendPackViewData(getPackViewData(packData, undefined, getLocs));
+        return;
+      }
+
+      // A parsed table retained by the main process is already in renderer-ready form. Do not amend
+      // every cell again merely because a second window asked for it.
+      if (packData && table && !getLocs) {
+        const loaded = getLoadedPackViewData(packData, table);
+        if (loaded) {
+          sendPackViewData(loaded);
+          return;
+        }
+      }
+
+      console.log(`READING ${packPath}${packedFilePath ? `:${packedFilePath}` : ""}`);
+      // The retained pack supplies the file index. Only when this is the first request for the pack
+      // do we read that index from disk. The selected descriptor is cloned because filling and view
+      // preparation mutate it.
       const readFromCache = async () => {
-        if (!cacheableTablePath || !canUseVanillaDbCacheForPack(packPath)) return undefined;
-        const indexOnly = await readPack(packPath, { skipParsingTables: true });
-        const packedFile = indexOnly.packedFiles.find((file) => file.name === cacheableTablePath);
-        if (!packedFile) return undefined;
+        if (!packedFilePath || getLocs || !canUseVanillaDbCacheForPack(packPath)) return undefined;
+
+        const indexedPack = packData ?? (await readPack(packPath, { skipParsingTables: true }));
+        const cloned = clonePackIndexForTable(indexedPack, packedFilePath);
+        if (!cloned) return undefined;
         // getDBVersion is the same resolver getPackViewData uses below, so a disagreement about the
         // layout is caught here rather than chunking the rows by the wrong field count.
         const filled = await fillPackedFileFromVanillaCache(
           packPath,
-          cacheableTablePath,
-          packedFile,
+          packedFilePath,
+          cloned.packedFile,
           getDBVersion,
         );
         if (!filled) return undefined;
-        // Left as readPack would have left it for the same request, so nothing downstream can tell
-        // the two apart - skipParsingTables sets this to [], which would understate what is parsed.
-        indexOnly.readTables = [cacheableTablePath];
-        console.log(`vanilla db cache served ${cacheableTablePath}`);
-        return indexOnly;
+        console.log(`vanilla db cache served ${packedFilePath}`);
+        return cloned.pack;
       };
 
       const newPack =
         (await readFromCache()) ??
-        (await readPack(packPath, table && { tablesToRead: [dbTableToString(table)], readLocs: getLocs }));
-      appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter((path) => path != packPath);
+        (await readPack(packPath, table && { tablesToRead: [packedFilePath], readLocs: getLocs }));
       if (appData.packsData.every((pack) => pack.path != packPath)) {
         console.log("APPENDING packsData", packPath);
         appendPacksData(newPack);
       }
-      const toSend = [getPackViewData(newPack, table, getLocs)];
-      mainWindow?.webContents.send("setPacksData", toSend);
-      windows.viewerWindow?.webContents.send("setPacksData", toSend);
-      if (!appData.isViewerReady) {
-        console.log("VIEWER NOT READY, QUEUEING");
-        appData.queuedViewerData = toSend;
-      }
-    } else {
-      if (appData.currentlyReadingModPaths.some((path) => path == packPath)) {
-        console.log("WAIT");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        console.log("DONE WAITING");
-        getPackData(packPath, table, getLocs);
-        return;
-      }
-      const packData = appData.packsData.find((pack) => pack.path === packPath);
-      if (packData) {
-        const toSend = [getPackViewData(packData, table, getLocs)];
-        mainWindow?.webContents.send("setPacksData", toSend);
-        windows.viewerWindow?.webContents.send("setPacksData", toSend);
-        if (!appData.isViewerReady) {
-          console.log("VIEWER NOT READY, QUEUEING");
-          appData.queuedViewerData = toSend;
-        }
-      }
-    }
+      sendPackViewData(getPackViewData(newPack, table, getLocs));
+    });
   };
   const readMods = async (
     mods: Mod[],
