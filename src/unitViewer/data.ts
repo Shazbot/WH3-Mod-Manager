@@ -39,6 +39,7 @@ export const UNIT_VIEWER_TABLES = [
   "unit_stats_land_experience_bonuses_tables",
   "unit_fatigue_effects_tables",
   "unit_stat_to_size_scaling_values_tables",
+  "ui_unit_stats_tables",
   "ground_type_to_stat_effects_tables",
   "_kv_morale_tables",
 ] as const;
@@ -167,6 +168,8 @@ const normalizeIconPath = (iconName: string) => {
   return `ui\\battle ui\\ability_icons\\${withExtension}`.toLowerCase();
 };
 
+const normalizeUiPath = (path: string) => path.replace(/\//g, "\\").replace(/\\+/g, "\\").toLowerCase();
+
 const buildAbility = (
   key: string,
   isSpell: boolean,
@@ -244,6 +247,7 @@ export const buildUnitViewerData = (
   const abilities = indexRows(tables.unit_abilities_tables, "key");
   const specialAbilities = indexRows(tables.unit_special_abilities_tables, "key");
   const groundEffectsByGroup = groupRows(tables.ground_type_to_stat_effects_tables, "affected_group");
+  const uiUnitStats = indexRows(tables.ui_unit_stats_tables, "key");
 
   const experienceBonusRows = indexRows(tables.unit_experience_bonuses_tables, "stat");
   const rankBonusRows = indexRows(tables.unit_stats_land_experience_bonuses_tables, "xp_level");
@@ -272,6 +276,11 @@ export const buildUnitViewerData = (
       singleEntityValue: asNumber(row.single_entity_value) || 1,
       multiEntityValue: asNumber(row.multi_entity_value) || 1,
     })),
+    statIconPaths: Object.fromEntries(
+      Array.from(uiUnitStats.values())
+        .map((row) => [asString(row.key), normalizeUiPath(asString(row.icon))] as const)
+        .filter(([, iconPath]) => !!iconPath),
+    ),
   };
   for (const row of tables.unit_fatigue_effects_tables || []) {
     const fatigue = asString(row.fatigue_level) as UnitViewerFatigue;
@@ -418,6 +427,7 @@ export const buildUnitViewerData = (
       Array.from(new Set([
         ...unitAbilities.map((ability) => ability.tooltip.iconPath),
         ...unitAttributes.map((attribute) => attribute.iconPath),
+        ...Object.values(constants.statIconPaths),
       ].filter((path): path is string => !!path))),
     );
 

@@ -95,22 +95,35 @@ const StatRow = ({
   baseline,
   suffix,
   lowerIsBetter,
+  iconData,
 }: {
   label: string;
   value: number | undefined;
   baseline?: number;
   suffix?: string;
   lowerIsBetter?: boolean;
+  iconData?: string;
 }) => (
   <div className="grid h-10 grid-cols-[minmax(8rem,1fr)_minmax(8.5rem,auto)] items-center gap-3 overflow-hidden border-b border-gray-700/60 px-3 text-[15px]">
-    <span className="truncate text-gray-300">{label}</span>
+    <span className="flex min-w-0 items-center gap-2 text-gray-300">
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
+        {iconData && <img src={`data:image/png;base64,${iconData}`} className="h-5 w-5 object-contain" alt="" title={label} />}
+      </span>
+      <span className="truncate">{label}</span>
+    </span>
     <span className="text-right"><StatValue value={value} baseline={baseline} suffix={suffix} lowerIsBetter={lowerIsBetter} /></span>
   </div>
 );
 
-const StatTextRow = ({ label, value }: { label: string; value: string }) => (
+const StatTextRow = ({ label, value, iconData }: { label: string; value: string; iconData?: string }) => (
   <div className="grid h-10 grid-cols-[minmax(8rem,1fr)_minmax(8.5rem,auto)] items-center gap-3 overflow-hidden border-b border-gray-700/60 px-3 text-[15px]">
-    <span className="truncate text-gray-300">{label}</span><span className="truncate text-right font-medium text-gray-100">{value || "—"}</span>
+    <span className="flex min-w-0 items-center gap-2 text-gray-300">
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
+        {iconData && <img src={`data:image/png;base64,${iconData}`} className="h-5 w-5 object-contain" alt="" title={label} />}
+      </span>
+      <span className="truncate">{label}</span>
+    </span>
+    <span className="truncate text-right font-medium text-gray-100">{value || "—"}</span>
   </div>
 );
 
@@ -214,6 +227,7 @@ const UnitCard = ({
   stats,
   compareUnit,
   compareStats,
+  statIconPaths,
   icons,
   imageSrc,
   onRemove,
@@ -224,12 +238,14 @@ const UnitCard = ({
   stats: UnitViewerCalculatedStats;
   compareUnit?: UnitViewerUnitModel;
   compareStats?: UnitViewerCalculatedStats;
+  statIconPaths: Record<string, string>;
   icons: Record<string, string>;
   imageSrc?: string;
   onRemove: () => void;
   onMoveLeft?: () => void;
   onMoveRight?: () => void;
 }) => {
+  const statIcon = (statKey: string) => icons[statIconPaths[statKey]];
   const compareAbilities = new Map((compareUnit?.abilities || []).map((ability) => [ability.key, ability]));
   const abilitiesBySection = {
     active: unit.abilities.filter((ability) => !ability.passive && !ability.isSpell),
@@ -262,51 +278,51 @@ const UnitCard = ({
           <StatRow label="MP Cost" value={stats.multiplayerCost} baseline={compareStats?.multiplayerCost} lowerIsBetter />
         </Section>
         <Section title="Defence">
-          <StatRow label="Health" value={stats.health} baseline={compareStats?.health} />
+          <StatRow label="Health" value={stats.health} baseline={compareStats?.health} iconData={statIcon("stat_health")} />
           <StatRow label="Entities" value={stats.entityCount} baseline={compareStats?.entityCount} />
-          <StatRow label="Health / Entity" value={stats.healthPerEntity} baseline={compareStats?.healthPerEntity} />
+          <StatRow label="Health / Entity" value={stats.healthPerEntity} baseline={compareStats?.healthPerEntity} iconData={statIcon("stat_health")} />
           <StatRow label="Barrier" value={stats.barrier} baseline={compareStats?.barrier} />
-          <StatRow label="Armour" value={stats.armour} baseline={compareStats?.armour} />
-          <StatRow label="Missile Block" value={stats.shieldBlock} baseline={compareStats?.shieldBlock} suffix="%" />
-          <StatRow label="Ward Save" value={unit.wardSave} baseline={compareUnit?.wardSave} suffix="%" />
-          <StatRow label="Physical Resistance" value={unit.physicalResistance} baseline={compareUnit?.physicalResistance} suffix="%" />
-          <StatRow label="Missile Resistance" value={unit.missileResistance} baseline={compareUnit?.missileResistance} suffix="%" />
-          <StatRow label="Magic Resistance" value={unit.magicResistance} baseline={compareUnit?.magicResistance} suffix="%" />
-          <StatRow label="Fire Resistance" value={unit.fireResistance} baseline={compareUnit?.fireResistance} suffix="%" />
+          <StatRow label="Armour" value={stats.armour} baseline={compareStats?.armour} iconData={statIcon("stat_armour")} />
+          <StatRow label="Missile Block" value={stats.shieldBlock} baseline={compareStats?.shieldBlock} suffix="%" iconData={statIcon("stat_missile_block_chance")} />
+          <StatRow label="Ward Save" value={unit.wardSave} baseline={compareUnit?.wardSave} suffix="%" iconData={statIcon("stat_resistance_all")} />
+          <StatRow label="Physical Resistance" value={unit.physicalResistance} baseline={compareUnit?.physicalResistance} suffix="%" iconData={statIcon("stat_resistance_physical")} />
+          <StatRow label="Missile Resistance" value={unit.missileResistance} baseline={compareUnit?.missileResistance} suffix="%" iconData={statIcon("stat_resistance_missile")} />
+          <StatRow label="Magic Resistance" value={unit.magicResistance} baseline={compareUnit?.magicResistance} suffix="%" iconData={statIcon("stat_resistance_magic")} />
+          <StatRow label="Fire Resistance" value={unit.fireResistance} baseline={compareUnit?.fireResistance} suffix="%" iconData={statIcon("stat_resistance_flame")} />
         </Section>
         <Section title="Battle Stats">
-          <StatRow label="Leadership" value={stats.leadership} baseline={compareStats?.leadership} />
-          <StatRow label="Speed" value={stats.speed} baseline={compareStats?.speed} />
-          <StatRow label="Charge Speed" value={stats.chargeSpeed} baseline={compareStats?.chargeSpeed} />
-          <StatRow label="Melee Attack" value={stats.meleeAttack} baseline={compareStats?.meleeAttack} />
-          <StatRow label="Melee Defence" value={stats.meleeDefence} baseline={compareStats?.meleeDefence} />
-          <StatRow label="Weapon Strength" value={stats.weaponStrength} baseline={compareStats?.weaponStrength} />
-          <StatRow label="Base Damage" value={stats.baseDamage} baseline={compareStats?.baseDamage} />
-          <StatRow label="AP Damage" value={stats.apDamage} baseline={compareStats?.apDamage} />
-          <StatRow label="Bonus vs Large" value={stats.bonusVsLarge} baseline={compareStats?.bonusVsLarge} />
-          <StatRow label="Bonus vs Infantry" value={stats.bonusVsInfantry} baseline={compareStats?.bonusVsInfantry} />
-          <StatRow label="Charge Bonus" value={stats.chargeBonus} baseline={compareStats?.chargeBonus} />
+          <StatRow label="Leadership" value={stats.leadership} baseline={compareStats?.leadership} iconData={statIcon("stat_morale")} />
+          <StatRow label="Speed" value={stats.speed} baseline={compareStats?.speed} iconData={statIcon("scalar_speed")} />
+          <StatRow label="Charge Speed" value={stats.chargeSpeed} baseline={compareStats?.chargeSpeed} iconData={statIcon("scalar_charge_speed")} />
+          <StatRow label="Melee Attack" value={stats.meleeAttack} baseline={compareStats?.meleeAttack} iconData={statIcon("stat_melee_attack")} />
+          <StatRow label="Melee Defence" value={stats.meleeDefence} baseline={compareStats?.meleeDefence} iconData={statIcon("stat_melee_defence")} />
+          <StatRow label="Weapon Strength" value={stats.weaponStrength} baseline={compareStats?.weaponStrength} iconData={statIcon("stat_weapon_damage")} />
+          <StatRow label="Base Damage" value={stats.baseDamage} baseline={compareStats?.baseDamage} iconData={statIcon("stat_melee_damage_base")} />
+          <StatRow label="AP Damage" value={stats.apDamage} baseline={compareStats?.apDamage} iconData={statIcon("stat_melee_damage_ap")} />
+          <StatRow label="Bonus vs Large" value={stats.bonusVsLarge} baseline={compareStats?.bonusVsLarge} iconData={statIcon("stat_bonus_vs_large")} />
+          <StatRow label="Bonus vs Infantry" value={stats.bonusVsInfantry} baseline={compareStats?.bonusVsInfantry} iconData={statIcon("stat_bonus_vs_infantry")} />
+          <StatRow label="Charge Bonus" value={stats.chargeBonus} baseline={compareStats?.chargeBonus} iconData={statIcon("stat_charge_bonus")} />
           <StatRow label="Attack Interval" value={stats.attackInterval} baseline={compareStats?.attackInterval} suffix="s" lowerIsBetter />
           <StatRow label="Splash Max Attacks" value={unit.meleeWeapon.splashMaxAttacks} baseline={compareUnit?.meleeWeapon.splashMaxAttacks} />
           <StatTextRow label="Splash Target Size" value={unit.meleeWeapon.splashTargetSize || ""} />
-          <StatRow label="Mass" value={stats.mass} baseline={compareStats?.mass} />
+          <StatRow label="Mass" value={stats.mass} baseline={compareStats?.mass} iconData={statIcon("stat_mass")} />
         </Section>
         {[{ label: "Missile Weapon", stats: stats.primaryMissile, base: compareStats?.primaryMissile }, { label: "Secondary Missile", stats: stats.secondaryMissile, base: compareStats?.secondaryMissile }].map((missile) => (
           <Section key={missile.label} title={missile.label}>
-            <StatRow label="Ammunition" value={missile.stats?.ammo} baseline={missile.base?.ammo} />
-            <StatRow label="Range" value={missile.stats?.range} baseline={missile.base?.range} />
-            <StatRow label="Damage / 10s" value={missile.stats?.damagePerTenSeconds} baseline={missile.base?.damagePerTenSeconds} />
-            <StatRow label="Reload Time" value={missile.stats?.reloadTime} baseline={missile.base?.reloadTime} suffix="s" lowerIsBetter />
-            <StatRow label="Projectile Damage" value={missile.stats?.baseDamage} baseline={missile.base?.baseDamage} />
-            <StatRow label="Projectile AP" value={missile.stats?.apDamage} baseline={missile.base?.apDamage} />
-            <StatRow label="Explosion Damage" value={missile.stats?.explosionBaseDamage} baseline={missile.base?.explosionBaseDamage} />
-            <StatRow label="Explosion AP" value={missile.stats?.explosionApDamage} baseline={missile.base?.explosionApDamage} />
+            <StatRow label="Ammunition" value={missile.stats?.ammo} baseline={missile.base?.ammo} iconData={statIcon("stat_ammo")} />
+            <StatRow label="Range" value={missile.stats?.range} baseline={missile.base?.range} iconData={statIcon("scalar_missile_range")} />
+            <StatRow label="Damage / 10s" value={missile.stats?.damagePerTenSeconds} baseline={missile.base?.damagePerTenSeconds} iconData={statIcon("stat_missile_damage_over_time")} />
+            <StatRow label="Reload Time" value={missile.stats?.reloadTime} baseline={missile.base?.reloadTime} suffix="s" lowerIsBetter iconData={statIcon("stat_reloading")} />
+            <StatRow label="Projectile Damage" value={missile.stats?.baseDamage} baseline={missile.base?.baseDamage} iconData={statIcon("scalar_missile_damage_base")} />
+            <StatRow label="Projectile AP" value={missile.stats?.apDamage} baseline={missile.base?.apDamage} iconData={statIcon("scalar_missile_damage_ap")} />
+            <StatRow label="Explosion Damage" value={missile.stats?.explosionBaseDamage} baseline={missile.base?.explosionBaseDamage} iconData={statIcon("scalar_missile_explosion_damage_base")} />
+            <StatRow label="Explosion AP" value={missile.stats?.explosionApDamage} baseline={missile.base?.explosionApDamage} iconData={statIcon("scalar_missile_explosion_damage_ap")} />
             <StatRow label="Explosion Radius" value={missile.stats?.explosionRadius} baseline={missile.base?.explosionRadius} />
             <StatRow label="Shots / Volley" value={missile.stats?.shotsPerVolley} baseline={missile.base?.shotsPerVolley} />
             <StatRow label="Projectiles" value={missile.stats?.projectileNumber} baseline={missile.base?.projectileNumber} />
             <StatRow label="Burst Size" value={missile.stats?.burstSize} baseline={missile.base?.burstSize} />
-            <StatRow label="Bonus vs Large" value={missile.stats?.bonusVsLarge} baseline={missile.base?.bonusVsLarge} />
-            <StatRow label="Bonus vs Infantry" value={missile.stats?.bonusVsInfantry} baseline={missile.base?.bonusVsInfantry} />
+            <StatRow label="Bonus vs Large" value={missile.stats?.bonusVsLarge} baseline={missile.base?.bonusVsLarge} iconData={statIcon("stat_bonus_vs_large")} />
+            <StatRow label="Bonus vs Infantry" value={missile.stats?.bonusVsInfantry} baseline={missile.base?.bonusVsInfantry} iconData={statIcon("stat_bonus_vs_infantry")} />
           </Section>
         ))}
         <Section title="Additional">
@@ -510,6 +526,7 @@ const UnitViewerTab = memo(() => {
               stats={stats}
               compareUnit={comparisonKey ? details[comparisonKey] : undefined}
               compareStats={comparisonKey ? calculated[comparisonKey] : undefined}
+              statIconPaths={constants?.statIconPaths || {}}
               icons={icons[key] || {}}
               imageSrc={images[key]}
               onRemove={() => setSelectedKeys((keys) => keys.filter((unitKey) => unitKey !== key))}

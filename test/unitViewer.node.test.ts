@@ -58,6 +58,7 @@ const constants: UnitViewerConstants = {
     { stat, size: "large" as const, singleEntityValue: 0.75, multiEntityValue: 1 },
     { stat, size: "ultra" as const, singleEntityValue: 1, multiEntityValue: 1 },
   ]),
+  statIconPaths: {},
 };
 
 const makeUnit = (overrides: Partial<UnitViewerUnitModel>): UnitViewerUnitModel => ({

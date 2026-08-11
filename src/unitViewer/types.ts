@@ -157,6 +157,7 @@ export interface UnitViewerConstants {
   fatigueEffects: Partial<Record<UnitViewerFatigue, Record<string, number>>>;
   fatigueMorale: Partial<Record<UnitViewerFatigue, number>>;
   sizeScaling: UnitViewerSizeScaling[];
+  statIconPaths: Record<string, string>;
 }
 
 export interface UnitViewerMissileStats {

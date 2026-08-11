@@ -36,6 +36,7 @@ const tables: UnitViewerTableRows = {
   land_units_to_unit_abilites_junctions_tables: [{ land_unit: "land_a", ability: "ability_without_special" }],
   unit_abilities_tables: [{ key: "ability_without_special", icon_name: "ability_icon", type: "active", source_type: "unit" }],
   unit_attributes_to_groups_junctions_tables: [{ attribute_group: "group_a", attribute: "attribute_a" }],
+  ui_unit_stats_tables: [{ key: "stat_health", icon: "ui/skins/default/icon_stat_health.png" }],
 };
 
 const built = buildUnitViewerData(tables, (key) => ({
@@ -77,6 +78,7 @@ describe("Unit Viewer UI", () => {
         icons: unitKey === "unit_a" ? {
           "ui\\battle ui\\ability_icons\\ability_icon.png": "ability-icon-data",
           "ui\\battle ui\\ability_icons\\attribute_a.png": "attribute-icon-data",
+          "ui\\skins\\default\\icon_stat_health.png": "health-icon-data",
         } : {},
       })),
       getUnitViewerAsset: vi.fn().mockResolvedValue({ success: false }),
@@ -130,6 +132,8 @@ describe("Unit Viewer UI", () => {
     const attribute = await screen.findByText("Test Attribute");
     const attributeIcon = attribute.parentElement?.querySelector("img");
     expect(attributeIcon).toHaveAttribute("src", "data:image/png;base64,attribute-icon-data");
+    const healthIcon = screen.getByText("Health").parentElement?.querySelector("img");
+    expect(healthIcon).toHaveAttribute("src", "data:image/png;base64,health-icon-data");
 
     fireEvent.mouseEnter(abilityButton);
     const tooltip = await screen.findByRole("tooltip");
