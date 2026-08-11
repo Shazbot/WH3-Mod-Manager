@@ -77,6 +77,7 @@ describe("nodeRegistry", () => {
       inputType: "PackFiles",
       outputType: "TableSelection",
       textFileFormatter: "none",
+      ignoreFlowSourcePack: false,
     });
   });
 

@@ -31,6 +31,7 @@ import {
   buildFlowOutputPackBaseName,
   buildReadPackCacheKey,
   flowExecutionDebugLog,
+  isFlowSourcePack,
   resolveFlowSourcePackPath,
 } from "./flowExecutionSupport";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
@@ -7425,6 +7426,8 @@ async function executeEditTextFileNode(
   const parsed = getNodeConfig<{
     textFileRules?: TextFileEditRule[];
     textFileFormatter?: TextFileFormatter;
+    ignoreFlowSourcePack?: boolean;
+    flowSourcePack?: string;
   }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid node configuration" };
@@ -7512,8 +7515,12 @@ async function executeEditTextFileNode(
     const priority = buildPackPriority(sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path));
     const indexedPacks = new Map<string, Pack>();
     const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
+    const sourcePackFiles = (inputData.files || []).filter(
+      (packFile) =>
+        !parsed.ignoreFlowSourcePack || !isFlowSourcePack(packFile, parsed.flowSourcePack),
+    );
 
-    for (const packFile of inputData.files || []) {
+    for (const packFile of sourcePackFiles) {
       if (!packFile.loaded) continue;
       try {
         // The index first, so only the files a rule actually targets are read.

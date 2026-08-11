@@ -7063,6 +7063,7 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 "Insert between takes two snippets and puts the text in the gap between them, pairing each opening snippet with the first closing one after it.\n\n" +
                 "Skip conditions leave a file alone when their expression is true. AND binds more tightly than OR; conditions in the same AND group share a border color.\n\n" +
                 "Formatting runs after the rules. Auto-indent touches inserted XML fragments only. Pretty XML and compact XML reserialize the whole selected document and can normalize quotes, empty tags and whitespace.\n\n" +
+                "Ignore this flow's pack excludes the mod containing the flow before resolving which pack supplies a target file. It does not discard files explicitly passed in from a previous node.\n\n" +
                 "A rule that matches nothing is reported when you run the flow yourself. On the unattended run at game start it stays quiet unless you tick required, since a flow spanning many packs will have rules that do not apply to each one."
             }
           />
@@ -7104,6 +7105,27 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
           </option>
         </select>
       </div>
+
+      <label
+        className="flex items-center gap-2 mb-2 cursor-pointer"
+        title="When several packs contain the target path, exclude the pack that contains this flow before choosing the winning source. Chained file output is not filtered."
+      >
+        <input
+          type="checkbox"
+          checked={data.ignoreFlowSourcePack === true}
+          onChange={(event) =>
+            dispatchNodeDataUpdate(data, {
+              nodeId: id,
+              ignoreFlowSourcePack: event.target.checked,
+            })
+          }
+          className="w-3 h-3"
+        />
+        <span className="text-xs text-gray-300">
+          {localized.nodeEditorEditTextFileIgnoreFlowPack ||
+            "ignore this flow's pack as a file source"}
+        </span>
+      </label>
 
       <div
         className="space-y-2 max-h-96 overflow-y-auto scrollable-node-content"

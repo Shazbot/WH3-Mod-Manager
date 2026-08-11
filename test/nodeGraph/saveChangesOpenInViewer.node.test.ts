@@ -81,15 +81,24 @@ describe("Edit Text File formatter execution config", () => {
       outputType: "TableSelection",
       textFileRules: [],
       textFileFormatter: "compactXml",
+      ignoreFlowSourcePack: true,
+      flowSourcePack: "owner.pack",
     },
   };
 
   it("reaches the executor on manual and unattended runs", () => {
-    expect(JSON.parse(serializeNodeConfigForExecution(editNode as never) as string).textFileFormatter).toBe(
-      "compactXml",
-    );
-    expect((prepareNodeConfig(editNode as never) as { textFileFormatter?: string }).textFileFormatter).toBe(
-      "compactXml",
-    );
+    const manualConfig = JSON.parse(serializeNodeConfigForExecution(editNode as never) as string);
+    const automaticConfig = prepareNodeConfig(editNode as never) as Record<string, unknown>;
+
+    expect(manualConfig).toMatchObject({
+      textFileFormatter: "compactXml",
+      ignoreFlowSourcePack: true,
+      flowSourcePack: "owner.pack",
+    });
+    expect(automaticConfig).toMatchObject({
+      textFileFormatter: "compactXml",
+      ignoreFlowSourcePack: true,
+      flowSourcePack: "owner.pack",
+    });
   });
 });

@@ -1303,6 +1303,8 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
       return {
         textFileRules: (node.data as any).textFileRules || [],
         textFileFormatter: (node.data as any).textFileFormatter || "none",
+        ignoreFlowSourcePack: (node.data as any).ignoreFlowSourcePack === true,
+        flowSourcePack: (node.data as any).flowSourcePack || "",
       };
     case "editloctext":
       return { locRules: (node.data as any).locRules || [] };
@@ -1441,6 +1443,10 @@ const prepareFlow = (
     }
     if (node.type === "savechanges") {
       (node.data as any).flowExecutionId = flowExecutionId;
+    }
+    if (node.type === "edittextfile") {
+      // Runtime-only: lets the node omit the pack which owns this flow from PackFiles resolution.
+      (node.data as any).flowSourcePack = packName;
     }
     if (schemaAwareFlowNodeTypes.has(node.type)) {
       const existingSchema = (node.data as any).DBNameToDBVersions;

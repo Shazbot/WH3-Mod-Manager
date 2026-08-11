@@ -440,6 +440,8 @@ export interface EditTextFileNodeData extends NodeData {
   outputType: "TableSelection";
   textFileRules: TextFileEditRuleData[];
   textFileFormatter?: "none" | "autoIndent" | "prettyXml" | "compactXml";
+  /** Do not use the pack containing this flow as the original source of a file to edit. */
+  ignoreFlowSourcePack?: boolean;
 }
 
 /**

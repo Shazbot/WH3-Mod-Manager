@@ -756,6 +756,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       outputType: "TableSelection",
       textFileRules: [],
       textFileFormatter: "none",
+      ignoreFlowSourcePack: false,
     }),
   }),
   editloctext: createNodeDefinition<EditLocTextNodeData>({

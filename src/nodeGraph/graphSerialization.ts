@@ -136,6 +136,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         locRules: (data.locRules || []) as SerializedNode["data"]["locRules"],
         textFileRules: (data.textFileRules || []) as SerializedNode["data"]["textFileRules"],
         textFileFormatter: data.textFileFormatter as SerializedNode["data"]["textFileFormatter"],
+        ignoreFlowSourcePack: data.ignoreFlowSourcePack as boolean | undefined,
         fileOperations: (data.fileOperations || []) as SerializedNode["data"]["fileOperations"],
         selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
         flowOptionChecked: data.flowOptionChecked as boolean | undefined,
@@ -323,8 +324,18 @@ export const prepareGraphForExecution = ({
     return modified ? { ...node, data: nodeData } : node;
   });
 
+  const serializedNodes = serializeReactFlowNodes(preparedNodes);
+  if (currentPackName) {
+    for (const node of serializedNodes) {
+      if (node.type === "edittextfile") {
+        // Execution-only context: serializeNodeGraphState deliberately does not persist this path.
+        node.data.flowSourcePack = currentPackName;
+      }
+    }
+  }
+
   return {
-    nodes: serializeReactFlowNodes(preparedNodes),
+    nodes: serializedNodes,
     connections: serializeReactFlowEdges(preparedNodes, edges),
   };
 };

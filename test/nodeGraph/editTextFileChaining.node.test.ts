@@ -118,6 +118,8 @@ describe("chained Edit Text File nodes", () => {
       textValue: "",
       config: {
         textFileFormatter: "compactXml",
+        ignoreFlowSourcePack: true,
+        flowSourcePack: "source.pack",
         textFileRules: [
           {
             id: "attribute",

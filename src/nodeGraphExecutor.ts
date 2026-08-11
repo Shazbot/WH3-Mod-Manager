@@ -197,6 +197,8 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
     return JSON.stringify({
       textFileRules: (node.data as any).textFileRules || [],
       textFileFormatter: (node.data as any).textFileFormatter || "none",
+      ignoreFlowSourcePack: (node.data as any).ignoreFlowSourcePack === true,
+      flowSourcePack: (node.data as any).flowSourcePack || "",
     });
   }
   if (node.type === "editloctext") {

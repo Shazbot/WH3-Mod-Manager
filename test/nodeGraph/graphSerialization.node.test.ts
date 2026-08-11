@@ -116,7 +116,7 @@ describe("graphSerialization", () => {
     expect(result.connections).toEqual([]);
   });
 
-  it("preserves the Edit Text File formatter through serialization", () => {
+  it("persists Edit Text File options and injects the owning pack only for execution", () => {
     const serialized = serializeNodeGraphState({
       nodes: [
         {
@@ -130,6 +130,7 @@ describe("graphSerialization", () => {
             outputType: "TableSelection",
             textFileRules: [],
             textFileFormatter: "prettyXml",
+            ignoreFlowSourcePack: true,
           },
         },
       ] as any[],
@@ -140,9 +141,19 @@ describe("graphSerialization", () => {
     });
 
     expect(serialized.nodes[0].data.textFileFormatter).toBe("prettyXml");
+    expect(serialized.nodes[0].data.ignoreFlowSourcePack).toBe(true);
+    expect(serialized.nodes[0].data.flowSourcePack).toBeUndefined();
     expect(deserializeNodeGraph(JSON.stringify(serialized)).nodes[0].data.textFileFormatter).toBe(
       "prettyXml",
     );
+
+    const prepared = prepareGraphForExecution({
+      nodes: deserializeNodeGraph(JSON.stringify(serialized)).nodes as any[],
+      edges: [],
+      currentPackName: "K:\\mods\\owner.pack",
+    });
+    expect(prepared.nodes[0].data.ignoreFlowSourcePack).toBe(true);
+    expect(prepared.nodes[0].data.flowSourcePack).toBe("K:\\mods\\owner.pack");
   });
 
   it("preserves the Dump to TSV filename through serialization and loading", () => {

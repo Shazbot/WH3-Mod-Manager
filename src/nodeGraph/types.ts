@@ -176,6 +176,9 @@ export interface SerializedNode {
     locRules?: Array<Record<string, unknown>>;
     textFileRules?: Array<Record<string, unknown>>;
     textFileFormatter?: "none" | "autoIndent" | "prettyXml" | "compactXml";
+    ignoreFlowSourcePack?: boolean;
+    /** Runtime-only identity injected while preparing a manual or automatic execution. */
+    flowSourcePack?: string;
     fileOperations?: Array<Record<string, unknown>>;
   };
 }

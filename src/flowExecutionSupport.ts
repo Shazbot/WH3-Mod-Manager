@@ -26,6 +26,24 @@ export interface FlowExecutionContext {
 
 const getFileName = (filePath: string) => filePath.replace(/^.*[\\/]/, "");
 
+/** Whether a PackFiles entry is the pack that owns the currently executing flow. */
+export const isFlowSourcePack = (
+  candidate: Pick<PackFilesNodeFile, "name" | "path">,
+  flowSourcePack: string | undefined,
+): boolean => {
+  if (!flowSourcePack) return false;
+  const normalize = (value: string) => value.replace(/\//g, "\\").toLowerCase();
+  const normalizedSource = normalize(flowSourcePack);
+  const normalizedPath = normalize(candidate.path);
+  if (normalizedSource === normalizedPath) return true;
+  // A manual run knows the full owning path, so do not accidentally exclude another pack with the
+  // same file name in a different folder. Automatic runs currently know only the pack name.
+  if (normalizedSource.includes("\\")) return false;
+
+  const sourceName = getFileName(normalizedSource);
+  return normalize(candidate.name) === sourceName || getFileName(normalizedPath) === sourceName;
+};
+
 export const buildAutomaticFlowExecutionId = (packName: string, flowFileName: string): string => {
   const packBaseName = getFileName(packName).replace(/\.pack$/i, "");
   const flowBaseName = getFileName(flowFileName).replace(/\.[^.]+$/, "").replace(/\.pack$/i, "");
