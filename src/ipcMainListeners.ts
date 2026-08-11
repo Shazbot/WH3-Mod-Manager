@@ -2872,7 +2872,8 @@ export const registerIpcMainListeners = (
     cachedTechnologyDataKey = cacheKey;
     return cachedTechnologyData;
   };
-  const setCurrentGame = async (newGame: SupportedGames) => {
+  const setCurrentGame = async (newGame: SupportedGames): Promise<boolean> => {
+    let didSwitchGame = false;
     try {
       // Readers hold an open handle and only check the pack and schema when they open, so drop them
       // here: coming back to this game later should revalidate rather than serve what was true before.
@@ -2911,10 +2912,12 @@ export const registerIpcMainListeners = (
           gamePath: gamePath || "",
           contentFolder: contentFolder || "",
         } as GameFolderPaths);
+        didSwitchGame = true;
       } else {
         mainWindow?.webContents.send("requestGameFolderPaths", newGame);
       }
     }
+    return didSwitchGame;
   };
   const refreshModsIfFoldersValid = async (requestedGame: SupportedGames | undefined) => {
     const game = requestedGame || appData.currentGame;
@@ -2925,7 +2928,8 @@ export const registerIpcMainListeners = (
     //   console.log(contentFolder, gamePath, dataFolder);
     //   getAllMods();
     // }
-    await setCurrentGame(game);
+    const didSwitchGame = await setCurrentGame(game);
+    if (!didSwitchGame) return;
     const gameConfig = appData.gameToConfig[game];
     mainWindow?.webContents.send(
       "setCurrentGame",
@@ -7927,27 +7931,31 @@ export const registerIpcMainListeners = (
     windows.viewerWindow?.webContents.send("setCurrentLanguage", language);
     windows.techTreesWindow?.webContents.send("setCurrentLanguage", language);
   });
-  ipcMain.on("requestGameChange", async (event, game: SupportedGames, appState: AppState) => {
-    // console.log("game before change is", appData.currentGame, "to", game);
-    console.log(`Requesting game change to ${game}`);
-    console.log(`Current game is ${appState.currentGame}`);
-    appData.gameToConfig[appState.currentGame] = {
-      ...appData.gameToConfig[appState.currentGame],
-      presets: appState.presets,
-    };
-    await setCurrentGame(game);
-    // always tell the renderer, even without a content folder: if it keeps the previous game's
-    // presets they end up written into this game's slot on the next save
-    const gameConfig = appData.gameToConfig[game];
-    console.log("SENDING setCurrentGame", game);
-    mainWindow?.webContents.send(
-      "setCurrentGame",
-      game,
-      gameConfig.currentPreset,
-      gameConfig.presets,
-      gameConfig.modUserData,
-    );
-  });
+  ipcMain.on(
+    "requestGameChange",
+    async (event, game: SupportedGames, payload: ConfigSavePayload) => {
+      // console.log("game before change is", appData.currentGame, "to", game);
+      console.log(`Requesting game change to ${game}`);
+      console.log(`Current game is ${payload.currentGame}`);
+      // Capture even a not-yet-debounced edit before leaving. writeAppConfig updates gameToConfig
+      // synchronously before its queued disk write, so returning later uses this exact state.
+      writeAppConfig(payload);
+      const didSwitchGame = await setCurrentGame(game);
+      // Until the requested game's folders are configured, main and renderer both remain on the old
+      // game. refreshModsIfFoldersValid completes the switch after a folder is selected.
+      if (!didSwitchGame) return;
+
+      const gameConfig = appData.gameToConfig[game];
+      console.log("SENDING setCurrentGame", game);
+      mainWindow?.webContents.send(
+        "setCurrentGame",
+        game,
+        gameConfig.currentPreset,
+        gameConfig.presets,
+        gameConfig.modUserData,
+      );
+    },
+  );
   const terminateCurrentGame = () => {
     const name = gameToProcessName[appData.currentGame];
     try {

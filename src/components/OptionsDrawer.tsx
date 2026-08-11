@@ -47,6 +47,7 @@ import {
   isWorkshopMod,
   WORKSHOP_MOD_SOURCE_ID,
 } from "../modSources";
+import { selectConfigSavePayload } from "../config/configSavePayload";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -370,7 +371,7 @@ const OptionsDrawer = memo(() => {
       const game = supportedGames.find((game) => game == newValue.value);
       if (!game) return;
       if (actionMeta.action === "select-option") {
-        window.api?.requestGameChange(game, store.getState().app);
+        window.api?.requestGameChange(game, selectConfigSavePayload(store.getState().app));
       }
     },
     [supportedGames],

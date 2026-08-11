@@ -4,7 +4,7 @@ import { copy, move } from "fs-extra";
 import appData from "./appData";
 import * as nodePath from "path";
 import { version } from "../package.json";
-import { buildAppConfig } from "./config/buildAppConfig";
+import { buildAppConfig, cacheAcceptedGameConfig } from "./config/buildAppConfig";
 import { migrateAppConfig } from "./config/migrateAppConfig";
 
 let lastWrittenConfig: AppConfig | undefined;
@@ -106,6 +106,10 @@ export function writeAppConfig(payload: ConfigSavePayload) {
     console.log("skipping config write: current preset has no mods but previous config did");
     return;
   }
+
+  // Game switches read from this cache instead of re-reading config.json. Update it only after the
+  // same safety guards that protect the on-disk config have accepted the renderer payload.
+  cacheAcceptedGameConfig(payload, toWrite);
 
   // stringify once and compare the strings: this replaces a deep clone plus a deep equality check
   // over the whole config, and the result is exactly what gets written to disk

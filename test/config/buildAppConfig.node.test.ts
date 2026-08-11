@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import appData from "../../src/appData";
-import { buildAppConfig } from "../../src/config/buildAppConfig";
+import {
+  buildAppConfig,
+  cacheAcceptedGameConfig,
+} from "../../src/config/buildAppConfig";
 import { emptyGameConfig } from "../../src/config/migrateAppConfig";
 import { supportedGames } from "../../src/supportedGames";
 
@@ -28,10 +31,31 @@ describe("buildAppConfig", () => {
   });
 
   it("writes the renderer's presets into the selected game's slot", () => {
-    const config = buildAppConfig(createPayload("wh3", "wh3 preset"));
+    const payload = createPayload("wh3", "wh3 preset");
+    const config = buildAppConfig(payload);
+
+    expect(appData.gameToConfig.wh3.presets).toEqual([]);
+    cacheAcceptedGameConfig(payload, config);
 
     expect(config.games.wh3.presets.map((preset) => preset.name)).toEqual(["wh3 preset"]);
     expect(config.games.wh3.modUserData["alpha.pack"]).toEqual({ humanName: "Alpha" });
+    expect(appData.gameToConfig.wh3).toEqual(config.games.wh3);
+  });
+
+  it("keeps the main-process game cache current for a later switch back", () => {
+    const payload = createPayload("wh3", "latest preset");
+    payload.config.currentPreset.mods = [{ name: "alpha.pack", isEnabled: false, loadOrder: 4 }];
+    payload.config.modUserData["alpha.pack"] = { categories: ["latest"] };
+
+    const config = buildAppConfig(payload);
+    cacheAcceptedGameConfig(payload, config);
+
+    expect(appData.gameToConfig.wh3.currentPreset.mods).toEqual([
+      { name: "alpha.pack", isEnabled: false, loadOrder: 4 },
+    ]);
+    expect(appData.gameToConfig.wh3.modUserData["alpha.pack"]).toEqual({
+      categories: ["latest"],
+    });
   });
 
   it("leaves other games untouched", () => {
@@ -54,6 +78,7 @@ describe("buildAppConfig", () => {
 
     expect(config.games.rome2.presets).toEqual([]);
     expect(config.games.wh3.presets).toEqual([]);
+    expect(appData.gameToConfig.wh3.presets).toEqual([]);
   });
 
   it("produces identical JSON for an unchanged payload, so the write dedupe holds", () => {

@@ -220,8 +220,8 @@ const api = {
     ipcRenderer.on("setAvailableLanguages", callback),
   getSteamCollectionName: (url: string): Promise<string> => ipcRenderer.invoke("getSteamCollectionName", url),
   requestLanguageChange: (language: string) => ipcRenderer.send("requestLanguageChange", language),
-  requestGameChange: (game: string, appState: AppState) =>
-    ipcRenderer.send("requestGameChange", game, appState),
+  requestGameChange: (game: string, payload: ConfigSavePayload) =>
+    ipcRenderer.send("requestGameChange", game, payload),
   setCurrentLanguage: (callback: (event: Electron.IpcRendererEvent, language: string) => void) =>
     ipcRenderer.on("setCurrentLanguage", callback),
   setCurrentGame: (

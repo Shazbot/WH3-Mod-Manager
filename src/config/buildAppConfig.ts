@@ -35,3 +35,9 @@ export function buildAppConfig(payload: ConfigSavePayload): AppConfig {
     gameFolderPaths: appData.gamesToGameFolderPaths,
   };
 }
+
+/** Updates the in-memory source used by game switches after write guards have accepted a payload. */
+export function cacheAcceptedGameConfig(payload: ConfigSavePayload, config: AppConfig) {
+  if (payload.currentGame !== appData.currentGame) return;
+  appData.gameToConfig[payload.currentGame] = config.games[payload.currentGame];
+}

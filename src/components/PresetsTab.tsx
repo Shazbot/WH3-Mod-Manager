@@ -45,13 +45,15 @@ type MissingDependency = {
   installedModName?: string;
 };
 
+const noStoredModUserData: Record<string, StoredModUserData> = {};
+
 /**
  * A preset can list a mod that isn't installed right now. Presets store names only, so build a
  * stand-in for rendering that row — nothing here is ever persisted.
  */
-const createPlaceholderMod = (name: string): Mod => ({
+const createPlaceholderMod = (name: string, userData?: StoredModUserData): Mod => ({
   name,
-  humanName: name.replace(".pack", ""),
+  humanName: userData?.humanName || name.replace(".pack", ""),
   path: name,
   imgPath: "",
   workshopId: "",
@@ -59,13 +61,14 @@ const createPlaceholderMod = (name: string): Mod => ({
   modDirectory: "",
   isInData: false,
   loadOrder: undefined,
-  author: "",
+  author: userData?.author || "",
   isDeleted: false,
   isMovie: false,
   size: 0,
   isSymbolicLink: false,
   tags: [],
-  reqModIdToName: [],
+  reqModIdToName: userData?.reqModIdToName || [],
+  categories: userData?.categories || [],
 });
 
 const areSetsEqual = (first: Set<string>, second: Set<string>) => {
@@ -97,6 +100,9 @@ const PresetsTab = memo(() => {
   const presets = useAppSelector((state) => state.app.presets);
   const allMods = useAppSelector((state) => state.app.allMods);
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
+  const storedModUserData = useAppSelector(
+    (state) => state.app.dataFromConfig?.modUserData ?? noStoredModUserData,
+  );
   const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const categories = useAppSelector((state) => state.app.categories);
   const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
@@ -161,10 +167,21 @@ const PresetsTab = memo(() => {
 
   const bestModByName = useMemo(() => {
     const modsByName = new Map(
-      resolveModsBySourcePriority(allMods, appFolderPaths, isFeaturesForModdersEnabled).map((mod) => [
-        mod.name,
-        { ...mod, reqModIdToName: [...(mod.reqModIdToName ?? [])] },
-      ]),
+      resolveModsBySourcePriority(allMods, appFolderPaths, isFeaturesForModdersEnabled).map((mod) => {
+        const stored = storedModUserData[mod.name];
+        return [
+          mod.name,
+          {
+            ...mod,
+            humanName: mod.humanName || stored?.humanName || "",
+            author: mod.author || stored?.author || "",
+            reqModIdToName:
+              mod.reqModIdToName && mod.reqModIdToName.length > 0
+                ? [...mod.reqModIdToName]
+                : [...(stored?.reqModIdToName ?? [])],
+          },
+        ] as const;
+      }),
     );
     for (const mod of allMods) {
       const existingMod = modsByName.get(mod.name);
@@ -186,7 +203,7 @@ const PresetsTab = memo(() => {
       });
     }
     return modsByName;
-  }, [allMods, appFolderPaths, isFeaturesForModdersEnabled]);
+  }, [allMods, appFolderPaths, isFeaturesForModdersEnabled, storedModUserData]);
 
   const customFolderPathBySourceId = useMemo(
     () => new Map((appFolderPaths.customModFolders || []).map((folder) => [folder.id, folder.path])),
@@ -340,7 +357,8 @@ const PresetsTab = memo(() => {
   const enabledDraftMods = useMemo(() => {
     const mods: Mod[] = [];
     effectiveEnabledNames.forEach((name) => {
-      const sourceMod = knownModsByName.get(name) ?? createPlaceholderMod(name);
+      const sourceMod =
+        knownModsByName.get(name) ?? createPlaceholderMod(name, storedModUserData[name]);
       mods.push({
         ...sourceMod,
         isEnabled: true,
@@ -348,7 +366,7 @@ const PresetsTab = memo(() => {
       });
     });
     return sortByNameAndLoadOrder(mods);
-  }, [draftLoadOrderByName, effectiveEnabledNames, knownModsByName]);
+  }, [draftLoadOrderByName, effectiveEnabledNames, knownModsByName, storedModUserData]);
 
   const notInPresetInstalledMods = useMemo(() => {
     const mods = installedMods.filter((mod) => !effectiveEnabledNames.has(mod.name));

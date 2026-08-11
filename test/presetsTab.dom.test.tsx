@@ -11,7 +11,11 @@ import localizationContext from "../src/localizationContext";
 
 vi.mock("react-select", () => ({
   __esModule: true,
-  default: () => <div data-testid="react-select" />,
+  default: ({ options, onChange }: { options: Array<{ value: string }>; onChange: (value: unknown) => void }) => (
+    <button data-testid="react-select" onClick={() => onChange(options[0])}>
+      Select preset
+    </button>
+  ),
 }));
 
 const createMod = (name: string, humanName: string, isEnabled: boolean): Mod => ({
@@ -103,5 +107,45 @@ describe("preset editor additions", () => {
 
     act(() => vi.advanceTimersByTime(2400));
     expect(addedRow).not.toHaveClass("bg-emerald-500/30", "ring-emerald-400");
+  });
+
+  it("uses cached metadata for an unavailable preset mod", () => {
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          presets: [
+            { name: "Saved", version: 2, mods: [{ name: "missing.pack" }] },
+          ],
+          dataFromConfig: {
+            modUserData: {
+              "missing.pack": {
+                humanName: "Cached Missing Title",
+                author: "Cached Author",
+                reqModIdToName: [["42", "Required Mod"]],
+              },
+            },
+          },
+        } as AppState,
+      },
+    });
+
+    const { container } = render(
+      <Provider store={store}>
+        <localizationContext.Provider value={{}}>
+          <PresetsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    fireEvent.click(screen.getByTestId("react-select"));
+
+    const missingRow = container.querySelector<HTMLElement>(
+      '[data-preset-mod-name="missing.pack"]',
+    );
+    expect(missingRow).toHaveTextContent("Cached Missing Title");
+    expect(missingRow).toHaveTextContent("(missing)");
+    expect(screen.getByText("1 missing deps")).toBeInTheDocument();
   });
 });
