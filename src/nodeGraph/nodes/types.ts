@@ -95,6 +95,13 @@ export interface PackFilesDropdownNodeData extends NodeData {
   useCurrentPack?: boolean;
 }
 
+export interface RemovePackSourceNodeData extends NodeData {
+  selectedPack: string;
+  inputType: "PackFiles";
+  outputType: "PackFiles";
+  useCurrentPack?: boolean;
+}
+
 export interface AllEnabledModsNodeData extends NodeData {
   outputType: "PackFiles";
   includeBaseGame?: boolean;

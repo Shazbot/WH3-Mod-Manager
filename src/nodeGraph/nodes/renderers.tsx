@@ -67,6 +67,7 @@ import type {
   OutputTableConfig,
   PackFilesDropdownNodeData,
   PackFilesNodeData,
+  RemovePackSourceNodeData,
   ReadTSVFromPackNodeData,
   ReferenceTableLookupNodeData,
   ReverseReferenceLookupNodeData,
@@ -174,6 +175,101 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
       </div>
 
       <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} PackFiles</div>
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-green-500"
+        data-output-type="PackFiles"
+      />
+    </div>
+  );
+};
+
+export const RemovePackSourceNode: React.FC<{ data: RemovePackSourceNodeData; id: string }> = ({ data, id }) => {
+  const localized = useLocalizations();
+  const currentGame = useAppSelector((state) => state.app.currentGame);
+  const baseGamePackNames: Record<SupportedGames, string> = {
+    wh2: "data.pack",
+    wh3: "db.pack",
+    threeKingdoms: "database.pack",
+    attila: "data.pack",
+    troy: "data.pack",
+    pharaoh: "data.pack",
+    dynasties: "data_db.pack",
+    rome2: "data_rome2.pack",
+    shogun2: "data.exe",
+  };
+  const baseGamePack = baseGamePackNames[currentGame];
+  const modsFromState = useAppSelector((state) => state.app.currentPreset.mods);
+  const modsWithBaseGame = modsFromState.some((mod) => mod.name === baseGamePack)
+    ? modsFromState.slice()
+    : [{ name: baseGamePack, humanName: baseGamePack, path: "" }, ...modsFromState];
+  const allMods = modsWithBaseGame.sort((firstMod, secondMod) => {
+    if (firstMod.name === baseGamePack) return -1;
+    if (secondMod.name === baseGamePack) return 1;
+    return collator.compare(firstMod.humanName || firstMod.name, secondMod.humanName || secondMod.name);
+  });
+
+  const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
+  const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
+
+  useEffect(() => setSelectedPack(data.selectedPack || ""), [data.selectedPack]);
+  useEffect(() => setUseCurrentPack(data.useCurrentPack || false), [data.useCurrentPack]);
+
+  const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedPack(newValue);
+    dispatchNodeDataUpdate(data, { nodeId: id, selectedPack: newValue });
+  };
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.checked;
+    setUseCurrentPack(newValue);
+    dispatchNodeDataUpdate(data, { nodeId: id, useCurrentPack: newValue });
+  };
+
+  return (
+    <div className="bg-gray-700 border-2 border-rose-500 rounded-lg p-4 min-w-[220px]">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="w-3 h-3 bg-blue-500"
+        data-input-type="PackFiles"
+      />
+
+      <div className="text-white font-medium text-sm mb-2">{data.label}</div>
+
+      <select
+        value={selectedPack}
+        onChange={handleDropdownChange}
+        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-rose-400"
+      >
+        <option value="">{localized.nodeEditorSelectPack || "Select a pack..."}</option>
+        {allMods.map((mod) => (
+          <option key={mod.name} value={mod.name}>
+            {mod.humanName || mod.name}
+          </option>
+        ))}
+      </select>
+
+      <div className="mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useCurrentPack}
+            onChange={handleCheckboxChange}
+            className="w-4 h-4"
+          />
+          <span className="text-xs text-gray-300">
+            {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-400">
+        {localized.nodeEditorInput || "Input:"} PackFiles → {localized.nodeEditorOutput || "Output:"} PackFiles
+      </div>
 
       <Handle
         type="source"

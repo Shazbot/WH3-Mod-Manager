@@ -1195,6 +1195,7 @@ declare global {
   type FlowNodeType =
     | "packedfiles"
     | "packfilesdropdown"
+    | "removepacksource"
     | "allenabledmods"
     | "tableselection"
     | "tableselectiondropdown"

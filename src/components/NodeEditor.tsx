@@ -15,6 +15,7 @@ import { addToast, selectFlowFile, setNodeEditorFavorites } from "../appSlice";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { DBVersion } from "../packFileTypes";
+import { resolveManualFlowSourcePack } from "../flowExecutionSupport";
 import { applyConnection, rehydrateGraph, removeEdge } from "../nodeGraph/connectionRules";
 import {
   applyNodeDataPatchFromRef,
@@ -74,6 +75,7 @@ const executeGraphInBackend = async (
   edges: Edge[],
   currentPackName?: string,
   flowOptions?: FlowOption[],
+  flowSourcePack?: string,
 ): Promise<{
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
@@ -87,6 +89,7 @@ const executeGraphInBackend = async (
       nodes,
       edges,
       currentPackName,
+      flowSourcePack,
       flowOptions,
     });
 
@@ -845,12 +848,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (file) {
+        // A local JSON file has no owning pack, even though the editor keeps a working pack context.
+        dispatch(
+          currentPack
+            ? selectFlowFile({ flowFile: undefined, packPath: currentPack })
+            : selectFlowFile(undefined),
+        );
         loadNodeGraphFile(file);
       }
       // Clear the input so the same file can be loaded again
       event.target.value = "";
     },
-    [loadNodeGraphFile],
+    [currentPack, dispatch, loadNodeGraphFile],
   );
 
   const newNodeGraph = useCallback(() => {
@@ -1033,7 +1042,13 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       });
 
       // Execute the entire graph in the backend
-      const result = await executeGraphInBackend(nodes, edges, currentPack, flowOptions);
+      const result = await executeGraphInBackend(
+        nodes,
+        edges,
+        currentPack,
+        flowOptions,
+        resolveManualFlowSourcePack(currentFile, currentPack),
+      );
 
       nodeEditorDebugLog(
         `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`,
@@ -1090,7 +1105,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     } finally {
       setIsExecuting(false);
     }
-  }, [nodes, edges, isExecuting, currentPack, flowOptions, dispatch, localized]);
+  }, [nodes, edges, isExecuting, currentFile, currentPack, flowOptions, dispatch, localized]);
 
   const selectedUnsavedFlowText =
     currentFile && currentPack

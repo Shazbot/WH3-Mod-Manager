@@ -32,6 +32,7 @@ describe("node sidebar sections", () => {
     expect(sectionOf("packedfiles")).toBe("Pack Sources");
     expect(sectionOf("packfilesdropdown")).toBe("Pack Sources");
     expect(sectionOf("allenabledmods")).toBe("Pack Sources");
+    expect(sectionOf("removepacksource")).toBe("Pack Sources");
 
     // Nodes that work on the files held inside a pack.
     expect(sectionOf("packfileoperations")).toBe("Packed Files");

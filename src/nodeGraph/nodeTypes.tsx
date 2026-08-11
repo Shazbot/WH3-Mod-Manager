@@ -33,6 +33,7 @@ import {
   PackFilesDropdownNode,
   PackFilesNode,
   ReadTSVFromPackNode,
+  RemovePackSourceNode,
   RemoveTablesNode,
   ReferenceTableLookupNode,
   ReverseReferenceLookupNode,
@@ -47,6 +48,7 @@ import { withInteractiveNodeBoundary } from "./InteractiveNodeBoundary";
 export const reactFlowNodeTypes = {
   packedfiles: withInteractiveNodeBoundary(PackFilesNode),
   packfilesdropdown: withInteractiveNodeBoundary(PackFilesDropdownNode),
+  removepacksource: withInteractiveNodeBoundary(RemovePackSourceNode),
   allenabledmods: withInteractiveNodeBoundary(AllEnabledModsNode),
   tableselection: withInteractiveNodeBoundary(TableSelectionNode),
   tableselectiondropdown: withInteractiveNodeBoundary(TableSelectionDropdownNode),

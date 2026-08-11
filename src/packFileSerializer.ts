@@ -1177,6 +1177,8 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
   switch (node.type) {
     case "packfilesdropdown":
       return { selectedPack: node.data.selectedPack || "" };
+    case "removepacksource":
+      return { selectedPack: node.data.selectedPack || "" };
     case "tableselectiondropdown":
       return { selectedTable: node.data.selectedTable || "" };
     case "columnselectiondropdown":
@@ -1332,7 +1334,8 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
       return node.data.textValue;
   }
 };
-const prepareFlow = (
+/** Exported for regression tests around packaged-flow-only runtime substitutions. */
+export const prepareFlow = (
   flowFileName: string,
   flowData: SerializedNodeGraph,
   packName: string,
@@ -1436,6 +1439,8 @@ const prepareFlow = (
     }
     if (node.data.useCurrentPack === true) {
       if (node.type === "packfilesdropdown") {
+        node.data.selectedPack = packName;
+      } else if (node.type === "removepacksource") {
         node.data.selectedPack = packName;
       } else if (node.type === "packedfiles") {
         node.data.textValue = packName;

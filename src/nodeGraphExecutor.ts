@@ -37,6 +37,9 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
   if (node.type === "packfilesdropdown") {
     return node.data.selectedPack || "";
   }
+  if (node.type === "removepacksource") {
+    return JSON.stringify({ selectedPack: node.data.selectedPack || "" });
+  }
   if (node.type === "tableselectiondropdown") {
     return node.data.selectedTable || "";
   }

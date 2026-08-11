@@ -70,6 +70,53 @@ describe("pack source nodes", () => {
     },
   );
 
+  it("draws PackFiles input and output handles on Remove Pack Source", () => {
+    const { container } = renderNode("removepacksource", {
+      selectedPack: "",
+      inputType: "PackFiles",
+      outputType: "PackFiles",
+      useCurrentPack: false,
+    });
+
+    expect(container.querySelectorAll('.react-flow__handle-left[data-input-type="PackFiles"]')).toHaveLength(1);
+    expect(container.querySelectorAll('.react-flow__handle-right[data-output-type="PackFiles"]')).toHaveLength(1);
+  });
+
+  it("accepts All Enabled Mods as input to Remove Pack Source", () => {
+    const state = {
+      nodes: [
+        {
+          id: "all-mods",
+          type: "allenabledmods",
+          position: { x: 0, y: 0 },
+          data: { label: "All Enabled Mods", type: "allenabledmods", outputType: "PackFiles" },
+        },
+        {
+          id: "remove-pack",
+          type: "removepacksource",
+          position: { x: 200, y: 0 },
+          data: {
+            label: "Remove Pack Source",
+            type: "removepacksource",
+            selectedPack: "mod.pack",
+            inputType: "PackFiles",
+            outputType: "PackFiles",
+          },
+        },
+      ] as never[],
+      edges: [],
+    };
+
+    const result = applyConnection(state, { source: "all-mods", target: "remove-pack" } as never, {
+      DBNameToDBVersions: undefined,
+      defaultTableVersions: undefined,
+      sortedTableNames: [],
+    } as never);
+
+    expect(result.accepted).toBe(true);
+    expect(result.edges).toHaveLength(1);
+  });
+
   it.each(packSourceNodes)(
     "rejects a connection into $type",
     ({ type, data }) => {

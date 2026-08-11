@@ -35,6 +35,7 @@ import type {
   NumericAdjustmentNodeData,
   PackFilesDropdownNodeData,
   PackFilesNodeData,
+  RemovePackSourceNodeData,
   ReadTSVFromPackNodeData,
   ReferenceTableLookupNodeData,
   ReverseReferenceLookupNodeData,
@@ -148,6 +149,21 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       label,
       type: "packfilesdropdown",
       selectedPack: "",
+      outputType: "PackFiles",
+      useCurrentPack: false,
+    }),
+  }),
+  removepacksource: createNodeDefinition<RemovePackSourceNodeData>({
+    type: "removepacksource",
+    labelKey: "nodeEditorNodeRemovePackSourceLabel",
+    labelFallback: "Remove Pack Source",
+    descriptionKey: "nodeEditorNodeRemovePackSourceDescription",
+    descriptionFallback: "Removes one selected pack from incoming pack sources",
+    createData: ({ label }) => ({
+      label,
+      type: "removepacksource",
+      selectedPack: "",
+      inputType: "PackFiles",
       outputType: "PackFiles",
       useCurrentPack: false,
     }),
@@ -816,7 +832,7 @@ const nodeTypeSectionDefinitionsInput: NodeTypeSectionDefinition[] = [
   {
     titleKey: "nodeEditorSectionPackSources",
     titleFallback: "Pack Sources",
-    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles"],
+    nodes: ["allenabledmods", "packfilesdropdown", "packedfiles", "removepacksource"],
   },
   {
     // Files inside a pack, as opposed to the packs themselves above.

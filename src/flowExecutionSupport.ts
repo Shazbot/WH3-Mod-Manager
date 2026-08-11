@@ -26,6 +26,14 @@ export interface FlowExecutionContext {
 
 const getFileName = (filePath: string) => filePath.replace(/^.*[\\/]/, "");
 
+/** The owning pack exists only when the editor is working on an internal whmmflows file. */
+export const resolveManualFlowSourcePack = (
+  flowFile: string | undefined,
+  currentPack: string | undefined,
+): string | undefined => {
+  return flowFile && currentPack && /^whmmflows[\\/]/i.test(flowFile) ? currentPack : undefined;
+};
+
 /** Whether a PackFiles entry is the pack that owns the currently executing flow. */
 export const isFlowSourcePack = (
   candidate: Pick<PackFilesNodeFile, "name" | "path">,
@@ -43,6 +51,9 @@ export const isFlowSourcePack = (
   const sourceName = getFileName(normalizedSource);
   return normalize(candidate.name) === sourceName || getFileName(normalizedPath) === sourceName;
 };
+
+/** The same identity comparison is also used by PackFiles filtering nodes. */
+export const isPackSource = isFlowSourcePack;
 
 export const buildAutomaticFlowExecutionId = (packName: string, flowFileName: string): string => {
   const packBaseName = getFileName(packName).replace(/\.pack$/i, "");

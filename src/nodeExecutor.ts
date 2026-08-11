@@ -32,6 +32,7 @@ import {
   buildReadPackCacheKey,
   flowExecutionDebugLog,
   isFlowSourcePack,
+  isPackSource,
   resolveFlowSourcePackPath,
 } from "./flowExecutionSupport";
 import { sortByNameAndLoadOrder } from "./modSortingHelpers";
@@ -429,6 +430,9 @@ export const executeNodeAction = async (request: NodeExecutionRequest): Promise<
       case "packfilesdropdown":
         return await executePackFilesDropdownNode(nodeId, textValue, config);
 
+      case "removepacksource":
+        return await executeRemovePackSourceNode(nodeId, textValue, inputData, config);
+
       case "allenabledmods":
         return await executeAllEnabledModsNode(nodeId, textValue, config);
 
@@ -718,6 +722,41 @@ async function executePackFilesDropdownNode(
       files: packFiles,
       count: packFiles.length,
       loadedCount: packFiles.filter((f) => f.loaded).length,
+    } as PackFilesNodeData,
+  };
+}
+
+async function executeRemovePackSourceNode(
+  nodeId: string,
+  textValue: string,
+  inputData: PackFilesNodeData,
+  config?: unknown,
+): Promise<NodeExecutionResult> {
+  if (!inputData || inputData.type !== "PackFiles") {
+    return { success: false, error: "Invalid input: Expected PackFiles data" };
+  }
+
+  const parsedConfig = getNodeConfig<{ selectedPack?: string }>(config, textValue);
+  const selectedPack = (parsedConfig?.selectedPack ?? textValue).trim();
+  if (!selectedPack) {
+    return {
+      success: false,
+      error: "No pack selected. Please select a pack to remove from the input.",
+    };
+  }
+
+  const files = inputData.files.filter((file) => !isPackSource(file, selectedPack));
+  console.log(
+    `Remove Pack Source Node ${nodeId}: Removed ${inputData.files.length - files.length} occurrence(s) of "${selectedPack}"`,
+  );
+
+  return {
+    success: true,
+    data: {
+      ...inputData,
+      files,
+      count: files.length,
+      loadedCount: files.filter((file) => file.loaded).length,
     } as PackFilesNodeData,
   };
 }

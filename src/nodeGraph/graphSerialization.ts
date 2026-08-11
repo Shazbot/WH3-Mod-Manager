@@ -25,7 +25,10 @@ interface SerializeGraphInput {
 interface PrepareGraphForExecutionInput {
   nodes: Node[];
   edges: Edge[];
+  /** Working pack used by nodes whose "use current pack" option is enabled. */
   currentPackName?: string;
+  /** Pack containing the flow file itself; absent for new and locally loaded graphs. */
+  flowSourcePack?: string;
   flowOptions?: FlowOption[];
 }
 
@@ -204,6 +207,7 @@ export const prepareGraphForExecution = ({
   nodes,
   edges,
   currentPackName,
+  flowSourcePack,
   flowOptions = [],
 }: PrepareGraphForExecutionInput) => {
   const flowExecutionId = new Date().toISOString().slice(0, 19).replace(/:/g, "-").replace("T", "_");
@@ -325,11 +329,11 @@ export const prepareGraphForExecution = ({
   });
 
   const serializedNodes = serializeReactFlowNodes(preparedNodes);
-  if (currentPackName) {
+  if (flowSourcePack) {
     for (const node of serializedNodes) {
       if (node.type === "edittextfile") {
         // Execution-only context: serializeNodeGraphState deliberately does not persist this path.
-        node.data.flowSourcePack = currentPackName;
+        node.data.flowSourcePack = flowSourcePack;
       }
     }
   }

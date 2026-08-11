@@ -150,10 +150,18 @@ describe("graphSerialization", () => {
     const prepared = prepareGraphForExecution({
       nodes: deserializeNodeGraph(JSON.stringify(serialized)).nodes as any[],
       edges: [],
-      currentPackName: "K:\\mods\\owner.pack",
+      currentPackName: "K:\\mods\\working.pack",
+      flowSourcePack: "K:\\mods\\owner.pack",
     });
     expect(prepared.nodes[0].data.ignoreFlowSourcePack).toBe(true);
     expect(prepared.nodes[0].data.flowSourcePack).toBe("K:\\mods\\owner.pack");
+
+    const newGraphRun = prepareGraphForExecution({
+      nodes: deserializeNodeGraph(JSON.stringify(serialized)).nodes as any[],
+      edges: [],
+      currentPackName: "K:\\mods\\working.pack",
+    });
+    expect(newGraphRun.nodes[0].data.flowSourcePack).toBeUndefined();
   });
 
   it("preserves the Dump to TSV filename through serialization and loading", () => {
@@ -298,6 +306,32 @@ describe("graphSerialization", () => {
     });
 
     expect(executionGraph.nodes[0].data.joinType).toBe("anti");
+  });
+
+  it("does not substitute Remove Pack Source with the working pack during a manual editor run", () => {
+    const nodes = [
+      {
+        id: "remove_pack",
+        type: "removepacksource",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Remove Pack Source",
+          type: "removepacksource",
+          selectedPack: "explicit.pack",
+          useCurrentPack: true,
+          inputType: "PackFiles",
+          outputType: "PackFiles",
+        },
+      },
+    ] as any[];
+
+    const executionGraph = prepareGraphForExecution({
+      nodes,
+      edges: [],
+      currentPackName: "node-editor-working.pack",
+    });
+
+    expect(executionGraph.nodes[0].data.selectedPack).toBe("explicit.pack");
   });
 
   it("preserves disabled nodes through saving, loading, and execution preparation", () => {

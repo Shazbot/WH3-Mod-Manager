@@ -81,6 +81,22 @@ describe("nodeRegistry", () => {
     });
   });
 
+  it("creates Remove Pack Source as a typed PackFiles pass-through", () => {
+    const node = createNodeFromDefinition("removepacksource", {
+      nodeId: "node_remove_pack",
+      position: { x: 0, y: 0 },
+      label: "Remove Pack Source",
+    });
+
+    expect(node.data).toMatchObject({
+      type: "removepacksource",
+      selectedPack: "",
+      inputType: "PackFiles",
+      outputType: "PackFiles",
+      useCurrentPack: false,
+    });
+  });
+
   it("keeps the styled fallback node path for unknown types", () => {
     const node = createFallbackNode("unknown-type", {
       nodeId: "node_3",
