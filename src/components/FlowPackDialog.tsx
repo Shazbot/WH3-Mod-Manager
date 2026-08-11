@@ -143,7 +143,6 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
 
   const openSelectedFlow = () => {
     if (!selectedPackPath || !selectedFlowName) return;
-    window.api?.getPackData(selectedPackPath);
     onOpenFlow({ packPath: selectedPackPath, flowFile: selectedFlowName });
     onClose();
   };

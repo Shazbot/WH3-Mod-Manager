@@ -1,7 +1,7 @@
 import React from "react";
 
 import { ReactFlow, ReactFlowProvider } from "@xyflow/react";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { reactFlowNodeTypes } from "../../src/nodeGraph/nodeTypes";
@@ -78,5 +78,57 @@ describe("loading a second graph", () => {
     rerender(renderGraph("{{newOption}}", 1));
 
     expect(textboxValue(container)).toBe("{{newOption}}");
+  });
+
+  it("retains a saved connection after the provider is remounted", async () => {
+    const onInit = vi.fn();
+    const renderConnectedGraph = (instanceKey: number) => (
+      <div style={{ width: 800, height: 600 }}>
+        <ReactFlowProvider key={instanceKey}>
+          <ReactFlow
+            fitView
+            onInit={onInit}
+            nodeTypes={reactFlowNodeTypes}
+            nodes={[
+              {
+                id: "source",
+                type: "packedfiles",
+                position: { x: 0, y: 0 },
+                data: {
+                  label: "Pack Files",
+                  type: "packedfiles",
+                  textValue: "source.pack",
+                  outputType: "PackFiles",
+                  onUpdateNodeData: vi.fn(),
+                },
+              } as never,
+              {
+                id: "target",
+                type: "tableselection",
+                position: { x: 300, y: 0 },
+                data: {
+                  label: "Table Selection",
+                  type: "tableselection",
+                  textValue: "units_tables",
+                  inputType: "PackFiles",
+                  outputType: "TableSelection",
+                  onUpdateNodeData: vi.fn(),
+                },
+              } as never,
+            ]}
+            edges={[{ id: "saved-edge", source: "source", target: "target" }]}
+          />
+        </ReactFlowProvider>
+      </div>
+    );
+    const { rerender } = render(renderGraph("old", 0));
+
+    rerender(renderConnectedGraph(1));
+
+    await waitFor(() => expect(onInit).toHaveBeenCalled());
+    const instance = onInit.mock.calls.at(-1)?.[0];
+    expect(instance.getEdges()).toEqual([
+      expect.objectContaining({ id: "saved-edge", source: "source", target: "target" }),
+    ]);
   });
 });

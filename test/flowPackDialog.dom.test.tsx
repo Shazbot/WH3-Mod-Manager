@@ -103,7 +103,7 @@ describe("flow pack dialog", () => {
     );
   });
 
-  it("opens a selected flow through the viewer selection callback", async () => {
+  it("opens a selected flow without routing the pack through the separate viewer", async () => {
     const user = userEvent.setup();
     const onOpenFlow = vi.fn();
     const store = configureStore({ reducer: { app: appReducer } });
@@ -124,7 +124,7 @@ describe("flow pack dialog", () => {
     await screen.findByRole("radio", { name: "existing.json" });
     await user.click(screen.getByRole("button", { name: "Open Flow" }));
 
-    expect(getPackData).toHaveBeenCalledWith("/mods/with-flows.pack");
+    expect(getPackData).not.toHaveBeenCalled();
     expect(onOpenFlow).toHaveBeenCalledWith({
       packPath: "/mods/with-flows.pack",
       flowFile: "whmmflows\\existing.json",

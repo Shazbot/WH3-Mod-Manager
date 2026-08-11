@@ -333,6 +333,8 @@ const collator = new Intl.Collator("en");
 const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: NodeEditorProps) => {
   const dispatch = useAppDispatch();
   const localized = useLocalizations();
+  const localizedRef = useRef(localized);
+  localizedRef.current = localized;
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -357,6 +359,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   const [defaultTableVersions, setDefaultTableVersions] = useState<Record<string, number> | undefined>(
     undefined,
   );
+  const [isSchemaContextReady, setIsSchemaContextReady] = useState(false);
+  const flowLoadRequestIdRef = useRef(0);
 
   const sortedTableNames = useMemo(() => {
     return Object.keys(DBNameToDBVersions || {}).toSorted((firstTableName, secondTableName) => {
@@ -484,14 +488,26 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   }, [nodes, quickConnectSourceNodeId]);
 
   React.useEffect(() => {
+    let cancelled = false;
     nodeEditorDebugLog("getDBNameToDBVersions");
-    window.api?.getDBNameToDBVersions().then((data) => {
-      // console.log("getDBNameToDBVersions:", Object.keys(data));
-      setDBNameToDBVersions(data);
+
+    void Promise.allSettled([
+      window.api?.getDBNameToDBVersions() ?? Promise.resolve(undefined),
+      window.api?.getDefaultTableVersions() ?? Promise.resolve(undefined),
+    ]).then(([schemas, defaults]) => {
+      if (cancelled) return;
+      if (schemas.status === "fulfilled") setDBNameToDBVersions(schemas.value);
+      else console.error("Failed to load node editor schemas:", schemas.reason);
+      if (defaults.status === "fulfilled") setDefaultTableVersions(defaults.value);
+      else console.error("Failed to load default table versions:", defaults.reason);
+      // Flow rehydration derives connected column state from both values. Waiting for both requests
+      // to settle avoids remounting the same packed flow once per request.
+      setIsSchemaContextReady(true);
     });
-    window.api?.getDefaultTableVersions().then((data) => {
-      setDefaultTableVersions(data);
-    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const onConnect = useCallback(
@@ -809,6 +825,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       sortedTableNames,
     ],
   );
+  const loadNodeGraphRef = useRef(loadNodeGraph);
+  loadNodeGraphRef.current = loadNodeGraph;
 
   const loadNodeGraphFile = useCallback(
     (file: File) => {
@@ -848,8 +866,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     setIsGraphEnabled(false);
     setGraphStartsEnabled(true);
     setQuickConnectSourceNodeId(null);
+    // Detach the blank graph from the previously open file. Keeping the pack selected makes the
+    // pack dialog convenient, while clearing the file guarantees that choosing the same flow again
+    // changes currentFile and reruns the loader.
+    dispatch(
+      currentPack
+        ? selectFlowFile({ flowFile: undefined, packPath: currentPack })
+        : selectFlowFile(undefined),
+    );
     nodeEditorDebugLog("Started a blank graph");
-  }, [setNodes, setEdges]);
+  }, [currentPack, dispatch, setNodes, setEdges]);
 
   const selectAll = useCallback(() => {
     const nextGraph = selectAllNodes(nodesRef.current);
@@ -1066,33 +1092,38 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
     }
   }, [nodes, edges, isExecuting, currentPack, flowOptions, dispatch, localized]);
 
+  const selectedUnsavedFlowText =
+    currentFile && currentPack
+      ? unsavedPacksData[currentPack]?.find((file) => file.name === currentFile)?.text
+      : undefined;
+
   useEffect(() => {
+    const requestId = ++flowLoadRequestIdRef.current;
     const loadFileContent = async () => {
-      if (!currentFile || !currentPack) return;
+      if (!isSchemaContextReady || !currentFile || !currentPack) return;
 
       // First try to load from unsaved files
-      const unsavedFiles = unsavedPacksData[currentPack];
-      if (unsavedFiles) {
-        const unsavedFile = unsavedFiles.find((file) => file.name == currentFile);
-        if (unsavedFile && unsavedFile.text) {
-          loadNodeGraph(unsavedFile.text);
-          return;
-        }
+      if (selectedUnsavedFlowText) {
+        if (requestId !== flowLoadRequestIdRef.current) return;
+        loadNodeGraphRef.current(selectedUnsavedFlowText);
+        return;
       }
 
       // If not in unsaved files, read from pack
       try {
         const result = await window.api?.readFileFromPack(currentPack, currentFile);
+        if (requestId !== flowLoadRequestIdRef.current) return;
         if (result?.success && result.text) {
-          loadNodeGraph(result.text);
+          loadNodeGraphRef.current(result.text);
         } else {
           console.error("Failed to read file from pack:", result?.error);
+          const currentLocalized = localizedRef.current;
           dispatch(
             addToast({
               type: "warning",
               messages: [
-                `${localized.nodeEditorFailedToLoadFilePrefix || "Failed to load file:"} ${
-                  result?.error || localized.nodeEditorUnknownError || "Unknown error"
+                `${currentLocalized.nodeEditorFailedToLoadFilePrefix || "Failed to load file:"} ${
+                  result?.error || currentLocalized.nodeEditorUnknownError || "Unknown error"
                 }`,
               ],
               startTime: Date.now(),
@@ -1100,13 +1131,17 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
           );
         }
       } catch (error) {
+        if (requestId !== flowLoadRequestIdRef.current) return;
         console.error("Error loading file:", error);
+        const currentLocalized = localizedRef.current;
         dispatch(
           addToast({
             type: "warning",
             messages: [
-              `${localized.nodeEditorErrorLoadingFilePrefix || "Error loading file:"} ${
-                error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
+              `${currentLocalized.nodeEditorErrorLoadingFilePrefix || "Error loading file:"} ${
+                error instanceof Error
+                  ? error.message
+                  : currentLocalized.nodeEditorUnknownError || "Unknown error"
               }`,
             ],
             startTime: Date.now(),
@@ -1115,8 +1150,17 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
     };
 
-    loadFileContent();
-  }, [currentFile, currentPack, unsavedPacksData, loadNodeGraph, dispatch, localized]);
+    void loadFileContent();
+    return () => {
+      if (flowLoadRequestIdRef.current === requestId) flowLoadRequestIdRef.current += 1;
+    };
+  }, [
+    currentFile,
+    currentPack,
+    selectedUnsavedFlowText,
+    dispatch,
+    isSchemaContextReady,
+  ]);
 
   return (
     <div className="flex explicit-height-without-topbar-and-padding">

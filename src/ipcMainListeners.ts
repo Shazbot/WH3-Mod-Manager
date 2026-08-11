@@ -8021,9 +8021,12 @@ export const registerIpcMainListeners = (
   const sendPackViewData = (packViewData: PackViewData | undefined) => {
     if (!packViewData) return;
     const toSend = [packViewData];
+    const viewerWindow = getLiveViewerWindow();
     mainWindow?.webContents.send("setPacksData", toSend);
-    windows.viewerWindow?.webContents.send("setPacksData", toSend);
-    if (!appData.isViewerReady) {
+    viewerWindow?.webContents.send("setPacksData", toSend);
+    // Main-window consumers also request pack data. Queue it only when a viewer window actually
+    // exists and is still starting; otherwise a future viewer would receive an unrelated stale pack.
+    if (viewerWindow && !appData.isViewerReady) {
       console.log("VIEWER NOT READY, QUEUEING");
       appData.queuedViewerData = toSend;
     }
