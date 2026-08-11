@@ -997,6 +997,12 @@ const appSlice = createSlice({
         if (!state.packsData[packData.packPath]) {
           state.packsData[packData.packPath] = packData;
         } else if (packData.packedFiles) {
+          state.packsData[packData.packPath].tables = Array.from(
+            new Set([
+              ...(state.packsData[packData.packPath].tables || []),
+              ...(packData.tables || []),
+            ]),
+          );
           state.packsData[packData.packPath].packedFiles =
             state.packsData[packData.packPath].packedFiles || {};
           for (const [packedFilePath, packedFile] of Object.entries(packData.packedFiles))
@@ -1012,19 +1018,10 @@ const appSlice = createSlice({
     },
     setUnsavedPacksData: (state: AppState, action: PayloadAction<SetUnsavedPacksDataPayload>) => {
       const { packPath, unsavedFileData } = action.payload;
-
-      const unsavedPackData = state.unsavedPacksData[packPath] || [];
-
-      for (const unsavedFile of unsavedFileData) {
-        const existingFileIndex = unsavedPackData.findIndex((file) => file.name == unsavedFile.name);
-        if (existingFileIndex != -1) {
-          unsavedPackData.splice(existingFileIndex, 1, unsavedFile);
-        } else {
-          unsavedPackData.push(unsavedFile);
-        }
-      }
-
-      state.unsavedPacksData[packPath] = unsavedPackData;
+      // The main process sends the complete authoritative list. Replacing it also lets a successful
+      // physical pack save clear files that would otherwise remain as stale renderer overrides.
+      if (unsavedFileData.length === 0) delete state.unsavedPacksData[packPath];
+      else state.unsavedPacksData[packPath] = unsavedFileData;
 
       console.log(
         "APPSLICE setUnsavedPacksData:",

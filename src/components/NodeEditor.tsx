@@ -11,8 +11,7 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-  setNodeEditorFavorites, addToast } from "../appSlice";
+import { addToast, selectFlowFile, setNodeEditorFavorites } from "../appSlice";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { DBVersion } from "../packFileTypes";
@@ -59,6 +58,7 @@ import {
   withFavoritesSection,
 } from "../nodeGraph/favorites";
 import { FlowNodeDataPatch, FlowOption, SerializedNode, SerializedNodeGraph } from "../nodeGraph/types";
+import FlowPackDialog from "./FlowPackDialog";
 
 interface NodeExecutionResult {
   success: boolean;
@@ -367,6 +367,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
   // Flow options state
   const [flowOptions, setFlowOptions] = useState<FlowOption[]>([]);
   const [isFlowOptionsModalOpen, setIsFlowOptionsModalOpen] = useState(false);
+  const [packDialogMode, setPackDialogMode] = useState<"load" | "save" | undefined>();
+  const [isPackMenuOpen, setIsPackMenuOpen] = useState(false);
   const [isGraphEnabled, setIsGraphEnabled] = useState(false);
   const [graphStartsEnabled, setGraphStartsEnabled] = useState(true);
 
@@ -675,6 +677,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       graphStartsEnabled,
     });
   }, [nodes, edges, flowOptions, isGraphEnabled, graphStartsEnabled]);
+
+  const getSerializedFlowData = useCallback(
+    () => JSON.stringify(serializeNodeGraph(), null, 2),
+    [serializeNodeGraph],
+  );
+
+  const openFlowFromPack = useCallback(
+    (selection: { flowFile: string; packPath: string }) => {
+      dispatch(selectFlowFile(selection));
+    },
+    [dispatch],
+  );
 
   const saveNodeGraph = useCallback(() => {
     const serializedGraph = serializeNodeGraph();
@@ -1150,7 +1164,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
             )}
 
             {/* Control buttons positioned in top-right corner */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
+            <div className="absolute top-4 right-4 z-10 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
               {/* Hidden file input */}
               <input
                 type="file"
@@ -1159,6 +1173,51 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
                 className="hidden"
                 id="load-graph-input"
               />
+
+              {/* Pack operations */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsPackMenuOpen((isOpen) => !isOpen)}
+                  aria-haspopup="menu"
+                  aria-expanded={isPackMenuOpen}
+                  className="flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 font-medium text-white shadow-lg transition-colors duration-200 hover:bg-cyan-600"
+                >
+                  {localized.nodeEditorPackMenu || "Pack"}
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                {isPackMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 mt-2 w-48 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsPackMenuOpen(false);
+                        setPackDialogMode("load");
+                      }}
+                      className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
+                    >
+                      {localized.nodeEditorLoadFromPack || "Load From Pack…"}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsPackMenuOpen(false);
+                        setPackDialogMode("save");
+                      }}
+                      className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
+                    >
+                      {localized.nodeEditorSaveToPack || "Save To Pack…"}
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Flow Options button */}
               <button
@@ -1363,6 +1422,15 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
         onGraphEnabledChange={setIsGraphEnabled}
         graphStartsEnabled={graphStartsEnabled}
         onGraphStartsEnabledChange={setGraphStartsEnabled}
+      />
+      <FlowPackDialog
+        show={packDialogMode !== undefined}
+        mode={packDialogMode || "load"}
+        currentFile={currentFile}
+        currentPack={currentPack}
+        getFlowData={getSerializedFlowData}
+        onClose={() => setPackDialogMode(undefined)}
+        onOpenFlow={openFlowFromPack}
       />
     </div>
   );

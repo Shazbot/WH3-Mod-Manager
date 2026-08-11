@@ -516,6 +516,36 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("getFlowFilesFromPack", packPath),
 
+  getFlowPackCatalog: (): Promise<{
+    success: boolean;
+    packs?: Array<{
+      path: string;
+      name: string;
+      humanName?: string;
+      isEnabled: boolean;
+      hasFlows: boolean;
+    }>;
+    error?: string;
+  }> => ipcRenderer.invoke("getFlowPackCatalog"),
+
+  selectFlowPackFile: (): Promise<string | undefined> => ipcRenderer.invoke("selectFlowPackFile"),
+
+  selectFlowPackSavePath: (suggestedName?: string): Promise<string | undefined> =>
+    ipcRenderer.invoke("selectFlowPackSavePath", suggestedName),
+
+  saveFlowToPack: (
+    packPath: string,
+    flowName: string,
+    flowData: string,
+    overwriteExisting?: boolean,
+  ): Promise<{
+    success: boolean;
+    alreadyExists?: boolean;
+    packPath?: string;
+    flowName?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("saveFlowToPack", packPath, flowName, flowData, overwriteExisting),
+
   writeTextFilesToDirectory: (
     baseDirectory: string,
     files: { relativePath: string; content: string }[],

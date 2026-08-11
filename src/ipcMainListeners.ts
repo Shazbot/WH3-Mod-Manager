@@ -10,6 +10,12 @@ import { createInFlightTableRequests } from "./components/viewer/inFlightTableRe
 import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
 import { selectPacksToCheck } from "./modCompat/compatScope";
 import {
+  findExistingPackedFlowName,
+  normalizePackedFlowName,
+  orderFlowPackCatalog,
+  type FlowPackCatalogEntry,
+} from "./nodeGraph/flowPackOperations";
+import {
   canReusePackIndexForCompat,
   canReuseParsedPackForCompat,
   mergeCompatTextIntoPack,
@@ -4638,6 +4644,137 @@ export const registerIpcMainListeners = (
       };
     }
   });
+  ipcMain.handle("getFlowPackCatalog", async () => {
+    const presetMods = appData.gameToCurrentPreset[appData.currentGame]?.mods;
+    const mods = (appData.allMods.length > 0 ? appData.allMods : presetMods || []).filter(
+      (mod) => !mod.isDeleted && !!mod.path,
+    );
+    const enabledModPaths = new Set(appData.enabledMods.map((mod) => nodePath.resolve(mod.path)));
+    const entries: FlowPackCatalogEntry[] = [];
+    const seenPaths = new Set<string>();
+
+    for (const mod of mods) {
+      const resolvedPath = nodePath.resolve(mod.path);
+      if (seenPaths.has(resolvedPath)) continue;
+      seenPaths.add(resolvedPath);
+
+      let hasFlows =
+        appData.unsavedPacksData[mod.path]?.some((file) => file.name.startsWith("whmmflows\\")) ??
+        false;
+      const retainedPack = appData.packsData.find(
+        (pack) => nodePath.resolve(pack.path) === resolvedPath,
+      );
+      if (!hasFlows && retainedPack) {
+        hasFlows = retainedPack.packedFiles.some((file) => file.name.startsWith("whmmflows\\"));
+      }
+
+      // Only enabled packs need an accurate answer for the promoted group. Other packs stay in the
+      // complete list and are inspected when selected, avoiding a header read for every disabled mod.
+      const isEnabled =
+        enabledModPaths.size > 0 ? enabledModPaths.has(resolvedPath) : !!mod.isEnabled;
+      if (!hasFlows && isEnabled) {
+        try {
+          const pack = await readPack(mod.path, { skipParsingTables: true });
+          hasFlows = pack.packedFiles.some((file) => file.name.startsWith("whmmflows\\"));
+        } catch (error) {
+          console.error(`Failed to inspect pack for flows: ${mod.path}`, error);
+        }
+      }
+
+      entries.push({
+        path: mod.path,
+        name: mod.name,
+        humanName: mod.humanName,
+        isEnabled,
+        hasFlows,
+      });
+    }
+
+    return { success: true, packs: orderFlowPackCatalog(entries) };
+  });
+  ipcMain.handle(
+    "saveFlowToPack",
+    async (
+      event,
+      packPath: string,
+      flowName: string,
+      flowData: string,
+      overwriteExisting = false,
+    ) => {
+      try {
+        if (!packPath) return { success: false, error: "No target pack selected" };
+        const normalizedFlowName = normalizePackedFlowName(flowName);
+        if (!normalizedFlowName) {
+          return { success: false, error: "Enter a valid flow name" };
+        }
+
+        const normalizedPackPath = packPath.toLowerCase().endsWith(".pack")
+          ? packPath
+          : `${packPath}.pack`;
+        const targetExists = fsExtra.existsSync(normalizedPackPath);
+        const existingPack = targetExists
+          ? await readPack(normalizedPackPath, { skipParsingTables: true })
+          : undefined;
+        const unsavedFiles = appData.unsavedPacksData[normalizedPackPath] || [];
+        const existingFlowName = findExistingPackedFlowName(
+          [...(existingPack?.packedFiles || []), ...unsavedFiles].map((file) => file.name),
+          normalizedFlowName,
+        );
+        if (existingFlowName && !overwriteExisting) {
+          return {
+            success: false,
+            alreadyExists: true,
+            packPath: normalizedPackPath,
+            flowName: existingFlowName,
+          };
+        }
+        const flowNameToWrite = existingFlowName || normalizedFlowName;
+
+        await fsExtra.ensureDir(nodePath.dirname(normalizedPackPath));
+        const buffer = Buffer.from(flowData, "utf8");
+        await writePack(
+          [{ name: flowNameToWrite, buffer, file_size: buffer.length }],
+          normalizedPackPath,
+          existingPack,
+          !!existingPack,
+        );
+        await invalidateCachedPackData(normalizedPackPath);
+
+        if (unsavedFiles.length > 0) {
+          const remainingUnsavedFiles = unsavedFiles.filter(
+            (file) => file.name.toLowerCase() !== flowNameToWrite.toLowerCase(),
+          );
+          if (remainingUnsavedFiles.length > 0) {
+            appData.unsavedPacksData[normalizedPackPath] = remainingUnsavedFiles;
+          } else {
+            delete appData.unsavedPacksData[normalizedPackPath];
+          }
+          mainWindow?.webContents.send(
+            "setUnsavedPacksData",
+            normalizedPackPath,
+            remainingUnsavedFiles,
+          );
+          windows.viewerWindow?.webContents.send(
+            "setUnsavedPacksData",
+            normalizedPackPath,
+            remainingUnsavedFiles,
+          );
+        }
+
+        return {
+          success: true,
+          packPath: normalizedPackPath,
+          flowName: flowNameToWrite,
+        };
+      } catch (error) {
+        console.error("Error saving flow directly to pack:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to save flow to pack",
+        };
+      }
+    },
+  );
   ipcMain.on("readAppConfig", async () => {
     let doesConfigExist = true;
     try {
@@ -9172,6 +9309,36 @@ export const registerIpcMainListeners = (
       return undefined;
     } finally {
       // A modal dialog on Windows can hand focus back to the main window rather than its own parent.
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
+  ipcMain.handle("selectFlowPackFile", async (event) => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        properties: ["openFile"],
+        filters: [{ name: "Pack files", extensions: ["pack"] }],
+      });
+      return result.canceled ? undefined : result.filePaths[0];
+    } finally {
+      if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+    }
+  });
+  ipcMain.handle("selectFlowPackSavePath", async (event, suggestedName?: string) => {
+    const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+    try {
+      const defaultDirectory =
+        appData.gamesToGameFolderPaths[appData.currentGame].dataFolder || app.getPath("documents");
+      const defaultName = suggestedName?.trim() || "flows.pack";
+      const result = await dialog.showSaveDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        defaultPath: nodePath.join(defaultDirectory, defaultName),
+        filters: [{ name: "Pack files", extensions: ["pack"] }],
+      });
+      if (result.canceled || !result.filePath) return undefined;
+      return result.filePath.toLowerCase().endsWith(".pack")
+        ? result.filePath
+        : `${result.filePath}.pack`;
+    } finally {
       if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
     }
   });
