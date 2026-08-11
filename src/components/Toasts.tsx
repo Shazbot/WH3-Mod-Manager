@@ -5,6 +5,7 @@ import { useAppDispatch, useAppSelector } from "../hooks";
 import hash from "object-hash";
 import { setToastDismissed } from "../appSlice";
 import localizationContext from "../localizationContext";
+import { VanillaDbCacheBuildProgressCard } from "./VanillaDbCacheBuildProgress";
 
 const anyToastToShow = (toasts: Toast[]) => {
   return toasts.some((toast) => Date.now() - toast.startTime < (toast.duration ?? 5000));
@@ -79,34 +80,37 @@ export const Toasts = memo(() => {
   }, [isShown]);
 
   return (
-    (isShown && (
-      <div className={"dark fixed w-96 mx-auto left-[1%] bottom-[1%] z-[100]"}>
-        {unexpiredToasts(toasts).map((toast) => (
-          <Toast key={hash(toast)}>
-            <div
-              className={
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-green-500 dark:text-gray-300 " +
-                toastTypeToBackgroundColor(toast)
-              }
-            >
-              {toastTypeToReactNode(toast)}
-            </div>
-            <div className="ml-3 text-sm font-normal dark:text-gray-300">
-              {toast.messages.map((message, i) => {
-                const localizedMessage = message.startsWith("loc:")
-                  ? localized[message.substring(4)]
-                  : message;
-                return (
-                  <p className="break-all" key={i}>
-                    {localizedMessage}
-                  </p>
-                );
-              })}
-            </div>
-            <Toast.Toggle onClick={() => onToastClicked(toast)} />
-          </Toast>
-        ))}
-      </div>
-    )) || <></>
+    <>
+      <VanillaDbCacheBuildProgressCard />
+      {isShown && (
+        <div className={"dark fixed w-96 mx-auto left-[1%] bottom-[1%] z-[100]"}>
+          {unexpiredToasts(toasts).map((toast) => (
+            <Toast key={hash(toast)}>
+              <div
+                className={
+                  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-green-500 dark:text-gray-300 " +
+                  toastTypeToBackgroundColor(toast)
+                }
+              >
+                {toastTypeToReactNode(toast)}
+              </div>
+              <div className="ml-3 text-sm font-normal dark:text-gray-300">
+                {toast.messages.map((message, i) => {
+                  const localizedMessage = message.startsWith("loc:")
+                    ? localized[message.substring(4)]
+                    : message;
+                  return (
+                    <p className="break-all" key={i}>
+                      {localizedMessage}
+                    </p>
+                  );
+                })}
+              </div>
+              <Toast.Toggle onClick={() => onToastClicked(toast)} />
+            </Toast>
+          ))}
+        </div>
+      )}
+    </>
   );
 });

@@ -10,7 +10,14 @@ import { DBNameToDBVersions, getSchemaFileName } from "../schema";
 import { SupportedGames, gameToPackWithDBTablesName } from "../supportedGames";
 import { parseDBTablePath, resolveParsedDBVersion } from "../utility/packFileHelpers";
 import { buildVanillaDbCache } from "./build";
+import { createCacheBuildGeneration } from "./buildGeneration";
 import { VanillaDbCacheIdentity, isVanillaDbCacheCurrent } from "./format";
+import {
+  VanillaDbCacheBuildPhase,
+  VanillaDbCacheBuildStatus,
+  reportVanillaDbCacheBuildProgress,
+} from "./progress";
+import { CacheCandidateResult, openCacheCandidate } from "./openPolicy";
 import {
   VanillaDbCacheIntegrityError,
   VanillaDbCacheReader,
@@ -38,6 +45,9 @@ const readerByGame = new Map<SupportedGames, VanillaDbCacheReader>();
 const buildsInFlight = new Map<SupportedGames, Promise<VanillaDbCacheReader | undefined>>();
 /** Stops a cache that keeps coming back broken from being rebuilt on every request. */
 const rebuildPolicy = createCacheRebuildPolicy();
+/** Invalidates work that was started before a game or folder change. */
+const buildGeneration = createCacheBuildGeneration();
+let nextBuildId = 0;
 
 /**
  * sha1 of the bundled schema file.
@@ -57,13 +67,13 @@ const getSchemaHash = (game: SupportedGames): string | undefined => {
 };
 
 /** The identity, with `game` kept narrow - VanillaDbCacheIdentity widens it to a plain string. */
-type GameCacheIdentity = VanillaDbCacheIdentity & { dbPackPath: string; game: SupportedGames };
+type GameCacheIdentity = VanillaDbCacheIdentity & { game: SupportedGames };
 
 const getIdentity = (game: SupportedGames): GameCacheIdentity | undefined => {
   const dataFolder = appData.gamesToGameFolderPaths[game]?.dataFolder;
   if (!dataFolder) return undefined;
 
-  const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName[game]);
+  const dbPackPath = nodePath.resolve(dataFolder, gameToPackWithDBTablesName[game]);
   const schemaHash = getSchemaHash(game);
   if (!schemaHash) return undefined;
 
@@ -89,54 +99,67 @@ export const canUseVanillaDbCacheForPack = (packPath: string): boolean =>
     gameToPackWithDBTablesName[appData.currentGame],
   );
 
-type OpenExistingResult =
-  | { kind: "opened"; reader: VanillaDbCacheReader }
-  | { kind: "missing" | "stale" | "invalid" }
-  | { kind: "io-error"; error: unknown };
+type OpenExistingResult = CacheCandidateResult<VanillaDbCacheReader>;
 
 const openExisting = (
   game: SupportedGames,
   identity: VanillaDbCacheIdentity,
 ): OpenExistingResult => {
   const cacheFilePath = nodePath.join(app.getPath("userData"), cacheFileName(game));
-
-  let source;
-  try {
-    source = createFileSource(cacheFilePath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { kind: "missing" };
-    return { kind: "io-error", error };
-  }
-
-  const reader = openVanillaDbCache(source);
-  if (!reader) {
-    try {
-      source.close();
-    } catch {
-      // The cache is unusable either way; there is no reader to retain this handle.
-    }
-    return { kind: "invalid" };
-  }
-  if (!isVanillaDbCacheCurrent(reader.meta, identity)) {
-    try {
-      reader.close();
-    } catch (error) {
-      return { kind: "io-error", error };
-    }
-    return { kind: "stale" };
-  }
-  return { kind: "opened", reader };
+  return openCacheCandidate({
+    openSource: () => createFileSource(cacheFilePath),
+    openReader: (source) => openVanillaDbCache(source),
+    isCurrent: (reader) => isVanillaDbCacheCurrent(reader.meta, identity),
+    isMissingError: (error) => (error as NodeJS.ErrnoException).code === "ENOENT",
+  });
 };
 
-type BuildCacheFileResult = "built" | "empty" | "invalid-output";
+type BuildCacheFileResult = "built" | "empty" | "invalid-output" | "cancelled";
 
-const buildCacheFile = async (identity: GameCacheIdentity): Promise<BuildCacheFileResult> => {
+interface CacheBuildContext {
+  buildId: string;
+  generation: number;
+  isCurrent(): boolean;
+}
+
+const reportBuildProgress = (
+  identity: GameCacheIdentity,
+  context: CacheBuildContext,
+  phase: VanillaDbCacheBuildPhase,
+  percent: number,
+  status: VanillaDbCacheBuildStatus = "running",
+  detail?: string,
+): void => {
+  reportVanillaDbCacheBuildProgress({
+    buildId: context.buildId,
+    game: identity.game,
+    phase,
+    percent,
+    status,
+    detail,
+  });
+};
+
+const removeBuildFile = async (filePath: string): Promise<void> => {
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+};
+
+const buildCacheFile = async (
+  identity: GameCacheIdentity,
+  context: CacheBuildContext,
+): Promise<BuildCacheFileResult> => {
   const startedAt = performance.now();
   console.log(`vanilla db cache: building for ${identity.game} from ${identity.dbPackPath}`);
 
   // The whole DB region, parsed. This is the cost the cache exists to stop paying on every start, and
   // it is the same parse getDefaultTableVersions and the compat check already do cold.
+  reportBuildProgress(identity, context, "indexing", 5);
   const pack = await readPack(identity.dbPackPath, { skipParsingTables: true });
+  if (!context.isCurrent()) return "cancelled";
   const tablePaths = pack.packedFiles
     .filter((packedFile) => parseDBTablePath(packedFile.name) != undefined)
     .map((packedFile) => packedFile.name);
@@ -145,9 +168,12 @@ const buildCacheFile = async (identity: GameCacheIdentity): Promise<BuildCacheFi
     return "empty";
   }
 
+  reportBuildProgress(identity, context, "parsing", 20);
   const parsed = await readPack(identity.dbPackPath, { tablesToRead: tablePaths });
+  if (!context.isCurrent()) return "cancelled";
   const dbVersionsForGame = DBNameToDBVersions[identity.game];
 
+  reportBuildProgress(identity, context, "encoding", 65);
   const { bytes, meta, skipped } = buildVanillaDbCache(
     parsed.packedFiles,
     (packedFile) => {
@@ -157,19 +183,30 @@ const buildCacheFile = async (identity: GameCacheIdentity): Promise<BuildCacheFi
     },
     identity,
   );
+  if (!context.isCurrent()) return "cancelled";
 
   // This is the one failure known to be deterministic: the reader rejected bytes straight from the
   // builder, before the filesystem could damage or temporarily hide them. Retrying the same build
   // cannot help, so let the caller abandon this identity immediately.
+  reportBuildProgress(identity, context, "validating", 85);
   const generatedReader = openVanillaDbCache(createMemorySource(bytes), identity);
   if (!generatedReader) return "invalid-output";
   generatedReader.close();
+  if (!context.isCurrent()) return "cancelled";
 
   // Written aside and renamed, so a crash mid-write cannot leave a half file where the real one goes.
   const cacheFilePath = nodePath.join(app.getPath("userData"), cacheFileName(identity.game));
   const temporaryPath = `${cacheFilePath}.building`;
-  await fs.promises.writeFile(temporaryPath, bytes);
-  await fs.promises.rename(temporaryPath, cacheFilePath);
+  reportBuildProgress(identity, context, "writing", 92);
+  // Remove a temporary file left by a previous crash before replacing it with this attempt's bytes.
+  await removeBuildFile(temporaryPath);
+  try {
+    await fs.promises.writeFile(temporaryPath, bytes);
+    if (!context.isCurrent()) return "cancelled";
+    await fs.promises.rename(temporaryPath, cacheFilePath);
+  } finally {
+    await removeBuildFile(temporaryPath);
+  }
 
   console.log(
     `vanilla db cache: built ${meta.tables.length} tables, ${skipped.length} skipped,` +
@@ -200,6 +237,7 @@ const recordRecoverableFailure = (
  */
 export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | undefined> => {
   const game = appData.currentGame;
+  const generation = buildGeneration.capture();
 
   const existingReader = readerByGame.get(game);
   if (existingReader) return existingReader;
@@ -227,11 +265,33 @@ export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | 
       if (recordRecoverableFailure(identityKey, "existing cache would not open")) return undefined;
     }
 
+    const buildId = `${game}-${++nextBuildId}`;
+    const buildContext: CacheBuildContext = {
+      buildId,
+      generation,
+      isCurrent: () => buildGeneration.isCurrent(generation) && appData.currentGame === game,
+    };
+
     try {
-      const buildResult = await buildCacheFile(identity);
-      if (buildResult === "empty") return undefined;
+      const buildResult = await buildCacheFile(identity, buildContext);
+      if (buildResult === "cancelled") {
+        reportBuildProgress(identity, buildContext, "complete", 0, "cancelled");
+        return undefined;
+      }
+      if (buildResult === "empty") {
+        reportBuildProgress(identity, buildContext, "complete", 0, "failed", "No DB tables found");
+        return undefined;
+      }
       if (buildResult === "invalid-output") {
         rebuildPolicy.recordUnopenable(identityKey);
+        reportBuildProgress(
+          identity,
+          buildContext,
+          "complete",
+          0,
+          "failed",
+          "Generated cache failed validation",
+        );
         console.log(
           "vanilla db cache: the reader rejected bytes directly from the builder, not building it again",
         );
@@ -239,6 +299,19 @@ export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | 
       }
     } catch (error) {
       recordRecoverableFailure(identityKey, "build failed", error);
+      reportBuildProgress(
+        identity,
+        buildContext,
+        "complete",
+        0,
+        "failed",
+        error instanceof Error ? error.message : "Cache build failed",
+      );
+      return undefined;
+    }
+
+    if (!buildContext.isCurrent()) {
+      reportBuildProgress(identity, buildContext, "complete", 0, "cancelled");
       return undefined;
     }
 
@@ -249,10 +322,25 @@ export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | 
         `freshly built cache could not be opened (${built.kind})`,
         built.kind === "io-error" ? built.error : undefined,
       );
+      reportBuildProgress(
+        identity,
+        buildContext,
+        "complete",
+        0,
+        "failed",
+        `Cache could not be opened (${built.kind})`,
+      );
+      return undefined;
+    }
+
+    if (!buildContext.isCurrent()) {
+      built.reader.close();
+      reportBuildProgress(identity, buildContext, "complete", 0, "cancelled");
       return undefined;
     }
 
     readerByGame.set(game, built.reader);
+    reportBuildProgress(identity, buildContext, "complete", 100, "complete");
     return built.reader;
   })();
 
@@ -260,7 +348,7 @@ export const getVanillaDbCacheReader = async (): Promise<VanillaDbCacheReader | 
   try {
     return await attempt;
   } finally {
-    buildsInFlight.delete(game);
+    if (buildsInFlight.get(game) === attempt) buildsInFlight.delete(game);
   }
 };
 
@@ -519,6 +607,7 @@ export const readVanillaPackFromCache = async (
 
 /** Drops open readers, so the next request revalidates against the pack and schema on disk. */
 export const closeVanillaDbCacheReaders = (): void => {
+  buildGeneration.invalidate();
   for (const reader of readerByGame.values()) reader.close();
   readerByGame.clear();
 };

@@ -194,7 +194,10 @@ describe("cache identity", () => {
     expect(isVanillaDbCacheCurrent(meta, identity)).toBe(true);
   });
 
-  it("rejects a patched game, a different game and a changed schema", () => {
+  it("rejects a moved pack, a patched game, a different game and a changed schema", () => {
+    expect(isVanillaDbCacheCurrent(meta, { ...identity, dbPackPath: "D:\\data\\db.pack" })).toBe(
+      false,
+    );
     expect(isVanillaDbCacheCurrent(meta, { ...identity, dbPackSize: 999 })).toBe(false);
     expect(isVanillaDbCacheCurrent(meta, { ...identity, dbPackMtimeMs: 999 })).toBe(false);
     expect(isVanillaDbCacheCurrent(meta, { ...identity, game: "wh2" })).toBe(false);

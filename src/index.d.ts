@@ -10,6 +10,8 @@ declare global {
     api?: api;
   }
 
+  type VanillaDbCacheBuildProgress = import("./vanillaDbCache/progress").VanillaDbCacheBuildProgress;
+
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
 
   interface DiagnosticPathResult {

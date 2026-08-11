@@ -61,7 +61,7 @@ const chunkIntoRows = (schemaFields: SchemaField[], columnCount: number): Schema
 export const buildVanillaDbCache = (
   packedFiles: readonly PackedFile[],
   resolveTableSchema: ResolveTableSchema,
-  identity: VanillaDbCacheIdentity & { dbPackPath: string },
+  identity: VanillaDbCacheIdentity,
 ): BuildVanillaDbCacheResult => {
   const skipped: BuildVanillaDbCacheResult["skipped"] = [];
 

@@ -112,6 +112,7 @@ export interface VanillaDbCacheMeta {
 
 export interface VanillaDbCacheIdentity {
   game: string;
+  dbPackPath: string;
   dbPackSize: number;
   dbPackMtimeMs: number;
   schemaHash: string;
@@ -123,6 +124,7 @@ export const isVanillaDbCacheCurrent = (
   identity: VanillaDbCacheIdentity,
 ): boolean =>
   meta.game === identity.game &&
+  meta.dbPackPath === identity.dbPackPath &&
   meta.dbPackSize === identity.dbPackSize &&
   meta.dbPackMtimeMs === identity.dbPackMtimeMs &&
   meta.schemaHash === identity.schemaHash;

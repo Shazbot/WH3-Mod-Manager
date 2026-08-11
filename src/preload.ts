@@ -151,6 +151,14 @@ const api = {
   setPackCollisionsCheckProgress: (
     callback: (event: Electron.IpcRendererEvent, progressData: PackCollisionsCheckProgressData) => void,
   ) => ipcRenderer.on("setPackCollisionsCheckProgress", callback),
+  onVanillaDbCacheBuildProgress: (
+    callback: (event: Electron.IpcRendererEvent, progress: VanillaDbCacheBuildProgress) => void,
+  ) => {
+    ipcRenderer.on("vanillaDbCacheBuildProgress", callback);
+    return () => {
+      ipcRenderer.removeListener("vanillaDbCacheBuildProgress", callback);
+    };
+  },
   setPacksDataRead: (callback: (event: Electron.IpcRendererEvent, packPaths: string[]) => void) =>
     ipcRenderer.on("setPacksDataRead", callback),
   setPackCollisions: (callback: (event: Electron.IpcRendererEvent, packCollisions: PackCollisions) => void) =>

@@ -5,7 +5,13 @@ import {
   createCacheRebuildPolicy,
 } from "../../src/vanillaDbCache/rebuildPolicy";
 
-const identity = { game: "wh3", dbPackSize: 100, dbPackMtimeMs: 200, schemaHash: "abc" };
+const identity = {
+  game: "wh3",
+  dbPackPath: "/game/data/db.pack",
+  dbPackSize: 100,
+  dbPackMtimeMs: 200,
+  schemaHash: "abc",
+};
 const key = buildCacheIdentityKey(identity);
 
 describe("cache rebuild policy", () => {
@@ -58,6 +64,9 @@ describe("cache rebuild policy", () => {
     policy.recordUnopenable(key);
 
     expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, dbPackMtimeMs: 999 }))).toBe(true);
+    expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, dbPackPath: "/other/db.pack" }))).toBe(
+      true,
+    );
     expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, dbPackSize: 999 }))).toBe(true);
     expect(policy.mayBuild(buildCacheIdentityKey({ ...identity, schemaHash: "changed" }))).toBe(true);
   });
@@ -74,11 +83,12 @@ describe("cache identity key", () => {
     const keys = new Set([
       key,
       buildCacheIdentityKey({ ...identity, game: "wh2" }),
+      buildCacheIdentityKey({ ...identity, dbPackPath: "/other/db.pack" }),
       buildCacheIdentityKey({ ...identity, dbPackSize: 1 }),
       buildCacheIdentityKey({ ...identity, dbPackMtimeMs: 1 }),
       buildCacheIdentityKey({ ...identity, schemaHash: "z" }),
     ]);
 
-    expect(keys.size).toBe(5);
+    expect(keys.size).toBe(6);
   });
 });

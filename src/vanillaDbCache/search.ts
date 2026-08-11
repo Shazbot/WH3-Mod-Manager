@@ -1,7 +1,4 @@
-import {
-  findFrontCodedPrefixRange,
-  readAllFrontCodedEntries,
-} from "./frontCodedBlock";
+import { findFrontCodedPrefixRange } from "./frontCodedBlock";
 import { VanillaDbCacheReader } from "./read";
 
 /**
@@ -19,10 +16,9 @@ import { VanillaDbCacheReader } from "./read";
  *
  * Measured over WH3: a prefix query answers in ~135 ms and a substring query in ~930 ms.
  *
- * It is not frugal about bytes, though - roughly 9.5 MB of the 12.4 MB file. The string pool is read
- * whole (5.35 MB of that) because the prefix search and the substring scan both go through one
- * in-memory block. Paging the pool the way `resolvePoolValue` does would cut it, and is the obvious
- * next step if search ever runs somewhere memory is tight.
+ * It is not frugal about bytes, though - a substring search visits the whole string pool. The visit is
+ * chunked through the reader so it stays under the decoded-byte cap rather than materialising all pool
+ * strings at once. A case-sensitive prefix still uses the whole encoded block for binary search.
  *
  * The alternative considered was a dedicated key index: about 2.9 MB of keys plus 5 MB of postings,
  * resident all the time. This costs more per search and nothing between them, which is the better
@@ -70,27 +66,25 @@ const findMatchingPoolIds = (
   reader: VanillaDbCacheReader,
   { query, mode = "contains", caseSensitive = false }: VanillaSearchOptions,
 ): { has: (poolId: number) => boolean; lowestId: number; highestId: number } => {
-  const pool = reader.getPoolBlock();
-
   if (mode === "prefix" && caseSensitive) {
+    const pool = reader.getPoolBlock();
     const { start, end } = findFrontCodedPrefixRange(pool, query);
     return { has: (poolId) => poolId >= start && poolId < end, lowestId: start, highestId: end - 1 };
   }
 
   const needle = caseSensitive ? query : query.toLowerCase();
-  const values = readAllFrontCodedEntries(pool);
   const matching = new Set<number>();
   let lowestId = Number.POSITIVE_INFINITY;
   let highestId = -1;
 
-  for (let poolId = 0; poolId < values.length; poolId++) {
-    const value = caseSensitive ? values[poolId] : values[poolId].toLowerCase();
+  reader.forEachPoolValue((poolValue, poolId) => {
+    const value = caseSensitive ? poolValue : poolValue.toLowerCase();
     const hit = mode === "prefix" ? value.startsWith(needle) : value.includes(needle);
-    if (!hit) continue;
+    if (!hit) return;
     matching.add(poolId);
     if (poolId < lowestId) lowestId = poolId;
     if (poolId > highestId) highestId = poolId;
-  }
+  });
 
   return { has: (poolId) => matching.has(poolId), lowestId, highestId };
 };

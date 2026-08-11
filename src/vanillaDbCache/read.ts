@@ -171,6 +171,8 @@ export interface VanillaDbCacheReader {
   getColumnPoolIdsPerRow(packedFilePath: string, columnName: string): Uint32Array | undefined;
   /** The whole string pool as one block, for prefix ranges and scans. */
   getPoolBlock(): FrontCodedBlock;
+  /** Visits the pool in sorted-id order while keeping only size-capped chunks decoded. */
+  forEachPoolValue(visitor: (value: string, poolId: number) => void): void;
   resolvePoolValue(poolId: number): string | undefined;
   stats(): VanillaDbCacheStats;
   close(): void;
@@ -400,6 +402,16 @@ export const openVanillaDbCache = (
       };
       decoded.set(cacheKey, block, block.bytes.length);
       return block;
+    },
+
+    forEachPoolValue(visitor) {
+      for (let chunkIndex = 0; chunkIndex < poolCheckpoints.length; chunkIndex++) {
+        const values = readPoolChunk(chunkIndex);
+        const firstPoolId = chunkIndex * FRONT_CODED_CHECKPOINT_INTERVAL;
+        for (let index = 0; index < values.length; index++) {
+          visitor(values[index], firstPoolId + index);
+        }
+      }
     },
 
     getColumnStrings(packedFilePath, columnName) {

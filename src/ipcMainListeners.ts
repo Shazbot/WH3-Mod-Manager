@@ -14,6 +14,7 @@ import {
   fillPackedFileFromVanillaCache,
   fillVanillaTablesFromCache,
 } from "./vanillaDbCache/store";
+import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progress";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
@@ -230,6 +231,18 @@ export const windows = {
   skillsWindow: undefined as BrowserWindow | undefined,
   techTreesWindow: undefined as BrowserWindow | undefined,
 };
+
+setVanillaDbCacheBuildProgressReporter((progress) => {
+  for (const targetWindow of Object.values(windows)) {
+    if (
+      targetWindow &&
+      !targetWindow.isDestroyed() &&
+      !targetWindow.webContents.isDestroyed()
+    ) {
+      targetWindow.webContents.send("vanillaDbCacheBuildProgress", progress);
+    }
+  }
+});
 type VisualsSession = {
   sessionId: string;
   enabledModPaths: string[];

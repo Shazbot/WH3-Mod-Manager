@@ -52,13 +52,20 @@ export const createCacheRebuildPolicy = (
 /**
  * What makes two caches the same one to retry.
  *
- * The pack's size and mtime and the schema hash are all in here, so a patched game or an updated
- * schema is a different identity and gets a fresh start rather than inheriting a giving-up decision.
+ * The pack's path, size and mtime and the schema hash are all in here, so a moved installation, a
+ * patched game or an updated schema gets a fresh start rather than inheriting a giving-up decision.
  */
 export const buildCacheIdentityKey = (identity: {
   game: string;
+  dbPackPath: string;
   dbPackSize: number;
   dbPackMtimeMs: number;
   schemaHash: string;
 }): string =>
-  `${identity.game}|${identity.dbPackSize}|${identity.dbPackMtimeMs}|${identity.schemaHash}`;
+  JSON.stringify([
+    identity.game,
+    identity.dbPackPath,
+    identity.dbPackSize,
+    identity.dbPackMtimeMs,
+    identity.schemaHash,
+  ]);
