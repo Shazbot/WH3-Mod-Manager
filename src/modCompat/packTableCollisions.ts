@@ -343,18 +343,103 @@ export function findPackTableCollisions(packsData: Pack[], onPackChecked?: OnPac
 
   console.time("findPackTableCollisionsBetweenPacksOptimized");
   if (onPackChecked) onPackChecked(0, packsData.length - 1, "", "", "TableKeys");
+
+  interface TableKeyOccurrence {
+    packIndex: number;
+    packedFile: PackedFile;
+    keyFieldName: string;
+  }
+
+  // table -> key value -> files defining it. This turns row matching from a cross-product between
+  // every pair of same-name tables into one pass over keys plus the collisions that must be emitted.
+  const occurrencesByTableAndKey = new Map<string, Map<string, TableKeyOccurrence[]>>();
   for (let i = 0; i < packsData.length; i++) {
     const pack = packsData[i];
-    for (let j = i + 1; j < packsData.length; j++) {
-      const packTwo = packsData[j];
-      if (pack === packTwo) continue;
-      if (pack.name === packTwo.name) continue;
-      if (appData.allVanillaPackNames.has(pack.name) || appData.allVanillaPackNames.has(packTwo.name))
-        continue;
+    if (!appData.allVanillaPackNames.has(pack.name)) {
+      for (const packedFile of pack.packedFiles) {
+        if (!packedFile.schemaFields || packedFile.name.endsWith(".rpfm_reserved")) continue;
+        const dbName = parseLiveDBTablePath(packedFile.name)?.dbName;
+        if (!dbName) continue;
 
-      findPackTableCollisionsBetweenPacksOptimized(pack, packTwo, packTableCollisions);
+        const dbVersion = getDBVersionByTableName(packedFile, dbName);
+        if (!dbVersion) continue;
+        const keyFields = dbVersion.fields.filter((field) => field.is_key);
+        if (keyFields.length !== 1) continue;
+
+        const keyValues = new Set<string>();
+        for (const schemaField of packedFile.schemaFields) {
+          if (!schemaField.isKey) continue;
+          const fields = schemaField.fields;
+          const value =
+            (fields[1]?.val != null && fields[1].val.toString()) || fields[0]?.val?.toString();
+          if (value != null) keyValues.add(value);
+        }
+
+        let occurrencesByKey = occurrencesByTableAndKey.get(dbName);
+        if (!occurrencesByKey) {
+          occurrencesByKey = new Map<string, TableKeyOccurrence[]>();
+          occurrencesByTableAndKey.set(dbName, occurrencesByKey);
+        }
+        for (const value of keyValues) {
+          const occurrences = occurrencesByKey.get(value) || [];
+          occurrences.push({ packIndex: i, packedFile, keyFieldName: keyFields[0].name });
+          occurrencesByKey.set(value, occurrences);
+        }
+      }
     }
     if (onPackChecked) onPackChecked(i, packsData.length - 1, pack.name, "", "TableKeys");
+  }
+
+  const emittedCollisions = new Set<string>();
+  const appendCollision = (
+    firstOccurrence: TableKeyOccurrence,
+    secondOccurrence: TableKeyOccurrence,
+    keyFieldName: string,
+    value: string,
+  ) => {
+    const firstPack = packsData[firstOccurrence.packIndex];
+    const secondPack = packsData[secondOccurrence.packIndex];
+    const collisionKey = JSON.stringify([
+      firstPack.name,
+      secondPack.name,
+      firstOccurrence.packedFile.name,
+      secondOccurrence.packedFile.name,
+      keyFieldName,
+      value,
+    ]);
+    if (emittedCollisions.has(collisionKey)) return;
+    emittedCollisions.add(collisionKey);
+    packTableCollisions.push({
+      firstPackName: firstPack.name,
+      secondPackName: secondPack.name,
+      fileName: firstOccurrence.packedFile.name,
+      secondFileName: secondOccurrence.packedFile.name,
+      key: keyFieldName,
+      value,
+    });
+  };
+
+  for (const occurrencesByKey of occurrencesByTableAndKey.values()) {
+    for (const [value, occurrences] of occurrencesByKey) {
+      for (let firstIndex = 0; firstIndex < occurrences.length; firstIndex++) {
+        const firstOccurrence = occurrences[firstIndex];
+        const firstPack = packsData[firstOccurrence.packIndex];
+        for (let secondIndex = firstIndex + 1; secondIndex < occurrences.length; secondIndex++) {
+          const secondOccurrence = occurrences[secondIndex];
+          const secondPack = packsData[secondOccurrence.packIndex];
+          if (
+            firstOccurrence.packIndex === secondOccurrence.packIndex ||
+            firstPack.name === secondPack.name
+          ) {
+            continue;
+          }
+          // The pairwise implementation resolved the key from the first pack and used the same
+          // field name for both directional records. Retain that detail if mixed schemas are loaded.
+          appendCollision(firstOccurrence, secondOccurrence, firstOccurrence.keyFieldName, value);
+          appendCollision(secondOccurrence, firstOccurrence, firstOccurrence.keyFieldName, value);
+        }
+      }
+    }
   }
   console.timeEnd("findPackTableCollisionsBetweenPacksOptimized");
 

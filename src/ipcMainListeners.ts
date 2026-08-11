@@ -9,6 +9,12 @@ import { planSaveAs } from "./utility/saveAsPlan";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
 import { selectPacksToCheck } from "./modCompat/compatScope";
+import {
+  canReusePackIndexForCompat,
+  canReuseParsedPackForCompat,
+  mergeCompatTextIntoPack,
+  packNeedsCompatTextRefresh,
+} from "./modCompat/compatPackReuse";
 import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
 import {
   canUseVanillaDbCacheForPack,
@@ -3443,6 +3449,109 @@ export const registerIpcMainListeners = (
       vanillaPacks: vanillaSignatureData,
     });
   };
+  const pathsMatch = (firstPath: string, secondPath: string) =>
+    nodePath.resolve(firstPath) === nodePath.resolve(secondPath);
+  const readPackForCompat = async (
+    packPath: string,
+    packReadingOptions: PackReadingOptions,
+    displayName: string,
+  ) => {
+    appData.currentlyReadingModPaths.push(packPath);
+    mainWindow?.webContents.send("setCurrentlyReadingMod", displayName);
+    try {
+      return await readPack(packPath, packReadingOptions);
+    } finally {
+      appData.currentlyReadingModPaths = appData.currentlyReadingModPaths.filter(
+        (currentlyReadingPath) => currentlyReadingPath !== packPath,
+      );
+      mainWindow?.webContents.send("setLastModThatWasRead", displayName);
+    }
+  };
+  const replaceRetainedCompatPack = (newPack: Pack, mod?: Mod, isVanilla = false) => {
+    const existingIndex = appData.packsData.findIndex((pack) => pathsMatch(pack.path, newPack.path));
+    if (existingIndex !== -1) appData.packsData.splice(existingIndex, 1);
+    appendPacksData(newPack, mod);
+
+    if (isVanilla) {
+      const vanillaIndex = appData.vanillaPacks.findIndex((pack) => pathsMatch(pack.path, newPack.path));
+      if (vanillaIndex === -1) appData.vanillaPacks.push(newPack);
+      else appData.vanillaPacks.splice(vanillaIndex, 1, newPack);
+    }
+  };
+  const refreshCompatText = async (pack: Pack, displayName: string) => {
+    if (!packNeedsCompatTextRefresh(pack)) return 0;
+    const textPack = await readPackForCompat(
+      pack.path,
+      { skipParsingTables: true, readScripts: true },
+      displayName,
+    );
+    return mergeCompatTextIntoPack(pack, textPack);
+  };
+  const prepareModsForCompat = async (mods: Mod[]) => {
+    let reusedCount = 0;
+    let parsedCount = 0;
+    let refreshedTextCount = 0;
+    for (const mod of mods) {
+      const stat = await fs.promises.stat(mod.path);
+      const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, mod.path));
+      if (retainedPack && canReuseParsedPackForCompat(retainedPack, stat)) {
+        refreshedTextCount += await refreshCompatText(retainedPack, mod.name);
+        reusedCount++;
+        continue;
+      }
+
+      const parsedPack = await readPackForCompat(
+        mod.path,
+        { skipParsingTables: false, readScripts: true },
+        mod.name,
+      );
+      replaceRetainedCompatPack(parsedPack, mod);
+      parsedCount++;
+    }
+    console.log(
+      `compat pack preparation: reused ${reusedCount}, parsed ${parsedCount}, refreshed ${refreshedTextCount} text files`,
+    );
+  };
+  const prepareVanillaPacksForCompat = async (vanillaPackPaths: string[]) => {
+    let reusedCount = 0;
+    let readCount = 0;
+    let refreshedTextCount = 0;
+    for (const vanillaPackPath of vanillaPackPaths) {
+      let stat: fs.Stats;
+      try {
+        stat = await fs.promises.stat(vanillaPackPath);
+      } catch (error) {
+        console.error(`Failed to stat vanilla pack for compat check: ${vanillaPackPath}`, error);
+        continue;
+      }
+
+      const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, vanillaPackPath));
+      if (retainedPack && canReusePackIndexForCompat(retainedPack, stat)) {
+        if (!appData.vanillaPacks.some((pack) => pathsMatch(pack.path, retainedPack.path))) {
+          appData.vanillaPacks.push(retainedPack);
+        }
+        if (appData.isCompatCheckingVanillaPacks) {
+          refreshedTextCount += await refreshCompatText(retainedPack, retainedPack.name);
+        }
+        reusedCount++;
+        continue;
+      }
+
+      const vanillaPack = await readPackForCompat(
+        vanillaPackPath,
+        {
+          skipParsingTables: true,
+          readScripts: appData.isCompatCheckingVanillaPacks,
+        },
+        nodePath.basename(vanillaPackPath),
+      );
+      replaceRetainedCompatPack(vanillaPack, undefined, true);
+      readCount++;
+    }
+    console.log(
+      `compat vanilla preparation: reused ${reusedCount}, read ${readCount}, refreshed ${refreshedTextCount} text files`,
+    );
+  };
   const buildFlowExecutionSignature = async (
     sortedEnabledMods: Mod[],
     startGameOptions: StartGameOptions,
@@ -4730,12 +4839,10 @@ export const registerIpcMainListeners = (
       mainWindow?.webContents.send("setPackCollisions", compatCheckCache.packCollisions);
       return;
     }
-    await readMods(mods, false, true, true);
-    await readModsByPath(
-      vanillaPackPaths,
-      { skipParsingTables: true, readScripts: appData.isCompatCheckingVanillaPacks },
-      true,
-    );
+    await prepareModsForCompat(mods);
+    // Startup retains vanilla file indexes. Reuse those unless the pack changed, and only reload
+    // script/XML payloads when the optional vanilla analysis actually needs them.
+    await prepareVanillaPacksForCompat(vanillaPackPaths);
     const lazyVanillaReadPlan = getLazyCompatVanillaReadPlan(mods, vanillaPackPaths);
     // Whatever the cache already holds is filled in place, so the reference scan below runs on the
     // same rows from a cheaper source. Only what it cannot serve is read from the packs.
@@ -4778,19 +4885,25 @@ export const registerIpcMainListeners = (
     // packs the user had not selected. It also made the result depend on session history, so the same
     // mods could produce different reports, and made compatCheckCache unsound: its key covers `mods`
     // and the vanilla packs, while the answer depended on whatever else happened to be loaded.
-    const packPathsToCheck = new Set(
-      [...mods.map((mod) => mod.path), ...vanillaPackPaths].map((packPath) => nodePath.resolve(packPath)),
-    );
-    const packsToCheck = appData.packsData.filter((pack) =>
-      packPathsToCheck.has(nodePath.resolve(pack.path)),
+    const packsToCheck = selectPacksToCheck(
+      appData.packsData,
+      [...mods.map((mod) => mod.path), ...vanillaPackPaths],
     );
     console.log(
       `getCompatData: checking ${packsToCheck.length} packs of ${appData.packsData.length} loaded`,
     );
 
+    let lastProgressSentAt = 0;
+    let lastProgressType: PackCollisionCheckType | undefined;
     const packCollisions = getCompatData(
       packsToCheck,
       (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
+        const now = Date.now();
+        const isStageBoundary = type !== lastProgressType;
+        const isFinalUpdate = currentIndex >= maxIndex;
+        if (!isStageBoundary && !isFinalUpdate && now - lastProgressSentAt < 50) return;
+        lastProgressSentAt = now;
+        lastProgressType = type;
         mainWindow?.webContents.send("setPackCollisionsCheckProgress", {
           currentIndex,
           maxIndex,

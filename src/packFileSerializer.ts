@@ -3192,7 +3192,7 @@ export const readPack = async (
     if (packReadingOptions.readScripts) {
       const scriptFiles: PackedFile[] = [];
       const xmlFiles: PackedFile[] = [];
-      const xmlExtensions = new Set([".xml", ".variantmeshdefinition", ".wsmodel", ".xml.material"]);
+      const xmlExtensions = new Set([".xml", ".variantmeshdefinition", ".wsmodel"]);
       for (const packFile of pack_files) {
         const name = packFile.name;
         const lastDot = name.lastIndexOf(".");
@@ -3200,7 +3200,7 @@ export const readPack = async (
         const ext = name.substring(lastDot);
         if (ext === ".lua") {
           scriptFiles.push(packFile);
-        } else if (xmlExtensions.has(ext)) {
+        } else if (xmlExtensions.has(ext) || name.endsWith(".xml.material")) {
           xmlFiles.push(packFile);
         }
       }
