@@ -3702,9 +3702,9 @@ export const registerIpcMainListeners = (
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
-  // 4: entries carry replacedPackPaths; an older entry would silently load a replaced pack alongside
-  // its replacement.
-  const FLOW_EXECUTION_CACHE_VERSION = 4;
+  // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
+  // Changes node's configured name instead.
+  const FLOW_EXECUTION_CACHE_VERSION = 5;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;

@@ -273,6 +273,48 @@ describe("save changes node", () => {
     expect(saveData.message).toContain("disable the original");
   });
 
+  it("uses the original pack name when writing a single pack replacement", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const originalPackPath = "C:\\workshop\\content\\123\\my_mod.pack";
+    const result = await executeNodeAction({
+      nodeId: "save_changes_replacement_name",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "configured-output-name", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [
+          {
+            name: "script\\changed.lua",
+            fileName: "script\\changed.lua",
+            sourceFile: {} as Pack,
+            table: {
+              name: "script\\changed.lua",
+              file_size: 4,
+              start_pos: 0,
+              buffer: Buffer.from("data"),
+            } as PackedFile,
+            outputFileName: "script\\changed.lua",
+            replacesSourcePackPath: originalPackPath,
+          },
+        ],
+        sourceFiles: [],
+        tableCount: 1,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const saveData = result.data as DBSaveChangesNodeData;
+    expect(saveData.savedTo).toBe(path.join(outputDirectory, "data", "my_mod.pack"));
+    expect(saveData.replacedPackPaths).toEqual([originalPackPath]);
+    await expect(readPack(saveData.savedTo, { skipParsingTables: true })).resolves.toEqual(
+      expect.objectContaining({ name: "my_mod.pack" }),
+    );
+  });
+
   it("reports nothing replaced when no table claims to stand in for a pack", async () => {
     outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
     appData.currentGame = "wh3";

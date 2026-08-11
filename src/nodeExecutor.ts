@@ -2911,8 +2911,24 @@ async function executeSaveChangesNode(
     const nodePath = await import("path");
     const fs = await import("fs");
 
+    const replacementPackBaseNames = new Map<string, string>();
+    for (const replacedPackPath of replacedPackPaths) {
+      const fileName = replacedPackPath.replace(/^.*[\\/]/, "");
+      const baseName = fileName.replace(/\.pack$/i, "");
+      if (baseName) replacementPackBaseNames.set(baseName.toLowerCase(), baseName);
+    }
+    const replacementPackBaseName =
+      replacementPackBaseNames.size === 1
+        ? replacementPackBaseNames.values().next().value
+        : undefined;
+
     let packFileBaseName: string;
-    if (packName) {
+    // A pack replacement must retain the original file name. The launcher removes the original
+    // path and loads this output in its place; honoring a configured Save Changes name here would
+    // turn it into a differently named mod instead of a faithful replacement.
+    if (replacementPackBaseName) {
+      packFileBaseName = replacementPackBaseName;
+    } else if (packName) {
       packFileBaseName = packName;
     } else if (flowExecutionId) {
       packFileBaseName = `node_graph_output_${flowExecutionId}`;
@@ -2949,6 +2965,19 @@ async function executeSaveChangesNode(
       ? nodePath.join(gamePath, "whmm_flows")
       : nodePath.join(gamePath, "data");
     const packFilePath = nodePath.join(outputDir, `${packFileBaseName}.pack`);
+    const normalizePathForComparison = (filePath: string) =>
+      nodePath.resolve(filePath).replace(/\//g, "\\").toLowerCase();
+    if (
+      [...replacedPackPaths].some(
+        (sourcePackPath) =>
+          normalizePathForComparison(sourcePackPath) === normalizePathForComparison(packFilePath),
+      )
+    ) {
+      return {
+        success: false,
+        error: `Cannot write the replacement to ${packFilePath} because that would overwrite its source pack. Run the flow when starting the game or move the original pack out of data first.`,
+      };
+    }
 
     console.log(
       `Save Changes Node ${nodeId}: Saving to ${flowExecutionId ? "whmm_flows" : "data"} directory`,
