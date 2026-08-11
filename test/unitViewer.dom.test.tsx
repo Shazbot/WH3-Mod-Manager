@@ -35,8 +35,24 @@ const tables: UnitViewerTableRows = {
   ],
   land_units_to_unit_abilites_junctions_tables: [{ land_unit: "land_a", ability: "ability_without_special" }],
   unit_abilities_tables: [{ key: "ability_without_special", icon_name: "ability_icon", type: "active", source_type: "unit" }],
+  special_ability_to_special_ability_phase_junctions_tables: [
+    { special_ability: "ability_without_special", phase: "ability_phase" },
+  ],
+  special_ability_phases_tables: [{ id: "ability_phase", fatigue_change_ratio: "-0.1" }],
+  special_ability_phase_stat_effects_tables: [
+    { phase: "ability_phase", stat: "stat_melee_attack", value: "1.25", how: "mult" },
+  ],
+  unit_abilities_to_additional_ui_effects_juncs_tables: [
+    { ability: "ability_without_special", effect: "test_effect" },
+  ],
+  unit_abilities_additional_ui_effects_tables: [
+    { key: "test_effect", sort_order: "1", effect_state: "positive" },
+  ],
   unit_attributes_to_groups_junctions_tables: [{ attribute_group: "group_a", attribute: "attribute_a" }],
-  ui_unit_stats_tables: [{ key: "stat_health", icon: "ui/skins/default/icon_stat_health.png" }],
+  ui_unit_stats_tables: [
+    { key: "stat_health", icon: "ui/skins/default/icon_stat_health.png" },
+    { key: "stat_melee_attack", icon: "ui/skins/default/icon_stat_melee_attack.png" },
+  ],
 };
 
 const built = buildUnitViewerData(tables, (key) => ({
@@ -45,6 +61,9 @@ const built = buildUnitViewerData(tables, (key) => ({
   cultures_subcultures_name_culture: "Culture",
   unit_abilities_onscreen_name_ability_without_special: "Test Ability",
   unit_abilities_tooltip_text_ability_without_special: "Ability description",
+  unit_stat_localisations_onscreen_name_stat_melee_attack: "Melee Attack",
+  random_localisation_strings_string_fatigue: "Vigour per second",
+  unit_abilities_additional_ui_effects_localised_text_test_effect: "Test active effect",
   unit_attributes_bullet_text_attribute_a: "Test Attribute||Attribute description",
 })[key]);
 
@@ -71,7 +90,10 @@ describe("Unit Viewer UI", () => {
         sessionId: "session",
         groups: built.groups,
         constants: built.constants,
-        statIcons: { "ui\\skins\\default\\icon_stat_health.png": "health-icon-data" },
+        statIcons: {
+          "ui\\skins\\default\\icon_stat_health.png": "health-icon-data",
+          "ui\\skins\\default\\icon_stat_melee_attack.png": "melee-attack-icon-data",
+        },
       }),
       getUnitViewerDetails: vi.fn().mockImplementation(async (_sessionId: string, unitKey: string) => ({
         success: true,
@@ -141,6 +163,14 @@ describe("Unit Viewer UI", () => {
     fireEvent.mouseEnter(abilityButton);
     const tooltip = await screen.findByRole("tooltip");
     expect(within(tooltip).getByText("Ability description")).toBeInTheDocument();
+    const meleeAttackEffect = within(tooltip).getByText(/Melee Attack: \+25%/);
+    expect(meleeAttackEffect).toBeInTheDocument();
+    expect(within(tooltip).getByText(/Vigour per second: -10%/)).toBeInTheDocument();
+    expect(within(tooltip).getByText(/Test active effect/)).toBeInTheDocument();
+    expect(meleeAttackEffect.querySelector("img")).toHaveAttribute(
+      "src",
+      "data:image/png;base64,melee-attack-icon-data",
+    );
     expect(tooltip).toHaveClass("fixed");
     expect(tooltip.closest("article")).toBeNull();
   });

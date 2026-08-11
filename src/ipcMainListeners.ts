@@ -2343,7 +2343,7 @@ export const registerIpcMainListeners = (
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 8,
+          feature: 9,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),

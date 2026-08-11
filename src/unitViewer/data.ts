@@ -35,6 +35,11 @@ export const UNIT_VIEWER_TABLES = [
   "special_ability_groups_to_unit_abilities_junctions_tables",
   "unit_abilities_tables",
   "unit_special_abilities_tables",
+  "special_ability_to_special_ability_phase_junctions_tables",
+  "special_ability_phases_tables",
+  "special_ability_phase_stat_effects_tables",
+  "unit_abilities_to_additional_ui_effects_juncs_tables",
+  "unit_abilities_additional_ui_effects_tables",
   "unit_experience_bonuses_tables",
   "unit_stats_land_experience_bonuses_tables",
   "unit_fatigue_effects_tables",
@@ -201,11 +206,39 @@ const normalizeIconPath = (iconName: string) => {
 
 const normalizeUiPath = (path: string) => path.replace(/\//g, "\\").replace(/\\+/g, "\\").toLowerCase();
 
+const getBonusValuePresentation = (how: string, value: number, key: string) => {
+  if (how === "mult") {
+    const rawPercentage = (value - 1) * 100;
+    const percentage = Number.isInteger(rawPercentage)
+      ? rawPercentage
+      : Math.round(rawPercentage * 100) / 100;
+    return {
+      valueText: `${percentage > 0 ? "+" : ""}${percentage}%`,
+      numericValue: percentage,
+      valueSuffix: "%",
+    };
+  }
+
+  const rounded = Number.isInteger(value) ? value : Math.round(value * 100) / 100;
+  const suffix = key.startsWith("scalar_") ? "%" : "";
+  return {
+    valueText: `${rounded > 0 ? "+" : ""}${rounded}${suffix}`,
+    numericValue: rounded,
+    valueSuffix: suffix,
+  };
+};
+
 const buildAbility = (
   key: string,
   isSpell: boolean,
   abilities: Map<string, Record<string, string>>,
   specialAbilities: Map<string, Record<string, string>>,
+  abilityPhases: Map<string, Array<Record<string, string>>>,
+  phases: Map<string, Record<string, string>>,
+  phaseStatEffects: Map<string, Array<Record<string, string>>>,
+  uiUnitStats: Map<string, Record<string, string>>,
+  additionalEffectsByAbility: Map<string, Array<Record<string, string>>>,
+  additionalEffects: Map<string, Record<string, string>>,
   getLoc: (key: string) => string | undefined,
 ): UnitViewerAbility | undefined => {
   const ability = abilities.get(key);
@@ -213,6 +246,66 @@ const buildAbility = (
   if (!ability && !special) return undefined;
   const type = asString(ability?.type);
   const sourceType = asString(ability?.source_type);
+  const phaseIds = Array.from(
+    new Set((abilityPhases.get(key) || []).map((row) => asString(row.phase)).filter(Boolean)),
+  );
+  const bonuses: AbilityTooltipBonusData[] = [];
+  for (const phaseId of phaseIds) {
+    for (const effect of phaseStatEffects.get(phaseId) || []) {
+      const stat = asString(effect.stat);
+      const how = asString(effect.how);
+      if (!stat || !how) continue;
+      const value = asNumber(effect.value);
+      const presentation = getBonusValuePresentation(how, value, stat);
+      bonuses.push({
+        key: `${phaseId}:${stat}:${how}`,
+        compareKey: `${stat}:${how}`,
+        label: stripGameMarkup(
+          getLoc(`unit_stat_localisations_onscreen_name_${stat}`) || stat,
+        ),
+        valueText: presentation.valueText,
+        numericValue: presentation.numericValue,
+        valueSuffix: presentation.valueSuffix,
+        isPositive: (how === "mult" && value >= 1) || (how !== "mult" && value >= 0),
+        iconPath: normalizeUiPath(asString(uiUnitStats.get(stat)?.icon)) || undefined,
+      });
+    }
+
+    const fatigueChangeRatio = asNumber(phases.get(phaseId)?.fatigue_change_ratio);
+    if (fatigueChangeRatio !== 0) {
+      const fatiguePerSecond = Math.round(fatigueChangeRatio * 100);
+      bonuses.push({
+        key: `${phaseId}:fatigue_change_ratio`,
+        compareKey: "fatigue_change_ratio",
+        label: stripGameMarkup(
+          getLoc("random_localisation_strings_string_fatigue") || "Vigour per second",
+        ),
+        valueText: `${fatiguePerSecond > 0 ? "+" : ""}${fatiguePerSecond}%`,
+        numericValue: fatiguePerSecond,
+        valueSuffix: "%",
+        isPositive: fatiguePerSecond >= 0,
+      });
+    }
+  }
+  const additionalUiEffects = Array.from(
+    new Set(
+      (additionalEffectsByAbility.get(key) || [])
+        .map((row) => asString(row.effect))
+        .filter(Boolean),
+    ),
+  )
+    .map((effectKey) => {
+      const effect = additionalEffects.get(effectKey);
+      return {
+        key: effectKey,
+        text: stripGameMarkup(
+          getLoc(`unit_abilities_additional_ui_effects_localised_text_${effectKey}`) || effectKey,
+        ),
+        sortOrder: effect ? asNumber(effect.sort_order) : undefined,
+        effectState: asString(effect?.effect_state) || undefined,
+      };
+    })
+    .sort((first, second) => (first.sortOrder || 0) - (second.sortOrder || 0));
   return {
     key,
     passive: asBool(special?.passive),
@@ -237,8 +330,8 @@ const buildAbility = (
         miscastChance: asNumber(special?.miscast_chance) > 0 ? asNumber(special?.miscast_chance) * 100 : undefined,
         minRange: asNumber(special?.min_range) > 0 ? asNumber(special?.min_range) : undefined,
       },
-      bonuses: [],
-      additionalUiEffects: [],
+      bonuses,
+      additionalUiEffects,
     },
   };
 };
@@ -278,11 +371,42 @@ export const buildUnitViewerData = (
   );
   const abilities = indexRows(tables.unit_abilities_tables, "key");
   const specialAbilities = indexRows(tables.unit_special_abilities_tables, "key");
+  const abilityPhases = groupRows(
+    tables.special_ability_to_special_ability_phase_junctions_tables,
+    "special_ability",
+  );
+  const phases = indexRows(tables.special_ability_phases_tables, "id");
+  const phaseStatEffects = new Map<string, Array<Record<string, string>>>();
+  for (const row of tables.special_ability_phase_stat_effects_tables || []) {
+    const phase = asString(row.phase);
+    const stat = asString(row.stat);
+    const how = asString(row.how);
+    if (!phase || !stat || !how) continue;
+    const effects = phaseStatEffects.get(phase) || [];
+    const existingIndex = effects.findIndex(
+      (effect) => asString(effect.stat) === stat && asString(effect.how) === how,
+    );
+    if (existingIndex >= 0) effects[existingIndex] = row;
+    else effects.push(row);
+    phaseStatEffects.set(phase, effects);
+  }
+  const additionalEffectsByAbility = groupRows(
+    tables.unit_abilities_to_additional_ui_effects_juncs_tables,
+    "ability",
+  );
+  const additionalEffects = indexRows(tables.unit_abilities_additional_ui_effects_tables, "key");
   const groundEffectsByGroup = groupRows(tables.ground_type_to_stat_effects_tables, "affected_group");
   const uiUnitStats = indexRows(tables.ui_unit_stats_tables, "key");
 
   const experienceBonusRows = indexRows(tables.unit_experience_bonuses_tables, "stat");
   const rankBonusRows = indexRows(tables.unit_stats_land_experience_bonuses_tables, "xp_level");
+  const usedStatIconKeys = new Set(UNIT_VIEWER_USED_STAT_ICON_KEYS);
+  for (const effects of phaseStatEffects.values()) {
+    for (const effect of effects) {
+      const stat = asString(effect.stat);
+      if (stat) usedStatIconKeys.add(stat);
+    }
+  }
   const sizeScalingRows = new Map<string, Record<string, string>>();
   for (const row of tables.unit_stat_to_size_scaling_values_tables || []) {
     sizeScalingRows.set(`${asString(row.stat)}|${asString(row.size)}`, row);
@@ -311,7 +435,7 @@ export const buildUnitViewerData = (
     statIconPaths: Object.fromEntries(
       Array.from(uiUnitStats.values())
         .map((row) => [asString(row.key), normalizeUiPath(asString(row.icon))] as const)
-        .filter(([key, iconPath]) => UNIT_VIEWER_USED_STAT_ICON_KEYS.has(key) && !!iconPath),
+        .filter(([key, iconPath]) => usedStatIconKeys.has(key) && !!iconPath),
     ),
   };
   for (const row of tables.unit_fatigue_effects_tables || []) {
@@ -359,7 +483,19 @@ export const buildUnitViewerData = (
       .map((row) => asString(row.unit_special_abilities));
     const unitAbilities = Array.from(new Set([...directAbilityKeys, ...spellAbilityKeys]))
       .map((abilityKey) =>
-        buildAbility(abilityKey, spellAbilityKeys.includes(abilityKey), abilities, specialAbilities, getLoc),
+        buildAbility(
+          abilityKey,
+          spellAbilityKeys.includes(abilityKey),
+          abilities,
+          specialAbilities,
+          abilityPhases,
+          phases,
+          phaseStatEffects,
+          uiUnitStats,
+          additionalEffectsByAbility,
+          additionalEffects,
+          getLoc,
+        ),
       )
       .filter((ability): ability is UnitViewerAbility => !!ability);
     const attributeRows = attributesByGroup.get(asString(land.attribute_group)) || [];
