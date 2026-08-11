@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { load } from "cheerio";
 
 import {
   canonicaliseForDiff,
   countCompatFindings,
   formatCompatReport,
+  formatCompatReportHtml,
 } from "../src/modCompat/compatReportExport";
 import type { PackCollisions } from "../src/packFileTypes";
 
@@ -126,5 +128,73 @@ describe("compat report", () => {
 
   it("ends with a newline, so the file diffs cleanly", () => {
     expect(formatCompatReport(emptyCollisions(), mods).endsWith("}\n")).toBe(true);
+  });
+});
+
+describe("HTML compat report", () => {
+  it("creates a self-contained, searchable report with summary and detail sections", () => {
+    const collisions = emptyCollisions();
+    collisions.packFileCollisions = [
+      {
+        firstPackName: "first.pack",
+        secondPackName: "second.pack",
+        fileName: "script\\example.lua",
+        areSameSize: false,
+      },
+    ];
+
+    const html = formatCompatReportHtml(
+      collisions,
+      [{ name: "first.pack", isEnabled: true, loadOrder: 0 }],
+      { generatedAt: new Date("2026-08-11T10:00:00.000Z"), scopeLabel: "Enabled mods only" },
+    );
+
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("Compatibility Report");
+    expect(html).toContain("Enabled mods only");
+    expect(html).toContain('id="report-search"');
+    expect(html).toContain("Expand all");
+    expect(html).toContain("File collisions");
+    expect(html).toContain("Database key collisions");
+    expect(html).toContain("script\\example.lua");
+    expect(html).toContain("2026-08-11T10:00:00.000Z");
+    expect(html.endsWith("</html>\n")).toBe(true);
+
+    const report = load(html);
+    expect(report("details.report-section")).toHaveLength(7);
+    expect(report("[data-finding]")).toHaveLength(1);
+    expect(report('script[src], link[rel="stylesheet"]')).toHaveLength(0);
+  });
+
+  it("escapes pack-provided text before placing it in HTML", () => {
+    const collisions = emptyCollisions();
+    collisions.packFileCollisions = [
+      {
+        firstPackName: '<img src=x onerror="alert(1)">.pack',
+        secondPackName: "safe.pack",
+        fileName: "<script>bad()</script>",
+      },
+    ];
+
+    const html = formatCompatReportHtml(collisions, [], {
+      generatedAt: new Date("2026-08-11T10:00:00.000Z"),
+    });
+
+    expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;.pack");
+    expect(html).toContain("&lt;script&gt;bad()&lt;/script&gt;");
+    expect(html).not.toContain('<img src=x onerror="alert(1)">.pack');
+  });
+
+  it("lists mods in load order", () => {
+    const html = formatCompatReportHtml(
+      emptyCollisions(),
+      [
+        { name: "late.pack", isEnabled: true, loadOrder: 5 },
+        { name: "early.pack", isEnabled: true, loadOrder: 1 },
+      ],
+      { generatedAt: new Date("2026-08-11T10:00:00.000Z") },
+    );
+
+    expect(html.indexOf("early.pack")).toBeLessThan(html.indexOf("late.pack"));
   });
 });

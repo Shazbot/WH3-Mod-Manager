@@ -9015,15 +9015,20 @@ export const registerIpcMainListeners = (
   /**
    * Writes a compatibility report to a file the user picks.
    *
-   * For comparing what two builds report over the same mods. The renderer has already canonicalised
-   * the text, so this only chooses a path and writes it.
+   * The renderer supplies either canonical JSON for comparing builds or a self-contained HTML view;
+   * this handler selects the matching save-dialog filter and writes the text unchanged.
    */
   ipcMain.handle("exportCompatReport", async (event, reportText: string, suggestedName: string) => {
     const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
+      const extension = nodePath.extname(suggestedName).slice(1).toLowerCase();
+      const filters =
+        extension === "html"
+          ? [{ name: "HTML", extensions: ["html"] }]
+          : [{ name: "JSON", extensions: ["json"] }];
       const result = await dialog.showSaveDialog(requestingWindow || mainWindow || new BrowserWindow(), {
         defaultPath: nodePath.join(app.getPath("documents"), suggestedName),
-        filters: [{ name: "JSON", extensions: ["json"] }],
+        filters,
       });
       if (result.canceled || !result.filePath) return { success: false, canceled: true };
 

@@ -20,7 +20,7 @@ import {
   UniqueIdsCollision,
 } from "../packFileTypes";
 import { setPackCollisions, setPackCollisionsCheckProgress } from "../appSlice";
-import { formatCompatReport } from "../modCompat/compatReportExport";
+import { formatCompatReport, formatCompatReportHtml } from "../modCompat/compatReportExport";
 import groupBy from "object.groupby";
 import { useLocalizations } from "../localizationContext";
 import { vanillaPackNames } from "../supportedGames";
@@ -55,25 +55,23 @@ const CompatScreen = memo(() => {
   const awaitedCollisionsRef = React.useRef<PackCollisions | null>(null);
   const [isExportingReport, setIsExportingReport] = React.useState(false);
 
-  /**
-   * Writes the current report out for comparing against another build.
-   *
-   * The mod set recorded is the one the check actually ran over, so a report from a run with
-   * "enabled mods only" ticked cannot be mistaken for one over everything.
-   */
-  const exportReport = useCallback(async () => {
+  /** Writes either a canonical JSON report for diffs or a standalone HTML report for people. */
+  const exportReport = useCallback(async (format: "json" | "html") => {
     setIsExportingReport(true);
     try {
       const modsChecked = useEnabledModsOnly ? enabledMods : sortedMods;
-      const reportText = formatCompatReport(
-        packCollisions,
-        modsChecked.map((mod) => ({
-          name: mod.name,
-          isEnabled: mod.isEnabled,
-          loadOrder: mod.loadOrder ?? null,
-        })),
-      );
-      const result = await window.api?.exportCompatReport(reportText, "compat-report.json");
+      const reportMods = modsChecked.map((mod) => ({
+        name: mod.name,
+        isEnabled: mod.isEnabled,
+        loadOrder: mod.loadOrder ?? null,
+      }));
+      const reportText =
+        format === "html"
+          ? formatCompatReportHtml(packCollisions, reportMods, {
+              scopeLabel: useEnabledModsOnly ? "Enabled mods only" : "All discovered mods",
+            })
+          : formatCompatReport(packCollisions, reportMods);
+      const result = await window.api?.exportCompatReport(reportText, `compat-report.${format}`);
       if (result?.success) console.log("compat report written to", result.savedPath);
       else if (result && !result.canceled) console.error("compat report export failed:", result.error);
     } finally {
@@ -438,15 +436,28 @@ const CompatScreen = memo(() => {
         >
           <Modal.Header>{localized.modCompatibility}</Modal.Header>
           <Modal.Body>
-            <div className="flex justify-end mb-2">
+            <div className="flex justify-end gap-2 mb-2">
               <button
-                onClick={() => void exportReport()}
+                onClick={() => void exportReport("json")}
                 disabled={isExportingReport}
                 className="px-3 py-1.5 text-xs bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
                 type="button"
                 title="Write this report to a file, in a form two builds can be compared against"
               >
-                {isExportingReport ? "Exporting..." : "Export report"}
+                {isExportingReport
+                  ? localized.exporting || "Exporting..."
+                  : localized.exportCompatReportJson || "Export JSON"}
+              </button>
+              <button
+                onClick={() => void exportReport("html")}
+                disabled={isExportingReport}
+                className="px-3 py-1.5 text-xs bg-blue-700 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                type="button"
+                title="Write a self-contained, searchable compatibility report for viewing in a browser"
+              >
+                {isExportingReport
+                  ? localized.exporting || "Exporting..."
+                  : localized.exportCompatReportHtml || "Export HTML"}
               </button>
             </div>
             <Tabs.Group style="underline">
