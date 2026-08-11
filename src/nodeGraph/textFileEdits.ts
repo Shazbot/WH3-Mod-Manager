@@ -2,7 +2,16 @@ import * as cheerio from "cheerio";
 import * as luaparse from "luaparse";
 
 /** How a rule decides which files it applies to. */
-export type TextFileTargetMatch = "path" | "name" | "regex";
+export type TextFileTargetMatch = "path" | "name" | "regex" | "input";
+
+export type TextFileSkipOperator = "and" | "or";
+
+export interface TextFileSkipCondition {
+  id: string;
+  value: string;
+  /** Connects this condition to the one before it. AND binds more tightly than OR. */
+  operator?: TextFileSkipOperator;
+}
 
 /** Which syntax the selector is written in. */
 export type TextFileEditMode = "xml" | "lua" | "text";
@@ -42,6 +51,11 @@ export interface TextFileEditRule {
    * fire.
    */
   skipIfContains?: string;
+  /**
+   * Boolean expression of snippets which guard the edit. Conditions joined by AND form a group;
+   * OR starts another group. The legacy skipIfContains field is used when this is absent.
+   */
+  skipConditions?: TextFileSkipCondition[];
   /** Report a rule that matched nothing even on an unattended run. */
   required?: boolean;
 }
@@ -77,6 +91,10 @@ export const matchesTextFileTarget = (
   filePath: string,
   rule: Pick<TextFileEditRule, "targetMatch" | "target">,
 ): boolean => {
+  // This mode is offered when the node consumes a previous TableSelection and intentionally needs
+  // no target text: every file in that prior output is selected.
+  if (rule.targetMatch === "input") return true;
+
   const target = (rule.target || "").trim();
   if (!target) return false;
 
@@ -96,6 +114,50 @@ export const matchesTextFileTarget = (
   }
 
   return normalizedPath === normalizePackPath(target);
+};
+
+/**
+ * Whether a rule's skip expression is true for this file.
+ *
+ * AND binds more tightly than OR: A OR B AND C is evaluated as A OR (B AND C). Empty rows are
+ * ignored. Existing flows with the old single skipIfContains field retain their original behavior.
+ */
+export const matchesTextFileSkipConditions = (
+  text: string,
+  rule: Pick<TextFileEditRule, "skipIfContains" | "skipConditions">,
+): boolean => {
+  const conditions: TextFileSkipCondition[] = [];
+  let pendingOperator: TextFileSkipOperator | undefined;
+  for (const condition of rule.skipConditions || []) {
+    if (!condition.value) {
+      if (condition.operator === "or") pendingOperator = "or";
+      continue;
+    }
+    conditions.push({
+      ...condition,
+      operator:
+        conditions.length === 0
+          ? undefined
+          : pendingOperator === "or" || condition.operator === "or"
+            ? "or"
+            : "and",
+    });
+    pendingOperator = undefined;
+  }
+  if (conditions.length === 0) return Boolean(rule.skipIfContains && text.includes(rule.skipIfContains));
+
+  let anyGroupMatches = false;
+  let currentGroupMatches = true;
+  conditions.forEach((condition, index) => {
+    const contains = text.includes(condition.value);
+    if (index > 0 && condition.operator === "or") {
+      anyGroupMatches = anyGroupMatches || currentGroupMatches;
+      currentGroupMatches = contains;
+    } else {
+      currentGroupMatches = currentGroupMatches && contains;
+    }
+  });
+  return anyGroupMatches || currentGroupMatches;
 };
 
 /** Splices the ranges into the source, back to front so earlier offsets stay valid. */
@@ -351,7 +413,7 @@ export const applyTextFileEdits = (
 
     // A file that already carries the rule's marker is left alone, so one rule can sweep a set of
     // files where only some of them need the edit.
-    if (rule.skipIfContains && edited.includes(rule.skipIfContains)) {
+    if (matchesTextFileSkipConditions(edited, rule)) {
       skippedRuleIds.add(rule.id);
       matchCountByRuleId[rule.id] = matchCountByRuleId[rule.id] ?? 0;
       continue;

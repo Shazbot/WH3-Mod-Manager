@@ -436,7 +436,7 @@ export interface EditLocTextNodeData extends NodeData {
 }
 
 export interface EditTextFileNodeData extends NodeData {
-  inputType: "PackFiles";
+  inputType: "PackFiles" | "TableSelection";
   outputType: "TableSelection";
   textFileRules: TextFileEditRuleData[];
 }
@@ -448,14 +448,14 @@ export interface EditTextFileNodeData extends NodeData {
  * anything - the rule silently does nothing. Shared by every node that targets files this way.
  */
 export const targetHasPathButMatchesName = (
-  targetMatch: "path" | "name" | "regex",
+  targetMatch: "path" | "name" | "regex" | "input",
   target: string,
 ): boolean => targetMatch === "name" && /[\\/]/.test(target.trim());
 
 /** Mirrors TextFileEditRule in textFileEdits.ts, which the renderer must not import. */
 export interface TextFileEditRuleData {
   id: string;
-  targetMatch: "path" | "name" | "regex";
+  targetMatch: "path" | "name" | "regex" | "input";
   target: string;
   mode: "xml" | "lua" | "text";
   selector: string;
@@ -473,6 +473,8 @@ export interface TextFileEditRuleData {
   value?: string;
   /** Leave the file alone if it already contains this, so one rule can skip the files that have it. */
   skipIfContains?: string;
+  /** Conditions joined by AND/OR; AND binds more tightly. Supersedes skipIfContains when non-empty. */
+  skipConditions?: Array<{ id: string; value: string; operator?: "and" | "or" }>;
   required?: boolean;
 }
 

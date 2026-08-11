@@ -15,6 +15,45 @@ const createField = (name: string) => ({
   enum_values: {},
 });
 
+describe("Edit Text File chaining", () => {
+  it("accepts a previous Edit Text File output and records the TableSelection input type", () => {
+    const state = {
+      nodes: [
+        {
+          id: "first",
+          type: "edittextfile",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "First Edit",
+            type: "edittextfile",
+            inputType: "PackFiles",
+            outputType: "TableSelection",
+            textFileRules: [],
+          },
+        },
+        {
+          id: "second",
+          type: "edittextfile",
+          position: { x: 200, y: 0 },
+          data: {
+            label: "Second Edit",
+            type: "edittextfile",
+            inputType: "PackFiles",
+            outputType: "TableSelection",
+            textFileRules: [],
+          },
+        },
+      ] as any[],
+      edges: [] as any[],
+    };
+
+    const result = applyConnection(state, { source: "first", target: "second" }, {} as any);
+
+    expect(result.accepted).toBe(true);
+    expect(result.nodes.find((node) => node.id === "second")?.data.inputType).toBe("TableSelection");
+  });
+});
+
 describe("rehydrateGraph", () => {
   it("hydrates lookup indexed metadata from the connected index input", () => {
     const state = {

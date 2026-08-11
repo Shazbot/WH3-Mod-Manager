@@ -164,6 +164,18 @@ export const substituteTextFileRuleValues = (
       nextRule[fieldName] = nextValue;
       modified = true;
     }
+    if (Array.isArray(nextRule.skipConditions)) {
+      nextRule.skipConditions = nextRule.skipConditions.map((condition) => {
+        if (!condition || typeof condition !== "object") return condition;
+        const conditionRecord = condition as Record<string, unknown>;
+        const value = conditionRecord.value;
+        if (typeof value !== "string" || !value) return condition;
+        const nextValue = replace(value);
+        if (nextValue === value) return condition;
+        modified = true;
+        return { ...conditionRecord, value: nextValue };
+      });
+    }
     return nextRule;
   });
 

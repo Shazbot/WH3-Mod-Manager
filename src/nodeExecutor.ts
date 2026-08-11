@@ -7413,12 +7413,12 @@ const MAX_PACK_COPY_BYTES = 512 * 1024 * 1024;
 async function executeEditTextFileNode(
   nodeId: string,
   textValue: string,
-  inputData: PackFilesNodeData,
+  inputData: PackFilesNodeData | DBTablesNodeData,
   config?: unknown,
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> {
-  if (!inputData || inputData.type !== "PackFiles") {
-    return { success: false, error: "Invalid input: Expected PackFiles data" };
+  if (!inputData || (inputData.type !== "PackFiles" && inputData.type !== "TableSelection")) {
+    return { success: false, error: "Invalid input: Expected PackFiles or TableSelection data" };
   }
 
   const parsed = getNodeConfig<{ textFileRules?: TextFileEditRule[] }>(config, textValue);
@@ -7426,11 +7426,20 @@ async function executeEditTextFileNode(
     return { success: false, error: "Invalid node configuration" };
   }
 
-  const rules = (parsed.textFileRules || []).filter((rule) => rule && rule.target && rule.selector);
+  const rules = (parsed.textFileRules || []).filter(
+    (rule) => rule && (rule.targetMatch === "input" || rule.target) && rule.selector,
+  );
   if (rules.length === 0) {
+    const tables = inputData.type === "TableSelection" ? inputData.tables || [] : [];
     return {
       success: true,
-      data: { type: "TableSelection", tables: [], sourceFiles: inputData.files || [], tableCount: 0 } as DBTablesNodeData,
+      data: {
+        type: "TableSelection",
+        tables,
+        sourceFiles:
+          inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
+        tableCount: tables.length,
+      } as DBTablesNodeData,
     };
   }
 
@@ -7440,79 +7449,127 @@ async function executeEditTextFileNode(
   const guardSkippedRuleIds = new Set<string>();
   const outputTables: DBTablesNodeTable[] = [];
   const warnings: string[] = [];
+  let changedFileCount = 0;
 
-  // Two enabled mods can both carry the same file, and only the higher-priority one is what the
-  // game loads - so that is the copy to edit. Editing both would put whichever happened to be read
-  // last into the output, which is not necessarily the one the player is running.
-  const priority = buildPackPriority(sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path));
-  const indexedPacks = new Map<string, Pack>();
-  const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
-
-  for (const packFile of inputData.files || []) {
-    if (!packFile.loaded) continue;
-    try {
-      // The index first, so only the files a rule actually targets are read.
-      const sourcePackPath = resolveFlowSourcePackPath(packFile.path, executionContext);
-      const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true }, executionContext);
-      indexedPacks.set(packFile.path, indexedPack);
-      targetedNamesByPack.push({
-        packPath: packFile.path,
-        fileNames: indexedPack.packedFiles
-          .map((indexedFile) => indexedFile.name)
-          .filter((name) => rules.some((rule) => matchesTextFileTarget(name, rule))),
-      });
-    } catch (error) {
-      console.error(`Edit Text File Node ${nodeId}: Error reading ${packFile.path}:`, error);
+  const recordResult = (result: ReturnType<typeof applyTextFileEdits>) => {
+    for (const [ruleId, count] of Object.entries(result.matchCountByRuleId)) {
+      matchCountByRuleId[ruleId] = (matchCountByRuleId[ruleId] ?? 0) + count;
     }
-  }
+    for (const skippedRuleId of result.skippedRuleIds) guardSkippedRuleIds.add(skippedRuleId);
+    for (const error of result.errors) warnings.push(error);
+  };
 
-  const sourcePackByFileName = resolveFileSourcePacks(targetedNamesByPack, priority);
-  const namesByWinningPack = new Map<string, string[]>();
-  for (const [fileName, packPath] of sourcePackByFileName) {
-    const names = namesByWinningPack.get(packPath);
-    if (names) names.push(fileName);
-    else namesByWinningPack.set(packPath, [fileName]);
-  }
-
-  for (const [packPath, targetedNames] of namesByWinningPack) {
-    const indexedPack = indexedPacks.get(packPath);
-    if (!indexedPack || targetedNames.length === 0) continue;
-
-    try {
-      const packWithFiles = await readPack(resolveFlowSourcePackPath(packPath, executionContext), {
-        skipParsingTables: true,
-        filesToRead: targetedNames,
-      });
-
-      for (const name of targetedNames) {
-        const buffer = packWithFiles.packedFiles.find((candidate) => candidate.name === name)?.buffer;
-        if (!buffer) continue;
-
-        // A BOM is kept exactly as it was found; the game's parsers care.
-        const raw = buffer.toString("utf8");
-        const hasBom = raw.startsWith(UTF8_BOM);
-        const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, rules);
-
-        for (const [ruleId, count] of Object.entries(result.matchCountByRuleId)) {
-          matchCountByRuleId[ruleId] = (matchCountByRuleId[ruleId] ?? 0) + count;
-        }
-        for (const skippedRuleId of result.skippedRuleIds) guardSkippedRuleIds.add(skippedRuleId);
-        for (const error of result.errors) warnings.push(error);
-
-        const editedText = hasBom ? UTF8_BOM + result.text : result.text;
-        if (editedText === raw) continue;
-
-        const editedBuffer = Buffer.from(editedText, "utf8");
-        outputTables.push({
-          name,
-          fileName: name,
-          sourceFile: indexedPack,
-          table: { name, file_size: editedBuffer.length, start_pos: 0, buffer: editedBuffer } as PackedFile,
-          outputFileName: name,
-        });
+  // A chained node edits the buffers produced upstream and carries every file forward. Passing
+  // unmatched and guard-skipped files through is essential: the eventual save must retain the
+  // previous node's edits even when this node has nothing further to do to them.
+  if (inputData.type === "TableSelection") {
+    for (const inputTable of inputData.tables || []) {
+      const name = inputTable.outputFileName || inputTable.name;
+      const buffer = inputTable.table.buffer;
+      if (!buffer) {
+        outputTables.push(inputTable);
+        continue;
       }
-    } catch (error) {
-      console.error(`Edit Text File Node ${nodeId}: Error reading ${packPath}:`, error);
+
+      const raw = buffer.toString("utf8");
+      const hasBom = raw.startsWith(UTF8_BOM);
+      const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, rules);
+      recordResult(result);
+
+      const editedText = hasBom ? UTF8_BOM + result.text : result.text;
+      if (editedText === raw) {
+        outputTables.push(inputTable);
+        continue;
+      }
+
+      changedFileCount += 1;
+      const editedBuffer = Buffer.from(editedText, "utf8");
+      outputTables.push({
+        ...inputTable,
+        name,
+        fileName: name,
+        table: {
+          ...inputTable.table,
+          name,
+          file_size: editedBuffer.length,
+          buffer: editedBuffer,
+        } as PackedFile,
+        outputFileName: name,
+      });
+    }
+  } else {
+    // "previous output" only applies to a TableSelection supplied by an earlier node.
+    const packRules = rules.filter((rule) => rule.targetMatch !== "input");
+
+    // Two enabled mods can both carry the same file, and only the higher-priority one is what the
+    // game loads - so that is the copy to edit. Editing both would put whichever happened to be read
+    // last into the output, which is not necessarily the one the player is running.
+    const priority = buildPackPriority(sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path));
+    const indexedPacks = new Map<string, Pack>();
+    const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
+
+    for (const packFile of inputData.files || []) {
+      if (!packFile.loaded) continue;
+      try {
+        // The index first, so only the files a rule actually targets are read.
+        const sourcePackPath = resolveFlowSourcePackPath(packFile.path, executionContext);
+        const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true }, executionContext);
+        indexedPacks.set(packFile.path, indexedPack);
+        targetedNamesByPack.push({
+          packPath: packFile.path,
+          fileNames: indexedPack.packedFiles
+            .map((indexedFile) => indexedFile.name)
+            .filter((name) => packRules.some((rule) => matchesTextFileTarget(name, rule))),
+        });
+      } catch (error) {
+        console.error(`Edit Text File Node ${nodeId}: Error reading ${packFile.path}:`, error);
+      }
+    }
+
+    const sourcePackByFileName = resolveFileSourcePacks(targetedNamesByPack, priority);
+    const namesByWinningPack = new Map<string, string[]>();
+    for (const [fileName, packPath] of sourcePackByFileName) {
+      const names = namesByWinningPack.get(packPath);
+      if (names) names.push(fileName);
+      else namesByWinningPack.set(packPath, [fileName]);
+    }
+
+    for (const [packPath, targetedNames] of namesByWinningPack) {
+      const indexedPack = indexedPacks.get(packPath);
+      if (!indexedPack || targetedNames.length === 0) continue;
+
+      try {
+        const packWithFiles = await readPack(resolveFlowSourcePackPath(packPath, executionContext), {
+          skipParsingTables: true,
+          filesToRead: targetedNames,
+        });
+
+        for (const name of targetedNames) {
+          const buffer = packWithFiles.packedFiles.find((candidate) => candidate.name === name)?.buffer;
+          if (!buffer) continue;
+
+          // A BOM is kept exactly as it was found; the game's parsers care.
+          const raw = buffer.toString("utf8");
+          const hasBom = raw.startsWith(UTF8_BOM);
+          const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, packRules);
+          recordResult(result);
+
+          const editedText = hasBom ? UTF8_BOM + result.text : result.text;
+          if (editedText === raw) continue;
+
+          changedFileCount += 1;
+          const editedBuffer = Buffer.from(editedText, "utf8");
+          outputTables.push({
+            name,
+            fileName: name,
+            sourceFile: indexedPack,
+            table: { name, file_size: editedBuffer.length, start_pos: 0, buffer: editedBuffer } as PackedFile,
+            outputFileName: name,
+          });
+        }
+      } catch (error) {
+        console.error(`Edit Text File Node ${nodeId}: Error reading ${packPath}:`, error);
+      }
     }
   }
 
@@ -7521,20 +7578,21 @@ async function executeEditTextFileNode(
     // A rule that stood down because its text was already there did what it was asked to do.
     if (guardSkippedRuleIds.has(rule.id)) continue;
     if (isUnattendedRun && !rule.required) continue;
-    warnings.push(`Rule targeting '${rule.target}' with selector '${rule.selector}' matched nothing`);
+    const target = rule.targetMatch === "input" ? "previous output" : `'${rule.target}'`;
+    warnings.push(`Rule targeting ${target} with selector '${rule.selector}' matched nothing`);
   }
 
   for (const warning of warnings) {
     console.warn(`Edit Text File Node ${nodeId}: ${warning}`);
   }
-  console.log(`Edit Text File Node ${nodeId}: edited ${outputTables.length} file(s)`);
+  console.log(`Edit Text File Node ${nodeId}: edited ${changedFileCount} file(s)`);
 
   return {
     success: true,
     data: {
       type: "TableSelection",
       tables: outputTables,
-      sourceFiles: inputData.files || [],
+      sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
       tableCount: outputTables.length,
     } as DBTablesNodeData,
   };

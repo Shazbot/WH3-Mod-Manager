@@ -492,6 +492,10 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     targetNode.type === "packfileoperations" &&
     (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
 
+  const isEditTextFileCompatible =
+    targetNode.type === "edittextfile" &&
+    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
     (sourceOutputType === "ChangedColumnSelection" ||
@@ -504,6 +508,7 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     isAppendTextCompatible ||
     isTextJoinCompatible ||
     isPackFileOperationsCompatible ||
+    isEditTextFileCompatible ||
     isSaveChangesCompatible
   );
 };
@@ -553,6 +558,9 @@ export const applyConnection = (
   const isPackFileOperationsCompatible =
     targetNode.type === "packfileoperations" &&
     (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isEditTextFileCompatible =
+    targetNode.type === "edittextfile" &&
+    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
 
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
@@ -567,6 +575,7 @@ export const applyConnection = (
       isAppendTextCompatible ||
       isTextJoinCompatible ||
       isPackFileOperationsCompatible ||
+      isEditTextFileCompatible ||
       isSaveChangesCompatible
     )
   ) {
@@ -634,6 +643,10 @@ export const applyConnection = (
 
   // Remember which kind of input it was wired to, so the executor knows how to read it.
   if (targetNode.type === "packfileoperations" && sourceOutputType) {
+    setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
+  }
+
+  if (targetNode.type === "edittextfile" && sourceOutputType) {
     setNodes((nodes) => updateNode(nodes, params.target!, { inputType: sourceOutputType }));
   }
 

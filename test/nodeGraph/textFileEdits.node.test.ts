@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   TextFileEditRule,
   applyTextFileEdits,
+  matchesTextFileSkipConditions,
   matchesTextFileTarget,
 } from "../../src/nodeGraph/textFileEdits";
 import { substituteTextFileRuleValues } from "../../src/nodeGraph/nestedOptionValues";
@@ -57,6 +58,10 @@ describe("matchesTextFileTarget", () => {
     expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: "EMP_SPEARMEN.VARIANTMESHDEFINITION" }))).toBe(true);
     expect(matchesTextFileTarget(path, rule({ targetMatch: "name", target: "  " }))).toBe(false);
     expect(matchesTextFileTarget(path, rule({ targetMatch: "regex", target: "[unclosed" }))).toBe(false);
+  });
+
+  it("matches every file when targeting the previous node's output", () => {
+    expect(matchesTextFileTarget(path, rule({ targetMatch: "input", target: "" }))).toBe(true);
   });
 });
 
@@ -497,6 +502,32 @@ describe("skipIfContains", () => {
     expect(result.skippedRuleIds).toEqual(["second"]);
     expect(result.text).toBe("setup()\nmy_mod.init()");
   });
+
+  it("evaluates multiple guards with AND before OR", () => {
+    const guarded = insert({
+      skipConditions: [
+        { id: "a", value: "A" },
+        { id: "b", value: "B", operator: "or" },
+        { id: "c", value: "C", operator: "and" },
+      ],
+    });
+
+    // A OR (B AND C)
+    expect(matchesTextFileSkipConditions("A", guarded)).toBe(true);
+    expect(matchesTextFileSkipConditions("B", guarded)).toBe(false);
+    expect(matchesTextFileSkipConditions("B C", guarded)).toBe(true);
+    expect(matchesTextFileSkipConditions("C", guarded)).toBe(false);
+  });
+
+  it("uses the condition list instead of the legacy guard when conditions are present", () => {
+    const guarded = insert({
+      skipIfContains: "legacy",
+      skipConditions: [{ id: "new", value: "current" }],
+    });
+
+    expect(matchesTextFileSkipConditions("legacy", guarded)).toBe(false);
+    expect(matchesTextFileSkipConditions("current", guarded)).toBe(true);
+  });
 });
 
 describe("flow options in the new rule fields", () => {
@@ -514,6 +545,30 @@ describe("flow options in the new rule fields", () => {
     const [substituted] = nodeData.textFileRules as Array<Record<string, string>>;
     expect(substituted.selectorEnd).toBe("-- END");
     expect(substituted.skipIfContains).toBe("my_mod");
+  });
+
+  it("substitutes into every skip condition", () => {
+    const nodeData: Record<string, unknown> = {
+      textFileRules: [
+        {
+          id: "r1",
+          skipConditions: [
+            { id: "a", value: "{{first}}" },
+            { id: "b", value: "{{second}}", operator: "or" },
+          ],
+        },
+      ],
+    };
+
+    substituteTextFileRuleValues(nodeData, (value) =>
+      value.replace("{{first}}", "alpha").replace("{{second}}", "beta"),
+    );
+
+    const [substituted] = nodeData.textFileRules as Array<Record<string, unknown>>;
+    expect(substituted.skipConditions).toEqual([
+      { id: "a", value: "alpha" },
+      { id: "b", value: "beta", operator: "or" },
+    ]);
   });
 });
 

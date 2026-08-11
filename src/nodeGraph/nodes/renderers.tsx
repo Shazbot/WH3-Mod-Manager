@@ -7005,6 +7005,19 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
   const updateRule = (ruleId: string, updates: Partial<TextFileEditRuleData>) =>
     setRules(rules.map((rule) => (rule.id === ruleId ? { ...rule, ...updates } : rule)));
 
+  type SkipCondition = NonNullable<TextFileEditRuleData["skipConditions"]>[number];
+  const displayedSkipConditions = (rule: TextFileEditRuleData): SkipCondition[] =>
+    rule.skipConditions && rule.skipConditions.length > 0
+      ? rule.skipConditions
+      : [{ id: `skip_${rule.id}_0`, value: rule.skipIfContains || "" }];
+  const updateSkipConditions = (rule: TextFileEditRuleData, skipConditions: SkipCondition[]) =>
+    updateRule(rule.id, { skipConditions, skipIfContains: "" });
+  const skipGroupIndex = (conditions: SkipCondition[], conditionIndex: number) =>
+    conditions
+      .slice(1, conditionIndex + 1)
+      .filter((condition) => condition.operator === "or").length;
+  const skipGroupBorderClasses = ["border-cyan-500", "border-fuchsia-500", "border-amber-500"];
+
   const selectorPlaceholder = (
     mode: TextFileEditRuleData["mode"],
     operation: TextFileEditRuleData["operation"],
@@ -7023,7 +7036,9 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
       ? localized.nodeEditorEditTextFileTargetNamePlaceholder || "unit_card.twui.xml"
       : targetMatch === "path"
         ? localized.nodeEditorEditTextFileTargetPathPlaceholder || "ui/campaign ui/objectives.twui.xml"
-        : localized.nodeEditorEditTextFileTargetRegexPlaceholder || "ui\\.*\\.twui\\.xml$";
+        : targetMatch === "regex"
+          ? localized.nodeEditorEditTextFileTargetRegexPlaceholder || "ui\\.*\\.twui\\.xml$"
+          : "";
 
   return (
     <div className="bg-gray-700 border-2 border-sky-500 rounded-lg p-4 min-w-[340px] max-w-[420px]">
@@ -7031,7 +7046,7 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
         type="target"
         position={Position.Left}
         className="w-3 h-3 bg-blue-500"
-        data-input-type="PackFiles"
+        data-input-type="PackFiles,TableSelection"
       />
 
       <div className="flex items-center justify-between mb-3">
@@ -7044,8 +7059,9 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 "XML rules use a CSS selector - SLOT[name=\"head\"] MESH - which targets elements structurally instead of matching raw text. Only the matched span is rewritten, so the rest of the file stays byte-identical.\n\n" +
                 "The edited file goes into the output pack at its original path, and the output pack loads after every mod, so it wins over the pack the file came from. When two enabled mods carry the same file the higher-priority one is edited - the copy the game would have loaded.\n\n" +
                 "Lua rules take \"function name\" to find a declaration, or any other text to match literally. Regex replace applies a JavaScript regular expression globally and supports replacement references such as $1 and $<name>.\n\n" +
+                "Chain another Edit Text File node after this one and choose previous output to apply a rule directly to every file the earlier node produced. Name, path and regex can narrow that previous output instead.\n\n" +
                 "Insert between takes two snippets and puts the text in the gap between them, pairing each opening snippet with the first closing one after it.\n\n" +
-                "Skip if contains leaves a file alone when it already holds that text, so one rule can sweep a set of files and edit only the ones that need it.\n\n" +
+                "Skip conditions leave a file alone when their expression is true. AND binds more tightly than OR; conditions in the same AND group share a border color.\n\n" +
                 "A rule that matches nothing is reported when you run the flow yourself. On the unattended run at game start it stays quiet unless you tick required, since a flow spanning many packs will have rules that do not apply to each one."
             }
           />
@@ -7082,14 +7098,21 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                   <option value="name">{localized.nodeEditorEditTextFileByName || "name"}</option>
                   <option value="path">{localized.nodeEditorEditTextFileByPath || "path"}</option>
                   <option value="regex">{localized.nodeEditorEditTextFileByRegex || "regex"}</option>
+                  {(data.inputType === "TableSelection" || rule.targetMatch === "input") && (
+                    <option value="input" disabled={data.inputType !== "TableSelection"}>
+                      {localized.nodeEditorEditTextFilePreviousOutput || "previous output"}
+                    </option>
+                  )}
                 </select>
-                <input
-                  type="text"
-                  value={rule.target}
-                  onChange={(event) => updateRule(rule.id, { target: event.target.value })}
-                  placeholder={targetPlaceholder(rule.targetMatch)}
-                  className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
-                />
+                {rule.targetMatch !== "input" && (
+                  <input
+                    type="text"
+                    value={rule.target}
+                    onChange={(event) => updateRule(rule.id, { target: event.target.value })}
+                    placeholder={targetPlaceholder(rule.targetMatch)}
+                    className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                  />
+                )}
                 <button
                   onClick={() => setRules(rules.filter((candidate) => candidate.id !== rule.id))}
                   className="text-xs text-red-400 hover:text-red-300"
@@ -7201,16 +7224,104 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 />
               )}
 
-              <input
-                type="text"
-                value={rule.skipIfContains || ""}
-                onChange={(event) => updateRule(rule.id, { skipIfContains: event.target.value })}
-                placeholder={
-                  localized.nodeEditorEditTextFileSkipIfContainsPlaceholder ||
-                  "skip the file if it already contains..."
-                }
-                className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
-              />
+              <div className="mb-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span
+                    className="text-xs text-gray-400"
+                    title="AND is evaluated before OR. Matching the full expression skips this rule."
+                  >
+                    {localized.nodeEditorEditTextFileSkipConditions || "skip if contains"}
+                  </span>
+                  <button
+                    onClick={() => {
+                      const conditions = displayedSkipConditions(rule);
+                      updateSkipConditions(rule, [
+                        ...conditions,
+                        { id: `skip_${Date.now()}`, value: "", operator: "and" },
+                      ]);
+                    }}
+                    className="text-xs text-sky-400 hover:text-sky-300"
+                  >
+                    + {localized.add || "Add"}
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {displayedSkipConditions(rule).map((condition, conditionIndex, conditions) => {
+                    const groupIndex = skipGroupIndex(conditions, conditionIndex);
+                    const borderClass = skipGroupBorderClasses[groupIndex % skipGroupBorderClasses.length];
+                    return (
+                      <div key={condition.id} className="flex items-center gap-1">
+                        {conditionIndex > 0 && (
+                          <select
+                            value={condition.operator || "and"}
+                            onChange={(event) =>
+                              updateSkipConditions(
+                                rule,
+                                conditions.map((candidate) =>
+                                  candidate.id === condition.id
+                                    ? {
+                                        ...candidate,
+                                        operator: event.target.value as "and" | "or",
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                            className={`w-14 p-1 text-xs bg-gray-700 text-white border-2 ${borderClass} rounded`}
+                            title="AND binds more tightly than OR"
+                          >
+                            <option value="and">AND</option>
+                            <option value="or">OR</option>
+                          </select>
+                        )}
+                        <input
+                          type="text"
+                          value={condition.value}
+                          onChange={(event) =>
+                            updateSkipConditions(
+                              rule,
+                              conditions.map((candidate) =>
+                                candidate.id === condition.id
+                                  ? { ...candidate, value: event.target.value }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                          placeholder={
+                            localized.nodeEditorEditTextFileSkipIfContainsPlaceholder ||
+                            "skip the file if it already contains..."
+                          }
+                          className={`flex-1 p-1 text-xs bg-gray-700 text-white border-2 ${borderClass} rounded font-mono`}
+                        />
+                        <button
+                          onClick={() => {
+                            const remaining = conditions.filter(
+                              (candidate) => candidate.id !== condition.id,
+                            );
+                            updateSkipConditions(
+                              rule,
+                              remaining.length > 0
+                                ? remaining.map((candidate, index) =>
+                                    index === 0 ? { ...candidate, operator: undefined } : candidate,
+                                  )
+                                : [{ id: `skip_${rule.id}_0`, value: "" }],
+                            );
+                          }}
+                          className="text-xs text-red-400 hover:text-red-300"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {displayedSkipConditions(rule).length > 1 && (
+                  <div className="mt-1 text-[10px] text-gray-500">
+                    {localized.nodeEditorEditTextFileSkipPrecedence ||
+                      "Same color = one AND group; OR separates color groups."}
+                  </div>
+                )}
+              </div>
 
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
