@@ -175,6 +175,7 @@ export interface SerializedNode {
     tablesToRemove?: string[];
     locRules?: Array<Record<string, unknown>>;
     textFileRules?: Array<Record<string, unknown>>;
+    textFileFormatter?: "none" | "autoIndent" | "prettyXml" | "compactXml";
     fileOperations?: Array<Record<string, unknown>>;
   };
 }

@@ -194,7 +194,10 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
     return JSON.stringify({ fileOperations: (node.data as any).fileOperations || [] });
   }
   if (node.type === "edittextfile") {
-    return JSON.stringify({ textFileRules: (node.data as any).textFileRules || [] });
+    return JSON.stringify({
+      textFileRules: (node.data as any).textFileRules || [],
+      textFileFormatter: (node.data as any).textFileFormatter || "none",
+    });
   }
   if (node.type === "editloctext") {
     return JSON.stringify({ locRules: (node.data as any).locRules || [] });

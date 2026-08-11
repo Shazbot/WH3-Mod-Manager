@@ -1,6 +1,12 @@
 import * as cheerio from "cheerio";
 import * as luaparse from "luaparse";
 
+import {
+  TextFileFormatter,
+  autoIndentXmlFragment,
+  formatXmlDocument,
+} from "./textFileFormatting";
+
 /** How a rule decides which files it applies to. */
 export type TextFileTargetMatch = "path" | "name" | "regex" | "input";
 
@@ -402,6 +408,7 @@ export const applyTextFileEdits = (
   filePath: string,
   text: string,
   rules: TextFileEditRule[],
+  formatter: TextFileFormatter = "none",
 ): TextFileEditResult => {
   const matchCountByRuleId: Record<string, number> = {};
   const skippedRuleIds = new Set<string>();
@@ -437,7 +444,33 @@ export const applyTextFileEdits = (
     }
 
     matchCountByRuleId[rule.id] = (matchCountByRuleId[rule.id] ?? 0) + ranges.length;
-    edited = applyRanges(edited, ranges);
+    const formattedRanges =
+      formatter === "autoIndent" &&
+      rule.mode === "xml" &&
+      rule.operation !== "delete" &&
+      rule.operation !== "setAttribute"
+        ? ranges.map((range) => {
+            if (range.replacement === undefined) return range;
+            const formatted = autoIndentXmlFragment(
+              edited,
+              range.replacement,
+              range.start,
+              rule.operation as "replace" | "insertBefore" | "insertAfter" | "insertBetween",
+            );
+            if (formatted.error) errors.push(`${filePath} ${formatted.error}`);
+            return { ...range, replacement: formatted.text };
+          })
+        : ranges;
+    edited = applyRanges(edited, formattedRanges);
+  }
+
+  if (
+    (formatter === "prettyXml" || formatter === "compactXml") &&
+    rules.some((rule) => rule.mode === "xml" && matchesTextFileTarget(filePath, rule))
+  ) {
+    const formatted = formatXmlDocument(edited, formatter);
+    edited = formatted.text;
+    if (formatted.error) errors.push(`${filePath} ${formatted.error}`);
   }
 
   return { text: edited, matchCountByRuleId, skippedRuleIds: [...skippedRuleIds], errors };

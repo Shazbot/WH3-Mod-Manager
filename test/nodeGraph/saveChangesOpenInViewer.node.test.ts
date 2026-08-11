@@ -68,3 +68,28 @@ describe("save changes open in viewer", () => {
     );
   });
 });
+
+describe("Edit Text File formatter execution config", () => {
+  const editNode = {
+    id: "node_format",
+    type: "edittextfile" as const,
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Edit Text File",
+      type: "edittextfile",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      textFileRules: [],
+      textFileFormatter: "compactXml",
+    },
+  };
+
+  it("reaches the executor on manual and unattended runs", () => {
+    expect(JSON.parse(serializeNodeConfigForExecution(editNode as never) as string).textFileFormatter).toBe(
+      "compactXml",
+    );
+    expect((prepareNodeConfig(editNode as never) as { textFileFormatter?: string }).textFileFormatter).toBe(
+      "compactXml",
+    );
+  });
+});

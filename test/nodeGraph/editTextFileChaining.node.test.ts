@@ -103,4 +103,40 @@ describe("chained Edit Text File nodes", () => {
       "already edited",
     );
   });
+
+  it("formats chained XML after applying its rules", async () => {
+    const input: DBTablesNodeData = {
+      type: "TableSelection",
+      tables: [textTable("unit.variantmeshdefinition", "<ROOT>\n  <MESH old=\"1\"/>\n</ROOT>")],
+      sourceFiles: [],
+      tableCount: 1,
+    };
+
+    const result = await executeNodeAction({
+      nodeId: "edit_and_format",
+      nodeType: "edittextfile",
+      textValue: "",
+      config: {
+        textFileFormatter: "compactXml",
+        textFileRules: [
+          {
+            id: "attribute",
+            targetMatch: "input",
+            target: "",
+            mode: "xml",
+            selector: "MESH",
+            operation: "setAttribute",
+            attributeName: "old",
+            value: "2",
+          },
+        ],
+      },
+      inputData: input,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.data as DBTablesNodeData).tables[0].table.buffer?.toString("utf8")).toBe(
+      '<ROOT><MESH old="2"/></ROOT>',
+    );
+  });
 });

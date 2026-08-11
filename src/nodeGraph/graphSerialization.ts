@@ -135,6 +135,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         tablesToRemove: data.tablesToRemove || [],
         locRules: (data.locRules || []) as SerializedNode["data"]["locRules"],
         textFileRules: (data.textFileRules || []) as SerializedNode["data"]["textFileRules"],
+        textFileFormatter: data.textFileFormatter as SerializedNode["data"]["textFileFormatter"],
         fileOperations: (data.fileOperations || []) as SerializedNode["data"]["fileOperations"],
         selectedFlowOptionId: maybeString(data.selectedFlowOptionId),
         flowOptionChecked: data.flowOptionChecked as boolean | undefined,

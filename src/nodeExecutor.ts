@@ -52,6 +52,7 @@ import {
   applyTextFileEdits,
   matchesTextFileTarget,
 } from "./nodeGraph/textFileEdits";
+import type { TextFileFormatter } from "./nodeGraph/textFileFormatting";
 import {
   PackFileOperationRule,
   planPackCopy,
@@ -7421,7 +7422,10 @@ async function executeEditTextFileNode(
     return { success: false, error: "Invalid input: Expected PackFiles or TableSelection data" };
   }
 
-  const parsed = getNodeConfig<{ textFileRules?: TextFileEditRule[] }>(config, textValue);
+  const parsed = getNodeConfig<{
+    textFileRules?: TextFileEditRule[];
+    textFileFormatter?: TextFileFormatter;
+  }>(config, textValue);
   if (!parsed) {
     return { success: false, error: "Invalid node configuration" };
   }
@@ -7429,6 +7433,7 @@ async function executeEditTextFileNode(
   const rules = (parsed.textFileRules || []).filter(
     (rule) => rule && (rule.targetMatch === "input" || rule.target) && rule.selector,
   );
+  const formatter = parsed.textFileFormatter || "none";
   if (rules.length === 0) {
     const tables = inputData.type === "TableSelection" ? inputData.tables || [] : [];
     return {
@@ -7473,7 +7478,7 @@ async function executeEditTextFileNode(
 
       const raw = buffer.toString("utf8");
       const hasBom = raw.startsWith(UTF8_BOM);
-      const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, rules);
+      const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, rules, formatter);
       recordResult(result);
 
       const editedText = hasBom ? UTF8_BOM + result.text : result.text;
@@ -7551,7 +7556,7 @@ async function executeEditTextFileNode(
           // A BOM is kept exactly as it was found; the game's parsers care.
           const raw = buffer.toString("utf8");
           const hasBom = raw.startsWith(UTF8_BOM);
-          const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, packRules);
+          const result = applyTextFileEdits(name, hasBom ? raw.slice(1) : raw, packRules, formatter);
           recordResult(result);
 
           const editedText = hasBom ? UTF8_BOM + result.text : result.text;

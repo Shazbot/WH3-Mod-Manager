@@ -755,6 +755,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       inputType: "PackFiles",
       outputType: "TableSelection",
       textFileRules: [],
+      textFileFormatter: "none",
     }),
   }),
   editloctext: createNodeDefinition<EditLocTextNodeData>({

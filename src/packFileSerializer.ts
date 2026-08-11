@@ -1300,7 +1300,10 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
     case "packfileoperations":
       return { fileOperations: (node.data as any).fileOperations || [] };
     case "edittextfile":
-      return { textFileRules: (node.data as any).textFileRules || [] };
+      return {
+        textFileRules: (node.data as any).textFileRules || [],
+        textFileFormatter: (node.data as any).textFileFormatter || "none",
+      };
     case "editloctext":
       return { locRules: (node.data as any).locRules || [] };
     case "removetables":

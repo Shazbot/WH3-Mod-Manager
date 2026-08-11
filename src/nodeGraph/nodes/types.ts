@@ -439,6 +439,7 @@ export interface EditTextFileNodeData extends NodeData {
   inputType: "PackFiles" | "TableSelection";
   outputType: "TableSelection";
   textFileRules: TextFileEditRuleData[];
+  textFileFormatter?: "none" | "autoIndent" | "prettyXml" | "compactXml";
 }
 
 /**

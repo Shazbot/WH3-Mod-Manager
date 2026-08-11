@@ -7062,6 +7062,7 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 "Chain another Edit Text File node after this one and choose previous output to apply a rule directly to every file the earlier node produced. Name, path and regex can narrow that previous output instead.\n\n" +
                 "Insert between takes two snippets and puts the text in the gap between them, pairing each opening snippet with the first closing one after it.\n\n" +
                 "Skip conditions leave a file alone when their expression is true. AND binds more tightly than OR; conditions in the same AND group share a border color.\n\n" +
+                "Formatting runs after the rules. Auto-indent touches inserted XML fragments only. Pretty XML and compact XML reserialize the whole selected document and can normalize quotes, empty tags and whitespace.\n\n" +
                 "A rule that matches nothing is reported when you run the flow yourself. On the unattended run at game start it stays quiet unless you tick required, since a flow spanning many packs will have rules that do not apply to each one."
             }
           />
@@ -7072,6 +7073,36 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
         >
           + {localized.add || "Add"}
         </button>
+      </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs text-gray-400">
+          {localized.nodeEditorEditTextFileFormatter || "formatter"}
+        </span>
+        <select
+          value={data.textFileFormatter || "none"}
+          onChange={(event) =>
+            dispatchNodeDataUpdate(data, {
+              nodeId: id,
+              textFileFormatter: event.target.value as NonNullable<
+                EditTextFileNodeData["textFileFormatter"]
+              >,
+            })
+          }
+          className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+          title="Runs once after all edit rules"
+        >
+          <option value="none">{localized.nodeEditorEditTextFileFormatterNone || "none"}</option>
+          <option value="autoIndent">
+            {localized.nodeEditorEditTextFileFormatterAutoIndent || "auto-indent inserted XML"}
+          </option>
+          <option value="prettyXml">
+            {localized.nodeEditorEditTextFileFormatterPrettyXml || "pretty XML"}
+          </option>
+          <option value="compactXml">
+            {localized.nodeEditorEditTextFileFormatterCompactXml || "compact XML"}
+          </option>
+        </select>
       </div>
 
       <div

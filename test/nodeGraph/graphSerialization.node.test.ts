@@ -116,6 +116,35 @@ describe("graphSerialization", () => {
     expect(result.connections).toEqual([]);
   });
 
+  it("preserves the Edit Text File formatter through serialization", () => {
+    const serialized = serializeNodeGraphState({
+      nodes: [
+        {
+          id: "node_format",
+          type: "edittextfile",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Edit Text File",
+            type: "edittextfile",
+            inputType: "PackFiles",
+            outputType: "TableSelection",
+            textFileRules: [],
+            textFileFormatter: "prettyXml",
+          },
+        },
+      ] as any[],
+      edges: [],
+      flowOptions: [],
+      isGraphEnabled: true,
+      graphStartsEnabled: true,
+    });
+
+    expect(serialized.nodes[0].data.textFileFormatter).toBe("prettyXml");
+    expect(deserializeNodeGraph(JSON.stringify(serialized)).nodes[0].data.textFileFormatter).toBe(
+      "prettyXml",
+    );
+  });
+
   it("preserves the Dump to TSV filename through serialization and loading", () => {
     const nodes = [
       {

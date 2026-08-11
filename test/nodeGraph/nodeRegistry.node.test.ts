@@ -65,6 +65,21 @@ describe("nodeRegistry", () => {
     });
   });
 
+  it("creates Edit Text File nodes with formatting disabled by default", () => {
+    const node = createNodeFromDefinition("edittextfile", {
+      nodeId: "node_edit_text",
+      position: { x: 0, y: 0 },
+      label: "Edit Text File",
+    });
+
+    expect(node.data).toMatchObject({
+      type: "edittextfile",
+      inputType: "PackFiles",
+      outputType: "TableSelection",
+      textFileFormatter: "none",
+    });
+  });
+
   it("keeps the styled fallback node path for unknown types", () => {
     const node = createFallbackNode("unknown-type", {
       nodeId: "node_3",
