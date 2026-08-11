@@ -23,6 +23,22 @@ import {
 } from "./modCompat/compatPackReuse";
 import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
 import {
+  VISUALS_DATA_CACHE_VERSION,
+  createEmptyVisualsDataCache,
+  getCurrentVisualsTableContribution,
+  getCurrentVisualsPackCacheEntry,
+  getOrCreateVisualsPackCacheEntry,
+  getVisualsFilesFromNames,
+  mergeVisualsLocContributions,
+  mergeVisualsFileContributions,
+  mergeVisualsTableContributions,
+  type VisualsDataDiskCache,
+  type VisualsFileResult,
+  type VisualsPackCacheEntry,
+  type VisualsPackCacheIdentity,
+  type VisualsTableContribution,
+} from "./visuals/cache";
+import {
   canUseVanillaDbCacheForPack,
   closeVanillaDbCacheReaders,
   fillPackedFileFromVanillaCache,
@@ -116,6 +132,7 @@ import {
   DBNameToDBVersions,
   gameToDBFieldsThatReference,
   gameToReferences,
+  getSchemaFileName,
   initializeAllSchemaForGame,
 } from "./schema";
 import {
@@ -263,9 +280,113 @@ type VisualsSession = {
   enabledModPaths: string[];
   dbPriorityPackPaths: string[];
   fileSearchPackPaths: string[];
+  visualFiles?: VisualsFileResult[];
+  visualFilesPromise?: Promise<VisualsFileResult[]>;
   createdAt: number;
 };
 const visualsSessions = new Map<string, VisualsSession>();
+const visualsPackIndexes = new Map<
+  string,
+  { size: number; mtimeMs: number; pack: Pack }
+>();
+const VISUALS_DATA_CACHE_FILE = "visuals-data-cache.bin";
+let visualsDataCachePromise: Promise<VisualsDataDiskCache> | undefined;
+
+const loadVisualsDataCache = async (): Promise<VisualsDataDiskCache> => {
+  if (!visualsDataCachePromise) {
+    visualsDataCachePromise = (async () => {
+      const cacheFilePath = nodePath.join(app.getPath("userData"), VISUALS_DATA_CACHE_FILE);
+      const cache = await readJsonDiskCache<VisualsDataDiskCache>(cacheFilePath);
+      if (
+        !cache ||
+        cache.version !== VISUALS_DATA_CACHE_VERSION ||
+        !cache.entries ||
+        typeof cache.entries !== "object"
+      ) {
+        return createEmptyVisualsDataCache();
+      }
+      return cache;
+    })();
+  }
+  return visualsDataCachePromise;
+};
+
+const saveVisualsDataCache = async (cache: VisualsDataDiskCache): Promise<void> => {
+  const cacheFilePath = nodePath.join(app.getPath("userData"), VISUALS_DATA_CACHE_FILE);
+  await writeJsonDiskCache(cacheFilePath, cache);
+};
+
+const getVisualsPackIdentity = async (
+  packPath: string,
+): Promise<VisualsPackCacheIdentity | undefined> => {
+  try {
+    const stat = await fs.promises.stat(packPath);
+    return { packPath, size: stat.size, mtimeMs: stat.mtimeMs };
+  } catch {
+    return undefined;
+  }
+};
+
+const getVisualsSchemaHash = (game: SupportedGames): string | undefined => {
+  try {
+    const schemaPath = nodePath.join(__dirname, `../schema/${getSchemaFileName(game)}`);
+    return createHash("sha1").update(fs.readFileSync(schemaPath)).digest("hex");
+  } catch (error) {
+    console.error("Failed to identify the schema for the Visuals cache:", error);
+    return undefined;
+  }
+};
+
+const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
+  const contribution: VisualsTableContribution = {
+    variants: [],
+    unitVariants: [],
+    landUnits: [],
+  };
+
+  const forEachTableRow = (
+    tableName: string,
+    visit: (schemaFieldRow: AmendedSchemaField[]) => void,
+  ) => {
+    for (const packedFile of pack.packedFiles) {
+      if (!packedFile.name.startsWith(`db\\${tableName}\\`)) continue;
+      const dbVersion = getDBVersion(packedFile);
+      if (!dbVersion || !packedFile.schemaFields) continue;
+      const rows = chunkSchemaIntoRows(
+        amendSchemaField(packedFile.schemaFields, dbVersion),
+        dbVersion,
+      ) as AmendedSchemaField[][];
+      for (const row of rows) visit(row);
+    }
+  };
+
+  forEachTableRow("variants_tables", (row) => {
+    const variantName = row.find((field) => field.name === "variant_name")?.resolvedKeyValue;
+    if (!variantName) return;
+    const variantFilename = row.find(
+      (field) => field.name === "variant_filename",
+    )?.resolvedKeyValue;
+    contribution.variants.push([variantName, variantFilename || ""]);
+  });
+  forEachTableRow("unit_variants_tables", (row) => {
+    const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
+    if (!unitKey) return;
+    const faction = row.find((field) => field.name === "faction")?.resolvedKeyValue || "";
+    const variantName = row.find((field) => field.name === "variant")?.resolvedKeyValue || "";
+    contribution.unitVariants.push([unitKey, faction, variantName]);
+  });
+  forEachTableRow("land_units_tables", (row) => {
+    const unitKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
+    if (unitKey) contribution.landUnits.push(unitKey);
+  });
+
+  return contribution;
+};
+
+const getVisualsLocContribution = (pack: Pack): Array<[string, string]> => {
+  const trie = getLocsTrie(pack);
+  return trie ? Object.entries(trie.getEntries()) : [];
+};
 const dbDuplicationCancelStateByWebContentsId = new Map<number, { canceled: boolean }>();
 const dbIndirectReferenceCacheByWebContentsId = new Map<number, DBIndirectReferenceCacheContext>();
 const createDBIndirectReferenceCacheContext = (): DBIndirectReferenceCacheContext => ({
@@ -318,11 +439,77 @@ const findPackedFileCaseInsensitive = (pack: Pack, fileName: string) => {
   );
 };
 const getOrLoadPackFromAppData = async (packPath: string) => {
+  let stat: { size: number; mtimeMs: number } | undefined;
+  try {
+    stat = await fs.promises.stat(packPath);
+  } catch {
+    // Let readPack or the retained pack provide the existing failure behavior below.
+  }
+  const retainedVisualsIndex = visualsPackIndexes.get(packPath);
+  if (
+    stat &&
+    retainedVisualsIndex?.size === stat.size &&
+    retainedVisualsIndex.mtimeMs === stat.mtimeMs
+  ) {
+    return retainedVisualsIndex.pack;
+  }
   const pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
-  if (pack) return pack;
+  if (pack) {
+    const isPlaceholderIndex =
+      pack.packedFiles.length > 0 &&
+      pack.packedFiles.every((file) => file.file_size === 0 && file.start_pos === 0);
+    if (stat && pack.size === stat.size && pack.lastChangedLocal === stat.mtimeMs && !isPlaceholderIndex) {
+      return pack;
+    }
+    if (stat) {
+      // Do not merge a changed index into a retained parsed pack: appendPacksData intentionally only
+      // merges parsed files. The fresh index is sufficient for this Visuals request and avoids stale
+      // search/open results until the normal mod refresh replaces the retained pack.
+      const freshPack = await readPack(packPath, { skipParsingTables: true });
+      visualsPackIndexes.set(packPath, { size: stat.size, mtimeMs: stat.mtimeMs, pack: freshPack });
+      return freshPack;
+    }
+    return pack;
+  }
   const newPack = await readPack(packPath, { skipParsingTables: true });
+  if (stat) {
+    visualsPackIndexes.set(packPath, { size: stat.size, mtimeMs: stat.mtimeMs, pack: newPack });
+  }
   appendPacksData(newPack);
   return appData.packsData.find((existingPack) => existingPack.path === packPath);
+};
+const getVisualsFilesForSession = async (session: VisualsSession): Promise<VisualsFileResult[]> => {
+  if (session.visualFiles) return session.visualFiles;
+  if (session.visualFilesPromise) return session.visualFilesPromise;
+
+  session.visualFilesPromise = (async () => {
+    const cache = await loadVisualsDataCache();
+    const contributions: VisualsFileResult[][] = [];
+    let didChangeCache = false;
+    for (const packPath of session.fileSearchPackPaths) {
+      const identity = await getVisualsPackIdentity(packPath);
+      if (!identity) continue;
+      let entry = getCurrentVisualsPackCacheEntry(cache, identity);
+      if (!entry?.files) {
+        const pack = await getOrLoadPackFromAppData(packPath);
+        if (!pack) continue;
+        entry = getOrCreateVisualsPackCacheEntry(cache, identity);
+        entry.files = getVisualsFilesFromNames(pack.packedFiles.map((file) => file.name));
+        didChangeCache = true;
+      }
+      contributions.push(entry.files);
+    }
+    if (didChangeCache) await saveVisualsDataCache(cache);
+    const files = mergeVisualsFileContributions(contributions);
+    session.visualFiles = files;
+    return files;
+  })();
+
+  try {
+    return await session.visualFilesPromise;
+  } finally {
+    session.visualFilesPromise = undefined;
+  }
 };
 const resolveVisualsFileInSession = async (
   session: VisualsSession,
@@ -4199,8 +4386,6 @@ export const registerIpcMainListeners = (
       const dbPackName = gameToPackWithDBTablesName[appData.currentGame] || "db.pack";
       const dbPackPath = nodePath.join(dataFolder, dbPackName);
       const dataPackPath = nodePath.join(dataFolder, "data.pack");
-      await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true);
-      await readModsByPath(enabledModPaths, { skipParsingTables: false, readLocs: true, tablesToRead }, true);
       const localPackNames = [] as string[];
       const currentLanguage = appData.currentLanguage || "en";
       const preferredLocPack = `local_${currentLanguage}.pack`;
@@ -4209,103 +4394,125 @@ export const registerIpcMainListeners = (
         localPackNames.push("local_en.pack");
       }
       const localPackPaths = localPackNames.map((packName) => nodePath.join(dataFolder, packName));
-      if (localPackPaths.length > 0) {
-        await readModsByPath(localPackPaths, { skipParsingTables: true, readLocs: true }, true);
-      }
-      if (fsExtra.existsSync(dataPackPath)) {
-        await readModsByPath([dataPackPath], { skipParsingTables: true }, true);
-      }
-      const packsForTables = appData.packsData.filter(
-        (pack) => pack.path === dbPackPath || enabledModPaths.includes(pack.path),
+      const visualsCache = await loadVisualsDataCache();
+      const schemaHash = getVisualsSchemaHash(appData.currentGame);
+      const contributionPaths = Array.from(
+        new Set([dbPackPath, ...enabledModPaths, ...localPackPaths]),
       );
-      const unsortedPacksTableData = getPacksTableData(packsForTables, tablesToRead, false);
-      if (!unsortedPacksTableData) {
-        return { success: false, error: "Failed to build table data for visuals tab" };
-      }
-      const orderedPacksTableData = [] as PackViewData[];
-      const dbPackTableData = unsortedPacksTableData.find((pack) => pack.packPath === dbPackPath);
-      if (dbPackTableData) orderedPacksTableData.push(dbPackTableData);
-      for (const mod of dbPriorityMods) {
-        const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
-        if (ptd) orderedPacksTableData.push(ptd);
-      }
-      const getTableRowDataWithPackPath = (
-        packsTableData: PackViewData[],
-        tableName: string,
-        rowDataExtractor: (packPath: string, schemaFieldRow: AmendedSchemaField[]) => void,
-      ) => {
-        packsTableData.forEach((pTD) => {
-          const tableFiles = Object.keys(pTD.packedFiles).filter((pFName) =>
-            pFName.startsWith(`db\\${tableName}\\`),
-          );
-          for (const tableFile of tableFiles) {
-            const packedFile = pTD.packedFiles[tableFile];
-            const dbVersion = getDBVersion(packedFile);
-            if (!dbVersion) continue;
-            const schemaFields = packedFile.schemaFields as AmendedSchemaField[];
-            const chunkedShemaFields = chunkSchemaIntoRows(schemaFields, dbVersion) as AmendedSchemaField[][];
-            for (const schemaFieldRow of chunkedShemaFields) {
-              rowDataExtractor(pTD.packPath, schemaFieldRow);
-            }
-          }
-        });
+      const identities = new Map<string, VisualsPackCacheIdentity>();
+      await Promise.all(
+        contributionPaths.map(async (packPath) => {
+          const identity = await getVisualsPackIdentity(packPath);
+          if (identity) identities.set(packPath, identity);
+        }),
+      );
+      const getCachedContribution = (packPath: string) => {
+        const identity = identities.get(packPath);
+        return identity
+          ? getCurrentVisualsPackCacheEntry(visualsCache, identity)
+          : undefined;
       };
-      const variantsByName = new Map<string, string>();
-      const unitToVariantRows = new Map<string, { faction: string; variantName: string }[]>();
-      const landUnitKeys = new Set<string>();
-      const unitKeyToOriginPackPath = new Map<string, string>();
-      const packsTableDataForOrigin = [] as PackViewData[];
-      for (const mod of dbPriorityMods) {
-        const ptd = unsortedPacksTableData.find((pack) => pack.packPath === mod.path);
-        if (ptd) packsTableDataForOrigin.push(ptd);
-      }
-      if (dbPackTableData) packsTableDataForOrigin.push(dbPackTableData);
-      getTableRowData(orderedPacksTableData, "variants_tables", (schemaFieldRow) => {
-        const variantName = schemaFieldRow.find((field) => field.name == "variant_name")?.resolvedKeyValue;
-        const variantFilename = schemaFieldRow.find(
-          (field) => field.name == "variant_filename",
-        )?.resolvedKeyValue;
-        if (variantName) {
-          variantsByName.set(variantName, variantFilename || "");
-        }
+      const hasCurrentTables = (entry: VisualsPackCacheEntry | undefined) =>
+        !!getCurrentVisualsTableContribution(entry, schemaHash);
+
+      const missingDbTables = !hasCurrentTables(getCachedContribution(dbPackPath));
+      const missingModContributions = enabledModPaths.filter((packPath) => {
+        const entry = getCachedContribution(packPath);
+        return !hasCurrentTables(entry) || !entry?.locs;
       });
-      getTableRowData(orderedPacksTableData, "unit_variants_tables", (schemaFieldRow) => {
-        const unitKey = schemaFieldRow.find((field) => field.name == "unit")?.resolvedKeyValue;
-        const variantName = schemaFieldRow.find((field) => field.name == "variant")?.resolvedKeyValue;
-        const faction = schemaFieldRow.find((field) => field.name == "faction")?.resolvedKeyValue || "";
-        if (!unitKey) return;
-        const rows = unitToVariantRows.get(unitKey) || [];
-        const existingIndex = rows.findIndex((row) => row.faction === faction);
-        const nextRow = { faction, variantName: variantName || "" };
-        if (existingIndex >= 0) rows.splice(existingIndex, 1, nextRow);
-        else rows.push(nextRow);
-        unitToVariantRows.set(unitKey, rows);
-      });
-      getTableRowData(orderedPacksTableData, "land_units_tables", (schemaFieldRow) => {
-        const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
-        if (unitKey) landUnitKeys.add(unitKey);
-      });
-      getTableRowDataWithPackPath(
-        packsTableDataForOrigin,
-        "land_units_tables",
-        (packPath, schemaFieldRow) => {
-          const unitKey = schemaFieldRow.find((field) => field.name == "key")?.resolvedKeyValue;
-          if (!unitKey) return;
-          if (unitKeyToOriginPackPath.has(unitKey)) return;
-          unitKeyToOriginPackPath.set(unitKey, packPath);
-        },
+      const missingLocalLocs = localPackPaths.filter(
+        (packPath) => !getCachedContribution(packPath)?.locs,
       );
-      const locPacksInPriority = [...localPackPaths, ...dbPriorityMods.map((mod) => mod.path)]
-        .map((packPath) => appData.packsData.find((pack) => pack.path === packPath))
-        .filter((pack): pack is Pack => !!pack);
-      const localizedNames = new Map<string, string>();
-      for (const pack of locPacksInPriority) {
-        const trie = getLocsTrie(pack);
-        if (!trie) continue;
-        for (const [key, value] of Object.entries(trie.getEntries())) {
-          localizedNames.set(key, value);
-        }
+
+      const freshlyReadPacks = new Map<string, Pack>();
+      const retainFreshPacks = (packs: Pack[]) => {
+        for (const pack of packs) freshlyReadPacks.set(pack.path, pack);
+      };
+      if (missingDbTables) {
+        retainFreshPacks(
+          await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true),
+        );
       }
+      if (missingModContributions.length > 0) {
+        retainFreshPacks(
+          await readModsByPath(
+            missingModContributions,
+            { skipParsingTables: false, readLocs: true, tablesToRead },
+            true,
+          ),
+        );
+      }
+      if (missingLocalLocs.length > 0) {
+        retainFreshPacks(
+          await readModsByPath(
+            missingLocalLocs,
+            { skipParsingTables: true, readLocs: true },
+            true,
+          ),
+        );
+      }
+
+      let didChangeVisualsCache = false;
+      const fillCachedContribution = (
+        packPath: string,
+        options: { tables?: boolean; locs?: boolean },
+      ): VisualsPackCacheEntry | undefined => {
+        const identity = identities.get(packPath);
+        if (!identity) return undefined;
+        const entry = getOrCreateVisualsPackCacheEntry(visualsCache, identity);
+        const pack =
+          freshlyReadPacks.get(packPath) ||
+          appData.packsData.find((candidate) => candidate.path === packPath);
+        if (options.tables && schemaHash && entry.tables?.schemaHash !== schemaHash) {
+          if (!pack) return undefined;
+          entry.tables = {
+            schemaHash,
+            contribution: getVisualsTableContribution(pack),
+          };
+          didChangeVisualsCache = true;
+        }
+        if (options.locs && !entry.locs) {
+          if (!pack) return undefined;
+          entry.locs = getVisualsLocContribution(pack);
+          didChangeVisualsCache = true;
+        }
+        return entry;
+      };
+
+      const contributionByPath = new Map<string, VisualsPackCacheEntry>();
+      const dbContribution = fillCachedContribution(dbPackPath, { tables: true });
+      if (!dbContribution?.tables) {
+        return { success: false, error: "Failed to build vanilla table data for visuals tab" };
+      }
+      contributionByPath.set(dbPackPath, dbContribution);
+      for (const packPath of enabledModPaths) {
+        const contribution = fillCachedContribution(packPath, { tables: true, locs: true });
+        if (contribution) contributionByPath.set(packPath, contribution);
+      }
+      for (const packPath of localPackPaths) {
+        const contribution = fillCachedContribution(packPath, { locs: true });
+        if (contribution) contributionByPath.set(packPath, contribution);
+      }
+
+      const tablePathsInMergeOrder = [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)];
+      const toTableContributions = (packPaths: string[]) =>
+        packPaths.flatMap((packPath) => {
+          const contribution = contributionByPath.get(packPath)?.tables?.contribution;
+          return contribution ? [{ packPath, contribution }] : [];
+        });
+      const {
+        variantsByName,
+        unitToVariantRows,
+        landUnitKeys,
+        unitKeyToOriginPackPath,
+      } = mergeVisualsTableContributions(
+        toTableContributions(tablePathsInMergeOrder),
+        toTableContributions([...dbPriorityMods.map((mod) => mod.path), dbPackPath]),
+      );
+      const locPathsInMergeOrder = [...localPackPaths, ...dbPriorityMods.map((mod) => mod.path)];
+      const localizedNames = mergeVisualsLocContributions(
+        locPathsInMergeOrder.map((packPath) => contributionByPath.get(packPath)?.locs || []),
+      );
       const getLocalizedName = (locId: string) => localizedNames.get(locId);
       const resolveVisualsLoc = (locId: string) => {
         const localized = getLocalizedName(locId);
@@ -4367,6 +4574,24 @@ export const registerIpcMainListeners = (
         ...(fsExtra.existsSync(dataPackPath) ? [dataPackPath] : []),
         ...sortedEnabledMods.map((mod) => mod.path),
       ];
+      const cachedFileContributions: VisualsFileResult[][] = [];
+      let areAllFileContributionsCached = true;
+      for (const packPath of fileSearchPackPaths) {
+        let identity = identities.get(packPath);
+        if (!identity) {
+          identity = await getVisualsPackIdentity(packPath);
+          if (identity) identities.set(packPath, identity);
+        }
+        const files = identity
+          ? getCurrentVisualsPackCacheEntry(visualsCache, identity)?.files
+          : undefined;
+        if (!files) {
+          areAllFileContributionsCached = false;
+          break;
+        }
+        cachedFileContributions.push(files);
+      }
+      if (didChangeVisualsCache) await saveVisualsDataCache(visualsCache);
       const sessionId = `visuals_${hash({
         game: appData.currentGame,
         language: appData.currentLanguage || "en",
@@ -4377,6 +4602,9 @@ export const registerIpcMainListeners = (
         enabledModPaths,
         dbPriorityPackPaths: [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)],
         fileSearchPackPaths,
+        visualFiles: areAllFileContributionsCached
+          ? mergeVisualsFileContributions(cachedFileContributions)
+          : undefined,
         createdAt: Date.now(),
       });
       return {
@@ -4441,32 +4669,10 @@ export const registerIpcMainListeners = (
         const session = visualsSessions.get(sessionId);
         if (!session) return { success: false, error: "Visuals session expired or missing" };
         const normalizedQuery = normalizePackFilePathKey(query || "");
-        const uniqueResults = new Map<
-          string,
-          { path: string; ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" }
-        >();
-        for (const packPath of session.fileSearchPackPaths) {
-          let pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
-          if (!pack) {
-            const newPack = await readPack(packPath, { skipParsingTables: true });
-            appendPacksData(newPack);
-            pack = appData.packsData.find((existingPack) => existingPack.path === packPath);
-          }
-          if (!pack) continue;
-          for (const packedFile of pack.packedFiles) {
-            const normalizedName = normalizePackFilePathKey(packedFile.name);
-            let ext: "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | undefined;
-            if (normalizedName.endsWith(".variantmeshdefinition")) ext = "variantmeshdefinition";
-            else if (normalizedName.endsWith(".wsmodel")) ext = "wsmodel";
-            else if (normalizedName.endsWith(".rigid_model_v2")) ext = "rigid_model_v2";
-            if (!ext) continue;
-            if (normalizedQuery && !normalizedName.includes(normalizedQuery)) continue;
-            uniqueResults.set(normalizedName, { path: packedFile.name, ext });
-          }
-        }
-        const allResults = Array.from(uniqueResults.values()).sort((first, second) =>
-          collator.compare(first.path, second.path),
-        );
+        const cachedFiles = await getVisualsFilesForSession(session);
+        const allResults = normalizedQuery
+          ? cachedFiles.filter((file) => normalizePackFilePathKey(file.path).includes(normalizedQuery))
+          : cachedFiles;
         const safeOffset = Math.max(0, offset || 0);
         const safeLimit = Math.max(1, Math.min(1000, limit || 200));
         return {
