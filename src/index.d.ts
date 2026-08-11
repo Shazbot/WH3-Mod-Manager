@@ -959,6 +959,7 @@ declare global {
     | "categories"
     | "skills"
     | "visuals"
+    | "unitViewer"
     | "twui"
     | "techTrees"
     | "nodeEditor"

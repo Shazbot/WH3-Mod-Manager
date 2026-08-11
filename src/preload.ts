@@ -4,6 +4,11 @@ import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
 import debounce from "just-debounce-it";
 import "electron-log/preload";
+import type {
+  UnitViewerAssetResponse,
+  UnitViewerCatalogResponse,
+  UnitViewerDetailsResponse,
+} from "./unitViewer/types";
 
 console.log("IN PRELOAD");
 
@@ -459,6 +464,19 @@ const api = {
     }[];
     error?: string;
   }> => ipcRenderer.invoke("getVisualsUnitsData", enabledMods),
+
+  getUnitViewerCatalog: (enabledMods: Mod[]): Promise<UnitViewerCatalogResponse> =>
+    ipcRenderer.invoke("getUnitViewerCatalog", enabledMods),
+
+  getUnitViewerDetails: (
+    sessionId: string,
+    unitKey: string,
+  ): Promise<UnitViewerDetailsResponse> => ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
+
+  getUnitViewerAsset: (
+    sessionId: string,
+    assetPath: string,
+  ): Promise<UnitViewerAssetResponse> => ipcRenderer.invoke("getUnitViewerAsset", sessionId, assetPath),
 
   readVariantMeshDefinition: (
     sessionId: string,

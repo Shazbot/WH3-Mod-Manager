@@ -11,6 +11,7 @@ import PresetsTab from "./PresetsTab";
 import TechTreesTab from "./techTrees/TechTreesTab";
 import SkillsTab from "./skillsViewer/SkillsTab";
 import { gameToPackWithDBTablesName } from "../supportedGames";
+import UnitViewerTab from "./UnitViewerTab";
 
 type MainProps = {
   scrollElement: RefObject<HTMLDivElement>;
@@ -24,8 +25,10 @@ const Main = (props: MainProps) => {
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const isTechnologyTreesSupported = currentGame === "wh3";
   const isNodeEditorTab = currentTab == "nodeEditor";
+  const isUnitViewerTab = currentTab == "unitViewer" && currentGame === "wh3";
   // Once opened the node editor stays mounted, so switching tabs does not discard an unsaved graph.
   const isNodeEditorMounted = useKeepMountedOnceActive(isNodeEditorTab);
+  const isUnitViewerMounted = useKeepMountedOnceActive(isUnitViewerTab);
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =
@@ -43,7 +46,13 @@ const Main = (props: MainProps) => {
         </div>
       )}
 
-      {!isNodeEditorTab &&
+      {isUnitViewerMounted && (
+        <div className={isUnitViewerTab ? undefined : "hidden"}>
+          <UnitViewerTab />
+        </div>
+      )}
+
+      {!isNodeEditorTab && !isUnitViewerTab &&
         ((currentTab == "skills" && <SkillsTab />) ||
         (currentTab == "techTrees" && isTechnologyTreesSupported && <TechTreesTab />) ||
         (currentTab == "visuals" && isFeaturesForModdersEnabled && <VisualsTab />) ||

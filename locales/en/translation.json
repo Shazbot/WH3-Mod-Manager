@@ -1054,6 +1054,7 @@
   "nodeEditorNodeGenerateRowsSchemaDescription": "Generate rows using custom schema with counter range",
   "nodeEditorNodeReadTSVFromPackDescription": "Reads TSV file from pack using custom schema",
   "visualsTab": "Visuals",
+  "unitViewerTab": "Unit Viewer",
   "techTreesTab": "Tech Trees",
   "nodeEditorTab": "Node Editor",
   "modFolders": "Mod Folders",

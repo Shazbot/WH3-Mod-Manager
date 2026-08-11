@@ -1,0 +1,541 @@
+import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AutoSizer, List, type ListRowProps } from "react-virtualized";
+import {
+  IoArrowBack,
+  IoArrowForward,
+  IoChevronDown,
+  IoChevronForward,
+  IoClose,
+  IoSearch,
+  IoShuffle,
+} from "react-icons/io5";
+import { useAppSelector } from "../hooks";
+import AbilityTooltipCard from "./skillsViewer/AbilityTooltipCard";
+import { calculateUnitViewerStats } from "../unitViewer/calculator";
+import type {
+  UnitViewerAbility,
+  UnitViewerCalculatedStats,
+  UnitViewerCatalogGroup,
+  UnitViewerCatalogUnit,
+  UnitViewerConstants,
+  UnitViewerContext,
+  UnitViewerFatigue,
+  UnitViewerUnitModel,
+  UnitViewerUnitSize,
+} from "../unitViewer/types";
+
+type BrowserRow =
+  | { kind: "group"; group: UnitViewerCatalogGroup }
+  | { kind: "unit"; groupKey: string; unit: UnitViewerCatalogUnit };
+
+type ComparisonSelection = "first" | "left" | `unit:${string}`;
+
+const DEFAULT_CONTEXT: UnitViewerContext = {
+  unitSize: "ultra",
+  rank: 0,
+  fatigue: "threshold_fresh",
+};
+
+const FATIGUE_LABELS: Record<UnitViewerFatigue, string> = {
+  threshold_fresh: "Fresh",
+  threshold_active: "Active",
+  threshold_winded: "Winded",
+  threshold_tired: "Tired",
+  threshold_very_tired: "Very Tired",
+  threshold_exhausted: "Exhausted",
+};
+
+const UnitCasteBadge = ({ caste }: { caste: string }) => {
+  const normalized = caste.toLowerCase();
+  if (normalized === "lord") {
+    return <span aria-hidden="true" title="Lord" className="mr-1.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-amber-500/80 bg-amber-950 text-[11px] font-bold text-amber-200">L</span>;
+  }
+  if (normalized === "hero") {
+    return <span aria-hidden="true" title="Hero" className="mr-1.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-cyan-500/80 bg-cyan-950 text-[11px] font-bold text-cyan-200">H</span>;
+  }
+  return null;
+};
+
+const formatValue = (value: number | undefined, suffix = "") =>
+  value == undefined ? "—" : `${Number.isInteger(value) ? value : Math.round(value * 100) / 100}${suffix}`;
+
+const getDeltaClass = (delta: number, lowerIsBetter: boolean) => {
+  if (Math.abs(delta) < 0.0001) return "text-gray-400";
+  const isBetter = lowerIsBetter ? delta < 0 : delta > 0;
+  return isBetter ? "text-lime-300" : "text-red-300";
+};
+
+const StatValue = ({
+  value,
+  baseline,
+  suffix,
+  lowerIsBetter = false,
+}: {
+  value: number | undefined;
+  baseline?: number;
+  suffix?: string;
+  lowerIsBetter?: boolean;
+}) => {
+  const delta = value != undefined && baseline != undefined ? value - baseline : 0;
+  return (
+    <span className="whitespace-nowrap font-medium tabular-nums text-gray-100">
+      {formatValue(value, suffix)}
+      {baseline != undefined && value != undefined && Math.abs(delta) > 0.0001 && (
+        <span className={`ml-1 text-[13px] font-semibold ${getDeltaClass(delta, lowerIsBetter)}`}>
+          ({delta > 0 ? "+" : ""}{formatValue(delta, suffix)})
+        </span>
+      )}
+    </span>
+  );
+};
+
+const StatRow = ({
+  label,
+  value,
+  baseline,
+  suffix,
+  lowerIsBetter,
+}: {
+  label: string;
+  value: number | undefined;
+  baseline?: number;
+  suffix?: string;
+  lowerIsBetter?: boolean;
+}) => (
+  <div className="grid h-10 grid-cols-[minmax(8rem,1fr)_minmax(8.5rem,auto)] items-center gap-3 overflow-hidden border-b border-gray-700/60 px-3 text-[15px]">
+    <span className="truncate text-gray-300">{label}</span>
+    <span className="text-right"><StatValue value={value} baseline={baseline} suffix={suffix} lowerIsBetter={lowerIsBetter} /></span>
+  </div>
+);
+
+const StatTextRow = ({ label, value }: { label: string; value: string }) => (
+  <div className="grid h-10 grid-cols-[minmax(8rem,1fr)_minmax(8.5rem,auto)] items-center gap-3 overflow-hidden border-b border-gray-700/60 px-3 text-[15px]">
+    <span className="truncate text-gray-300">{label}</span><span className="truncate text-right font-medium text-gray-100">{value || "—"}</span>
+  </div>
+);
+
+const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <section className="mt-2 overflow-hidden rounded border border-gray-600/90 bg-gray-950/75">
+    <h3 className="bg-gray-800 px-3 py-2 text-[15px] font-semibold text-amber-100">{title}</h3>
+    {children}
+  </section>
+);
+
+const AbilityButton = ({
+  ability,
+  icons,
+  compareAbility,
+}: {
+  ability: UnitViewerAbility;
+  icons: Record<string, string>;
+  compareAbility?: UnitViewerAbility;
+}) => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
+  const [position, setPosition] = useState({ left: 8, top: 8, width: 430, maxHeight: 400 });
+  const isOpen = isHovered || isFocused || isPinned;
+  const icon = ability.tooltip.iconPath ? icons[ability.tooltip.iconPath] : undefined;
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const updatePosition = () => {
+      const button = buttonRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.min(430, Math.max(240, viewportWidth - 16));
+      const measuredHeight = tooltipRef.current?.scrollHeight || 400;
+      const below = Math.max(0, viewportHeight - rect.bottom - 8);
+      const above = Math.max(0, rect.top - 8);
+      const placeBelow = below >= Math.min(measuredHeight, 240) || below >= above;
+      const maxHeight = Math.max(120, placeBelow ? below : above);
+      const height = Math.min(measuredHeight, maxHeight);
+      setPosition({
+        left: Math.max(8, Math.min(rect.left, viewportWidth - width - 8)),
+        top: placeBelow ? rect.bottom + 6 : Math.max(8, rect.top - height - 6),
+        width,
+        maxHeight,
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isOpen]);
+
+  return (
+    <div>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="flex w-full items-center gap-2 rounded border border-gray-700 bg-gray-900 px-2 py-1.5 text-left text-xs hover:border-amber-500 focus:border-amber-400 focus:outline-none"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        onClick={() => setIsPinned((pinned) => !pinned)}
+        aria-expanded={isOpen}
+      >
+        {icon ? (
+          <img src={`data:image/png;base64,${icon}`} className="h-8 w-8 object-contain" alt="" />
+        ) : (
+          <span className="h-8 w-8 rounded bg-gray-700" />
+        )}
+        <span className="leading-tight">{ability.tooltip.name}</span>
+      </button>
+      {isOpen && createPortal(
+        <div
+          ref={tooltipRef}
+          className="fixed z-[10000] overflow-y-auto shadow-2xl"
+          style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}
+          role="tooltip"
+        >
+          <AbilityTooltipCard
+            ability={ability.tooltip}
+            compareAbility={compareAbility?.tooltip}
+            icons={icons}
+          />
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+};
+
+const UnitCard = ({
+  unit,
+  stats,
+  compareUnit,
+  compareStats,
+  icons,
+  imageSrc,
+  onRemove,
+  onMoveLeft,
+  onMoveRight,
+}: {
+  unit: UnitViewerUnitModel;
+  stats: UnitViewerCalculatedStats;
+  compareUnit?: UnitViewerUnitModel;
+  compareStats?: UnitViewerCalculatedStats;
+  icons: Record<string, string>;
+  imageSrc?: string;
+  onRemove: () => void;
+  onMoveLeft?: () => void;
+  onMoveRight?: () => void;
+}) => {
+  const compareAbilities = new Map((compareUnit?.abilities || []).map((ability) => [ability.key, ability]));
+  const abilitiesBySection = {
+    active: unit.abilities.filter((ability) => !ability.passive && !ability.isSpell),
+    spells: unit.abilities.filter((ability) => ability.isSpell),
+    passive: unit.abilities.filter((ability) => ability.passive && !ability.isSpell),
+  };
+  return (
+    <article className="w-[370px] shrink-0 rounded border border-gray-600 bg-gray-900/90 text-gray-100 shadow-xl">
+      <header className="sticky top-0 z-20 flex h-[86px] items-center gap-3 overflow-hidden border-b border-gray-700 bg-gray-900 px-3 py-2">
+        {imageSrc ? (
+          <img src={imageSrc} className="h-16 w-16 shrink-0 object-contain" alt="" />
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center bg-gray-800 text-2xl text-gray-600">?</div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold leading-tight text-amber-100">{unit.name}</div>
+          <div className="mt-1 truncate text-[11px] text-gray-500" title={unit.key}>{unit.key}</div>
+        </div>
+        <div className="flex self-start">
+          <button type="button" disabled={!onMoveLeft} onClick={onMoveLeft} className="p-1 text-gray-400 hover:text-white disabled:text-gray-700" aria-label={`Move ${unit.name} left`}><IoArrowBack size={17} /></button>
+          <button type="button" disabled={!onMoveRight} onClick={onMoveRight} className="p-1 text-gray-400 hover:text-white disabled:text-gray-700" aria-label={`Move ${unit.name} right`}><IoArrowForward size={17} /></button>
+          <button type="button" onClick={onRemove} className="p-1 text-gray-400 hover:text-white" aria-label={`Remove ${unit.name}`}><IoClose size={19} /></button>
+        </div>
+      </header>
+
+      <div className="px-2 pb-3">
+        <Section title="Costs">
+          <StatRow label="SP Cost" value={stats.recruitmentCost} baseline={compareStats?.recruitmentCost} lowerIsBetter />
+          <StatRow label="SP Upkeep" value={stats.upkeepCost} baseline={compareStats?.upkeepCost} lowerIsBetter />
+          <StatRow label="MP Cost" value={stats.multiplayerCost} baseline={compareStats?.multiplayerCost} lowerIsBetter />
+        </Section>
+        <Section title="Defence">
+          <StatRow label="Health" value={stats.health} baseline={compareStats?.health} />
+          <StatRow label="Entities" value={stats.entityCount} baseline={compareStats?.entityCount} />
+          <StatRow label="Health / Entity" value={stats.healthPerEntity} baseline={compareStats?.healthPerEntity} />
+          <StatRow label="Barrier" value={stats.barrier} baseline={compareStats?.barrier} />
+          <StatRow label="Armour" value={stats.armour} baseline={compareStats?.armour} />
+          <StatRow label="Missile Block" value={stats.shieldBlock} baseline={compareStats?.shieldBlock} suffix="%" />
+          <StatRow label="Ward Save" value={unit.wardSave} baseline={compareUnit?.wardSave} suffix="%" />
+          <StatRow label="Physical Resistance" value={unit.physicalResistance} baseline={compareUnit?.physicalResistance} suffix="%" />
+          <StatRow label="Missile Resistance" value={unit.missileResistance} baseline={compareUnit?.missileResistance} suffix="%" />
+          <StatRow label="Magic Resistance" value={unit.magicResistance} baseline={compareUnit?.magicResistance} suffix="%" />
+          <StatRow label="Fire Resistance" value={unit.fireResistance} baseline={compareUnit?.fireResistance} suffix="%" />
+        </Section>
+        <Section title="Battle Stats">
+          <StatRow label="Leadership" value={stats.leadership} baseline={compareStats?.leadership} />
+          <StatRow label="Speed" value={stats.speed} baseline={compareStats?.speed} />
+          <StatRow label="Charge Speed" value={stats.chargeSpeed} baseline={compareStats?.chargeSpeed} />
+          <StatRow label="Melee Attack" value={stats.meleeAttack} baseline={compareStats?.meleeAttack} />
+          <StatRow label="Melee Defence" value={stats.meleeDefence} baseline={compareStats?.meleeDefence} />
+          <StatRow label="Weapon Strength" value={stats.weaponStrength} baseline={compareStats?.weaponStrength} />
+          <StatRow label="Base Damage" value={stats.baseDamage} baseline={compareStats?.baseDamage} />
+          <StatRow label="AP Damage" value={stats.apDamage} baseline={compareStats?.apDamage} />
+          <StatRow label="Bonus vs Large" value={stats.bonusVsLarge} baseline={compareStats?.bonusVsLarge} />
+          <StatRow label="Bonus vs Infantry" value={stats.bonusVsInfantry} baseline={compareStats?.bonusVsInfantry} />
+          <StatRow label="Charge Bonus" value={stats.chargeBonus} baseline={compareStats?.chargeBonus} />
+          <StatRow label="Attack Interval" value={stats.attackInterval} baseline={compareStats?.attackInterval} suffix="s" lowerIsBetter />
+          <StatRow label="Splash Max Attacks" value={unit.meleeWeapon.splashMaxAttacks} baseline={compareUnit?.meleeWeapon.splashMaxAttacks} />
+          <StatTextRow label="Splash Target Size" value={unit.meleeWeapon.splashTargetSize || ""} />
+          <StatRow label="Mass" value={stats.mass} baseline={compareStats?.mass} />
+        </Section>
+        {[{ label: "Missile Weapon", stats: stats.primaryMissile, base: compareStats?.primaryMissile }, { label: "Secondary Missile", stats: stats.secondaryMissile, base: compareStats?.secondaryMissile }].map((missile) => (
+          <Section key={missile.label} title={missile.label}>
+            <StatRow label="Ammunition" value={missile.stats?.ammo} baseline={missile.base?.ammo} />
+            <StatRow label="Range" value={missile.stats?.range} baseline={missile.base?.range} />
+            <StatRow label="Damage / 10s" value={missile.stats?.damagePerTenSeconds} baseline={missile.base?.damagePerTenSeconds} />
+            <StatRow label="Reload Time" value={missile.stats?.reloadTime} baseline={missile.base?.reloadTime} suffix="s" lowerIsBetter />
+            <StatRow label="Projectile Damage" value={missile.stats?.baseDamage} baseline={missile.base?.baseDamage} />
+            <StatRow label="Projectile AP" value={missile.stats?.apDamage} baseline={missile.base?.apDamage} />
+            <StatRow label="Explosion Damage" value={missile.stats?.explosionBaseDamage} baseline={missile.base?.explosionBaseDamage} />
+            <StatRow label="Explosion AP" value={missile.stats?.explosionApDamage} baseline={missile.base?.explosionApDamage} />
+            <StatRow label="Explosion Radius" value={missile.stats?.explosionRadius} baseline={missile.base?.explosionRadius} />
+            <StatRow label="Shots / Volley" value={missile.stats?.shotsPerVolley} baseline={missile.base?.shotsPerVolley} />
+            <StatRow label="Projectiles" value={missile.stats?.projectileNumber} baseline={missile.base?.projectileNumber} />
+            <StatRow label="Burst Size" value={missile.stats?.burstSize} baseline={missile.base?.burstSize} />
+            <StatRow label="Bonus vs Large" value={missile.stats?.bonusVsLarge} baseline={missile.base?.bonusVsLarge} />
+            <StatRow label="Bonus vs Infantry" value={missile.stats?.bonusVsInfantry} baseline={missile.base?.bonusVsInfantry} />
+          </Section>
+        ))}
+        <Section title="Additional">
+          <div className="flex flex-wrap gap-1.5 p-2 text-xs">
+            {unit.isHighThreat && <span className="rounded bg-red-950 px-2 py-1">High Threat</span>}
+            {unit.canSiege && <span className="rounded bg-amber-950 px-2 py-1">Siege Attacker</span>}
+            {unit.canSkirmish && <span className="rounded bg-green-950 px-2 py-1">Skirmisher</span>}
+            {unit.groundStatEffectGroup && <span className="rounded bg-gray-800 px-2 py-1">Ground: {unit.groundStatEffectGroup}</span>}
+            {stats.fatigueModifier !== 0 && <span className="rounded bg-gray-800 px-2 py-1">Vigour: {stats.fatigueModifier}</span>}
+          </div>
+          {unit.groundStatEffects.length > 0 && <div className="space-y-1 border-t border-gray-800 p-2 text-xs text-gray-300">{unit.groundStatEffects.map((effect, index) => <div key={`${effect.groundType}:${effect.stat}:${index}`}>{effect.groundType}: {effect.stat} {effect.multiplier >= 1 ? "+" : ""}{Math.round((effect.multiplier - 1) * 100)}%</div>)}</div>}
+        </Section>
+        {unit.attributes.length > 0 && <Section title="Unit Attributes">
+          <div className="space-y-1.5 p-2">
+            {unit.attributes.map((attribute) => <div key={attribute.key} title={attribute.description} className="flex min-h-9 items-center gap-2 rounded bg-gray-900 px-2 py-1 text-xs text-gray-200">
+              {icons[attribute.iconPath] ? <img src={`data:image/png;base64,${icons[attribute.iconPath]}`} className="h-7 w-7 shrink-0 object-contain" alt="" /> : <span className="h-7 w-7 shrink-0 rounded bg-gray-800" />}
+              <span>{attribute.name}</span>
+            </div>)}
+          </div>
+        </Section>}
+        {(["active", "spells", "passive"] as const).map((section) => abilitiesBySection[section].length > 0 && (
+          <Section key={section} title={section === "active" ? "Abilities" : section === "spells" ? "Spells" : "Passive Abilities"}>
+            <div className="space-y-1.5 p-2">
+              {abilitiesBySection[section].map((ability) => <AbilityButton key={ability.key} ability={ability} icons={icons} compareAbility={compareAbilities.get(ability.key)} />)}
+            </div>
+          </Section>
+        ))}
+      </div>
+    </article>
+  );
+};
+
+const UnitViewerTab = memo(() => {
+  const currentGame = useAppSelector((state) => state.app.currentGame);
+  const mods = useAppSelector((state) => state.app.currentPreset.mods);
+  const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
+  const signature = enabledMods.map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}:${mod.lastChanged ?? ""}`).join("|");
+  const [groups, setGroups] = useState<UnitViewerCatalogGroup[]>([]);
+  const [constants, setConstants] = useState<UnitViewerConstants>();
+  const [sessionId, setSessionId] = useState<string>();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [filter, setFilter] = useState("");
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [details, setDetails] = useState<Record<string, UnitViewerUnitModel>>({});
+  const [icons, setIcons] = useState<Record<string, Record<string, string>>>({});
+  const [images, setImages] = useState<Record<string, string>>({});
+  const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
+  const [context, setContext] = useState<UnitViewerContext>(DEFAULT_CONTEXT);
+  const [comparison, setComparison] = useState<ComparisonSelection>("first");
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (currentGame !== "wh3") return;
+    let cancelled = false;
+    setLoading(true);
+    setError(undefined);
+    window.api?.getUnitViewerCatalog(enabledMods).then((result) => {
+      if (cancelled) return;
+      if (!result?.success || !result.sessionId || !result.groups || !result.constants) {
+        setError(result?.error || "Failed to load Unit Viewer");
+        setGroups([]);
+        return;
+      }
+      setSessionId(result.sessionId);
+      setGroups(result.groups);
+      setConstants(result.constants);
+      const available = new Set(result.groups.flatMap((group) => group.units.map((unit) => unit.key)));
+      setSelectedKeys((keys) => keys.filter((key) => available.has(key)));
+      setDetails({});
+      setIcons({});
+      setImages({});
+    }).catch((reason) => {
+      if (!cancelled) setError(reason instanceof Error ? reason.message : "Failed to load Unit Viewer");
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [currentGame, enabledMods, signature]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    for (const key of selectedKeys) {
+      if (details[key] || loadingKeys.has(key)) continue;
+      setLoadingKeys((current) => new Set(current).add(key));
+      window.api?.getUnitViewerDetails(sessionId, key).then(async (result) => {
+        if (!result?.success || !result.unit) throw new Error(result?.error || `Failed to load ${key}`);
+        setDetails((current) => ({ ...current, [key]: result.unit! }));
+        setIcons((current) => ({ ...current, [key]: result.icons || {} }));
+        if (result.unit.unitCardPath) {
+          const asset = await window.api?.getUnitViewerAsset(sessionId, result.unit.unitCardPath);
+          if (asset?.success && asset.base64) {
+            setImages((current) => ({ ...current, [key]: `data:${asset.mimeType || "image/png"};base64,${asset.base64}` }));
+          }
+        }
+      }).catch((reason) => setError(reason instanceof Error ? reason.message : `Failed to load ${key}`))
+        .finally(() => setLoadingKeys((current) => { const next = new Set(current); next.delete(key); return next; }));
+    }
+  }, [details, loadingKeys, selectedKeys, sessionId]);
+
+  const filterLower = filter.trim().toLowerCase();
+  const browserRows = useMemo(() => {
+    const rows: BrowserRow[] = [];
+    for (const group of groups) {
+      const filteredUnits = filterLower
+        ? group.units.filter((unit) => `${unit.name} ${unit.key} ${unit.category} ${unit.caste}`.toLowerCase().includes(filterLower))
+        : group.units;
+      if (filteredUnits.length === 0 && !group.name.toLowerCase().includes(filterLower)) continue;
+      rows.push({ kind: "group", group: { ...group, units: filteredUnits } });
+      if (!collapsed[group.key] || filterLower) {
+        for (const unit of filteredUnits) rows.push({ kind: "unit", groupKey: group.key, unit });
+      }
+    }
+    return rows;
+  }, [collapsed, filterLower, groups]);
+
+  const calculated = useMemo(() => {
+    if (!constants) return {} as Record<string, UnitViewerCalculatedStats>;
+    return Object.fromEntries(Object.entries(details).map(([key, unit]) => [key, calculateUnitViewerStats(unit, constants, context)]));
+  }, [constants, context, details]);
+  const unitNames = useMemo(
+    () => new Map(groups.flatMap((group) => group.units.map((unit) => [unit.key, unit.name] as const))),
+    [groups],
+  );
+
+  useEffect(() => {
+    if (!comparison.startsWith("unit:")) return;
+    const comparisonKey = comparison.slice("unit:".length);
+    if (!selectedKeys.includes(comparisonKey)) setComparison("first");
+  }, [comparison, selectedKeys]);
+
+  const getComparisonKey = (unitKey: string, index: number) => {
+    let comparisonKey: string | undefined;
+    if (comparison === "first") comparisonKey = selectedKeys[0];
+    else if (comparison === "left") comparisonKey = index > 0 ? selectedKeys[index - 1] : undefined;
+    else comparisonKey = comparison.slice("unit:".length);
+    return comparisonKey === unitKey ? undefined : comparisonKey;
+  };
+
+  const moveSelectedUnit = (index: number, offset: -1 | 1) => {
+    setSelectedKeys((keys) => {
+      const destination = index + offset;
+      if (index < 0 || destination < 0 || destination >= keys.length) return keys;
+      const next = [...keys];
+      [next[index], next[destination]] = [next[destination], next[index]];
+      return next;
+    });
+  };
+
+  const shuffleSelectedUnits = () => {
+    setSelectedKeys((keys) => {
+      if (keys.length < 2) return keys;
+      const next = [...keys];
+      for (let index = next.length - 1; index > 0; index--) {
+        const other = Math.floor(Math.random() * (index + 1));
+        [next[index], next[other]] = [next[other], next[index]];
+      }
+      if (next.every((key, index) => key === keys[index])) next.push(next.shift()!);
+      return next;
+    });
+  };
+
+  if (currentGame !== "wh3") return <div className="px-6 py-4 text-gray-300">Unit Viewer is available only for Warhammer 3.</div>;
+
+  const renderBrowserRow = ({ index, key, style }: ListRowProps) => {
+    const row = browserRows[index];
+    if (row.kind === "group") {
+      const isCollapsed = !!collapsed[row.group.key] && !filterLower;
+      return <button key={key} style={style} type="button" className="flex w-full items-center gap-1 border-b border-gray-800 bg-gray-900 px-2 text-left text-sm font-semibold text-amber-100 hover:bg-gray-800" onClick={() => setCollapsed((current) => ({ ...current, [row.group.key]: !current[row.group.key] }))}>
+        {isCollapsed ? <IoChevronForward /> : <IoChevronDown />}<span className="truncate">{row.group.name}</span><span className="ml-auto text-xs text-gray-500">{row.group.units.length}</span>
+      </button>;
+    }
+    const isSelected = selectedKeys.includes(row.unit.key);
+    return <button key={key} style={style} type="button" aria-label={row.unit.name} className={`flex w-full items-center border-b border-gray-800/60 px-7 text-left text-sm ${isSelected ? "bg-amber-900/60 text-amber-100" : "bg-gray-950 text-gray-300 hover:bg-gray-800"}`} title={row.unit.key} onClick={() => setSelectedKeys((keys) => keys.includes(row.unit.key) ? keys.filter((unitKey) => unitKey !== row.unit.key) : [...keys, row.unit.key])}>
+      <UnitCasteBadge caste={row.unit.caste} /><span className="truncate">{row.unit.name}</span>
+    </button>;
+  };
+
+  return (
+    <div className="fixed bottom-0 left-12 right-0 top-8 flex overflow-hidden bg-gray-950 text-white">
+      <aside className="flex w-[330px] shrink-0 flex-col border-r border-gray-700">
+        <div className="p-3">
+          <h1 className="mb-2 text-lg font-semibold text-amber-100">Unit Viewer</h1>
+          <label className="flex items-center gap-2 rounded border border-gray-700 bg-gray-900 px-2">
+            <IoSearch className="text-gray-500" />
+            <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search units or keys" className="w-full bg-transparent py-2 text-sm outline-none" />
+          </label>
+        </div>
+        <div className="min-h-0 flex-1">
+          {loading ? <div className="p-4 text-sm text-gray-400">Loading units and enabled mods…</div> : error && groups.length === 0 ? <div className="p-4 text-sm text-red-300">{error}</div> : <AutoSizer>{({ height, width }) => <List width={width} height={height} rowCount={browserRows.length} rowHeight={34} rowRenderer={renderBrowserRow} overscanRowCount={12} />}</AutoSizer>}
+        </div>
+      </aside>
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-700 bg-gray-900 px-4 py-2">
+          <label className="text-xs text-gray-400">Unit Size <select value={context.unitSize} onChange={(event) => setContext((current) => ({ ...current, unitSize: event.target.value as UnitViewerUnitSize }))} className="ml-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-white">{(["small", "medium", "large", "ultra"] as UnitViewerUnitSize[]).map((size) => <option key={size} value={size}>{size[0].toUpperCase() + size.slice(1)}</option>)}</select></label>
+          <label className="text-xs text-gray-400">Rank <select value={context.rank} onChange={(event) => setContext((current) => ({ ...current, rank: Number(event.target.value) }))} className="ml-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-white">{Array.from({ length: 10 }, (_, rank) => <option key={rank} value={rank}>{rank}</option>)}</select></label>
+          <label className="text-xs text-gray-400">Vigour <select value={context.fatigue} onChange={(event) => setContext((current) => ({ ...current, fatigue: event.target.value as UnitViewerFatigue }))} className="ml-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-white">{Object.entries(FATIGUE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="text-xs text-gray-400">Comparison <select value={comparison} onChange={(event) => setComparison(event.target.value as ComparisonSelection)} className="ml-1 max-w-52 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-white">
+            <option value="first">Compare to first</option>
+            {selectedKeys.map((key) => <option key={key} value={`unit:${key}`}>Compare to {details[key]?.name || unitNames.get(key) || key}</option>)}
+            <option value="left">Compare to left position</option>
+          </select></label>
+          <button type="button" disabled={selectedKeys.length < 2} onClick={shuffleSelectedUnits} className="flex items-center gap-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-200 hover:border-amber-500 disabled:text-gray-600" aria-label="Shuffle unit order"><IoShuffle size={15} /> Shuffle order</button>
+          <span className="ml-auto text-xs text-gray-500">{selectedKeys.length} selected</span>
+        </div>
+        {error && groups.length > 0 && <div className="border-b border-red-900 bg-red-950/70 px-4 py-2 text-sm text-red-200">{error}</div>}
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {selectedKeys.length === 0 ? <div className="flex h-full items-center justify-center text-gray-500">Select units from the roster to compare them.</div> : <div className="flex items-start gap-3">{selectedKeys.map((key, index) => {
+            const unit = details[key]; const stats = calculated[key];
+            if (!unit || !stats) return <div key={key} className="flex h-40 w-[370px] shrink-0 items-center justify-center rounded border border-gray-700 bg-gray-900 text-gray-300">Loading unit…</div>;
+            const comparisonKey = getComparisonKey(key, index);
+            return <UnitCard
+              key={key}
+              unit={unit}
+              stats={stats}
+              compareUnit={comparisonKey ? details[comparisonKey] : undefined}
+              compareStats={comparisonKey ? calculated[comparisonKey] : undefined}
+              icons={icons[key] || {}}
+              imageSrc={images[key]}
+              onRemove={() => setSelectedKeys((keys) => keys.filter((unitKey) => unitKey !== key))}
+              onMoveLeft={index > 0 ? () => moveSelectedUnit(index, -1) : undefined}
+              onMoveRight={index < selectedKeys.length - 1 ? () => moveSelectedUnit(index, 1) : undefined}
+            />;
+          })}</div>}
+        </div>
+      </main>
+    </div>
+  );
+});
+
+export default UnitViewerTab;

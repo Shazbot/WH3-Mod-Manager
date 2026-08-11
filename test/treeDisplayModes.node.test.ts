@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import appReducer, {
   setFromConfig,
+  setCurrentTab,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,
 } from "../src/appSlice";
@@ -29,6 +30,20 @@ const createConfigState = (overrides: Partial<AppStateToRead> = {}): AppStateToR
   }) as AppStateToRead;
 
 describe("tree display modes", () => {
+  it("allows Unit Viewer for WH3 without modder features and rejects it for other games", () => {
+    const wh3State = appReducer(
+      { ...initialState, currentGame: "wh3", isFeaturesForModdersEnabled: false },
+      setCurrentTab("unitViewer"),
+    );
+    expect(wh3State.currentTab).toBe("unitViewer");
+
+    const wh2State = appReducer(
+      { ...initialState, currentGame: "wh2", isFeaturesForModdersEnabled: true },
+      setCurrentTab("unitViewer"),
+    );
+    expect(wh2State.currentTab).toBe("mods");
+  });
+
   it("falls back to mods when the skills tab is disabled", () => {
     const state = appReducer(
       {

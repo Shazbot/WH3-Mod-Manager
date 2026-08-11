@@ -68,6 +68,7 @@ const localizedStrings = {
   presetsTab: "Presets",
   skillsViewer: "Skill Trees",
   techTreesTab: "Tech Trees",
+  unitViewerTab: "Unit Viewer",
   nodeEditorTab: "Node Editor",
   dbViewer: "DB Viewer",
   faqAbbreviated: "FAQ",
@@ -154,7 +155,29 @@ describe("tree display DOM behavior", () => {
 
     expect(screen.getByText("Skill Trees")).toBeInTheDocument();
     expect(screen.getByText("Tech Trees")).toBeInTheDocument();
+    expect(screen.getByText("Unit Viewer")).toBeInTheDocument();
     expect(screen.queryByText("Node Editor")).not.toBeInTheDocument();
+  });
+
+  it("shows Unit Viewer for WH3 without modder features and hides it for other games", () => {
+    const { rerender } = renderWithState(<LeftSidebar />, {
+      currentGame: "wh3",
+      isFeaturesForModdersEnabled: false,
+    });
+    expect(screen.getByText("Unit Viewer")).toBeInTheDocument();
+
+    const otherGameStore = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: { app: { ...initialState, currentGame: "wh2" as const } },
+    });
+    rerender(
+      <Provider store={otherGameStore}>
+        <localizationContext.Provider value={localizedStrings}>
+          <LeftSidebar />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+    expect(screen.queryByText("Unit Viewer")).not.toBeInTheDocument();
   });
 
   it("hides tree tabs when both are configured as windows", () => {

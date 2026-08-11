@@ -23,6 +23,13 @@ import {
 } from "./modCompat/compatPackReuse";
 import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
 import {
+  buildUnitViewerData,
+  UNIT_VIEWER_TABLES,
+  type BuiltUnitViewerData,
+  type UnitViewerTableRows,
+} from "./unitViewer/data";
+import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import {
   VISUALS_DATA_CACHE_VERSION,
   createEmptyVisualsDataCache,
   getCurrentVisualsTableContribution,
@@ -284,6 +291,19 @@ type VisualsSession = {
   visualFilesPromise?: Promise<VisualsFileResult[]>;
   createdAt: number;
 };
+type UnitViewerSession = {
+  sessionId: string;
+  data: BuiltUnitViewerData;
+  assetPackPaths: string[];
+  assetCache: Map<string, { base64: string; mimeType: string; bytes: number; resolvedPath: string }>;
+  assetCacheBytes: number;
+  createdAt: number;
+};
+const unitViewerSessions = new Map<string, UnitViewerSession>();
+const UNIT_VIEWER_ASSET_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+let cachedUnitViewerData:
+  | { signature: string; data: BuiltUnitViewerData; assetPackPaths: string[] }
+  | undefined;
 const visualsSessions = new Map<string, VisualsSession>();
 const visualsPackIndexes = new Map<
   string,
@@ -2232,6 +2252,228 @@ export const registerIpcMainListeners = (
     }
     return rowRecord;
   };
+  const getUnitViewerSignature = (mods: Mod[]) =>
+    buildSkillsDataSignature(mods, appData.currentGame);
+
+  const getUnitViewerAsset = async (session: UnitViewerSession, requestedPath: string) => {
+    const normalized = normalizePackFilePath(requestedPath).toLowerCase();
+    const cached = session.assetCache.get(normalized);
+    if (cached) {
+      session.assetCache.delete(normalized);
+      session.assetCache.set(normalized, cached);
+      return cached;
+    }
+    const withoutExtension = normalized.replace(/\.(png|webp|jpe?g)$/i, "");
+    const candidates = Array.from(
+      new Set([normalized, `${withoutExtension}.png`, `${withoutExtension}.webp`, `${withoutExtension}.jpg`]),
+    );
+    for (const packPath of session.assetPackPaths.toReversed()) {
+      const pack = await getOrLoadPackFromAppData(packPath);
+      if (!pack) continue;
+      const indexedFile = candidates
+        .map((candidate) => findPackedFileCaseInsensitive(pack, candidate))
+        .find((candidate): candidate is PackedFile => !!candidate);
+      if (!indexedFile) continue;
+      await readFromExistingPack(pack, { filesToRead: [indexedFile.name], skipParsingTables: true });
+      const loadedFile = findPackedFileCaseInsensitive(pack, indexedFile.name);
+      if (!loadedFile?.buffer) continue;
+      const entry = {
+        base64: loadedFile.buffer.toString("base64"),
+        mimeType: getPackedFileMimeType(loadedFile.name) || "image/png",
+        bytes: loadedFile.buffer.length,
+        resolvedPath: loadedFile.name,
+      };
+      while (
+        session.assetCacheBytes + entry.bytes > UNIT_VIEWER_ASSET_CACHE_MAX_BYTES &&
+        session.assetCache.size > 0
+      ) {
+        const oldestKey = session.assetCache.keys().next().value as string | undefined;
+        if (!oldestKey) break;
+        const oldest = session.assetCache.get(oldestKey);
+        session.assetCache.delete(oldestKey);
+        session.assetCacheBytes -= oldest?.bytes || 0;
+      }
+      session.assetCache.set(normalized, entry);
+      session.assetCacheBytes += entry.bytes;
+      return entry;
+    }
+    return undefined;
+  };
+
+  const buildUnitViewerSessionData = async (enabledMods: Mod[]) => {
+    if (appData.currentGame !== "wh3") throw new Error("Unit Viewer is available only for Warhammer 3");
+    const dataFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;
+    if (!dataFolder) throw new Error("Warhammer 3 data folder is not configured");
+    const tablesToRead = Array.from(
+      new Set(
+        UNIT_VIEWER_TABLES.flatMap((tableName) =>
+          resolveTable(tableName).map((resolvedTable) => `db\\${resolvedTable}\\`),
+        ),
+      ),
+    );
+    const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
+    const localizationPackPaths = [...appData.allVanillaPackNames]
+      .filter((packName) => packName.startsWith("local_en"))
+      .map((packName) => nodePath.join(dataFolder, packName));
+    const assetPackPaths = [...appData.allVanillaPackNames]
+      .filter(
+        (packName) =>
+          !packName.startsWith("audio_") &&
+          !packName.startsWith("movies") &&
+          !packName.startsWith("terrain") &&
+          !packName.startsWith("tile"),
+      )
+      .map((packName) => nodePath.join(dataFolder, packName))
+      .concat(sortByNameAndLoadOrder(enabledMods).toReversed().map((mod) => mod.path));
+    const identityPaths = [dbPackPath, ...localizationPackPaths, ...enabledMods.map((mod) => mod.path)];
+    const identities = await Promise.all(
+      identityPaths.map(async (packPath) => {
+        try {
+          const stat = await fs.promises.stat(packPath);
+          return [nodePath.resolve(packPath), stat.size, stat.mtimeMs] as const;
+        } catch {
+          return [nodePath.resolve(packPath), -1, -1] as const;
+        }
+      }),
+    );
+    const signature = createHash("sha256")
+      .update(
+        JSON.stringify({
+          feature: 6,
+          game: appData.currentGame,
+          schema: getVisualsSchemaHash(appData.currentGame),
+          mods: getUnitViewerSignature(enabledMods),
+          identities,
+        }),
+      )
+      .digest("hex");
+    if (cachedUnitViewerData?.signature === signature) return cachedUnitViewerData;
+    const diskData = await loadUnitViewerDiskCache(app.getPath("userData"), signature);
+    if (diskData) {
+      cachedUnitViewerData = { signature, data: diskData, assetPackPaths };
+      return cachedUnitViewerData;
+    }
+
+    const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
+    const { unservedPrefixes } = await fillVanillaTablesFromCache(
+      indexedDbPack,
+      tablesToRead,
+      getDBVersion,
+    );
+    if (unservedPrefixes.length === 0) {
+      indexedDbPack.readTables = [...tablesToRead];
+      appendPacksData(indexedDbPack, undefined, false);
+    } else {
+      await readModsByPath(
+        [dbPackPath],
+        { skipParsingTables: false, tablesToRead },
+        true,
+        false,
+      );
+    }
+    if (enabledMods.length > 0) {
+      await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
+    }
+    if (localizationPackPaths.length > 0) {
+      await readModsByPath(
+        localizationPackPaths,
+        { skipParsingTables: true, readLocs: true },
+        true,
+        false,
+      );
+    }
+
+    const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    const dbPack = packsByPath.get(dbPackPath);
+    if (!dbPack) throw new Error("Could not read db.pack for Unit Viewer");
+    const orderedMods = sortByNameAndLoadOrder(enabledMods)
+      .toReversed()
+      .map((mod) => packsByPath.get(mod.path))
+      .filter((pack): pack is Pack => !!pack);
+    const tablePacks = [dbPack, ...orderedMods];
+    const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
+    const tables: UnitViewerTableRows = {};
+    for (const canonicalTableName of UNIT_VIEWER_TABLES) {
+      const rows: Array<Record<string, string>> = [];
+      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow) => {
+        rows.push(schemaRowToRecord(schemaFieldRow));
+      });
+      tables[canonicalTableName] = rows;
+    }
+
+    const locEntries = new Map<string, string>();
+    const locPacks = localizationPackPaths
+      .map((packPath) => packsByPath.get(packPath))
+      .filter((pack): pack is Pack => !!pack)
+      .concat(orderedMods);
+    for (const pack of locPacks) {
+      const trie = getLocsTrie(pack);
+      if (!trie) continue;
+      for (const [key, value] of Object.entries(trie.getEntries())) locEntries.set(key, value);
+    }
+    const data = buildUnitViewerData(tables, (key) => locEntries.get(key));
+    await saveUnitViewerDiskCache(app.getPath("userData"), signature, data);
+    cachedUnitViewerData = { signature, data, assetPackPaths };
+    return cachedUnitViewerData;
+  };
+
+  ipcMain.handle("getUnitViewerCatalog", async (_event, enabledMods: Mod[]) => {
+    try {
+      const built = await buildUnitViewerSessionData(enabledMods);
+      const sessionId = randomUUID();
+      unitViewerSessions.set(sessionId, {
+        sessionId,
+        data: built.data,
+        assetPackPaths: built.assetPackPaths,
+        assetCache: new Map(),
+        assetCacheBytes: 0,
+        createdAt: Date.now(),
+      });
+      while (unitViewerSessions.size > 4) {
+        const oldest = Array.from(unitViewerSessions.values()).sort((a, b) => a.createdAt - b.createdAt)[0];
+        if (!oldest) break;
+        unitViewerSessions.delete(oldest.sessionId);
+      }
+      return {
+        success: true,
+        sessionId,
+        groups: built.data.groups,
+        constants: built.data.constants,
+      };
+    } catch (error) {
+      console.error("Failed to build Unit Viewer catalog:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Failed to load units" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerDetails", async (_event, sessionId: string, unitKey: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const unit = session.data.units.get(unitKey);
+      if (!unit) return { success: false, error: `Unit ${unitKey} was not found` };
+      const icons: Record<string, string> = {};
+      for (const iconPath of session.data.iconPathsByUnit.get(unitKey) || []) {
+        const icon = await getUnitViewerAsset(session, iconPath);
+        if (icon) icons[iconPath] = icon.base64;
+      }
+      return { success: true, unit, icons };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to load unit" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerAsset", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const asset = await getUnitViewerAsset(session, assetPath);
+      return asset ? { success: true, ...asset } : { success: false, error: "Asset was not found" };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to load asset" };
+    }
+  });
+
   const getTechnologyIconPath = (iconName: string | undefined) => {
     if (!iconName || iconName.trim() === "") return undefined;
     const withoutExtension = iconName.replace(/\.(png|jpg|jpeg)$/i, "");
