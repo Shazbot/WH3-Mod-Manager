@@ -8,7 +8,6 @@ import {
   IoChevronForward,
   IoClose,
   IoSearch,
-  IoShuffle,
 } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
 import AbilityTooltipCard from "./skillsViewer/AbilityTooltipCard";
@@ -457,19 +456,6 @@ const UnitViewerTab = memo(() => {
     });
   };
 
-  const shuffleSelectedUnits = () => {
-    setSelectedKeys((keys) => {
-      if (keys.length < 2) return keys;
-      const next = [...keys];
-      for (let index = next.length - 1; index > 0; index--) {
-        const other = Math.floor(Math.random() * (index + 1));
-        [next[index], next[other]] = [next[other], next[index]];
-      }
-      if (next.every((key, index) => key === keys[index])) next.push(next.shift()!);
-      return next;
-    });
-  };
-
   if (currentGame !== "wh3") return <div className="px-6 py-4 text-gray-300">Unit Viewer is available only for Warhammer 3.</div>;
 
   const renderBrowserRow = ({ index, key, style }: ListRowProps) => {
@@ -510,7 +496,6 @@ const UnitViewerTab = memo(() => {
             {selectedKeys.map((key) => <option key={key} value={`unit:${key}`}>Compare to {details[key]?.name || unitNames.get(key) || key}</option>)}
             <option value="left">Compare to left position</option>
           </select></label>
-          <button type="button" disabled={selectedKeys.length < 2} onClick={shuffleSelectedUnits} className="flex items-center gap-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-200 hover:border-amber-500 disabled:text-gray-600" aria-label="Shuffle unit order"><IoShuffle size={15} /> Shuffle order</button>
           <span className="ml-auto text-xs text-gray-500">{selectedKeys.length} selected</span>
         </div>
         {error && groups.length > 0 && <div className="border-b border-red-900 bg-red-950/70 px-4 py-2 text-sm text-red-200">{error}</div>}

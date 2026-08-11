@@ -110,8 +110,6 @@ describe("Unit Viewer UI", () => {
     const cards = document.querySelectorAll("article");
     expect(within(cards[0] as HTMLElement).getByText("Beta")).toBeInTheDocument();
     expect(within(cards[1] as HTMLElement).getByText("Alpha")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Shuffle unit order" })).toBeEnabled();
-
     fireEvent.change(screen.getByLabelText("Unit Size"), { target: { value: "small" } });
     fireEvent.change(screen.getByLabelText("Rank"), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText("Vigour"), { target: { value: "threshold_tired" } });
