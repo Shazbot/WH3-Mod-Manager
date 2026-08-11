@@ -578,14 +578,18 @@ const sendAssetEditorOpenRequest = async (args: {
   openInExistingKitbashTab: boolean;
 }) => {
   const pipePath = "\\\\.\\pipe\\TheAssetEditor.Ipc";
+  const connectionTimeoutMs = 5000;
+  const responseTimeoutMs = 60000;
   return new Promise<{ ok?: boolean; error?: string; normalizedPath?: string }>((resolve, reject) => {
     const socket = net.connect(pipePath);
     socket.setEncoding("utf8");
     let buffer = "";
     let settled = false;
+    let timeout: ReturnType<typeof setTimeout>;
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeout);
       try {
         fn();
       } finally {
@@ -594,11 +598,14 @@ const sendAssetEditorOpenRequest = async (args: {
         socket.destroy();
       }
     };
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       finish(() => reject(new Error(`Timed out connecting to AssetEditor IPC pipe ${pipePath}`)));
-    }, 3500);
-    const clear = () => clearTimeout(timeout);
+    }, connectionTimeoutMs);
     socket.on("connect", () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        finish(() => reject(new Error("AssetEditor accepted the request but did not respond within 60 seconds")));
+      }, responseTimeoutMs);
       const request = {
         action: "open",
         path: args.path,
@@ -617,7 +624,6 @@ const sendAssetEditorOpenRequest = async (args: {
       if (newlineIndex === -1) return;
       const line = buffer.slice(0, newlineIndex).trim();
       finish(() => {
-        clear();
         if (!line) {
           reject(new Error("AssetEditor IPC returned an empty response"));
           return;
@@ -637,14 +643,12 @@ const sendAssetEditorOpenRequest = async (args: {
     });
     socket.on("error", (error) => {
       finish(() => {
-        clear();
         reject(new Error(`Failed to connect to ${pipePath}: ${error.message}`));
       });
     });
     socket.on("close", () => {
       if (settled) return;
       finish(() => {
-        clear();
         reject(new Error("AssetEditor IPC connection closed before a response was received"));
       });
     });
