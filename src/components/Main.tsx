@@ -26,9 +26,11 @@ const Main = (props: MainProps) => {
   const isTechnologyTreesSupported = currentGame === "wh3";
   const isNodeEditorTab = currentTab == "nodeEditor";
   const isUnitViewerTab = currentTab == "unitViewer" && currentGame === "wh3";
-  // Once opened the node editor stays mounted, so switching tabs does not discard an unsaved graph.
+  const isVisualsTab = currentTab == "visuals" && isFeaturesForModdersEnabled;
+  // Stateful tabs stay mounted once opened so switching tabs preserves their in-memory work.
   const isNodeEditorMounted = useKeepMountedOnceActive(isNodeEditorTab);
   const isUnitViewerMounted = useKeepMountedOnceActive(isUnitViewerTab);
+  const isVisualsMounted = useKeepMountedOnceActive(isVisualsTab);
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =
@@ -52,10 +54,15 @@ const Main = (props: MainProps) => {
         </div>
       )}
 
-      {!isNodeEditorTab && !isUnitViewerTab &&
+      {isVisualsMounted && (
+        <div className={isVisualsTab ? undefined : "hidden"}>
+          <VisualsTab />
+        </div>
+      )}
+
+      {!isNodeEditorTab && !isUnitViewerTab && !isVisualsTab &&
         ((currentTab == "skills" && <SkillsTab />) ||
         (currentTab == "techTrees" && isTechnologyTreesSupported && <TechTreesTab />) ||
-        (currentTab == "visuals" && isFeaturesForModdersEnabled && <VisualsTab />) ||
         (currentTab == "presets" && <PresetsTab />) ||
         (currentTab == "categories" && <Categories></Categories>) || (
           <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">

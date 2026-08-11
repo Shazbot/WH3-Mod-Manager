@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
  * on.
  *
  * Tabs are rendered only while active so the expensive ones cost nothing until they are opened, but
- * unmounting the node editor throws away an unsaved graph. Keeping it mounted and merely hidden lets
- * the user switch tabs and come back to their work, while still paying nothing for a tab they never
- * open in a session.
+ * unmounting a stateful tab throws away its in-memory work. Keeping it mounted and merely hidden
+ * lets the user switch tabs and come back to their work, while still paying nothing for a tab they
+ * never open in a session.
  */
 export const useKeepMountedOnceActive = (isActive: boolean): boolean => {
   const [wasEverActive, setWasEverActive] = useState(isActive);
