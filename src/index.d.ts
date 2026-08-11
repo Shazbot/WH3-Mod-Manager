@@ -95,10 +95,42 @@ declare global {
     author: string;
   }
 
+  /**
+   * The live mod list of the currently selected game. Only ever used for AppState.currentPreset —
+   * saved presets are SavedPreset and hold lightweight entries instead of full Mod records.
+   */
   interface Preset {
     mods: Mod[];
     name: string;
     version?: number;
+  }
+
+  /**
+   * A mod's membership in a preset. `name` (the pack file name) is the join key against the installed
+   * mods; array order is the display/load order.
+   */
+  interface PresetModEntry {
+    name: string;
+    /** Absent means enabled. Saved user presets omit it; full-list snapshots write false explicitly. */
+    isEnabled?: boolean;
+    /** Only set when the user pinned this mod to a position. */
+    loadOrder?: number;
+  }
+
+  /** What AppState.presets and the config file hold. */
+  interface SavedPreset {
+    name: string;
+    mods: PresetModEntry[];
+    version?: number;
+  }
+
+  /** Per-mod state that is neither preset membership nor re-derivable from a disk scan. */
+  interface StoredModUserData {
+    categories?: string[];
+    /** Workshop title cache, so mod names show up before Steam responds (or offline). */
+    humanName?: string;
+    author?: string;
+    reqModIdToName?: [string, string][];
   }
   interface NewMergedPack {
     path: string;
@@ -132,11 +164,11 @@ declare global {
     currentPreset: Preset;
     importedMods: ModIdAndLoadOrder[];
     pendingUsedModsImport: string[] | undefined;
-    presets: Preset[];
-    lastSelectedPreset: Preset | null;
+    presets: SavedPreset[];
+    lastSelectedPreset: SavedPreset | null;
     filter: string;
-    alwaysEnabledMods: Mod[];
-    hiddenMods: Mod[];
+    alwaysEnabledModNames: string[];
+    hiddenModNames: string[];
     saves: GameSave[];
     isOnboardingToRun: boolean;
     hasConfigBeenRead: boolean;
@@ -164,7 +196,7 @@ declare global {
     unsavedPacksData: Record<string, PackedFile[]>;
     packCollisions: PackCollisions;
     packCollisionsCheckProgress: PackCollisionsCheckProgressData;
-    dataFromConfig?: AppStateToRead;
+    dataFromConfig?: ConfigForRenderer;
     newMergedPacks: NewMergedPack[];
     pathsOfReadPacks: string[];
     appFolderPaths: GameFolderPaths;
@@ -231,10 +263,9 @@ declare global {
     | "isCheckingSkillRequirements"
   >;
 
-  type AppStateToWrite = Pick<
+  /** The options block shared by the config file and the renderer payload. */
+  type ConfigOptions = Pick<
     AppState,
-    | "alwaysEnabledMods"
-    | "hiddenMods"
     | "wasOnboardingEverRun"
     | "isAuthorEnabled"
     | "areThumbnailsEnabled"
@@ -261,28 +292,44 @@ declare global {
     | "isCheckingSkillRequirements"
     | "skillTreesDisplayMode"
     | "technologyTreesDisplayMode"
-  > &
-    AppStateMainProcessExtras;
+  >;
 
-  // main process (index.ts) specific properties that are writtend and read from the app config file
-  type AppStateMainProcessExtras = {
+  /** Everything stored for one game. Per-mod data lives in modUserData, one copy, not once per preset. */
+  interface GameConfig {
+    /** Membership and order of that game's live mod list. */
+    currentPreset: SavedPreset;
+    presets: SavedPreset[];
+    /** Mod name -> data. */
+    modUserData: Record<string, StoredModUserData>;
+  }
+
+  /** The config.json document. */
+  type AppConfig = ConfigOptions & {
+    configVersion: number;
     gameFolderPaths: Record<SupportedGames, GameFolderPaths>;
-    gameToCurrentPreset: Record<SupportedGames, Preset | undefined>;
-    gameToPresets: Record<SupportedGames, Preset[]>;
+    games: Record<SupportedGames, GameConfig>;
+    alwaysEnabledModNames: string[];
+    hiddenModNames: string[];
   };
 
-  // renderer redux app state specific properties
-  type AppStateRendererExtras = {
-    appFolderPaths: GameFolderPaths;
-    presets: Preset[];
-    currentPreset: Preset;
+  /** The flattened single-game view of the config that main sends to the renderer. */
+  type ConfigForRenderer = ConfigOptions &
+    GameConfig & {
+      configVersion: number;
+      alwaysEnabledModNames: string[];
+      hiddenModNames: string[];
+      appFolderPaths: GameFolderPaths;
+    };
+
+  /**
+   * What the renderer sends to main on every debounced store change. The mod lists are only included
+   * when they actually changed, since main needs them for appData/window title but they are large.
+   */
+  type ConfigSavePayload = {
+    config: Omit<ConfigForRenderer, "appFolderPaths">;
+    currentGame: SupportedGames;
+    mods?: { allMods: Mod[]; currentPresetMods: Mod[] };
   };
-
-  type AppStateToWriteWithDeprecatedProperties = AppStateToWrite & AppStateRendererExtras;
-
-  type AppStateWithRendererExtras = AppStateToWrite & AppStateRendererExtras;
-
-  type AppStateToRead = Omit<AppStateWithRendererExtras, keyof AppStateMainProcessExtras>;
 
   type StartGameSpecificOptions = Pick<
     AppState,
@@ -297,8 +344,9 @@ declare global {
 
   interface SetCurrentGamePayload {
     game: SupportedGames;
-    currentPreset: Preset;
-    presets: Preset[];
+    currentPreset: SavedPreset;
+    presets: SavedPreset[];
+    modUserData: Record<string, StoredModUserData>;
   }
 
   interface ModLoadOrderRelativeTo {

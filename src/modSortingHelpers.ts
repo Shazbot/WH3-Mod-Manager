@@ -1,6 +1,9 @@
 const collator = new Intl.Collator("en");
 
-export function sortByNameAndLoadOrder(mods: Mod[]) {
+/** Works on anything with a name and an optional load order, so preset entries can use it too. */
+type Sortable = { name: string; loadOrder?: number };
+
+export function sortByNameAndLoadOrder<T extends Sortable>(mods: T[]): T[] {
   const sortedMods = getModsSortedByName(mods);
   const orderedMods = sortedMods
     .filter((mod) => mod.loadOrder != null)
@@ -10,7 +13,7 @@ export function sortByNameAndLoadOrder(mods: Mod[]) {
 
   const orderedModSet = new Set(orderedMods);
   const unorderedMods = sortedMods.filter((mod) => !orderedModSet.has(mod));
-  const newMods: Mod[] = [];
+  const newMods: T[] = [];
   let unorderedIndex = 0;
   let orderedIndex = 0;
 
@@ -55,8 +58,9 @@ export function getSparseLoadOrderByModName(orderedMods: Mod[], movedModName?: s
   return loadOrderByModName;
 }
 
-export function sortAsInPreset(mods: Mod[], modsInPreset: Mod[]) {
-  const indexMap = new Map(modsInPreset.map((mod, i) => [mod.name, i]));
+/** Orders mods to match a preset's entries, with mods the preset doesn't mention sorted after by name. */
+export function sortModsAsInEntries(mods: Mod[], entries: { name: string }[]) {
+  const indexMap = new Map(entries.map((entry, i) => [entry.name, i]));
   const newMods = [...mods].sort((modF, modS) => {
     const modInPresetIndexF = indexMap.get(modF.name) ?? -1;
     const modInPresetIndexS = indexMap.get(modS.name) ?? -1;
@@ -95,7 +99,7 @@ export function compareModNames(firstName: string, secondName: string): number {
   return 0;
 }
 
-export function getModsSortedByName(mods: Mod[]) {
+export function getModsSortedByName<T extends { name: string }>(mods: T[]): T[] {
   return [...mods].sort((firstMod, secondMod) => {
     return compareModNames(firstMod.name, secondMod.name);
   });

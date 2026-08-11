@@ -69,7 +69,8 @@ import debounce from "just-debounce-it";
 import fetch from "node-fetch";
 import * as nodePath from "path";
 import { version } from "react";
-import { readAppConfig, setStartingAppState, writeAppConfig } from "./appConfigFunctions";
+import { readAppConfig, setStartingConfig, writeAppConfig } from "./appConfigFunctions";
+import { getEnabledMods } from "./modsHelpers";
 import appData, { GameFolderPaths } from "./appData";
 import type { SerializedNode, SerializedConnection } from "./nodeGraph/types";
 import { packDataStore } from "./components/viewer/packDataStore";
@@ -2925,12 +2926,14 @@ export const registerIpcMainListeners = (
     //   getAllMods();
     // }
     await setCurrentGame(game);
-    if (appData.gamesToGameFolderPaths[game].contentFolder) {
-      const currentPreset = appData.gameToCurrentPreset[game];
-      // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
-      const presets = appData.gameToPresets[game];
-      mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
-    }
+    const gameConfig = appData.gameToConfig[game];
+    mainWindow?.webContents.send(
+      "setCurrentGame",
+      game,
+      gameConfig.currentPreset,
+      gameConfig.presets,
+      gameConfig.modUserData,
+    );
   };
   const setLastGameUpdateTimeUsingAppManifest = async () => {
     try {
@@ -3430,83 +3433,34 @@ export const registerIpcMainListeners = (
         });
     }
   };
-  const readConfig = async (): Promise<AppStateToRead> => {
+  const readConfig = async (): Promise<ConfigForRenderer> => {
     try {
+      // readAppConfig has already migrated anything older than the current config version
       const appState = await readAppConfig();
       if (!appData.hasReadConfig) {
         fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {}); // forces steam workshop to download mods
-        setStartingAppState(appState);
+        setStartingConfig(appState);
       }
-      // appFolderPaths is deprecated in the config since we moved from only supporting wh3, this is migration code
-      if (appState.appFolderPaths) {
-        if (appState.appFolderPaths.contentFolder && !fs.existsSync(appState.appFolderPaths.contentFolder)) {
-          appState.appFolderPaths.contentFolder = "";
-        } else {
-          appData.gamesToGameFolderPaths["wh3"].contentFolder = appState.appFolderPaths.contentFolder;
-        }
-        if (appState.appFolderPaths.gamePath && !fs.existsSync(appState.appFolderPaths.gamePath)) {
-          appState.appFolderPaths.gamePath = "";
-        } else {
-          appData.gamesToGameFolderPaths["wh3"].gamePath = appState.appFolderPaths.gamePath;
-          if (appState.appFolderPaths.gamePath)
-            appData.gamesToGameFolderPaths["wh3"].dataFolder = nodePath.join(
-              appState.appFolderPaths.gamePath,
-              "/data/",
-            );
-        }
+      appData.gamesToGameFolderPaths = appState.gameFolderPaths;
+      for (const game of supportedGames) {
+        const folderPaths = appData.gamesToGameFolderPaths[game];
+        folderPaths.customModFolders = folderPaths.customModFolders || [];
+        folderPaths.modSourceOrder = normalizeModSourceOrder(
+          folderPaths,
+          appState.isFeaturesForModdersEnabled || false,
+        );
       }
-      if (appState.gameFolderPaths) {
-        appData.gamesToGameFolderPaths = appState.gameFolderPaths;
-        for (const game of supportedGames) {
-          const folderPaths = appData.gamesToGameFolderPaths[game] || {
-            gamePath: undefined,
-            dataFolder: undefined,
-            contentFolder: undefined,
-          };
-          appData.gamesToGameFolderPaths[game] = folderPaths;
-          folderPaths.customModFolders = folderPaths.customModFolders || [];
-          folderPaths.modSourceOrder = normalizeModSourceOrder(
-            folderPaths,
-            appState.isFeaturesForModdersEnabled || false,
-          );
-        }
-        if (appState.currentGame) {
-          const gameFolderPaths = appData.gamesToGameFolderPaths[appState.currentGame];
-          if (gameFolderPaths.contentFolder && !fs.existsSync(gameFolderPaths.contentFolder)) {
-            gameFolderPaths.contentFolder = "";
-          }
-          if (gameFolderPaths.gamePath && !fs.existsSync(gameFolderPaths.gamePath)) {
-            gameFolderPaths.gamePath = "";
-          }
-        }
+      const currentGameFolderPaths = appData.gamesToGameFolderPaths[appState.currentGame];
+      if (currentGameFolderPaths.contentFolder && !fs.existsSync(currentGameFolderPaths.contentFolder)) {
+        currentGameFolderPaths.contentFolder = "";
       }
-      if (appState.currentGame) {
-        appData.currentGame = appState.currentGame;
-        initializeAllSchemaForGame(appData.currentGame);
-      } else {
-        appState.currentGame = appData.currentGame;
+      if (currentGameFolderPaths.gamePath && !fs.existsSync(currentGameFolderPaths.gamePath)) {
+        currentGameFolderPaths.gamePath = "";
       }
-      if (appState.gameToCurrentPreset) {
-        appData.gameToCurrentPreset = appState.gameToCurrentPreset;
-      } else {
-        appState.gameToCurrentPreset = appData.gameToCurrentPreset;
-      }
-      if (appState.gameToPresets) {
-        appData.gameToPresets = appState.gameToPresets;
-      } else {
-        appState.gameToPresets = appData.gameToPresets;
-      }
-      // presets and currentPreset is also deprecated and now in gameToPresets and gameToCurrentPreset, migration code
-      if (appState.currentPreset) {
-        appData.gameToCurrentPreset["wh3"] = appState.currentPreset;
-      } else if (appData.gameToCurrentPreset[appState.currentGame]) {
-        appState.currentPreset = appData.gameToCurrentPreset[appState.currentGame] as Preset;
-      }
-      if (appState.presets) {
-        appData.gameToPresets["wh3"] = appState.presets;
-      } else {
-        appState.presets = appData.gameToPresets[appState.currentGame];
-      }
+
+      appData.currentGame = appState.currentGame;
+      initializeAllSchemaForGame(appData.currentGame);
+      appData.gameToConfig = appState.games;
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
       appData.moddersPrefix = appState.moddersPrefix || "";
@@ -3520,7 +3474,14 @@ export const registerIpcMainListeners = (
       appData.skillTreesDisplayMode = appState.skillTreesDisplayMode ?? appData.skillTreesDisplayMode;
       appData.technologyTreesDisplayMode =
         appState.technologyTreesDisplayMode ?? appData.technologyTreesDisplayMode;
-      return appState;
+
+      // flatten to the single-game view the renderer works with
+      const { games, gameFolderPaths, ...options } = appState;
+      return {
+        ...options,
+        ...games[appState.currentGame],
+        appFolderPaths: gameFolderPaths[appState.currentGame],
+      };
     } finally {
       appData.hasReadConfig = true;
     }
@@ -5110,10 +5071,7 @@ export const registerIpcMainListeners = (
     }
   });
   ipcMain.handle("getFlowPackCatalog", async () => {
-    const presetMods = appData.gameToCurrentPreset[appData.currentGame]?.mods;
-    const mods = (appData.allMods.length > 0 ? appData.allMods : presetMods || []).filter(
-      (mod) => !mod.isDeleted && !!mod.path,
-    );
+    const mods = appData.allMods.filter((mod) => !mod.isDeleted && !!mod.path);
     const enabledModPaths = new Set(appData.enabledMods.map((mod) => nodePath.resolve(mod.path)));
     const entries: FlowPackCatalogEntry[] = [];
     const seenPaths = new Set<string>();
@@ -5318,7 +5276,7 @@ export const registerIpcMainListeners = (
     console.log(
       "NUM MODS IN APPDATA",
       appData.currentGame,
-      appData.gameToCurrentPreset[appData.currentGame]?.mods.length,
+      appData.gameToConfig[appData.currentGame]?.currentPreset.mods.length,
     );
     // for testing, automatically opens db.pack
     if (appData.startArgs.includes("-testDBClone")) {
@@ -5843,33 +5801,28 @@ export const registerIpcMainListeners = (
     }
     // getAllMods();
   });
-  ipcMain.on("saveConfig", (event, data: AppState) => {
+  ipcMain.on("saveConfig", (event, payload: ConfigSavePayload) => {
     console.log("saveConfig");
-    const enabledMods = data.currentPreset.mods.filter(
-      (iterMod) => iterMod.isEnabled || data.alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
-    );
-    appData.enabledMods = enabledMods;
-    appData.allMods = data.allMods;
-    appData.isCompatCheckingVanillaPacks = data.isCompatCheckingVanillaPacks;
-    appData.isChangingGameProcessPriority = data.isChangingGameProcessPriority;
-    appData.skillTreesDisplayMode = data.skillTreesDisplayMode;
-    appData.technologyTreesDisplayMode = data.technologyTreesDisplayMode;
-    const hiddenAndEnabledMods = data.hiddenMods.filter((iterMod) =>
-      enabledMods.find((mod) => mod.name === iterMod.name),
-    );
+    const { config } = payload;
+
+    // the mod lists only ride along when they changed, so keep the last ones otherwise
+    if (payload.mods) {
+      appData.allMods = payload.mods.allMods;
+      appData.enabledMods = getEnabledMods(payload.mods.currentPresetMods, config.alwaysEnabledModNames);
+    }
+    appData.isCompatCheckingVanillaPacks = config.isCompatCheckingVanillaPacks;
+    appData.isChangingGameProcessPriority = config.isChangingGameProcessPriority;
+    appData.skillTreesDisplayMode = config.skillTreesDisplayMode;
+    appData.technologyTreesDisplayMode = config.technologyTreesDisplayMode;
+
+    const hiddenModNames = new Set(config.hiddenModNames);
+    const hiddenAndEnabledCount = appData.enabledMods.filter((mod) => hiddenModNames.has(mod.name)).length;
     mainWindow?.setTitle(
-      `WH3 Mod Manager v${version}: ${enabledMods.length} mods enabled` +
-        (hiddenAndEnabledMods.length > 0 ? ` (${hiddenAndEnabledMods.length} of those hidden)` : "") +
+      `WH3 Mod Manager v${version}: ${appData.enabledMods.length} mods enabled` +
+        (hiddenAndEnabledCount > 0 ? ` (${hiddenAndEnabledCount} of those hidden)` : "") +
         ` for ${gameToGameName[appData.currentGame]}`,
     );
-    // console.log(
-    //   "BEFORE saveconfig",
-    //   appData.gameToCurrentPreset["wh2"]?.mods[0].name,
-    //   appData.gameToCurrentPreset["wh3"]?.mods[0].name,
-    //   data.currentGame,
-    //   data.currentPreset.mods[0].name
-    // );
-    writeAppConfig(data);
+    writeAppConfig(payload);
   });
   ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
     getSkillsForSubtype(subtype, subtypeIndex);
@@ -7978,16 +7931,22 @@ export const registerIpcMainListeners = (
     // console.log("game before change is", appData.currentGame, "to", game);
     console.log(`Requesting game change to ${game}`);
     console.log(`Current game is ${appState.currentGame}`);
-    appData.gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
-    appData.gameToPresets[appState.currentGame] = appState.presets;
+    appData.gameToConfig[appState.currentGame] = {
+      ...appData.gameToConfig[appState.currentGame],
+      presets: appState.presets,
+    };
     await setCurrentGame(game);
-    if (appData.gamesToGameFolderPaths[game].contentFolder) {
-      const currentPreset = appData.gameToCurrentPreset[game];
-      // console.log("SETTING GAME IN INDEX", game, currentPreset?.mods[0].name);
-      const presets = appData.gameToPresets[game];
-      console.log("SENDING setCurrentGame", game);
-      mainWindow?.webContents.send("setCurrentGame", game, currentPreset, presets);
-    }
+    // always tell the renderer, even without a content folder: if it keeps the previous game's
+    // presets they end up written into this game's slot on the next save
+    const gameConfig = appData.gameToConfig[game];
+    console.log("SENDING setCurrentGame", game);
+    mainWindow?.webContents.send(
+      "setCurrentGame",
+      game,
+      gameConfig.currentPreset,
+      gameConfig.presets,
+      gameConfig.modUserData,
+    );
   });
   const terminateCurrentGame = () => {
     const name = gameToProcessName[appData.currentGame];

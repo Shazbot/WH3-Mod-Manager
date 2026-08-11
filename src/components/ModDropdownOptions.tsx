@@ -257,7 +257,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) dispatch(toggleAlwaysEnabledMods([props.mod]));
+                  if (props.mod) dispatch(toggleAlwaysEnabledMods([props.mod.name]));
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
@@ -277,7 +277,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             <li>
               <a
                 onClick={() => {
-                  if (props.mod) dispatch(toggleAlwaysHiddenMods([props.mod]));
+                  if (props.mod) dispatch(toggleAlwaysHiddenMods([props.mod.name]));
                 }}
                 href="#"
                 className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"

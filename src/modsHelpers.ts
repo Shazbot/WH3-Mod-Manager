@@ -3,17 +3,23 @@ export function withoutDataAndContentDuplicates(mods: Mod[]) {
   return mods.filter((mod) => mod.isInData || !inDataNames.has(mod.name));
 }
 
-export function findAlwaysEnabledMods(mods: Mod[], alwaysEnabledMods: Mod[]) {
-  const names = new Set(alwaysEnabledMods.map((m) => m.name));
+export function findAlwaysEnabledMods(mods: Mod[], alwaysEnabledModNames: string[]) {
+  const names = new Set(alwaysEnabledModNames);
   return mods.filter((m) => names.has(m.name));
 }
 
-export function findMod(mods: Mod[], mod: Mod) {
+/** The mods that will actually load: explicitly enabled, plus the always-enabled ones. */
+export function getEnabledMods(mods: Mod[], alwaysEnabledModNames: string[]) {
+  const names = new Set(alwaysEnabledModNames);
+  return mods.filter((mod) => mod.isEnabled || names.has(mod.name));
+}
+
+export function findMod(mods: Mod[], mod: { name: string }) {
   return mods.find((iterMod) => iterMod.name === mod.name);
 }
 
-export function isModAlwaysEnabled(mod: Mod, alwaysEnabledMods: Mod[]) {
-  return alwaysEnabledMods.find((iterMod) => iterMod.name === mod.name);
+export function isModAlwaysEnabled(mod: Mod, alwaysEnabledModNames: string[]) {
+  return alwaysEnabledModNames.includes(mod.name);
 }
 
 export function adjustDuplicates(mods: Mod[], modToKeepOrder: Mod) {

@@ -26,6 +26,7 @@ import { gameToPackWithDBTablesName } from "../supportedGames";
 import { isWorkshopMod } from "../modSources";
 import { Modal } from "../flowbite";
 import { getConflictingStartposMods } from "../utility/startposConflicts";
+import { getEnabledMods } from "../modsHelpers";
 
 type OptionType = {
   value: string;
@@ -120,8 +121,8 @@ const Sidebar = memo(() => {
   const allMods = useAppSelector((state) => state.app.allMods);
   const workshopInstallStatuses = useAppSelector((state) => state.app.workshopInstallStatuses);
   const workshopUpdateCheckResults = useAppSelector((state) => state.app.workshopUpdateCheckResults);
-  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
-  const lastSelectedPreset: Preset | null = useAppSelector((state) => state.app.lastSelectedPreset);
+  const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const lastSelectedPreset: SavedPreset | null = useAppSelector((state) => state.app.lastSelectedPreset);
   const areModsInOrder = useAppSelector((state) => state.app.currentPreset.version) != undefined;
 
   const playDelayTimeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
@@ -448,9 +449,7 @@ const Sidebar = memo(() => {
     previousIsWH3RunningRef.current = isWH3Running;
   }, [isWH3Running, isWaitingForRelaunch, isWaitingForContinueRelaunch, onContinueGameClicked, playGameClicked]);
 
-  const enabledMods = mods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
-  );
+  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
   const conflictingStartposMods = getConflictingStartposMods(enabledMods);
 
   const possiblyOutdatedWorkshopMods = enabledMods

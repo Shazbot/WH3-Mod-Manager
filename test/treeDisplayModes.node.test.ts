@@ -8,17 +8,15 @@ import appReducer, {
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 
-const createConfigState = (overrides: Partial<AppStateToRead> = {}): AppStateToRead =>
+const createConfigState = (overrides: Partial<ConfigForRenderer> = {}): ConfigForRenderer =>
   ({
     ...initialState,
-    currentPreset: {
-      ...initialState.currentPreset,
-      mods: [],
-      version: 2,
-    },
+    configVersion: 3,
+    currentPreset: { name: "", mods: [], version: 2 },
     presets: [],
-    hiddenMods: [],
-    alwaysEnabledMods: [],
+    modUserData: {},
+    hiddenModNames: [],
+    alwaysEnabledModNames: [],
     categories: [],
     categoryColors: {},
     packDataOverwrites: {},
@@ -27,7 +25,7 @@ const createConfigState = (overrides: Partial<AppStateToRead> = {}): AppStateToR
     isFeaturesForModdersEnabled: true,
     currentLanguage: "en",
     ...overrides,
-  }) as AppStateToRead;
+  }) as ConfigForRenderer;
 
 describe("tree display modes", () => {
   it("allows Unit Viewer for WH3 without modder features and rejects it for other games", () => {

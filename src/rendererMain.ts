@@ -3,6 +3,8 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-material.css";
 
 import debounce from "just-debounce-it";
+import { getEnabledMods } from "./modsHelpers";
+import { selectConfigSavePayload } from "./config/configSavePayload";
 import hash from "object-hash";
 
 import store from "./store";
@@ -120,7 +122,7 @@ window.api?.setSkillsData((event, skillsData: SkillsData) => {
 });
 
 const saveConfig = (appState: AppState) => {
-  window.api?.saveConfig(appState);
+  window.api?.saveConfig(selectConfigSavePayload(appState));
   const enabledMods = appState.currentPreset.mods.filter((mod) => mod.isEnabled);
   // don't do it if all are enabled, i.e. when user is resetting the enabled column
   const customizableModsHash = hash(appState.customizableMods);
@@ -208,7 +210,7 @@ const subscribeToStoreChanges = () => {
   });
 };
 
-window.api?.fromAppConfig((event, appState: AppStateToRead) => {
+window.api?.fromAppConfig((event, appState: ConfigForRenderer) => {
   store.dispatch(setFromConfig(appState));
   syncTreeDisplayModes(store.getState().app);
   subscribeToStoreChanges();
@@ -306,11 +308,8 @@ window.api?.setPacksDataRead((event, packPaths: string[]) => {
 
   const appState = store.getState().app;
   const presetMods = appState.currentPreset.mods;
-  const alwaysEnabledMods = appState.alwaysEnabledMods;
   const customizableMods = appState.customizableMods;
-  const enabledMods = presetMods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
-  );
+  const enabledMods = getEnabledMods(presetMods, appState.alwaysEnabledModNames);
   const customizableTables = [
     "units_to_groupings_military_permissions_tables",
     "building_culture_variants_tables",
@@ -342,9 +341,17 @@ window.api?.onSkillsViewOptions((event, skillsViewOptions: SkillsViewOptions) =>
   store.dispatch(setSkillsViewOptions(skillsViewOptions));
 });
 
-window.api?.setCurrentGame((event, game: SupportedGames, currentPreset: Preset, presets: Preset[]) => {
-  store.dispatch(setCurrentGame({ game, currentPreset, presets } as SetCurrentGamePayload));
-});
+window.api?.setCurrentGame(
+  (
+    event,
+    game: SupportedGames,
+    currentPreset: SavedPreset,
+    presets: SavedPreset[],
+    modUserData: Record<string, StoredModUserData>,
+  ) => {
+    store.dispatch(setCurrentGame({ game, currentPreset, presets, modUserData }));
+  },
+);
 
 window.api?.setCurrentlyReadingMod((event, modName: string) => {
   store.dispatch(setCurrentlyReadingMod(modName));

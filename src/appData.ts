@@ -1,6 +1,7 @@
 import { Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
 import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
+import { emptyGameConfig } from "./config/migrateAppConfig";
 import Trie from "./utility/trie";
 
 interface AppData {
@@ -145,7 +146,6 @@ interface AppData {
     >;
     abilityToAutoDeactivateFlags: Record<string, string[]>;
   };
-  presets: Preset[];
 
   // gamePaths: Record<string, string>;
   // contentFolders: Record<string, string>;
@@ -179,8 +179,7 @@ interface AppData {
   gameUpdates: GameUpdateData[];
   isWH3Running: boolean;
   currentGame: SupportedGames;
-  gameToCurrentPreset: Record<SupportedGames, Preset | undefined>;
-  gameToPresets: Record<SupportedGames, Preset[]>;
+  gameToConfig: Record<SupportedGames, GameConfig>;
   vanillaPacksDBFileNames: string[];
   waitForModIds: string[];
   subscribedModIds: string[];
@@ -212,7 +211,6 @@ export type GameFolderPaths = {
 };
 
 const appData = {
-  presets: [],
   // gamePaths: {},
   // contentFolders: {},
   // dataFolders: {},
@@ -268,7 +266,7 @@ const appData = {
   isChangingGameProcessPriority: false,
   customizableMods: {},
   packMetaData: {},
-} as Omit<AppData, "gameToCurrentPreset" | "gameToPresets">;
+} as Omit<AppData, "gameToConfig">;
 for (const supportedGame of supportedGames) {
   appData.gamesToGameFolderPaths[supportedGame] = {
     gamePath: undefined,
@@ -279,27 +277,8 @@ for (const supportedGame of supportedGames) {
   };
 }
 
-(appData as AppData).gameToCurrentPreset = {
-  wh2: undefined,
-  wh3: undefined,
-  threeKingdoms: undefined,
-  attila: undefined,
-  troy: undefined,
-  pharaoh: undefined,
-  dynasties: undefined,
-  rome2: undefined,
-  shogun2: undefined,
-};
-(appData as AppData).gameToPresets = {
-  wh2: [],
-  wh3: [],
-  threeKingdoms: [],
-  attila: [],
-  troy: [],
-  pharaoh: [],
-  dynasties: [],
-  rome2: [],
-  shogun2: [],
-};
+(appData as AppData).gameToConfig = Object.fromEntries(
+  supportedGames.map((game) => [game, emptyGameConfig()]),
+) as Record<SupportedGames, GameConfig>;
 
 export default appData as AppData;

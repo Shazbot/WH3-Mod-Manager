@@ -1,87 +1,32 @@
-import deepClone from "clone-deep";
 import { app } from "electron";
 import * as fs from "fs";
-import equal from "fast-deep-equal";
 import { copy, move } from "fs-extra";
 import appData from "./appData";
 import * as nodePath from "path";
 import { version } from "../package.json";
-import { diff } from "deep-object-diff";
+import { buildAppConfig } from "./config/buildAppConfig";
+import { migrateAppConfig } from "./config/migrateAppConfig";
 
-let dataToWrite: AppStateToWrite | undefined;
-let hasConfigBeenRead = false;
+let lastWrittenConfig: AppConfig | undefined;
+let lastWrittenJson: string | undefined;
+let pendingJson: string | undefined;
+let hasWrittenVersionBackup = false;
 let requestedWriteRevision = 0;
 let completedWriteRevision = 0;
 let activeWritePromise: Promise<void> | undefined;
 
 const configFileName = "config.json";
 
-const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
-  const gameToCurrentPreset = deepClone(appData.gameToCurrentPreset);
-  gameToCurrentPreset[appState.currentGame] = appState.currentPreset;
-
-  const gameToPresets = deepClone(appData.gameToPresets);
-  gameToPresets[appState.currentGame] = appState.presets;
-
-  const configAppState = {
-    alwaysEnabledMods: appState.alwaysEnabledMods,
-    hiddenMods: appState.hiddenMods,
-    wasOnboardingEverRun: appState.wasOnboardingEverRun,
-    isAuthorEnabled: appState.isAuthorEnabled,
-    areThumbnailsEnabled: appState.areThumbnailsEnabled,
-    isMakeUnitsGeneralsEnabled: appState.isMakeUnitsGeneralsEnabled,
-    isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,
-    isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
-    isChangingGameProcessPriority: appState.isChangingGameProcessPriority,
-    isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,
-    moddersPrefix: appState.moddersPrefix,
-    isScriptLoggingEnabled: appState.isScriptLoggingEnabled,
-    isClosedOnPlay: appState.isClosedOnPlay,
-    isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,
-    categories: appState.categories,
-    categoryColors: appState.categoryColors,
-    modRowsSortingType: appState.modRowsSortingType,
-    currentLanguage: appState.currentLanguage,
-    currentGame: appState.currentGame,
-    packDataOverwrites: appState.packDataOverwrites,
-    userFlowOptions: appState.userFlowOptions,
-    nodeEditorFavorites: appState.nodeEditorFavorites,
-    isShowingSkillNodeSetNames: appState.isShowingSkillNodeSetNames,
-    isShowingHiddenSkills: appState.isShowingHiddenSkills,
-    isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
-    isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
-    skillTreesDisplayMode: appState.skillTreesDisplayMode,
-    technologyTreesDisplayMode: appState.technologyTreesDisplayMode,
-    // from appData
-    gameFolderPaths: appData.gamesToGameFolderPaths,
-    gameToCurrentPreset,
-    gameToPresets,
-  };
-
-  return configAppState;
-};
-
-export function setStartingAppState(startingAppState: AppStateToWrite) {
-  dataToWrite = deepClone(startingAppState);
+export function setStartingConfig(startingConfig: AppConfig) {
+  lastWrittenConfig = startingConfig;
+  lastWrittenJson = JSON.stringify(startingConfig);
 }
 
-const removeModDataWeDontSave = (mods: Mod[] | undefined) => {
-  if (!mods) return;
-
-  // we don't care about saving these since we want to fetch or calculate the real time state of them anyway
-  for (const mod of mods) {
-    mod.lastChanged = undefined;
-    mod.lastChangedLocal = undefined;
-    mod.reqModIdToName = [];
-    mod.isDeleted = false;
-    mod.isMovie = false;
-    mod.dependencyPacks = [];
-    mod.tags = [];
-  }
-};
-
 const persistConfigSnapshot = async (stringifiedData: string) => {
+  // the per-version backup is a rollback copy of what this app version last wrote, so one per run is
+  // enough - writing it on every save doubled the file writes for no extra safety
   const backupVersionConfigName = `config_backup_v${version}.json`;
+  const isWritingVersionBackup = !hasWrittenVersionBackup;
 
   try {
     // write to the dir where the exe is due to bizarre file permission issues
@@ -89,8 +34,10 @@ const persistConfigSnapshot = async (stringifiedData: string) => {
     const exeDirTempConfigPath = nodePath.join(exeDirPath, "config_temp.json");
     const exeDirConfigPath = nodePath.join(exeDirPath, configFileName);
     await fs.promises.writeFile(exeDirTempConfigPath, stringifiedData);
-    const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
-    await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
+    if (isWritingVersionBackup) {
+      const exeDirVersionConfigPath = nodePath.join(exeDirPath, backupVersionConfigName);
+      await copy(exeDirTempConfigPath, exeDirVersionConfigPath, { overwrite: true });
+    }
     await move(exeDirTempConfigPath, exeDirConfigPath, { overwrite: true });
   } catch (err) {
     console.log(err);
@@ -100,10 +47,14 @@ const persistConfigSnapshot = async (stringifiedData: string) => {
   const tempFilePath = nodePath.join(userData, "config_temp.json");
   await fs.promises.writeFile(tempFilePath, stringifiedData);
 
-  const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
-  await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
+  if (isWritingVersionBackup) {
+    const versionConfigFilePath = nodePath.join(userData, backupVersionConfigName);
+    await copy(tempFilePath, versionConfigFilePath, { overwrite: true });
+  }
   const configFilePath = nodePath.join(userData, configFileName);
   await move(tempFilePath, configFilePath, { overwrite: true });
+
+  hasWrittenVersionBackup = true;
 };
 
 const processConfigWriteQueue = () => {
@@ -112,7 +63,8 @@ const processConfigWriteQueue = () => {
   activeWritePromise = (async () => {
     while (completedWriteRevision < requestedWriteRevision) {
       const revisionToWrite = requestedWriteRevision;
-      const stringifiedData = JSON.stringify(dataToWrite);
+      const stringifiedData = pendingJson;
+      if (stringifiedData == undefined) break;
 
       try {
         await persistConfigSnapshot(stringifiedData);
@@ -140,59 +92,36 @@ export const flushAppConfigWrites = async () => {
   }
 };
 
-export function writeAppConfig(data: AppState) {
-  const toWrite: AppStateToWrite = appStateToConfigAppState(data);
-
+export function writeAppConfig(payload: ConfigSavePayload) {
   if (!appData.hasReadConfig) {
     return;
   }
 
-  // remove mod data we don't want to save from
-  removeModDataWeDontSave(toWrite.gameToCurrentPreset[toWrite.currentGame]?.mods);
+  const toWrite = buildAppConfig(payload);
 
-  const onLastGameLaunchPreset = toWrite.gameToPresets[toWrite.currentGame]?.find(
-    (preset) => preset.name == "On Last Game Launch",
-  );
-  removeModDataWeDontSave(onLastGameLaunchPreset?.mods);
-
-  const onAppStartPreset = toWrite.gameToPresets[toWrite.currentGame]?.find(
-    (preset) => preset.name == "On App Start",
-  );
-  removeModDataWeDontSave(onAppStartPreset?.mods);
-
-  if (!data.hasConfigBeenRead) {
-    dataToWrite = deepClone(toWrite, true);
-    console.log("config yet to be read, skip writing new config");
-    return;
-  }
-
-  // don't overwrite config that had mods with one that has none — mods likely haven't populated yet
-  const currentGameMods = toWrite.gameToCurrentPreset[toWrite.currentGame]?.mods;
-  const previousMods = dataToWrite?.gameToCurrentPreset[toWrite.currentGame]?.mods;
+  // don't overwrite a config that had mods with one that has none - mods likely haven't populated yet
+  const currentGameMods = toWrite.games[toWrite.currentGame]?.currentPreset.mods;
+  const previousMods = lastWrittenConfig?.games[toWrite.currentGame]?.currentPreset.mods;
   if ((!currentGameMods || currentGameMods.length === 0) && previousMods && previousMods.length > 0) {
     console.log("skipping config write: current preset has no mods but previous config did");
     return;
   }
-  if (!hasConfigBeenRead && data.hasConfigBeenRead) {
-    console.log("CONFIG HAS BEEN READ IN THIS WRITE REQUEST");
-    hasConfigBeenRead = true;
-    dataToWrite = deepClone(toWrite, true);
+
+  // stringify once and compare the strings: this replaces a deep clone plus a deep equality check
+  // over the whole config, and the result is exactly what gets written to disk
+  const stringified = JSON.stringify(toWrite);
+  if (stringified === lastWrittenJson) {
     return;
   }
 
-  if (equal(dataToWrite, toWrite)) {
-    console.log("same appConfig, don't save it");
-    return;
-  }
-
-  // if (dataToWrite) console.log("diff in config:", JSON.stringify(diff(dataToWrite, toWrite), null, 2));
-
-  dataToWrite = deepClone(toWrite, true);
+  lastWrittenConfig = toWrite;
+  lastWrittenJson = stringified;
+  pendingJson = stringified;
   requestedWriteRevision += 1;
   void processConfigWriteQueue();
 }
 
-export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProperties> {
+export async function readAppConfig(): Promise<AppConfig> {
   let data: string | undefined;
   let configPath: string | undefined;
   try {
@@ -216,5 +145,12 @@ export async function readAppConfig(): Promise<AppStateToWriteWithDeprecatedProp
 
   console.log("read app config from:", configPath);
 
-  return JSON.parse(data);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch (err) {
+    throw new Error(`App config at ${configPath} is not valid JSON: ${err}`);
+  }
+
+  return migrateAppConfig(parsed);
 }

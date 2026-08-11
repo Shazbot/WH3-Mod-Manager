@@ -44,11 +44,14 @@ describe("load-order reducer behavior", () => {
     const state = appReducer(
       {
         ...initialState,
-        alwaysEnabledMods: [{ ...always }],
+        alwaysEnabledModNames: ["always.pack"],
         currentPreset: { name: "", mods: [always, alpha, beta, absent] },
       },
       applyPresetDraftMods({
-        mods: [createMod("beta.pack", true, 0), createMod("alpha.pack", true, 1)],
+        mods: [
+          { name: "beta.pack", loadOrder: 0 },
+          { name: "alpha.pack", loadOrder: 1 },
+        ],
       }),
     );
 
@@ -102,13 +105,13 @@ describe("load-order reducer behavior", () => {
       createMod("beta.pack", true),
       createMod("gamma.pack", true),
     ];
-    const preset: Preset = {
+    const preset: SavedPreset = {
       name: "Custom",
       version: 2,
       mods: [
-        createMod("gamma.pack", true, 0),
-        createMod("alpha.pack", true, 1),
-        createMod("beta.pack", true, 2),
+        { name: "gamma.pack", loadOrder: 0 },
+        { name: "alpha.pack", loadOrder: 1 },
+        { name: "beta.pack", loadOrder: 2 },
       ],
     };
 

@@ -90,7 +90,7 @@ const OptionsDrawer = memo(() => {
   } | null>(null);
 
   const dispatch = useAppDispatch();
-  const alwaysHidden = useAppSelector((state) => state.app.hiddenMods);
+  const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
@@ -263,13 +263,14 @@ const OptionsDrawer = memo(() => {
     [enabledMods],
   );
 
+  // hidden mods are stored as names, so the label comes from the installed mod when we still have it
   const hiddenModsToOptionViewDataSelector = createSelector(
-    (state: { app: AppState }) => state.app.hiddenMods,
-    (hiddenMods) =>
-      hiddenMods.map((mod) => {
-        const humanName = mod.humanName !== "" ? mod.humanName : mod.name;
-        return { value: mod.name, label: humanName };
-      }),
+    (state: { app: AppState }) => state.app.hiddenModNames,
+    (state: { app: AppState }) => state.app.currentPreset.mods,
+    (names, mods) => {
+      const humanNamesByName = new Map(mods.map((mod) => [mod.name, mod.humanName]));
+      return names.map((name) => ({ value: name, label: humanNamesByName.get(name) || name }));
+    },
   );
   const options: OptionType[] = useSelector(hiddenModsToOptionViewDataSelector);
 
@@ -356,11 +357,10 @@ const OptionsDrawer = memo(() => {
     (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
       if (!newValue) return;
       console.log(newValue.label, newValue.value, actionMeta.action);
-      const mod = alwaysHidden.find((mod) => mod.name == newValue.value);
-      if (!mod) return;
-      if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([mod]));
+      if (!hiddenModNames.includes(newValue.value)) return;
+      if (actionMeta.action === "select-option") dispatch(toggleAlwaysHiddenMods([newValue.value]));
     },
-    [alwaysHidden],
+    [hiddenModNames, dispatch],
   );
 
   const onGameChange = useCallback(

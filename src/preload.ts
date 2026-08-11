@@ -114,7 +114,7 @@ const api = {
   getPackData: (packPath: string, table?: DBTable) => ipcRenderer.send("getPackData", packPath, table),
   getPackDataWithLocs: (packPath: string, table?: DBTable) =>
     ipcRenderer.send("getPackDataWithLocs", packPath, table),
-  saveConfig: (appState: AppState) => ipcRenderer.send("saveConfig", appState),
+  saveConfig: (payload: ConfigSavePayload) => ipcRenderer.send("saveConfig", payload),
   readMods: debounce(
     (mods: Mod[], skipCollisionCheck = true, canUseCustomizableCache = true, customizableModsHash?: string) =>
       ipcRenderer.send("readMods", mods, skipCollisionCheck, canUseCustomizableCache, customizableModsHash),
@@ -129,7 +129,7 @@ const api = {
     ipcRenderer.invoke("translateAll", translationIdsWithOptions),
   translateAllStatic: (translationIds: Record<string, string | number>) =>
     ipcRenderer.invoke("translateAllStatic", translationIds),
-  fromAppConfig: (callback: (event: Electron.IpcRendererEvent, appState: AppState) => void) =>
+  fromAppConfig: (callback: (event: Electron.IpcRendererEvent, config: ConfigForRenderer) => void) =>
     ipcRenderer.on("fromAppConfig", callback),
   failedReadingConfig: (callback: (event: Electron.IpcRendererEvent) => void) =>
     ipcRenderer.on("failedReadingConfig", callback),
@@ -228,8 +228,9 @@ const api = {
     callback: (
       event: Electron.IpcRendererEvent,
       game: SupportedGames,
-      currentPreset: Preset,
-      presets: Preset[],
+      currentPreset: SavedPreset,
+      presets: SavedPreset[],
+      modUserData: Record<string, StoredModUserData>,
     ) => void,
   ) => ipcRenderer.on("setCurrentGame", callback),
   setCurrentGameNaive: (callback: (event: Electron.IpcRendererEvent, game: SupportedGames) => void) =>

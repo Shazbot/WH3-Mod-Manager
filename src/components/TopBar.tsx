@@ -2,6 +2,7 @@ import React, { memo, useEffect, useState } from "react";
 import { useAppSelector } from "../hooks";
 import appPackage from "../../package.json";
 import { gameToGameName } from "../supportedGames";
+import { getEnabledMods } from "../modsHelpers";
 
 const managerNameAndVersion = `WH3 Mod Manager v${appPackage.version}`;
 
@@ -23,20 +24,16 @@ const TopBarFrame = memo(({ title }: { title: string }) => {
 
 const TopBarMain = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
-  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
-  const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
+  const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
   const startArgs = useAppSelector((state) => state.app.startArgs);
   const isAdmin = useAppSelector((state) => state.app.isAdmin);
   const currentGame = useAppSelector((state) => state.app.currentGame);
 
   const [translated, setTranslated] = useState<Record<string, string>>({});
 
-  const enabledMods = mods.filter(
-    (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name),
-  );
-  const hiddenAndEnabledMods = hiddenMods.filter((iterMod) =>
-    enabledMods.find((mod) => mod.name === iterMod.name),
-  );
+  const enabledMods = getEnabledMods(mods, alwaysEnabledModNames);
+  const hiddenAndEnabledMods = enabledMods.filter((mod) => hiddenModNames.includes(mod.name));
   const isHardwareAccelerationDisabled = startArgs.some((arg) => arg == "-nogpu");
 
   useEffect(() => {

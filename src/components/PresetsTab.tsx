@@ -24,6 +24,7 @@ import {
 import { isModAlwaysEnabled, withoutDataAndContentDuplicates } from "../modsHelpers";
 import { SortingType } from "../utility/modRowSorting";
 import { getModSourceId, getModSourceKind, resolveModsBySourcePriority } from "../modSources";
+import { isPresetModEnabled } from "../config/presetEntries";
 import CustomModFolderIcon from "./CustomModFolderIcon";
 
 type PresetOption = {
@@ -44,7 +45,11 @@ type MissingDependency = {
   installedModName?: string;
 };
 
-const createFallbackMod = (name: string): Mod => ({
+/**
+ * A preset can list a mod that isn't installed right now. Presets store names only, so build a
+ * stand-in for rendering that row — nothing here is ever persisted.
+ */
+const createPlaceholderMod = (name: string): Mod => ({
   name,
   humanName: name.replace(".pack", ""),
   path: name,
@@ -92,7 +97,7 @@ const PresetsTab = memo(() => {
   const presets = useAppSelector((state) => state.app.presets);
   const allMods = useAppSelector((state) => state.app.allMods);
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
-  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
+  const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const categories = useAppSelector((state) => state.app.categories);
   const appFolderPaths = useAppSelector((state) => state.app.appFolderPaths);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -136,10 +141,7 @@ const PresetsTab = memo(() => {
     return mods.filter((mod) => !dataModsThatAreInModding.includes(mod));
   }, [currentPresetMods]);
 
-  const alwaysEnabledNames = useMemo(
-    () => new Set(alwaysEnabledMods.map((mod) => mod.name)),
-    [alwaysEnabledMods],
-  );
+  const alwaysEnabledNames = useMemo(() => new Set(alwaysEnabledModNames), [alwaysEnabledModNames]);
 
   const presetsOptions = useMemo<PresetOption[]>(
     () =>
@@ -226,9 +228,8 @@ const PresetsTab = memo(() => {
       });
     };
     currentPresetMods.forEach(mergeKnownMod);
-    selectedPreset?.mods.forEach(mergeKnownMod);
     return modsByName;
-  }, [bestModByName, currentPresetMods, selectedPreset]);
+  }, [bestModByName, currentPresetMods]);
 
   const installedByName = useMemo(() => {
     const modsByName = new Map<string, Mod>();
@@ -250,11 +251,10 @@ const PresetsTab = memo(() => {
     return reqsByName;
   }, [currentPresetMods]);
 
-  const computeEnabledPresetMods = useCallback((preset: Preset) => {
-    const hasAnyDisabled = preset.mods.some((mod) => !mod.isEnabled);
-    const enabledPresetMods = hasAnyDisabled ? preset.mods.filter((mod) => mod.isEnabled) : preset.mods;
-    return enabledPresetMods;
-  }, []);
+  const computeEnabledPresetMods = useCallback(
+    (preset: SavedPreset) => preset.mods.filter(isPresetModEnabled),
+    [],
+  );
 
   const loadPresetDraft = useCallback(
     (presetName: string) => {
@@ -262,12 +262,12 @@ const PresetsTab = memo(() => {
       if (!preset) return;
 
       const enabledPresetMods = computeEnabledPresetMods(preset);
-      const nextEnabledNames = new Set<string>(enabledPresetMods.map((mod) => mod.name));
+      const nextEnabledNames = new Set<string>(enabledPresetMods.map((entry) => entry.name));
       alwaysEnabledNames.forEach((name) => nextEnabledNames.add(name));
 
       const nextLoadOrderByName = new Map<string, number>();
-      enabledPresetMods.forEach((mod) => {
-        if (mod.loadOrder != null) nextLoadOrderByName.set(mod.name, mod.loadOrder);
+      enabledPresetMods.forEach((entry) => {
+        if (entry.loadOrder != null) nextLoadOrderByName.set(entry.name, entry.loadOrder);
       });
 
       setSelectedPresetName(presetName);
@@ -340,7 +340,7 @@ const PresetsTab = memo(() => {
   const enabledDraftMods = useMemo(() => {
     const mods: Mod[] = [];
     effectiveEnabledNames.forEach((name) => {
-      const sourceMod = knownModsByName.get(name) ?? createFallbackMod(name);
+      const sourceMod = knownModsByName.get(name) ?? createPlaceholderMod(name);
       mods.push({
         ...sourceMod,
         isEnabled: true,
@@ -606,7 +606,7 @@ const PresetsTab = memo(() => {
       let modToPlace = workingMods.find((mod) => mod.name === placeModName);
       const selectedIndex = workingMods.findIndex((mod) => mod.name === placeModName);
       if (!modToPlace) {
-        const sourceMod = knownModsByName.get(placeModName) ?? createFallbackMod(placeModName);
+        const sourceMod = knownModsByName.get(placeModName) ?? createPlaceholderMod(placeModName);
         modToPlace = {
           ...sourceMod,
           isEnabled: true,
@@ -827,24 +827,16 @@ const PresetsTab = memo(() => {
     return false;
   }, [draftLoadOrderByName, selectedInPresetNames]);
 
-  const buildDraftPresetMods = useCallback(() => {
-    const previousPresetModsByName = new Map<string, Mod>();
-    currentPresetMods.forEach((mod) => previousPresetModsByName.set(mod.name, mod));
-    selectedPreset?.mods.forEach((mod) => previousPresetModsByName.set(mod.name, mod));
-
-    const modsToPersist = [...effectiveEnabledNames].map((name) => {
-      const sourceMod =
-        installedByName.get(name) ?? previousPresetModsByName.get(name) ?? createFallbackMod(name);
+  const buildDraftPresetMods = useCallback((): PresetModEntry[] => {
+    const entries = [...effectiveEnabledNames].map((name) => {
+      const entry: PresetModEntry = { name };
       const draftLoadOrder = draftLoadOrderByName.get(name);
-      return {
-        ...sourceMod,
-        isEnabled: true,
-        loadOrder: draftLoadOrder,
-      };
+      if (draftLoadOrder != null) entry.loadOrder = draftLoadOrder;
+      return entry;
     });
 
-    return sortByNameAndLoadOrder(withoutDataAndContentDuplicates(modsToPersist));
-  }, [currentPresetMods, draftLoadOrderByName, effectiveEnabledNames, installedByName, selectedPreset]);
+    return sortByNameAndLoadOrder(entries);
+  }, [draftLoadOrderByName, effectiveEnabledNames]);
 
   const onSavePreset = useCallback(() => {
     if (!selectedPresetName) return;
@@ -1070,7 +1062,7 @@ const PresetsTab = memo(() => {
             }}
           >
             {visibleEnabledDraftMods.map((mod, index) => {
-              const isAlwaysEnabled = !!isModAlwaysEnabled(mod, alwaysEnabledMods);
+              const isAlwaysEnabled = !!isModAlwaysEnabled(mod, alwaysEnabledModNames);
               const isSelected = selectedInPresetNames.has(mod.name);
               const isRecentlyAdded = recentlyAddedModNames.has(mod.name);
               const modMissingDependencies = missingDependenciesByModName.get(mod.name) ?? [];

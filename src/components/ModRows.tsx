@@ -88,8 +88,8 @@ type LoadOrderScrollSnapshot = {
 const ModRows = memo((props: ModRowsProps) => {
   const dispatch = useAppDispatch();
   const filter = useAppSelector((state) => state.app.filter);
-  const hiddenMods = useAppSelector((state) => state.app.hiddenMods);
-  const alwaysEnabledMods = useAppSelector((state) => state.app.alwaysEnabledMods);
+  const hiddenModNamesList = useAppSelector((state) => state.app.hiddenModNames);
+  const alwaysEnabledModNamesList = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const currentTab = useAppSelector((state) => state.app.currentTab);
@@ -121,10 +121,10 @@ const ModRows = memo((props: ModRowsProps) => {
   const listRef = useRef<List>(null);
 
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
-  const hiddenModNames = useMemo(() => new Set(hiddenMods.map((mod) => mod.name)), [hiddenMods]);
+  const hiddenModNames = useMemo(() => new Set(hiddenModNamesList), [hiddenModNamesList]);
   const alwaysEnabledModNames = useMemo(
-    () => new Set(alwaysEnabledMods.map((mod) => mod.name)),
-    [alwaysEnabledMods]
+    () => new Set(alwaysEnabledModNamesList),
+    [alwaysEnabledModNamesList]
   );
   const enabledMods = useMemo(
     () =>
@@ -189,7 +189,7 @@ const ModRows = memo((props: ModRowsProps) => {
     const lastScrollTop = modRowsScroll?.scrollTop;
 
     // if always enabled don't allow unchecking
-    if (isModAlwaysEnabled(mod, alwaysEnabledMods)) {
+    if (isModAlwaysEnabled(mod, alwaysEnabledModNamesList)) {
       return;
     }
 
@@ -198,7 +198,7 @@ const ModRows = memo((props: ModRowsProps) => {
     setTimeout(() => {
       if (lastScrollTop && modRowsScroll) modRowsScroll.scrollTop = lastScrollTop;
     }, 1);
-  }, [alwaysEnabledMods, dispatch]);
+  }, [alwaysEnabledModNamesList, dispatch]);
 
   const setSortingType = useCallback(
     (newSortingType: SortingType) => {

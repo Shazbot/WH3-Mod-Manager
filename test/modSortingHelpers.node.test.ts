@@ -5,7 +5,7 @@ import {
   getLoadOrderInsertionIndex,
   getModsSortedByEnabled,
   getSparseLoadOrderByModName,
-  sortAsInPreset,
+  sortModsAsInEntries,
   sortByNameAndLoadOrder,
 } from "../src/modSortingHelpers";
 
@@ -57,7 +57,7 @@ describe("getFilteredMods", () => {
     const gamma = createMod({ name: "gamma.pack" });
     const delta = createMod({ name: "delta.pack" });
 
-    expect(sortAsInPreset([alpha, beta, gamma, delta], [gamma, alpha]).map((mod) => mod.name)).toEqual([
+    expect(sortModsAsInEntries([alpha, beta, gamma, delta], [gamma, alpha]).map((mod) => mod.name)).toEqual([
       "gamma.pack",
       "alpha.pack",
       "beta.pack",
