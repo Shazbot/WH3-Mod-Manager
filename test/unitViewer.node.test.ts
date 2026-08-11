@@ -320,7 +320,8 @@ describe("Unit Viewer catalog", () => {
       land_units_onscreen_name_land_a: "Alpha",
       land_units_onscreen_name_land_b: "Beta",
       land_units_onscreen_name_land_c: "Charlie",
-      land_units_onscreen_name_land_d: "Delta",
+      land_units_onscreen_name_land_d: "{{tr:land_units_onscreen_name_shared_delta}}",
+      land_units_onscreen_name_shared_delta: "Delta",
       cultures_subcultures_name_subculture: "Culture",
     })[key]);
     expect(built.groups.map((group) => [group.name, group.units.map((unit) => unit.key)])).toEqual([
@@ -328,6 +329,7 @@ describe("Unit Viewer catalog", () => {
       ["Unassigned", ["unit_b"]],
     ]);
     expect(built.groups[0].units.map((unit) => unit.caste)).toEqual(["lord", "hero", "melee_infantry"]);
+    expect(built.units.get("unit_d")?.name).toBe("Delta");
   });
 
   it("lets later mod rows replace vanilla unit and scalar constants", () => {

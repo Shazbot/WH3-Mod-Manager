@@ -10,6 +10,7 @@ import type {
   UnitViewerUnitModel,
   UnitViewerUnitSize,
 } from "./types";
+import { resolveTextReplacements } from "../skills";
 
 export type UnitViewerTableRows = Record<string, Array<Record<string, string>>>;
 
@@ -113,11 +114,17 @@ const stripGameMarkup = (value: string) =>
     .replace(/\\n/g, "\n")
     .replace(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "")
     .replace(/\[\[\/?(?:b|i|col(?::[^\]]+)?)\]\]/gi, "")
-    .replace(/\{\{tr:[^}]+\}\}/gi, "")
     .trim();
 
-const splitAttributeText = (value: string, fallback: string) => {
-  const [name, ...description] = stripGameMarkup(value).split("||");
+const resolveGameText = (value: string, getLoc: (key: string) => string | undefined) =>
+  stripGameMarkup(resolveTextReplacements(value, getLoc) || value);
+
+const splitAttributeText = (
+  value: string,
+  fallback: string,
+  getLoc: (key: string) => string | undefined,
+) => {
+  const [name, ...description] = resolveGameText(value, getLoc).split("||");
   return { name: name || fallback, description: description.join("||") };
 };
 
@@ -260,8 +267,9 @@ const buildAbility = (
       bonuses.push({
         key: `${phaseId}:${stat}:${how}`,
         compareKey: `${stat}:${how}`,
-        label: stripGameMarkup(
+        label: resolveGameText(
           getLoc(`unit_stat_localisations_onscreen_name_${stat}`) || stat,
+          getLoc,
         ),
         valueText: presentation.valueText,
         numericValue: presentation.numericValue,
@@ -277,8 +285,9 @@ const buildAbility = (
       bonuses.push({
         key: `${phaseId}:fatigue_change_ratio`,
         compareKey: "fatigue_change_ratio",
-        label: stripGameMarkup(
+        label: resolveGameText(
           getLoc("random_localisation_strings_string_fatigue") || "Vigour per second",
+          getLoc,
         ),
         valueText: `${fatiguePerSecond > 0 ? "+" : ""}${fatiguePerSecond}%`,
         numericValue: fatiguePerSecond,
@@ -298,8 +307,9 @@ const buildAbility = (
       const effect = additionalEffects.get(effectKey);
       return {
         key: effectKey,
-        text: stripGameMarkup(
+        text: resolveGameText(
           getLoc(`unit_abilities_additional_ui_effects_localised_text_${effectKey}`) || effectKey,
+          getLoc,
         ),
         sortOrder: effect ? asNumber(effect.sort_order) : undefined,
         effectState: asString(effect?.effect_state) || undefined,
@@ -312,13 +322,17 @@ const buildAbility = (
     isSpell,
     tooltip: {
       key,
-      name: stripGameMarkup(getLoc(`unit_abilities_onscreen_name_${key}`) || key),
-      description: stripGameMarkup(getLoc(`unit_abilities_tooltip_text_${key}`) || ""),
-      sourceTypeName: stripGameMarkup(
+      name: resolveGameText(getLoc(`unit_abilities_onscreen_name_${key}`) || key, getLoc),
+      description: resolveGameText(getLoc(`unit_abilities_tooltip_text_${key}`) || "", getLoc),
+      sourceTypeName: resolveGameText(
         getLoc(`unit_ability_source_types_name_${sourceType}`) || sourceType,
+        getLoc,
       ),
       loreGroupName: "",
-      abilityTypeName: stripGameMarkup(getLoc(`unit_ability_types_onscreen_name_${type}`) || type),
+      abilityTypeName: resolveGameText(
+        getLoc(`unit_ability_types_onscreen_name_${type}`) || type,
+        getLoc,
+      ),
       overpowerOption: asString(ability?.overpower_option) || undefined,
       iconPath: normalizeIconPath(asString(ability?.icon_name)),
       stats: {
@@ -504,6 +518,7 @@ export const buildUnitViewerData = (
       const localized = splitAttributeText(
         getLoc(`unit_attributes_bullet_text_${attributeKey}`) || "",
         attributeKey,
+        getLoc,
       );
       return {
         key: attributeKey,
@@ -533,10 +548,13 @@ export const buildUnitViewerData = (
     const model: UnitViewerUnitModel = {
       key,
       landUnitKey,
-      name: stripGameMarkup(getLoc(`land_units_onscreen_name_${landUnitKey}`) || key),
+      name: resolveGameText(getLoc(`land_units_onscreen_name_${landUnitKey}`) || key, getLoc),
       caste: asString(main.caste),
       category: asString(land.category),
-      shortDescription: stripGameMarkup(getLoc(`land_units_short_description_text_${landUnitKey}`) || ""),
+      shortDescription: resolveGameText(
+        getLoc(`land_units_short_description_text_${landUnitKey}`) || "",
+        getLoc,
+      ),
       numMen: asNumber(main.num_men),
       multiplayerCost: asNumber(main.multiplayer_cost),
       recruitmentCost: asNumber(main.recruitment_cost),
@@ -569,12 +587,14 @@ export const buildUnitViewerData = (
       wardSave: asNumber(land.damage_mod_all),
       groundStatEffectGroup: asString(land.ground_stat_effect_group),
       groundStatEffects: (groundEffectsByGroup.get(asString(land.ground_stat_effect_group)) || []).map((row) => ({
-        groundType: stripGameMarkup(
+        groundType: resolveGameText(
           getLoc(`ground_types_onscreen_name_${asString(row.ground_type)}`) || asString(row.ground_type),
+          getLoc,
         ),
-        stat: stripGameMarkup(
+        stat: resolveGameText(
           getLoc(`unit_stat_localisations_onscreen_name_${asString(row.affected_stat)}`) ||
             asString(row.affected_stat),
+          getLoc,
         ),
         multiplier: asNumber(row.multiplier),
       })),
@@ -618,7 +638,7 @@ export const buildUnitViewerData = (
       name:
         key === "__unassigned"
           ? "Unassigned"
-          : stripGameMarkup(getLoc(`cultures_subcultures_name_${key}`) || key),
+          : resolveGameText(getLoc(`cultures_subcultures_name_${key}`) || key, getLoc),
       units: Array.from(unitKeys)
         .map((unitKey) => units.get(unitKey)!)
         .filter(Boolean)
