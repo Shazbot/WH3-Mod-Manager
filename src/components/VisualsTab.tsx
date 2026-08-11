@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppSelector } from "../hooks";
+import { compileVisualsUnitFilter } from "../visuals/unitFilter";
 import { Resizable } from "re-resizable";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronRight } from "@fortawesome/free-solid-svg-icons";
@@ -93,7 +94,7 @@ const VisualsTab = memo(() => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setUnitFilter(unitFilterInput.trim().toLowerCase());
+      setUnitFilter(unitFilterInput.trim());
     }, 120);
     return () => clearTimeout(timer);
   }, [unitFilterInput]);
@@ -151,14 +152,16 @@ const VisualsTab = memo(() => {
     };
   }, [enabledModsKey, isFeaturesForModdersEnabled]);
 
+  const compiledUnitFilter = useMemo(() => compileVisualsUnitFilter(unitFilter), [unitFilter]);
+
   const filteredUnits = useMemo(() => {
-    if (!unitFilter) return units;
+    if (!compiledUnitFilter.regex) return units;
     return units.filter((entry) => {
       const haystack =
-        `${entry.localizedName} ${entry.unitKey} ${entry.faction} ${entry.variantName || ""}`.toLowerCase();
-      return haystack.includes(unitFilter);
+        `${entry.localizedName} ${entry.unitKey} ${entry.faction} ${entry.variantName || ""}`;
+      return compiledUnitFilter.regex!.test(haystack);
     });
-  }, [units, unitFilter]);
+  }, [compiledUnitFilter.regex, units]);
 
   const unitComparator = useMemo(() => {
     return (first: VisualsUnitEntry, second: VisualsUnitEntry) => {
@@ -489,16 +492,19 @@ const VisualsTab = memo(() => {
       <div className="flex items-center gap-4 mb-2 text-sm bg-gray-800/60 border border-gray-700 rounded px-3 py-2">
         <div className="flex items-center gap-2">
           <label htmlFor="visuals-unit-filter" className="text-gray-300">
-            Unit filter
+            Unit filter (regex)
           </label>
           <input
             id="visuals-unit-filter"
             type="text"
             value={unitFilterInput}
             onChange={(e) => setUnitFilterInput(e.target.value)}
-            placeholder="Search unit name / key / variant"
-            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white min-w-[20rem]"
+            placeholder="Regex for unit name / key / variant"
+            aria-invalid={!!compiledUnitFilter.error}
+            title={compiledUnitFilter.error || "Case-insensitive regular expression"}
+            className={`bg-gray-700 border rounded px-2 py-1 text-white min-w-[20rem] ${compiledUnitFilter.error ? "border-red-500" : "border-gray-600"}`}
           />
+          {compiledUnitFilter.error && <span className="max-w-64 truncate text-xs text-red-300" title={compiledUnitFilter.error}>Invalid regex</span>}
         </div>
         <label className="flex items-center gap-2 text-gray-300">
           <input
