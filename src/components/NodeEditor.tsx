@@ -67,6 +67,7 @@ interface NodeExecutionResult {
   elseData?: unknown;
   multiOutputs?: Record<string, unknown>;
   error?: string;
+  warnings?: string[];
 }
 
 // Backend graph execution service
@@ -1059,14 +1060,22 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
       }
 
       // Show results in alert (in a real app, you'd show this in a better UI)
+      // A node that succeeded but warns - a rule that matched nothing, a pack it could not read -
+      // is the case that used to look like a clean run while producing no output, so its warnings
+      // go in the summary rather than only into the log.
       const summary = Array.from(result.executionResults.entries())
-        .map(
-          ([nodeId, nodeResult]) =>
-            `${nodeId}: ${
-              nodeResult.success ? "✅" : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "")
-            }`,
-        )
+        .map(([nodeId, nodeResult]) => {
+          const status = nodeResult.success
+            ? "✅"
+            : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "");
+          const warningLines = (nodeResult.warnings || []).map((warning) => `\n    ⚠️ ${warning}`).join("");
+          return `${nodeId}: ${status}${warningLines}`;
+        })
         .join("\n");
+
+      const hasWarnings = Array.from(result.executionResults.values()).some(
+        (nodeResult) => (nodeResult.warnings || []).length > 0,
+      );
 
       const statusMessage = result.success
         ? localized.nodeEditorGraphExecutionSuccessful || "✅ Graph execution successful!"
@@ -1082,7 +1091,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack }: Nod
 
       dispatch(
         addToast({
-          type: result.successCount === result.totalExecuted ? "success" : "warning",
+          type: result.successCount === result.totalExecuted && !hasWarnings ? "success" : "warning",
           messages: [
             `${statusMessage}\n\n${executionSummaryLabel} (${result.successCount}/${result.totalExecuted} ${nodesSucceededLabel}):\n${summary}\n\n${checkConsoleLabel}`,
           ],

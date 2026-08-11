@@ -7,6 +7,20 @@ export function setupRendererLogging() {
     originalConsoleLog(...args);
   };
 
+  // Warnings and errors were reaching devtools only, so they never showed up in main.log alongside
+  // the logs that led to them.
+  const originalConsoleWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    log.warn(...args);
+    originalConsoleWarn(...args);
+  };
+
+  const originalConsoleError = console.error.bind(console);
+  console.error = (...args) => {
+    log.error(...args);
+    originalConsoleError(...args);
+  };
+
   window.addEventListener("error", (e) => {
     log.error("Unhandled renderer error", {
       message: e.message,

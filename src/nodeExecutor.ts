@@ -41,6 +41,7 @@ import {
   resolveFileSourcePacks,
   sortPacksByAscendingPriority,
 } from "./nodeGraph/packPriority";
+import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import {
   getSchemaForGame,
   getReferencesForGame,
@@ -265,6 +266,20 @@ const getColumnIndexForPackedFile = (
 
   return columnIndexes.get(columnName) ?? -1;
 };
+
+/**
+ * Load-order ranks for every pack a flow can be handed: vanilla first, then the enabled mods.
+ *
+ * Both lists run lowest priority first, so vanilla packs rank below every mod and, among
+ * themselves, in manifest order - the order the game loads them, where a later pack wins. Ranking
+ * vanilla explicitly rather than leaning on the "not in the load order" fallback matters now that a
+ * flow can be given the whole base game, because two vanilla packs can carry the same file.
+ */
+const buildFlowPackPriority = (): Map<string, number> =>
+  buildPackPriority([
+    ...getVanillaPackPathsInLoadOrder(),
+    ...sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path),
+  ]);
 
 const readPackCached = async (
   packPath: string,
@@ -787,12 +802,26 @@ async function executeAllEnabledModsNode(
       });
     }
 
-    // If includeBaseGame is true, add the base game pack from data folder
+    // "Include Base Game" means the whole of the base game, not just its DB pack: a flow editing a
+    // vanilla variantmeshdefinition, script or UI file needs the pack that actually holds it, and
+    // for Warhammer III that is one of ~260 packs rather than db.pack.
     if (includeBaseGame) {
-      const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
-      if (baseGamePackName) {
-        const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
-        if (baseGameFolder) {
+      const vanillaPackPaths = getVanillaPackPathsInLoadOrder();
+      for (const vanillaPackPath of vanillaPackPaths) {
+        packFiles.push({
+          name: path.basename(vanillaPackPath),
+          path: vanillaPackPath,
+          loaded: true,
+        });
+      }
+      if (vanillaPackPaths.length > 0) {
+        console.log(`AllEnabledMods Node ${nodeId}: Added ${vanillaPackPaths.length} vanilla pack(s)`);
+      } else {
+        // No readable manifest.txt, so fall back to the one pack whose name is known up front. A
+        // flow that only reads DB tables still works; one after a vanilla asset will not find it.
+        const baseGamePackName = gameToPackWithDBTablesName[appData.currentGame];
+        const baseGameFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+        if (baseGamePackName && baseGameFolder) {
           const baseGamePackPath = path.join(baseGameFolder, baseGamePackName);
           if (fs.existsSync(baseGamePackPath)) {
             packFiles.push({
@@ -7580,7 +7609,7 @@ async function executeEditTextFileNode(
     // Two enabled mods can both carry the same file, and only the higher-priority one is what the
     // game loads - so that is the copy to edit. Editing both would put whichever happened to be read
     // last into the output, which is not necessarily the one the player is running.
-    const priority = buildPackPriority(sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path));
+    const priority = buildFlowPackPriority();
     const indexedPacks = new Map<string, Pack>();
     const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
     const sourcePackFiles = (inputData.files || []).filter(
@@ -7675,6 +7704,7 @@ async function executeEditTextFileNode(
       sourceFiles: inputData.type === "TableSelection" ? inputData.sourceFiles || [] : inputData.files || [],
       tableCount: outputTables.length,
     } as DBTablesNodeData,
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
 
@@ -7754,7 +7784,7 @@ async function executePackFileOperationsNode(
   const inputPacks = sortPacksByAscendingPriority(
     (inputData as PackFilesNodeData).files || [],
     (packFile) => packFile.path,
-    buildPackPriority(sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path)),
+    buildFlowPackPriority(),
   );
   for (const packFile of inputPacks) {
     if (!packFile.loaded) continue;
@@ -7845,5 +7875,6 @@ async function executePackFileOperationsNode(
       sourceFiles: (inputData as PackFilesNodeData).files || [],
       tableCount: outputTables.length,
     } as DBTablesNodeData,
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }

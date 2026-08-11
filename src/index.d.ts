@@ -1319,6 +1319,12 @@ declare global {
      */
     activeOutputHandles?: string[];
     error?: string;
+    /**
+     * Things that went wrong without failing the node - a rule that matched nothing, a pack that
+     * could not be read. A node that quietly produces no output looks identical to one with nothing
+     * to do, so these are reported rather than only logged.
+     */
+    warnings?: string[];
   }
 
   interface PackFilesNodeFile {

@@ -4233,7 +4233,9 @@ export const registerIpcMainListeners = (
       },
     ): Promise<{
       success: boolean;
-      executionResults: Array<[string, { success: boolean; data?: any; error?: string }]>;
+      executionResults: Array<
+        [string, { success: boolean; data?: any; error?: string; warnings?: string[] }]
+      >;
       totalExecuted: number;
       successCount: number;
       failureCount: number;

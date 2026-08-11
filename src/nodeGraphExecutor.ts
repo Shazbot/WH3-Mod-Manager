@@ -24,6 +24,7 @@ interface NodeExecutionResult {
   multiOutputs?: Record<string, any>;
   activeOutputHandles?: string[];
   error?: string;
+  warnings?: string[];
 }
 /** Connections are not guaranteed to carry an id, so identity falls back to their endpoints. */
 const getConnectionKey = (connection: SerializedConnection): string =>

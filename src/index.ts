@@ -69,6 +69,14 @@ if (!gotTheLock) {
     console.log = (...args) => {
       electronLog.info(...args);
     };
+    // Without these two a console.warn/console.error only reaches stdout, which nobody has when the
+    // app is run normally - so the very messages that explain a failure were missing from main.log.
+    console.warn = (...args) => {
+      electronLog.warn(...args);
+    };
+    console.error = (...args) => {
+      electronLog.error(...args);
+    };
   }
 
   let checkWH3RunningInterval: NodeJS.Timer;
