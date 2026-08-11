@@ -461,7 +461,14 @@ export interface TextFileEditRuleData {
   selector: string;
   /** Closing snippet for insertBetween; the value goes in the gap after `selector`. */
   selectorEnd?: string;
-  operation: "replace" | "insertBefore" | "insertAfter" | "insertBetween" | "delete" | "setAttribute";
+  operation:
+    | "replace"
+    | "regexReplace"
+    | "insertBefore"
+    | "insertAfter"
+    | "insertBetween"
+    | "delete"
+    | "setAttribute";
   attributeName?: string;
   value?: string;
   /** Leave the file alone if it already contains this, so one rule can skip the files that have it. */

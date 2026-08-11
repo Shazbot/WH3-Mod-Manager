@@ -57,6 +57,34 @@ const executeTextSave = async (executionContext?: ReturnType<typeof createFlowEx
 };
 
 describe("save changes node", () => {
+  it("treats an empty TableSelection as a successful no-op", async () => {
+    outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
+    appData.currentGame = "wh3";
+    appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+
+    const result = await executeNodeAction({
+      nodeId: "save_changes_empty",
+      nodeType: "savechanges",
+      textValue: "",
+      config: { packName: "empty-output", openInWindows: false },
+      inputData: {
+        type: "TableSelection",
+        tables: [],
+        sourceFiles: [],
+        tableCount: 0,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        type: "SaveResult",
+        savedTo: "",
+        message: "No changes to save",
+      }),
+    );
+  });
+
   it("opens a newly saved pack after a manual editor run when enabled", async () => {
     const result = await executeTextSave();
 

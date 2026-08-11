@@ -7005,8 +7005,13 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
   const updateRule = (ruleId: string, updates: Partial<TextFileEditRuleData>) =>
     setRules(rules.map((rule) => (rule.id === ruleId ? { ...rule, ...updates } : rule)));
 
-  const selectorPlaceholder = (mode: TextFileEditRuleData["mode"]) =>
-    mode === "xml"
+  const selectorPlaceholder = (
+    mode: TextFileEditRuleData["mode"],
+    operation: TextFileEditRuleData["operation"],
+  ) =>
+    operation === "regexReplace"
+      ? localized.nodeEditorEditTextFileRegexPlaceholder || "regex with (capture groups)..."
+      : mode === "xml"
       ? 'SLOT[name="head"] MESH'
       : mode === "lua"
         ? "function my_mod.setup"
@@ -7038,7 +7043,7 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
               "Edits lua scripts and xml files (variantmeshdefinition, twui) inside the input packs.\n\n" +
                 "XML rules use a CSS selector - SLOT[name=\"head\"] MESH - which targets elements structurally instead of matching raw text. Only the matched span is rewritten, so the rest of the file stays byte-identical.\n\n" +
                 "The edited file goes into the output pack at its original path, and the output pack loads after every mod, so it wins over the pack the file came from. When two enabled mods carry the same file the higher-priority one is edited - the copy the game would have loaded.\n\n" +
-                "Lua rules take \"function name\" to find a declaration, or any other text to match literally.\n\n" +
+                "Lua rules take \"function name\" to find a declaration, or any other text to match literally. Regex replace applies a JavaScript regular expression globally and supports replacement references such as $1 and $<name>.\n\n" +
                 "Insert between takes two snippets and puts the text in the gap between them, pairing each opening snippet with the first closing one after it.\n\n" +
                 "Skip if contains leaves a file alone when it already holds that text, so one rule can sweep a set of files and edit only the ones that need it.\n\n" +
                 "A rule that matches nothing is reported when you run the flow yourself. On the unattended run at game start it stays quiet unless you tick required, since a flow spanning many packs will have rules that do not apply to each one."
@@ -7103,9 +7108,13 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
               <div className="flex items-center gap-1 mb-1">
                 <select
                   value={rule.mode}
-                  onChange={(event) =>
-                    updateRule(rule.id, { mode: event.target.value as TextFileEditRuleData["mode"] })
-                  }
+                  onChange={(event) => {
+                    const mode = event.target.value as TextFileEditRuleData["mode"];
+                    updateRule(rule.id, {
+                      mode,
+                      ...(mode === "xml" && rule.operation === "regexReplace" ? { operation: "replace" } : {}),
+                    });
+                  }}
                   className="p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                 >
                   <option value="text">{localized.nodeEditorEditTextFileModeText || "plain text"}</option>
@@ -7122,6 +7131,11 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                   className="flex-1 p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded"
                 >
                   <option value="replace">{localized.nodeEditorEditTextFileReplace || "replace"}</option>
+                  {rule.mode !== "xml" && (
+                    <option value="regexReplace">
+                      {localized.nodeEditorEditTextFileRegexReplace || "regex replace"}
+                    </option>
+                  )}
                   <option value="insertBefore">
                     {localized.nodeEditorEditTextFileInsertBefore || "insert before"}
                   </option>
@@ -7146,7 +7160,7 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 type="text"
                 value={rule.selector}
                 onChange={(event) => updateRule(rule.id, { selector: event.target.value })}
-                placeholder={selectorPlaceholder(rule.mode)}
+                placeholder={selectorPlaceholder(rule.mode, rule.operation)}
                 className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
               />
 
@@ -7176,7 +7190,12 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
                 <textarea
                   value={rule.value || ""}
                   onChange={(event) => updateRule(rule.id, { value: event.target.value })}
-                  placeholder={localized.nodeEditorEditTextFileValuePlaceholder || "new text..."}
+                  placeholder={
+                    rule.operation === "regexReplace"
+                      ? localized.nodeEditorEditTextFileRegexValuePlaceholder ||
+                        "new text using $1 or $<name>..."
+                      : localized.nodeEditorEditTextFileValuePlaceholder || "new text..."
+                  }
                   rows={2}
                   className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded mb-1 font-mono"
                 />

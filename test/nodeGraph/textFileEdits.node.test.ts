@@ -201,6 +201,55 @@ describe("plain text edits", () => {
     expect(result.text).toBe("1 two 1");
     expect(result.matchCountByRuleId.r1).toBe(2);
   });
+
+  it("keeps ordinary replace literal rather than treating it as regex", () => {
+    const result = applyTextFileEdits("a.txt", "a.b axb", [
+      rule({ mode: "text", target: "a.txt", selector: "a.b", operation: "replace", value: "found" }),
+    ]);
+
+    expect(result.text).toBe("found axb");
+    expect(result.matchCountByRuleId.r1).toBe(1);
+  });
+
+  it("regex-replaces every match and expands numbered capture references", () => {
+    const result = applyTextFileEdits("a.txt", "head_12 body_34", [
+      rule({
+        mode: "text",
+        target: "a.txt",
+        selector: "([a-z]+)_(\\d+)",
+        operation: "regexReplace",
+        value: "$2:$1",
+      }),
+    ]);
+
+    expect(result.text).toBe("12:head 34:body");
+    expect(result.matchCountByRuleId.r1).toBe(2);
+  });
+
+  it("supports named captures, the whole match and a literal dollar sign", () => {
+    const result = applyTextFileEdits("a.txt", "model=emp_head", [
+      rule({
+        mode: "text",
+        target: "a.txt",
+        selector: "model=(?<model>[a-z_]+)",
+        operation: "regexReplace",
+        value: "[$&][$<model>][$$]",
+      }),
+    ]);
+
+    expect(result.text).toBe("[model=emp_head][emp_head][$]");
+  });
+
+  it("reports an invalid replacement regex without changing the file", () => {
+    const original = "unchanged";
+    const result = applyTextFileEdits("a.txt", original, [
+      rule({ mode: "text", target: "a.txt", selector: "[", operation: "regexReplace", value: "x" }),
+    ]);
+
+    expect(result.text).toBe(original);
+    expect(result.matchCountByRuleId.r1).toBe(0);
+    expect(result.errors[0]).toContain("invalid regular expression");
+  });
 });
 
 describe("several rules on one file", () => {

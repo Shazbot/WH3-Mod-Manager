@@ -473,6 +473,7 @@ export const buildUnitViewerData = (
   const units = new Map<string, UnitViewerUnitModel>();
   const iconPathsByUnit = new Map<string, string[]>();
   const subcultureToUnits = new Map<string, Set<string>>();
+  const collator = new Intl.Collator("en");
 
   for (const main of indexRows(tables.main_units_tables, "unit").values()) {
     const key = asString(main.unit);
@@ -511,21 +512,31 @@ export const buildUnitViewerData = (
           getLoc,
         ),
       )
-      .filter((ability): ability is UnitViewerAbility => !!ability);
-    const attributeRows = attributesByGroup.get(asString(land.attribute_group)) || [];
-    const unitAttributes = attributeRows.map((row) => {
-      const attributeKey = asString(row.attribute);
-      const localized = splitAttributeText(
-        getLoc(`unit_attributes_bullet_text_${attributeKey}`) || "",
-        attributeKey,
-        getLoc,
+      .filter((ability): ability is UnitViewerAbility => !!ability)
+      .sort(
+        (first, second) =>
+          collator.compare(first.tooltip.name, second.tooltip.name) ||
+          collator.compare(first.key, second.key),
       );
-      return {
-        key: attributeKey,
-        ...localized,
-        iconPath: normalizeIconPath(attributeKey)!,
-      };
-    });
+    const attributeRows = attributesByGroup.get(asString(land.attribute_group)) || [];
+    const unitAttributes = attributeRows
+      .map((row) => {
+        const attributeKey = asString(row.attribute);
+        const localized = splitAttributeText(
+          getLoc(`unit_attributes_bullet_text_${attributeKey}`) || "",
+          attributeKey,
+          getLoc,
+        );
+        return {
+          key: attributeKey,
+          ...localized,
+          iconPath: normalizeIconPath(attributeKey)!,
+        };
+      })
+      .sort(
+        (first, second) =>
+          collator.compare(first.name, second.name) || collator.compare(first.key, second.key),
+      );
     const variantRows = (unitVariants.get(landUnitKey) || []).toReversed();
     const variant = variantRows.find((row) => !asString(row.faction)) || variantRows[0];
     const unitCardName = asString(variant?.unit_card) || key;
@@ -631,7 +642,6 @@ export const buildUnitViewerData = (
     }
   }
 
-  const collator = new Intl.Collator("en");
   const groups: UnitViewerCatalogGroup[] = Array.from(subcultureToUnits.entries())
     .map(([key, unitKeys]) => ({
       key,

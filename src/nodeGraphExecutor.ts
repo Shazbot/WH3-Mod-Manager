@@ -294,12 +294,14 @@ const buildInputDataForTarget = (
     const allTables: any[] = [];
     const allSourceFiles: any[] = [];
     const changedColumnSelectionInputs: any[] = [];
+    let sawTableSelection = false;
     let textData = null;
     for (const connection of targetIncomingConnections) {
       const inputData = extractConnectionData(connection, executionResults, nodeMap);
       if (inputData?.type === "Text" && !textData) {
         textData = inputData;
       } else if (inputData?.type === "TableSelection") {
+        sawTableSelection = true;
         if (inputData.tables) {
           allTables.push(...inputData.tables);
         }
@@ -313,7 +315,10 @@ const buildInputDataForTarget = (
     if (textData) return textData;
     if (changedColumnSelectionInputs.length === 1) return changedColumnSelectionInputs[0];
     if (changedColumnSelectionInputs.length > 1) return changedColumnSelectionInputs;
-    if (allTables.length > 0) {
+    // An empty selection is meaningful: an upstream edit may have deliberately skipped every file
+    // because its guard text was already present. Preserve the selection so Save Changes can treat
+    // that outcome as a successful no-op instead of receiving null and reporting invalid input.
+    if (sawTableSelection) {
       return {
         type: "TableSelection",
         tables: allTables,

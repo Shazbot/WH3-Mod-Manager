@@ -2891,6 +2891,21 @@ async function executeSaveChangesNode(
       } as any);
     }
 
+    // Empty output is a valid outcome for guarded edits: every matching file may already contain
+    // the requested text. Do not attempt to write (or claim to have written) a nonexistent pack.
+    if (toSave.length === 0) {
+      return {
+        success: true,
+        data: {
+          type: "SaveResult",
+          savedTo: "",
+          format: "pack",
+          message: "No changes to save",
+          replacedPackPaths: [],
+        } as DBSaveChangesNodeData,
+      };
+    }
+
     const nodePath = await import("path");
     const fs = await import("fs");
 

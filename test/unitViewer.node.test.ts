@@ -289,6 +289,62 @@ describe("Unit Viewer calculations", () => {
 });
 
 describe("Unit Viewer catalog", () => {
+  it("sorts attributes and active and passive abilities by localized name", () => {
+    const tables: UnitViewerTableRows = {
+      main_units_tables: [{ unit: "unit", land_unit: "land", num_men: "1" }],
+      land_units_tables: [
+        {
+          key: "land",
+          man_entity: "entity",
+          primary_melee_weapon: "weapon",
+          attribute_group: "attributes",
+        },
+      ],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      unit_attributes_to_groups_junctions_tables: [
+        { attribute_group: "attributes", attribute: "attribute_z" },
+        { attribute_group: "attributes", attribute: "attribute_a" },
+      ],
+      land_units_to_unit_abilites_junctions_tables: [
+        { land_unit: "land", ability: "active_z" },
+        { land_unit: "land", ability: "passive_z" },
+        { land_unit: "land", ability: "active_a" },
+        { land_unit: "land", ability: "passive_a" },
+      ],
+      unit_abilities_tables: [
+        { key: "active_z" },
+        { key: "passive_z" },
+        { key: "active_a" },
+        { key: "passive_a" },
+      ],
+      unit_special_abilities_tables: [
+        { key: "passive_z", passive: "true" },
+        { key: "passive_a", passive: "true" },
+      ],
+    };
+    const built = buildUnitViewerData(tables, (key) => ({
+      unit_attributes_bullet_text_attribute_z: "Zulu Attribute",
+      unit_attributes_bullet_text_attribute_a: "Alpha Attribute",
+      unit_abilities_onscreen_name_active_z: "Zulu Active",
+      unit_abilities_onscreen_name_active_a: "Alpha Active",
+      unit_abilities_onscreen_name_passive_z: "Zulu Passive",
+      unit_abilities_onscreen_name_passive_a: "Alpha Passive",
+    })[key]);
+    const unit = built.units.get("unit")!;
+
+    expect(unit.attributes.map((attribute) => attribute.name)).toEqual([
+      "Alpha Attribute",
+      "Zulu Attribute",
+    ]);
+    expect(
+      unit.abilities.filter((ability) => !ability.passive).map((ability) => ability.tooltip.name),
+    ).toEqual(["Alpha Active", "Zulu Active"]);
+    expect(
+      unit.abilities.filter((ability) => ability.passive).map((ability) => ability.tooltip.name),
+    ).toEqual(["Alpha Passive", "Zulu Passive"]);
+  });
+
   it("deduplicates subculture roster rows and retains unassigned main units", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [

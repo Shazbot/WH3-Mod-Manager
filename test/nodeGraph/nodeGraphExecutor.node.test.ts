@@ -120,6 +120,35 @@ describe("node graph execution", () => {
     );
   });
 
+  it("passes an empty TableSelection to Save Changes as a successful no-op input", async () => {
+    const source = createNode("edit");
+    const saveNode = {
+      ...createNode("save"),
+      type: "savechanges",
+      data: { ...createNode("save").data, type: "savechanges" },
+    };
+    const emptySelection = {
+      type: "TableSelection",
+      tables: [],
+      sourceFiles: [{ path: "already-edited.pack" }],
+      tableCount: 0,
+    };
+    nodeExecutorMocks.executeNodeAction.mockImplementation(async ({ nodeId }: { nodeId: string }) => ({
+      success: true,
+      data: nodeId === "edit" ? emptySelection : { type: "SaveResult", savedTo: "" },
+    }));
+
+    const result = await executeNodeGraph({
+      nodes: [source, saveNode],
+      connections: [{ id: "edit-to-save", sourceId: "edit", targetId: "save" }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(nodeExecutorMocks.executeNodeAction).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "save", inputData: emptySelection }),
+    );
+  });
+
   describe("conditional branch gating", () => {
     /** true-branch -> trueSave, false-branch -> falseChild -> falseSave, plus a shared tail. */
     const buildBranchGraph = () => {

@@ -9,6 +9,7 @@ export type TextFileEditMode = "xml" | "lua" | "text";
 
 export type TextFileEditOperation =
   | "replace"
+  | "regexReplace"
   | "insertBefore"
   | "insertAfter"
   | "insertBetween"
@@ -274,6 +275,61 @@ const applyLiteralRule = (text: string, rule: TextFileEditRule): MatchedRange[] 
   return ranges;
 };
 
+/** Expands the JavaScript replacement references supported by String.replace. */
+const expandRegexReplacement = (replacement: string, match: RegExpExecArray, source: string): string =>
+  replacement.replace(/\$(\$|&|`|'|\d{1,2}|<[^>]*>)/g, (token, reference: string) => {
+    if (reference === "$") return "$";
+    if (reference === "&") return match[0];
+    if (reference === "`") return source.slice(0, match.index);
+    if (reference === "'") return source.slice(match.index + match[0].length);
+
+    if (reference.startsWith("<")) {
+      if (!match.groups) return token;
+      const name = reference.slice(1, -1);
+      return match.groups[name] ?? "";
+    }
+
+    const captureNumber = Number(reference);
+    if (captureNumber > 0 && captureNumber < match.length) return match[captureNumber] ?? "";
+
+    // JavaScript reads $10 as capture 1 followed by 0 when a tenth capture does not exist.
+    if (reference.length === 2) {
+      const firstCaptureNumber = Number(reference[0]);
+      if (firstCaptureNumber > 0 && firstCaptureNumber < match.length) {
+        return (match[firstCaptureNumber] ?? "") + reference[1];
+      }
+    }
+    return token;
+  });
+
+/** Replaces every regular-expression match, retaining capture references in the replacement text. */
+const applyRegexReplaceRule = (
+  text: string,
+  rule: TextFileEditRule,
+): { ranges: MatchedRange[]; error?: string } => {
+  let regex: RegExp;
+  try {
+    regex = new RegExp(rule.selector, "g");
+  } catch (error) {
+    return { ranges: [], error: `invalid regular expression '${rule.selector}': ${(error as Error).message}` };
+  }
+
+  const ranges: MatchedRange[] = [];
+  for (;;) {
+    const match = regex.exec(text);
+    if (!match) break;
+    ranges.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      replacement: expandRegexReplacement(rule.value ?? "", match, text),
+    });
+
+    // RegExp.exec does not advance after an empty match, so advance explicitly to avoid looping.
+    if (match[0].length === 0) regex.lastIndex += 1;
+  }
+  return { ranges };
+};
+
 /**
  * Applies every rule that targets this file, in order.
  *
@@ -304,6 +360,8 @@ export const applyTextFileEdits = (
     const { ranges, error } =
       rule.operation === "insertBetween"
         ? applyBetweenRule(edited, rule)
+        : rule.operation === "regexReplace"
+          ? applyRegexReplaceRule(edited, rule)
         : rule.mode === "xml"
           ? applyXmlRule(edited, rule)
           : rule.mode === "lua"

@@ -748,7 +748,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
     labelKey: "nodeEditorNodeEditTextFileLabel",
     labelFallback: "Edit Text File",
     descriptionKey: "nodeEditorNodeEditTextFileDescription",
-    descriptionFallback: "Edits lua and xml files inside packs by selector rather than by regex",
+    descriptionFallback: "Edits lua and xml files inside packs by selector, literal text or regex",
     createData: ({ label }) => ({
       label,
       type: "edittextfile",
