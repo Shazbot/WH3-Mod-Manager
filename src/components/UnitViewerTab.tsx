@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AutoSizer, List, type ListRowProps } from "react-virtualized";
 import {
@@ -35,6 +35,9 @@ const DEFAULT_CONTEXT: UnitViewerContext = {
   rank: 0,
   fatigue: "threshold_fresh",
 };
+
+const isMissingUnitViewerSessionError = (message: string) =>
+  /unit viewer session (?:expired|missing)/i.test(message);
 
 const FATIGUE_LABELS: Record<UnitViewerFatigue, string> = {
   threshold_fresh: "Fresh",
@@ -363,11 +366,14 @@ const UnitViewerTab = memo(() => {
   const [groups, setGroups] = useState<UnitViewerCatalogGroup[]>([]);
   const [constants, setConstants] = useState<UnitViewerConstants>();
   const [sessionId, setSessionId] = useState<string>();
+  const sessionIdRef = useRef<string>();
+  const [sessionRefreshToken, setSessionRefreshToken] = useState(0);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState("");
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [details, setDetails] = useState<Record<string, UnitViewerUnitModel>>({});
   const [icons, setIcons] = useState<Record<string, Record<string, string>>>({});
+  const [statIcons, setStatIcons] = useState<Record<string, string>>({});
   const [images, setImages] = useState<Record<string, string>>({});
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
   const [context, setContext] = useState<UnitViewerContext>(DEFAULT_CONTEXT);
@@ -375,9 +381,26 @@ const UnitViewerTab = memo(() => {
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
 
+  const recoverMissingSession = useCallback((failedSessionId: string) => {
+    if (sessionIdRef.current !== failedSessionId) return false;
+    sessionIdRef.current = undefined;
+    setSessionId(undefined);
+    setDetails({});
+    setIcons({});
+    setStatIcons({});
+    setImages({});
+    setLoadingKeys(new Set());
+    setError(undefined);
+    setSessionRefreshToken((token) => token + 1);
+    return true;
+  }, []);
+
   useEffect(() => {
     if (currentGame !== "wh3") return;
     let cancelled = false;
+    sessionIdRef.current = undefined;
+    setSessionId(undefined);
+    setLoadingKeys(new Set());
     setLoading(true);
     setError(undefined);
     window.api?.getUnitViewerCatalog(enabledMods).then((result) => {
@@ -387,9 +410,14 @@ const UnitViewerTab = memo(() => {
         setGroups([]);
         return;
       }
+      sessionIdRef.current = result.sessionId;
       setSessionId(result.sessionId);
       setGroups(result.groups);
       setConstants(result.constants);
+      setStatIcons(result.statIcons || {});
+      setCollapsed((current) => Object.fromEntries(
+        result.groups!.map((group) => [group.key, current[group.key] ?? true]),
+      ));
       const available = new Set(result.groups.flatMap((group) => group.units.map((unit) => unit.key)));
       setSelectedKeys((keys) => keys.filter((key) => available.has(key)));
       setDetails({});
@@ -401,27 +429,34 @@ const UnitViewerTab = memo(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [currentGame, enabledMods, signature]);
+  }, [currentGame, enabledMods, sessionRefreshToken, signature]);
 
   useEffect(() => {
     if (!sessionId) return;
+    const requestedSessionId = sessionId;
     for (const key of selectedKeys) {
       if (details[key] || loadingKeys.has(key)) continue;
       setLoadingKeys((current) => new Set(current).add(key));
-      window.api?.getUnitViewerDetails(sessionId, key).then(async (result) => {
+      window.api?.getUnitViewerDetails(requestedSessionId, key).then(async (result) => {
         if (!result?.success || !result.unit) throw new Error(result?.error || `Failed to load ${key}`);
+        if (sessionIdRef.current !== requestedSessionId) return;
         setDetails((current) => ({ ...current, [key]: result.unit! }));
         setIcons((current) => ({ ...current, [key]: result.icons || {} }));
         if (result.unit.unitCardPath) {
-          const asset = await window.api?.getUnitViewerAsset(sessionId, result.unit.unitCardPath);
+          const asset = await window.api?.getUnitViewerAsset(requestedSessionId, result.unit.unitCardPath);
+          if (asset?.error && isMissingUnitViewerSessionError(asset.error)) throw new Error(asset.error);
           if (asset?.success && asset.base64) {
             setImages((current) => ({ ...current, [key]: `data:${asset.mimeType || "image/png"};base64,${asset.base64}` }));
           }
         }
-      }).catch((reason) => setError(reason instanceof Error ? reason.message : `Failed to load ${key}`))
+      }).catch((reason) => {
+        const message = reason instanceof Error ? reason.message : `Failed to load ${key}`;
+        if (isMissingUnitViewerSessionError(message) && recoverMissingSession(requestedSessionId)) return;
+        if (sessionIdRef.current === requestedSessionId) setError(message);
+      })
         .finally(() => setLoadingKeys((current) => { const next = new Set(current); next.delete(key); return next; }));
     }
-  }, [details, loadingKeys, selectedKeys, sessionId]);
+  }, [details, loadingKeys, recoverMissingSession, selectedKeys, sessionId]);
 
   const filterLower = filter.trim().toLowerCase();
   const browserRows = useMemo(() => {
@@ -432,7 +467,7 @@ const UnitViewerTab = memo(() => {
         : group.units;
       if (filteredUnits.length === 0 && !group.name.toLowerCase().includes(filterLower)) continue;
       rows.push({ kind: "group", group: { ...group, units: filteredUnits } });
-      if (!collapsed[group.key] || filterLower) {
+      if (collapsed[group.key] === false || filterLower) {
         for (const unit of filteredUnits) rows.push({ kind: "unit", groupKey: group.key, unit });
       }
     }
@@ -477,8 +512,8 @@ const UnitViewerTab = memo(() => {
   const renderBrowserRow = ({ index, key, style }: ListRowProps) => {
     const row = browserRows[index];
     if (row.kind === "group") {
-      const isCollapsed = !!collapsed[row.group.key] && !filterLower;
-      return <button key={key} style={style} type="button" className="flex w-full items-center gap-1 border-b border-gray-800 bg-gray-900 px-2 text-left text-sm font-semibold text-amber-100 hover:bg-gray-800" onClick={() => setCollapsed((current) => ({ ...current, [row.group.key]: !current[row.group.key] }))}>
+      const isCollapsed = collapsed[row.group.key] !== false && !filterLower;
+      return <button key={key} style={style} type="button" className="flex w-full items-center gap-1 border-b border-gray-800 bg-gray-900 px-2 text-left text-sm font-semibold text-amber-100 hover:bg-gray-800" onClick={() => setCollapsed((current) => ({ ...current, [row.group.key]: current[row.group.key] === false }))}>
         {isCollapsed ? <IoChevronForward /> : <IoChevronDown />}<span className="truncate">{row.group.name}</span><span className="ml-auto text-xs text-gray-500">{row.group.units.length}</span>
       </button>;
     }
@@ -527,7 +562,7 @@ const UnitViewerTab = memo(() => {
               compareUnit={comparisonKey ? details[comparisonKey] : undefined}
               compareStats={comparisonKey ? calculated[comparisonKey] : undefined}
               statIconPaths={constants?.statIconPaths || {}}
-              icons={icons[key] || {}}
+              icons={{ ...statIcons, ...(icons[key] || {}) }}
               imageSrc={images[key]}
               onRemove={() => setSelectedKeys((keys) => keys.filter((unitKey) => unitKey !== key))}
               onMoveLeft={index > 0 ? () => moveSelectedUnit(index, -1) : undefined}

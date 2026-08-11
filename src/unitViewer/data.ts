@@ -44,6 +44,37 @@ export const UNIT_VIEWER_TABLES = [
   "_kv_morale_tables",
 ] as const;
 
+const UNIT_VIEWER_USED_STAT_ICON_KEYS = new Set([
+  "scalar_charge_speed",
+  "scalar_missile_damage_ap",
+  "scalar_missile_damage_base",
+  "scalar_missile_explosion_damage_ap",
+  "scalar_missile_explosion_damage_base",
+  "scalar_missile_range",
+  "scalar_speed",
+  "stat_ammo",
+  "stat_armour",
+  "stat_bonus_vs_infantry",
+  "stat_bonus_vs_large",
+  "stat_charge_bonus",
+  "stat_health",
+  "stat_mass",
+  "stat_melee_attack",
+  "stat_melee_damage_ap",
+  "stat_melee_damage_base",
+  "stat_melee_defence",
+  "stat_missile_block_chance",
+  "stat_missile_damage_over_time",
+  "stat_morale",
+  "stat_reloading",
+  "stat_resistance_all",
+  "stat_resistance_flame",
+  "stat_resistance_magic",
+  "stat_resistance_missile",
+  "stat_resistance_physical",
+  "stat_weapon_damage",
+]);
+
 const asString = (value: unknown) => (value == null ? "" : String(value));
 const asNumber = (value: unknown) => {
   const parsed = Number(value);
@@ -217,6 +248,7 @@ export interface BuiltUnitViewerData {
   units: Map<string, UnitViewerUnitModel>;
   constants: UnitViewerConstants;
   iconPathsByUnit: Map<string, string[]>;
+  statIcons: Record<string, string>;
 }
 
 export const buildUnitViewerData = (
@@ -279,7 +311,7 @@ export const buildUnitViewerData = (
     statIconPaths: Object.fromEntries(
       Array.from(uiUnitStats.values())
         .map((row) => [asString(row.key), normalizeUiPath(asString(row.icon))] as const)
-        .filter(([, iconPath]) => !!iconPath),
+        .filter(([key, iconPath]) => UNIT_VIEWER_USED_STAT_ICON_KEYS.has(key) && !!iconPath),
     ),
   };
   for (const row of tables.unit_fatigue_effects_tables || []) {
@@ -427,7 +459,6 @@ export const buildUnitViewerData = (
       Array.from(new Set([
         ...unitAbilities.map((ability) => ability.tooltip.iconPath),
         ...unitAttributes.map((attribute) => attribute.iconPath),
-        ...Object.values(constants.statIconPaths),
       ].filter((path): path is string => !!path))),
     );
 
@@ -476,5 +507,5 @@ export const buildUnitViewerData = (
       return collator.compare(first.name, second.name);
     });
 
-  return { groups, units, constants, iconPathsByUnit };
+  return { groups, units, constants, iconPathsByUnit, statIcons: {} };
 };

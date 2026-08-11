@@ -224,6 +224,7 @@ export interface UnitViewerCatalogResponse {
   sessionId?: string;
   groups?: UnitViewerCatalogGroup[];
   constants?: UnitViewerConstants;
+  statIcons?: Record<string, string>;
   error?: string;
 }
 

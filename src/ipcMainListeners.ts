@@ -2343,7 +2343,7 @@ export const registerIpcMainListeners = (
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 7,
+          feature: 8,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -2416,6 +2416,18 @@ export const registerIpcMainListeners = (
       for (const [key, value] of Object.entries(trie.getEntries())) locEntries.set(key, value);
     }
     const data = buildUnitViewerData(tables, (key) => locEntries.get(key));
+    const statIconSession: UnitViewerSession = {
+      sessionId: "unit-viewer-cache-build",
+      data,
+      assetPackPaths,
+      assetCache: new Map(),
+      assetCacheBytes: 0,
+      createdAt: Date.now(),
+    };
+    for (const iconPath of new Set(Object.values(data.constants.statIconPaths))) {
+      const icon = await getUnitViewerAsset(statIconSession, iconPath);
+      if (icon) data.statIcons[iconPath] = icon.base64;
+    }
     await saveUnitViewerDiskCache(app.getPath("userData"), signature, data);
     cachedUnitViewerData = { signature, data, assetPackPaths };
     return cachedUnitViewerData;
@@ -2443,6 +2455,7 @@ export const registerIpcMainListeners = (
         sessionId,
         groups: built.data.groups,
         constants: built.data.constants,
+        statIcons: built.data.statIcons,
       };
     } catch (error) {
       console.error("Failed to build Unit Viewer catalog:", error);

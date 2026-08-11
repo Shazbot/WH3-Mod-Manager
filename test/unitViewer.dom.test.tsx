@@ -71,6 +71,7 @@ describe("Unit Viewer UI", () => {
         sessionId: "session",
         groups: built.groups,
         constants: built.constants,
+        statIcons: { "ui\\skins\\default\\icon_stat_health.png": "health-icon-data" },
       }),
       getUnitViewerDetails: vi.fn().mockImplementation(async (_sessionId: string, unitKey: string) => ({
         success: true,
@@ -78,7 +79,6 @@ describe("Unit Viewer UI", () => {
         icons: unitKey === "unit_a" ? {
           "ui\\battle ui\\ability_icons\\ability_icon.png": "ability-icon-data",
           "ui\\battle ui\\ability_icons\\attribute_a.png": "attribute-icon-data",
-          "ui\\skins\\default\\icon_stat_health.png": "health-icon-data",
         } : {},
       })),
       getUnitViewerAsset: vi.fn().mockResolvedValue({ success: false }),
@@ -88,6 +88,8 @@ describe("Unit Viewer UI", () => {
   it("selects multiple units without duplicates and exposes the shared comparison controls", async () => {
     renderViewer();
     await screen.findByText("Culture");
+    expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Culture"));
     expect(screen.getByTitle("Lord")).toHaveTextContent("L");
     expect(screen.getByTitle("Hero")).toHaveTextContent("H");
     const rosterButtons = screen.getAllByRole("button").filter((button) => button.title.startsWith("unit_"));
@@ -126,6 +128,7 @@ describe("Unit Viewer UI", () => {
   it("renders attribute icons and unclipped viewport tooltips for abilities without special rows", async () => {
     renderViewer();
     await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
     fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
 
     const abilityButton = await screen.findByRole("button", { name: "Test Ability" });
@@ -140,5 +143,40 @@ describe("Unit Viewer UI", () => {
     expect(within(tooltip).getByText("Ability description")).toBeInTheDocument();
     expect(tooltip).toHaveClass("fixed");
     expect(tooltip.closest("article")).toBeNull();
+  });
+
+  it("rebuilds an expired main-process session and retries selected units", async () => {
+    const getCatalog = vi.fn()
+      .mockResolvedValueOnce({
+        success: true,
+        sessionId: "expired-session",
+        groups: built.groups,
+        constants: built.constants,
+        statIcons: {},
+      })
+      .mockResolvedValue({
+        success: true,
+        sessionId: "replacement-session",
+        groups: built.groups,
+        constants: built.constants,
+        statIcons: {},
+      });
+    const getDetails = vi.fn().mockImplementation(async (session: string, unitKey: string) =>
+      session === "expired-session"
+        ? { success: false, error: "Unit Viewer session expired" }
+        : { success: true, unit: built.units.get(unitKey), icons: {} },
+    );
+    window.api!.getUnitViewerCatalog = getCatalog;
+    window.api!.getUnitViewerDetails = getDetails;
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    await waitFor(() => expect(getCatalog).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getDetails).toHaveBeenCalledWith("replacement-session", "unit_a"));
+    expect(screen.queryByText("Unit Viewer session expired")).not.toBeInTheDocument();
+    expect(await screen.findByText("Test Attribute")).toBeInTheDocument();
   });
 });

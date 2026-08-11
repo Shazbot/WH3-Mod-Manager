@@ -34,6 +34,7 @@ describe("Unit Viewer disk cache", () => {
       melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
     };
     const data = buildUnitViewerData(tables, () => undefined);
+    data.statIcons["ui\\skins\\default\\icon_stat_health.png"] = "cached-health-icon";
 
     await saveUnitViewerDiskCache(directory, "current", data);
     clearUnitViewerMemoryCache();
@@ -41,6 +42,9 @@ describe("Unit Viewer disk cache", () => {
     const restored = await loadUnitViewerDiskCache(directory, "current");
     expect(restored?.units.get("unit")?.baseEntity.hitPoints).toBe(100);
     expect(restored?.groups[0].name).toBe("Unassigned");
+    expect(restored?.statIcons).toEqual({
+      "ui\\skins\\default\\icon_stat_health.png": "cached-health-icon",
+    });
 
     clearUnitViewerMemoryCache();
     await expect(loadUnitViewerDiskCache(directory, "stale")).resolves.toBeUndefined();
