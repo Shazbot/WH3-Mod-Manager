@@ -25,6 +25,7 @@ import Help from "./Help";
 import { gameToPackWithDBTablesName } from "../supportedGames";
 import { isWorkshopMod } from "../modSources";
 import { Modal } from "../flowbite";
+import { getConflictingStartposMods } from "../utility/startposConflicts";
 
 type OptionType = {
   value: string;
@@ -450,6 +451,7 @@ const Sidebar = memo(() => {
   const enabledMods = mods.filter(
     (iterMod) => iterMod.isEnabled || alwaysEnabledMods.find((mod) => mod.name === iterMod.name)
   );
+  const conflictingStartposMods = getConflictingStartposMods(enabledMods);
 
   const possiblyOutdatedWorkshopMods = enabledMods
     .filter((mod) => isWorkshopMod(mod) && mod.lastChanged != null)
@@ -779,6 +781,32 @@ const Sidebar = memo(() => {
         </div>
 
         <div className="absolute w-full bottom-0 z-10">
+          {conflictingStartposMods.length > 0 && (
+            <div className="text-center text-red-700 font-semibold mb-4">
+              <div className="make-tooltip-w-full">
+                <Tooltip
+                  placement="left"
+                  content={
+                    <>
+                      <p className="cursor-default">
+                        {localized.multipleStartposModsTooltip ||
+                          "Multiple enabled packs contain startpos.esf. Only one can take effect; disable all but the one you intend to use."}
+                      </p>
+                      {conflictingStartposMods.map((mod) => (
+                        <div className="mt-1" key={mod.path}>
+                          {mod.humanName || mod.name}
+                        </div>
+                      ))}
+                    </>
+                  }
+                >
+                  <span className="cursor-default">
+                    {localized.multipleStartposMods || "Multiple startpos mods enabled!"}
+                  </span>
+                </Tooltip>
+              </div>
+            </div>
+          )}
           {possiblyOutdatedWorkshopMods.length > 0 && (
             <div className="text-center text-amber-500 font-semibold mb-4">
               <button

@@ -138,6 +138,7 @@ import {
   gameToVanillaPacksData,
   supportedGameOptions,
   supportedGameOptionToStartGameOption,
+  supportsCompression,
   SupportedGames,
   supportedGames,
   SupportedLanguage,
@@ -2553,6 +2554,15 @@ export const registerIpcMainListeners = (
     console.log("MOD ADDED: " + path);
     const mod = await getMod(mainWindow, path);
     if (mod) {
+      try {
+        const packHeaderData = await readPackHeaderCached(mod.path);
+        mod.isMovie = packHeaderData.isMovie;
+        mod.hasStartpos = packHeaderData.hasStartpos;
+        mod.dependencyPacks = packHeaderData.dependencyPacks;
+        await savePackHeaderCache();
+      } catch (error) {
+        if (error instanceof Error) log(error.message);
+      }
       mainWindow?.webContents.send("addMod", mod);
       // we get onNewPackFound called by the data watcher if it's a symlink on app launch, ignore that case
       if (!fromWatcher || !mod.isSymbolicLink) {
@@ -2637,7 +2647,11 @@ export const registerIpcMainListeners = (
               return;
             }
             const packHeaderData = await readPackHeaderCached(mod.path);
-            if (packHeaderData.isMovie || packHeaderData.dependencyPacks.length > 0)
+            if (
+              packHeaderData.isMovie ||
+              packHeaderData.hasStartpos ||
+              packHeaderData.dependencyPacks.length > 0
+            )
               packHeadersToSend.push(packHeaderData);
           } catch (e) {
             if (e instanceof Error) {
@@ -3111,12 +3125,13 @@ export const registerIpcMainListeners = (
       console.error("Failed to save customizable mods cache:", err);
     }
   };
-  // Cache for pack header data (isMovie, dependencyPacks) keyed by pack path
+  // Cache for cheap pack index metadata keyed by pack path.
   // Entries are invalidated when the file's size or mtime changes
   interface PackHeaderCacheEntry {
     size: number;
     lastChangedLocal: number;
     isMovie: boolean;
+    hasStartpos: boolean;
     dependencyPacks: string[];
   }
   type PackHeaderCache = Record<string, PackHeaderCacheEntry>;
@@ -3156,16 +3171,27 @@ export const registerIpcMainListeners = (
     }
     if (stat) {
       const entry = cache[path];
-      if (entry && entry.size === stat.size && entry.lastChangedLocal === stat.mtimeMs) {
-        return { path, isMovie: entry.isMovie, dependencyPacks: entry.dependencyPacks };
+      if (
+        entry &&
+        entry.size === stat.size &&
+        entry.lastChangedLocal === stat.mtimeMs &&
+        typeof entry.hasStartpos === "boolean"
+      ) {
+        return {
+          path,
+          isMovie: entry.isMovie,
+          hasStartpos: entry.hasStartpos,
+          dependencyPacks: entry.dependencyPacks,
+        };
       }
     }
-    const data = await readPackHeader(path);
+    const data = await readPackHeader(path, supportsCompression[appData.currentGame]);
     if (stat) {
       cache[path] = {
         size: stat.size,
         lastChangedLocal: stat.mtimeMs,
         isMovie: data.isMovie,
+        hasStartpos: data.hasStartpos,
         dependencyPacks: data.dependencyPacks,
       };
     }
@@ -9100,6 +9126,7 @@ export const registerIpcMainListeners = (
   ipcMain.on("syncIsFeaturesForModdersEnabled", (event, isFeaturesForModdersEnabled: boolean) => {
     console.log("syncIsFeaturesForModdersEnabled:", isFeaturesForModdersEnabled);
     appData.isFeaturesForModdersEnabled = isFeaturesForModdersEnabled;
+    if (!isFeaturesForModdersEnabled) appData.isCompatCheckingVanillaPacks = false;
     // Send to viewer window
     windows.viewerWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);
     windows.skillsWindow?.webContents.send("setIsFeaturesForModdersEnabled", isFeaturesForModdersEnabled);

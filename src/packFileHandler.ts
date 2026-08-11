@@ -1,8 +1,36 @@
 import BinaryFile from "binary-file";
 
-export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
+const isStartposPackedFile = (packedFileName: string) => {
+  const normalizedName = packedFileName.replaceAll("/", "\\").toLowerCase();
+  return normalizedName === "startpos.esf" || normalizedName.endsWith("\\startpos.esf");
+};
+
+export const packedFileIndexHasStartpos = (
+  packedFileIndex: Buffer,
+  packFileCount: number,
+  hasCompressionFlag: boolean,
+) => {
+  let position = 0;
+  for (let index = 0; index < packFileCount; index++) {
+    const metadataSize = 4 + (hasCompressionFlag ? 1 : 0);
+    if (position + metadataSize > packedFileIndex.length) return false;
+    position += metadataSize;
+
+    const nameEnd = packedFileIndex.indexOf(0, position);
+    if (nameEnd === -1) return false;
+    if (isStartposPackedFile(packedFileIndex.toString("utf8", position, nameEnd))) return true;
+    position = nameEnd + 1;
+  }
+  return false;
+};
+
+export const readPackHeader = async (
+  path: string,
+  hasCompressionFlag = true,
+): Promise<PackHeaderData> => {
   let file: BinaryFile | undefined;
   let isMovie = false;
+  let hasStartpos = false;
   const dependencyPacks: string[] = [];
 
   try {
@@ -17,8 +45,10 @@ export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
 
     isMovie = byteMask === 4;
 
-    await file.seek(12); // skip to pack_file_index_size
+    await file.seek(12); // skip to dependency pack index size
     const pack_file_index_size = await file.readInt32();
+    const pack_file_count = await file.readInt32();
+    const packed_file_index_size = await file.readInt32();
 
     await file.seek(28); // skip to after header_buffer
 
@@ -34,11 +64,20 @@ export const readPackHeader = async (path: string): Promise<PackHeaderData> => {
         }
       }
     }
+
+    if (packed_file_index_size > 0 && pack_file_count > 0) {
+      const packedFileIndex = await file.read(packed_file_index_size);
+      hasStartpos = packedFileIndexHasStartpos(
+        packedFileIndex,
+        pack_file_count,
+        hasCompressionFlag,
+      );
+    }
   } catch (e) {
     console.log(e);
   } finally {
     if (file) file.close();
   }
 
-  return { path, isMovie, dependencyPacks };
+  return { path, isMovie, hasStartpos, dependencyPacks };
 };

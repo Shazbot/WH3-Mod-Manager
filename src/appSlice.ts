@@ -967,9 +967,13 @@ const appSlice = createSlice({
     setPackHeaderData: (state: AppState, action: PayloadAction<PackHeaderData | PackHeaderData[]>) => {
       const headers = (Array.isArray(action.payload) && action.payload) || [action.payload];
       for (const header of headers) {
-        const mod = state.currentPreset.mods.find((mod) => mod.path == header.path);
-        if (mod) {
+        const matchingMods = [
+          state.currentPreset.mods.find((mod) => mod.path == header.path),
+          state.allMods.find((mod) => mod.path == header.path),
+        ].filter((mod): mod is Mod => mod != null);
+        for (const mod of matchingMods) {
           mod.isMovie = header.isMovie;
+          mod.hasStartpos = header.hasStartpos;
           mod.dependencyPacks = header.dependencyPacks;
         }
 
@@ -1108,7 +1112,9 @@ const appSlice = createSlice({
 
       state.areThumbnailsEnabled = fromConfigAppState.areThumbnailsEnabled;
       state.isClosedOnPlay = fromConfigAppState.isClosedOnPlay;
-      state.isCompatCheckingVanillaPacks = fromConfigAppState.isCompatCheckingVanillaPacks;
+      state.isCompatCheckingVanillaPacks =
+        !!fromConfigAppState.isFeaturesForModdersEnabled &&
+        !!fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
       state.hiddenMods = fromConfigAppState.hiddenMods;
       state.alwaysEnabledMods = fromConfigAppState.alwaysEnabledMods;
@@ -1417,6 +1423,10 @@ const appSlice = createSlice({
       state.isClosedOnPlay = !state.isClosedOnPlay;
     },
     toggleIsCompatCheckingVanillaPacks: (state: AppState) => {
+      if (!state.isFeaturesForModdersEnabled) {
+        state.isCompatCheckingVanillaPacks = false;
+        return;
+      }
       state.isCompatCheckingVanillaPacks = !state.isCompatCheckingVanillaPacks;
     },
     toggleIsAuthorEnabled: (state: AppState) => {
@@ -1439,10 +1449,12 @@ const appSlice = createSlice({
     },
     toggleIsFeaturesForModdersEnabled: (state: AppState) => {
       state.isFeaturesForModdersEnabled = !state.isFeaturesForModdersEnabled;
+      if (!state.isFeaturesForModdersEnabled) state.isCompatCheckingVanillaPacks = false;
       reconcileCurrentPresetModSources(state);
     },
     setIsFeaturesForModdersEnabled: (state: AppState, action: PayloadAction<boolean>) => {
       state.isFeaturesForModdersEnabled = action.payload;
+      if (!state.isFeaturesForModdersEnabled) state.isCompatCheckingVanillaPacks = false;
       reconcileCurrentPresetModSources(state);
     },
     /** Replaces the whole list, since both toggling and reordering rewrite the order. */

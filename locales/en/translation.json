@@ -438,6 +438,8 @@
   "thumbnailTooBig": "Thumbnail size is too big!",
   "compatCheckVanillaPacksMsg": "When running Compat Check should vanilla game files be parsed as well. Leave off usually, only useful for people finding and fixing vanilla issues.",
   "compatCheckVanillaPacks": "Compat Check Vanilla Packs",
+  "multipleStartposMods": "Multiple startpos mods enabled!",
+  "multipleStartposModsTooltip": "Multiple enabled packs contain startpos.esf. Only one can take effect; disable all but the one you intend to use.",
   "troy": "Troy",
   "mainTroyFolder": "The main Troy folder that contains Troy.exe, for example C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Troy",
   "troyFolder": "Troy folder:",

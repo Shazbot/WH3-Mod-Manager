@@ -1210,22 +1210,26 @@ const OptionsDrawer = memo(() => {
               </div>
             </div>
 
-            <h6 className="mt-10">{localized.compatCheckVanillaPacks}</h6>
-            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-              {localized.compatCheckVanillaPacksMsg}
-            </p>
-            <div className="flex mt-3 w-ful items-center">
-              <input
-                className=""
-                type="checkbox"
-                id="enable-compatCheckVanillaPacksMsg"
-                checked={!!isCompatCheckingVanillaPacks}
-                onChange={() => dispatch(toggleIsCompatCheckingVanillaPacks())}
-              ></input>
-              <label className="ml-2" htmlFor="enable-compatCheckVanillaPacksMsg">
-                {localized.compatCheckVanillaPacks}
-              </label>
-            </div>
+            {isFeaturesForModdersEnabled && (
+              <>
+                <h6 className="mt-10">{localized.compatCheckVanillaPacks}</h6>
+                <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+                  {localized.compatCheckVanillaPacksMsg}
+                </p>
+                <div className="flex mt-3 w-ful items-center">
+                  <input
+                    className=""
+                    type="checkbox"
+                    id="enable-compatCheckVanillaPacksMsg"
+                    checked={!!isCompatCheckingVanillaPacks}
+                    onChange={() => dispatch(toggleIsCompatCheckingVanillaPacks())}
+                  ></input>
+                  <label className="ml-2" htmlFor="enable-compatCheckVanillaPacksMsg">
+                    {localized.compatCheckVanillaPacks}
+                  </label>
+                </div>
+              </>
+            )}
 
             <h6 className="mt-10">{localized.setFolderPaths}</h6>
             <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{localized.setFolderPathsMsg}</p>

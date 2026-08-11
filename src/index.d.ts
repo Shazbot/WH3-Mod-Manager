@@ -42,6 +42,7 @@ declare global {
     author: string;
     isDeleted: boolean;
     isMovie: boolean;
+    hasStartpos?: boolean;
     dependencyPacks?: string[];
     reqModIdToName?: [string, string][];
     size: number;
@@ -84,6 +85,7 @@ declare global {
   interface PackHeaderData {
     path: string;
     isMovie: boolean;
+    hasStartpos: boolean;
     dependencyPacks: string[];
   }
 

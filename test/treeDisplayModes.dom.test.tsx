@@ -212,6 +212,62 @@ describe("tree display DOM behavior", () => {
     expect(screen.queryByRole("button", { name: "Skill Trees" })).not.toBeInTheDocument();
   });
 
+  it("warns when multiple enabled mods contain startpos.esf", () => {
+    const firstMod = createMod({
+      name: "first-startpos.pack",
+      path: "/mods/first-startpos.pack",
+      workshopId: "1",
+      hasStartpos: true,
+    });
+    const secondMod = createMod({
+      name: "second-startpos.pack",
+      path: "/mods/second-startpos.pack",
+      workshopId: "2",
+      hasStartpos: true,
+    });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [firstMod, secondMod] },
+      allMods: [firstMod, secondMod],
+    });
+
+    expect(screen.getByText("Multiple startpos mods enabled!")).toBeInTheDocument();
+  });
+
+  it("does not warn for a single enabled startpos mod", () => {
+    const startposMod = createMod({ hasStartpos: true });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [startposMod] },
+      allMods: [startposMod],
+    });
+
+    expect(screen.queryByText("Multiple startpos mods enabled!")).not.toBeInTheDocument();
+  });
+
+  it("does not warn when one startpos mod depends on the other", () => {
+    const baseMod = createMod({
+      name: "base-startpos.pack",
+      path: "/mods/base-startpos.pack",
+      workshopId: "1",
+      hasStartpos: true,
+    });
+    const dependentMod = createMod({
+      name: "dependent-startpos.pack",
+      path: "/mods/dependent-startpos.pack",
+      workshopId: "2",
+      hasStartpos: true,
+      dependencyPacks: ["base-startpos.pack"],
+    });
+
+    renderWithState(<Sidebar />, {
+      currentPreset: { name: "", mods: [baseMod, dependentMod] },
+      allMods: [baseMod, dependentMod],
+    });
+
+    expect(screen.queryByText("Multiple startpos mods enabled!")).not.toBeInTheDocument();
+  });
+
   it("warns when an enabled Workshop mod has an older installed timestamp", () => {
     const mod = createMod({ lastChanged: 200_000 });
 
