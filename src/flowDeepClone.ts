@@ -31,20 +31,6 @@ export const MAX_DEEP_CLONE_ROWS = 200000;
 /** Stops a malformed mask sequence from probing forever. */
 export const MAX_DEEP_CLONE_IMAGE_MASKS = 64;
 
-/**
- * Which vanilla pack holds each folder reached through the schema's filename_relative_path.
- *
- * Indexing a pack parses its whole file list, and a Warhammer III install has ~260 of them, so the
- * lookup is pointed at the one that actually holds the folder. A folder with no entry here is still
- * searched in the flow's own input packs, and a miss is logged rather than guessed at.
- */
-export const deepCloneVanillaPacksByFolder: Record<string, string[]> = {
-  "ui\\units\\minspec_portholes\\": ["ui.pack"],
-  "ui\\units\\icons\\": ["ui.pack"],
-  "ui\\units\\mask\\": ["ui.pack"],
-  "variantmeshes\\variantmeshdefinitions\\": ["variants.pack"],
-};
-
 /** A file to copy verbatim under a new name alongside the cloned rows. */
 export interface DeepCloneFileCopy {
   sourceName: string;

@@ -43,6 +43,14 @@ import {
 } from "./nodeGraph/packPriority";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import {
+  VanillaPackIndex,
+  collectVanillaFilesMatching,
+  collectVanillaFilesUnderPrefix,
+  findVanillaPackContaining,
+  normalizeVanillaPackPath,
+} from "./vanillaPackIndex/format";
+import { getVanillaPackIndex } from "./vanillaPackIndex/store";
+import {
   getSchemaForGame,
   getReferencesForGame,
   getDBFieldsReferencedByForGame,
@@ -65,7 +73,6 @@ import {
   DeepClonePlan,
   LoadedTableFile,
   buildFileCopyOutputs,
-  deepCloneVanillaPacksByFolder,
   executeDeepClonePlan,
   parseFilenameRelativePaths,
 } from "./flowDeepClone";
@@ -280,6 +287,38 @@ const buildFlowPackPriority = (): Map<string, number> =>
     ...getVanillaPackPathsInLoadOrder(),
     ...sortByNameAndLoadOrder(appData.enabledMods).map((mod) => mod.path),
   ]);
+
+/**
+ * The vanilla files these rules target, each mapped to the vanilla pack that wins for it.
+ *
+ * A rule naming an exact path is a single binary search, which is the case worth being fast: it is
+ * what a flow editing one known vanilla file does. Matching on file name or on a regex cannot be
+ * narrowed by sort order, so those rules cost one walk of the whole index between them.
+ */
+const resolveVanillaTargets = (
+  vanillaIndex: VanillaPackIndex,
+  packRules: TextFileEditRule[],
+): Map<string, string> => {
+  const packNameByFileName = new Map<string, string>();
+
+  for (const rule of packRules) {
+    if (rule.targetMatch !== "path") continue;
+    const fileName = normalizeVanillaPackPath((rule.target || "").trim());
+    if (!fileName) continue;
+    const packName = findVanillaPackContaining(vanillaIndex, fileName);
+    if (packName) packNameByFileName.set(fileName, packName);
+  }
+
+  const scanRules = packRules.filter((rule) => rule.targetMatch !== "path");
+  if (scanRules.length > 0) {
+    const matched = collectVanillaFilesMatching(vanillaIndex, (fileName) =>
+      scanRules.some((rule) => matchesTextFileTarget(fileName, rule)),
+    );
+    for (const [fileName, packName] of matched) packNameByFileName.set(fileName, packName);
+  }
+
+  return packNameByFileName;
+};
 
 const readPackCached = async (
   packPath: string,
@@ -7146,28 +7185,9 @@ async function executeDeepCloneNode(
   const imageFolders = [...schemaFolders];
   const packPathByFileName = new Map<string, string>();
   if (imageFolders.length > 0) {
-    // Only the packs declared to hold this art, never the whole vanilla set: indexing a pack parses
-    // its entire file list, and all but one of them would be parsed for nothing.
-    const declaredVanillaPacks = imageFolders.flatMap(
-      (folder) => deepCloneVanillaPacksByFolder[folder] ?? [],
-    );
-    const undeclaredFolders = imageFolders.filter((folder) => !deepCloneVanillaPacksByFolder[folder]);
-    if (undeclaredFolders.length > 0) {
-      console.warn(
-        `Deep Clone Node ${nodeId}: no vanilla pack declared for ${undeclaredFolders.join(", ")}; only the flow's input packs are searched there`,
-      );
-    }
-    const vanillaPackPaths = baseGameFolder
-      ? [...new Set(declaredVanillaPacks)]
-          .map((vanillaPackName) => path.join(baseGameFolder, vanillaPackName))
-          .filter((vanillaPackPath) => fs.existsSync(vanillaPackPath))
-      : [];
-    const indexPackPaths = [
-      ...searchPacks.filter((searchPack) => searchPack.loaded).map((searchPack) => searchPack.path),
-      ...vanillaPackPaths,
-    ];
-
-    for (const indexPackPath of new Set(indexPackPaths)) {
+    // The flow's own packs are read directly, because they change under us and are few.
+    const inputPackPaths = searchPacks.filter((searchPack) => searchPack.loaded).map((searchPack) => searchPack.path);
+    for (const indexPackPath of new Set(inputPackPaths)) {
       try {
         const indexedPack = await readPackCached(indexPackPath, { skipParsingTables: true }, executionContext);
         for (const packedFile of indexedPack.packedFiles) {
@@ -7181,14 +7201,32 @@ async function executeDeepCloneNode(
         console.error(`Deep Clone Node ${nodeId}: Could not index ${indexPackPath}:`, error);
       }
     }
+
+    // Vanilla art comes from the prebuilt index, which knows every folder rather than the handful a
+    // table could once declare - so a schema path pointing somewhere new resolves without being
+    // taught about it first.
+    const vanillaIndex = baseGameFolder ? await getVanillaPackIndex() : undefined;
+    let vanillaFileCount = 0;
+    if (vanillaIndex) {
+      for (const folder of imageFolders) {
+        for (const [fileName, packName] of collectVanillaFilesUnderPrefix(vanillaIndex, folder)) {
+          if (packPathByFileName.has(fileName)) continue;
+          packPathByFileName.set(fileName, path.join(baseGameFolder as string, packName));
+          vanillaFileCount++;
+        }
+      }
+    }
+
     // Always logged, not debug-gated: silently copying no art is the failure mode that looks like
     // the feature is missing entirely.
     console.log(
-      `Deep Clone Node ${nodeId}: indexed ${packPathByFileName.size} art file(s) under ${imageFolders.join(", ")} from ${indexPackPaths.length} pack(s)`,
+      `Deep Clone Node ${nodeId}: indexed ${packPathByFileName.size} art file(s) under ${imageFolders.join(", ")} from ${inputPackPaths.length} input pack(s) and ${vanillaFileCount} vanilla file(s)`,
     );
     if (packPathByFileName.size === 0) {
       console.warn(
-        `Deep Clone Node ${nodeId}: no art indexed - checked ${vanillaPackPaths.length} declared vanilla pack(s) (${declaredVanillaPacks.join(", ")}) under ${baseGameFolder ?? "<no data folder>"}`,
+        `Deep Clone Node ${nodeId}: no art indexed under ${imageFolders.join(", ")}${
+          vanillaIndex ? "" : " and no vanilla pack index was available"
+        }`,
       );
     }
   }
@@ -7612,27 +7650,72 @@ async function executeEditTextFileNode(
     const priority = buildFlowPackPriority();
     const indexedPacks = new Map<string, Pack>();
     const targetedNamesByPack: Array<{ packPath: string; fileNames: string[] }> = [];
+    /**
+     * Per pack, the file's real name keyed by its lowercased form.
+     *
+     * Which pack wins is decided on the lowercased path, because the vanilla index stores names that
+     * way and a mod overriding a vanilla file has to be recognised as the same file rather than a
+     * second one. The pack's own spelling is what gets read back out of it.
+     */
+    const originalNamesByPack = new Map<string, Map<string, string>>();
+    const recordTargetedNames = (packPath: string, fileNames: string[]) => {
+      const originalNames = new Map<string, string>();
+      for (const fileName of fileNames) originalNames.set(fileName.toLowerCase(), fileName);
+      originalNamesByPack.set(packPath, originalNames);
+      targetedNamesByPack.push({ packPath, fileNames: [...originalNames.keys()] });
+    };
+
     const sourcePackFiles = (inputData.files || []).filter(
       (packFile) =>
         !parsed.ignoreFlowSourcePack || !isFlowSourcePack(packFile, parsed.flowSourcePack),
     );
 
+    // Reading a pack's index to find a handful of files costs the same as reading it to find all of
+    // them, and "Include Base Game" now hands this node ~260 vanilla packs. The prebuilt index
+    // answers for all of them at once; the mod packs, which change under us, are still read directly.
+    const vanillaIndex =
+      sourcePackFiles.some((packFile) => packFile.loaded && appData.allVanillaPackNames.has(packFile.name))
+        ? await getVanillaPackIndex()
+        : undefined;
+    const indexedVanillaPackPaths = new Map<string, string>();
+    if (vanillaIndex) {
+      for (const packFile of sourcePackFiles) {
+        if (packFile.loaded && appData.allVanillaPackNames.has(packFile.name)) {
+          indexedVanillaPackPaths.set(packFile.name.toLowerCase(), packFile.path);
+        }
+      }
+    }
+
     for (const packFile of sourcePackFiles) {
       if (!packFile.loaded) continue;
+      if (indexedVanillaPackPaths.has(packFile.name.toLowerCase())) continue;
       try {
         // The index first, so only the files a rule actually targets are read.
         const sourcePackPath = resolveFlowSourcePackPath(packFile.path, executionContext);
         const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true }, executionContext);
         indexedPacks.set(packFile.path, indexedPack);
-        targetedNamesByPack.push({
-          packPath: packFile.path,
-          fileNames: indexedPack.packedFiles
+        recordTargetedNames(
+          packFile.path,
+          indexedPack.packedFiles
             .map((indexedFile) => indexedFile.name)
             .filter((name) => packRules.some((rule) => matchesTextFileTarget(name, rule))),
-        });
+        );
       } catch (error) {
         console.error(`Edit Text File Node ${nodeId}: Error reading ${packFile.path}:`, error);
       }
+    }
+
+    if (vanillaIndex && indexedVanillaPackPaths.size > 0) {
+      const vanillaNamesByPackPath = new Map<string, string[]>();
+      for (const [fileName, packName] of resolveVanillaTargets(vanillaIndex, packRules)) {
+        // A pack the index knows about but this flow was not given is not ours to edit.
+        const packPath = indexedVanillaPackPaths.get(packName.toLowerCase());
+        if (!packPath) continue;
+        const names = vanillaNamesByPackPath.get(packPath);
+        if (names) names.push(fileName);
+        else vanillaNamesByPackPath.set(packPath, [fileName]);
+      }
+      for (const [packPath, fileNames] of vanillaNamesByPackPath) recordTargetedNames(packPath, fileNames);
     }
 
     const sourcePackByFileName = resolveFileSourcePacks(targetedNamesByPack, priority);
@@ -7644,16 +7727,21 @@ async function executeEditTextFileNode(
     }
 
     for (const [packPath, targetedNames] of namesByWinningPack) {
-      const indexedPack = indexedPacks.get(packPath);
-      if (!indexedPack || targetedNames.length === 0) continue;
+      if (targetedNames.length === 0) continue;
+      const originalNames = originalNamesByPack.get(packPath);
+      // The pack's own spelling, since that is what it will be asked for by name.
+      const namesToRead = targetedNames.map((name) => originalNames?.get(name) ?? name);
 
       try {
         const packWithFiles = await readPack(resolveFlowSourcePackPath(packPath, executionContext), {
           skipParsingTables: true,
-          filesToRead: targetedNames,
+          filesToRead: namesToRead,
         });
+        // A vanilla pack is served from the prebuilt index and never separately indexed, so the pack
+        // just read is what the outputs point back at.
+        const indexedPack = indexedPacks.get(packPath) ?? packWithFiles;
 
-        for (const name of targetedNames) {
+        for (const name of namesToRead) {
           const buffer = packWithFiles.packedFiles.find((candidate) => candidate.name === name)?.buffer;
           if (!buffer) continue;
 

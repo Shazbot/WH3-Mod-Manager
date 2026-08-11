@@ -140,9 +140,17 @@ export const readFrontCodedEntry = (block: FrontCodedBlock, rank: number): strin
   return value;
 };
 
-/** Every value in the block, in rank order. For building indexes, not for lookups. */
-export const readAllFrontCodedEntries = (block: FrontCodedBlock): string[] => {
-  const values: string[] = new Array(block.count);
+/**
+ * Every value in rank order, handed to `visit` one at a time.
+ *
+ * Decoding forward is the only cheap way to read the whole block, and streaming it means a caller
+ * that just wants to test each value never has to hold all of them at once - over a large block that
+ * array is the dominant cost, not the decoding.
+ */
+export const forEachFrontCodedEntry = (
+  block: FrontCodedBlock,
+  visit: (value: string, rank: number) => void,
+): void => {
   let offset = 0;
   let value = "";
 
@@ -150,10 +158,17 @@ export const readAllFrontCodedEntries = (block: FrontCodedBlock): string[] => {
     const [shared, afterShared] = readVarint(block.bytes, offset);
     const [suffixLength, afterLength] = readVarint(block.bytes, afterShared);
     value = value.slice(0, shared) + decodeSuffix(block.bytes, afterLength, afterLength + suffixLength);
-    values[rank] = value;
+    visit(value, rank);
     offset = afterLength + suffixLength;
   }
+};
 
+/** Every value in the block, in rank order. For building indexes, not for lookups. */
+export const readAllFrontCodedEntries = (block: FrontCodedBlock): string[] => {
+  const values: string[] = new Array(block.count);
+  forEachFrontCodedEntry(block, (value, rank) => {
+    values[rank] = value;
+  });
   return values;
 };
 

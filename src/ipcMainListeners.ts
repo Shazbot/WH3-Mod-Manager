@@ -682,20 +682,22 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
     if (emitToMainWindow) {
       windows.mainWindow?.webContents.send("setPacksDataRead", [newPack.path]);
     }
-    const overwrittenFileNames = newPack.packedFiles
+    const candidateFileNames = newPack.packedFiles
       .map((packedFile) => packedFile.name)
       .filter(
         (packedFileName) => packedFileName.match(matchVanillaDBFiles) || packedFileName.endsWith(".lua"),
-      )
-      .filter((packedFileName) => {
-        let foundMatchingFile = false;
-        for (const vanillaPack of appData.vanillaPacks) {
-          foundMatchingFile ||= vanillaPack.packedFiles.some(
-            (packedFileInData) => packedFileInData.name == packedFileName,
-          );
-        }
-        return foundMatchingFile;
-      });
+      );
+    // Gathered once rather than scanned per candidate: a mod adding scripts of its own finds no
+    // match for any of them, and that is the case that walked every vanilla pack in full each time.
+    const vanillaFileNames = new Set<string>();
+    if (candidateFileNames.length > 0) {
+      for (const vanillaPack of appData.vanillaPacks) {
+        for (const packedFileInData of vanillaPack.packedFiles) vanillaFileNames.add(packedFileInData.name);
+      }
+    }
+    const overwrittenFileNames = candidateFileNames.filter((packedFileName) =>
+      vanillaFileNames.has(packedFileName),
+    );
     if (overwrittenFileNames.length > 0) {
       appData.overwrittenDataPackedFiles[newPack.name] = overwrittenFileNames;
       if (emitToMainWindow) {
