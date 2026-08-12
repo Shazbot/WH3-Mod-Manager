@@ -27,10 +27,16 @@ const Main = (props: MainProps) => {
   const isNodeEditorTab = currentTab == "nodeEditor";
   const isUnitViewerTab = currentTab == "unitViewer" && currentGame === "wh3";
   const isVisualsTab = currentTab == "visuals" && isFeaturesForModdersEnabled;
+  const isSkillsTab = currentTab == "skills";
+  const isTechTreesTab = currentTab == "techTrees" && isTechnologyTreesSupported;
   // Stateful tabs stay mounted once opened so switching tabs preserves their in-memory work.
   const isNodeEditorMounted = useKeepMountedOnceActive(isNodeEditorTab);
   const isUnitViewerMounted = useKeepMountedOnceActive(isUnitViewerTab);
   const isVisualsMounted = useKeepMountedOnceActive(isVisualsTab);
+  const isSkillsMounted = useKeepMountedOnceActive(isSkillsTab);
+  const isTechTreesMounted = useKeepMountedOnceActive(isTechTreesTab);
+  const isKeptMountedTab =
+    isNodeEditorTab || isUnitViewerTab || isVisualsTab || isSkillsTab || isTechTreesTab;
 
   // Determine current pack: prioritize flow file pack, then DB table pack, then default game pack
   const currentPack =
@@ -60,10 +66,20 @@ const Main = (props: MainProps) => {
         </div>
       )}
 
-      {!isNodeEditorTab && !isUnitViewerTab && !isVisualsTab &&
-        ((currentTab == "skills" && <SkillsTab />) ||
-        (currentTab == "techTrees" && isTechnologyTreesSupported && <TechTreesTab />) ||
-        (currentTab == "presets" && <PresetsTab />) ||
+      {isSkillsMounted && (
+        <div className={isSkillsTab ? undefined : "hidden"}>
+          <SkillsTab />
+        </div>
+      )}
+
+      {isTechTreesMounted && (
+        <div className={isTechTreesTab ? undefined : "hidden"}>
+          <TechTreesTab />
+        </div>
+      )}
+
+      {!isKeptMountedTab &&
+        ((currentTab == "presets" && <PresetsTab />) ||
         (currentTab == "categories" && <Categories></Categories>) || (
           <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">
             <div className="col-span-10">

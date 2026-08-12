@@ -13,8 +13,12 @@ vi.mock("../src/components/VisualsTab", () => ({
 }));
 vi.mock("../src/components/NodeEditor", () => ({ default: () => <div /> }));
 vi.mock("../src/components/UnitViewerTab", () => ({ default: () => <div /> }));
-vi.mock("../src/components/skillsViewer/SkillsTab", () => ({ default: () => <div /> }));
-vi.mock("../src/components/techTrees/TechTreesTab", () => ({ default: () => <div /> }));
+vi.mock("../src/components/skillsViewer/SkillsTab", () => ({
+  default: () => <input aria-label="Skills state" defaultValue="" />,
+}));
+vi.mock("../src/components/techTrees/TechTreesTab", () => ({
+  default: () => <input aria-label="Tech trees state" defaultValue="" />,
+}));
 vi.mock("../src/components/PresetsTab", () => ({ default: () => <div /> }));
 vi.mock("../src/components/Categories", () => ({ default: () => <div>Categories tab</div> }));
 vi.mock("../src/components/ModRows", () => ({ default: () => <div /> }));
@@ -22,7 +26,7 @@ vi.mock("../src/components/Sidebar", () => ({ default: () => <div /> }));
 vi.mock("../src/components/ModTagPicker", () => ({ default: () => <div /> }));
 
 describe("main tab persistence", () => {
-  it("lazily mounts Visuals and keeps its state after switching away", () => {
+  const renderMain = (overrides: Partial<typeof initialState> = {}) => {
     const store = configureStore({
       reducer: { app: appReducer },
       preloadedState: {
@@ -32,28 +36,61 @@ describe("main tab persistence", () => {
           currentGame: "wh3" as const,
           isFeaturesForModdersEnabled: true,
           isDev: true,
+          // Both only exist as tabs in this mode; otherwise they open in their own window.
+          skillTreesDisplayMode: "tab" as const,
+          technologyTreesDisplayMode: "tab" as const,
+          ...overrides,
         },
       },
     });
-
     render(
       <Provider store={store}>
         <Main scrollElement={React.createRef<HTMLDivElement>()} />
       </Provider>,
     );
+    return store;
+  };
 
-    expect(screen.queryByLabelText("Visuals state")).not.toBeInTheDocument();
+  /** Opened, edited, switched away from and returned to: the same element with the same value. */
+  const expectTabKeepsItsState = (
+    store: ReturnType<typeof renderMain>,
+    tab: "visuals" | "skills" | "techTrees",
+    label: string,
+  ) => {
+    expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
 
-    act(() => store.dispatch(setCurrentTab("visuals")));
-    const visualsState = screen.getByLabelText("Visuals state") as HTMLInputElement;
-    fireEvent.change(visualsState, { target: { value: "preserved selection" } });
+    act(() => store.dispatch(setCurrentTab(tab)));
+    const tabState = screen.getByLabelText(label) as HTMLInputElement;
+    fireEvent.change(tabState, { target: { value: "preserved selection" } });
 
     act(() => store.dispatch(setCurrentTab("categories")));
-    expect(visualsState.parentElement).toHaveClass("hidden");
+    expect(tabState.parentElement).toHaveClass("hidden");
 
-    act(() => store.dispatch(setCurrentTab("visuals")));
-    expect(screen.getByLabelText("Visuals state")).toBe(visualsState);
-    expect(visualsState).toHaveValue("preserved selection");
-    expect(visualsState.parentElement).not.toHaveClass("hidden");
+    act(() => store.dispatch(setCurrentTab(tab)));
+    expect(screen.getByLabelText(label)).toBe(tabState);
+    expect(tabState).toHaveValue("preserved selection");
+    expect(tabState.parentElement).not.toHaveClass("hidden");
+  };
+
+  it("lazily mounts Visuals and keeps its state after switching away", () => {
+    expectTabKeepsItsState(renderMain(), "visuals", "Visuals state");
+  });
+
+  it("lazily mounts Skills and keeps its state after switching away", () => {
+    expectTabKeepsItsState(renderMain(), "skills", "Skills state");
+  });
+
+  it("lazily mounts Tech Trees and keeps its state after switching away", () => {
+    expectTabKeepsItsState(renderMain(), "techTrees", "Tech trees state");
+  });
+
+  it("does not mount Tech Trees for a game that has none", () => {
+    const store = renderMain({ currentGame: "wh2" as const });
+
+    act(() => store.dispatch(setCurrentTab("techTrees")));
+
+    // The tab is not available for wh2, so the request lands on mods and nothing is mounted.
+    expect(store.getState().app.currentTab).toBe("mods");
+    expect(screen.queryByLabelText("Tech trees state")).not.toBeInTheDocument();
   });
 });
