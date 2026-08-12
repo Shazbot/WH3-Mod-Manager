@@ -405,11 +405,11 @@ const RosterUnitTile = memo(({
         onClick={() => onToggle(unit.key)}
         className={`flex w-full flex-col gap-1 rounded border p-1.5 text-left transition-colors ${isSelected ? "border-amber-400 bg-amber-900/40" : "border-gray-700 bg-gray-900 hover:border-amber-500/70 hover:bg-gray-800"}`}
       >
-        <span className="relative block w-full overflow-hidden rounded bg-[#030712]" style={{ aspectRatio: "164 / 212" }}>
+        <span className="relative block w-full overflow-hidden rounded bg-gray-950" style={{ aspectRatio: "164 / 212" }}>
           {imageSrc
             ? <img src={imageSrc} className="h-full w-full object-cover" alt="" />
             : <span className="flex h-full w-full items-center justify-center text-2xl text-gray-700">?</span>}
-          <span className={`absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow ${isSelected ? "border-amber-300 bg-amber-500 text-gray-900" : "border-gray-600 bg-gray-900/90 text-gray-200"}`}>
+          <span className={`absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow ${isSelected ? "border-amber-300 bg-amber-500 text-gray-950" : "border-gray-600 bg-gray-900/90 text-gray-200"}`}>
             {isSelected ? <IoCheckmark size={15} /> : <IoAdd size={15} />}
           </span>
         </span>
@@ -747,9 +747,8 @@ const UnitViewerTab = memo(() => {
           })}</div>}
         </div>
       </main>
-      {/* The panel background is an arbitrary value because Tailwind 3.2 has no gray-950 shade. */}
       {isRosterOpen && (
-        <div role="dialog" aria-label="Unit card browser" className="absolute inset-0 z-40 flex flex-col bg-[#030712]">
+        <div role="dialog" aria-label="Unit card browser" className="absolute inset-0 z-40 flex flex-col bg-gray-950">
           <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-700 bg-gray-900 px-4 py-2">
             <h2 className="text-lg font-semibold text-amber-100">Unit Cards</h2>
             <label className="text-xs text-gray-400">Faction Group <select
