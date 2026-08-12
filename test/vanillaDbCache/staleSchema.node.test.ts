@@ -6,7 +6,7 @@ import * as zlib from "zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import appData from "../../src/appData";
-import { readPack, writePack } from "../../src/packFileSerializer";
+import { chunkSchemaIntoRows, readPack, writePack } from "../../src/packFileSerializer";
 import { DBNameToDBVersions } from "../../src/schema";
 import { parseDBTablePath, resolveParsedDBVersion } from "../../src/utility/packFileHelpers";
 import { buildVanillaDbCache } from "../../src/vanillaDbCache/build";
@@ -231,17 +231,15 @@ describe("building the vanilla db cache against a schema the game has moved past
 
     // Nothing here claims the extra column table is *right* - the schema cannot describe those bytes,
     // so nothing could be. What must hold is that the cache says whatever reading the pack says, so
-    // turning the cache on cannot change what the app shows.
+    // turning the cache on cannot change what the app shows. Compared against the app's own chunker
+    // rather than a copy of it, since that is what every consumer of a directly read pack uses.
     for (const packedFile of parsed.packedFiles) {
       const dbVersionForFile = resolveSchema(packedFile);
       if (!dbVersionForFile || !packedFile.schemaFields) continue;
-      const columnCount = dbVersionForFile.fields.length;
-      const expectedRows: unknown[][] = [];
-      for (let start = 0; start + columnCount <= packedFile.schemaFields.length; start += columnCount) {
-        expectedRows.push(packedFile.schemaFields.slice(start, start + columnCount));
-      }
 
-      expect(reader.getTableRows(packedFile.name), packedFile.name).toEqual(expectedRows);
+      expect(reader.getTableRows(packedFile.name), packedFile.name).toEqual(
+        chunkSchemaIntoRows(packedFile.schemaFields, dbVersionForFile),
+      );
     }
 
     reader.close();

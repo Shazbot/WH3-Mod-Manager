@@ -710,17 +710,34 @@ export const getDBVersion = (packFile: PackedFile) => {
   if (!dbName) return;
   return getDBVersionByTableName(packFile, dbName);
 };
+/**
+ * Cells split into rows of the schema's width.
+ *
+ * A trailing row with fewer cells than the schema has fields is dropped rather than handed back
+ * short. That row appears when the game ships a table the bundled schema no longer fits, which is
+ * the normal state of things for a day or two after a patch: readDBPackedFiles reads fields until it
+ * runs off the end of the table and keeps whatever it had collected. Every caller pairs cell `i`
+ * with `dbversion.fields[i]`, so a short row is a partial record at best and an undefined
+ * dereference at worst, and the callers that re-chunk this output would have every later row shifted
+ * by it. Dropping it also matches what the vanilla DB cache's builder stores.
+ */
 export const chunkSchemaIntoRows = (schemaFields: SchemaField[], dbversion: DBVersion) => {
-  return (
-    schemaFields?.reduce<SchemaField[][]>((resultArray, item, index) => {
-      const chunkIndex = Math.floor(index / dbversion.fields.length);
-      if (!resultArray[chunkIndex]) {
-        resultArray[chunkIndex] = []; // start a new chunk
-      }
-      resultArray[chunkIndex].push(item as SchemaField);
-      return resultArray;
-    }, []) ?? []
-  );
+  const rows: SchemaField[][] = [];
+  const columnCount = dbversion.fields.length;
+  const cellCount = schemaFields?.length ?? 0;
+  if (columnCount < 1) return rows;
+
+  for (let start = 0; start + columnCount <= cellCount; start += columnCount) {
+    rows.push(schemaFields.slice(start, start + columnCount));
+  }
+  const droppedCells = cellCount - rows.length * columnCount;
+  if (droppedCells > 0) {
+    console.log(
+      `chunkSchemaIntoRows: dropping a row with ${droppedCells} of ${columnCount} cells,` +
+        " the table did not parse fully",
+    );
+  }
+  return rows;
 };
 export const resolveKeyValue = (field_type: SCHEMA_FIELD_TYPE, fields: Field[]) => {
   if (isSchemaFieldNumber(field_type)) {
