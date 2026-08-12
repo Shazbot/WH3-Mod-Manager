@@ -44,6 +44,25 @@ const DEFAULT_CONTEXT: UnitViewerContext = {
 /** Unit cards are pulled back this many at a time so no single IPC reply blocks the renderer. */
 const ROSTER_CARD_PAGE_SIZE = 50;
 
+/** Splits a subculture's units into the roster sections the panel renders, in display order. */
+const groupUnitsIntoSections = (units: UnitViewerCatalogUnit[], unitGroups: UnitViewerUiGroup[]) => {
+  const unitsByUiGroup = new Map<string, UnitViewerCatalogUnit[]>();
+  for (const unit of units) {
+    const sectionUnits = unitsByUiGroup.get(unit.uiGroupKey) || [];
+    sectionUnits.push(unit);
+    unitsByUiGroup.set(unit.uiGroupKey, sectionUnits);
+  }
+  const knownKeys = new Set(unitGroups.map((unitGroup) => unitGroup.key));
+  return [
+    ...unitGroups,
+    ...Array.from(unitsByUiGroup.keys())
+      .filter((key) => !knownKeys.has(key))
+      .map((key) => ({ key, name: key, order: Number.MAX_SAFE_INTEGER })),
+  ]
+    .filter((unitGroup) => unitsByUiGroup.has(unitGroup.key))
+    .map((unitGroup) => ({ ...unitGroup, units: unitsByUiGroup.get(unitGroup.key)! }));
+};
+
 const isMissingUnitViewerSessionError = (message: string) =>
   /unit viewer session (?:expired|missing)/i.test(message);
 
@@ -553,66 +572,70 @@ const UnitViewerTab = memo(() => {
     [groups, rosterGroupKey],
   );
 
-  // One prewarm request reads the whole subculture with a single read per pack, then the bytes are
-  // pulled back in small pages that all hit the warmed cache. Paging keeps each reply small enough
-  // to deserialize without blocking, so cards fill in progressively and the panel stays responsive.
+  // Card paths in the order the panel lays them out, so the first page fills the top of the scroll.
+  const rosterCardPaths = useMemo(() => {
+    if (!rosterGroup) return [];
+    return Array.from(new Set(
+      groupUnitsIntoSections(rosterGroup.units, unitGroups)
+        .flatMap((section) => section.units)
+        .map((unit) => unit.unitCardPath)
+        .filter((path): path is string => !!path),
+    ));
+  }, [rosterGroup, unitGroups]);
+
+  // The first page is fetched on its own so it paints after reading only those files, rather than
+  // waiting on the whole subculture. The remainder is then read in one go and served from cache in
+  // pages small enough that no single reply blocks the renderer.
   useEffect(() => {
     if (!isRosterOpen || !sessionId || !rosterGroup) return;
     const requestedSessionId = sessionId;
     const groupKey = rosterGroup.key;
     setCardImages((current) => (current.groupKey === groupKey ? current : { groupKey, images: {} }));
-    const assetPaths = Array.from(new Set(
-      rosterGroup.units.map((unit) => unit.unitCardPath).filter((path): path is string => !!path),
-    ));
-    if (assetPaths.length === 0) return;
+    if (rosterCardPaths.length === 0) return;
     let cancelled = false;
     const isStale = () => cancelled || sessionIdRef.current !== requestedSessionId;
     const handleFailure = (error: string | undefined) => {
       if (error && isMissingUnitViewerSessionError(error)) recoverMissingSession(requestedSessionId);
     };
+    const fetchPage = async (page: string[]) => {
+      const result = await window.api?.getUnitViewerAssets(requestedSessionId, page);
+      if (isStale()) return false;
+      if (!result?.success) {
+        handleFailure(result?.error);
+        return false;
+      }
+      const pageImages = Object.entries(result.assets || {}).map(([assetPath, asset]) =>
+        [assetPath, `data:${asset.mimeType || "image/png"};base64,${asset.base64}`] as const);
+      setCardImages((current) => (current.groupKey !== groupKey
+        ? current
+        : { groupKey, images: { ...current.images, ...Object.fromEntries(pageImages) } }));
+      return true;
+    };
     setLoadingCards(true);
     void (async () => {
-      const prewarm = await window.api?.prewarmUnitViewerAssets(requestedSessionId, assetPaths);
+      if (!await fetchPage(rosterCardPaths.slice(0, ROSTER_CARD_PAGE_SIZE))) return;
+      const remaining = rosterCardPaths.slice(ROSTER_CARD_PAGE_SIZE);
+      if (remaining.length === 0) return;
+      const prewarm = await window.api?.prewarmUnitViewerAssets(requestedSessionId, remaining);
       if (isStale()) return;
       if (!prewarm?.success) return handleFailure(prewarm?.error);
-      const resolved = prewarm.resolved || [];
-      for (let start = 0; start < resolved.length; start += ROSTER_CARD_PAGE_SIZE) {
-        const page = resolved.slice(start, start + ROSTER_CARD_PAGE_SIZE);
-        const result = await window.api?.getUnitViewerAssets(requestedSessionId, page);
-        if (isStale()) return;
-        if (!result?.success) return handleFailure(result?.error);
-        const pageImages = Object.entries(result.assets || {}).map(([assetPath, asset]) =>
-          [assetPath, `data:${asset.mimeType || "image/png"};base64,${asset.base64}`] as const);
-        setCardImages((current) => (current.groupKey !== groupKey
-          ? current
-          : { groupKey, images: { ...current.images, ...Object.fromEntries(pageImages) } }));
+      const resolved = new Set(prewarm.resolved || []);
+      const pending = remaining.filter((assetPath) => resolved.has(assetPath));
+      for (let start = 0; start < pending.length; start += ROSTER_CARD_PAGE_SIZE) {
+        if (!await fetchPage(pending.slice(start, start + ROSTER_CARD_PAGE_SIZE))) return;
       }
     })().catch(() => undefined).finally(() => {
       if (!cancelled) setLoadingCards(false);
     });
     return () => { cancelled = true; };
-  }, [isRosterOpen, recoverMissingSession, rosterGroup, sessionId]);
+  }, [isRosterOpen, recoverMissingSession, rosterCardPaths, rosterGroup, sessionId]);
 
   const rosterSections = useMemo(() => {
     if (!rosterGroup) return [];
     const units = filterLower
       ? rosterGroup.units.filter((unit) => `${unit.name} ${unit.key} ${unit.category} ${unit.caste}`.toLowerCase().includes(filterLower))
       : rosterGroup.units;
-    const unitsByUiGroup = new Map<string, UnitViewerCatalogUnit[]>();
-    for (const unit of units) {
-      const sectionUnits = unitsByUiGroup.get(unit.uiGroupKey) || [];
-      sectionUnits.push(unit);
-      unitsByUiGroup.set(unit.uiGroupKey, sectionUnits);
-    }
-    const knownKeys = new Set(unitGroups.map((unitGroup) => unitGroup.key));
-    return [
-      ...unitGroups,
-      ...Array.from(unitsByUiGroup.keys())
-        .filter((key) => !knownKeys.has(key))
-        .map((key) => ({ key, name: key, order: Number.MAX_SAFE_INTEGER })),
-    ]
-      .filter((unitGroup) => unitsByUiGroup.has(unitGroup.key))
-      .map((unitGroup) => ({ ...unitGroup, units: unitsByUiGroup.get(unitGroup.key)! }));
+    return groupUnitsIntoSections(units, unitGroups);
   }, [filterLower, rosterGroup, unitGroups]);
 
   useEffect(() => {

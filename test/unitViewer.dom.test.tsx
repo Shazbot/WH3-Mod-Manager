@@ -202,13 +202,13 @@ describe("Unit Viewer UI", () => {
     await waitFor(() =>
       expect(addBeta.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,card:ui\\units\\icons\\unit_b.png"),
     );
-    // The whole subculture is prewarmed in one request so the main process reads each pack once.
-    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
-    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledWith("session", [
+    // Both units fit in the first page, so there is nothing left to prewarm.
+    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
+    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledWith("session", [
       "ui\\units\\icons\\unit_b.png",
       "ui\\units\\icons\\unit_a.png",
     ]);
-    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
+    expect(window.api?.prewarmUnitViewerAssets).not.toHaveBeenCalled();
 
     fireEvent.click(addBeta);
     expect(within(browser).getByText(/1 selected/)).toBeInTheDocument();
@@ -249,7 +249,58 @@ describe("Unit Viewer UI", () => {
     expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2);
   });
 
-  it("prewarms a large subculture once and pages the card bytes back in", async () => {
+  it("requests card art in panel order rather than roster order", async () => {
+    // Roster order sorts lords first; panel order follows the roster sections, so the commander
+    // section comes first even though its unit is not a lord.
+    const orderTables: UnitViewerTableRows = {
+      main_units_tables: [
+        { unit: "unit_lord_infantry", land_unit: "land_x", num_men: "1", caste: "lord", ui_unit_group_land: "grouping_infantry" },
+        { unit: "unit_plain_commander", land_unit: "land_y", num_men: "1", ui_unit_group_land: "grouping_commander" },
+      ],
+      land_units_tables: [
+        { key: "land_x", man_entity: "entity", primary_melee_weapon: "weapon" },
+        { key: "land_y", man_entity: "entity", primary_melee_weapon: "weapon" },
+      ],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "50" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      ui_unit_groupings_tables: [
+        { key: "grouping_commander", parent_group: "commander" },
+        { key: "grouping_infantry", parent_group: "infantry" },
+      ],
+      ui_unit_group_parents_tables: [
+        { key: "commander", order: "10" },
+        { key: "infantry", order: "20" },
+      ],
+      factions_tables: [{ key: "faction", subculture: "culture" }],
+      units_custom_battle_permissions_tables: [
+        { unit: "unit_lord_infantry", faction: "faction" },
+        { unit: "unit_plain_commander", faction: "faction" },
+      ],
+    };
+    const orderBuilt = buildUnitViewerData(orderTables, (key) => ({ cultures_subcultures_name_culture: "Culture" })[key]);
+    expect(orderBuilt.groups[0].units.map((unit) => unit.key)).toEqual(["unit_lord_infantry", "unit_plain_commander"]);
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups: orderBuilt.groups,
+      unitGroups: orderBuilt.unitGroups,
+      constants: orderBuilt.constants,
+      statIcons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
+    await screen.findByRole("dialog", { name: "Unit card browser" });
+
+    await waitFor(() => expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(window.api!.getUnitViewerAssets).mock.calls[0][1]).toEqual([
+      "ui\\units\\icons\\unit_plain_commander.png",
+      "ui\\units\\icons\\unit_lord_infantry.png",
+    ]);
+  });
+
+  it("paints the first page before reading the rest of a large subculture", async () => {
     const unitCount = 120;
     const largeTables: UnitViewerTableRows = {
       main_units_tables: Array.from({ length: unitCount }, (_, index) => ({
@@ -282,13 +333,17 @@ describe("Unit Viewer UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
     await screen.findByRole("dialog", { name: "Unit card browser" });
 
-    // One read-triggering prewarm for all 120, then 50/50/20 cache-hit pages.
+    // The first 50 are fetched on their own, then the other 70 are prewarmed in one read and
+    // served from cache as two more pages.
     await waitFor(() => expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(3));
     expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toHaveLength(unitCount);
+    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toHaveLength(unitCount - 50);
     expect(
       vi.mocked(window.api!.getUnitViewerAssets).mock.calls.map(([, paths]) => paths.length),
     ).toEqual([50, 50, 20]);
+    // The first page must land before anything is prewarmed, so it can paint straight away.
+    const firstPageOrder = vi.mocked(window.api!.getUnitViewerAssets).mock.invocationCallOrder[0];
+    expect(firstPageOrder).toBeLessThan(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.invocationCallOrder[0]);
     await waitFor(() => expect(document.querySelectorAll("img")).toHaveLength(unitCount));
   });
 
