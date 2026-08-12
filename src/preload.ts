@@ -6,6 +6,7 @@ import debounce from "just-debounce-it";
 import "electron-log/preload";
 import type {
   UnitViewerAssetResponse,
+  UnitViewerAssetsPrewarmResponse,
   UnitViewerAssetsResponse,
   UnitViewerCatalogResponse,
   UnitViewerDetailsResponse,
@@ -486,6 +487,12 @@ const api = {
     sessionId: string,
     assetPaths: string[],
   ): Promise<UnitViewerAssetsResponse> => ipcRenderer.invoke("getUnitViewerAssets", sessionId, assetPaths),
+
+  prewarmUnitViewerAssets: (
+    sessionId: string,
+    assetPaths: string[],
+  ): Promise<UnitViewerAssetsPrewarmResponse> =>
+    ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),
 
   readVariantMeshDefinition: (
     sessionId: string,

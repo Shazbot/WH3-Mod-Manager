@@ -258,3 +258,10 @@ export interface UnitViewerAssetsResponse {
   assets?: Record<string, { base64: string; mimeType: string }>;
   error?: string;
 }
+
+/** Reply to a prewarm: which requested paths exist, without the bytes. */
+export interface UnitViewerAssetsPrewarmResponse {
+  success: boolean;
+  resolved?: string[];
+  error?: string;
+}

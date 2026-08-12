@@ -41,6 +41,9 @@ const DEFAULT_CONTEXT: UnitViewerContext = {
   fatigue: "threshold_fresh",
 };
 
+/** Unit cards are pulled back this many at a time so no single IPC reply blocks the renderer. */
+const ROSTER_CARD_PAGE_SIZE = 50;
+
 const isMissingUnitViewerSessionError = (message: string) =>
   /unit viewer session (?:expired|missing)/i.test(message);
 
@@ -385,7 +388,7 @@ const RosterUnitTile = memo(({
     >
       <span className="relative block w-full overflow-hidden rounded bg-gray-950" style={{ aspectRatio: "164 / 212" }}>
         {imageSrc
-          ? <img src={imageSrc} className="h-full w-full object-cover" alt="" />
+          ? <img src={imageSrc} loading="lazy" decoding="async" className="h-full w-full object-cover" alt="" />
           : <span className="flex h-full w-full items-center justify-center text-2xl text-gray-700">?</span>}
         <span className={`absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow ${isSelected ? "border-amber-300 bg-amber-500 text-gray-950" : "border-gray-600 bg-gray-900/90 text-gray-200"}`}>
           {isSelected ? <IoCheckmark size={15} /> : <IoAdd size={15} />}
@@ -550,8 +553,9 @@ const UnitViewerTab = memo(() => {
     [groups, rosterGroupKey],
   );
 
-  // One request for the whole subculture: the main process then needs a single read per pack
-  // instead of reopening ui.pack once per unit card.
+  // One prewarm request reads the whole subculture with a single read per pack, then the bytes are
+  // pulled back in small pages that all hit the warmed cache. Paging keeps each reply small enough
+  // to deserialize without blocking, so cards fill in progressively and the panel stays responsive.
   useEffect(() => {
     if (!isRosterOpen || !sessionId || !rosterGroup) return;
     const requestedSessionId = sessionId;
@@ -562,21 +566,28 @@ const UnitViewerTab = memo(() => {
     ));
     if (assetPaths.length === 0) return;
     let cancelled = false;
+    const isStale = () => cancelled || sessionIdRef.current !== requestedSessionId;
+    const handleFailure = (error: string | undefined) => {
+      if (error && isMissingUnitViewerSessionError(error)) recoverMissingSession(requestedSessionId);
+    };
     setLoadingCards(true);
-    window.api?.getUnitViewerAssets(requestedSessionId, assetPaths).then((result) => {
-      if (cancelled || sessionIdRef.current !== requestedSessionId) return;
-      if (!result?.success) {
-        if (result?.error && isMissingUnitViewerSessionError(result.error)) recoverMissingSession(requestedSessionId);
-        return;
+    void (async () => {
+      const prewarm = await window.api?.prewarmUnitViewerAssets(requestedSessionId, assetPaths);
+      if (isStale()) return;
+      if (!prewarm?.success) return handleFailure(prewarm?.error);
+      const resolved = prewarm.resolved || [];
+      for (let start = 0; start < resolved.length; start += ROSTER_CARD_PAGE_SIZE) {
+        const page = resolved.slice(start, start + ROSTER_CARD_PAGE_SIZE);
+        const result = await window.api?.getUnitViewerAssets(requestedSessionId, page);
+        if (isStale()) return;
+        if (!result?.success) return handleFailure(result?.error);
+        const pageImages = Object.entries(result.assets || {}).map(([assetPath, asset]) =>
+          [assetPath, `data:${asset.mimeType || "image/png"};base64,${asset.base64}`] as const);
+        setCardImages((current) => (current.groupKey !== groupKey
+          ? current
+          : { groupKey, images: { ...current.images, ...Object.fromEntries(pageImages) } }));
       }
-      setCardImages({
-        groupKey,
-        images: Object.fromEntries(
-          Object.entries(result.assets || {}).map(([assetPath, asset]) =>
-            [assetPath, `data:${asset.mimeType || "image/png"};base64,${asset.base64}`]),
-        ),
-      });
-    }).catch(() => undefined).finally(() => {
+    })().catch(() => undefined).finally(() => {
       if (!cancelled) setLoadingCards(false);
     });
     return () => { cancelled = true; };

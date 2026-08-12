@@ -139,6 +139,10 @@ describe("Unit Viewer UI", () => {
           assetPaths.map((assetPath) => [assetPath, { base64: `card:${assetPath}`, mimeType: "image/png" }]),
         ),
       })),
+      prewarmUnitViewerAssets: vi.fn().mockImplementation(async (_sessionId: string, assetPaths: string[]) => ({
+        success: true,
+        resolved: assetPaths,
+      })),
     } as NonNullable<Window["api"]>;
   });
 
@@ -198,12 +202,13 @@ describe("Unit Viewer UI", () => {
     await waitFor(() =>
       expect(addBeta.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,card:ui\\units\\icons\\unit_b.png"),
     );
-    // The whole subculture must arrive in one request so the main process reads each pack once.
-    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
-    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledWith("session", [
+    // The whole subculture is prewarmed in one request so the main process reads each pack once.
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledWith("session", [
       "ui\\units\\icons\\unit_b.png",
       "ui\\units\\icons\\unit_a.png",
     ]);
+    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
 
     fireEvent.click(addBeta);
     expect(within(browser).getByText(/1 selected/)).toBeInTheDocument();
@@ -242,6 +247,49 @@ describe("Unit Viewer UI", () => {
     act(() => { store.dispatch(setMods([{ ...mod }])); });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2);
+  });
+
+  it("prewarms a large subculture once and pages the card bytes back in", async () => {
+    const unitCount = 120;
+    const largeTables: UnitViewerTableRows = {
+      main_units_tables: Array.from({ length: unitCount }, (_, index) => ({
+        unit: `unit_${index}`, land_unit: `land_${index}`, num_men: "10", ui_unit_group_land: "grouping_lord",
+      })),
+      land_units_tables: Array.from({ length: unitCount }, (_, index) => ({
+        key: `land_${index}`, man_entity: "entity", primary_melee_weapon: "weapon",
+      })),
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "50" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      ui_unit_groupings_tables: [{ key: "grouping_lord", parent_group: "commander" }],
+      ui_unit_group_parents_tables: [{ key: "commander", order: "10" }],
+      factions_tables: [{ key: "faction", subculture: "culture" }],
+      units_custom_battle_permissions_tables: Array.from({ length: unitCount }, (_, index) => ({
+        unit: `unit_${index}`, faction: "faction",
+      })),
+    };
+    const largeBuilt = buildUnitViewerData(largeTables, (key) => ({ cultures_subcultures_name_culture: "Culture" })[key]);
+    window.api!.getUnitViewerCatalog = vi.fn().mockResolvedValue({
+      success: true,
+      sessionId: "session",
+      groups: largeBuilt.groups,
+      unitGroups: largeBuilt.unitGroups,
+      constants: largeBuilt.constants,
+      statIcons: {},
+    });
+
+    renderViewer();
+    await screen.findByText("Culture");
+    fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
+    await screen.findByRole("dialog", { name: "Unit card browser" });
+
+    // One read-triggering prewarm for all 120, then 50/50/20 cache-hit pages.
+    await waitFor(() => expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(3));
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toHaveLength(unitCount);
+    expect(
+      vi.mocked(window.api!.getUnitViewerAssets).mock.calls.map(([, paths]) => paths.length),
+    ).toEqual([50, 50, 20]);
+    await waitFor(() => expect(document.querySelectorAll("img")).toHaveLength(unitCount));
   });
 
   it("closes the unit card browser on Escape", async () => {
