@@ -4799,12 +4799,14 @@ export const registerIpcMainListeners = (
       const dbPackName = gameToPackWithDBTablesName[appData.currentGame] || "db.pack";
       const dbPackPath = nodePath.join(dataFolder, dbPackName);
       const dataPackPath = nodePath.join(dataFolder, "data.pack");
+      // Lowest priority first: these are folded in order and the later pack wins, so English is the
+      // fallback and the player's own language overrides it wherever it has a string.
       const localPackNames = [] as string[];
       const currentLanguage = appData.currentLanguage || "en";
       const preferredLocPack = `local_${currentLanguage}.pack`;
-      if (appData.allVanillaPackNames.has(preferredLocPack)) localPackNames.push(preferredLocPack);
-      if (!localPackNames.includes("local_en.pack") && appData.allVanillaPackNames.has("local_en.pack")) {
-        localPackNames.push("local_en.pack");
+      if (appData.allVanillaPackNames.has("local_en.pack")) localPackNames.push("local_en.pack");
+      if (preferredLocPack !== "local_en.pack" && appData.allVanillaPackNames.has(preferredLocPack)) {
+        localPackNames.push(preferredLocPack);
       }
       const localPackPaths = localPackNames.map((packName) => nodePath.join(dataFolder, packName));
       const visualsCache = await loadVisualsDataCache();
@@ -4833,10 +4835,6 @@ export const registerIpcMainListeners = (
         const entry = getCachedContribution(packPath);
         return !hasCurrentTables(entry) || !entry?.locs;
       });
-      const missingLocalLocs = localPackPaths.filter(
-        (packPath) => !getCachedContribution(packPath)?.locs,
-      );
-
       const freshlyReadPacks = new Map<string, Pack>();
       const retainFreshPacks = (packs: Pack[]) => {
         for (const pack of packs) freshlyReadPacks.set(pack.path, pack);
@@ -4851,15 +4849,6 @@ export const registerIpcMainListeners = (
           await readModsByPath(
             missingModContributions,
             { skipParsingTables: false, readLocs: true, tablesToRead },
-            true,
-          ),
-        );
-      }
-      if (missingLocalLocs.length > 0) {
-        retainFreshPacks(
-          await readModsByPath(
-            missingLocalLocs,
-            { skipParsingTables: true, readLocs: true },
             true,
           ),
         );
@@ -4902,10 +4891,10 @@ export const registerIpcMainListeners = (
         const contribution = fillCachedContribution(packPath, { tables: true, locs: true });
         if (contribution) contributionByPath.set(packPath, contribution);
       }
-      for (const packPath of localPackPaths) {
-        const contribution = fillCachedContribution(packPath, { locs: true });
-        if (contribution) contributionByPath.set(packPath, contribution);
-      }
+      // The game's own locs come from the loc cache, so they are neither materialised into a map
+      // here nor persisted per pack in the visuals cache. Its language choice is preserved: the
+      // cache folds the same pack list in the same order, so local_en still lands last.
+      const vanillaLoc = createLocLookup(Object.values(await getVanillaLocLookup(localPackPaths)));
 
       const tablePathsInMergeOrder = [dbPackPath, ...dbPriorityMods.map((mod) => mod.path)];
       const toTableContributions = (packPaths: string[]) =>
@@ -4922,11 +4911,12 @@ export const registerIpcMainListeners = (
         toTableContributions(tablePathsInMergeOrder),
         toTableContributions([...dbPriorityMods.map((mod) => mod.path), dbPackPath]),
       );
-      const locPathsInMergeOrder = [...localPackPaths, ...dbPriorityMods.map((mod) => mod.path)];
-      const localizedNames = mergeVisualsLocContributions(
-        locPathsInMergeOrder.map((packPath) => contributionByPath.get(packPath)?.locs || []),
+      // Mods only. They were merged after the game's locs and so overrode them; checking them
+      // first and falling through to the cache keeps that precedence.
+      const modLocalizedNames = mergeVisualsLocContributions(
+        dbPriorityMods.map((mod) => contributionByPath.get(mod.path)?.locs || []),
       );
-      const getLocalizedName = (locId: string) => localizedNames.get(locId);
+      const getLocalizedName = (locId: string) => modLocalizedNames.get(locId) ?? vanillaLoc(locId);
       const resolveVisualsLoc = (locId: string) => {
         const localized = getLocalizedName(locId);
         return resolveTextReplacements(localized, getLocalizedName) || localized;

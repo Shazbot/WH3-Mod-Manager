@@ -35,7 +35,7 @@ const cacheFileName = (game: string, packSetKey: string) =>
 const getPackSetKey = (game: string, packPaths: readonly string[]) =>
   crypto
     .createHash("sha1")
-    .update(JSON.stringify([game, packPaths.map((packPath) => nodePath.resolve(packPath)).sort()]))
+    .update(JSON.stringify([game, packPaths.map((packPath) => nodePath.resolve(packPath))]))
     .digest("hex");
 
 /** One reader per identity, so repeated builds in a session share the resident key block. */
@@ -50,18 +50,20 @@ const abandoned = new Set<string>();
  *
  * Size and mtime of each pack is what a game patch moves, and it is far cheaper than hashing packs
  * that run to tens of megabytes. Paths are included so adding or removing a language pack counts.
+ *
+ * Order is part of the identity and deliberately not sorted away: the builder folds packs last-wins,
+ * so the same packs in a different order are a different cache. Sorting here would let a file built
+ * when English overrode the player's language keep being served after that order was corrected.
  */
 export const getVanillaLocCacheIdentity = (game: string, packPaths: readonly string[]): string => {
-  const parts = packPaths
-    .map((packPath) => {
-      try {
-        const stat = fs.statSync(packPath);
-        return `${nodePath.resolve(packPath)}:${stat.size}:${stat.mtimeMs}`;
-      } catch {
-        return `${nodePath.resolve(packPath)}:missing`;
-      }
-    })
-    .sort();
+  const parts = packPaths.map((packPath) => {
+    try {
+      const stat = fs.statSync(packPath);
+      return `${nodePath.resolve(packPath)}:${stat.size}:${stat.mtimeMs}`;
+    } catch {
+      return `${nodePath.resolve(packPath)}:missing`;
+    }
+  });
   return crypto.createHash("sha1").update(JSON.stringify([game, parts])).digest("hex");
 };
 

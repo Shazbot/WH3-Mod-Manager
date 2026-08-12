@@ -91,11 +91,12 @@ describe("vanilla loc cache store", () => {
 
     const base = getVanillaLocCacheIdentity("wh3", [packPath]);
     expect(getVanillaLocCacheIdentity("wh3", [packPath])).toBe(base);
-    // Order of the same packs is not a difference; adding a pack, or another game, is.
-    expect(getVanillaLocCacheIdentity("wh3", [other, packPath]))
-      .toBe(getVanillaLocCacheIdentity("wh3", [packPath, other]));
     expect(getVanillaLocCacheIdentity("wh3", [packPath, other])).not.toBe(base);
     expect(getVanillaLocCacheIdentity("wh2", [packPath])).not.toBe(base);
+    // Order counts: packs are folded last-wins, so swapping two of them is a different cache. A
+    // language pack listed after English means something different from one listed before it.
+    expect(getVanillaLocCacheIdentity("wh3", [other, packPath]))
+      .not.toBe(getVanillaLocCacheIdentity("wh3", [packPath, other]));
   });
 
   it("gives consumers with different pack sets their own file instead of evicting each other", async () => {
@@ -139,6 +140,34 @@ describe("vanilla loc cache store", () => {
     await openOrBuildVanillaLocCache(request);
 
     expect(fs.readdirSync(userDataPath).filter((entry) => entry.endsWith(".bin"))).toHaveLength(1);
+  });
+
+  it("rebuilds rather than serving a cache built with the packs in the other order", async () => {
+    const { userDataPath, packPath } = makeWorkspace();
+    const preferred = `${packPath}.de`;
+    fs.writeFileSync(preferred, "the player's language");
+
+    // English first, preferred language last: the later pack wins.
+    const build = vi.fn(() => [["key", "value"] as const]);
+    await openOrBuildVanillaLocCache({
+      userDataPath,
+      game: "wh3",
+      packPaths: [packPath, preferred],
+      readEntries: build,
+    });
+    closeVanillaLocCaches();
+
+    // The same packs the other way round must not be served the file built for the first order.
+    const rebuilt = vi.fn(() => [["key", "other order"] as const]);
+    const reader = await openOrBuildVanillaLocCache({
+      userDataPath,
+      game: "wh3",
+      packPaths: [preferred, packPath],
+      readEntries: rebuilt,
+    });
+
+    expect(rebuilt).toHaveBeenCalledTimes(1);
+    expect(reader?.get("key")).toBe("other order");
   });
 
   it("does not accept a cache file left over from a different pack set", async () => {
