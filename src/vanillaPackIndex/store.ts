@@ -16,6 +16,11 @@ import * as fs from "fs";
 import * as nodePath from "path";
 
 import appData from "../appData";
+import {
+  VanillaDbCacheBuildPhase,
+  VanillaDbCacheBuildStatus,
+  reportVanillaDbCacheBuildProgress,
+} from "../vanillaDbCache/progress";
 import { createCacheRebuildPolicy } from "../vanillaDbCache/rebuildPolicy";
 import { getVanillaPackPathsInLoadOrder } from "../utility/vanillaPackPaths";
 import {
@@ -62,6 +67,33 @@ const getIdentity = (): VanillaPackIndexIdentity | undefined => {
 
 const identityKey = (identity: VanillaPackIndexIdentity): string => JSON.stringify(identity);
 
+let nextBuildId = 0;
+
+/**
+ * Reports on the same channel and card the database cache uses; `kind` is what tells them apart.
+ *
+ * Both builds are lazy, both hold the main process for a couple of seconds, and both want to say
+ * "this is happening, it finishes once" - so they share the surface rather than each growing one.
+ */
+const reportProgress = (
+  identity: VanillaPackIndexIdentity,
+  buildId: string,
+  phase: VanillaDbCacheBuildPhase,
+  percent: number,
+  status: VanillaDbCacheBuildStatus = "running",
+  detail?: string,
+): void => {
+  reportVanillaDbCacheBuildProgress({
+    buildId,
+    game: identity.game,
+    kind: "packIndex",
+    phase,
+    percent,
+    status,
+    detail,
+  });
+};
+
 const loadFromDisk = async (
   cacheFilePath: string,
   identity: VanillaPackIndexIdentity,
@@ -94,14 +126,34 @@ const writeToDisk = async (cacheFilePath: string, index: VanillaPackIndex): Prom
   }
 };
 
-const buildFromPacks = async (identity: VanillaPackIndexIdentity): Promise<VanillaPackIndex> => {
+/**
+ * Hands the event loop a turn.
+ *
+ * `readPack` does its work in synchronous `fs.readSync` calls, so awaiting it only drains microtasks
+ * - over a 260 pack read the loop never reaches the macrotask phase at all, and every progress
+ * message queues up to be delivered after the build has already finished. Measured over a full
+ * Warhammer III install, yielding between packs costs nothing and is if anything slightly faster.
+ */
+const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+const buildFromPacks = async (
+  identity: VanillaPackIndexIdentity,
+  buildId: string,
+): Promise<VanillaPackIndex> => {
   // Imported here rather than at module load: packFileSerializer pulls in a large dependency graph,
   // and nothing needs it until an index actually has to be built.
   const { readPack } = await import("../packFileSerializer");
 
   const startTime = performance.now();
+  const packPaths = getVanillaPackPathsInLoadOrder();
   const packs: Array<{ packName: string; fileNames: string[] }> = [];
-  for (const packPath of getVanillaPackPathsInLoadOrder()) {
+
+  // Announced and yielded before the first pack, so the card is on screen for the whole build
+  // rather than appearing once the expensive part is already over.
+  reportProgress(identity, buildId, "reading-packs", 5);
+  await yieldToEventLoop();
+
+  for (const packPath of packPaths) {
     try {
       // Sorting is the single most expensive part of reading an index and the names get sorted
       // together below anyway.
@@ -115,7 +167,23 @@ const buildFromPacks = async (identity: VanillaPackIndexIdentity): Promise<Vanil
       // falls back to reading packs directly, so a gap costs speed, not correctness.
       console.warn(`vanilla pack index: could not index ${packPath}:`, error);
     }
+    // Reading the packs is most of the build and splits evenly across them, so it carries the bar
+    // from 5% to 70%.
+    reportProgress(
+      identity,
+      buildId,
+      "reading-packs",
+      5 + (packs.length / packPaths.length) * 65,
+      "running",
+      nodePath.basename(packPath),
+    );
+    await yieldToEventLoop();
   }
+
+  // Sorting and encoding ~680,000 names is one indivisible step with nothing to report inside it,
+  // so the bar is moved before it rather than during.
+  reportProgress(identity, buildId, "encoding", 70);
+  await yieldToEventLoop();
 
   const index = buildVanillaPackIndex(identity, packs);
   console.log(
@@ -147,7 +215,10 @@ export const getVanillaPackIndex = async (): Promise<VanillaPackIndex | undefine
 
   const work = (async (): Promise<VanillaPackIndex | undefined> => {
     const cacheFilePath = nodePath.join(app.getPath("userData"), cacheFileName(identity.game));
+    const buildId = `${identity.game}-packIndex-${++nextBuildId}`;
     try {
+      // Loading is a single 38ms read, so nothing is reported for it: a card that flickered up and
+      // straight back down would be noise.
       const fromDisk = await loadFromDisk(cacheFilePath, identity);
       if (fromDisk) {
         console.log(`vanilla pack index: loaded ${fromDisk.block.count} file(s) from ${cacheFilePath}`);
@@ -155,15 +226,27 @@ export const getVanillaPackIndex = async (): Promise<VanillaPackIndex | undefine
         return fromDisk;
       }
 
-      const built = await buildFromPacks(identity);
+      const built = await buildFromPacks(identity, buildId);
       indexByGame.set(key, built);
+
+      reportProgress(identity, buildId, "writing", 90);
       await writeToDisk(cacheFilePath, built);
+
+      reportProgress(identity, buildId, "complete", 100, "complete");
       return built;
     } catch (error) {
       const { abandoned } = rebuildPolicy.recordRecoverableFailure(key);
       console.error(
         `vanilla pack index: build failed${abandoned ? " and will not be retried this session" : ""}:`,
         error,
+      );
+      reportProgress(
+        identity,
+        buildId,
+        "complete",
+        0,
+        "failed",
+        error instanceof Error ? error.message : "File index build failed",
       );
       return undefined;
     } finally {

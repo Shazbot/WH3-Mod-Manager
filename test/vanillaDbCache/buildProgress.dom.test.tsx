@@ -76,6 +76,89 @@ describe("vanilla DB cache build progress", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "5");
   });
 
+  it("describes a pack index build in its own terms", () => {
+    render(<VanillaDbCacheBuildProgressCard />);
+
+    send({
+      buildId: "wh3-packIndex-1",
+      game: "wh3",
+      kind: "packIndex",
+      phase: "reading-packs",
+      status: "running",
+      percent: 40,
+      detail: "variants.pack",
+    });
+
+    const card = screen.getByRole("status");
+    expect(card).toHaveTextContent("Preparing vanilla file index");
+    expect(card).toHaveTextContent("Reading vanilla pack file lists");
+    expect(card).toHaveTextContent("variants.pack");
+    expect(card).not.toHaveTextContent("database");
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("says what a failed pack index build falls back to", () => {
+    render(<VanillaDbCacheBuildProgressCard />);
+
+    send({
+      buildId: "wh3-packIndex-1",
+      game: "wh3",
+      kind: "packIndex",
+      phase: "complete",
+      status: "failed",
+      percent: 0,
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "File index unavailable; reading packs directly",
+    );
+  });
+
+  it("lets a pack index build take the card from a finished database build", () => {
+    render(<VanillaDbCacheBuildProgressCard />);
+
+    send({
+      buildId: "wh3-1",
+      game: "wh3",
+      phase: "complete",
+      status: "complete",
+      percent: 100,
+    });
+    send({
+      buildId: "wh3-packIndex-1",
+      game: "wh3",
+      kind: "packIndex",
+      phase: "reading-packs",
+      status: "running",
+      percent: 5,
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Preparing vanilla file index");
+  });
+
+  it("keeps showing a running build when its own later reports arrive", () => {
+    render(<VanillaDbCacheBuildProgressCard />);
+
+    send({
+      buildId: "wh3-packIndex-1",
+      game: "wh3",
+      kind: "packIndex",
+      phase: "reading-packs",
+      status: "running",
+      percent: 5,
+    });
+    send({
+      buildId: "wh3-packIndex-1",
+      game: "wh3",
+      kind: "packIndex",
+      phase: "reading-packs",
+      status: "running",
+      percent: 60,
+    });
+
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "60");
+  });
+
   it("removes its IPC listener when unmounted", () => {
     const view = render(<VanillaDbCacheBuildProgressCard />);
 

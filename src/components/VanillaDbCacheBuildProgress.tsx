@@ -1,30 +1,76 @@
-import React, { memo, useEffect, useState } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 
-const phaseLabels: Record<VanillaDbCacheBuildProgress["phase"], string> = {
-  indexing: "Reading the database pack index",
-  parsing: "Parsing vanilla database tables",
-  encoding: "Encoding the database cache",
-  validating: "Validating the new cache",
-  writing: "Saving the cache",
-  complete: "Database cache ready",
-};
+type BuildKind = NonNullable<VanillaDbCacheBuildProgress["kind"]>;
+type BuildPhase = VanillaDbCacheBuildProgress["phase"];
+type BuildStatus = VanillaDbCacheBuildProgress["status"];
 
-const terminalLabels: Partial<Record<VanillaDbCacheBuildProgress["status"], string>> = {
-  failed: "Database cache unavailable; using the game pack",
-  cancelled: "Database cache build cancelled",
+interface BuildCopy {
+  title: string;
+  progressLabel: string;
+  runningNote: string;
+  phases: Record<BuildPhase, string>;
+  terminal: Partial<Record<BuildStatus, string>>;
+}
+
+/**
+ * Both caches report on one channel and share this card, so every string it shows is chosen by the
+ * report's `kind`. Reports without one are from the database cache, which had the channel first.
+ */
+const copyByKind: Record<BuildKind, BuildCopy> = {
+  db: {
+    title: "Preparing vanilla database cache",
+    progressLabel: "Vanilla database cache build progress",
+    runningNote:
+      "This is created once after a game or schema update. The current operation will continue when it is ready.",
+    phases: {
+      indexing: "Reading the database pack index",
+      parsing: "Parsing vanilla database tables",
+      encoding: "Encoding the database cache",
+      validating: "Validating the new cache",
+      writing: "Saving the cache",
+      complete: "Database cache ready",
+      "reading-packs": "Reading vanilla pack file lists",
+    },
+    terminal: {
+      failed: "Database cache unavailable; using the game pack",
+      cancelled: "Database cache build cancelled",
+    },
+  },
+  packIndex: {
+    title: "Preparing vanilla file index",
+    progressLabel: "Vanilla file index build progress",
+    runningNote:
+      "This is created once after a game update. The current operation will continue when it is ready.",
+    phases: {
+      indexing: "Reading the vanilla pack list",
+      parsing: "Reading vanilla pack file lists",
+      encoding: "Sorting and encoding vanilla file names",
+      validating: "Validating the new index",
+      writing: "Saving the file index",
+      complete: "File index ready",
+      "reading-packs": "Reading vanilla pack file lists",
+    },
+    terminal: {
+      failed: "File index unavailable; reading packs directly",
+      cancelled: "File index build cancelled",
+    },
+  },
 };
 
 export const VanillaDbCacheBuildProgressCard = memo(() => {
   const [progress, setProgress] = useState<VanillaDbCacheBuildProgress>();
+  // Which builds have already been seen, so the first report of a build can be told from the rest.
+  const seenBuildIds = useRef(new Set<string>());
 
   useEffect(() => {
     const unsubscribe = window.api?.onVanillaDbCacheBuildProgress((_event, nextProgress) => {
+      const isFirstReport = !seenBuildIds.current.has(nextProgress.buildId);
+      seenBuildIds.current.add(nextProgress.buildId);
       setProgress((currentProgress) => {
-        // A new indexing event supersedes a late terminal event from a build invalidated by a game
-        // switch. Otherwise only the build currently shown is allowed to update the card.
-        if (nextProgress.status === "running" && nextProgress.phase === "indexing") {
-          return nextProgress;
-        }
+        // A build that has just started takes the card, so a build invalidated by a game switch
+        // cannot hold it with a late terminal event. Otherwise only the build currently shown may
+        // update the card.
+        if (isFirstReport && nextProgress.status === "running") return nextProgress;
         if (!currentProgress || currentProgress.buildId === nextProgress.buildId) {
           return nextProgress;
         }
@@ -47,9 +93,10 @@ export const VanillaDbCacheBuildProgressCard = memo(() => {
 
   if (!progress) return null;
 
+  const copy = copyByKind[progress.kind ?? "db"];
   const isRunning = progress.status === "running";
   const percent = Math.min(100, Math.max(0, Math.round(progress.percent)));
-  const label = terminalLabels[progress.status] ?? phaseLabels[progress.phase];
+  const label = copy.terminal[progress.status] ?? copy.phases[progress.phase];
 
   return (
     <div
@@ -66,13 +113,13 @@ export const VanillaDbCacheBuildProgressCard = memo(() => {
           />
         )}
         <div className="min-w-0 flex-1">
-          <p className="font-medium">Preparing vanilla database cache</p>
+          <p className="font-medium">{copy.title}</p>
           <p className="text-sm text-gray-300">{label}</p>
         </div>
         <span className="text-sm tabular-nums text-gray-300">{percent}%</span>
       </div>
       <div
-        aria-label="Vanilla database cache build progress"
+        aria-label={copy.progressLabel}
         aria-valuemax={100}
         aria-valuemin={0}
         aria-valuenow={percent}
@@ -86,12 +133,7 @@ export const VanillaDbCacheBuildProgressCard = memo(() => {
           style={{ width: `${percent}%` }}
         />
       </div>
-      {isRunning && (
-        <p className="mt-2 text-xs text-gray-400">
-          This is created once after a game or schema update. The current operation will continue when
-          it is ready.
-        </p>
-      )}
+      {isRunning && <p className="mt-2 text-xs text-gray-400">{copy.runningNote}</p>}
       {progress.detail && <p className="mt-2 break-words text-xs text-gray-400">{progress.detail}</p>}
     </div>
   );
