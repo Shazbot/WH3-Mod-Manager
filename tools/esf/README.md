@@ -8,6 +8,8 @@ Current parser behavior:
 - parses CAAB string tables exactly (record names + indexed UTF-16/UTF-8 tables)
 - walks CAAB nodes with RPFM-compatible marker handling (records, optimized ints, arrays, strings)
 - extracts `REGION_KEYS` and `REGION_DATA` region-center points from the node tree
+- decompresses the LZMA `COMPRESSED_DATA` block used by `startpos.esf`, and reads
+  campaign regions from the `REGIONS_ARRAY` records inside it
 
 This is intentionally outside the Electron app codepath for now.
 
@@ -46,11 +48,63 @@ stop-list. It will not find regions in non-Warhammer titles or in mods that use
 other prefixes. For structured, prefix-independent results use
 `extractMapPoints` or `extractRegionCenters`, which read the actual
 `REGION_KEYS` / `REGION_DATA` records.
+Region data is read from the actual `REGION_DATA` and `REGION_KEYS` records, so
+results are structural rather than prefix-based and work for any title or mod.
+The two sources are joined on the region key:
+
+- `REGION_DATA` (via `extractRegionCenters`) is the complete list, giving the
+  campaign `REGION_INDEX` and the region centre in region-area grid cells.
+- `REGION_KEYS` (via `extractMapPoints`) adds world coordinates, but only covers
+  regions belonging to a UI theatre, so it is a strict subset. Regions missing
+  from it report `-` for world coordinates.
+
+Optional:
+
+- `--include-nonregion` keeps terrain and connectivity points instead of only `*_region_*` keys.
+- `--limit <n>` caps how many rows are printed, `--assert-min <n>` fails if fewer than `n` regions were found.
+
+Both a campaign map's `map_data.esf` and a `startpos.esf` are accepted. The
+layout is detected from the records present, not from the filename, so a
+decompressed startpos dump works too:
+
+| input | source | fields |
+| --- | --- | --- |
+| `map_data.esf` | `REGION_DATA` + `REGION_KEYS` | region index, grid centre, world coordinates |
+| `startpos.esf` | `REGIONS_ARRAY` | region index, owning faction, subculture, settlement key |
+
+The two carry different data: a map holds region *geometry*, a startpos holds
+campaign-start *ownership*. Fields that do not apply to the detected source are
+reported as `-` (or `null` in `--json`).
+
+## Compressed startpos files
+
+A `startpos.esf` stores the whole campaign state as a single LZMA stream in a
+`COMPRESSED_DATA` record (~9.5 MB compressed, ~111 MB decompressed for Immortal
+Empires). The stream has no container header of its own: `COMPRESSED_DATA_INFO`
+holds the uncompressed size and the 5 LZMA properties bytes separately, so
+decoding rebuilds a standard "LZMA alone" header (5 properties bytes + the size
+as a 64-bit little-endian value) before decompressing.
+
+`openEsfBuffer` does this transparently and returns the input untouched for
+files that are not wrapped this way, so it is safe to call on any ESF:
+
+```ts
+import { openEsfBuffer, parseEsfDocument } from "./tools/esf/src";
+
+const opened = openEsfBuffer(fs.readFileSync(esfPath));
+const document = parseEsfDocument(opened.buffer);
+// opened.wasCompressed / opened.uncompressedSize describe what happened
+```
+
+Decompression uses `@napi-rs/lzma`, a devDependency with prebuilt binaries; it
+is not pulled into the packaged Electron app.
 
 ## Run test script
 
 ```bash
 yarn esf:test-regions /path/to/startpos.esf
+yarn esf:test-regions /path/to/campaign_maps/wh3_main_combi_map_3/map_data.esf
+yarn esf:test-regions /path/to/campaigns/wh3_main_combi/startpos.esf
 ```
 
 You can also pass the ESF input file by environment variable:
@@ -58,6 +112,11 @@ You can also pass the ESF input file by environment variable:
 ```bash
 ESF_FILE=/path/to/startpos.esf yarn esf:test-regions
 ```
+
+For a map it checks that region centres are extracted, that every key looks like
+a region key, and that `REGION_KEYS` holds no keys absent from `REGION_DATA`. For
+a startpos it checks that region indices are unique and that every region has an
+owning faction.
 
 ## Render map HTML (lookup-aware)
 

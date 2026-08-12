@@ -1,6 +1,10 @@
 export { parseEsf, parseEsfDocument, ABCA_CODEC_ID, ABCB_CODEC_ID } from "./esf/EsfParser";
 export type { EsfDocument, EsfHeader, EsfNode, EsfStringEntry, RegionSummary } from "./esf/EsfTypes";
 export { extractRegions } from "./extract/regions";
+export { decompressEsfBlock, findCompressedEsfBlock, openEsfBuffer } from "./esf/compressed";
+export type { CompressedEsfBlock, OpenedEsfBuffer } from "./esf/compressed";
+export { extractStartposRegions } from "./extract/startposRegions";
+export type { StartposRegion } from "./extract/startposRegions";
 export { extractMapPoints, extractMapPointsWithTheatreBounds } from "./extract/mapPoints";
 export type { MapPoint, MapPointExtractionResult, TheatreBounds } from "./extract/mapPoints";
 export { extractRegionCenters } from "./extract/regionCenters";
