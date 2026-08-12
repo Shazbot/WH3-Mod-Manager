@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { calculateUnitViewerStats } from "../src/unitViewer/calculator";
-import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
+import { buildUnitViewerData, createLocLookup, type UnitViewerTableRows } from "../src/unitViewer/data";
 import type {
   UnitViewerConstants,
   UnitViewerEntity,
@@ -67,7 +67,6 @@ const makeUnit = (overrides: Partial<UnitViewerUnitModel>): UnitViewerUnitModel 
   name: "Unit",
   caste: "melee_cavalry",
   category: "cavalry",
-  shortDescription: "",
   numMen: 60,
   multiplayerCost: 1100,
   recruitmentCost: 1100,
@@ -285,6 +284,45 @@ describe("Unit Viewer calculations", () => {
       chargeBonus: 28,
       fatigueModifier: -4,
     });
+  });
+});
+
+describe("Unit Viewer loc lookup", () => {
+  const trieOf = (entries: Record<string, string>) => ({
+    get: (key: string) => entries[key],
+  });
+
+  it("lets a later pack shadow an earlier one, including with an empty override", () => {
+    const getLoc = createLocLookup([
+      trieOf({ shared: "vanilla", vanilla_only: "kept", blanked: "vanilla text" }),
+      undefined,
+      trieOf({ shared: "mod", mod_only: "added", blanked: "" }),
+    ]);
+
+    expect(getLoc("shared")).toBe("mod");
+    expect(getLoc("vanilla_only")).toBe("kept");
+    expect(getLoc("mod_only")).toBe("added");
+    // An empty override returns "" rather than falling through to the earlier pack. The flattened
+    // map used to drop empty values entirely (Trie.getEntries skips falsy ones), so this differs -
+    // harmlessly, because every caller falls back with `||`, which treats "" and undefined alike.
+    expect(getLoc("blanked")).toBe("");
+    expect(getLoc("missing")).toBeUndefined();
+  });
+
+  it("reads only the keys it is asked for instead of enumerating every entry", () => {
+    const reads: string[] = [];
+    const getLoc = createLocLookup([
+      {
+        get: (key: string) => {
+          reads.push(key);
+          return key === "wanted" ? "value" : undefined;
+        },
+      },
+    ]);
+
+    expect(getLoc("wanted")).toBe("value");
+    expect(getLoc("other")).toBeUndefined();
+    expect(reads).toEqual(["wanted", "other"]);
   });
 });
 

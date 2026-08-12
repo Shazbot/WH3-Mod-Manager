@@ -89,7 +89,6 @@ export interface UnitViewerUnitModel {
   name: string;
   caste: string;
   category: string;
-  shortDescription: string;
   numMen: number;
   multiplayerCost: number;
   recruitmentCost: number;

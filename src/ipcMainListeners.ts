@@ -24,6 +24,7 @@ import {
 import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
 import {
   buildUnitViewerData,
+  createLocLookup,
   UNIT_VIEWER_TABLES,
   type BuiltUnitViewerData,
   type UnitViewerTableRows,
@@ -2426,7 +2427,7 @@ export const registerIpcMainListeners = (
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 12,
+          feature: 13,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -2488,17 +2489,11 @@ export const registerIpcMainListeners = (
       tables[canonicalTableName] = rows;
     }
 
-    const locEntries = new Map<string, string>();
     const locPacks = localizationPackPaths
       .map((packPath) => packsByPath.get(packPath))
       .filter((pack): pack is Pack => !!pack)
       .concat(orderedMods);
-    for (const pack of locPacks) {
-      const trie = getLocsTrie(pack);
-      if (!trie) continue;
-      for (const [key, value] of Object.entries(trie.getEntries())) locEntries.set(key, value);
-    }
-    const data = buildUnitViewerData(tables, (key) => locEntries.get(key));
+    const data = buildUnitViewerData(tables, createLocLookup(locPacks.map((pack) => getLocsTrie(pack))));
     const statIconSession: UnitViewerSession = {
       sessionId: "unit-viewer-cache-build",
       data,

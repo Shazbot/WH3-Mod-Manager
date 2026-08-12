@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as nodePath from "path";
 import type { BuiltUnitViewerData } from "./data";
 
-const UNIT_VIEWER_CACHE_VERSION = 12;
+const UNIT_VIEWER_CACHE_VERSION = 13;
 const UNIT_VIEWER_CACHE_FILE = "unit-viewer-data-cache.bin";
 
 type UnitViewerDiskPayload = {

@@ -15,6 +15,33 @@ import { resolveTextReplacements } from "../skills";
 
 export type UnitViewerTableRows = Record<string, Array<Record<string, string>>>;
 
+/** The part of a loc trie a lookup needs. */
+export interface UnitViewerLocTrie {
+  get(key: string): string | undefined;
+}
+
+/**
+ * Resolves loc keys across pack tries without flattening them into one map: the game ships ~240k
+ * loc entries and a build reads a few thousand, so copying them all is pure waste.
+ *
+ * Takes tries in pack order and consults them in reverse, so a later pack still shadows an earlier
+ * one exactly as it did when it overwrote the earlier entry.
+ *
+ * Note this returns "" for a key a pack maps to an empty string, where the flattened map dropped
+ * those keys outright. Callers fall back with `||`, which treats the two the same; a caller using
+ * `??` would not.
+ */
+export const createLocLookup = (triesInPackOrder: Array<UnitViewerLocTrie | undefined>) => {
+  const tries = triesInPackOrder.filter((trie): trie is UnitViewerLocTrie => !!trie).toReversed();
+  return (key: string) => {
+    for (const trie of tries) {
+      const value = trie.get(key);
+      if (value != undefined) return value;
+    }
+    return undefined;
+  };
+};
+
 export const UNIT_VIEWER_TABLES = [
   "main_units_tables",
   "land_units_tables",
@@ -587,10 +614,6 @@ export const buildUnitViewerData = (
       name: resolveGameText(getLoc(`land_units_onscreen_name_${landUnitKey}`) || key, getLoc),
       caste: asString(main.caste),
       category: asString(land.category),
-      shortDescription: resolveGameText(
-        getLoc(`land_units_short_description_text_${landUnitKey}`) || "",
-        getLoc,
-      ),
       numMen: asNumber(main.num_men),
       multiplayerCost: asNumber(main.multiplayer_cost),
       recruitmentCost: asNumber(main.recruitment_cost),
