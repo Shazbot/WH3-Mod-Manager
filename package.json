@@ -22,6 +22,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "esf:build": "tsc -p tools/esf/tsconfig.json",
+    "esf:typecheck": "tsc -p tools/esf/tsconfig.json --noEmit",
+    "esf:test-regions": "yarn esf:build && node tools/esf/dist/cli/testReadRegions.js",
+    "esf:render-map": "yarn esf:build && node tools/esf/dist/cli/renderRegionMap.js",
     "test": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native",
     "test:watch": "node node_modules/vitest/vitest.mjs --config vitest.config.mjs --configLoader native",
     "test:coverage": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native --coverage"
