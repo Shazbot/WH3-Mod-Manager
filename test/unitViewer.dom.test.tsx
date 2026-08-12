@@ -1,10 +1,10 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer from "../src/appSlice";
+import appReducer, { setMods } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import UnitViewerTab from "../src/components/UnitViewerTab";
 import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
@@ -88,8 +88,26 @@ const renderViewer = () => {
       },
     },
   });
-  return render(<Provider store={store}><UnitViewerTab /></Provider>);
+  return { ...render(<Provider store={store}><UnitViewerTab /></Provider>), store };
 };
+
+const createEnabledMod = (): Mod => ({
+  humanName: "Example",
+  name: "example.pack",
+  path: "/game/data/example.pack",
+  imgPath: "",
+  workshopId: "123",
+  isEnabled: true,
+  modDirectory: "/game/data",
+  isInData: true,
+  loadOrder: undefined,
+  author: "",
+  isDeleted: false,
+  isMovie: false,
+  size: 1,
+  isSymbolicLink: false,
+  tags: ["mod"],
+});
 
 describe("Unit Viewer UI", () => {
   beforeEach(() => {
@@ -204,6 +222,22 @@ describe("Unit Viewer UI", () => {
     });
     expect(within(cards[0] as HTMLElement).getByText("Beta")).toBeInTheDocument();
     expect(within(cards[1] as HTMLElement).getByText("Alpha")).toBeInTheDocument();
+  });
+
+  it("does not rebuild the catalog when Redux replaces the mods array with equivalent mods", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+    expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(1);
+
+    const mod = createEnabledMod();
+    act(() => { store.dispatch(setMods([mod])); });
+    await waitFor(() => expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2));
+
+    // Pack reading hands Redux a fresh array of equal mods; that must not restart the load.
+    act(() => { store.dispatch(setMods([{ ...mod }])); });
+    act(() => { store.dispatch(setMods([{ ...mod }])); });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(window.api?.getUnitViewerCatalog).toHaveBeenCalledTimes(2);
   });
 
   it("closes the unit card browser on Escape", async () => {

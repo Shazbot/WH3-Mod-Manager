@@ -427,6 +427,8 @@ const UnitViewerTab = memo(() => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const signature = enabledMods.map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}:${mod.lastChanged ?? ""}`).join("|");
+  const enabledModsRef = useRef(enabledMods);
+  enabledModsRef.current = enabledMods;
   const [groups, setGroups] = useState<UnitViewerCatalogGroup[]>([]);
   const [unitGroups, setUnitGroups] = useState<UnitViewerUiGroup[]>([]);
   const [constants, setConstants] = useState<UnitViewerConstants>();
@@ -458,7 +460,8 @@ const UnitViewerTab = memo(() => {
     cardFlushTimerRef.current = undefined;
     requestedCardPathsRef.current = new Set();
     pendingCardPathsRef.current = new Set();
-    setCardImages({});
+    // Keep the same object when already empty so a reset cannot force a re-render on its own.
+    setCardImages((current) => (Object.keys(current).length === 0 ? current : {}));
   }, []);
 
   const recoverMissingSession = useCallback((failedSessionId: string) => {
@@ -536,7 +539,7 @@ const UnitViewerTab = memo(() => {
     resetCardImages();
     setLoading(true);
     setError(undefined);
-    window.api?.getUnitViewerCatalog(enabledMods).then((result) => {
+    window.api?.getUnitViewerCatalog(enabledModsRef.current).then((result) => {
       if (cancelled) return;
       if (!result?.success || !result.sessionId || !result.groups || !result.constants) {
         setError(result?.error || "Failed to load Unit Viewer");
@@ -563,7 +566,10 @@ const UnitViewerTab = memo(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [currentGame, enabledMods, resetCardImages, sessionRefreshToken, signature]);
+    // `signature` already encodes every enabled mod's path, load order and change stamps, so it is
+    // the dependency that matters. Depending on `enabledMods` too rebuilt the catalog every time
+    // pack reading handed Redux a fresh mods array, and each rebuild reads packs again — a loop.
+  }, [currentGame, resetCardImages, sessionRefreshToken, signature]);
 
   useEffect(() => {
     if (!sessionId) return;
