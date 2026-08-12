@@ -2507,10 +2507,12 @@ export const registerIpcMainListeners = (
       assetCacheBytes: 0,
       createdAt: Date.now(),
     };
-    for (const iconPath of new Set(Object.values(data.constants.statIconPaths))) {
-      const icon = await getUnitViewerAsset(statIconSession, iconPath);
-      if (icon) data.statIcons[iconPath] = icon.base64;
-    }
+    const { assets: statIcons } = await loadUnitViewerAssets(
+      statIconSession,
+      Array.from(new Set(Object.values(data.constants.statIconPaths))),
+      true,
+    );
+    for (const [iconPath, icon] of Object.entries(statIcons)) data.statIcons[iconPath] = icon.base64;
     await saveUnitViewerDiskCache(app.getPath("userData"), signature, data);
     cachedUnitViewerData = { signature, data, assetPackPaths };
     return cachedUnitViewerData;
@@ -2553,11 +2555,14 @@ export const registerIpcMainListeners = (
       if (!session) return { success: false, error: "Unit Viewer session expired" };
       const unit = session.data.units.get(unitKey);
       if (!unit) return { success: false, error: `Unit ${unitKey} was not found` };
-      const icons: Record<string, string> = {};
-      for (const iconPath of session.data.iconPathsByUnit.get(unitKey) || []) {
-        const icon = await getUnitViewerAsset(session, iconPath);
-        if (icon) icons[iconPath] = icon.base64;
-      }
+      const { assets } = await loadUnitViewerAssets(
+        session,
+        session.data.iconPathsByUnit.get(unitKey) || [],
+        true,
+      );
+      const icons = Object.fromEntries(
+        Object.entries(assets).map(([iconPath, icon]) => [iconPath, icon.base64]),
+      );
       return { success: true, unit, icons };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to load unit" };
