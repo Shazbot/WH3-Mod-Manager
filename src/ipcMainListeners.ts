@@ -2346,7 +2346,7 @@ export const registerIpcMainListeners = (
     const signature = createHash("sha256")
       .update(
         JSON.stringify({
-          feature: 11,
+          feature: 12,
           game: appData.currentGame,
           schema: getVisualsSchemaHash(appData.currentGame),
           mods: getUnitViewerSignature(enabledMods),
@@ -2457,6 +2457,7 @@ export const registerIpcMainListeners = (
         success: true,
         sessionId,
         groups: built.data.groups,
+        unitGroups: built.data.unitGroups,
         constants: built.data.constants,
         statIcons: built.data.statIcons,
       };
@@ -2491,6 +2492,21 @@ export const registerIpcMainListeners = (
       return asset ? { success: true, ...asset } : { success: false, error: "Asset was not found" };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to load asset" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerAssets", async (_event, sessionId: string, assetPaths: string[]) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const assets: Record<string, { base64: string; mimeType: string }> = {};
+      for (const assetPath of new Set(assetPaths || [])) {
+        const asset = await getUnitViewerAsset(session, assetPath);
+        if (asset) assets[assetPath] = { base64: asset.base64, mimeType: asset.mimeType };
+      }
+      return { success: true, assets };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to load assets" };
     }
   });
 

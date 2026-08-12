@@ -1,6 +1,7 @@
 import type {
   UnitViewerAbility,
   UnitViewerCatalogGroup,
+  UnitViewerUiGroup,
   UnitViewerConstants,
   UnitViewerEntity,
   UnitViewerFatigue,
@@ -46,9 +47,29 @@ export const UNIT_VIEWER_TABLES = [
   "unit_fatigue_effects_tables",
   "unit_stat_to_size_scaling_values_tables",
   "ui_unit_stats_tables",
+  "ui_unit_groupings_tables",
+  "ui_unit_group_parents_tables",
   "ground_type_to_stat_effects_tables",
   "_kv_morale_tables",
 ] as const;
+
+/** Bucket that collects units the game does not assign to a roster group. */
+const EXTENDED_ROSTER_GROUP_KEY = "campaign_exclusives";
+
+/** Only used when ui_unit_group_parents has no usable `order` column to sort on. */
+const UI_UNIT_GROUP_FALLBACK_ORDER = [
+  "commander",
+  "heroes_agents",
+  "infantry",
+  "missile_infantry",
+  "cavalry_chariots",
+  "missile_cavalry_chariots",
+  "monster_beasts",
+  "missile_monster_beasts",
+  "flying_war_machine",
+  "artillery_war_machines",
+  "constructs",
+];
 
 const UNIT_VIEWER_USED_STAT_ICON_KEYS = new Set([
   "scalar_charge_speed",
@@ -352,6 +373,7 @@ const buildAbility = (
 
 export interface BuiltUnitViewerData {
   groups: UnitViewerCatalogGroup[];
+  unitGroups: UnitViewerUiGroup[];
   units: Map<string, UnitViewerUnitModel>;
   constants: UnitViewerConstants;
   iconPathsByUnit: Map<string, string[]>;
@@ -411,6 +433,8 @@ export const buildUnitViewerData = (
   const additionalEffects = indexRows(tables.unit_abilities_additional_ui_effects_tables, "key");
   const groundEffectsByGroup = groupRows(tables.ground_type_to_stat_effects_tables, "affected_group");
   const uiUnitStats = indexRows(tables.ui_unit_stats_tables, "key");
+  const uiUnitGroupings = indexRows(tables.ui_unit_groupings_tables, "key");
+  const uiUnitGroupParents = indexRows(tables.ui_unit_group_parents_tables, "key");
 
   const experienceBonusRows = indexRows(tables.unit_experience_bonuses_tables, "stat");
   const rankBonusRows = indexRows(tables.unit_stats_land_experience_bonuses_tables, "xp_level");
@@ -473,6 +497,7 @@ export const buildUnitViewerData = (
   const units = new Map<string, UnitViewerUnitModel>();
   const iconPathsByUnit = new Map<string, string[]>();
   const subcultureToUnits = new Map<string, Set<string>>();
+  const uiGroupKeyByUnit = new Map<string, string>();
   const collator = new Intl.Collator("en");
 
   for (const main of indexRows(tables.main_units_tables, "unit").values()) {
@@ -629,6 +654,14 @@ export const buildUnitViewerData = (
       ].filter((path): path is string => !!path))),
     );
 
+    const parentGroupKey = asString(
+      uiUnitGroupings.get(asString(main.ui_unit_group_land))?.parent_group,
+    );
+    uiGroupKeyByUnit.set(
+      key,
+      uiUnitGroupParents.has(parentGroupKey) ? parentGroupKey : EXTENDED_ROSTER_GROUP_KEY,
+    );
+
     const subcultures = new Set<string>();
     for (const permission of permissions.get(key) || []) {
       const subculture = asString(factions.get(asString(permission.faction))?.subculture);
@@ -641,6 +674,29 @@ export const buildUnitViewerData = (
       subcultureToUnits.set(subculture, unitKeys);
     }
   }
+
+  const unitGroups: UnitViewerUiGroup[] = Array.from(new Set(uiGroupKeyByUnit.values()))
+    .map((key) => ({
+      key,
+      name:
+        key === EXTENDED_ROSTER_GROUP_KEY && !uiUnitGroupParents.has(key)
+          ? "Extended Roster"
+          : resolveGameText(getLoc(`ui_unit_group_parents_onscreen_name_${key}`) || key, getLoc),
+      order: asNumber(uiUnitGroupParents.get(key)?.order),
+    }))
+    .sort((first, second) => {
+      const extendedFirst = first.key === EXTENDED_ROSTER_GROUP_KEY ? 1 : 0;
+      const extendedSecond = second.key === EXTENDED_ROSTER_GROUP_KEY ? 1 : 0;
+      const fallbackFirst = UI_UNIT_GROUP_FALLBACK_ORDER.indexOf(first.key);
+      const fallbackSecond = UI_UNIT_GROUP_FALLBACK_ORDER.indexOf(second.key);
+      return (
+        extendedFirst - extendedSecond ||
+        first.order - second.order ||
+        (fallbackFirst < 0 ? UI_UNIT_GROUP_FALLBACK_ORDER.length : fallbackFirst) -
+          (fallbackSecond < 0 ? UI_UNIT_GROUP_FALLBACK_ORDER.length : fallbackSecond) ||
+        collator.compare(first.name, second.name)
+      );
+    });
 
   const groups: UnitViewerCatalogGroup[] = Array.from(subcultureToUnits.entries())
     .map(([key, unitKeys]) => ({
@@ -660,6 +716,8 @@ export const buildUnitViewerData = (
           subcultureKeys: Array.from(subcultureToUnits.entries())
             .filter(([, keys]) => keys.has(unit.key))
             .map(([subculture]) => subculture),
+          uiGroupKey: uiGroupKeyByUnit.get(unit.key) || EXTENDED_ROSTER_GROUP_KEY,
+          unitCardPath: unit.unitCardPath,
         }))
         .sort((first, second) =>
           getCasteSortOrder(first.caste) - getCasteSortOrder(second.caste) ||
@@ -673,5 +731,5 @@ export const buildUnitViewerData = (
       return collator.compare(first.name, second.name);
     });
 
-  return { groups, units, constants, iconPathsByUnit, statIcons: {} };
+  return { groups, unitGroups, units, constants, iconPathsByUnit, statIcons: {} };
 };

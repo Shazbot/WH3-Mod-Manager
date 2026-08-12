@@ -2,11 +2,15 @@ import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, 
 import { createPortal } from "react-dom";
 import { AutoSizer, List, type ListRowProps } from "react-virtualized";
 import {
+  IoAdd,
   IoArrowBack,
   IoArrowForward,
+  IoCheckmark,
   IoChevronDown,
   IoChevronForward,
   IoClose,
+  IoGrid,
+  IoList,
   IoSearch,
 } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
@@ -20,6 +24,7 @@ import type {
   UnitViewerConstants,
   UnitViewerContext,
   UnitViewerFatigue,
+  UnitViewerUiGroup,
   UnitViewerUnitModel,
   UnitViewerUnitSize,
 } from "../unitViewer/types";
@@ -358,12 +363,72 @@ const UnitCard = ({
   );
 };
 
+const RosterUnitTile = memo(({
+  unit,
+  imageSrc,
+  isSelected,
+  onToggle,
+  onRequestImage,
+}: {
+  unit: UnitViewerCatalogUnit;
+  imageSrc?: string;
+  isSelected: boolean;
+  onToggle: (unitKey: string) => void;
+  onRequestImage: (assetPath: string) => void;
+}) => {
+  const tileRef = useRef<HTMLDivElement>(null);
+  const cardPath = unit.unitCardPath;
+
+  useEffect(() => {
+    if (!cardPath || imageSrc) return;
+    const element = tileRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      onRequestImage(cardPath);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      onRequestImage(cardPath);
+    }, { rootMargin: "400px 0px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [cardPath, imageSrc, onRequestImage]);
+
+  return (
+    <div ref={tileRef}>
+      <button
+        type="button"
+        title={unit.key}
+        aria-pressed={isSelected}
+        aria-label={isSelected ? `Remove ${unit.name} from comparison` : `Add ${unit.name} to comparison`}
+        onClick={() => onToggle(unit.key)}
+        className={`flex w-full flex-col gap-1 rounded border p-1.5 text-left transition-colors ${isSelected ? "border-amber-400 bg-amber-900/40" : "border-gray-700 bg-gray-900 hover:border-amber-500/70 hover:bg-gray-800"}`}
+      >
+        <span className="relative block w-full overflow-hidden rounded bg-[#030712]" style={{ aspectRatio: "164 / 212" }}>
+          {imageSrc
+            ? <img src={imageSrc} className="h-full w-full object-cover" alt="" />
+            : <span className="flex h-full w-full items-center justify-center text-2xl text-gray-700">?</span>}
+          <span className={`absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow ${isSelected ? "border-amber-300 bg-amber-500 text-gray-900" : "border-gray-600 bg-gray-900/90 text-gray-200"}`}>
+            {isSelected ? <IoCheckmark size={15} /> : <IoAdd size={15} />}
+          </span>
+        </span>
+        <span className="flex min-h-8 items-start text-[13px] leading-tight text-gray-200">
+          <UnitCasteBadge caste={unit.caste} />
+          <span className="line-clamp-2">{unit.name}</span>
+        </span>
+      </button>
+    </div>
+  );
+});
+
 const UnitViewerTab = memo(() => {
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const signature = enabledMods.map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}:${mod.lastChanged ?? ""}`).join("|");
   const [groups, setGroups] = useState<UnitViewerCatalogGroup[]>([]);
+  const [unitGroups, setUnitGroups] = useState<UnitViewerUiGroup[]>([]);
   const [constants, setConstants] = useState<UnitViewerConstants>();
   const [sessionId, setSessionId] = useState<string>();
   const sessionIdRef = useRef<string>();
@@ -380,6 +445,21 @@ const UnitViewerTab = memo(() => {
   const [comparison, setComparison] = useState<ComparisonSelection>("first");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [isRosterOpen, setIsRosterOpen] = useState(false);
+  const [rosterGroupKey, setRosterGroupKey] = useState<string>();
+  const [cardImages, setCardImages] = useState<Record<string, string>>({});
+  const requestedCardPathsRef = useRef(new Set<string>());
+  const pendingCardPathsRef = useRef(new Set<string>());
+  const cardFlushTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const flushCardImagesRef = useRef<() => void>(() => undefined);
+
+  const resetCardImages = useCallback(() => {
+    if (cardFlushTimerRef.current) clearTimeout(cardFlushTimerRef.current);
+    cardFlushTimerRef.current = undefined;
+    requestedCardPathsRef.current = new Set();
+    pendingCardPathsRef.current = new Set();
+    setCardImages({});
+  }, []);
 
   const recoverMissingSession = useCallback((failedSessionId: string) => {
     if (sessionIdRef.current !== failedSessionId) return false;
@@ -389,10 +469,62 @@ const UnitViewerTab = memo(() => {
     setIcons({});
     setStatIcons({});
     setImages({});
+    resetCardImages();
     setLoadingKeys(new Set());
     setError(undefined);
     setSessionRefreshToken((token) => token + 1);
     return true;
+  }, [resetCardImages]);
+
+  const flushCardImageRequests = useCallback(() => {
+    const requestedSessionId = sessionIdRef.current;
+    if (!requestedSessionId) return;
+    const paths = Array.from(pendingCardPathsRef.current).slice(0, 60);
+    for (const path of paths) pendingCardPathsRef.current.delete(path);
+    if (paths.length === 0) return;
+    window.api?.getUnitViewerAssets(requestedSessionId, paths).then((result) => {
+      if (sessionIdRef.current !== requestedSessionId) return;
+      if (!result?.success) {
+        if (result?.error && isMissingUnitViewerSessionError(result.error)) recoverMissingSession(requestedSessionId);
+        return;
+      }
+      const assets = Object.entries(result.assets || {});
+      if (assets.length === 0) return;
+      setCardImages((current) => {
+        const next = { ...current };
+        for (const [path, asset] of assets) next[path] = `data:${asset.mimeType || "image/png"};base64,${asset.base64}`;
+        return next;
+      });
+    }).catch(() => undefined);
+    if (pendingCardPathsRef.current.size > 0 && !cardFlushTimerRef.current) {
+      cardFlushTimerRef.current = setTimeout(() => {
+        cardFlushTimerRef.current = undefined;
+        flushCardImagesRef.current();
+      }, 0);
+    }
+  }, [recoverMissingSession]);
+
+  useEffect(() => {
+    flushCardImagesRef.current = flushCardImageRequests;
+  }, [flushCardImageRequests]);
+
+  useEffect(() => () => {
+    if (cardFlushTimerRef.current) clearTimeout(cardFlushTimerRef.current);
+  }, []);
+
+  const requestCardImage = useCallback((assetPath: string) => {
+    if (requestedCardPathsRef.current.has(assetPath)) return;
+    requestedCardPathsRef.current.add(assetPath);
+    pendingCardPathsRef.current.add(assetPath);
+    if (cardFlushTimerRef.current) return;
+    cardFlushTimerRef.current = setTimeout(() => {
+      cardFlushTimerRef.current = undefined;
+      flushCardImagesRef.current();
+    }, 60);
+  }, []);
+
+  const toggleSelectedUnit = useCallback((unitKey: string) => {
+    setSelectedKeys((keys) => (keys.includes(unitKey) ? keys.filter((key) => key !== unitKey) : [...keys, unitKey]));
   }, []);
 
   useEffect(() => {
@@ -401,6 +533,7 @@ const UnitViewerTab = memo(() => {
     sessionIdRef.current = undefined;
     setSessionId(undefined);
     setLoadingKeys(new Set());
+    resetCardImages();
     setLoading(true);
     setError(undefined);
     window.api?.getUnitViewerCatalog(enabledMods).then((result) => {
@@ -413,6 +546,7 @@ const UnitViewerTab = memo(() => {
       sessionIdRef.current = result.sessionId;
       setSessionId(result.sessionId);
       setGroups(result.groups);
+      setUnitGroups(result.unitGroups || []);
       setConstants(result.constants);
       setStatIcons(result.statIcons || {});
       setCollapsed((current) => Object.fromEntries(
@@ -429,7 +563,7 @@ const UnitViewerTab = memo(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [currentGame, enabledMods, sessionRefreshToken, signature]);
+  }, [currentGame, enabledMods, resetCardImages, sessionRefreshToken, signature]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -473,6 +607,42 @@ const UnitViewerTab = memo(() => {
     }
     return rows;
   }, [collapsed, filterLower, groups]);
+
+  const rosterGroup = useMemo(
+    () => groups.find((group) => group.key === rosterGroupKey) || groups[0],
+    [groups, rosterGroupKey],
+  );
+
+  const rosterSections = useMemo(() => {
+    if (!rosterGroup) return [];
+    const units = filterLower
+      ? rosterGroup.units.filter((unit) => `${unit.name} ${unit.key} ${unit.category} ${unit.caste}`.toLowerCase().includes(filterLower))
+      : rosterGroup.units;
+    const unitsByUiGroup = new Map<string, UnitViewerCatalogUnit[]>();
+    for (const unit of units) {
+      const sectionUnits = unitsByUiGroup.get(unit.uiGroupKey) || [];
+      sectionUnits.push(unit);
+      unitsByUiGroup.set(unit.uiGroupKey, sectionUnits);
+    }
+    const knownKeys = new Set(unitGroups.map((unitGroup) => unitGroup.key));
+    return [
+      ...unitGroups,
+      ...Array.from(unitsByUiGroup.keys())
+        .filter((key) => !knownKeys.has(key))
+        .map((key) => ({ key, name: key, order: Number.MAX_SAFE_INTEGER })),
+    ]
+      .filter((unitGroup) => unitsByUiGroup.has(unitGroup.key))
+      .map((unitGroup) => ({ ...unitGroup, units: unitsByUiGroup.get(unitGroup.key)! }));
+  }, [filterLower, rosterGroup, unitGroups]);
+
+  useEffect(() => {
+    if (!isRosterOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsRosterOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isRosterOpen]);
 
   const calculated = useMemo(() => {
     if (!constants) return {} as Record<string, UnitViewerCalculatedStats>;
@@ -518,7 +688,7 @@ const UnitViewerTab = memo(() => {
       </button>;
     }
     const isSelected = selectedKeys.includes(row.unit.key);
-    return <button key={key} style={style} type="button" aria-label={row.unit.name} className={`flex w-full items-center border-b border-gray-800/60 px-7 text-left text-sm ${isSelected ? "bg-amber-900/60 text-amber-100" : "bg-gray-950 text-gray-300 hover:bg-gray-800"}`} title={row.unit.key} onClick={() => setSelectedKeys((keys) => keys.includes(row.unit.key) ? keys.filter((unitKey) => unitKey !== row.unit.key) : [...keys, row.unit.key])}>
+    return <button key={key} style={style} type="button" aria-label={row.unit.name} className={`flex w-full items-center border-b border-gray-800/60 px-7 text-left text-sm ${isSelected ? "bg-amber-900/60 text-amber-100" : "bg-gray-950 text-gray-300 hover:bg-gray-800"}`} title={row.unit.key} onClick={() => toggleSelectedUnit(row.unit.key)}>
       <UnitCasteBadge caste={row.unit.caste} /><span className="truncate">{row.unit.name}</span>
     </button>;
   };
@@ -527,7 +697,13 @@ const UnitViewerTab = memo(() => {
     <div className="fixed bottom-0 left-12 right-0 top-8 flex overflow-hidden bg-gray-950 text-white">
       <aside className="flex w-[330px] shrink-0 flex-col border-r border-gray-700">
         <div className="p-3">
-          <h1 className="mb-2 text-lg font-semibold text-amber-100">Unit Viewer</h1>
+          <div className="mb-2 flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-amber-100">Unit Viewer</h1>
+            <div className="ml-auto flex overflow-hidden rounded border border-gray-700">
+              <button type="button" aria-label="Browse units as a list" aria-pressed={!isRosterOpen} title="List browser" onClick={() => setIsRosterOpen(false)} className={`px-2 py-1 ${isRosterOpen ? "bg-gray-900 text-gray-400 hover:text-white" : "bg-amber-700 text-white"}`}><IoList size={16} /></button>
+              <button type="button" aria-label="Browse unit cards by category" aria-pressed={isRosterOpen} title="Card browser" onClick={() => setIsRosterOpen(true)} className={`px-2 py-1 ${isRosterOpen ? "bg-amber-700 text-white" : "bg-gray-900 text-gray-400 hover:text-white"}`}><IoGrid size={16} /></button>
+            </div>
+          </div>
           <label className="flex items-center gap-2 rounded border border-gray-700 bg-gray-900 px-2">
             <IoSearch className="text-gray-500" />
             <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search units or keys" className="w-full bg-transparent py-2 text-sm outline-none" />
@@ -571,6 +747,51 @@ const UnitViewerTab = memo(() => {
           })}</div>}
         </div>
       </main>
+      {/* The panel background is an arbitrary value because Tailwind 3.2 has no gray-950 shade. */}
+      {isRosterOpen && (
+        <div role="dialog" aria-label="Unit card browser" className="absolute inset-0 z-40 flex flex-col bg-[#030712]">
+          <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-700 bg-gray-900 px-4 py-2">
+            <h2 className="text-lg font-semibold text-amber-100">Unit Cards</h2>
+            <label className="text-xs text-gray-400">Faction Group <select
+              aria-label="Subculture"
+              value={rosterGroup?.key || ""}
+              onChange={(event) => setRosterGroupKey(event.target.value)}
+              className="ml-1 max-w-72 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-white"
+            >{groups.map((group) => <option key={group.key} value={group.key}>{group.name}</option>)}</select></label>
+            <label className="flex min-w-52 items-center gap-2 rounded border border-gray-700 bg-gray-800 px-2">
+              <IoSearch className="text-gray-500" />
+              <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search units or keys" aria-label="Search unit cards" className="w-full bg-transparent py-1 text-sm outline-none" />
+            </label>
+            <span className="ml-auto text-xs text-gray-500">{selectedKeys.length} selected</span>
+            <button type="button" onClick={() => setIsRosterOpen(false)} aria-label="Close unit card browser" className="flex items-center gap-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 hover:border-amber-500 hover:text-white">
+              <IoClose size={18} /> Close
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            {loading ? <div className="text-sm text-gray-400">Loading units and enabled mods…</div>
+              : rosterSections.length === 0 ? <div className="flex h-full items-center justify-center text-gray-500">No units match the current search.</div>
+                : rosterSections.map((section) => (
+                  <section key={section.key} className="mb-5">
+                    <h3 className="mb-2 flex items-baseline gap-2 border-b border-gray-700 pb-1 text-[15px] font-semibold text-amber-100">
+                      {section.name}<span className="text-xs font-normal text-gray-500">{section.units.length}</span>
+                    </h3>
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-2">
+                      {section.units.map((unit) => (
+                        <RosterUnitTile
+                          key={unit.key}
+                          unit={unit}
+                          imageSrc={unit.unitCardPath ? cardImages[unit.unitCardPath] : undefined}
+                          isSelected={selectedKeys.includes(unit.key)}
+                          onToggle={toggleSelectedUnit}
+                          onRequestImage={requestCardImage}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 });

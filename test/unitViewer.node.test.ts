@@ -388,6 +388,64 @@ describe("Unit Viewer catalog", () => {
     expect(built.units.get("unit_d")?.name).toBe("Delta");
   });
 
+  it("buckets units into the game's roster groups and falls back to the extended roster", () => {
+    const tables: UnitViewerTableRows = {
+      main_units_tables: [
+        { unit: "unit_lord", land_unit: "land", num_men: "1", caste: "lord", ui_unit_group_land: "grouping_lord" },
+        { unit: "unit_bow", land_unit: "land", num_men: "1", ui_unit_group_land: "grouping_bow" },
+        { unit: "unit_spear", land_unit: "land", num_men: "1", ui_unit_group_land: "grouping_spear" },
+        { unit: "unit_odd", land_unit: "land", num_men: "1", ui_unit_group_land: "grouping_missing" },
+        { unit: "unit_none", land_unit: "land", num_men: "1" },
+      ],
+      land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon" }],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      ui_unit_groupings_tables: [
+        { key: "grouping_lord", parent_group: "commander" },
+        { key: "grouping_bow", parent_group: "missile_infantry" },
+        { key: "grouping_spear", parent_group: "infantry" },
+        { key: "grouping_missing", parent_group: "not_in_parents" },
+      ],
+      ui_unit_group_parents_tables: [
+        { key: "infantry", order: "20" },
+        { key: "missile_infantry", order: "30" },
+        { key: "commander", order: "10" },
+        { key: "campaign_exclusives", order: "5" },
+      ],
+      factions_tables: [{ key: "faction", subculture: "subculture" }],
+      units_custom_battle_permissions_tables: [
+        { unit: "unit_lord", faction: "faction" },
+        { unit: "unit_bow", faction: "faction" },
+        { unit: "unit_spear", faction: "faction" },
+        { unit: "unit_odd", faction: "faction" },
+        { unit: "unit_none", faction: "faction" },
+      ],
+    };
+    const built = buildUnitViewerData(tables, (key) => ({
+      ui_unit_group_parents_onscreen_name_commander: "Lords",
+      ui_unit_group_parents_onscreen_name_infantry: "Infantry",
+      ui_unit_group_parents_onscreen_name_missile_infantry: "Missile Infantry",
+      ui_unit_group_parents_onscreen_name_campaign_exclusives: "Extended Roster",
+    })[key]);
+
+    expect(built.unitGroups.map((unitGroup) => unitGroup.name)).toEqual([
+      "Lords",
+      "Infantry",
+      "Missile Infantry",
+      "Extended Roster",
+    ]);
+    expect(
+      Object.fromEntries(built.groups[0].units.map((unit) => [unit.key, unit.uiGroupKey])),
+    ).toEqual({
+      unit_lord: "commander",
+      unit_bow: "missile_infantry",
+      unit_spear: "infantry",
+      unit_odd: "campaign_exclusives",
+      unit_none: "campaign_exclusives",
+    });
+    expect(built.groups[0].units[0].unitCardPath).toBe("ui\\units\\icons\\unit_lord.png");
+  });
+
   it("lets later mod rows replace vanilla unit and scalar constants", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [

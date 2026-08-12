@@ -211,6 +211,8 @@ export interface UnitViewerCatalogUnit {
   category: string;
   caste: string;
   subcultureKeys: string[];
+  uiGroupKey: string;
+  unitCardPath?: string;
 }
 
 export interface UnitViewerCatalogGroup {
@@ -219,10 +221,18 @@ export interface UnitViewerCatalogGroup {
   units: UnitViewerCatalogUnit[];
 }
 
+/** A roster bucket from ui_unit_group_parents (Lords, Missile Infantry, Extended Roster, …). */
+export interface UnitViewerUiGroup {
+  key: string;
+  name: string;
+  order: number;
+}
+
 export interface UnitViewerCatalogResponse {
   success: boolean;
   sessionId?: string;
   groups?: UnitViewerCatalogGroup[];
+  unitGroups?: UnitViewerUiGroup[];
   constants?: UnitViewerConstants;
   statIcons?: Record<string, string>;
   error?: string;
@@ -240,5 +250,11 @@ export interface UnitViewerAssetResponse {
   base64?: string;
   mimeType?: string;
   resolvedPath?: string;
+  error?: string;
+}
+
+export interface UnitViewerAssetsResponse {
+  success: boolean;
+  assets?: Record<string, { base64: string; mimeType: string }>;
   error?: string;
 }
