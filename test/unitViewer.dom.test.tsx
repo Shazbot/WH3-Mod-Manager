@@ -198,6 +198,8 @@ describe("Unit Viewer UI", () => {
     await waitFor(() =>
       expect(addBeta.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,card:ui\\units\\icons\\unit_b.png"),
     );
+    // The whole subculture must arrive in one request so the main process reads each pack once.
+    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
     expect(window.api?.getUnitViewerAssets).toHaveBeenCalledWith("session", [
       "ui\\units\\icons\\unit_b.png",
       "ui\\units\\icons\\unit_a.png",
@@ -212,6 +214,8 @@ describe("Unit Viewer UI", () => {
     expect(within(browser).queryByRole("button", { name: /Beta/ })).not.toBeInTheDocument();
     fireEvent.click(within(browser).getByRole("button", { name: "Add Alpha to comparison" }));
     expect(within(browser).getByText(/2 selected/)).toBeInTheDocument();
+    // Searching and selecting reuse the cards already fetched for the subculture.
+    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(browser).getByRole("button", { name: "Close unit card browser" }));
     expect(screen.queryByRole("dialog", { name: "Unit card browser" })).not.toBeInTheDocument();

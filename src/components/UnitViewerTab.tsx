@@ -368,57 +368,34 @@ const RosterUnitTile = memo(({
   imageSrc,
   isSelected,
   onToggle,
-  onRequestImage,
 }: {
   unit: UnitViewerCatalogUnit;
   imageSrc?: string;
   isSelected: boolean;
   onToggle: (unitKey: string) => void;
-  onRequestImage: (assetPath: string) => void;
 }) => {
-  const tileRef = useRef<HTMLDivElement>(null);
-  const cardPath = unit.unitCardPath;
-
-  useEffect(() => {
-    if (!cardPath || imageSrc) return;
-    const element = tileRef.current;
-    if (!element || typeof IntersectionObserver === "undefined") {
-      onRequestImage(cardPath);
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.disconnect();
-      onRequestImage(cardPath);
-    }, { rootMargin: "400px 0px" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [cardPath, imageSrc, onRequestImage]);
-
   return (
-    <div ref={tileRef}>
-      <button
-        type="button"
-        title={unit.key}
-        aria-pressed={isSelected}
-        aria-label={isSelected ? `Remove ${unit.name} from comparison` : `Add ${unit.name} to comparison`}
-        onClick={() => onToggle(unit.key)}
-        className={`flex w-full flex-col gap-1 rounded border p-1.5 text-left transition-colors ${isSelected ? "border-amber-400 bg-amber-900/40" : "border-gray-700 bg-gray-900 hover:border-amber-500/70 hover:bg-gray-800"}`}
-      >
-        <span className="relative block w-full overflow-hidden rounded bg-gray-950" style={{ aspectRatio: "164 / 212" }}>
-          {imageSrc
-            ? <img src={imageSrc} className="h-full w-full object-cover" alt="" />
-            : <span className="flex h-full w-full items-center justify-center text-2xl text-gray-700">?</span>}
-          <span className={`absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow ${isSelected ? "border-amber-300 bg-amber-500 text-gray-950" : "border-gray-600 bg-gray-900/90 text-gray-200"}`}>
-            {isSelected ? <IoCheckmark size={15} /> : <IoAdd size={15} />}
-          </span>
+    <button
+      type="button"
+      title={unit.key}
+      aria-pressed={isSelected}
+      aria-label={isSelected ? `Remove ${unit.name} from comparison` : `Add ${unit.name} to comparison`}
+      onClick={() => onToggle(unit.key)}
+      className={`flex w-full flex-col gap-1 rounded border p-1.5 text-left transition-colors ${isSelected ? "border-amber-400 bg-amber-900/40" : "border-gray-700 bg-gray-900 hover:border-amber-500/70 hover:bg-gray-800"}`}
+    >
+      <span className="relative block w-full overflow-hidden rounded bg-gray-950" style={{ aspectRatio: "164 / 212" }}>
+        {imageSrc
+          ? <img src={imageSrc} className="h-full w-full object-cover" alt="" />
+          : <span className="flex h-full w-full items-center justify-center text-2xl text-gray-700">?</span>}
+        <span className={`absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow ${isSelected ? "border-amber-300 bg-amber-500 text-gray-950" : "border-gray-600 bg-gray-900/90 text-gray-200"}`}>
+          {isSelected ? <IoCheckmark size={15} /> : <IoAdd size={15} />}
         </span>
-        <span className="flex min-h-8 items-start text-[13px] leading-tight text-gray-200">
-          <UnitCasteBadge caste={unit.caste} />
-          <span className="line-clamp-2">{unit.name}</span>
-        </span>
-      </button>
-    </div>
+      </span>
+      <span className="flex min-h-8 items-start text-[13px] leading-tight text-gray-200">
+        <UnitCasteBadge caste={unit.caste} />
+        <span className="line-clamp-2">{unit.name}</span>
+      </span>
+    </button>
   );
 });
 
@@ -449,19 +426,20 @@ const UnitViewerTab = memo(() => {
   const [loading, setLoading] = useState(false);
   const [isRosterOpen, setIsRosterOpen] = useState(false);
   const [rosterGroupKey, setRosterGroupKey] = useState<string>();
-  const [cardImages, setCardImages] = useState<Record<string, string>>({});
-  const requestedCardPathsRef = useRef(new Set<string>());
-  const pendingCardPathsRef = useRef(new Set<string>());
-  const cardFlushTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const flushCardImagesRef = useRef<() => void>(() => undefined);
+  const [loadingCards, setLoadingCards] = useState(false);
+  // Unit cards are fetched a whole subculture at a time, so they are stored per subculture and
+  // replaced wholesale when the browser switches to another one.
+  const [cardImages, setCardImages] = useState<{ groupKey: string; images: Record<string, string> }>(
+    { groupKey: "", images: {} },
+  );
 
   const resetCardImages = useCallback(() => {
-    if (cardFlushTimerRef.current) clearTimeout(cardFlushTimerRef.current);
-    cardFlushTimerRef.current = undefined;
-    requestedCardPathsRef.current = new Set();
-    pendingCardPathsRef.current = new Set();
     // Keep the same object when already empty so a reset cannot force a re-render on its own.
-    setCardImages((current) => (Object.keys(current).length === 0 ? current : {}));
+    setCardImages((current) =>
+      current.groupKey === "" && Object.keys(current.images).length === 0
+        ? current
+        : { groupKey: "", images: {} },
+    );
   }, []);
 
   const recoverMissingSession = useCallback((failedSessionId: string) => {
@@ -478,53 +456,6 @@ const UnitViewerTab = memo(() => {
     setSessionRefreshToken((token) => token + 1);
     return true;
   }, [resetCardImages]);
-
-  const flushCardImageRequests = useCallback(() => {
-    const requestedSessionId = sessionIdRef.current;
-    if (!requestedSessionId) return;
-    const paths = Array.from(pendingCardPathsRef.current).slice(0, 60);
-    for (const path of paths) pendingCardPathsRef.current.delete(path);
-    if (paths.length === 0) return;
-    window.api?.getUnitViewerAssets(requestedSessionId, paths).then((result) => {
-      if (sessionIdRef.current !== requestedSessionId) return;
-      if (!result?.success) {
-        if (result?.error && isMissingUnitViewerSessionError(result.error)) recoverMissingSession(requestedSessionId);
-        return;
-      }
-      const assets = Object.entries(result.assets || {});
-      if (assets.length === 0) return;
-      setCardImages((current) => {
-        const next = { ...current };
-        for (const [path, asset] of assets) next[path] = `data:${asset.mimeType || "image/png"};base64,${asset.base64}`;
-        return next;
-      });
-    }).catch(() => undefined);
-    if (pendingCardPathsRef.current.size > 0 && !cardFlushTimerRef.current) {
-      cardFlushTimerRef.current = setTimeout(() => {
-        cardFlushTimerRef.current = undefined;
-        flushCardImagesRef.current();
-      }, 0);
-    }
-  }, [recoverMissingSession]);
-
-  useEffect(() => {
-    flushCardImagesRef.current = flushCardImageRequests;
-  }, [flushCardImageRequests]);
-
-  useEffect(() => () => {
-    if (cardFlushTimerRef.current) clearTimeout(cardFlushTimerRef.current);
-  }, []);
-
-  const requestCardImage = useCallback((assetPath: string) => {
-    if (requestedCardPathsRef.current.has(assetPath)) return;
-    requestedCardPathsRef.current.add(assetPath);
-    pendingCardPathsRef.current.add(assetPath);
-    if (cardFlushTimerRef.current) return;
-    cardFlushTimerRef.current = setTimeout(() => {
-      cardFlushTimerRef.current = undefined;
-      flushCardImagesRef.current();
-    }, 60);
-  }, []);
 
   const toggleSelectedUnit = useCallback((unitKey: string) => {
     setSelectedKeys((keys) => (keys.includes(unitKey) ? keys.filter((key) => key !== unitKey) : [...keys, unitKey]));
@@ -618,6 +549,38 @@ const UnitViewerTab = memo(() => {
     () => groups.find((group) => group.key === rosterGroupKey) || groups[0],
     [groups, rosterGroupKey],
   );
+
+  // One request for the whole subculture: the main process then needs a single read per pack
+  // instead of reopening ui.pack once per unit card.
+  useEffect(() => {
+    if (!isRosterOpen || !sessionId || !rosterGroup) return;
+    const requestedSessionId = sessionId;
+    const groupKey = rosterGroup.key;
+    setCardImages((current) => (current.groupKey === groupKey ? current : { groupKey, images: {} }));
+    const assetPaths = Array.from(new Set(
+      rosterGroup.units.map((unit) => unit.unitCardPath).filter((path): path is string => !!path),
+    ));
+    if (assetPaths.length === 0) return;
+    let cancelled = false;
+    setLoadingCards(true);
+    window.api?.getUnitViewerAssets(requestedSessionId, assetPaths).then((result) => {
+      if (cancelled || sessionIdRef.current !== requestedSessionId) return;
+      if (!result?.success) {
+        if (result?.error && isMissingUnitViewerSessionError(result.error)) recoverMissingSession(requestedSessionId);
+        return;
+      }
+      setCardImages({
+        groupKey,
+        images: Object.fromEntries(
+          Object.entries(result.assets || {}).map(([assetPath, asset]) =>
+            [assetPath, `data:${asset.mimeType || "image/png"};base64,${asset.base64}`]),
+        ),
+      });
+    }).catch(() => undefined).finally(() => {
+      if (!cancelled) setLoadingCards(false);
+    });
+    return () => { cancelled = true; };
+  }, [isRosterOpen, recoverMissingSession, rosterGroup, sessionId]);
 
   const rosterSections = useMemo(() => {
     if (!rosterGroup) return [];
@@ -767,6 +730,7 @@ const UnitViewerTab = memo(() => {
               <IoSearch className="text-gray-500" />
               <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search units or keys" aria-label="Search unit cards" className="w-full bg-transparent py-1 text-sm outline-none" />
             </label>
+            {loadingCards && <span className="text-xs text-gray-400">Loading unit cards…</span>}
             <span className="ml-auto text-xs text-gray-500">{selectedKeys.length} selected</span>
             <button type="button" onClick={() => setIsRosterOpen(false)} aria-label="Close unit card browser" className="flex items-center gap-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-200 hover:border-amber-500 hover:text-white">
               <IoClose size={18} /> Close
@@ -785,10 +749,9 @@ const UnitViewerTab = memo(() => {
                         <RosterUnitTile
                           key={unit.key}
                           unit={unit}
-                          imageSrc={unit.unitCardPath ? cardImages[unit.unitCardPath] : undefined}
+                          imageSrc={unit.unitCardPath ? cardImages.images[unit.unitCardPath] : undefined}
                           isSelected={selectedKeys.includes(unit.key)}
                           onToggle={toggleSelectedUnit}
-                          onRequestImage={requestCardImage}
                         />
                       ))}
                     </div>

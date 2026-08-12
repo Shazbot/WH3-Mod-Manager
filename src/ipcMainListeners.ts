@@ -2262,18 +2262,45 @@ export const registerIpcMainListeners = (
   const getUnitViewerSignature = (mods: Mod[]) =>
     buildSkillsDataSignature(mods, appData.currentGame);
 
+  const getUnitViewerAssetCandidates = (normalizedPath: string) => {
+    const withoutExtension = normalizedPath.replace(/\.(png|webp|jpe?g)$/i, "");
+    return Array.from(
+      new Set([normalizedPath, `${withoutExtension}.png`, `${withoutExtension}.webp`, `${withoutExtension}.jpg`]),
+    );
+  };
+
+  const cacheUnitViewerAsset = (
+    session: UnitViewerSession,
+    normalizedPath: string,
+    entry: { base64: string; mimeType: string; bytes: number; resolvedPath: string },
+  ) => {
+    while (
+      session.assetCacheBytes + entry.bytes > UNIT_VIEWER_ASSET_CACHE_MAX_BYTES &&
+      session.assetCache.size > 0
+    ) {
+      const oldestKey = session.assetCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      const oldest = session.assetCache.get(oldestKey);
+      session.assetCache.delete(oldestKey);
+      session.assetCacheBytes -= oldest?.bytes || 0;
+    }
+    session.assetCache.set(normalizedPath, entry);
+    session.assetCacheBytes += entry.bytes;
+  };
+
+  const takeCachedUnitViewerAsset = (session: UnitViewerSession, normalizedPath: string) => {
+    const cached = session.assetCache.get(normalizedPath);
+    if (!cached) return undefined;
+    session.assetCache.delete(normalizedPath);
+    session.assetCache.set(normalizedPath, cached);
+    return cached;
+  };
+
   const getUnitViewerAsset = async (session: UnitViewerSession, requestedPath: string) => {
     const normalized = normalizePackFilePath(requestedPath).toLowerCase();
-    const cached = session.assetCache.get(normalized);
-    if (cached) {
-      session.assetCache.delete(normalized);
-      session.assetCache.set(normalized, cached);
-      return cached;
-    }
-    const withoutExtension = normalized.replace(/\.(png|webp|jpe?g)$/i, "");
-    const candidates = Array.from(
-      new Set([normalized, `${withoutExtension}.png`, `${withoutExtension}.webp`, `${withoutExtension}.jpg`]),
-    );
+    const cached = takeCachedUnitViewerAsset(session, normalized);
+    if (cached) return cached;
+    const candidates = getUnitViewerAssetCandidates(normalized);
     for (const packPath of session.assetPackPaths.toReversed()) {
       const pack = await getOrLoadPackFromAppData(packPath);
       if (!pack) continue;
@@ -2290,21 +2317,64 @@ export const registerIpcMainListeners = (
         bytes: loadedFile.buffer.length,
         resolvedPath: loadedFile.name,
       };
-      while (
-        session.assetCacheBytes + entry.bytes > UNIT_VIEWER_ASSET_CACHE_MAX_BYTES &&
-        session.assetCache.size > 0
-      ) {
-        const oldestKey = session.assetCache.keys().next().value as string | undefined;
-        if (!oldestKey) break;
-        const oldest = session.assetCache.get(oldestKey);
-        session.assetCache.delete(oldestKey);
-        session.assetCacheBytes -= oldest?.bytes || 0;
-      }
-      session.assetCache.set(normalized, entry);
-      session.assetCacheBytes += entry.bytes;
+      cacheUnitViewerAsset(session, normalized, entry);
       return entry;
     }
     return undefined;
+  };
+
+  /**
+   * Resolves many assets with at most one read per pack instead of one per asset: each pack is
+   * asked for every asset still outstanding, and all of its hits are read in a single call.
+   */
+  const getUnitViewerAssetsBatch = async (session: UnitViewerSession, requestedPaths: string[]) => {
+    const assets: Record<string, { base64: string; mimeType: string }> = {};
+    const outstanding = new Map<string, string[]>();
+    for (const requestedPath of requestedPaths) {
+      const normalized = normalizePackFilePath(requestedPath).toLowerCase();
+      const cached = takeCachedUnitViewerAsset(session, normalized);
+      if (cached) {
+        assets[requestedPath] = { base64: cached.base64, mimeType: cached.mimeType };
+        continue;
+      }
+      const requestedFor = outstanding.get(normalized) || [];
+      requestedFor.push(requestedPath);
+      outstanding.set(normalized, requestedFor);
+    }
+
+    for (const packPath of session.assetPackPaths.toReversed()) {
+      if (outstanding.size === 0) break;
+      const pack = await getOrLoadPackFromAppData(packPath);
+      if (!pack) continue;
+      const fileNamesByAsset = new Map<string, string>();
+      for (const normalized of outstanding.keys()) {
+        const indexedFile = getUnitViewerAssetCandidates(normalized)
+          .map((candidate) => findPackedFileCaseInsensitive(pack, candidate))
+          .find((candidate): candidate is PackedFile => !!candidate);
+        if (indexedFile) fileNamesByAsset.set(normalized, indexedFile.name);
+      }
+      if (fileNamesByAsset.size === 0) continue;
+      await readFromExistingPack(pack, {
+        filesToRead: Array.from(fileNamesByAsset.values()),
+        skipParsingTables: true,
+      });
+      for (const [normalized, fileName] of fileNamesByAsset) {
+        const loadedFile = findPackedFileCaseInsensitive(pack, fileName);
+        if (!loadedFile?.buffer) continue;
+        const entry = {
+          base64: loadedFile.buffer.toString("base64"),
+          mimeType: getPackedFileMimeType(loadedFile.name) || "image/png",
+          bytes: loadedFile.buffer.length,
+          resolvedPath: loadedFile.name,
+        };
+        cacheUnitViewerAsset(session, normalized, entry);
+        for (const requestedPath of outstanding.get(normalized) || []) {
+          assets[requestedPath] = { base64: entry.base64, mimeType: entry.mimeType };
+        }
+        outstanding.delete(normalized);
+      }
+    }
+    return assets;
   };
 
   const buildUnitViewerSessionData = async (enabledMods: Mod[]) => {
@@ -2499,11 +2569,7 @@ export const registerIpcMainListeners = (
     try {
       const session = unitViewerSessions.get(sessionId);
       if (!session) return { success: false, error: "Unit Viewer session expired" };
-      const assets: Record<string, { base64: string; mimeType: string }> = {};
-      for (const assetPath of new Set(assetPaths || [])) {
-        const asset = await getUnitViewerAsset(session, assetPath);
-        if (asset) assets[assetPath] = { base64: asset.base64, mimeType: asset.mimeType };
-      }
+      const assets = await getUnitViewerAssetsBatch(session, Array.from(new Set(assetPaths || [])));
       return { success: true, assets };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to load assets" };
