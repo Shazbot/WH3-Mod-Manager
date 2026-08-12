@@ -795,6 +795,18 @@ export const forEachPackLocEntry = (pack: Pack, visit: (key: string, value: stri
 };
 
 /**
+ * The vanilla packs that actually carry loc tables.
+ *
+ * Only local_en does. Every other vanilla pack has zero loc entries, so pointing the loc cache at
+ * the broad pack sets the skills and technology builds read would make its identity depend on packs
+ * that cannot affect it - and would give each consumer a separate cache of identical content.
+ */
+const getVanillaLocalisationPackPaths = (dataFolder: string) =>
+  [...appData.allVanillaPackNames]
+    .filter((packName) => packName.startsWith("local_en"))
+    .map((packName) => nodePath.join(dataFolder, packName));
+
+/**
  * The game's own locs, as an entry for the `locs` record consumers look keys up in.
  *
  * Returns the cache reader under one synthetic key rather than a trie per pack, which is the whole
@@ -1109,9 +1121,10 @@ export const registerIpcMainListeners = (
       if (mods.length > 0) {
         await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
       }
-      // Vanilla locs come from the cache, so on a hit the loc packs are never read. That read is
-      // purely for locs here (skipParsingTables), which is what makes skipping it safe.
-      const vanillaLocs = await getVanillaLocLookup(vanillaPacksToRead);
+      const vanillaLocs = await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder));
+      // Still read the vanilla packs, without their locs: these packs carry no loc tables, but
+      // loadIconsFromPacks needs them indexed in appData.packsData further down.
+      await readModsByPath(vanillaPacksToRead, { skipParsingTables: true }, true, false);
       const vanillaPacks = appData.packsData.filter((packsData) =>
         vanillaPacksToRead.includes(packsData.path),
       );
@@ -1815,7 +1828,7 @@ export const registerIpcMainListeners = (
     // Vanilla first, then mods, matching the cached path above. These packs were read for their
     // tables regardless, so the saving here is the tries, which used to be retained for the session.
     const locs = {
-      ...(await getVanillaLocLookup(vanillaPacksToRead)),
+      ...(await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder))),
       ...getLocsFromPacks(
         appData.packsData.filter((packsData) =>
           mods.some((mod) => mod.name === packsData.name),
@@ -2470,9 +2483,7 @@ export const registerIpcMainListeners = (
       ),
     );
     const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName.wh3);
-    const localizationPackPaths = [...appData.allVanillaPackNames]
-      .filter((packName) => packName.startsWith("local_en"))
-      .map((packName) => nodePath.join(dataFolder, packName));
+    const localizationPackPaths = getVanillaLocalisationPackPaths(dataFolder);
     const assetPackPaths = [...appData.allVanillaPackNames]
       .filter(
         (packName) =>
@@ -2534,37 +2545,7 @@ export const registerIpcMainListeners = (
     }
     // The game's locs are only read when the loc cache has to be built. On a hit nothing here
     // touches local_en.pack, which is the point: parsing it into a trie costs ~97 MB of heap.
-    const readVanillaLocPacks = async () => {
-      if (localizationPackPaths.length > 0) {
-        await readModsByPath(
-          localizationPackPaths,
-          { skipParsingTables: true, readLocs: true },
-          true,
-          false,
-        );
-      }
-      const loadedByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
-      return localizationPackPaths
-        .map((packPath) => loadedByPath.get(packPath))
-        .filter((pack): pack is Pack => !!pack);
-    };
-
-    const vanillaLocReader = await openOrBuildVanillaLocCache({
-      userDataPath: app.getPath("userData"),
-      game: appData.currentGame,
-      packPaths: localizationPackPaths,
-      readEntries: async () => {
-        const entries: Array<readonly [string, string]> = [];
-        for (const pack of await readVanillaLocPacks()) {
-          forEachPackLocEntry(pack, (key, value) => entries.push([key, value]));
-        }
-        return entries;
-      },
-    });
-    // Falling back to the live path keeps a broken cache from breaking the Unit Viewer.
-    const vanillaLocLookups = vanillaLocReader
-      ? [vanillaLocReader]
-      : (await readVanillaLocPacks()).map((pack) => getLocsTrie(pack));
+    const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
 
     const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
     const dbPack = packsByPath.get(dbPackPath);
@@ -3046,7 +3027,7 @@ export const registerIpcMainListeners = (
     // goes first to keep that precedence. The packs were read for their tables either way; what is
     // saved is the tries, which the cached technology data used to retain.
     const locs = {
-      ...(await getVanillaLocLookup(vanillaPacksToRead)),
+      ...(await getVanillaLocLookup(getVanillaLocalisationPackPaths(dataFolder))),
       ...getLocsFromPacks(orderedModPacks, getLocsTrie),
     };
     const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
