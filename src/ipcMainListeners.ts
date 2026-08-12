@@ -30,6 +30,7 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
 import {
   VISUALS_DATA_CACHE_VERSION,
   createEmptyVisualsDataCache,
@@ -769,6 +770,30 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
       });
   }
 };
+/**
+ * Every loc entry in a pack, one at a time.
+ *
+ * The same walk `getLocsTrie` does, without building the trie: feeding a cache builder through a
+ * trie would pay ~97 MB of node overhead to produce something it immediately flattens again.
+ */
+export const forEachPackLocEntry = (pack: Pack, visit: (key: string, value: string) => void) => {
+  const locPackedFiles = Object.values(pack.packedFiles).filter((packedFile) =>
+    packedFile.name.endsWith(".loc"),
+  );
+  const packViewData = getPackViewData(pack, undefined, true);
+  if (!packViewData) return;
+  for (const packedFile of locPackedFiles) {
+    const data = getPackTableData(packedFile.name, packViewData);
+    if (!data) continue;
+    for (const rows of Object.values(data)) {
+      for (const row of rows) {
+        const locKey = row[0] as string;
+        if (locKey) visit(locKey, row[1] as string);
+      }
+    }
+  }
+};
+
 export const getLocsTrie = (pack: Pack) => {
   console.log("getLocsTrie:", pack.name);
   const trie = new Trie<string>("_");
@@ -2462,14 +2487,39 @@ export const registerIpcMainListeners = (
     if (enabledMods.length > 0) {
       await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
     }
-    if (localizationPackPaths.length > 0) {
-      await readModsByPath(
-        localizationPackPaths,
-        { skipParsingTables: true, readLocs: true },
-        true,
-        false,
-      );
-    }
+    // The game's locs are only read when the loc cache has to be built. On a hit nothing here
+    // touches local_en.pack, which is the point: parsing it into a trie costs ~97 MB of heap.
+    const readVanillaLocPacks = async () => {
+      if (localizationPackPaths.length > 0) {
+        await readModsByPath(
+          localizationPackPaths,
+          { skipParsingTables: true, readLocs: true },
+          true,
+          false,
+        );
+      }
+      const loadedByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+      return localizationPackPaths
+        .map((packPath) => loadedByPath.get(packPath))
+        .filter((pack): pack is Pack => !!pack);
+    };
+
+    const vanillaLocReader = await openOrBuildVanillaLocCache({
+      userDataPath: app.getPath("userData"),
+      game: appData.currentGame,
+      packPaths: localizationPackPaths,
+      readEntries: async () => {
+        const entries: Array<readonly [string, string]> = [];
+        for (const pack of await readVanillaLocPacks()) {
+          forEachPackLocEntry(pack, (key, value) => entries.push([key, value]));
+        }
+        return entries;
+      },
+    });
+    // Falling back to the live path keeps a broken cache from breaking the Unit Viewer.
+    const vanillaLocLookups = vanillaLocReader
+      ? [vanillaLocReader]
+      : (await readVanillaLocPacks()).map((pack) => getLocsTrie(pack));
 
     const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
     const dbPack = packsByPath.get(dbPackPath);
@@ -2489,11 +2539,11 @@ export const registerIpcMainListeners = (
       tables[canonicalTableName] = rows;
     }
 
-    const locPacks = localizationPackPaths
-      .map((packPath) => packsByPath.get(packPath))
-      .filter((pack): pack is Pack => !!pack)
-      .concat(orderedMods);
-    const data = buildUnitViewerData(tables, createLocLookup(locPacks.map((pack) => getLocsTrie(pack))));
+    // Vanilla first so mod locs, which stay on the live path, still shadow it.
+    const data = buildUnitViewerData(
+      tables,
+      createLocLookup([...vanillaLocLookups, ...orderedMods.map((pack) => getLocsTrie(pack))]),
+    );
     const statIconSession: UnitViewerSession = {
       sessionId: "unit-viewer-cache-build",
       data,
