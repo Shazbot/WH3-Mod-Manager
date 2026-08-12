@@ -30,6 +30,7 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
 import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
 import {
   VISUALS_DATA_CACHE_VERSION,
@@ -794,17 +795,12 @@ export const forEachPackLocEntry = (pack: Pack, visit: (key: string, value: stri
   }
 };
 
-/**
- * The vanilla packs that actually carry loc tables.
- *
- * Only local_en does. Every other vanilla pack has zero loc entries, so pointing the loc cache at
- * the broad pack sets the skills and technology builds read would make its identity depend on packs
- * that cannot affect it - and would give each consumer a separate cache of identical content.
- */
 const getVanillaLocalisationPackPaths = (dataFolder: string) =>
-  [...appData.allVanillaPackNames]
-    .filter((packName) => packName.startsWith("local_en"))
-    .map((packName) => nodePath.join(dataFolder, packName));
+  getVanillaLocalisationPackPathsFor(
+    appData.allVanillaPackNames,
+    appData.currentLanguage,
+    dataFolder,
+  );
 
 /**
  * The game's own locs, as an entry for the `locs` record consumers look keys up in.
@@ -4799,16 +4795,7 @@ export const registerIpcMainListeners = (
       const dbPackName = gameToPackWithDBTablesName[appData.currentGame] || "db.pack";
       const dbPackPath = nodePath.join(dataFolder, dbPackName);
       const dataPackPath = nodePath.join(dataFolder, "data.pack");
-      // Lowest priority first: these are folded in order and the later pack wins, so English is the
-      // fallback and the player's own language overrides it wherever it has a string.
-      const localPackNames = [] as string[];
-      const currentLanguage = appData.currentLanguage || "en";
-      const preferredLocPack = `local_${currentLanguage}.pack`;
-      if (appData.allVanillaPackNames.has("local_en.pack")) localPackNames.push("local_en.pack");
-      if (preferredLocPack !== "local_en.pack" && appData.allVanillaPackNames.has(preferredLocPack)) {
-        localPackNames.push(preferredLocPack);
-      }
-      const localPackPaths = localPackNames.map((packName) => nodePath.join(dataFolder, packName));
+      const localPackPaths = getVanillaLocalisationPackPaths(dataFolder);
       const visualsCache = await loadVisualsDataCache();
       const schemaHash = getVisualsSchemaHash(appData.currentGame);
       const contributionPaths = Array.from(
