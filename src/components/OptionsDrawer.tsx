@@ -4,6 +4,7 @@ import {
   toggleAlwaysHiddenMods,
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
+  toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
@@ -94,6 +95,9 @@ const OptionsDrawer = memo(() => {
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
+  const isUsingEnglishLocalizations = useAppSelector(
+    (state) => state.app.isUsingEnglishLocalizations,
+  );
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
@@ -655,6 +659,23 @@ const OptionsDrawer = memo(() => {
                 {localized.closeOnPlay}
               </label>
             </div>
+
+            <div className="flex items-center ml-1 mt-4">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="use-english-localizations"
+                checked={!!isUsingEnglishLocalizations}
+                onChange={() => dispatch(toggleIsUsingEnglishLocalizations())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="use-english-localizations">
+                {localized.useEnglishLocalizations || "Use English Localizations"}
+              </label>
+            </div>
+            <p className="ml-1 mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {localized.useEnglishLocalizationsHelp ||
+                "Read the game's English text even when the manager is set to another language."}
+            </p>
 
             <h6 className="mt-6">{localized.extraColumns}</h6>
             <div className="flex items-center ml-1">

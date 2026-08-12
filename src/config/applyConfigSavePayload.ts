@@ -16,6 +16,7 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
     appData.enabledMods = getEnabledMods(payload.mods.currentPresetMods, config.alwaysEnabledModNames);
   }
   appData.isCompatCheckingVanillaPacks = config.isCompatCheckingVanillaPacks;
+  appData.isUsingEnglishLocalizations = !!config.isUsingEnglishLocalizations;
   appData.isChangingGameProcessPriority = config.isChangingGameProcessPriority;
   appData.skillTreesDisplayMode = config.skillTreesDisplayMode;
   appData.technologyTreesDisplayMode = config.technologyTreesDisplayMode;

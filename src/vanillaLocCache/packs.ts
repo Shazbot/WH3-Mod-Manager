@@ -37,12 +37,14 @@ export const GAME_PACK_CODES_BY_LANGUAGE: Readonly<Record<string, readonly strin
 export const getVanillaLocalisationPackNames = (
   allVanillaPackNames: Iterable<string>,
   currentLanguage: string | undefined,
+  /** Read the game's English strings whatever the app is set to. Off by default. */
+  useEnglishLocalizations = false,
 ): string[] => {
   const packNames = [...allVanillaPackNames];
   const packsForCode = (code: string) =>
     packNames.filter((packName) => packName.startsWith(`local_${code}`)).sort();
 
-  const language = currentLanguage || "en";
+  const language = useEnglishLocalizations ? "en" : currentLanguage || "en";
   const englishPacks = packsForCode("en");
   if (language === "en") return englishPacks;
 
@@ -55,7 +57,8 @@ export const getVanillaLocalisationPackPaths = (
   allVanillaPackNames: Iterable<string>,
   currentLanguage: string | undefined,
   dataFolder: string,
+  useEnglishLocalizations = false,
 ): string[] =>
-  getVanillaLocalisationPackNames(allVanillaPackNames, currentLanguage).map((packName) =>
-    nodePath.join(dataFolder, packName),
+  getVanillaLocalisationPackNames(allVanillaPackNames, currentLanguage, useEnglishLocalizations).map(
+    (packName) => nodePath.join(dataFolder, packName),
   );

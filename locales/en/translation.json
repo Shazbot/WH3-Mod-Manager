@@ -197,6 +197,8 @@
   "extraColumns": "Extra Columns",
   "modThumbnailColumn": "Mod Thumbnail Column",
   "closeOnPlay": "Close Manager On Play",
+  "useEnglishLocalizations": "Use English Localizations",
+  "useEnglishLocalizationsHelp": "Read the game's English text even when the manager is set to another language. Affects the Unit Viewer, skills, tech trees and visuals.",
   "copyToDataMsg1": "Copies currently enabled mods from content into data.",
   "copyToDataMsg2": "Hold Shift if you want to copy all mods.",
   "copyToDataMsg3": "As a modder this can overwrite your mod in data with an older version you have in content!",

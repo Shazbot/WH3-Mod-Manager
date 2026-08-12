@@ -1090,6 +1090,7 @@ const appSlice = createSlice({
 
       state.areThumbnailsEnabled = fromConfigAppState.areThumbnailsEnabled;
       state.isClosedOnPlay = fromConfigAppState.isClosedOnPlay;
+      state.isUsingEnglishLocalizations = !!fromConfigAppState.isUsingEnglishLocalizations;
       state.isCompatCheckingVanillaPacks =
         !!fromConfigAppState.isFeaturesForModdersEnabled &&
         !!fromConfigAppState.isCompatCheckingVanillaPacks;
@@ -1371,6 +1372,9 @@ const appSlice = createSlice({
     },
     toggleIsClosedOnPlay: (state: AppState) => {
       state.isClosedOnPlay = !state.isClosedOnPlay;
+    },
+    toggleIsUsingEnglishLocalizations: (state: AppState) => {
+      state.isUsingEnglishLocalizations = !state.isUsingEnglishLocalizations;
     },
     toggleIsCompatCheckingVanillaPacks: (state: AppState) => {
       if (!state.isFeaturesForModdersEnabled) {
@@ -1718,6 +1722,7 @@ export const {
   toggleIsAuthorEnabled,
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
+  toggleIsUsingEnglishLocalizations,
   setIsDev,
   setIsAdmin,
   setIsWH3Running,

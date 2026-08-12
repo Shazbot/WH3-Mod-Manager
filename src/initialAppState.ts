@@ -20,6 +20,7 @@ const initialState = {
   isAdmin: false,
   areThumbnailsEnabled: true,
   isClosedOnPlay: false,
+  isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,
   isMakeUnitsGeneralsEnabled: false,
   requestFolderPathsForGame: undefined,

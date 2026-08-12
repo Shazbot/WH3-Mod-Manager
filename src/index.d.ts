@@ -177,6 +177,8 @@ declare global {
     lastModThatWasRead: ModReadingInfo | undefined;
     currentlyReadingMod: ModReadingInfo | undefined;
     isClosedOnPlay: boolean;
+    /** Read the game's English locs even when the app is set to another language. */
+    isUsingEnglishLocalizations: boolean;
     isCompatCheckingVanillaPacks: boolean;
     isAuthorEnabled: boolean;
     isDev: boolean;
@@ -277,6 +279,7 @@ declare global {
     | "isFeaturesForModdersEnabled"
     | "moddersPrefix"
     | "isClosedOnPlay"
+    | "isUsingEnglishLocalizations"
     | "categories"
     | "categoryColors"
     | "modRowsSortingType"

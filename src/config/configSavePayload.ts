@@ -104,6 +104,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       moddersPrefix: appState.moddersPrefix,
       isClosedOnPlay: appState.isClosedOnPlay,
       isCompatCheckingVanillaPacks: appState.isCompatCheckingVanillaPacks,
+      isUsingEnglishLocalizations: appState.isUsingEnglishLocalizations,
       categories: appState.categories,
       categoryColors: appState.categoryColors,
       modRowsSortingType: appState.modRowsSortingType,

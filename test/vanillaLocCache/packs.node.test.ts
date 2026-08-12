@@ -87,6 +87,20 @@ describe("vanilla localisation packs", () => {
     expect(getVanillaLocalisationPackNames(packNames, "cs")).toEqual(["local_en.pack"]);
   });
 
+  it("reads English only when the setting asks for it, whatever the language", () => {
+    expect(getVanillaLocalisationPackNames(packNames, "ge", true)).toEqual(["local_en.pack"]);
+    expect(getVanillaLocalisationPackNames(packNames, "fr", true)).toEqual(["local_en.pack"]);
+    // Off by default, so leaving it out keeps the player's language.
+    expect(getVanillaLocalisationPackNames(packNames, "fr")).toEqual([
+      "local_en.pack",
+      "local_fr.pack",
+    ]);
+    expect(getVanillaLocalisationPackNames(packNames, "fr", false)).toEqual([
+      "local_en.pack",
+      "local_fr.pack",
+    ]);
+  });
+
   it("sorts a language's packs so a suffixed one wins, for versions that ship several", () => {
     // WH3 ships one English pack today, but has shipped suffixed ones, and set order is not stable.
     const withSuffixed = [...packNames, "local_en_3.pack"];

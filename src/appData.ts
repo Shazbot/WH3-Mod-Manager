@@ -184,6 +184,7 @@ interface AppData {
   waitForModIds: string[];
   subscribedModIds: string[];
   isCompatCheckingVanillaPacks: boolean;
+  isUsingEnglishLocalizations: boolean;
   modsToResubscribeTo: Mod[];
   isViewerReady: boolean;
   areSkillsReady: boolean;
@@ -255,6 +256,7 @@ const appData = {
   waitForModIds: [],
   subscribedModIds: [],
   isCompatCheckingVanillaPacks: false,
+  isUsingEnglishLocalizations: false,
   modsToResubscribeTo: [],
   isViewerReady: false,
   areSkillsReady: false,

@@ -800,6 +800,7 @@ const getVanillaLocalisationPackPaths = (dataFolder: string) =>
     appData.allVanillaPackNames,
     appData.currentLanguage,
     dataFolder,
+    appData.isUsingEnglishLocalizations,
   );
 
 /**
@@ -5374,6 +5375,7 @@ export const registerIpcMainListeners = (
       try {
         const appState = await readConfig();
         mainWindow?.webContents.send("fromAppConfig", appState);
+        appData.isUsingEnglishLocalizations = !!appState.isUsingEnglishLocalizations;
         console.log("appState.currentLanguage:", appState.currentLanguage);
         if (appState.currentLanguage) {
           const languageInConfig = appState.currentLanguage || "en";
