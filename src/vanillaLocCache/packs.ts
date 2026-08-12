@@ -19,18 +19,36 @@ import * as nodePath from "path";
  * The names come from the game manifest, so a pack a player has dropped in the data folder is never
  * a candidate here however it is named.
  */
+/**
+ * The app's language codes are not always the game's, so they are mapped rather than interpolated.
+ *
+ * Only the codes that differ are listed; anything absent uses its own code, which is right for en,
+ * fr, ru, pl, tr and zh. Japanese has no pack in WH3 and falls back to English, but is still probed
+ * under both spellings so a release that adds one is picked up without a code change.
+ */
+export const GAME_PACK_CODES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["ge"],
+  es: ["sp"],
+  ko: ["kr"],
+  pt: ["br"],
+  ja: ["ja", "jp"],
+};
+
 export const getVanillaLocalisationPackNames = (
   allVanillaPackNames: Iterable<string>,
   currentLanguage: string | undefined,
 ): string[] => {
   const packNames = [...allVanillaPackNames];
-  const packsForLanguage = (language: string) =>
-    packNames.filter((packName) => packName.startsWith(`local_${language}`)).sort();
+  const packsForCode = (code: string) =>
+    packNames.filter((packName) => packName.startsWith(`local_${code}`)).sort();
+
   const language = currentLanguage || "en";
-  return [
-    ...packsForLanguage("en"),
-    ...(language === "en" ? [] : packsForLanguage(language)),
-  ];
+  const englishPacks = packsForCode("en");
+  if (language === "en") return englishPacks;
+
+  // Empty when the language ships no pack, which leaves English as the whole answer.
+  const languagePacks = (GAME_PACK_CODES_BY_LANGUAGE[language] ?? [language]).flatMap(packsForCode);
+  return [...englishPacks, ...languagePacks];
 };
 
 export const getVanillaLocalisationPackPaths = (

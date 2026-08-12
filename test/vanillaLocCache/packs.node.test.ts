@@ -14,6 +14,10 @@ const packNames = [
   "local_en.pack",
   "models.pack",
   "local_zh.pack",
+  "local_sp.pack",
+  "local_kr.pack",
+  "local_br.pack",
+  "local_ru.pack",
 ];
 
 describe("vanilla localisation packs", () => {
@@ -33,9 +37,54 @@ describe("vanilla localisation packs", () => {
     expect(getVanillaLocalisationPackNames(packNames, undefined)).toEqual(["local_en.pack"]);
   });
 
-  it("falls back to English alone when the language ships no pack", () => {
-    // The app's language codes are not always the game's - "de" has no pack, "ge" is the German one.
-    expect(getVanillaLocalisationPackNames(packNames, "de")).toEqual(["local_en.pack"]);
+  it("maps the app's language codes onto the game's pack codes", () => {
+    // Interpolating the app code would look for local_de/local_es/local_ko/local_pt, none of which
+    // the game ships, and silently leave the player on English.
+    expect(getVanillaLocalisationPackNames(packNames, "de")).toEqual([
+      "local_en.pack",
+      "local_ge.pack",
+    ]);
+    expect(getVanillaLocalisationPackNames(packNames, "es")).toEqual([
+      "local_en.pack",
+      "local_sp.pack",
+    ]);
+    expect(getVanillaLocalisationPackNames(packNames, "ko")).toEqual([
+      "local_en.pack",
+      "local_kr.pack",
+    ]);
+    expect(getVanillaLocalisationPackNames(packNames, "pt")).toEqual([
+      "local_en.pack",
+      "local_br.pack",
+    ]);
+  });
+
+  it("uses the app's own code where the game agrees with it", () => {
+    for (const [language, pack] of [
+      ["fr", "local_fr.pack"],
+      ["ru", "local_ru.pack"],
+      ["zh", "local_zh.pack"],
+    ] as const) {
+      expect(getVanillaLocalisationPackNames(packNames, language)).toEqual(["local_en.pack", pack]);
+    }
+  });
+
+  it("leaves Japanese on English while still picking up a Japanese pack if one appears", () => {
+    // WH3 ships none today, so the answer is English alone.
+    expect(getVanillaLocalisationPackNames(packNames, "ja")).toEqual(["local_en.pack"]);
+
+    // Probed under both spellings, so a release that adds one needs no code change.
+    expect(getVanillaLocalisationPackNames([...packNames, "local_ja.pack"], "ja")).toEqual([
+      "local_en.pack",
+      "local_ja.pack",
+    ]);
+    expect(getVanillaLocalisationPackNames([...packNames, "local_jp.pack"], "ja")).toEqual([
+      "local_en.pack",
+      "local_jp.pack",
+    ]);
+  });
+
+  it("falls back to English alone for a language the game ships nothing for", () => {
+    expect(getVanillaLocalisationPackNames(packNames, "cs")).toEqual(["local_en.pack"]);
   });
 
   it("sorts a language's packs so a suffixed one wins, for versions that ship several", () => {
