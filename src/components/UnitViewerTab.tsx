@@ -158,7 +158,7 @@ const StatTextRow = ({ label, value, iconData }: { label: string; value: string;
 );
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <section className="mt-2 overflow-hidden rounded border border-gray-600/90 bg-gray-950/75">
+  <section className="mt-2 overflow-hidden rounded border border-gray-600/90 bg-gray-900/75">
     <h3 className="bg-gray-800 px-3 py-2 text-[15px] font-semibold text-amber-100">{title}</h3>
     {children}
   </section>
@@ -405,7 +405,7 @@ const RosterUnitTile = memo(({
       onClick={() => onToggle(unit.key)}
       className={`flex w-full flex-col gap-1 rounded border p-1.5 text-left transition-colors ${isSelected ? "border-amber-400 bg-amber-900/40" : "border-gray-700 bg-gray-900 hover:border-amber-500/70 hover:bg-gray-800"}`}
     >
-      <span className="relative block w-full overflow-hidden rounded bg-gray-950" style={{ aspectRatio: "164 / 212" }}>
+      <span className="relative block w-full overflow-hidden rounded bg-gray-900" style={{ aspectRatio: "164 / 212" }}>
         {imageSrc
           ? <img src={imageSrc} loading="lazy" decoding="async" className="h-full w-full object-cover" alt="" />
           : <span className="flex h-full w-full items-center justify-center text-2xl text-gray-700">?</span>}
@@ -691,13 +691,15 @@ const UnitViewerTab = memo(() => {
       </button>;
     }
     const isSelected = selectedKeys.includes(row.unit.key);
-    return <button key={key} style={style} type="button" aria-label={row.unit.name} className={`flex w-full items-center border-b border-gray-800/60 px-7 text-left text-sm ${isSelected ? "bg-amber-900/60 text-amber-100" : "bg-gray-950 text-gray-300 hover:bg-gray-800"}`} title={row.unit.key} onClick={() => toggleSelectedUnit(row.unit.key)}>
+    return <button key={key} style={style} type="button" aria-label={row.unit.name} className={`flex w-full items-center border-b border-gray-800/60 px-7 text-left text-sm ${isSelected ? "bg-amber-900/60 text-amber-100" : "bg-neutral-800 text-gray-300 hover:bg-gray-700"}`} title={row.unit.key} onClick={() => toggleSelectedUnit(row.unit.key)}>
       <UnitCasteBadge caste={row.unit.caste} /><span className="truncate">{row.unit.name}</span>
     </button>;
   };
 
+  // Base surfaces use neutral-800: the app body colour (index.css) they showed through before
+  // Tailwind 3.3 made the gray-950 shade resolve.
   return (
-    <div className="fixed bottom-0 left-12 right-0 top-8 flex overflow-hidden bg-gray-950 text-white">
+    <div className="fixed bottom-0 left-12 right-0 top-8 flex overflow-hidden bg-neutral-800 text-white">
       <aside className="flex w-[330px] shrink-0 flex-col border-r border-gray-700">
         <div className="p-3">
           <div className="mb-2 flex items-center gap-2">
@@ -751,7 +753,7 @@ const UnitViewerTab = memo(() => {
         </div>
       </main>
       {isRosterOpen && (
-        <div role="dialog" aria-label="Unit card browser" className="absolute inset-0 z-40 flex flex-col bg-gray-950">
+        <div role="dialog" aria-label="Unit card browser" className="absolute inset-0 z-40 flex flex-col bg-neutral-800">
           <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-700 bg-gray-900 px-4 py-2">
             <h2 className="text-lg font-semibold text-amber-100">Unit Cards</h2>
             <label className="text-xs text-gray-400">Faction Group <select
