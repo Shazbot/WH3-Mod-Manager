@@ -17,7 +17,26 @@ import { createFileSource, openVanillaLocCache, type VanillaLocCacheReader } fro
  * this cache's identity dependent on the game files alone.
  */
 
-const cacheFileName = (game: string) => `vanilla-loc-cache-${game}.bin`;
+/**
+ * One file per pack set, not per game and not per identity.
+ *
+ * Consumers do not agree on which vanilla packs they read locs from - the skills and technology
+ * filters differ from each other and from the Unit Viewer's - so keying the file on the game alone
+ * would have them overwrite each other's and rebuild on every switch.
+ *
+ * The name is keyed on the pack paths only, and the stamp beside it holds the full identity. So a
+ * game patch rewrites the same file rather than leaving the old one behind, and no pruning pass is
+ * needed - which is just as well, since nothing here can tell another consumer's file from a stale
+ * one by name.
+ */
+const cacheFileName = (game: string, packSetKey: string) =>
+  `vanilla-loc-cache-${game}-${packSetKey.slice(0, 16)}.bin`;
+
+const getPackSetKey = (game: string, packPaths: readonly string[]) =>
+  crypto
+    .createHash("sha1")
+    .update(JSON.stringify([game, packPaths.map((packPath) => nodePath.resolve(packPath)).sort()]))
+    .digest("hex");
 
 /** One reader per identity, so repeated builds in a session share the resident key block. */
 const readerByIdentity = new Map<string, VanillaLocCacheReader>();
@@ -46,25 +65,28 @@ export const getVanillaLocCacheIdentity = (game: string, packPaths: readonly str
   return crypto.createHash("sha1").update(JSON.stringify([game, parts])).digest("hex");
 };
 
-const identityFilePath = (userDataPath: string, game: string) =>
-  nodePath.join(userDataPath, cacheFileName(game));
+const cacheFilePath = (userDataPath: string, game: string, packSetKey: string) =>
+  nodePath.join(userDataPath, cacheFileName(game, packSetKey));
 
 /** Written beside the cache so a stale file is detected without opening it. */
-const identityStampPath = (userDataPath: string, game: string) =>
-  `${identityFilePath(userDataPath, game)}.id`;
+const stampPath = (userDataPath: string, game: string, packSetKey: string) =>
+  `${cacheFilePath(userDataPath, game, packSetKey)}.id`;
 
 const openIfCurrent = (
   userDataPath: string,
   game: string,
+  packSetKey: string,
   identity: string,
 ): VanillaLocCacheReader | undefined => {
   try {
-    if (fs.readFileSync(identityStampPath(userDataPath, game), "utf8") !== identity) return undefined;
+    if (fs.readFileSync(stampPath(userDataPath, game, packSetKey), "utf8") !== identity) {
+      return undefined;
+    }
   } catch {
     return undefined;
   }
   try {
-    return openVanillaLocCache(createFileSource(identityFilePath(userDataPath, game)));
+    return openVanillaLocCache(createFileSource(cacheFilePath(userDataPath, game, packSetKey)));
   } catch {
     return undefined;
   }
@@ -97,22 +119,25 @@ export const openOrBuildVanillaLocCache = async (
   const inFlight = buildsInFlight.get(identity);
   if (inFlight) return inFlight;
 
+  const packSetKey = getPackSetKey(request.game, request.packPaths);
+
   const build = (async (): Promise<VanillaLocCacheReader | undefined> => {
-    const current = openIfCurrent(request.userDataPath, request.game, identity);
+    const current = openIfCurrent(request.userDataPath, request.game, packSetKey, identity);
     if (current) return current;
 
     try {
       const bytes = buildVanillaLocCacheBytes(await request.readEntries());
-      const filePath = identityFilePath(request.userDataPath, request.game);
+      const filePath = cacheFilePath(request.userDataPath, request.game, packSetKey);
+      const stamp = stampPath(request.userDataPath, request.game, packSetKey);
       // The stamp is removed first and written last, so a crash mid-write leaves a file that no
       // longer claims to match anything rather than one that lies about its contents.
       try {
-        fs.rmSync(identityStampPath(request.userDataPath, request.game), { force: true });
+        fs.rmSync(stamp, { force: true });
       } catch {
         // Nothing to remove.
       }
       fs.writeFileSync(filePath, bytes);
-      fs.writeFileSync(identityStampPath(request.userDataPath, request.game), identity, "utf8");
+      fs.writeFileSync(stamp, identity, "utf8");
 
       const reader = openVanillaLocCache(createFileSource(filePath));
       if (!reader) {

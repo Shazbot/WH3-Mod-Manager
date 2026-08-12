@@ -192,7 +192,7 @@ import {
 } from "./utility/packFileViewing";
 import { collator } from "./utility/packFileSorting";
 import steamCollectionScript from "./utility/steamCollectionScript";
-import Trie from "./utility/trie";
+import Trie, { type KeyedLookup } from "./utility/trie";
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
@@ -794,6 +794,46 @@ export const forEachPackLocEntry = (pack: Pack, visit: (key: string, value: stri
   }
 };
 
+/**
+ * The game's own locs, as an entry for the `locs` record consumers look keys up in.
+ *
+ * Returns the cache reader under one synthetic key rather than a trie per pack, which is the whole
+ * saving: the tries these replace cost ~97 MB of heap and are retained for as long as the skills or
+ * technology data is. Consumers spread this first so mod locs, which stay on the live path, keep
+ * whatever precedence they had.
+ *
+ * Falls back to reading the packs and building tries, so a cache that cannot be built or opened
+ * degrades to the old behaviour instead of losing every localised string.
+ */
+const getVanillaLocLookup = async (
+  vanillaPackPaths: string[],
+): Promise<Record<string, KeyedLookup<string>>> => {
+  const readVanillaLocPacks = async () => {
+    if (vanillaPackPaths.length > 0) {
+      await readModsByPath(vanillaPackPaths, { skipParsingTables: true, readLocs: true }, true, false);
+    }
+    const loadedByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
+    return vanillaPackPaths
+      .map((packPath) => loadedByPath.get(packPath))
+      .filter((pack): pack is Pack => !!pack);
+  };
+
+  const reader = await openOrBuildVanillaLocCache({
+    userDataPath: app.getPath("userData"),
+    game: appData.currentGame,
+    packPaths: vanillaPackPaths,
+    readEntries: async () => {
+      const entries: Array<readonly [string, string]> = [];
+      for (const pack of await readVanillaLocPacks()) {
+        forEachPackLocEntry(pack, (key, value) => entries.push([key, value]));
+      }
+      return entries;
+    },
+  });
+  if (reader) return { "vanilla-loc-cache": reader };
+  return getLocsFromPacks(await readVanillaLocPacks(), getLocsTrie);
+};
+
 export const getLocsTrie = (pack: Pack) => {
   console.log("getLocsTrie:", pack.name);
   const trie = new Trie<string>("_");
@@ -1069,7 +1109,9 @@ export const registerIpcMainListeners = (
       if (mods.length > 0) {
         await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
       }
-      await readModsByPath(vanillaPacksToRead, { skipParsingTables: true, readLocs: true }, true, false);
+      // Vanilla locs come from the cache, so on a hit the loc packs are never read. That read is
+      // purely for locs here (skipParsingTables), which is what makes skipping it safe.
+      const vanillaLocs = await getVanillaLocLookup(vanillaPacksToRead);
       const vanillaPacks = appData.packsData.filter((packsData) =>
         vanillaPacksToRead.includes(packsData.path),
       );
@@ -1087,7 +1129,9 @@ export const registerIpcMainListeners = (
         }
         applyModOverlayToSkillsDataCore(mergedSkillsCore, orderedModPacksTableData, getTableRowData);
       }
-      const locs = getLocsFromPacks(vanillaPacks.concat(enabledModPacks), getLocsTrie);
+      // Vanilla first, matching the order these were merged in before: the lookups read the record
+      // in insertion order and take the first hit.
+      const locs = { ...vanillaLocs, ...getLocsFromPacks(enabledModPacks, getLocsTrie) };
       const skillIconPaths = getSkillAndEffectIconPaths(
         mergedSkillsCore.skills,
         mergedSkillsCore.skillsToEffects,
@@ -1768,19 +1812,20 @@ export const registerIpcMainListeners = (
     );
     const vanillaPacks = appData.packsData.filter((packsData) => vanillaPacksToRead.includes(packsData.path));
     const icons = await loadIconsFromPacks(vanillaPacks.concat(enabledModPacks), skillIconPaths);
-    const locs = getLocsFromPacks(
-      appData.packsData.filter(
-        (packsData) =>
-          mods.map((mod) => mod.name).includes(packsData.name) || vanillaPacks.includes(packsData),
+    // Vanilla first, then mods, matching the cached path above. These packs were read for their
+    // tables regardless, so the saving here is the tries, which used to be retained for the session.
+    const locs = {
+      ...(await getVanillaLocLookup(vanillaPacksToRead)),
+      ...getLocsFromPacks(
+        appData.packsData.filter((packsData) =>
+          mods.some((mod) => mod.name === packsData.name),
+        ),
+        getLocsTrie,
       ),
-      getLocsTrie,
-    );
-    const packNameToLocEntries: Record<string, Record<string, string>> = {};
-    for (const packName of Object.keys(locs)) {
-      packNameToLocEntries[packName] = locs[packName].getEntries();
-    }
+    };
     // fs.writeFileSync("dumps/iconPaths.json", JSON.stringify(skillIconPaths));
-    // fs.writeFileSync("dumps/locs.json", JSON.stringify(packNameToLocEntries));
+    // To dump locs, flatten them here rather than on every build: doing it unconditionally cost a
+    // ~180k entry object per pack to feed a writeFileSync that has always been commented out.
     // fs.writeFileSync("dumps/packsTableData.json", JSON.stringify(packsTableData));
     // fs.writeFileSync("dumps/subtypeAndSets.json", JSON.stringify(subtypeAndSets));
     // fs.writeFileSync("dumps/setAndNodes.json", JSON.stringify(setAndNodes));
@@ -2238,7 +2283,7 @@ export const registerIpcMainListeners = (
     technologyRowsByKey: Record<string, Record<string, string>>;
     technologyEffectRowsByKey: Record<string, Record<string, Record<string, string>>>;
     technologyEffectScopesByKey: Record<string, string>;
-    locs: Record<string, Trie<string>>;
+    locs: Record<string, KeyedLookup<string>>;
     icons: Record<string, string>;
     technologyToEffects: Record<string, { effectKey: string; value?: string }[]>;
     effectsForTech: Record<string, { icon?: string }>;
@@ -2692,7 +2737,7 @@ export const registerIpcMainListeners = (
     }
     return buildingLevel;
   };
-  const getLocById = (locs: Record<string, Trie<string>>, locId: string) => {
+  const getLocById = (locs: Record<string, KeyedLookup<string>>, locId: string) => {
     for (const locsInPack of Object.values(locs)) {
       const localized = locsInPack.get(locId);
       if (localized) return localized;
@@ -2997,7 +3042,13 @@ export const registerIpcMainListeners = (
     const iconPaths = Array.from(
       new Set([...techIconPaths, ...allTechnologyIconPaths, ...effectIconPaths]).values(),
     );
-    const locs = getLocsFromPacks(orderedPacks, getLocsTrie);
+    // orderedPacks is vanilla then mods, and getLocById takes the first hit, so the cache reader
+    // goes first to keep that precedence. The packs were read for their tables either way; what is
+    // saved is the tries, which the cached technology data used to retain.
+    const locs = {
+      ...(await getVanillaLocLookup(vanillaPacksToRead)),
+      ...getLocsFromPacks(orderedModPacks, getLocsTrie),
+    };
     const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
     return {
       setsByKey,

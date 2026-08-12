@@ -1,6 +1,15 @@
-export interface ITrie<T> {
-  add(key: string, value: T): void;
+/**
+ * The read half of a trie.
+ *
+ * Loc consumers only ever look keys up, so they are typed against this rather than the trie itself.
+ * That is what lets the vanilla loc cache's reader stand in for a trie without holding one.
+ */
+export interface KeyedLookup<T> {
   get(key: string): T | undefined;
+}
+
+export interface ITrie<T> extends KeyedLookup<T> {
+  add(key: string, value: T): void;
 }
 
 export default class Trie<T> implements ITrie<T>, Iterable<T> {

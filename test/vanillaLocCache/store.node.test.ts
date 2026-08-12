@@ -98,6 +98,49 @@ describe("vanilla loc cache store", () => {
     expect(getVanillaLocCacheIdentity("wh2", [packPath])).not.toBe(base);
   });
 
+  it("gives consumers with different pack sets their own file instead of evicting each other", async () => {
+    const { userDataPath, packPath } = makeWorkspace();
+    const otherPack = `${packPath}.data`;
+    fs.writeFileSync(otherPack, "another vanilla pack");
+
+    // Two consumers of the same game that disagree about which packs they read locs from.
+    const narrow = vi.fn(() => [["key", "narrow"] as const]);
+    const broad = vi.fn(() => [["key", "broad"] as const]);
+    const narrowRequest = { userDataPath, game: "wh3", packPaths: [packPath], readEntries: narrow };
+    const broadRequest = {
+      userDataPath,
+      game: "wh3",
+      packPaths: [packPath, otherPack],
+      readEntries: broad,
+    };
+
+    expect((await openOrBuildVanillaLocCache(narrowRequest))?.get("key")).toBe("narrow");
+    expect((await openOrBuildVanillaLocCache(broadRequest))?.get("key")).toBe("broad");
+
+    // Both files survive, so neither consumer rebuilds just because the other ran.
+    closeVanillaLocCaches();
+    expect((await openOrBuildVanillaLocCache(narrowRequest))?.get("key")).toBe("narrow");
+    expect((await openOrBuildVanillaLocCache(broadRequest))?.get("key")).toBe("broad");
+    expect(narrow).toHaveBeenCalledTimes(1);
+    expect(broad).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses one file per pack set across game patches rather than accumulating them", async () => {
+    const { userDataPath, packPath } = makeWorkspace();
+    const request = {
+      userDataPath,
+      game: "wh3",
+      packPaths: [packPath],
+      readEntries: () => [["key", "value"] as const],
+    };
+    await openOrBuildVanillaLocCache(request);
+    closeVanillaLocCaches();
+    fs.writeFileSync(packPath, "patched vanilla locs, a different length entirely");
+    await openOrBuildVanillaLocCache(request);
+
+    expect(fs.readdirSync(userDataPath).filter((entry) => entry.endsWith(".bin"))).toHaveLength(1);
+  });
+
   it("does not accept a cache file left over from a different pack set", async () => {
     const { userDataPath, packPath } = makeWorkspace();
     await openOrBuildVanillaLocCache({
@@ -109,7 +152,9 @@ describe("vanilla loc cache store", () => {
     closeVanillaLocCaches();
 
     // The stamp no longer matches, so the file must be rebuilt rather than trusted.
-    fs.writeFileSync(nodePath.join(userDataPath, "vanilla-loc-cache-wh3.bin.id"), "stale identity");
+    const stamp = fs.readdirSync(userDataPath).find((entry) => entry.endsWith(".bin.id"))!;
+    expect(stamp).toBeDefined();
+    fs.writeFileSync(nodePath.join(userDataPath, stamp), "stale identity");
     const rebuilt = vi.fn(() => [["key", "rebuilt"] as const]);
     const reader = await openOrBuildVanillaLocCache({
       userDataPath,

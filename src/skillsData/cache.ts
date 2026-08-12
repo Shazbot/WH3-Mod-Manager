@@ -8,7 +8,7 @@ import { Pack, PackedFile } from "../packFileTypes";
 import { SkillAndIcons } from "../skills";
 import { gameToPackWithDBTablesName, SupportedGames } from "../supportedGames";
 import { collator } from "../utility/packFileSorting";
-import Trie from "../utility/trie";
+import Trie, { type KeyedLookup } from "../utility/trie";
 
 export type SkillsDataCacheCore = Omit<NonNullable<typeof appData.skillsData>, "locs" | "icons" | "skillsDataPackPaths">;
 
@@ -52,7 +52,7 @@ export const getSkillAndEffectIconPaths = (
 };
 
 export const getLocsFromPacks = (packs: Pack[], getLocsTrie: (pack: Pack) => Trie<string> | undefined) => {
-  const locs: Record<string, Trie<string>> = {};
+  const locs: Record<string, KeyedLookup<string>> = {};
   for (const pack of packs) {
     const locsTrie = getLocsTrie(pack);
     if (locsTrie) locs[pack.name] = locsTrie;

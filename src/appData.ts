@@ -2,7 +2,7 @@ import { Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
 import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
 import { emptyGameConfig } from "./config/migrateAppConfig";
-import Trie from "./utility/trie";
+import Trie, { type KeyedLookup } from "./utility/trie";
 
 interface AppData {
   skillsData?: {
@@ -22,7 +22,7 @@ interface AppData {
     nodeToSkill: Record<string, NodeSkill>;
     skillsToEffects: Record<string, Effect[]>;
     skills: SkillAndIcons;
-    locs: Record<string, Trie<string>>;
+    locs: Record<string, KeyedLookup<string>>;
     icons: Record<string, string>;
     effectsToEffectData: Record<string, EffectData>;
     nodeToSkillLocks: NodeToSkillLocks;
