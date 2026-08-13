@@ -38,7 +38,7 @@ if (!gotTheLock) {
   console.log("ONLY ONE INSTANCE ALLOWED!");
   app.quit();
 } else {
-  app.commandLine.appendSwitch("js-flags", "--max-old-space-size=12288");
+  app.commandLine.appendSwitch("js-flags", "--max-old-space-size=4096");
 
   console.log("ARGVS:", process.argv);
   appData.startArgs = process.argv.slice(1);
