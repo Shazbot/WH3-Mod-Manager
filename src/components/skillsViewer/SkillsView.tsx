@@ -310,6 +310,11 @@ const SkillsView = memo(
     const isCheckingSkillRequirements = useAppSelector((state) => state.app.isCheckingSkillRequirements);
     const [factionFilter, setFactionFilter] = useState<string>(initialSnapshot?.factionFilter ?? "all");
     const [isEditMode, setIsEditMode] = useState(initialSnapshot?.isEditMode ?? false);
+    /**
+     * The editor's pickers work off every skill and icon in the game, which is far too much to ship
+     * with each tree, so it is fetched the first time the editor is opened and kept for the session.
+     */
+    const [editorData, setEditorData] = useState<SkillsEditorData>();
     const prevIsEditModeRef = useRef(isEditMode);
     let effectiveNodeHeight = isEditMode ? editModeNodeHeight : nodeHeight;
     const [isAddNodeModalOpen, setIsAddNodeModalOpen] = useState(false);
@@ -387,21 +392,38 @@ const SkillsView = memo(
     const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
     const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
 
+    useEffect(() => {
+      if (!isEditMode && !isAddNodeModalOpen) return;
+      if (editorData) return;
+      let isCurrent = true;
+      window.api?.getSkillsEditorData().then((data) => {
+        if (isCurrent && data) setEditorData(data);
+      });
+      return () => {
+        isCurrent = false;
+      };
+    }, [isEditMode, isAddNodeModalOpen, editorData]);
+
     const resolveSkillIcon = (imgPath?: string): string => {
       if (!imgPath) return skillIcon;
 
-      let iconBuffer = skillsData.icons[imgPath];
+      // The tree is sent with its own icons only, so a node wearing an icon from anywhere else in the
+      // game - one picked in the editor, or one coming in from an imported tree - resolves against
+      // the editor's full record instead.
+      const findIcon = (path: string) => skillsData.icons[path] || editorData?.icons[path];
+
+      let iconBuffer = findIcon(imgPath);
       if (iconBuffer) return iconBuffer;
 
       if (!imgPath.startsWith("ui\\")) {
         imgPath = `ui\\campaign ui\\skills\\${imgPath}`;
-        iconBuffer = skillsData.icons[imgPath];
+        iconBuffer = findIcon(imgPath);
         if (iconBuffer) return iconBuffer;
       }
 
       // Try battle ui fallback
       const battlePath = imgPath.replace("ui\\campaign ui\\skills\\", "ui\\battle ui\\ability_icons\\");
-      return skillsData.icons[battlePath] || skillIcon;
+      return findIcon(battlePath) || skillIcon;
     };
 
     let skills = skillsData.currentSkills ?? [];
@@ -2284,12 +2306,16 @@ const SkillsView = memo(
         unlockRank: number;
         existingSkillKey?: string;
         imgPath?: string;
+        iconData?: string;
         faction?: string;
         subculture?: string;
       }) => {
         captureHistory();
         const mapEffects = (effects: Effect[]) =>
           effects.map((effect) => {
+            // The modal resolves these against the editor's full icon record, which reaches effects
+            // this tree never shows, so an icon it already found is kept rather than looked up again.
+            if (effect.iconData) return effect;
             let iconData = "";
             if (effect.icon) {
               iconData = skillsData.icons[`ui\\campaign ui\\effect_bundles\\${effect.icon}`] || "";
@@ -2316,7 +2342,7 @@ const SkillsView = memo(
                   effects: mapEffects(nodeData.effects),
                   existingSkillKey: nodeData.existingSkillKey,
                   imgPath: nodeData.imgPath || n.data.imgPath,
-                  skillIcon: resolveSkillIcon(nodeData.imgPath || n.data.imgPath),
+                  skillIcon: nodeData.iconData || resolveSkillIcon(nodeData.imgPath || n.data.imgPath),
                   faction: nodeData.faction ?? (n.data as SkillData).faction,
                   subculture: nodeData.subculture ?? (n.data as SkillData).subculture,
                 },
@@ -2343,7 +2369,7 @@ const SkillsView = memo(
               label: nodeData.name,
               skillBackground,
               skillIconBackground,
-              skillIcon: resolveSkillIcon(nodeData.imgPath),
+              skillIcon: nodeData.iconData || resolveSkillIcon(nodeData.imgPath),
               tooltipFrame,
               skillLevelLitIcon,
               row: nodeData.row,
@@ -2604,8 +2630,7 @@ const SkillsView = memo(
                 skillLevelImg,
                 tooltipFrame,
                 skillLevelLitIcon,
-                skillIcon:
-                  n.imgPath && skillsData?.icons[n.imgPath] ? skillsData.icons[n.imgPath] : resolveSkillIcon(n.imgPath),
+                skillIcon: resolveSkillIcon(n.imgPath),
               },
             }));
 
@@ -4744,6 +4769,7 @@ const SkillsView = memo(
                   setEditingNodeId(undefined);
                 }}
                 onAdd={onAddOrEditNode}
+                editorData={editorData}
                 initialRow={editingNode ? editingRow : placeholderRow}
                 initialColumn={editingNode ? editingCol : placeholderCol}
                 editingData={
@@ -4894,6 +4920,9 @@ const SkillsView = memo(
               captureHistory();
               const mapEffects = (effects: Effect[]) =>
                 effects.map((effect) => {
+                  // Copied nodes carry whatever icon they were built with, which for an edited node
+                  // came from the editor's full record rather than this tree's icons.
+                  if (effect.iconData) return effect;
                   let iconData = "";
                   if (effect.icon) {
                     iconData = skillsData.icons[`ui\\campaign ui\\effect_bundles\\${effect.icon}`] || "";

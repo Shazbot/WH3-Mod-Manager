@@ -54,6 +54,40 @@ export const getSkillAndEffectIconPaths = (
   return Array.from(new Set([...skillIconPathsSet, ...effectIcons]));
 };
 
+/**
+ * The icons one subtype's tree draws, out of the record holding every skill and effect icon in the
+ * game.
+ *
+ * That record is around 1,600 base64 encoded images and used to be sent to the renderer whole on
+ * every subtype switch, where a tree draws a few dozen of them. The editor's pickers are the only
+ * consumer of the rest and ask for it separately, so they are the only ones that pay for it.
+ *
+ * Both icon folders are offered for each skill because the renderer falls back from one to the other
+ * and only the presence of the file says which one a skill uses.
+ */
+export const pickIconsForSkills = (
+  icons: Record<string, string>,
+  skills: readonly Skill[],
+  extraIconPaths: readonly string[] = [],
+) => {
+  const picked: Record<string, string> = {};
+  const take = (iconPath: string) => {
+    const icon = icons[iconPath];
+    if (icon !== undefined) picked[iconPath] = icon;
+  };
+  for (const skill of skills) {
+    if (skill.img) {
+      take(`ui\\campaign ui\\skills\\${skill.img}`);
+      take(`ui\\battle ui\\ability_icons\\${skill.img}`);
+    }
+    for (const effect of skill.effects) {
+      if (effect.icon) take(`ui\\campaign ui\\effect_bundles\\${effect.icon}`);
+    }
+  }
+  for (const iconPath of extraIconPaths) take(iconPath);
+  return picked;
+};
+
 export const getLocsFromPacks = (packs: Pack[], getLocsTrie: (pack: Pack) => Trie<string> | undefined) => {
   const locs: Record<string, KeyedLookup<string>> = {};
   for (const pack of packs) {

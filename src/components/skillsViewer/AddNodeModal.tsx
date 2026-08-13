@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState } from "react";
+import React, { memo, useEffect, useMemo, useState } from "react";
 import { Modal } from "../../flowbite/components/Modal/index";
 import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "@/src/localizationContext";
@@ -19,9 +19,16 @@ interface AddNodeModalProps {
     unlockRank: number;
     existingSkillKey?: string;
     imgPath?: string;
+    /** The chosen icon itself, which the tree's own icons need not contain. */
+    iconData?: string;
     faction?: string;
     subculture?: string;
   }) => void;
+  /**
+   * Every skill, effect and icon in the game, fetched by the view when the editor opens. Undefined
+   * while that is still in flight, which leaves the pickers empty rather than wrong.
+   */
+  editorData?: SkillsEditorData;
   initialRow?: number;
   initialColumn?: number;
   editingData?: {
@@ -54,12 +61,19 @@ interface IconOption {
   label: string;
 }
 
+/** Stable identity so the pickers do not rebuild on every render before the editor data lands. */
+const noIcons: Record<string, string> = {};
+
 const inputClass =
   "sticky top-[-1.5rem] w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500";
 
-const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, editingData }: AddNodeModalProps) => {
+const AddNodeModal = memo((props: AddNodeModalProps) => {
+  const { isOpen, onClose, onAdd, editorData, initialRow, initialColumn, editingData } = props;
   const localized = useLocalizations();
   const skillsData = useAppSelector((state) => state.app.skillsData);
+  // The tree is sent with only the icons it draws, so anything the pickers offer is resolved against
+  // the editor's full record first.
+  const icons = editorData?.icons ?? skillsData?.icons ?? noIcons;
 
   const [mode, setMode] = useState<"custom" | "existing">(editingData?.existingSkillKey ? "existing" : "custom");
   const [name, setName] = useState(editingData?.name ?? "");
@@ -93,13 +107,17 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
     return vals;
   });
   const [activeLevel, setActiveLevel] = useState(1);
-  const [selectedSkill, setSelectedSkill] = useState<SkillOption | null>(() => {
-    if (editingData?.existingSkillKey && skillsData?.allSkills) {
-      const skill = skillsData.allSkills.find((s) => s.key === editingData.existingSkillKey);
-      if (skill) return { value: skill.key, label: skill.localizedName, effectsCount: skill.effects.length };
-    }
-    return null;
-  });
+  const [selectedSkill, setSelectedSkill] = useState<SkillOption | null>(null);
+  // The skill being edited can only be named once the editor data has arrived.
+  useEffect(() => {
+    if (!editingData?.existingSkillKey || !editorData) return;
+    setSelectedSkill((current) => {
+      if (current) return current;
+      const skill = editorData.allSkills.find((s) => s.key === editingData.existingSkillKey);
+      if (!skill) return current;
+      return { value: skill.key, label: skill.localizedName, effectsCount: skill.effects.length };
+    });
+  }, [editingData?.existingSkillKey, editorData]);
   const [selectedIcon, setSelectedIcon] = useState<IconOption | null>(() => {
     if (editingData?.imgPath) {
       return {
@@ -114,8 +132,8 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
 
   // All available effects from vanilla game + enabled mods with raw localization
   const effectOptions = useMemo(() => {
-    if (!skillsData?.allEffects) return [];
-    return skillsData.allEffects
+    if (!editorData?.allEffects) return [];
+    return editorData.allEffects
       .map((e) => ({
         value: e.effectKey,
         label: e.localizedKey || e.effectKey,
@@ -127,33 +145,33 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
           level: 1,
           value: "0",
           icon: e.icon,
-          iconData: e.icon ? skillsData.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] || "" : "",
+          iconData: e.icon ? icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] || "" : "",
           priority: e.priority,
         } as Effect,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [skillsData?.allEffects, skillsData?.icons]);
+  }, [editorData?.allEffects, icons]);
 
   // All available skills from vanilla game + enabled mods
   const skillOptions = useMemo(() => {
-    if (!skillsData?.allSkills) return [];
-    return skillsData.allSkills
+    if (!editorData?.allSkills) return [];
+    return editorData.allSkills
       .map((s) => ({
         value: s.key,
         label: s.localizedName,
         effectsCount: s.effects.length,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [skillsData?.allSkills]);
+  }, [editorData?.allSkills]);
 
   // All available skill icons from vanilla game + enabled mods
   const iconOptions = useMemo(() => {
-    if (!skillsData?.allSkillIcons) return [];
-    return skillsData.allSkillIcons.map((icon) => ({
+    if (!editorData?.allSkillIcons) return [];
+    return editorData.allSkillIcons.map((icon) => ({
       value: icon.path,
       label: icon.name,
     }));
-  }, [skillsData?.allSkillIcons]);
+  }, [editorData?.allSkillIcons]);
 
   // Filtered icons for grid picker
   const filteredIcons = useMemo(() => {
@@ -165,7 +183,7 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
   const handleSkillSelect = (option: SkillOption | null) => {
     setSelectedSkill(option);
     if (option) {
-      const skill = skillsData?.allSkills?.find((s) => s.key === option.value);
+      const skill = editorData?.allSkills.find((s) => s.key === option.value);
       if (skill) {
         setName(skill.localizedName);
         setDescription(skill.localizedDescription);
@@ -180,7 +198,7 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
   const handleSubmit = () => {
     if (mode === "existing") {
       if (!selectedSkill) return;
-      const skill = skillsData?.allSkills?.find((s) => s.key === selectedSkill.value);
+      const skill = editorData?.allSkills.find((s) => s.key === selectedSkill.value);
       if (!skill) return;
       const skillEffects: Effect[] = skill.effects.map((e) => ({
         key: "",
@@ -189,7 +207,7 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
         level: e.level,
         value: e.value,
         icon: e.icon,
-        iconData: e.icon ? skillsData?.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] || "" : "",
+        iconData: e.icon ? icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] || "" : "",
         priority: e.priority,
       }));
       onAdd({
@@ -202,6 +220,7 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
         unlockRank,
         existingSkillKey: selectedSkill.value,
         imgPath: selectedIcon?.value,
+        iconData: selectedIcon ? icons[selectedIcon.value] : undefined,
         faction,
         subculture,
       });
@@ -222,6 +241,7 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
         maxLevel,
         unlockRank,
         imgPath: selectedIcon?.value,
+        iconData: selectedIcon ? icons[selectedIcon.value] : undefined,
         faction,
         subculture,
       });
@@ -297,7 +317,7 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
                 {/* Show selected skill's effects as read-only */}
                 {selectedSkill &&
                   (() => {
-                    const skill = skillsData?.allSkills?.find((s) => s.key === selectedSkill.value);
+                    const skill = editorData?.allSkills.find((s) => s.key === selectedSkill.value);
                     if (!skill || skill.effects.length === 0) return null;
                     return (
                       <div>
@@ -307,10 +327,10 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
                         <div className="max-h-32 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded-lg p-2 space-y-1">
                           {skill.effects.map((e, i) => (
                             <div key={i} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                              {e.icon && skillsData?.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] && (
+                              {e.icon && icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] && (
                                 <img
                                   className="h-4 w-4"
-                                  src={`data:image/png;base64,${skillsData.icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}`}
+                                  src={`data:image/png;base64,${icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}`}
                                   alt=""
                                 />
                               )}
@@ -371,10 +391,10 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
                         // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                         formatOptionLabel={(option: IconOption) => (
                           <div className="flex items-center gap-2">
-                            {skillsData?.icons[option.value] && (
+                            {icons[option.value] && (
                               <img
                                 className="h-12 w-12 object-contain"
-                                src={`data:image/png;base64,${skillsData.icons[option.value]}`}
+                                src={`data:image/png;base64,${icons[option.value]}`}
                                 alt=""
                               />
                             )}
@@ -631,9 +651,9 @@ const AddNodeModal = memo(({ isOpen, onClose, onAdd, initialRow, initialColumn, 
                       : "border-gray-600 hover:bg-gray-700 hover:border-gray-500"
                   }`}
                 >
-                  {skillsData?.icons[option.value] && (
+                  {icons[option.value] && (
                     <img
-                      src={`data:image/png;base64,${skillsData.icons[option.value]}`}
+                      src={`data:image/png;base64,${icons[option.value]}`}
                       className="w-20 h-20 object-contain mx-auto"
                       alt={option.label}
                     />

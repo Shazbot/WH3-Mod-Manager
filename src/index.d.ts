@@ -692,6 +692,15 @@ declare global {
     nodeToSkillLocks: NodeToSkillLocks;
     abilityTooltipsByKey: Record<string, AbilityTooltipData>;
     effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
+  }
+  /**
+   * What the skill tree editor's pickers need, which is everything rather than one subtype's worth.
+   *
+   * Kept out of SkillsData and fetched over `getSkillsEditorData` when the editor opens: it is
+   * several megabytes and only modders ever see it, where SkillsData is sent on every subtype
+   * switch.
+   */
+  interface SkillsEditorData {
     allEffects: { effectKey: string; localizedKey: string; icon?: string; priority: string }[];
     allSkills: {
       key: string;
@@ -710,6 +719,8 @@ declare global {
       }[];
     }[];
     allSkillIcons: { path: string; name: string }[];
+    /** Every skill and effect icon in the game, base64 encoded, keyed by pack path. */
+    icons: Record<string, string>;
   }
   interface SaveSkillsPackPayload {
     subtype: string;

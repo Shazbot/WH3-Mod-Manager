@@ -157,6 +157,7 @@ import {
   getSkillAndEffectIconPaths,
   getVanillaSkillsDataCoreFromCache,
   loadIconsFromPacks,
+  pickIconsForSkills,
   saveVanillaSkillsDataCoreCache,
 } from "./skillsData/cache";
 import { applyModOverlayToSkillsDataCore } from "./skillsData/overlay";
@@ -741,6 +742,45 @@ export const forEachPackLocEntry = (pack: Pack, visit: (key: string, value: stri
   }
 };
 
+/**
+ * Drops the parsed rows of tables a feature has finished with.
+ *
+ * Packs stay in `appData.packsData` for the session, and their parsed tables are by far the most
+ * expensive thing they carry: a cell is an object wrapping an array of objects, and once amended
+ * with its name and resolved key it measures around 250 bytes, so the ~24k row skill node table
+ * alone runs to tens of megabytes. Features that distil those rows into a model of their own and
+ * cache that model never read the rows again, and the vanilla db cache refills a dropped table in
+ * milliseconds, so holding them for the rest of the session buys nothing.
+ *
+ * `readTables` is narrowed to match. Readers skip a pack that already claims to have parsed what
+ * they want, so a claim left standing over dropped rows would have them silently see no rows at all
+ * rather than read them again. A pack claiming "all" is left alone: nothing here can narrow that
+ * claim truthfully.
+ */
+const releaseParsedTables = (packs: readonly Pack[], tablePathPrefixes: readonly string[]) => {
+  if (tablePathPrefixes.length === 0) return;
+  for (const pack of packs) {
+    if (pack.readTables === "all") continue;
+    let released = 0;
+    for (const packedFile of pack.packedFiles) {
+      if (!packedFile.schemaFields) continue;
+      if (!tablePathPrefixes.some((prefix) => packedFile.name.startsWith(prefix))) continue;
+      packedFile.schemaFields = undefined;
+      released += 1;
+    }
+    // Either direction of the prefix relation counts as a match: an entry is sometimes a whole
+    // packed file path rather than the table prefix, and forgetting an entry whose rows are still
+    // parsed only costs a re-read, where keeping one whose rows are gone loses them silently.
+    pack.readTables = pack.readTables.filter(
+      (readTable) =>
+        !tablePathPrefixes.some((prefix) => readTable.startsWith(prefix) || prefix.startsWith(readTable)),
+    );
+    if (released > 0) {
+      console.log("releaseParsedTables: dropped", released, "parsed tables from", pack.name);
+    }
+  }
+};
+
 const getVanillaLocalisationPackPaths = (dataFolder: string) =>
   getVanillaLocalisationPackPathsFor(
     appData.allVanillaPackNames,
@@ -1085,6 +1125,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         skillsDataPackPaths: vanillaPacks.concat(enabledModPacks).map((pack) => pack.path),
       };
       appData.lastSkillsDataSignature = skillsDataSignature;
+      // The overlay has been folded into the core above, so the mod rows it was read from are done
+      // with. Vanilla was never parsed on this path - it is only read for its icons.
+      releaseParsedTables(enabledModPacks, tablesToRead);
       const defaultSubtype = getDefaultSkillsSubtype(mergedSkillsCore.subtypesToSet);
       if (defaultSubtype) {
         await getSkillsForSubtype(defaultSubtype, 0);
@@ -1794,6 +1837,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
       }
     }
+    // Both the live data and the vanilla core cache have been built off these rows by now, and what
+    // follows works entirely off the structures above. This is the cold path, so the rows dropped
+    // here are every skills table in the vanilla packs as well as the mods'.
+    releaseParsedTables(vanillaPacks.concat(enabledModPacks), tablesToRead);
     const nodesKF = setToNodes[setKF];
     // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
@@ -1868,46 +1915,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       {} as Record<string, number>,
     );
     const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
-    const characterEffectKeys = new Set<string>();
-    for (const effect of skillsAndEffects) {
-      if (effect.effectScope.startsWith("character_")) {
-        characterEffectKeys.add(effect.effectKey);
-      }
-    }
-    const allEffects = Object.values(effectsToEffectData)
-      .filter((ed) => characterEffectKeys.has(ed.key))
-      .map((ed) => ({
-        effectKey: ed.key,
-        localizedKey: getRawEffectLocalization(ed.key, getLoc),
-        icon: ed.icon,
-        priority: ed.priority,
-      }));
-    const allSkillIcons = Object.keys(icons)
-      .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
-      .sort()
-      .map((iconPath) => ({
-        path: iconPath,
-        name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
-      }));
-    const allSkills = skills.map((skill) => {
-      const effects = (skillsToEffects[skill.key] || []).map((e) => ({
-        effectKey: e.effectKey,
-        effectScope: e.effectScope,
-        level: e.level,
-        value: e.value,
-        icon: e.icon,
-        priority: e.priority,
-      }));
-      return {
-        key: skill.key,
-        localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
-        localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
-        iconPath: skill.iconPath,
-        maxLevel: skill.maxLevel,
-        unlockRank: skill.unlockRank,
-        effects,
-      };
-    });
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
@@ -1918,14 +1925,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       currentSkills: kfSkills,
       nodeLinks,
       nodeRequirements,
-      icons,
+      icons: pickIconsForSkills(icons, kfSkills, kfAbilityIconPaths),
       subtypes,
       nodeToSkillLocks,
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
-      allEffects,
-      allSkills,
-      allSkillIcons,
       subtypesToLocalizedNames: subtypes.reduce(
         (acc, curr) => {
           const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
@@ -2022,48 +2026,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       {} as Record<string, number>,
     );
     const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
-    const characterEffectKeys = new Set<string>();
-    for (const effects of Object.values(cachedSkillsData.skillsToEffects)) {
-      for (const effect of effects) {
-        if (effect.effectScope.startsWith("character_")) {
-          characterEffectKeys.add(effect.effectKey);
-        }
-      }
-    }
-    const allEffects = Object.values(cachedSkillsData.effectsToEffectData)
-      .filter((ed) => characterEffectKeys.has(ed.key))
-      .map((ed) => ({
-        effectKey: ed.key,
-        localizedKey: getRawEffectLocalization(ed.key, getLoc),
-        icon: ed.icon,
-        priority: ed.priority,
-      }));
-    const allSkills = cachedSkillsData.skills.map((skill) => {
-      const effects = (cachedSkillsData.skillsToEffects[skill.key] || []).map((e) => ({
-        effectKey: e.effectKey,
-        effectScope: e.effectScope,
-        level: e.level,
-        value: e.value,
-        icon: e.icon,
-        priority: e.priority,
-      }));
-      return {
-        key: skill.key,
-        localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
-        localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
-        iconPath: skill.iconPath,
-        maxLevel: skill.maxLevel,
-        unlockRank: skill.unlockRank,
-        effects,
-      };
-    });
-    const allSkillIcons = Object.keys(cachedSkillsData.icons)
-      .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
-      .sort()
-      .map((iconPath) => ({
-        path: iconPath,
-        name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
-      }));
     appData.queuedSkillsData = {
       // subtypeToSkills: { [subtype]: kfSkills },
       currentSubtype: subtype,
@@ -2075,13 +2037,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       nodeLinks,
       nodeRequirements,
       nodeToSkillLocks,
-      icons,
+      icons: pickIconsForSkills(icons, kfSkills, tooltipIconPaths),
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
       subtypes,
-      allEffects,
-      allSkills,
-      allSkillIcons,
       subtypesToLocalizedNames: subtypes.reduce(
         (acc, curr) => {
           const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
@@ -2100,6 +2059,65 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     }
   };
+  /**
+   * Everything the skill tree editor's pickers offer: every skill, every character effect, and the
+   * whole icon record.
+   *
+   * Asked for when the editor opens rather than sent with the tree. It is several megabytes - the
+   * icons alone are around 1,600 base64 encoded images, and every skill carries its localised
+   * description - against a few dozen icons for the tree itself, and it was being rebuilt and sent on
+   * every subtype switch for a modders-only feature most sessions never open.
+   */
+  ipcMain.handle("getSkillsEditorData", async (): Promise<SkillsEditorData | undefined> => {
+    const cachedSkillsData = appData.skillsData;
+    if (!cachedSkillsData) return undefined;
+    const getLoc = (locId: string) => {
+      for (const locsInPack of Object.values(cachedSkillsData.locs)) {
+        const localized = locsInPack.get(locId);
+        if (localized) return localized;
+      }
+    };
+    const characterEffectKeys = new Set<string>();
+    for (const effects of Object.values(cachedSkillsData.skillsToEffects)) {
+      for (const effect of effects) {
+        if (effect.effectScope.startsWith("character_")) {
+          characterEffectKeys.add(effect.effectKey);
+        }
+      }
+    }
+    const allEffects = Object.values(cachedSkillsData.effectsToEffectData)
+      .filter((ed) => characterEffectKeys.has(ed.key))
+      .map((ed) => ({
+        effectKey: ed.key,
+        localizedKey: getRawEffectLocalization(ed.key, getLoc),
+        icon: ed.icon,
+        priority: ed.priority,
+      }));
+    const allSkills = cachedSkillsData.skills.map((skill) => ({
+      key: skill.key,
+      localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
+      localizedDescription: getLoc(`character_skills_localised_description_${skill.key}`) || "",
+      iconPath: skill.iconPath,
+      maxLevel: skill.maxLevel,
+      unlockRank: skill.unlockRank,
+      effects: (cachedSkillsData.skillsToEffects[skill.key] || []).map((e) => ({
+        effectKey: e.effectKey,
+        effectScope: e.effectScope,
+        level: e.level,
+        value: e.value,
+        icon: e.icon,
+        priority: e.priority,
+      })),
+    }));
+    const allSkillIcons = Object.keys(cachedSkillsData.icons)
+      .filter((iconPath) => iconPath.startsWith("ui\\campaign ui\\skills\\"))
+      .sort()
+      .map((iconPath) => ({
+        path: iconPath,
+        name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
+      }));
+    return { allEffects, allSkills, allSkillIcons, icons: cachedSkillsData.icons };
+  });
   const getTableRowData = (
     packsTableData: PackViewData[],
     tableName: string,
@@ -2436,6 +2454,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     );
     for (const [iconPath, icon] of Object.entries(statIcons)) data.statIcons[iconPath] = icon.base64;
     await saveUnitViewerDiskCache(app.getPath("userData"), signature, data);
+    // Everything the Unit Viewer needs now lives in `data`, which is cached both here and on disk.
+    // The rows it was built from are the expensive half and are never read again: the next build for
+    // this mod list is served by the cache above, and a build for another one re-reads anyway.
+    releaseParsedTables(tablePacks, tablesToRead);
     cachedUnitViewerData = { signature, data, assetPackPaths };
     return cachedUnitViewerData;
   };
