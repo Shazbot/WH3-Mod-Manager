@@ -1,5 +1,11 @@
 import assert from "assert";
-import { getDBName, getDBPackedFilePath, isLocPackedFilePath, parseLiveDBTablePath } from "./utility/packFileHelpers";
+import {
+  getDBName,
+  getDBPackedFilePath,
+  isLocPackedFilePath,
+  parseLiveDBTablePath,
+  releaseParsedTables,
+} from "./utility/packFileHelpers";
 import { planSaveAs } from "./utility/saveAsPlan";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
@@ -738,45 +744,6 @@ export const forEachPackLocEntry = (pack: Pack, visit: (key: string, value: stri
         const locKey = row[0] as string;
         if (locKey) visit(locKey, row[1] as string);
       }
-    }
-  }
-};
-
-/**
- * Drops the parsed rows of tables a feature has finished with.
- *
- * Packs stay in `appData.packsData` for the session, and their parsed tables are by far the most
- * expensive thing they carry: a cell is an object wrapping an array of objects, and once amended
- * with its name and resolved key it measures around 250 bytes, so the ~24k row skill node table
- * alone runs to tens of megabytes. Features that distil those rows into a model of their own and
- * cache that model never read the rows again, and the vanilla db cache refills a dropped table in
- * milliseconds, so holding them for the rest of the session buys nothing.
- *
- * `readTables` is narrowed to match. Readers skip a pack that already claims to have parsed what
- * they want, so a claim left standing over dropped rows would have them silently see no rows at all
- * rather than read them again. A pack claiming "all" is left alone: nothing here can narrow that
- * claim truthfully.
- */
-const releaseParsedTables = (packs: readonly Pack[], tablePathPrefixes: readonly string[]) => {
-  if (tablePathPrefixes.length === 0) return;
-  for (const pack of packs) {
-    if (pack.readTables === "all") continue;
-    let released = 0;
-    for (const packedFile of pack.packedFiles) {
-      if (!packedFile.schemaFields) continue;
-      if (!tablePathPrefixes.some((prefix) => packedFile.name.startsWith(prefix))) continue;
-      packedFile.schemaFields = undefined;
-      released += 1;
-    }
-    // Either direction of the prefix relation counts as a match: an entry is sometimes a whole
-    // packed file path rather than the table prefix, and forgetting an entry whose rows are still
-    // parsed only costs a re-read, where keeping one whose rows are gone loses them silently.
-    pack.readTables = pack.readTables.filter(
-      (readTable) =>
-        !tablePathPrefixes.some((prefix) => readTable.startsWith(prefix) || prefix.startsWith(readTable)),
-    );
-    if (released > 0) {
-      console.log("releaseParsedTables: dropped", released, "parsed tables from", pack.name);
     }
   }
 };

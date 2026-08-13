@@ -101,9 +101,6 @@ const createSkillsData = (subtype: string, subtypeIndex = 0): SkillsData =>
     nodeToSkillLocks: {},
     abilityTooltipsByKey: {},
     effectToUnitAbilityEnables: {},
-    allEffects: [],
-    allSkills: [],
-    allSkillIcons: [],
   }) as SkillsData;
 
 const renderViewer = (skillsData = createSkillsData("alpha")) => {
