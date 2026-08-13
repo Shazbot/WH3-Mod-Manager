@@ -2829,6 +2829,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       ...getLocsFromPacks(orderedModPacks, getLocsTrie),
     };
     const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
+    // Every technology table has been read into the structures above, and the result is held in
+    // `cachedTechnologyData` for as long as it stays valid. This is the heaviest of these reads -
+    // the whole vanilla pack set, parsed - and nothing below the row extraction touches the rows
+    // again: the icon paths come from the pack index, and the locs from their own tables, which are
+    // not db tables and so are left parsed.
+    releaseParsedTables(orderedPacks, tablesToRead);
     return {
       setsByKey,
       setRowsByKey,
