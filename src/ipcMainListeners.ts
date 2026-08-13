@@ -1,6 +1,7 @@
 import assert from "assert";
 import {
   getDBName,
+  findUnparsedTablePrefixes,
   getDBPackedFilePath,
   isLocPackedFilePath,
   parseLiveDBTablePath,
@@ -8,6 +9,7 @@ import {
 } from "./utility/packFileHelpers";
 import { planSaveAs } from "./utility/saveAsPlan";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
+import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
 import { selectPacksToCheck } from "./modCompat/compatScope";
 import {
@@ -993,7 +995,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       currentSubtypeIndex: 0,
     };
   };
-  const getSkillsData = async (mods: Mod[]) => {
+  /**
+   * One skills build at a time, for the same reason the Unit Viewer has one: the cold path below
+   * fills vanilla rows into the shared packs, uses them across several awaits and releases them at
+   * the end, and it persists a vanilla core cache from what it read.
+   */
+  const skillsDataBuilds = createSerializedBuilds();
+  const getSkillsData = async (mods: Mod[]) =>
+    skillsDataBuilds.run(buildSkillsDataSignature(mods, appData.currentGame), () => buildSkillsData(mods));
+  const buildSkillsData = async (mods: Mod[]) => {
     console.log(
       "getSkillsData:",
       mods.map((mod) => mod.name),
@@ -1130,6 +1140,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     await readMods(mods, false, true, false, true, tablesToRead, undefined, false);
     await readModsByPath(vanillaPacksToRead, { skipParsingTables: false, readLocs: true, tablesToRead }, true, false);
+    // readModsByPath skips a pack another operation is already reading, and says so only in a log
+    // line. Building on a vanilla pack with nothing parsed in it produces skills data holding only
+    // the mods' rows, which the vanilla core cache below would then persist as if it were the base
+    // game's. Give up instead: the next request rebuilds from scratch.
+    const vanillaSkillsPacks = appData.packsData.filter((pack) => vanillaPacksToRead.includes(pack.path));
+    const unparsedVanillaPrefixes = findUnparsedTablePrefixes(vanillaSkillsPacks, tablesToRead);
+    if (unparsedVanillaPrefixes.length > 0) {
+      console.log("getSkillsData: the vanilla skills tables were not read, not building:", unparsedVanillaPrefixes);
+      return;
+    }
     const unsortedPacksTableData = getPacksTableData(
       appData.packsData.filter((pack) => pack.name == "db.pack" || mods.some((mod) => mod.path === pack.path)),
       tablesToRead,
@@ -2210,6 +2230,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     return rowRecord;
   };
   const getUnitViewerSignature = (mods: Mod[]) => buildSkillsDataSignature(mods, appData.currentGame);
+  /**
+   * One Unit Viewer build at a time. The build fills vanilla rows into the shared packs and releases
+   * them at the end, so a second build running beside it would have those rows dropped mid-flight.
+   */
+  const unitViewerBuilds = createSerializedBuilds();
 
   const getUnitViewerAssetCandidates = (normalizedPath: string) => {
     const withoutExtension = normalizedPath.replace(/\.(png|webp|jpe?g)$/i, "");
@@ -2392,7 +2417,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       indexedDbPack.readTables = [...tablesToRead];
       appendPacksData(indexedDbPack, undefined, false);
     } else {
-      await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
+      // readModsByPath gives up on a pack another operation is already reading and says so only in a
+      // log line. Left unchecked that produces a catalog with no vanilla units at all, which reads as
+      // a real result and gets cached under a signature that stays valid across restarts.
+      const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
+      if (readDbPacks.length === 0) {
+        throw new Error("The game's database pack is being read by another operation, try again in a moment");
+      }
     }
     if (enabledMods.length > 0) {
       await readMods(enabledMods, false, true, false, true, tablesToRead, undefined, false);
@@ -2404,6 +2435,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
     const dbPack = packsByPath.get(dbPackPath);
     if (!dbPack) throw new Error("Could not read db.pack for Unit Viewer");
+    // A prefix db.pack carries files for, yet has no parsed rows for, means the rows this build filled
+    // in were dropped again before it got here - by a release from another build over the same tables,
+    // or by a read that never happened. Building on that yields a catalog holding only mod units, and
+    // the disk cache below would then serve it on every start until the mod list changes. Fail instead.
+    const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
+    if (unparsedVanillaPrefixes.length > 0) {
+      throw new Error(
+        `The game's unit tables were not available when the Unit Viewer was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
+      );
+    }
     const orderedMods = sortByNameAndLoadOrder(enabledMods)
       .toReversed()
       .map((mod) => packsByPath.get(mod.path))
@@ -2452,7 +2493,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
   ipcMain.handle("getUnitViewerCatalog", async (_event, enabledMods: Mod[]) => {
     try {
-      const built = await buildUnitViewerSessionData(enabledMods);
+      const built = await unitViewerBuilds.run(getUnitViewerSignature(enabledMods), () =>
+        buildUnitViewerSessionData(enabledMods),
+      );
       const sessionId = randomUUID();
       unitViewerSessions.set(sessionId, {
         sessionId,
@@ -2655,6 +2698,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     await readModsByPath(vanillaPacksToRead, { skipParsingTables: false, readLocs: true, tablesToRead }, true);
     const vanillaPackPathSet = new Set(vanillaPacksToRead);
     const vanillaPacks = appData.packsData.filter((packData) => vanillaPackPathSet.has(packData.path));
+    // A pack readModsByPath skipped, because something else was already reading it, still carries its
+    // technology tables - with no rows. The result is held under a cache key for the rest of the
+    // session, so a tech tree built from that would stay missing the base game's technologies.
+    const unparsedVanillaPrefixes = findUnparsedTablePrefixes(vanillaPacks, tablesToRead);
+    if (unparsedVanillaPrefixes.length > 0) {
+      console.log("buildTechnologyData: the vanilla technology tables were not read:", unparsedVanillaPrefixes);
+      return undefined;
+    }
     const packsByPath = new Map(appData.packsData.map((packData) => [packData.path, packData]));
     const orderedEnabledMods = sortByNameAndLoadOrder(enabledMods).toReversed();
     const orderedModPacks = orderedEnabledMods
@@ -2904,12 +2955,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       effectsForTech,
     };
   };
+  /** As for the other two: buildTechnologyData releases rows a second build beside it would need. */
+  const technologyDataBuilds = createSerializedBuilds();
   const ensureTechnologyData = async () => {
     const cacheKey = getTechnologyDataCacheKey();
     if (cachedTechnologyData && cachedTechnologyDataKey == cacheKey) return cachedTechnologyData;
-    cachedTechnologyData = await buildTechnologyData();
-    cachedTechnologyDataKey = cacheKey;
-    return cachedTechnologyData;
+    return technologyDataBuilds.run(cacheKey, async () => {
+      // The build this one queued behind may have produced exactly what it was about to read packs for.
+      if (cachedTechnologyData && cachedTechnologyDataKey == cacheKey) return cachedTechnologyData;
+      cachedTechnologyData = await buildTechnologyData();
+      cachedTechnologyDataKey = cacheKey;
+      return cachedTechnologyData;
+    });
   };
   const setCurrentGame = async (newGame: SupportedGames): Promise<boolean> => {
     let didSwitchGame = false;

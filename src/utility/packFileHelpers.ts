@@ -221,6 +221,31 @@ export const currentPackData = {} as { data?: Pack };
  * rather than read them again. A pack claiming "all" is left alone: nothing here can narrow that
  * claim truthfully.
  */
+/**
+ * The prefixes these packs carry files for and yet have no parsed rows for.
+ *
+ * The counterpart to `releaseParsedTables`, for a feature about to distil the rows into a model it
+ * will cache. A pack whose rows were dropped - by another build releasing them mid-flight, or by a
+ * read that silently never happened - still holds every packed file it did before, so the tables it
+ * should contribute simply come out empty. Nothing throws, and the model built from that reads as a
+ * real answer: mods present, the base game missing. Callers check this before they build so an
+ * incomplete read fails rather than getting cached.
+ */
+export const findUnparsedTablePrefixes = (packs: readonly Pack[], tablePathPrefixes: readonly string[]): string[] => {
+  const isUnparsed = (prefix: string) => {
+    let carriesPrefix = false;
+    for (const pack of packs) {
+      for (const packedFile of pack.packedFiles) {
+        if (!packedFile.name.startsWith(prefix)) continue;
+        if (packedFile.schemaFields) return false;
+        carriesPrefix = true;
+      }
+    }
+    return carriesPrefix;
+  };
+  return tablePathPrefixes.filter(isUnparsed);
+};
+
 export const releaseParsedTables = (packs: readonly Pack[], tablePathPrefixes: readonly string[]) => {
   if (tablePathPrefixes.length === 0) return;
   for (const pack of packs) {

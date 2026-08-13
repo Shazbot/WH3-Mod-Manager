@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { releaseParsedTables } from "../src/utility/packFileHelpers";
+import { findUnparsedTablePrefixes, releaseParsedTables } from "../src/utility/packFileHelpers";
 import type { Pack, PackedFile, SchemaField } from "../src/packFileTypes";
 
 const rows = (): SchemaField[] => [{ type: "StringU8", fields: [{ type: "String", val: "a" }] } as SchemaField];
@@ -69,5 +69,36 @@ describe("releaseParsedTables", () => {
 
     expect(untouched.schemaFields).toBeDefined();
     expect(target.readTables).toEqual([skills]);
+  });
+});
+
+describe("findUnparsedTablePrefixes", () => {
+  it("reports a prefix the pack carries files for but has no rows for", () => {
+    const target = pack([], [packedFile(`${skills}data__`, false), packedFile(`${units}data__`, true)]);
+
+    expect(findUnparsedTablePrefixes([target], [skills, units])).toEqual([skills]);
+  });
+
+  it("catches exactly what releaseParsedTables just dropped", () => {
+    const target = pack([skills], [packedFile(`${skills}data__`, true)]);
+
+    releaseParsedTables([target], [skills]);
+
+    expect(findUnparsedTablePrefixes([target], [skills])).toEqual([skills]);
+  });
+
+  // A prefix no vanilla pack ships is not a failed read, and demanding rows for it would fail every
+  // build on tables that only exist under another name for this game.
+  it("says nothing about a prefix no pack carries files for", () => {
+    const target = pack([], [packedFile(`${units}data__`, true)]);
+
+    expect(findUnparsedTablePrefixes([target], [skills])).toEqual([]);
+  });
+
+  it("counts a prefix as read when any of the packs parsed it", () => {
+    const indexOnly = pack([], [packedFile(`${skills}data__`, false)]);
+    const parsed = pack([skills], [packedFile(`${skills}data__`, true)]);
+
+    expect(findUnparsedTablePrefixes([indexOnly, parsed], [skills])).toEqual([]);
   });
 });
