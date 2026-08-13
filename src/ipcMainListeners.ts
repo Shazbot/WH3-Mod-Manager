@@ -2519,7 +2519,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         pendingAssets: new Map(),
         createdAt: Date.now(),
       });
-      while (unitViewerSessions.size > 4) {
+      // The one being replaced is kept, and nothing older.
+      //
+      // Every asset URL carries the session it was built for, and a reload rebuilds all of them, so
+      // a session two catalogs back can no longer be addressed by anything the renderer draws - it
+      // is unreachable bytes, up to the asset cache cap each. The one slot of slack covers the
+      // requests already in flight when the swap happens.
+      while (unitViewerSessions.size > 2) {
         const oldest = Array.from(unitViewerSessions.values()).sort((a, b) => a.createdAt - b.createdAt)[0];
         if (!oldest) break;
         unitViewerSessions.delete(oldest.sessionId);
