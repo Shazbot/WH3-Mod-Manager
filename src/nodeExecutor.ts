@@ -47,6 +47,7 @@ import {
   collectVanillaFilesMatching,
   collectVanillaFilesUnderPrefix,
   findVanillaPackContaining,
+  findVanillaPacksUnderPrefix,
   normalizeVanillaPackPath,
 } from "./vanillaPackIndex/format";
 import { getVanillaPackIndex } from "./vanillaPackIndex/store";
@@ -366,6 +367,68 @@ const cacheTableFilesForPack = (
       pack.packedFiles.filter((packedFile) => packedFile.name === tableName || packedFile.name.startsWith(`${tableName}\\`)),
     );
   }
+};
+
+/** Vanilla pack paths of the current game, lowercased, for telling them apart from mod packs. */
+const getVanillaPackPathSet = (): Set<string> =>
+  new Set(getVanillaPackPathsInLoadOrder().map((packPath) => packPath.toLowerCase()));
+
+/**
+ * The packs from `files` that can actually carry one of `tableNames`.
+ *
+ * "All Enabled Mods" hands every downstream node the whole base game - ~260 packs on Warhammer III -
+ * because a flow editing a vanilla asset needs the pack that holds it. Reading all of them to find a
+ * db table is pure waste: db tables live in one or two vanilla packs, and reading a pack means
+ * parsing and sorting its whole file index, which for the big packs is the dominant cost of a flow
+ * run. The prebuilt vanilla index already knows which pack wins each path, so ask it instead.
+ *
+ * Only vanilla packs are dropped - nothing here knows what a mod contains. A vanilla pack whose copy
+ * of the table is overridden by a later vanilla pack is dropped too, because the game would never
+ * load that copy and reading it only produces rows that lose anyway.
+ *
+ * Falls back to the full list whenever the index is unavailable, so a missing index costs speed
+ * rather than correctness.
+ *
+ * Exported for tests.
+ */
+export const narrowFilesToPacksWithTables = async <T extends { path: string }>(
+  files: readonly T[],
+  tableNames: readonly string[],
+  nodeLabel: string,
+): Promise<readonly T[]> => {
+  if (files.length < 2 || tableNames.length === 0) return files;
+
+  const vanillaPackPaths = getVanillaPackPathSet();
+  // With a single vanilla pack in the list there is at most one read to save, and that one is the db
+  // pack the flow is almost certainly after - so the index lookup would cost more than it saves.
+  const vanillaFileCount = files.filter((file) => vanillaPackPaths.has(file.path.toLowerCase())).length;
+  if (vanillaFileCount < 2) return files;
+
+  const vanillaIndex = await getVanillaPackIndex();
+  if (!vanillaIndex) return files;
+
+  // The same prefix test readPack applies to pick db files out of a pack, so this over-includes at
+  // worst (a table whose name extends another's) and never drops a pack that would have matched.
+  const packNamesWithTables = new Set<string>();
+  for (const tableName of tableNames) {
+    for (const packName of findVanillaPacksUnderPrefix(vanillaIndex, tableName)) {
+      packNamesWithTables.add(packName.toLowerCase());
+    }
+  }
+
+  const narrowed = files.filter((file) => {
+    const packPath = file.path.toLowerCase();
+    if (!vanillaPackPaths.has(packPath)) return true;
+    return packNamesWithTables.has(path.basename(packPath));
+  });
+
+  if (narrowed.length !== files.length) {
+    console.log(
+      `${nodeLabel}: reading ${narrowed.length}/${files.length} pack(s) for ${tableNames.join(", ")}` +
+        ` (${files.length - narrowed.length} vanilla pack(s) do not carry it)`,
+    );
+  }
+  return narrowed;
 };
 
 const getTableFilesForPackAndTables = async (
@@ -921,7 +984,13 @@ async function executeTableSelectionNode(
     .map((name) => (name.startsWith("db\\") ? name : `db\\${name}`));
   const selectedTables = [] as DBTablesNodeTable[];
 
-  for (const file of inputData.files) {
+  const filesToRead = await narrowFilesToPacksWithTables(
+    inputData.files,
+    tableNames,
+    `TableSelection Node ${nodeId}`,
+  );
+
+  for (const file of filesToRead) {
     if (!file.loaded) {
       console.warn(`Skipping unloaded file: ${file.path}`);
       continue;
@@ -992,7 +1061,13 @@ async function executeTableSelectionDropdownNode(
   const tableName = selectedTable.startsWith("db\\") ? selectedTable : `db\\${selectedTable}`;
   const selectedTables = [] as DBTablesNodeTable[];
 
-  for (const file of inputData.files) {
+  const filesToRead = await narrowFilesToPacksWithTables(
+    inputData.files,
+    [tableName],
+    `TableSelection Dropdown Node ${nodeId}`,
+  );
+
+  for (const file of filesToRead) {
     if (!file.loaded) {
       console.warn(`Skipping unloaded file: ${file.path}`);
       continue;
@@ -1713,7 +1788,13 @@ async function executeReferenceLookupNode(
     ? selectedReferenceTable
     : `db\\${selectedReferenceTable}`;
 
-  for (const sourceFile of sourceFiles) {
+  const sourceFilesToRead = await narrowFilesToPacksWithTables(
+    sourceFiles,
+    [tableNameToSearch],
+    `Reference Lookup Node ${nodeId}`,
+  );
+
+  for (const sourceFile of sourceFilesToRead) {
     if (!sourceFile.loaded) {
       console.warn(`Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
       continue;
@@ -1892,7 +1973,15 @@ async function executeReverseReferenceLookupNode(
     // Find all tables that have fields referencing the input table
     const reverseTableOptions = new Set<string>();
 
-    for (const sourceFile of sourceFiles) {
+    // This path reads every db table of every pack, so the vanilla packs that hold no db table at
+    // all - almost all of them - are worth dropping before the loop rather than inside it.
+    const sourceFilesWithTables = await narrowFilesToPacksWithTables(
+      sourceFiles,
+      ["db\\"],
+      `Reverse Reference Lookup Node ${nodeId} (auto-select)`,
+    );
+
+    for (const sourceFile of sourceFilesWithTables) {
       if (!sourceFile.loaded) continue;
 
       try {
@@ -2059,7 +2148,13 @@ async function executeReverseReferenceLookupNode(
     ? selectedReverseTable
     : `db\\${selectedReverseTable}`;
 
-  for (const sourceFile of sourceFiles) {
+  const sourceFilesToRead = await narrowFilesToPacksWithTables(
+    sourceFiles,
+    [tableNameToSearch],
+    `Reverse Reference Lookup Node ${nodeId}`,
+  );
+
+  for (const sourceFile of sourceFilesToRead) {
     if (!sourceFile.loaded) {
       console.warn(`Reverse Reference Lookup Node ${nodeId}: Skipping unloaded file: ${sourceFile.path}`);
       continue;
@@ -6441,8 +6536,14 @@ async function executeGetCounterColumnNode(
   const collectedValues: AmendedSchemaField[] = [];
   const sourcePacks: Pack[] = [];
 
+  const packFilesToRead = await narrowFilesToPacksWithTables(
+    inputData.files,
+    [tableName],
+    `GetCounterColumn Node ${nodeId}`,
+  );
+
   // Process each pack file
-  for (const packFile of inputData.files) {
+  for (const packFile of packFilesToRead) {
     if (!packFile.loaded) {
       console.warn(`GetCounterColumn Node ${nodeId}: Skipping unloaded file: ${packFile.name}`);
       continue;
@@ -7065,7 +7166,13 @@ async function executeDeepCloneNode(
       if (!loadedTablesByName.has(bareName)) loadedTablesByName.set(bareName, []);
     }
 
-    for (const searchPack of searchPacks) {
+    const searchPacksWithTables = await narrowFilesToPacksWithTables(
+      searchPacks,
+      searchNames,
+      `Deep Clone Node ${nodeId}`,
+    );
+
+    for (const searchPack of searchPacksWithTables) {
       if (!searchPack.loaded) continue;
       try {
         const { pack, matchingTablesByName } = await getTableFilesForPackAndTables(
