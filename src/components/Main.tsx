@@ -55,7 +55,7 @@ const Main = (props: MainProps) => {
 
       {isUnitViewerMounted && (
         <div className={isUnitViewerTab ? undefined : "hidden"}>
-          <UnitViewerTab />
+          <UnitViewerTab isActive={isUnitViewerTab} />
         </div>
       )}
 
@@ -67,7 +67,7 @@ const Main = (props: MainProps) => {
 
       {isSkillsMounted && (
         <div className={isSkillsTab ? undefined : "hidden"}>
-          <SkillsTab />
+          <SkillsTab isActive={isSkillsTab} />
         </div>
       )}
 

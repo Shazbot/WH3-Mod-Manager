@@ -15,6 +15,7 @@ import {
 } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
 import { unitAssetUrl } from "../assetUrls";
+import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
 import AbilityTooltipCard from "./skillsViewer/AbilityTooltipCard";
 import { calculateUnitViewerStats } from "../unitViewer/calculator";
 import type {
@@ -700,13 +701,21 @@ const RosterUnitTile = memo(
   },
 );
 
-const UnitViewerTab = memo(() => {
+type UnitViewerTabProps = {
+  /** False while the tab is mounted but hidden, so rebuilds wait for the user to come back. */
+  isActive?: boolean;
+};
+
+const UnitViewerTab = memo(({ isActive = true }: UnitViewerTabProps) => {
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const signature = enabledMods
     .map((mod) => `${mod.path}:${mod.loadOrder ?? ""}:${mod.lastChangedLocal ?? ""}:${mod.lastChanged ?? ""}`)
     .join("|");
+  // While hidden this stays at the signature the tab last saw, so enabling a mod elsewhere queues the
+  // catalog rebuild instead of running it; switching back releases the current signature.
+  const signatureToLoad = useDeferredWhileInactive(isActive, signature);
   const enabledModsRef = useRef(enabledMods);
   enabledModsRef.current = enabledMods;
   const [groups, setGroups] = useState<UnitViewerCatalogGroup[]>([]);
@@ -797,10 +806,10 @@ const UnitViewerTab = memo(() => {
     return () => {
       cancelled = true;
     };
-    // `signature` already encodes every enabled mod's path, load order and change stamps, so it is
-    // the dependency that matters. Depending on `enabledMods` too rebuilt the catalog every time
+    // `signatureToLoad` already encodes every enabled mod's path, load order and change stamps, so it
+    // is the dependency that matters. Depending on `enabledMods` too rebuilt the catalog every time
     // pack reading handed Redux a fresh mods array, and each rebuild reads packs again — a loop.
-  }, [currentGame, sessionRefreshToken, signature]);
+  }, [currentGame, sessionRefreshToken, signatureToLoad]);
 
   useEffect(() => {
     if (!sessionId) return;
