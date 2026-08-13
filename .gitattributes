@@ -1,0 +1,18 @@
+# Store every text file with LF in the repository, and check it out as LF on
+# every platform. This working tree lives on a Windows drive but is also used
+# from WSL, so both sides must agree on one representation -- otherwise
+# whichever tool wrote a file last (yarn, SmartGit, VSCode) silently flips its
+# line endings and git records the whole file as rewritten.
+* text=auto eol=lf
+
+# Windows-only script: keep CRLF in the working tree.
+*.ps1 text eol=crlf
+
+# Binary assets: never convert, never diff as text.
+*.dll   binary
+*.ico   binary
+*.lib   binary
+*.node  binary
+*.png   binary
+*.woff2 binary
+*.zst   binary
