@@ -232,7 +232,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               {effectsAtShownLevel.map((effect, i) => {
                 return (
                   <div key={effect.key + i} id={effect.key + i} className="flex gap-2 text-sm">
-                    <img className="h-6" src={`data:image/png;base64,${effect.iconData}`} alt={effect.icon} />
+                    <img className="h-6" src={effect.iconData} alt={effect.icon} />
                     {effect.localizedKey}
                   </div>
                 );
@@ -272,7 +272,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             className={`absolute ${
               data.isAbilityIcon ? "h-[70%] top-[8px] left-[53px]" : "h-[110%] top-[-6px] left-[14.5%]"
             }`}
-            src={`data:image/png;base64,${resolvedSkillIcon}`}
+            src={resolvedSkillIcon}
             alt={skillIcon}
           />
         </div>

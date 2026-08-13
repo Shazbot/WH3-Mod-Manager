@@ -686,6 +686,11 @@ declare global {
       }[]
     >;
     nodeRequirements: Record<string, { single: string[]; multiple: string[]; numMultiple: number }>;
+    /**
+     * Asset protocol URLs keyed by pack path, covering what this subtype's tree draws.
+     *
+     * The editor's pickers need every icon in the game and ask for those separately.
+     */
     icons: Record<string, string>;
     subtypes: string[];
     subtypesToLocalizedNames: Record<string, string>;
@@ -719,7 +724,7 @@ declare global {
       }[];
     }[];
     allSkillIcons: { path: string; name: string }[];
-    /** Every skill and effect icon in the game, base64 encoded, keyed by pack path. */
+    /** Every skill and effect icon in the game, as asset protocol URLs keyed by pack path. */
     icons: Record<string, string>;
   }
   interface SaveSkillsPackPayload {

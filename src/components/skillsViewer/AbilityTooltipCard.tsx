@@ -105,18 +105,18 @@ const AbilityTooltipCard = ({
   return (
     <div className="border border-red-900/70 bg-black/60 px-4 py-3 text-[13px] leading-5 text-gray-100">
       <div className="flex items-center gap-2.5">
-        {abilityIcon && <img className="h-7 w-7 object-contain" src={`data:image/png;base64,${abilityIcon}`} alt="" />}
+        {abilityIcon && <img className="h-7 w-7 object-contain" src={abilityIcon} alt="" />}
         <div className="font-semibold text-[18px] leading-tight">{ability.name}</div>
       </div>
 
       <div className="mt-1.5 space-y-0.5 text-[13px] text-gray-300">
         <div className="flex items-center gap-1.5">
-          {loreIcon && <img className="h-4 w-4 object-contain" src={`data:image/png;base64,${loreIcon}`} alt="" />}
+          {loreIcon && <img className="h-4 w-4 object-contain" src={loreIcon} alt="" />}
           <span>{ability.sourceTypeName}</span>
           {ability.loreGroupName && <span>{ability.loreGroupName}</span>}
         </div>
         <div className="flex items-center gap-1.5">
-          {typeIcon && <img className="h-4 w-4 object-contain" src={`data:image/png;base64,${typeIcon}`} alt="" />}
+          {typeIcon && <img className="h-4 w-4 object-contain" src={typeIcon} alt="" />}
           <span>{ability.abilityTypeName}</span>
         </div>
       </div>
@@ -254,11 +254,7 @@ const AbilityTooltipCard = ({
             return (
               <div key={bonus.key} className={bonus.isPositive ? "text-lime-300" : "text-red-300"}>
                 {bonusIcon ? (
-                  <img
-                    className="mr-1 inline-block h-4 w-4 object-contain align-[-2px]"
-                    src={`data:image/png;base64,${bonusIcon}`}
-                    alt=""
-                  />
+                  <img className="mr-1 inline-block h-4 w-4 object-contain align-[-2px]" src={bonusIcon} alt="" />
                 ) : (
                   <span className="text-yellow-200">➤</span>
                 )}{" "}

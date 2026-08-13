@@ -19,6 +19,7 @@ import * as https from "https";
 import { Extract } from "unzipper";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
 import { flushAppConfigWrites } from "./appConfigFunctions";
+import { registerAssetSchemeAsPrivileged } from "./assetProtocol";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -39,6 +40,8 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.commandLine.appendSwitch("js-flags", "--max-old-space-size=4096");
+  // Has to happen before the app is ready, so it cannot live beside the handler registered later.
+  registerAssetSchemeAsPrivileged();
 
   console.log("ARGVS:", process.argv);
   appData.startArgs = process.argv.slice(1);

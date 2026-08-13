@@ -86,11 +86,7 @@ const TechNode = memo(({ data, selected }: NodeProps) => {
               {typedData.effects!.map((effect) => (
                 <div key={effect.effectKey} className="flex gap-2 items-center text-xs">
                   {effect.iconData ? (
-                    <img
-                      className="h-6 w-6 object-contain shrink-0"
-                      src={`data:image/png;base64,${effect.iconData}`}
-                      alt={effect.icon}
-                    />
+                    <img className="h-6 w-6 object-contain shrink-0" src={effect.iconData} alt={effect.icon} />
                   ) : (
                     <div className="h-6 w-6 shrink-0" />
                   )}
@@ -187,7 +183,7 @@ const TechNode = memo(({ data, selected }: NodeProps) => {
           {typedData.iconData && (
             <img
               className="absolute h-[110%] top-[-6px] left-[14.5%]"
-              src={`data:image/png;base64,${typedData.iconData}`}
+              src={typedData.iconData}
               alt={typedData.technologyKey}
             />
           )}

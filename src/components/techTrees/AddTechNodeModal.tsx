@@ -287,11 +287,7 @@ const AddTechNodeModal = ({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       {option.technology.iconData && (
-                        <img
-                          className="h-6 w-6 object-contain"
-                          src={`data:image/png;base64,${option.technology.iconData}`}
-                          alt=""
-                        />
+                        <img className="h-6 w-6 object-contain" src={option.technology.iconData} alt="" />
                       )}
                       <span className="font-medium">{option.label}</span>
                     </div>
@@ -306,13 +302,7 @@ const AddTechNodeModal = ({
                 <div className="max-h-36 overflow-y-auto bg-gray-800 border border-gray-700 rounded p-2 space-y-1">
                   {selectedTechnology.technology.effects.map((effect) => (
                     <div key={effect.effectKey} className="text-xs text-gray-300 flex items-center gap-2">
-                      {effect.iconData && (
-                        <img
-                          className="h-4 w-4 object-contain"
-                          src={`data:image/png;base64,${effect.iconData}`}
-                          alt=""
-                        />
-                      )}
+                      {effect.iconData && <img className="h-4 w-4 object-contain" src={effect.iconData} alt="" />}
                       <span>{effect.localizedKey || effect.effectKey}</span>
                       <span className="text-gray-500">({effect.effectKey})</span>
                     </div>
@@ -363,11 +353,7 @@ const AddTechNodeModal = ({
                 formatOptionLabel={(option: EffectOption) => (
                   <div className="flex items-center gap-2">
                     {option.effect.iconData && (
-                      <img
-                        className="h-4 w-4 object-contain"
-                        src={`data:image/png;base64,${option.effect.iconData}`}
-                        alt=""
-                      />
+                      <img className="h-4 w-4 object-contain" src={option.effect.iconData} alt="" />
                     )}
                     <span>{option.label}</span>
                     <span className="text-xs text-gray-400">({option.value})</span>
@@ -379,11 +365,7 @@ const AddTechNodeModal = ({
                   {selectedEffects.map((option) => (
                     <div key={option.value} className="flex items-center gap-2">
                       {option.effect.iconData && (
-                        <img
-                          className="h-5 w-5 object-contain"
-                          src={`data:image/png;base64,${option.effect.iconData}`}
-                          alt=""
-                        />
+                        <img className="h-5 w-5 object-contain" src={option.effect.iconData} alt="" />
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="text-sm text-gray-200 truncate">{option.label}</div>
@@ -421,13 +403,7 @@ const AddTechNodeModal = ({
                       // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                       formatOptionLabel={(option: TechnologyIconOption) => (
                         <div className="flex items-center gap-2">
-                          {option.iconData && (
-                            <img
-                              className="h-10 w-10 object-contain"
-                              src={`data:image/png;base64,${option.iconData}`}
-                              alt=""
-                            />
-                          )}
+                          {option.iconData && <img className="h-10 w-10 object-contain" src={option.iconData} alt="" />}
                           <span>{option.label}</span>
                         </div>
                       )}
@@ -616,11 +592,7 @@ const AddTechNodeModal = ({
                       : "border-gray-600 hover:bg-gray-700 hover:border-gray-500"
                   }`}
                 >
-                  <img
-                    src={`data:image/png;base64,${option.iconData}`}
-                    className="w-20 h-20 object-contain mx-auto"
-                    alt={option.label}
-                  />
+                  <img src={option.iconData} className="w-20 h-20 object-contain mx-auto" alt={option.label} />
                   <div className="text-xs text-center mt-2 text-gray-300 truncate" title={option.label}>
                     {option.label}
                   </div>

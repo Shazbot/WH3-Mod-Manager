@@ -8,6 +8,10 @@ import appReducer, { setMods } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import UnitViewerTab from "../src/components/UnitViewerTab";
 import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
+import { iconAssetUrl, unitAssetUrl } from "../src/assetUrls";
+
+/** Icons reach the renderer as asset protocol URLs now, so the fixtures are URLs too. */
+const iconUrl = (name: string) => iconAssetUrl(1, `ui\\icons\\${name}.png`);
 
 vi.mock("react-virtualized", () => ({
   AutoSizer: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) =>
@@ -157,8 +161,8 @@ describe("Unit Viewer UI", () => {
         unitGroups: built.unitGroups,
         constants: built.constants,
         statIcons: {
-          "ui\\skins\\default\\icon_stat_health.png": "health-icon-data",
-          "ui\\skins\\default\\icon_stat_melee_attack.png": "melee-attack-icon-data",
+          "ui\\skins\\default\\icon_stat_health.png": iconUrl("health"),
+          "ui\\skins\\default\\icon_stat_melee_attack.png": iconUrl("melee-attack"),
         },
       }),
       getUnitViewerDetails: vi.fn().mockImplementation(async (_sessionId: string, unitKey: string) => ({
@@ -167,17 +171,10 @@ describe("Unit Viewer UI", () => {
         icons:
           unitKey === "unit_a"
             ? {
-                "ui\\battle ui\\ability_icons\\ability_icon.png": "ability-icon-data",
-                "ui\\battle ui\\ability_icons\\attribute_a.png": "attribute-icon-data",
+                "ui\\battle ui\\ability_icons\\ability_icon.png": iconUrl("ability"),
+                "ui\\battle ui\\ability_icons\\attribute_a.png": iconUrl("attribute"),
               }
             : {},
-      })),
-      getUnitViewerAsset: vi.fn().mockResolvedValue({ success: false }),
-      getUnitViewerAssets: vi.fn().mockImplementation(async (_sessionId: string, assetPaths: string[]) => ({
-        success: true,
-        assets: Object.fromEntries(
-          assetPaths.map((assetPath) => [assetPath, { base64: `card:${assetPath}`, mimeType: "image/png" }]),
-        ),
       })),
       prewarmUnitViewerAssets: vi.fn().mockImplementation(async (_sessionId: string, assetPaths: string[]) => ({
         success: true,
@@ -240,19 +237,19 @@ describe("Unit Viewer UI", () => {
     ).toEqual(["Lords1", "Heroes1"]);
 
     const addBeta = within(browser).getByRole("button", { name: "Add Beta to comparison" });
+    // The card is addressed rather than fetched: the asset protocol serves it out of the session.
     await waitFor(() =>
       expect(addBeta.querySelector("img")).toHaveAttribute(
         "src",
-        "data:image/png;base64,card:ui\\units\\icons\\unit_b.png",
+        unitAssetUrl("session", "ui\\units\\icons\\unit_b.png"),
       ),
     );
-    // Both units fit in the first page, so there is nothing left to prewarm.
-    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
-    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledWith("session", [
+    // One read for the whole subculture, which is all the batching that is left.
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledWith("session", [
       "ui\\units\\icons\\unit_b.png",
       "ui\\units\\icons\\unit_a.png",
     ]);
-    expect(window.api?.prewarmUnitViewerAssets).not.toHaveBeenCalled();
 
     fireEvent.click(addBeta);
     expect(within(browser).getByText(/1 selected/)).toBeInTheDocument();
@@ -266,8 +263,8 @@ describe("Unit Viewer UI", () => {
     expect(within(browser).queryByRole("button", { name: /Beta/ })).not.toBeInTheDocument();
     fireEvent.click(within(browser).getByRole("button", { name: "Add Alpha to comparison" }));
     expect(within(browser).getByText(/2 selected/)).toBeInTheDocument();
-    // Searching and selecting reuse the cards already fetched for the subculture.
-    expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1);
+    // Searching and selecting reuse the subculture that was already read.
+    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(browser).getByRole("button", { name: "Close unit card browser" }));
     expect(screen.queryByRole("dialog", { name: "Unit card browser" })).not.toBeInTheDocument();
@@ -355,14 +352,14 @@ describe("Unit Viewer UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
     await screen.findByRole("dialog", { name: "Unit card browser" });
 
-    await waitFor(() => expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(window.api!.getUnitViewerAssets).mock.calls[0][1]).toEqual([
+    await waitFor(() => expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toEqual([
       "ui\\units\\icons\\unit_plain_commander.png",
       "ui\\units\\icons\\unit_lord_infantry.png",
     ]);
   });
 
-  it("paints the first page before reading the rest of a large subculture", async () => {
+  it("reads a large subculture in one pass and draws every card from its own URL", async () => {
     const unitCount = 120;
     const largeTables: UnitViewerTableRows = {
       main_units_tables: Array.from({ length: unitCount }, (_, index) => ({
@@ -404,18 +401,14 @@ describe("Unit Viewer UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Browse unit cards by category" }));
     await screen.findByRole("dialog", { name: "Unit card browser" });
 
-    // The first 50 are fetched on their own, then the other 70 are prewarmed in one read and
-    // served from cache as two more pages.
-    await waitFor(() => expect(window.api?.getUnitViewerAssets).toHaveBeenCalledTimes(3));
-    expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toHaveLength(unitCount - 50);
-    expect(vi.mocked(window.api!.getUnitViewerAssets).mock.calls.map(([, paths]) => paths.length)).toEqual([
-      50, 50, 20,
-    ]);
-    // The first page must land before anything is prewarmed, so it can paint straight away.
-    const firstPageOrder = vi.mocked(window.api!.getUnitViewerAssets).mock.invocationCallOrder[0];
-    expect(firstPageOrder).toBeLessThan(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.invocationCallOrder[0]);
+    // The whole subculture is read once, and no card travels through IPC.
+    await waitFor(() => expect(window.api?.prewarmUnitViewerAssets).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(window.api!.prewarmUnitViewerAssets).mock.calls[0][1]).toHaveLength(unitCount);
     await waitFor(() => expect(document.querySelectorAll("img")).toHaveLength(unitCount));
+    expect(document.querySelector("img")).toHaveAttribute(
+      "src",
+      unitAssetUrl("session", "ui\\units\\icons\\unit_0.png"),
+    );
   });
 
   it("closes the unit card browser on Escape", async () => {
@@ -436,9 +429,9 @@ describe("Unit Viewer UI", () => {
     const abilityButton = await screen.findByRole("button", { name: "Test Ability" });
     const attribute = await screen.findByText("Test Attribute");
     const attributeIcon = attribute.parentElement?.querySelector("img");
-    expect(attributeIcon).toHaveAttribute("src", "data:image/png;base64,attribute-icon-data");
+    expect(attributeIcon).toHaveAttribute("src", iconUrl("attribute"));
     const healthIcon = screen.getByText("Health").parentElement?.querySelector("img");
-    expect(healthIcon).toHaveAttribute("src", "data:image/png;base64,health-icon-data");
+    expect(healthIcon).toHaveAttribute("src", iconUrl("health"));
 
     fireEvent.mouseEnter(abilityButton);
     const tooltip = await screen.findByRole("tooltip");
@@ -447,10 +440,7 @@ describe("Unit Viewer UI", () => {
     expect(meleeAttackEffect).toBeInTheDocument();
     expect(within(tooltip).getByText(/Vigour per second: -10%/)).toBeInTheDocument();
     expect(within(tooltip).getByText(/Test active effect/)).toBeInTheDocument();
-    expect(meleeAttackEffect.querySelector("img")).toHaveAttribute(
-      "src",
-      "data:image/png;base64,melee-attack-icon-data",
-    );
+    expect(meleeAttackEffect.querySelector("img")).toHaveAttribute("src", iconUrl("melee-attack"));
     expect(tooltip).toHaveClass("fixed");
     expect(tooltip.closest("article")).toBeNull();
   });

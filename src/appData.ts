@@ -3,6 +3,7 @@ import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
 import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
 import { emptyGameConfig } from "./config/migrateAppConfig";
 import Trie, { type KeyedLookup } from "./utility/trie";
+import type { AssetBytes } from "./assetProtocol";
 
 interface AppData {
   skillsData?: {
@@ -23,7 +24,10 @@ interface AppData {
     skillsToEffects: Record<string, Effect[]>;
     skills: SkillAndIcons;
     locs: Record<string, KeyedLookup<string>>;
-    icons: Record<string, string>;
+    /** The icon files themselves. The renderer gets asset protocol URLs pointing at these. */
+    icons: Record<string, AssetBytes>;
+    /** The generation these icons were registered under, which their URLs carry. */
+    iconGeneration: number;
     effectsToEffectData: Record<string, EffectData>;
     nodeToSkillLocks: NodeToSkillLocks;
     skillsDataPackPaths: string[];

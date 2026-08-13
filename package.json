@@ -75,6 +75,7 @@
           "name": "@electron-forge/plugin-webpack",
           "config": {
             "mainConfig": "./webpack.main.config.js",
+            "devContentSecurityPolicy": "default-src 'self' 'unsafe-inline' data:; img-src 'self' data: whmm:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:",
             "renderer": {
               "config": "./webpack.renderer.config.js",
               "entryPoints": [

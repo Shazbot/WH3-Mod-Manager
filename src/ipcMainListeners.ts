@@ -168,6 +168,14 @@ import {
 } from "./skillsData/cache";
 import { applyModOverlayToSkillsDataCore } from "./skillsData/overlay";
 import {
+  clearIconAssets,
+  iconAssetUrl,
+  registerAssetProtocol,
+  registerIconAssets,
+  unitAssetUrl,
+  type AssetBytes,
+} from "./assetProtocol";
+import {
   gameToGameName,
   gameToPackWithDBTablesName,
   gameToProcessName,
@@ -284,8 +292,12 @@ type UnitViewerSession = {
   sessionId: string;
   data: BuiltUnitViewerData;
   assetPackPaths: string[];
-  assetCache: Map<string, { base64: string; mimeType: string; bytes: number; resolvedPath: string }>;
+  assetCache: Map<string, { buffer: Buffer; mimeType: string; bytes: number; resolvedPath: string }>;
   assetCacheBytes: number;
+  /** Reads in flight, so an image requested twice before it lands is read once. */
+  pendingAssets: Map<string, Promise<AssetBytes | undefined>>;
+  /** A batch read in flight, which single asset requests wait behind rather than race. */
+  pendingPrewarm?: Promise<unknown>;
   createdAt: number;
 };
 const unitViewerSessions = new Map<string, UnitViewerSession>();
@@ -748,6 +760,20 @@ export const forEachPackLocEntry = (pack: Pack, visit: (key: string, value: stri
   }
 };
 
+/**
+ * Icons a tooltip turned out to need that the feature's initial sweep did not cover.
+ *
+ * Reads them, adds them to the record and registers them for the asset protocol, returning the
+ * generation their URLs have to be built with. Undefined when there was nothing left to read.
+ */
+const loadMissingIconsInto = async (icons: Record<string, AssetBytes>, packs: Pack[], iconPaths: string[]) => {
+  const missing = iconPaths.filter((iconPath) => !icons[iconPath]);
+  if (missing.length === 0) return undefined;
+  const loaded = await loadIconsFromPacks(packs, missing);
+  Object.assign(icons, loaded);
+  return registerIconAssets(loaded);
+};
+
 const getVanillaLocalisationPackPaths = (dataFolder: string) =>
   getVanillaLocalisationPackPathsFor(
     appData.allVanillaPackNames,
@@ -1089,6 +1115,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         ...mergedSkillsCore,
         locs,
         icons,
+        iconGeneration: registerIconAssets(icons),
         skillsDataPackPaths: vanillaPacks.concat(enabledModPacks).map((pack) => pack.path),
       };
       appData.lastSkillsDataSignature = skillsDataSignature;
@@ -1758,6 +1785,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       skills,
       locs,
       icons,
+      iconGeneration: registerIconAssets(icons),
       effectsToEffectData,
       skillsDataPackPaths,
       effectToUnitAbilityEnables,
@@ -1799,6 +1827,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ...vanillaCoreForCache,
             locs: {},
             icons: {},
+            iconGeneration: 0,
             skillsDataPackPaths: [],
           },
         });
@@ -1858,21 +1887,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey,
       getLoc,
     });
-    const missingAbilityIconPaths = kfAbilityIconPaths.filter((iconPath) => !icons[iconPath]);
-    if (missingAbilityIconPaths.length > 0) {
-      for (const pack of vanillaPacks.concat(enabledModPacks)) {
-        await readFromExistingPack(pack, { filesToRead: missingAbilityIconPaths, skipParsingTables: true });
-      }
-      for (const pack of vanillaPacks.concat(enabledModPacks)) {
-        for (const iconPath of missingAbilityIconPaths) {
-          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
-          if (iconIndex < 0) continue;
-          const iconPackedFile = pack.packedFiles[iconIndex];
-          if (!iconPackedFile.buffer) continue;
-          icons[iconPath] = iconPackedFile.buffer.toString("base64");
-        }
-      }
-    }
+    const addedIconGeneration = await loadMissingIconsInto(
+      icons,
+      vanillaPacks.concat(enabledModPacks),
+      kfAbilityIconPaths,
+    );
+    if (addedIconGeneration) appData.skillsData.iconGeneration = addedIconGeneration;
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
       (acc, curr) => {
@@ -1892,7 +1912,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       currentSkills: kfSkills,
       nodeLinks,
       nodeRequirements,
-      icons: pickIconsForSkills(icons, kfSkills, kfAbilityIconPaths),
+      icons: pickIconsForSkills(icons, appData.skillsData.iconGeneration, kfSkills, kfAbilityIconPaths),
       subtypes,
       nodeToSkillLocks,
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
@@ -1968,22 +1988,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
       getLoc,
     });
-    const missingTooltipIcons = tooltipIconPaths.filter((iconPath) => !cachedSkillsData.icons[iconPath]);
-    if (missingTooltipIcons.length > 0) {
-      const packsToRead = appData.packsData.filter((pack) => cachedSkillsData.skillsDataPackPaths.includes(pack.path));
-      for (const pack of packsToRead) {
-        await readFromExistingPack(pack, { filesToRead: missingTooltipIcons, skipParsingTables: true });
-      }
-      for (const pack of packsToRead) {
-        for (const iconPath of missingTooltipIcons) {
-          const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
-          if (iconIndex < 0) continue;
-          const iconPackedFile = pack.packedFiles[iconIndex];
-          if (!iconPackedFile.buffer) continue;
-          cachedSkillsData.icons[iconPath] = iconPackedFile.buffer.toString("base64");
-        }
-      }
-    }
+    const addedIconGeneration = await loadMissingIconsInto(
+      cachedSkillsData.icons,
+      appData.packsData.filter((pack) => cachedSkillsData.skillsDataPackPaths.includes(pack.path)),
+      tooltipIconPaths,
+    );
+    if (addedIconGeneration) cachedSkillsData.iconGeneration = addedIconGeneration;
     const subtypes = Object.keys(subtypesToSet);
     const subtypeToNumSets = subtypes.reduce(
       (acc, curr) => {
@@ -2004,7 +2014,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       nodeLinks,
       nodeRequirements,
       nodeToSkillLocks,
-      icons: pickIconsForSkills(icons, kfSkills, tooltipIconPaths),
+      icons: pickIconsForSkills(icons, cachedSkillsData.iconGeneration, kfSkills, tooltipIconPaths),
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
       subtypes,
@@ -2083,7 +2093,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         path: iconPath,
         name: iconPath.replace("ui\\campaign ui\\skills\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
       }));
-    return { allEffects, allSkills, allSkillIcons, icons: cachedSkillsData.icons };
+    const icons = Object.fromEntries(
+      Object.keys(cachedSkillsData.icons).map((iconPath) => [
+        iconPath,
+        iconAssetUrl(cachedSkillsData.iconGeneration, iconPath),
+      ]),
+    );
+    return { allEffects, allSkills, allSkillIcons, icons };
   });
   const getTableRowData = (
     packsTableData: PackViewData[],
@@ -2146,7 +2162,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     technologyEffectRowsByKey: Record<string, Record<string, Record<string, string>>>;
     technologyEffectScopesByKey: Record<string, string>;
     locs: Record<string, KeyedLookup<string>>;
-    icons: Record<string, string>;
+    icons: Record<string, AssetBytes>;
+    iconGeneration: number;
     technologyToEffects: Record<string, { effectKey: string; value?: string }[]>;
     effectsForTech: Record<string, { icon?: string }>;
   };
@@ -2204,7 +2221,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   const cacheUnitViewerAsset = (
     session: UnitViewerSession,
     normalizedPath: string,
-    entry: { base64: string; mimeType: string; bytes: number; resolvedPath: string },
+    entry: { buffer: Buffer; mimeType: string; bytes: number; resolvedPath: string },
   ) => {
     while (session.assetCacheBytes + entry.bytes > UNIT_VIEWER_ASSET_CACHE_MAX_BYTES && session.assetCache.size > 0) {
       const oldestKey = session.assetCache.keys().next().value as string | undefined;
@@ -2241,7 +2258,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const loadedFile = findPackedFileCaseInsensitive(pack, indexedFile.name);
       if (!loadedFile?.buffer) continue;
       const entry = {
-        base64: loadedFile.buffer.toString("base64"),
+        buffer: loadedFile.buffer,
         mimeType: getPackedFileMimeType(loadedFile.name) || "image/png",
         bytes: loadedFile.buffer.length,
         resolvedPath: loadedFile.name,
@@ -2256,16 +2273,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    * Resolves many assets with at most one read per pack instead of one per asset: each pack is
    * asked for every asset still outstanding, and all of its hits are read in a single call.
    *
-   * `withPayload: false` warms the session cache and reports only which paths resolved, so callers
-   * can pull the bytes back in small pages afterwards without any further pack reads.
+   * `withPayload: false` warms the session cache and reports only which paths resolved, which is
+   * what every caller but the cache build wants: the images themselves are served over the asset
+   * protocol out of that same cache, so nothing has to carry them.
    */
   const loadUnitViewerAssets = async (session: UnitViewerSession, requestedPaths: string[], withPayload: boolean) => {
-    const assets: Record<string, { base64: string; mimeType: string }> = {};
+    const assets: Record<string, AssetBytes> = {};
     const resolved: string[] = [];
     const outstanding = new Map<string, string[]>();
-    const resolveFor = (requestedPath: string, entry: { base64: string; mimeType: string }) => {
+    const resolveFor = (requestedPath: string, entry: AssetBytes) => {
       resolved.push(requestedPath);
-      if (withPayload) assets[requestedPath] = { base64: entry.base64, mimeType: entry.mimeType };
+      if (withPayload) assets[requestedPath] = { buffer: entry.buffer, mimeType: entry.mimeType };
     };
     for (const requestedPath of requestedPaths) {
       const normalized = normalizePackFilePath(requestedPath).toLowerCase();
@@ -2299,7 +2317,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const loadedFile = findPackedFileCaseInsensitive(pack, fileName);
         if (!loadedFile?.buffer) continue;
         const entry = {
-          base64: loadedFile.buffer.toString("base64"),
+          buffer: loadedFile.buffer,
           mimeType: getPackedFileMimeType(loadedFile.name) || "image/png",
           bytes: loadedFile.buffer.length,
           resolvedPath: loadedFile.name,
@@ -2412,6 +2430,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       assetPackPaths,
       assetCache: new Map(),
       assetCacheBytes: 0,
+      pendingAssets: new Map(),
       createdAt: Date.now(),
     };
     const { assets: statIcons } = await loadUnitViewerAssets(
@@ -2419,7 +2438,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       Array.from(new Set(Object.values(data.constants.statIconPaths))),
       true,
     );
-    for (const [iconPath, icon] of Object.entries(statIcons)) data.statIcons[iconPath] = icon.base64;
+    for (const [iconPath, icon] of Object.entries(statIcons)) {
+      data.statIcons[iconPath] = icon.buffer.toString("base64");
+    }
     await saveUnitViewerDiskCache(app.getPath("userData"), signature, data);
     // Everything the Unit Viewer needs now lives in `data`, which is cached both here and on disk.
     // The rows it was built from are the expensive half and are never read again: the next build for
@@ -2439,6 +2460,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         assetPackPaths: built.assetPackPaths,
         assetCache: new Map(),
         assetCacheBytes: 0,
+        pendingAssets: new Map(),
         createdAt: Date.now(),
       });
       while (unitViewerSessions.size > 4) {
@@ -2446,13 +2468,26 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (!oldest) break;
         unitViewerSessions.delete(oldest.sessionId);
       }
+      // The stat icons come back from the disk cache already encoded, which is how they stay cheap
+      // to persist. Registering them decodes each one once, for a URL like every other icon.
+      const statIconGeneration = registerIconAssets(
+        Object.fromEntries(
+          Object.entries(built.data.statIcons).map(([iconPath, base64]) => [
+            iconPath,
+            { buffer: Buffer.from(base64, "base64"), mimeType: getPackedFileMimeType(iconPath) || "image/png" },
+          ]),
+        ),
+      );
+      const statIcons = Object.fromEntries(
+        Object.keys(built.data.statIcons).map((iconPath) => [iconPath, iconAssetUrl(statIconGeneration, iconPath)]),
+      );
       return {
         success: true,
         sessionId,
         groups: built.data.groups,
         unitGroups: built.data.unitGroups,
         constants: built.data.constants,
-        statIcons: built.data.statIcons,
+        statIcons,
       };
     } catch (error) {
       console.error("Failed to build Unit Viewer catalog:", error);
@@ -2466,42 +2501,53 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!session) return { success: false, error: "Unit Viewer session expired" };
       const unit = session.data.units.get(unitKey);
       if (!unit) return { success: false, error: `Unit ${unitKey} was not found` };
-      const { assets } = await loadUnitViewerAssets(session, session.data.iconPathsByUnit.get(unitKey) || [], true);
-      const icons = Object.fromEntries(Object.entries(assets).map(([iconPath, icon]) => [iconPath, icon.base64]));
+      // Warmed in one pass over the packs rather than one request per icon, then handed over as URLs
+      // the protocol serves straight from that session cache.
+      const { resolved } = await loadUnitViewerAssets(session, session.data.iconPathsByUnit.get(unitKey) || [], false);
+      const icons = Object.fromEntries(
+        resolved.map((iconPath) => [iconPath, unitAssetUrl(sessionId, iconPath)] as const),
+      );
       return { success: true, unit, icons };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to load unit" };
     }
   });
 
-  ipcMain.handle("getUnitViewerAsset", async (_event, sessionId: string, assetPath: string) => {
-    try {
+  /**
+   * The unit viewer's images, served to `<img>` rather than sent as payloads.
+   *
+   * A miss still reads the file out of the packs, so a card nothing prewarmed still appears; the
+   * prewarm below is what keeps a whole roster to one read per pack instead of one per card.
+   */
+  registerAssetProtocol({
+    resolveUnitViewerAsset: async (sessionId, assetPath) => {
       const session = unitViewerSessions.get(sessionId);
-      if (!session) return { success: false, error: "Unit Viewer session expired" };
-      const asset = await getUnitViewerAsset(session, assetPath);
-      return asset ? { success: true, ...asset } : { success: false, error: "Asset was not found" };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Failed to load asset" };
-    }
-  });
-
-  ipcMain.handle("getUnitViewerAssets", async (_event, sessionId: string, assetPaths: string[]) => {
-    try {
-      const session = unitViewerSessions.get(sessionId);
-      if (!session) return { success: false, error: "Unit Viewer session expired" };
-      const { assets } = await loadUnitViewerAssets(session, Array.from(new Set(assetPaths || [])), true);
-      return { success: true, assets };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Failed to load assets" };
-    }
+      if (!session) return undefined;
+      // The roster paints every card at once, so these arrive in a burst. Waiting behind a prewarm
+      // lets that one pass over the packs serve the whole burst, and the pending map collapses what
+      // is left: without either, a hundred images would start a hundred reads of the same packs.
+      await session.pendingPrewarm?.catch(() => undefined);
+      const normalized = normalizePackFilePath(assetPath).toLowerCase();
+      const pending = session.pendingAssets.get(normalized);
+      if (pending) return await pending;
+      const load = getUnitViewerAsset(session, assetPath).finally(() => session.pendingAssets.delete(normalized));
+      session.pendingAssets.set(normalized, load);
+      return await load;
+    },
   });
 
   ipcMain.handle("prewarmUnitViewerAssets", async (_event, sessionId: string, assetPaths: string[]) => {
     try {
       const session = unitViewerSessions.get(sessionId);
       if (!session) return { success: false, error: "Unit Viewer session expired" };
-      const { resolved } = await loadUnitViewerAssets(session, Array.from(new Set(assetPaths || [])), false);
-      return { success: true, resolved };
+      const prewarm = loadUnitViewerAssets(session, Array.from(new Set(assetPaths || [])), false);
+      session.pendingPrewarm = prewarm;
+      try {
+        const { resolved } = await prewarm;
+        return { success: true, resolved };
+      } finally {
+        if (session.pendingPrewarm === prewarm) session.pendingPrewarm = undefined;
+      }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to load assets" };
     }
@@ -2829,6 +2875,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       ...getLocsFromPacks(orderedModPacks, getLocsTrie),
     };
     const icons = iconPaths.length > 0 ? await loadIconsFromPacks(orderedPacks, iconPaths) : {};
+    const iconGeneration = registerIconAssets(icons);
     // Every technology table has been read into the structures above, and the result is held in
     // `cachedTechnologyData` for as long as it stays valid. This is the heaviest of these reads -
     // the whole vanilla pack set, parsed - and nothing below the row extraction touches the rows
@@ -2852,6 +2899,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       technologyEffectScopesByKey,
       locs,
       icons,
+      iconGeneration,
       technologyToEffects,
       effectsForTech,
     };
@@ -2869,6 +2917,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // Readers hold an open handle and only check the pack and schema when they open, so drop them
       // here: coming back to this game later should revalidate rather than serve what was true before.
       closeVanillaDbCacheReaders();
+      // Every registered icon belongs to the game being left, and the features that registered them
+      // register again when they rebuild for the new one.
+      clearIconAssets();
       if (!appData.gamesToGameFolderPaths[newGame]) {
         await getFolderPaths(log, newGame);
       }
@@ -6294,7 +6345,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           localizedKey: formatEffectLocalization(effect.effectKey, effect.value, getLoc),
           value: effect.value,
           icon: iconFile,
-          iconData: effectIconPath ? technologyData.icons[effectIconPath] : undefined,
+          iconData:
+            effectIconPath && technologyData.icons[effectIconPath]
+              ? iconAssetUrl(technologyData.iconGeneration, effectIconPath)
+              : undefined,
         };
       });
     };
@@ -6318,7 +6372,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         shortDescription: resolveTechnologyLoc(`technologies_short_description_${node.technologyKey}`),
         longDescription: resolveTechnologyLoc(`technologies_long_description_${node.technologyKey}`),
         iconPath,
-        iconData: iconPath ? technologyData.icons[iconPath] : undefined,
+        iconData:
+          iconPath && technologyData.icons[iconPath]
+            ? iconAssetUrl(technologyData.iconGeneration, iconPath)
+            : undefined,
         isHidden: technology?.isHidden || false,
         buildingLevel: technology?.buildingLevel,
         effects: mapEffectsForTechnology(node.technologyKey),
@@ -6336,7 +6393,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           shortDescription: resolveTechnologyLoc(`technologies_short_description_${technology.key}`),
           longDescription: resolveTechnologyLoc(`technologies_long_description_${technology.key}`),
           iconPath,
-          iconData: iconPath ? technologyData.icons[iconPath] : undefined,
+          iconData:
+            iconPath && technologyData.icons[iconPath]
+              ? iconAssetUrl(technologyData.iconGeneration, iconPath)
+              : undefined,
           isHidden: technology.isHidden,
           effects: mapEffectsForTechnology(technology.key),
         };
@@ -6349,10 +6409,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       );
     const allTechnologyIcons: TechnologyIconEntry[] = Object.entries(technologyData.icons)
       .filter(([iconPath]) => iconPath.toLowerCase().startsWith("ui\\campaign ui\\technologies\\"))
-      .map(([path, iconData]) => ({
+      .map(([path]) => ({
         path,
         name: path.replace("ui\\campaign ui\\technologies\\", "").replace(/\.(png|jpg|jpeg)$/i, ""),
-        iconData,
+        iconData: iconAssetUrl(technologyData.iconGeneration, path),
       }))
       .sort((firstIcon, secondIcon) => collator.compare(firstIcon.name, secondIcon.name));
     const allEffectKeys = new Set<string>([
@@ -6369,7 +6429,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           effectKey,
           localizedKey: getRawEffectLocalization(effectKey, getLoc),
           icon: iconFile,
-          iconData: effectIconPath ? technologyData.icons[effectIconPath] : undefined,
+          iconData:
+            effectIconPath && technologyData.icons[effectIconPath]
+              ? iconAssetUrl(technologyData.iconGeneration, effectIconPath)
+              : undefined,
         };
       })
       .sort((firstEffect, secondEffect) =>

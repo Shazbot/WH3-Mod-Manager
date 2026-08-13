@@ -5,9 +5,7 @@ import { SupportedGames } from "./supportedGames";
 import debounce from "just-debounce-it";
 import "electron-log/preload";
 import type {
-  UnitViewerAssetResponse,
   UnitViewerAssetsPrewarmResponse,
-  UnitViewerAssetsResponse,
   UnitViewerCatalogResponse,
   UnitViewerDetailsResponse,
 } from "./unitViewer/types";
@@ -443,12 +441,6 @@ const api = {
 
   getUnitViewerDetails: (sessionId: string, unitKey: string): Promise<UnitViewerDetailsResponse> =>
     ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
-
-  getUnitViewerAsset: (sessionId: string, assetPath: string): Promise<UnitViewerAssetResponse> =>
-    ipcRenderer.invoke("getUnitViewerAsset", sessionId, assetPath),
-
-  getUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsResponse> =>
-    ipcRenderer.invoke("getUnitViewerAssets", sessionId, assetPaths),
 
   prewarmUnitViewerAssets: (sessionId: string, assetPaths: string[]): Promise<UnitViewerAssetsPrewarmResponse> =>
     ipcRenderer.invoke("prewarmUnitViewerAssets", sessionId, assetPaths),

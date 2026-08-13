@@ -330,7 +330,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                               {e.icon && icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`] && (
                                 <img
                                   className="h-4 w-4"
-                                  src={`data:image/png;base64,${icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}`}
+                                  src={icons[`ui\\campaign ui\\effect_bundles\\${e.icon}`]}
                                   alt=""
                                 />
                               )}
@@ -392,11 +392,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                         formatOptionLabel={(option: IconOption) => (
                           <div className="flex items-center gap-2">
                             {icons[option.value] && (
-                              <img
-                                className="h-12 w-12 object-contain"
-                                src={`data:image/png;base64,${icons[option.value]}`}
-                                alt=""
-                              />
+                              <img className="h-12 w-12 object-contain" src={icons[option.value]} alt="" />
                             )}
                             <span>{option.label}</span>
                           </div>
@@ -558,9 +554,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                   formatOptionLabel={(option: EffectOption) => (
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
-                        {option.effect.iconData && (
-                          <img className="h-5 w-5" src={`data:image/png;base64,${option.effect.iconData}`} alt="" />
-                        )}
+                        {option.effect.iconData && <img className="h-5 w-5" src={option.effect.iconData} alt="" />}
                         <span>{option.label}</span>
                       </div>
                       <span>{option.value}</span>
@@ -571,9 +565,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                   <div className="space-y-2 mt-2">
                     {(levelEffects[activeLevel] || []).map((opt) => (
                       <div key={opt.value} className="flex items-center gap-2">
-                        {opt.effect.iconData && (
-                          <img className="h-5 w-5" src={`data:image/png;base64,${opt.effect.iconData}`} alt="" />
-                        )}
+                        {opt.effect.iconData && <img className="h-5 w-5" src={opt.effect.iconData} alt="" />}
                         <span className="text-sm text-gray-300 flex-1 truncate">{opt.label}</span>
                         <input
                           type="number"
@@ -652,11 +644,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                   }`}
                 >
                   {icons[option.value] && (
-                    <img
-                      src={`data:image/png;base64,${icons[option.value]}`}
-                      className="w-20 h-20 object-contain mx-auto"
-                      alt={option.label}
-                    />
+                    <img src={icons[option.value]} className="w-20 h-20 object-contain mx-auto" alt={option.label} />
                   )}
                   <div className="text-xs text-center mt-2 text-gray-300 truncate" title={option.label}>
                     {option.label}

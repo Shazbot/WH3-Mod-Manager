@@ -8,11 +8,13 @@ import { Pack, PackedFile } from "../packFileTypes";
 import { SkillAndIcons } from "../skills";
 import { gameToPackWithDBTablesName, SupportedGames } from "../supportedGames";
 import { collator } from "../utility/packFileSorting";
+import { getPackedFileMimeType } from "../utility/packFileViewing";
+import { iconAssetUrl, type AssetBytes } from "../assetUrls";
 import Trie, { type KeyedLookup } from "../utility/trie";
 
 export type SkillsDataCacheCore = Omit<
   NonNullable<typeof appData.skillsData>,
-  "locs" | "icons" | "skillsDataPackPaths"
+  "locs" | "icons" | "iconGeneration" | "skillsDataPackPaths"
 >;
 
 interface VanillaSkillsDataCoreCachePayload {
@@ -64,16 +66,18 @@ export const getSkillAndEffectIconPaths = (
  *
  * Both icon folders are offered for each skill because the renderer falls back from one to the other
  * and only the presence of the file says which one a skill uses.
+ *
+ * The values are asset protocol URLs, not the icons themselves.
  */
 export const pickIconsForSkills = (
-  icons: Record<string, string>,
+  icons: Record<string, AssetBytes>,
+  iconGeneration: number,
   skills: readonly Skill[],
   extraIconPaths: readonly string[] = [],
 ) => {
   const picked: Record<string, string> = {};
   const take = (iconPath: string) => {
-    const icon = icons[iconPath];
-    if (icon !== undefined) picked[iconPath] = icon;
+    if (icons[iconPath] !== undefined) picked[iconPath] = iconAssetUrl(iconGeneration, iconPath);
   };
   for (const skill of skills) {
     if (skill.img) {
@@ -97,19 +101,28 @@ export const getLocsFromPacks = (packs: Pack[], getLocsTrie: (pack: Pack) => Tri
   return locs;
 };
 
+/**
+ * The icon files themselves, as the bytes read out of the packs.
+ *
+ * Kept as buffers rather than base64: these are served to the renderer over the asset protocol now,
+ * and encoding them was both a third more memory and a string per icon that nothing could evict.
+ */
 export const loadIconsFromPacks = async (packs: Pack[], iconPaths: string[]) => {
   for (const pack of packs) {
     await readFromExistingPack(pack, { filesToRead: iconPaths, skipParsingTables: true });
   }
 
-  const icons: Record<string, string> = {};
+  const icons: Record<string, AssetBytes> = {};
   for (const pack of packs) {
     for (const iconPath of iconPaths) {
       const iconIndex = bs(pack.packedFiles, iconPath, (a: PackedFile, b: string) => collator.compare(a.name, b));
       if (iconIndex < 0) continue;
       const iconPackedFile = pack.packedFiles[iconIndex];
       if (!iconPackedFile.buffer) continue;
-      icons[iconPath] = iconPackedFile.buffer.toString("base64");
+      icons[iconPath] = {
+        buffer: iconPackedFile.buffer,
+        mimeType: getPackedFileMimeType(iconPackedFile.name) || "image/png",
+      };
     }
   }
   return icons;
@@ -171,7 +184,7 @@ export const saveVanillaSkillsDataCoreCache = async ({
   try {
     const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName[currentGame]);
     const dbPackStat = await fs.promises.stat(dbPackPath);
-    const { locs, icons, skillsDataPackPaths, ...core } = skillsData;
+    const { locs, icons, iconGeneration, skillsDataPackPaths, ...core } = skillsData;
     const payload: VanillaSkillsDataCoreCachePayload = {
       version: VANILLA_SKILLS_DATA_CORE_CACHE_VERSION,
       game: currentGame,

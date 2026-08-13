@@ -233,6 +233,7 @@ export interface UnitViewerCatalogResponse {
   groups?: UnitViewerCatalogGroup[];
   unitGroups?: UnitViewerUiGroup[];
   constants?: UnitViewerConstants;
+  /** Asset protocol URLs, keyed by the icon's path inside the pack. */
   statIcons?: Record<string, string>;
   error?: string;
 }
@@ -240,21 +241,8 @@ export interface UnitViewerCatalogResponse {
 export interface UnitViewerDetailsResponse {
   success: boolean;
   unit?: UnitViewerUnitModel;
+  /** Asset protocol URLs, keyed by the icon's path inside the pack. */
   icons?: Record<string, string>;
-  error?: string;
-}
-
-export interface UnitViewerAssetResponse {
-  success: boolean;
-  base64?: string;
-  mimeType?: string;
-  resolvedPath?: string;
-  error?: string;
-}
-
-export interface UnitViewerAssetsResponse {
-  success: boolean;
-  assets?: Record<string, { base64: string; mimeType: string }>;
   error?: string;
 }
 

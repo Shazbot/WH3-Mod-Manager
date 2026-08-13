@@ -14,6 +14,7 @@ import {
   IoSearch,
 } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
+import { unitAssetUrl } from "../assetUrls";
 import AbilityTooltipCard from "./skillsViewer/AbilityTooltipCard";
 import { calculateUnitViewerStats } from "../unitViewer/calculator";
 import type {
@@ -39,9 +40,6 @@ const DEFAULT_CONTEXT: UnitViewerContext = {
   rank: 0,
   fatigue: "threshold_fresh",
 };
-
-/** Unit cards are pulled back this many at a time so no single IPC reply blocks the renderer. */
-const ROSTER_CARD_PAGE_SIZE = 50;
 
 /** Splits a subculture's units into the roster sections the panel renders, in display order. */
 const groupUnitsIntoSections = (units: UnitViewerCatalogUnit[], unitGroups: UnitViewerUiGroup[]) => {
@@ -152,9 +150,7 @@ const StatRow = ({
   <div className="grid h-10 grid-cols-[minmax(8rem,1fr)_minmax(8.5rem,auto)] items-center gap-3 overflow-hidden border-b border-gray-700/60 px-3 text-[15px]">
     <span className="flex min-w-0 items-center gap-2 text-gray-300">
       <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
-        {iconData && (
-          <img src={`data:image/png;base64,${iconData}`} className="h-5 w-5 object-contain" alt="" title={label} />
-        )}
+        {iconData && <img src={iconData} className="h-5 w-5 object-contain" alt="" title={label} />}
       </span>
       <span className="truncate">{label}</span>
     </span>
@@ -168,9 +164,7 @@ const StatTextRow = ({ label, value, iconData }: { label: string; value: string;
   <div className="grid h-10 grid-cols-[minmax(8rem,1fr)_minmax(8.5rem,auto)] items-center gap-3 overflow-hidden border-b border-gray-700/60 px-3 text-[15px]">
     <span className="flex min-w-0 items-center gap-2 text-gray-300">
       <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
-        {iconData && (
-          <img src={`data:image/png;base64,${iconData}`} className="h-5 w-5 object-contain" alt="" title={label} />
-        )}
+        {iconData && <img src={iconData} className="h-5 w-5 object-contain" alt="" title={label} />}
       </span>
       <span className="truncate">{label}</span>
     </span>
@@ -248,7 +242,7 @@ const AbilityButton = ({
         aria-expanded={isOpen}
       >
         {icon ? (
-          <img src={`data:image/png;base64,${icon}`} className="h-8 w-8 object-contain" alt="" />
+          <img src={icon} className="h-8 w-8 object-contain" alt="" />
         ) : (
           <span className="h-8 w-8 rounded bg-gray-700" />
         )}
@@ -626,11 +620,7 @@ const UnitCard = ({
                   className="flex min-h-9 items-center gap-2 rounded bg-gray-900 px-2 py-1 text-xs text-gray-200"
                 >
                   {icons[attribute.iconPath] ? (
-                    <img
-                      src={`data:image/png;base64,${icons[attribute.iconPath]}`}
-                      className="h-7 w-7 shrink-0 object-contain"
-                      alt=""
-                    />
+                    <img src={icons[attribute.iconPath]} className="h-7 w-7 shrink-0 object-contain" alt="" />
                   ) : (
                     <span className="h-7 w-7 shrink-0 rounded bg-gray-800" />
                   )}
@@ -731,7 +721,6 @@ const UnitViewerTab = memo(() => {
   const [details, setDetails] = useState<Record<string, UnitViewerUnitModel>>({});
   const [icons, setIcons] = useState<Record<string, Record<string, string>>>({});
   const [statIcons, setStatIcons] = useState<Record<string, string>>({});
-  const [images, setImages] = useState<Record<string, string>>({});
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
   const [context, setContext] = useState<UnitViewerContext>(DEFAULT_CONTEXT);
   const [comparison, setComparison] = useState<ComparisonSelection>("first");
@@ -740,37 +729,29 @@ const UnitViewerTab = memo(() => {
   const [isRosterOpen, setIsRosterOpen] = useState(false);
   const [rosterGroupKey, setRosterGroupKey] = useState<string>();
   const [loadingCards, setLoadingCards] = useState(false);
-  // Unit cards are fetched a whole subculture at a time, so they are stored per subculture and
-  // replaced wholesale when the browser switches to another one.
-  const [cardImages, setCardImages] = useState<{ groupKey: string; images: Record<string, string> }>({
-    groupKey: "",
-    images: {},
-  });
 
-  const resetCardImages = useCallback(() => {
-    // Keep the same object when already empty so a reset cannot force a re-render on its own.
-    setCardImages((current) =>
-      current.groupKey === "" && Object.keys(current.images).length === 0 ? current : { groupKey: "", images: {} },
-    );
-  }, []);
-
-  const recoverMissingSession = useCallback(
-    (failedSessionId: string) => {
-      if (sessionIdRef.current !== failedSessionId) return false;
-      sessionIdRef.current = undefined;
-      setSessionId(undefined);
-      setDetails({});
-      setIcons({});
-      setStatIcons({});
-      setImages({});
-      resetCardImages();
-      setLoadingKeys(new Set());
-      setError(undefined);
-      setSessionRefreshToken((token) => token + 1);
-      return true;
-    },
-    [resetCardImages],
+  /**
+   * A unit card is addressed, not fetched: the asset protocol resolves it out of the session's packs
+   * and Chromium owns the decoded image. What used to be held here was the base64 of every card in a
+   * subculture at once.
+   */
+  const cardImageSrc = useCallback(
+    (assetPath: string | undefined) => (sessionId && assetPath ? unitAssetUrl(sessionId, assetPath) : undefined),
+    [sessionId],
   );
+
+  const recoverMissingSession = useCallback((failedSessionId: string) => {
+    if (sessionIdRef.current !== failedSessionId) return false;
+    sessionIdRef.current = undefined;
+    setSessionId(undefined);
+    setDetails({});
+    setIcons({});
+    setStatIcons({});
+    setLoadingKeys(new Set());
+    setError(undefined);
+    setSessionRefreshToken((token) => token + 1);
+    return true;
+  }, []);
 
   const toggleSelectedUnit = useCallback((unitKey: string) => {
     setSelectedKeys((keys) => (keys.includes(unitKey) ? keys.filter((key) => key !== unitKey) : [...keys, unitKey]));
@@ -782,7 +763,6 @@ const UnitViewerTab = memo(() => {
     sessionIdRef.current = undefined;
     setSessionId(undefined);
     setLoadingKeys(new Set());
-    resetCardImages();
     setLoading(true);
     setError(undefined);
     window.api
@@ -807,7 +787,6 @@ const UnitViewerTab = memo(() => {
         setSelectedKeys((keys) => keys.filter((key) => available.has(key)));
         setDetails({});
         setIcons({});
-        setImages({});
       })
       .catch((reason) => {
         if (!cancelled) setError(reason instanceof Error ? reason.message : "Failed to load Unit Viewer");
@@ -821,7 +800,7 @@ const UnitViewerTab = memo(() => {
     // `signature` already encodes every enabled mod's path, load order and change stamps, so it is
     // the dependency that matters. Depending on `enabledMods` too rebuilt the catalog every time
     // pack reading handed Redux a fresh mods array, and each rebuild reads packs again — a loop.
-  }, [currentGame, resetCardImages, sessionRefreshToken, signature]);
+  }, [currentGame, sessionRefreshToken, signature]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -831,21 +810,11 @@ const UnitViewerTab = memo(() => {
       setLoadingKeys((current) => new Set(current).add(key));
       window.api
         ?.getUnitViewerDetails(requestedSessionId, key)
-        .then(async (result) => {
+        .then((result) => {
           if (!result?.success || !result.unit) throw new Error(result?.error || `Failed to load ${key}`);
           if (sessionIdRef.current !== requestedSessionId) return;
           setDetails((current) => ({ ...current, [key]: result.unit! }));
           setIcons((current) => ({ ...current, [key]: result.icons || {} }));
-          if (result.unit.unitCardPath) {
-            const asset = await window.api?.getUnitViewerAsset(requestedSessionId, result.unit.unitCardPath);
-            if (asset?.error && isMissingUnitViewerSessionError(asset.error)) throw new Error(asset.error);
-            if (asset?.success && asset.base64) {
-              setImages((current) => ({
-                ...current,
-                [key]: `data:${asset.mimeType || "image/png"};base64,${asset.base64}`,
-              }));
-            }
-          }
         })
         .catch((reason) => {
           const message = reason instanceof Error ? reason.message : `Failed to load ${key}`;
@@ -898,51 +867,27 @@ const UnitViewerTab = memo(() => {
     );
   }, [rosterGroup, unitGroups]);
 
-  // The first page is fetched on its own so it paints after reading only those files, rather than
-  // waiting on the whole subculture. The remainder is then read in one go and served from cache in
-  // pages small enough that no single reply blocks the renderer.
+  /**
+   * The cards are read out of the packs up front, then drawn from their URLs.
+   *
+   * Only the reading is worth batching: one pass resolves a whole subculture with a single read per
+   * pack, where letting each `<img>` arrive on its own would re-read the packs a card at a time. The
+   * images themselves never travel through here.
+   */
   useEffect(() => {
     if (!isRosterOpen || !sessionId || !rosterGroup) return;
-    const requestedSessionId = sessionId;
-    const groupKey = rosterGroup.key;
-    setCardImages((current) => (current.groupKey === groupKey ? current : { groupKey, images: {} }));
     if (rosterCardPaths.length === 0) return;
+    const requestedSessionId = sessionId;
     let cancelled = false;
-    const isStale = () => cancelled || sessionIdRef.current !== requestedSessionId;
-    const handleFailure = (error: string | undefined) => {
-      if (error && isMissingUnitViewerSessionError(error)) recoverMissingSession(requestedSessionId);
-    };
-    const fetchPage = async (page: string[]) => {
-      const result = await window.api?.getUnitViewerAssets(requestedSessionId, page);
-      if (isStale()) return false;
-      if (!result?.success) {
-        handleFailure(result?.error);
-        return false;
-      }
-      const pageImages = Object.entries(result.assets || {}).map(
-        ([assetPath, asset]) => [assetPath, `data:${asset.mimeType || "image/png"};base64,${asset.base64}`] as const,
-      );
-      setCardImages((current) =>
-        current.groupKey !== groupKey
-          ? current
-          : { groupKey, images: { ...current.images, ...Object.fromEntries(pageImages) } },
-      );
-      return true;
-    };
     setLoadingCards(true);
-    void (async () => {
-      if (!(await fetchPage(rosterCardPaths.slice(0, ROSTER_CARD_PAGE_SIZE)))) return;
-      const remaining = rosterCardPaths.slice(ROSTER_CARD_PAGE_SIZE);
-      if (remaining.length === 0) return;
-      const prewarm = await window.api?.prewarmUnitViewerAssets(requestedSessionId, remaining);
-      if (isStale()) return;
-      if (!prewarm?.success) return handleFailure(prewarm?.error);
-      const resolved = new Set(prewarm.resolved || []);
-      const pending = remaining.filter((assetPath) => resolved.has(assetPath));
-      for (let start = 0; start < pending.length; start += ROSTER_CARD_PAGE_SIZE) {
-        if (!(await fetchPage(pending.slice(start, start + ROSTER_CARD_PAGE_SIZE)))) return;
-      }
-    })()
+    window.api
+      ?.prewarmUnitViewerAssets(requestedSessionId, rosterCardPaths)
+      .then((result) => {
+        if (cancelled || sessionIdRef.current !== requestedSessionId) return;
+        if (!result?.success && result?.error && isMissingUnitViewerSessionError(result.error)) {
+          recoverMissingSession(requestedSessionId);
+        }
+      })
       .catch(() => undefined)
       .finally(() => {
         if (!cancelled) setLoadingCards(false);
@@ -1204,7 +1149,7 @@ const UnitViewerTab = memo(() => {
                     compareStats={comparisonKey ? calculated[comparisonKey] : undefined}
                     statIconPaths={constants?.statIconPaths || {}}
                     icons={{ ...statIcons, ...(icons[key] || {}) }}
-                    imageSrc={images[key]}
+                    imageSrc={cardImageSrc(details[key]?.unitCardPath)}
                     onRemove={() => setSelectedKeys((keys) => keys.filter((unitKey) => unitKey !== key))}
                     onMoveLeft={index > 0 ? () => moveSelectedUnit(index, -1) : undefined}
                     onMoveRight={index < selectedKeys.length - 1 ? () => moveSelectedUnit(index, 1) : undefined}
@@ -1278,7 +1223,7 @@ const UnitViewerTab = memo(() => {
                       <RosterUnitTile
                         key={unit.key}
                         unit={unit}
-                        imageSrc={unit.unitCardPath ? cardImages.images[unit.unitCardPath] : undefined}
+                        imageSrc={cardImageSrc(unit.unitCardPath)}
                         isSelected={selectedKeys.includes(unit.key)}
                         onToggle={toggleSelectedUnit}
                       />
